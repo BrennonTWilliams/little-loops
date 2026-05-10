@@ -214,3 +214,62 @@ class TestSessionLogCall:
         assert "ll-issues append-log" in phase8_text, (
             "Phase 8 must document the 'll-issues append-log' command call"
         )
+
+
+class TestPhase3bInlineProvisionalScan:
+    """Phase 3b must be documented in SKILL.md for AUTO_MODE + OPTIONS=0 path (BUG-1416)."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("## Phase 3b: Inline Decision Scan")
+        next_heading = content.find("\n## Phase 4:", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_phase_3b_heading_exists(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "Phase 3b: Inline Decision Scan" in content, (
+            "SKILL.md must contain a 'Phase 3b: Inline Decision Scan' section"
+        )
+
+    def test_auto_mode_options_zero_guard_documented(self) -> None:
+        text = self._phase_text()
+        assert "AUTO_MODE" in text and "OPTIONS" in text, (
+            "Phase 3b must document the AUTO_MODE=true and OPTIONS=0 precondition"
+        )
+
+    def test_provisional_pattern_eg_documented(self) -> None:
+        text = self._phase_text()
+        assert "e.g." in text or "(e.g.," in text, (
+            "Phase 3b must document the '(e.g., ...)' provisional pattern"
+        )
+
+    def test_provisional_pattern_tbd_documented(self) -> None:
+        text = self._phase_text()
+        assert "TBD" in text, (
+            "Phase 3b must document the TBD inline design marker pattern"
+        )
+
+    def test_provisional_pattern_replacement_language_documented(self) -> None:
+        text = self._phase_text()
+        assert "fundamental rethink" in text or "must be replaced with" in text, (
+            "Phase 3b must document the definitive replacement language pattern"
+        )
+
+    def test_single_winner_writeback_documented(self) -> None:
+        text = self._phase_text()
+        assert "decision_needed: false" in text, (
+            "Phase 3b must document setting decision_needed: false for the single-winner path"
+        )
+
+    def test_ambiguous_exit_documented(self) -> None:
+        text = self._phase_text()
+        assert "no resolvable" in text or "ambiguous" in text.lower() or "unresolvable" in text, (
+            "Phase 3b must document the clean exit for ambiguous/no-winner cases"
+        )
+
+    def test_no_ask_user_question_in_phase_3b(self) -> None:
+        text = self._phase_text()
+        assert "AskUserQuestion" not in text, (
+            "Phase 3b must not use AskUserQuestion — --auto mode is non-interactive"
+        )

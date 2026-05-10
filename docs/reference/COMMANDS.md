@@ -194,7 +194,7 @@ Resolve multi-option implementation decisions by gathering codebase evidence for
 
 **When to run**: After `/ll:refine-issue --auto` or `/ll:confidence-check` sets `decision_needed: true` in the issue frontmatter. Automated pipelines (`ll-auto`, `ll-parallel`) invoke this step automatically via the `decide_command` config template.
 
-**Frontmatter write-back**: Sets `decision_needed: false` after annotating the winning option. Idempotent — skips annotation write if a `### Decision Rationale` section already exists.
+**Frontmatter write-back**: Sets `decision_needed: false` after annotating the winning option. In `--auto` mode when no formal `Option A / Option B` blocks are found (Phase 3b), also scans all sections for inline provisional decision language (`(e.g., ...)`, `TBD`, `"must be replaced with"`) and, if a single clear approach is identifiable, locks it in and sets `decision_needed: false` without user interaction. If no clear winner can be inferred, exits cleanly without prompting. Idempotent — skips annotation write if a `### Decision Rationale` section already exists.
 
 ### `/ll:wire-issue`
 Post-refinement wiring pass that completes an issue's **Integration Map** — the structured record of every file that must change when the issue is implemented. Where `/ll:refine-issue` fills in the _what_ and _why_, `wire-issue` traces the _where_: every caller, importer, config entry, doc section, test file, and side-effect file that the implementation will touch.

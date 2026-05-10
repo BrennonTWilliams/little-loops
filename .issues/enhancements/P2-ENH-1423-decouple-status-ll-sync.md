@@ -5,6 +5,12 @@ priority: P2
 status: open
 parent_issue: ENH-1419
 decision_needed: false
+confidence_score: 98
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-1423: Decouple Issue Status — ll-sync
@@ -39,6 +45,14 @@ Decomposed from ENH-1419: Decouple Issue Status — CLI, Sync, Sprint Runner, an
 5. Update `scripts/tests/test_cli_sync.py` — add `status: done` frontmatter to completed issue fixtures in `mock_config` setup; move those fixture files from `completed/` to type dirs; remove `(issues_dir / "completed").mkdir(parents=True)`
 6. Update `scripts/tests/test_sync.py` — migrate all issue fixtures (currently in `tmp_path / ".issues" / "completed"`) to type dirs with `status: done` frontmatter; update `test_close_all_completed` (line 1318) and `test_reopen_specific_issue_in_completed` (line 1452) to use status-field logic; remove `completed_dir` local variable construction; verify no `git mv` is attempted in reopen tests
 7. Update `scripts/tests/test_cli.py` — remove `"completed_dir": "completed"` from inline config dicts at lines 293, 480, 1471, 1586, 2370; add `status: done` frontmatter to fixture issue files currently placed in `completed/` dirs; move those fixture files to type dirs (`bugs/`, `features/`, `enhancements/`); remove `completed/` directory creation in test setup
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `scripts/little_loops/cli/sync.py` — change `close_parser.add_argument("--all-completed", ...)` help text from "Close all GitHub issues whose local counterparts are in `completed/`" to "Close all GitHub issues whose local counterparts have `status: done` or `status: cancelled`"
+9. Update `docs/reference/CLI.md` — rewrite `ll-sync close --all-completed` description to reference status-based detection; rewrite `ll-sync reopen` section to describe `status` being set back to `open` instead of a file move from `completed/`
+10. Update `commands/sync-issues.md` — fix the status-action `find` template (line ~171) that uses `-not -path "*/completed/*"`; replace with a status-aware scan or remove the exclusion pattern
 
 ### Codebase Research Findings
 
@@ -101,7 +115,29 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/cli/issues/skip.py:38` — `cmd_skip()`: guard pattern reading `issue_info.status` from frontmatter instead of checking parent directory
 - `scripts/little_loops/sprint.py:323` — `SprintManager._find_issue_file()`: type-dir-only search pattern (no completed/ fallback)
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/sync.py` — `main_sync()` calls `manager.close_issues()` (line ~163) and `manager.reopen_issues()` (line ~172); also contains `close_parser.add_argument("--all-completed", ...)` whose help text reads "Close all GitHub issues whose local counterparts are in `completed/`" — this string must be updated to reflect status-based detection
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — `ll-sync close --all-completed` description references the `completed/` directory; `ll-sync reopen` section describes a file move from `completed/` back to the active type dir — both descriptions become incorrect after the git mv block is removed
+- `commands/sync-issues.md` — Status action (line ~171) uses an inline `find` template with `-not -path "*/completed/*"` to exclude completed issues; this is not status-aware and will behave incorrectly once issues with `status: done` live in type dirs
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_sync.py` — write **new** tests for the following behaviors not yet covered:
+  - `_get_local_issues()` returns issues with `status: done` from type dirs (not `completed/`) when `sync_completed=True`
+  - `close_issues(all_completed=True)` scans type dirs for `status in ("done", "cancelled")` instead of globbing `completed/`
+  - `reopen_issues()` calls `update_frontmatter(issue_path, {"status": "open"})` after a successful GitHub reopen (no `git mv` call)
+  - `_find_local_issue()` finds a `status: done` issue in `bugs/` (type dir) without any `completed/` fallback pass
+
 ## Session Log
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c94e8a9-aa8e-4703-b2bd-c9c8fded7b56.jsonl`
+- `/ll:wire-issue` - 2026-05-10T17:47:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4394f412-f674-4bd5-a857-951ceede64a5.jsonl`
 - `/ll:refine-issue` - 2026-05-10T17:41:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80589cd9-0071-4d69-8045-5fbc3b9a2e61.jsonl`
 - `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
 

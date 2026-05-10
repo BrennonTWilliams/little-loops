@@ -120,9 +120,67 @@ Note: only apply this pattern if Pattern 1 and Pattern 2 found 0 options
 ### Option Count Check
 
 After extraction:
-- If `OPTIONS` is empty: print `No options found in Proposed Solution — nothing to decide.` and exit cleanly
+- If `OPTIONS` is empty and `AUTO_MODE = false`: print `No options found in Proposed Solution — nothing to decide.` and exit cleanly
+- If `OPTIONS` is empty and `AUTO_MODE = true`: proceed to Phase 3b (Inline Decision Scan)
 - If `len(OPTIONS) == 1`: print `Only one option present — no decision required. Clearing decision_needed if set.` then proceed to Phase 7 (frontmatter update only: set `decision_needed: false`)
 - If `len(OPTIONS) >= 2`: proceed to Phase 4
+
+---
+
+## Phase 3b: Inline Decision Scan (AUTO_MODE only)
+
+**Precondition**: `AUTO_MODE = true` AND `OPTIONS = 0` after Phase 3 pattern scan.
+
+Scan ALL sections of the issue file (not just `## Proposed Solution`) for provisional decision language using these patterns:
+
+### Provisional Pattern A — Parenthetical `(e.g., ...)`
+```
+Match: parenthetical containing `e.g.,` followed by a concrete name
+Example: (e.g., completed_at: frontmatter field)
+Candidate: the specific approach named inside the parenthetical
+```
+
+### Provisional Pattern B — Inline `TBD` design marker
+```
+Match: `TBD` used as a placeholder for a design decision (not a research gap)
+Surrounding context must name a single approach being considered
+Example: "field name: TBD (leaning toward completed_at)"
+Candidate: the approach mentioned in the surrounding sentence
+```
+
+### Provisional Pattern C — Definitive replacement language
+```
+Match: phrases like "fundamental rethink" / "must be replaced with" / "should be replaced by"
+Example: "the existing approach must be replaced with direct file writes"
+Candidate: the concrete replacement approach named
+```
+
+For each provisional pattern match, read 3–5 lines of surrounding context to determine if one approach is clearly stated (not merely listed as a possibility).
+
+### Resolution Logic
+
+Classify each match as:
+- **Clear winner**: the provisional wrapper names exactly one concrete approach and surrounding context treats it as the intended design.
+- **Ambiguous**: multiple alternatives listed, no single preference expressed.
+
+**If exactly one clear winner is found:**
+1. Edit the issue text to make the approach declarative — remove the provisional qualifier (`e.g.,`/parenthetical wrapper, `TBD`, `"must be replaced with"`) and state the concrete approach as decided.
+2. Use the Edit tool (inline `---` block replacement — same pattern as Phase 7b) to set `decision_needed: false` in the issue frontmatter:
+   ```
+   READ the current --- frontmatter block (from opening --- to closing ---)
+   FIND the decision_needed field:
+     IF field exists: replace its value with false
+     IF field absent: add decision_needed: false after the last existing field
+   USE Edit tool to replace the entire --- block with the updated block
+   ```
+   **Idempotency**: if `decision_needed` is already `false`, skip the write and log `✓ decision_needed already false — no update needed`.
+3. Log: `✓ Phase 3b: resolved provisional decision — [approach] locked in; decision_needed set to false`
+4. Proceed to Phase 8 (Append Session Log) and Phase 9 (Output Report), skipping Phases 4–7.
+
+**If no clear winner (zero candidates or all ambiguous):**
+1. Log: `✗ Phase 3b: no resolvable provisional decision found — leaving decision_needed unchanged`
+2. Leave `decision_needed: true` unchanged.
+3. Exit cleanly — do not prompt the user, do not ask interactive questions.
 
 ---
 
