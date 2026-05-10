@@ -2,8 +2,9 @@
 id: BUG-1416
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-05-10T15:06:51Z'
+completed_at: '2026-05-10T17:56:21Z'
 discovered_date: '2026-05-10'
 discovered_by: capture-issue
 decision_needed: false
@@ -147,11 +148,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ---
 
+## Resolution
+
+Fixed in `skills/decide-issue/SKILL.md` by adding Phase 3b — an inline provisional decision scan that activates only in `--auto` mode when `OPTIONS = 0`. Phase 3b scans all issue sections (not just `## Proposed Solution`) for provisional language patterns (`(e.g., ...)`, `TBD`, `"must be replaced with"`), resolves a single clear winner without user interaction, and writes `decision_needed: false` via the Edit tool inline `---` block replacement. When no clear winner is found, it exits cleanly with a log message instead of falling through to interactive output.
+
+**Changes made:**
+- `skills/decide-issue/SKILL.md` — Option Count Check updated to branch on `AUTO_MODE` when `OPTIONS = 0`; new Phase 3b section added with provisional patterns, resolution logic, idempotency guard, and explicit no-interactive-question rule
+- `scripts/tests/test_decide_issue_skill.py` — `TestPhase3bInlineProvisionalScan` class added (8 assertions covering heading, guard, patterns, write-back, ambiguous exit, and AskUserQuestion absence)
+- `docs/reference/COMMANDS.md` — "Frontmatter write-back" sentence updated to document Phase 3b path
+
 ## Status
 
-Open
+Completed
 
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-05-10T17:56:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fb749c7-2b66-49d3-9aa3-b2f60fb27509.jsonl`
+- `/ll:manage-issue` - 2026-05-10T17:56:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fb749c7-2b66-49d3-9aa3-b2f60fb27509.jsonl`
+- `/ll:ready-issue` - 2026-05-10T17:48:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c94e8a9-aa8e-4703-b2bd-c9c8fded7b56.jsonl`
 - `/ll:confidence-check` - 2026-05-10T17:44:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5934faa-d742-411a-abba-c8d29afc864b.jsonl`
 - `/ll:wire-issue` - 2026-05-10T17:31:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff4254f7-df99-4fc7-838e-192f8779492e.jsonl`
 - `/ll:refine-issue` - 2026-05-10T15:16:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
