@@ -11,6 +11,7 @@ score_complexity: 9
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 0
+size: Very Large
 ---
 
 # ENH-1419: Decouple Issue Status — CLI, Sync, Sprint Runner, and Parallel Discovery
@@ -208,6 +209,22 @@ _Added by `/ll:confidence-check` on 2026-05-10_
 - `/ll:format-issue` - 2026-05-10T15:18:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa41123a-15d8-4c8c-adaa-e1f58a46abea.jsonl`
 - `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
 - `/ll:wire-issue` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-05-10
+- **Reason**: Issue too large for single session (score 11/11 — Very Large; 11 implementation files, 12+ test files, 5 distinct concerns)
+
+### Decomposed Into
+- ENH-1422: Decouple Issue Status — ll-issues CLI (list/show/count/search)
+- ENH-1423: Decouple Issue Status — ll-sync
+- ENH-1424: Decouple Issue Status — Sprint Runner
+- ENH-1425: Decouple Issue Status — Dependency Tools
+- ENH-1426: Decouple Issue Status — Parallel Orchestrator, skip.py, and issue_manager
 
 ---
 
