@@ -225,6 +225,7 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 - `readiness_threshold` in config is 85 — the manage-issue Phase 2.5 gate will flag this score (80); must unblock deps to raise score to 100 before automated pipelines will proceed without a warning.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-10T14:28:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/062ec8c6-6424-4417-9cb0-d25f3f41a8bc.jsonl`
@@ -239,3 +240,9 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): `test_feat1316_doc_wiring.py` MUST NOT include `TestArchitectureWiring` (asserting `session-start-inject.sh` in `docs/ARCHITECTURE.md`) or `TestSessionHandoffWiring` (asserting `.ll/ll-session-injected` in `docs/guides/SESSION_HANDOFF.md`). Those assertions are owned by FEAT-1317 (`test_feat1317_doc_wiring.py`) and FEAT-1318 (`test_feat1318_doc_wiring.py`) respectively. FEAT-1319's test file should assert only what this issue uniquely produces: `session-start-inject.sh` present in `skills/configure/areas.md`.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue edits `skills/configure/areas.md` (hook table ~line 861, area:continuation ~line 509). The same file is also modified by FEAT-1158 (precompact handoff docs, hook audit table row ~line 867). No ordering dependency exists between these two issues. If worked concurrently, coordinate to avoid git merge conflicts in `skills/configure/areas.md`.

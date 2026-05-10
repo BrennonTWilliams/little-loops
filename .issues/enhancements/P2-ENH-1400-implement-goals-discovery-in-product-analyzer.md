@@ -121,6 +121,7 @@ analysis_metadata:
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-10T14:27:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-09T21:28:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:format-issue` - 2026-05-09T21:12:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe401f22-7fbb-48c3-8ae7-e1588507294c.jsonl`
 
@@ -135,3 +136,9 @@ analysis_metadata:
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-09): This issue targets existing and legacy projects that were initialized without a goals file. ENH-1401 (wire product setup into init) addresses the complementary case: new projects created via `/ll:init` going forward will always have `ll-goals.md`. The two issues are not redundant — ENH-1401 prevents the missing-goals-file problem for future projects; this issue provides the retrofit path for projects already in place.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue specifies that the *skill* (`product-analyzer`) performs goals discovery when `ll-goals.md` is absent. However, ENH-1403 establishes that the *command* (`scan-product`) is the sole owner of goals reading and the skill trusts injected content. These must be coordinated: the correct resolution is that **`scan-product` (the command) performs discovery when the goals file is absent and injects the synthesized context**, rather than the skill doing it internally. Implement ENH-1400's discovery logic in `commands/scan-product.md` so the skill remains stateless with respect to goals sourcing. Related: ENH-1403.

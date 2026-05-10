@@ -112,6 +112,7 @@ This enhancement would:
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-10T14:27:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:format-issue` - 2026-05-09T21:13:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9656e0a3-1e1c-475f-af39-bb776aea9268.jsonl`
 
@@ -120,3 +121,9 @@ This enhancement would:
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-09): The conditional goals-read in this issue ("if GOALS_CONTENT is injected by caller, skip independent goals read") conflicts with ENH-1400's approach where the skill independently reads or discovers the goals file. Required sequencing: ENH-1402 (config-driven path) → ENH-1400 (discovery fallback) → this issue (conditional skip). Do not implement the conditional goals-read section until ENH-1400's stable fallback path is merged — otherwise the conditional logic has no stable base to branch from.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue establishes that `scan-product` (the command) is the sole owner of goals reading and the skill trusts injected content. However, ENH-1400 adds a goals-discovery fallback for the case when `ll-goals.md` is absent. These must be coordinated: **the absent-goals discovery logic belongs in `scan-product` (the command), not in the skill**. When the goals file is absent, `scan-product` should run discovery against project docs and inject the synthesized result — keeping the skill stateless with respect to goals sourcing. Related: ENH-1400.

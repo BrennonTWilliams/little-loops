@@ -88,6 +88,13 @@ Decide whether `precompact_handoff` is opt-in (feature flag in config) or always
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-10T14:27:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue edits `docs/ARCHITECTURE.md`, `docs/guides/SESSION_HANDOFF.md`, and `skills/configure/areas.md` for the precompact handoff feature. These same files are also modified by the session-start inject doc family: FEAT-1317 (`docs/ARCHITECTURE.md`), FEAT-1318 (`docs/guides/SESSION_HANDOFF.md`), FEAT-1319 (`skills/configure/areas.md`). No ordering dependency exists between these two doc families. If worked concurrently, coordinate to avoid git merge conflicts in these three shared files.

@@ -27,6 +27,13 @@ Skills are grouped into categories (e.g., "Issue Management", "Code Quality", "A
 - **Session & Config**: init, configure, update, handoff, resume, toggle-autoprompt, help, issue-workflow
 - **Analysis & Meta**: analyze-history, analyze-workflows, improve-claude-md, audit-claude-config, scan-codebase, scan-product, product-analyzer, create-eval-from-issues
 
+## Success Metrics
+
+- Investigation complete: definitive answer documented on whether Claude Code plugin API supports skill grouping (yes/no with evidence)
+- If supported: listing footprint reduced from ~28 individual descriptions to ~6 category descriptions (~75% token reduction)
+- If supported: all 28 skills assigned to a group and plugin listing reflects category-level display
+- If not supported: feature request filed with Claude Code team and issue closed/deferred
+
 ## Motivation
 
 ENH-1394 and ENH-1396 address the immediate problem with a tactical fix (tagging skills) and enforcement (budget validator). Hierarchical grouping is the architectural solution that eliminates the budget scaling problem entirely: adding 10 more skills doesn't increase the listing footprint at all if they fit into existing categories.
@@ -71,6 +78,14 @@ This is the only approach that scales past 50+ skills without ongoing manual cur
 ### Configuration
 - `.claude-plugin/plugin.json` — potentially
 
+## Scope Boundaries
+
+- Out of scope: changes to skill execution behavior or how Claude invokes skills
+- Out of scope: changes to the listing budget validator (covered by ENH-1394/ENH-1396)
+- Out of scope: lazy-loading runtime mechanisms — this is a static metadata approach only
+- Out of scope: changes to skill discovery, registration, or SKILL.md content beyond the `group:` frontmatter field
+- Out of scope: cross-repo or multi-product category taxonomies
+
 ## Impact
 
 - **Priority**: P4 — depends on Claude Code API support; may not be actionable today
@@ -87,5 +102,13 @@ This is the only approach that scales past 50+ skills without ongoing manual cur
 **Open** | Created: 2026-05-09 | Priority: P4
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-10T14:28:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
+- `/ll:format-issue` - 2026-05-10T14:11:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2742a4a6-4542-41b3-948f-519f214763d4.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:48:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue builds on ENH-1394 (already a formal blocker). If both ENH-1394 and ENH-1398 are implemented, skills tagged `disable-model-invocation: true` by ENH-1394 should be **excluded from all category views** in the hierarchical listing — they should not appear under any category heading, as their purpose is to be absent from the LLM's listing budget entirely. The hierarchical grouping design must account for this exclusion rule or it will partially undermine ENH-1394's budget reduction. Related: ENH-1394.
