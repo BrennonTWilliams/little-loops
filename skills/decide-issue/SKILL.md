@@ -293,7 +293,7 @@ DECIDE ISSUE: {{ISSUE_ID}}
 
 ## ISSUE
 - File: [path]
-- Type: [BUG|FEAT|ENH]
+- Type: [BUG|FEAT|ENH|EPIC]
 - Title: [title]
 - Mode: [Interactive | Auto] [--dry-run]
 - decision_needed was: [true | false | absent]

@@ -39,7 +39,7 @@ skills/         # Skill definitions (28 skills)
 hooks/          # Lifecycle hooks and prompts
 scripts/        # Python package (little_loops)
 templates/      # Project-type config templates
-.issues/        # Issue tracking (bugs/, features/, enhancements/, completed/)
+.issues/        # Issue tracking (bugs/, features/, enhancements/, epics/, completed/)
 thoughts/       # Plans and research documents
 docs/           # Architecture, API, troubleshooting
 ```
@@ -88,7 +88,7 @@ ruff format scripts/
 ## Issue File Format
 
 Files in `.issues/` follow: `P[0-5]-[TYPE]-[NNN]-description.md`
-- Types: `BUG`, `FEAT`, `ENH`
+- Types: `BUG`, `FEAT`, `ENH`, `EPIC`
 - Priorities: P0 (critical) to P5 (low)
 
 ## Important Files

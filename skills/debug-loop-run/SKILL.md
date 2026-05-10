@@ -375,7 +375,7 @@ Otherwise proceed to Step 4.
 For each proposed signal, check whether a sufficiently similar issue already exists in the active issue directories:
 
 ```bash
-grep -rl "<loop_name>" .issues/bugs/ .issues/enhancements/ .issues/features/ 2>/dev/null | xargs grep -l "<state_name>" 2>/dev/null
+grep -rl "<loop_name>" .issues/bugs/ .issues/enhancements/ .issues/features/ .issues/epics/ 2>/dev/null | xargs grep -l "<state_name>" 2>/dev/null
 ```
 
 - If matching files are found: mark the signal as **DUPLICATE** and note the existing file path(s). Do not propose it.

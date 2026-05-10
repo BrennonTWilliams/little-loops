@@ -891,7 +891,7 @@ If `ll-loop stop` still reports "not running" (e.g. lock file is missing but sco
 
 **Cause**: Race condition, hook not running on Write tool, or (before ENH-986) same-type-only collision detection
 
-**Scope**: The hook enforces integer uniqueness **across all types** (BUG, FEAT, ENH) in all subdirectories (bugs, features, enhancements, completed, deferred). Writing `FEAT-007` when `BUG-007` already exists is denied.
+**Scope**: The hook enforces integer uniqueness **across all types** (BUG, FEAT, ENH, EPIC) in all subdirectories (bugs, features, enhancements, epics, completed, deferred). Writing `FEAT-007` when `BUG-007` already exists is denied.
 
 **Solution**:
 1. Verify hook is registered for PreToolUse:

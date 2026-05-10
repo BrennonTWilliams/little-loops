@@ -70,6 +70,7 @@ Run `/ll:init` once per project. It auto-detects your project type and generates
   bugs/
   features/
   enhancements/
+  epics/
   completed/
   deferred/
 .ll/ll-config.json
@@ -165,7 +166,7 @@ A few things that trip up new users:
 P2-BUG-042-sprint-runner-ignores-failed-issues.md
 │  │   │   └─ kebab-case description
 │  │   └─── globally unique issue number
-│  └─────── type: BUG, FEAT, or ENH
+│  └─────── type: BUG, FEAT, ENH, or EPIC
 └────────── priority: P0 (critical) to P5 (low)
 ```
 
@@ -179,14 +180,15 @@ The `status` field inside the issue file tracks where the issue is in the workfl
 
 ### Directory Structure
 
-`.issues/completed/` is a **sibling** of `bugs/`, `features/`, and `enhancements/` — not nested inside any of them.
+`.issues/completed/` is a **sibling** of `bugs/`, `features/`, `enhancements/`, and `epics/` — not nested inside any of them.
 
 ```
 .issues/
   bugs/             ← active bugs
   features/         ← active features
   enhancements/     ← active enhancements
-  completed/        ← ALL completed issues (bugs, features, and enhancements)
+  epics/            ← active epics (coordination containers)
+  completed/        ← ALL completed issues (bugs, features, enhancements, and epics)
   deferred/         ← parked issues (not active, not completed)
 ```
 

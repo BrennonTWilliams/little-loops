@@ -102,7 +102,7 @@ Check the branch name for issue references:
 
 ```bash
 # Extract issue ID from branch name (e.g., feat/FEAT-228-description)
-echo "$CURRENT_BRANCH" | grep -oE '(BUG|FEAT|ENH)-[0-9]+'
+echo "$CURRENT_BRANCH" | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+'
 ```
 
 If an issue ID is found:
@@ -111,7 +111,7 @@ If an issue ID is found:
 3. If a GitHub issue number exists, add `Closes #NNN` to the PR body
 4. If no GitHub issue number, add a reference to the local issue ID in the body
 
-Also scan commit messages for issue references (`#NNN`, `BUG-NNN`, `FEAT-NNN`, `ENH-NNN`).
+Also scan commit messages for issue references (`#NNN`, `BUG-NNN`, `FEAT-NNN`, `ENH-NNN`, `EPIC-NNN`).
 
 ### 7. Present for Confirmation
 

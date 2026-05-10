@@ -240,7 +240,7 @@ After ALL sub-agents complete:
 
 For each finding, create an issue file using the section structure from per-type template files (relative to the little-loops plugin directory):
 
-1. Read the per-type template `templates/{type}-sections.json` where `{type}` is `bug`, `feat`, or `enh` based on the issue type
+1. Read the per-type template `templates/{type}-sections.json` where `{type}` is `bug`, `feat`, `enh`, or `epic` based on the issue type
 2. Use `creation_variants.full` to determine which common sections to include
 3. Include `type_sections` from the loaded file (especially "Steps to Reproduce" for BUGs — use this exact name, not "Reproduction Steps")
 5. Always include the scan-specific YAML frontmatter and Location section
@@ -342,6 +342,7 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
   - Bugs: N
   - Enhancements: N
   - Features: N
+  - Epics: N
 - **Duplicates skipped**: Z
 
 ## New Issues Created
@@ -360,6 +361,11 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
 | File | Priority | Title | Permalink |
 |------|----------|-------|-----------|
 | P3-FEAT-001-... | P3 | Description | [Link](...) |
+
+### Epics ({{config.issues.base_dir}}/epics/)
+| File | Priority | Title | Permalink |
+|------|----------|-------|-----------|
+| P2-EPIC-001-... | P2 | Description | [Link](...) |
 
 ## Next Steps
 1. Review created issues for accuracy

@@ -125,7 +125,7 @@ ll-history export "API layer" --since 2026-01-01 --type ENH
 The full analysis includes:
 
 1. **Executive Summary** - Key metrics at a glance
-2. **Type Distribution** - BUG/ENH/FEAT breakdown
+2. **Type Distribution** - BUG/ENH/FEAT/EPIC breakdown
 3. **Period Trends** - Velocity and bug ratio over time
 4. **Subsystem Health** - Per-directory issue tracking
 5. **Technical Debt** - Backlog size, growth, aging

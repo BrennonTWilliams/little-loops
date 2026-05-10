@@ -220,17 +220,20 @@ Use the type-specific label for this criterion:
 - **BUG**: "Root cause identified"
 - **FEAT**: "Requirements clarity"
 - **ENH**: "Rationale well-understood"
+- **EPIC**: "Coordination scope and child issues defined"
 
 **What to check** (type-specific):
 - **BUG**: Whether the actual root cause is understood (not just symptoms)
 - **FEAT**: Whether requirements are specific and testable (not just "add X")
 - **ENH**: Whether current behavior issues and the rationale for change are clearly explained
+- **EPIC**: Whether coordination scope is bounded and child issues are enumerated and individually plannable
 
 **Detection method**:
 1. For **bugs**: Check issue has a "Problem Analysis" or "Root Cause" section with specific file:line references
 2. For **features**: Check issue has clear requirements (not just "add X" but "add X that does Y when Z")
 3. For **enhancements**: Check issue explains what's wrong with current behavior and what specifically should change
-4. Verify claims in the issue against actual code (do referenced files/functions exist? do they behave as described?)
+4. For **epics**: Check the EPIC has a defined coordination scope (what it groups and why), an enumerated list of child issues (via `children:` frontmatter or `parent_issue: EPIC-NNN` references), and that each child is itself implementable (not a placeholder)
+5. Verify claims in the issue against actual code (do referenced files/functions exist? do they behave as described?)
 
 **Scoring** (use the table matching the issue type):
 
@@ -257,6 +260,16 @@ Use the type-specific label for this criterion:
 | Rationale present but some changes underspecified | 15 |
 | General dissatisfaction described, specific changes partially clear | 10 |
 | Only symptoms noted, no analysis of what should change or why | 0 |
+
+**EPIC**:
+| Finding | Score |
+|---------|-------|
+| Coordination scope clearly bounded; all child issues enumerated, each individually plannable | 20 |
+| Scope clear; most children enumerated but 1-2 are placeholders or vague | 15 |
+| Scope present but child issues partially listed; significant decomposition still needed | 10 |
+| Vague coordination intent with no enumerated children, or scope unbounded | 0 |
+
+> **Note**: EPICs are coordination containers, not directly implementable. A high readiness score for an EPIC means it is ready to drive a sprint or hand off children to `/ll:manage-issue`, NOT that it is itself ready to implement.
 
 #### Criterion 4: Issue Well-Specified (0-20 points)
 

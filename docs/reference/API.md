@@ -136,7 +136,8 @@ Controls ANSI color output across all `ll-*` CLI tools.
       "type": {
         "BUG": "38;5;208",
         "FEAT": "32",
-        "ENH": "34"
+        "ENH": "34",
+        "EPIC": "35"
       }
     }
   }
@@ -148,7 +149,7 @@ Controls ANSI color output across all `ll-*` CLI tools.
 | `cli.color` | `bool` | `true` | Enable ANSI color output. Set to `false` for CI or plain-text terminals. |
 | `cli.colors.logger.*` | `str` | see above | Raw ANSI SGR codes for each log level (e.g. `"38;5;208"` for orange). |
 | `cli.colors.priority.*` | `str` | see above | Raw ANSI SGR codes for priority labels P0–P5. |
-| `cli.colors.type.*` | `str` | see above | Raw ANSI SGR codes for issue type labels BUG, FEAT, ENH. |
+| `cli.colors.type.*` | `str` | see above | Raw ANSI SGR codes for issue type labels BUG, FEAT, ENH, EPIC. |
 
 **Notes:**
 - Setting `NO_COLOR=1` in the environment disables color regardless of `cli.color`.
@@ -472,6 +473,7 @@ class GitHubSyncConfig:
         "BUG": "bug",
         "FEAT": "enhancement",
         "ENH": "enhancement",
+        "EPIC": "epic",
     }
     priority_labels: bool = True               # Sync priority as GitHub labels
     sync_completed: bool = False               # Include completed issues in sync
@@ -671,7 +673,7 @@ Check whether an issue filename conforms to naming conventions.
 **Parameters:**
 - `filename` - The basename of the issue file (e.g. `"P2-BUG-010-my-issue.md"`)
 
-**Returns:** `True` if filename matches `^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$`
+**Returns:** `True` if filename matches `^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9-]+\.md$`
 
 #### is_formatted
 
@@ -1565,7 +1567,7 @@ Parsed information from a completed issue file.
 class CompletedIssue:
     """Parsed information from a completed issue file."""
     path: Path
-    issue_type: str          # BUG, ENH, FEAT
+    issue_type: str          # BUG, ENH, FEAT, EPIC
     priority: str            # P0-P5
     issue_id: str            # e.g., BUG-001
     discovered_by: str | None = None
@@ -1603,7 +1605,7 @@ class Hotspot:
     path: str
     issue_count: int = 0
     issue_ids: list[str] = field(default_factory=list)
-    issue_types: dict[str, int] = field(default_factory=dict)  # {"BUG": 5, "ENH": 3}
+    issue_types: dict[str, int] = field(default_factory=dict)  # {"BUG": 5, "ENH": 3, "EPIC": 2}
     bug_ratio: float = 0.0
     churn_indicator: str = "low"  # "high", "medium", "low"
 ```
@@ -3092,7 +3094,7 @@ Search across active, completed, and/or deferred issues with rich filtering, sor
 - `QUERY` - Optional text to match against title and body (case-insensitive substring)
 
 **Filters:**
-- `--type {BUG,FEAT,ENH}` - Filter by issue type (repeatable)
+- `--type {BUG,FEAT,ENH,EPIC}` - Filter by issue type (repeatable)
 - `--priority P` - Filter by priority P0–P5 or range e.g. `P0-P2` (repeatable)
 - `--status {active,completed,deferred,all}` - Filter by status (default: `active`)
 - `--include-completed` - Include completed issues (alias for `--status all`)
@@ -3174,7 +3176,7 @@ Exports a markdown document from completed issues matching a topic.
 - `-d, --directory PATH` - Path to issues directory (default: `.issues`)
 - `--since DATE` - Only include issues completed after DATE (YYYY-MM-DD)
 - `--min-relevance FLOAT` - Minimum relevance score threshold (default: `0.5`)
-- `--type {BUG,FEAT,ENH}` - Filter by issue type
+- `--type {BUG,FEAT,ENH,EPIC}` - Filter by issue type
 - `--scoring {intersection,bm25,hybrid}` - Relevance scoring method (default: `intersection`)
 
 **Scoring modes:**

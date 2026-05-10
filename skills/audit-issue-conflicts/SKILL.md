@@ -73,7 +73,7 @@ echo "Found ${#ISSUE_FILES[@]} active issues to evaluate"
 
 For each file, parse from the filename:
 - **ID** (e.g., `FEAT-1028`, `BUG-042`)
-- **Type** (`BUG`, `FEAT`, `ENH`)
+- **Type** (`BUG`, `FEAT`, `ENH`, `EPIC`)
 - **Priority** (`P0`–`P5`)
 
 Then read the file to extract:
@@ -106,7 +106,7 @@ Issues to analyze (read each full file before reasoning):
 [For each issue in the batch:]
 - **File**: [path]
 - **ID**: [ISSUE-ID]
-- **Type**: [BUG/FEAT/ENH]
+- **Type**: [BUG/FEAT/ENH/EPIC]
 - **Priority**: [P0-P5]
 - **Title**: [title]
 - **Summary excerpt**: [first 300 chars of summary]

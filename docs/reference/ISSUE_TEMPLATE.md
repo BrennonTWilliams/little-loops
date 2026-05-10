@@ -38,6 +38,7 @@ The little-loops issue template has been optimized to maximize value for both AI
 **BUG**: Steps to Reproduce, Actual Behavior, Root Cause (NEW), Error Messages, Location
 **FEAT**: Use Case (renamed from User Story), Acceptance Criteria, API/Interface (NEW)
 **ENH**: Success Metrics, Scope Boundaries
+**EPIC**: Child Issues (links to BUG/FEAT/ENH children, by ID), Coordination Scope, Acceptance Criteria (across children)
 
 ### Deprecated Sections (Still Supported)
 
@@ -516,6 +517,12 @@ As a user, I want the sprint to retry failures so that I don't have to manually 
 - [ ] Success Metrics have numeric targets or clear before/after comparison
 - [ ] Scope Boundaries list specific exclusions, not just "keep it simple"
 - [ ] Proposed Solution references existing utilities/patterns to reuse
+
+### EPIC-Specific
+- [ ] Child Issues are enumerated (via `children:` frontmatter or `parent_issue: EPIC-NNN` references in child issues)
+- [ ] Each child is itself implementable (not a placeholder)
+- [ ] Coordination Scope is bounded: clearly states what is and is not in scope across the children
+- [ ] Acceptance Criteria describe cross-child outcomes, not duplicate per-child criteria
 
 ---
 

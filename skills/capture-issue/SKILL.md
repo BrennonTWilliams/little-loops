@@ -69,7 +69,8 @@ Parse the natural language description to extract:
    - **BUG**: "broken", "error", "crash", "fails", "doesn't work", "wrong", "bug", "issue with", "problem"
    - **FEAT**: "add", "new feature", "implement", "create", "support for", "need", "want", "should have"
    - **ENH**: "improve", "enhance", "better", "optimize", "refactor", "cleanup", "update", "upgrade"
-   - Default to **ENH** if unclear
+   - **EPIC**: "epic", "initiative", "milestone", "large effort", "multi-issue", "decompose into", "rollup of", "umbrella"
+   - Default to **ENH** if unclear. Use **EPIC** only when the user explicitly signals coordination scope (a container that will be decomposed into child BUG/FEAT/ENH issues).
 3. **Priority**: Infer from severity language:
    - **P0-P1**: "critical", "urgent", "blocking", "security", "data loss", "production down"
    - **P2**: "important", "high priority", "significant"
@@ -103,6 +104,7 @@ For each potential issue found, extract:
 | 1 | BUG  | P2       | [title] |
 | 2 | ENH  | P3       | [title] |
 | 3 | FEAT | P3       | [title] |
+| 4 | EPIC | P2       | [title] |
 
 ### Issue 1: [Title]
 - **Type**: BUG (inferred from: "this keeps failing...")
@@ -204,6 +206,7 @@ Proceed directly to issue creation without user confirmation.
    - BUG -> `{{config.issues.base_dir}}/bugs/`
    - FEAT -> `{{config.issues.base_dir}}/features/`
    - ENH -> `{{config.issues.base_dir}}/enhancements/`
+   - EPIC -> `{{config.issues.base_dir}}/epics/`
 
 3. **Generate filename:**
    - Slugify the title: lowercase, replace spaces/special chars with hyphens
@@ -225,7 +228,7 @@ ELSE:
 
 **Build issue from shared template:**
 
-1. Read the per-type template `templates/{type}-sections.json` where `{type}` is `bug`, `feat`, or `enh` based on the issue type (v2.0 - optimized for AI implementation)
+1. Read the per-type template `templates/{type}-sections.json` where `{type}` is `bug`, `feat`, `enh`, or `epic` based on the issue type (v2.0 - optimized for AI implementation)
 2. Look up `creation_variants.[TEMPLATE_STYLE]` to determine which sections to include
 3. For each section name in `include_common`, use `common_sections.[name].creation_template` as placeholder content
 4. If `include_type_sections` is true, also include sections from `type_sections` that have a `creation_template`
@@ -304,7 +307,7 @@ git add "[path-to-existing-issue]"
 
 ```bash
 # Determine target directory from issue type in filename
-# Note: Uses default category mapping (BUG->bugs, FEAT->features, ENH->enhancements)
+# Note: Uses default category mapping (BUG->bugs, FEAT->features, ENH->enhancements, EPIC->epics)
 git mv "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/[filename]" "{{config.issues.base_dir}}/[category]/"
 ```
 

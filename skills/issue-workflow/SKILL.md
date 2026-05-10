@@ -149,6 +149,7 @@ Install: `pip install little-loops`
 ├── bugs/           # BUG-NNN issues
 ├── features/       # FEAT-NNN issues
 ├── enhancements/   # ENH-NNN issues
+├── epics/          # EPIC-NNN coordination containers
 └── completed/      # Resolved issues
 ```
 

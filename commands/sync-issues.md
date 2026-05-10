@@ -66,7 +66,7 @@ Push local issues to GitHub Issues.
    a. **Read issue content** and parse:
       - Title from `# ISSUE-ID: Title` header
       - Body from markdown content (exclude frontmatter)
-      - Type from issue ID prefix (BUG, FEAT, ENH)
+      - Type from issue ID prefix (BUG, FEAT, ENH, EPIC)
       - Priority from filename prefix (P0-P5)
 
    b. **Determine labels** based on config:
@@ -128,7 +128,7 @@ Pull GitHub Issues to local files.
 3. **For each issue to pull**:
 
    a. **Parse issue data**:
-      - Extract issue type from labels (bug → BUG, enhancement → FEAT)
+      - Extract issue type from labels (bug → BUG, enhancement → FEAT, epic → EPIC)
       - Extract priority from labels (P0-P5) or default to P3
       - Parse title to extract local issue ID if present
 

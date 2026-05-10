@@ -22,6 +22,7 @@ Issue files live in `.issues/` and follow a strict naming convention:
   bugs/          ← active bugs
   features/      ← active features
   enhancements/  ← active enhancements
+  epics/         ← active epics (coordination containers, not directly implementable)
   completed/     ← archived issues (sibling directory, not a subdirectory of bugs/)
   deferred/      ← parked issues (not active, not completed)
 ```
@@ -32,11 +33,11 @@ Issue files live in `.issues/` and follow a strict naming convention:
 P2-BUG-042-sprint-runner-ignores-failed-issues.md
 │  │   │   └─ kebab-case description
 │  │   └─── globally unique issue number
-│  └─────── type: BUG, FEAT, or ENH
+│  └─────── type: BUG, FEAT, ENH, or EPIC
 └────────── priority: P0 (critical) to P5 (low)
 ```
 
-> **Common pitfall**: `completed/` and `deferred/` are siblings of `bugs/`, `features/`, and `enhancements/` — not nested inside them. A completed bug moves to `.issues/completed/`, not `.issues/bugs/completed/`. Similarly, a deferred issue moves to `.issues/deferred/`.
+> **Common pitfall**: `completed/` and `deferred/` are siblings of `bugs/`, `features/`, `enhancements/`, and `epics/` — not nested inside them. A completed bug moves to `.issues/completed/`, not `.issues/bugs/completed/`. Similarly, a deferred issue moves to `.issues/deferred/`.
 
 Issue files use YAML-style frontmatter for metadata, followed by Markdown sections. The v2.0 template (see [Issue Template Guide](../reference/ISSUE_TEMPLATE.md)) adds four high-value sections: Motivation, Integration Map, Implementation Steps, and Root Cause (BUG only).
 
@@ -114,7 +115,7 @@ The lifecycle diagram above shows conceptual workflow phases. The frontmatter `s
 | `wont_do` | Decided not to implement |
 | `superseded` | Replaced by another issue |
 
-**Directory location determines CLI bucketing.** Tools like `ll-issues list`, `ll-auto`, and `ll-sprint` filter issues by directory (`bugs/`, `features/`, `enhancements/`, `completed/`, `deferred/`) — not by the `status` field. The `status` field is a semantic label for human and tool context.
+**Directory location determines CLI bucketing.** Tools like `ll-issues list`, `ll-auto`, and `ll-sprint` filter issues by directory (`bugs/`, `features/`, `enhancements/`, `epics/`, `completed/`, `deferred/`) — not by the `status` field. The `status` field is a semantic label for human and tool context.
 
 ### Reopen a Completed Issue
 
@@ -145,7 +146,7 @@ Run it with no arguments and it reviews recent conversation context:
 /ll:capture-issue
 ```
 
-The skill determines the issue type (BUG/FEAT/ENH), fills in what it can from context, assigns a unique ID, and creates the file in the appropriate `.issues/` subdirectory.
+The skill determines the issue type (BUG/FEAT/ENH/EPIC), fills in what it can from context, assigns a unique ID, and creates the file in the appropriate `.issues/` subdirectory.
 
 ### Capturing with Description
 

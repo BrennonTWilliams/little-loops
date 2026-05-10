@@ -5,7 +5,7 @@ allowed-tools:
   - Bash(git:*)
 arguments:
   - name: issue_type
-    description: Type of issue (bug|feature|enhancement)
+    description: Type of issue (bug|feature|enhancement|epic). Note: epic issues are coordination containers — manage-issue surfaces them but redirects to child issues for implementation.
     required: true
   - name: action
     description: Action to perform (fix|implement|improve|verify|plan)
@@ -46,9 +46,12 @@ This command uses project configuration from `.ll/ll-config.json`:
 ├── bugs/           # Active bugs (NEVER create completed/ or deferred/ here)
 ├── features/       # Active features (NEVER create completed/ or deferred/ here)
 ├── enhancements/   # Active enhancements (NEVER create completed/ or deferred/ here)
+├── epics/          # Active epics — coordination containers, NOT directly implementable
 ├── completed/      # ALL completed issues go here (sibling to categories)
 └── deferred/       # ALL deferred/parked issues go here (sibling to categories)
 ```
+
+**EPIC handling**: An EPIC is a coordination container, not a directly implementable unit. When `issue_type=epic`, do NOT proceed to implementation — instead, list the EPIC's child issues (via `parent_issue: EPIC-NNN` references or the EPIC's `children:` frontmatter), and redirect the user to run `/ll:manage-issue` on individual children, or to run `/ll:create-sprint` with the children for grouped execution. `ll-auto` and `ll-parallel` should be invoked with `--type BUG,FEAT,ENH` to skip EPICs in batch runs.
 
 ---
 
@@ -66,6 +69,7 @@ case "$ISSUE_TYPE" in
     bug) SEARCH_DIR="$ISSUE_DIR/bugs" ;;
     feature) SEARCH_DIR="$ISSUE_DIR/features" ;;
     enhancement) SEARCH_DIR="$ISSUE_DIR/enhancements" ;;
+    epic) SEARCH_DIR="$ISSUE_DIR/epics" ;;
 esac
 
 # Find issue file
@@ -487,6 +491,7 @@ $ARGUMENTS
   - `bug` - Search in bugs directory
   - `feature` - Search in features directory
   - `enhancement` - Search in enhancements directory
+  - `epic` - Search in epics directory. Note: EPICs are coordination containers; manage-issue lists their child issues and redirects to `/ll:manage-issue` per child or `/ll:create-sprint` for grouped execution rather than implementing the EPIC directly.
 
 - **action** (required): Action to perform
   - `fix` - Fix a bug

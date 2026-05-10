@@ -243,7 +243,7 @@ For each proposal, include a concrete YAML diff where possible:
 Before presenting proposals, check for existing issues:
 
 ```bash
-grep -rl "<loop_name>" .issues/bugs/ .issues/enhancements/ .issues/features/ 2>/dev/null
+grep -rl "<loop_name>" .issues/bugs/ .issues/enhancements/ .issues/features/ .issues/epics/ 2>/dev/null
 ```
 
 Mark matches as DUPLICATE. Present only NEW proposals.

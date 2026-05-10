@@ -329,7 +329,7 @@ Issues are tracked in `.issues/` with structured Markdown files following the v2
 
 ### Issue Template (v2.0)
 
-The issue template has been optimized for AI implementation with **20 sections** across BUG, FEAT, and ENH types.
+The issue template has been optimized for AI implementation with **20 sections** across BUG, FEAT, ENH, and EPIC types.
 
 **Key Features**:
 - Anchor-based code references (function/class names, not line numbers)
@@ -370,6 +370,7 @@ All issues should pass these checks:
 - **BUG**: Numbered steps to reproduce, Root Cause with file + function anchor
 - **FEAT**: Concrete Use Case scenario, API/Interface for public contracts
 - **ENH**: Motivation with quantified impact, Success Metrics with targets
+- **EPIC**: Lists `children:` (constituent BUG/FEAT/ENH IDs), articulates coordination/business goal — not directly implementable
 
 ### Best Practices
 

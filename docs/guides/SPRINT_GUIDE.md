@@ -318,7 +318,7 @@ ll-sprint analyze sprint-1 --format json
 
 `ll-sprint show` is the primary inspection command. It displays the sprint YAML contents, validates that all issue files exist, and renders the dependency graph and wave structure — the same execution plan you'd see at the start of a run. The output also includes:
 
-- **Composition breakdown** — issue count by type (BUG/FEAT/ENH) and priority distribution
+- **Composition breakdown** — issue count by type (BUG/FEAT/ENH/EPIC) and priority distribution
 - **Sprint run state** — progress from `.sprint-state.json` if the sprint has been started
 - **Readiness/confidence scores** — per-issue scores from any completed confidence checks
 - **Issue file paths** — full paths shown in the execution plan for easy navigation

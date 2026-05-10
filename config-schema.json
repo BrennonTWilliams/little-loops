@@ -71,7 +71,7 @@
         },
         "categories": {
           "type": "object",
-          "description": "Issue category definitions. Required categories (bugs, features, enhancements) are automatically included if not specified. Custom categories are merged with required ones.",
+          "description": "Issue category definitions. Required categories (bugs, features, enhancements, epics) are automatically included if not specified. Custom categories are merged with required ones.",
           "additionalProperties": {
             "type": "object",
             "properties": {

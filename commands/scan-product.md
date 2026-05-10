@@ -415,10 +415,10 @@ Product and technical workflows remain cleanly separated:
 
 ```
 Technical Workflow (all users):
-  /ll:scan-codebase → BUG/FEAT/ENH issues → /ll:manage-issue
+  /ll:scan-codebase → BUG/FEAT/ENH/EPIC issues → /ll:manage-issue
 
 Product Workflow (product-enabled users):
-  /ll:scan-product → FEAT/ENH issues with product context → /ll:manage-issue
+  /ll:scan-product → FEAT/ENH/EPIC issues with product context → /ll:manage-issue
 ```
 
 Both workflows feed into the same issue management commands, but discovery is separate.

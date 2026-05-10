@@ -328,7 +328,7 @@ publish (prompt, 60s)
 ```
 
 **Diversify**: enforces per-axis coverage minimums when the corpus has ≥ 10 examples:
-- At least 2 examples per represented issue type (BUG / FEAT / ENH)
+- At least 2 examples per represented issue type (BUG / FEAT / ENH / EPIC)
 - At least 1 example per represented priority band (P0–P5)
 - Adversarial examples ≤ 30% of corpus (trim lowest `oracle_score` first)
 

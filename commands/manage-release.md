@@ -193,7 +193,7 @@ Scan completed issues for release notes.
    git log --diff-filter=A --name-only --format="" "${PREV_TAG}..HEAD" -- .issues/completed/
 
 3. For each file returned by git log:
-   - Parse the filename for priority, type (BUG/FEAT/ENH), and issue ID
+   - Parse the filename for priority, type (BUG/FEAT/ENH/EPIC), and issue ID
    - Read the file and extract:
      - Title from the H1 heading
      - github_issue from frontmatter (if present)

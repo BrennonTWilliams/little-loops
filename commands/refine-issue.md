@@ -92,7 +92,7 @@ fi
 
 1. Read the issue file completely
 2. Parse frontmatter (discovered_date, discovered_by, etc.)
-3. Identify issue type from filename or ID prefix (BUG/FEAT/ENH)
+3. Identify issue type from filename or ID prefix (BUG/FEAT/ENH/EPIC)
 4. Extract existing sections and their content
 5. **Extract key concepts** for research:
    - File paths mentioned or implied
@@ -158,7 +158,7 @@ Use Task tool with subagent_type="ll:codebase-pattern-finder"
 Prompt: Find similar patterns and reusable code for this issue:
 
 Issue: [ISSUE-ID] - [issue title]
-Type: [BUG|FEAT|ENH]
+Type: [BUG|FEAT|ENH|EPIC]
 
 Search for:
 - Similar fixes/features already in the codebase
@@ -407,7 +407,7 @@ ISSUE REFINED: [ISSUE-ID]
 
 ## ISSUE
 - File: [path]
-- Type: [BUG|FEAT|ENH]
+- Type: [BUG|FEAT|ENH|EPIC]
 - Title: [title]
 - Mode: [Interactive | Auto] [--dry-run]
 

@@ -39,7 +39,7 @@ flowchart TB
     end
 
     subgraph "Issue Storage"
-        ISSUES[.issues/<br/>bugs, features, enhancements]
+        ISSUES[.issues/<br/>bugs/, features/, enhancements/, epics/]
         COMPLETED[.issues/completed/]
         DEFERRED[.issues/deferred/]
     end

@@ -186,6 +186,7 @@ After generating the report, offer to create, update, or reopen issues for archi
 - **BUG**: Architectural issue causing runtime errors or blocking development
 - **ENH**: Refactoring opportunity to improve existing code structure
 - **FEAT**: New abstractions, patterns, or architectural components needed
+- **EPIC**: Cross-cutting architectural initiative spanning multiple files/modules; coordinates a set of child BUG/FEAT/ENH issues rather than being directly implementable
 
 #### Deduplication
 
@@ -228,7 +229,7 @@ discovered_by: audit-architecture
 focus_area: [large-files|integration|patterns|organization]
 ---
 
-# [BUG|ENH|FEAT]-XXX: [Title describing architectural issue]
+# [BUG|ENH|FEAT|EPIC]-XXX: [Title describing architectural issue]
 
 ## Summary
 
@@ -445,7 +446,7 @@ $ARGUMENTS
 
 After auditing:
 1. Review the architecture audit report
-2. **Manage issues** (create BUG/ENH/FEAT, update existing, reopen completed) with user approval
+2. **Manage issues** (create BUG/ENH/FEAT/EPIC, update existing, reopen completed) with user approval
 3. Prioritize high-impact improvements (P0-P2 first)
 4. Use findings to guide new development
 

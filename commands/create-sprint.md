@@ -145,7 +145,7 @@ For each issue file found, extract:
 - **Blocked By**: From `## Blocked By` section (if exists)
 - **Confidence Score**: From frontmatter `confidence_score` field (integer or null if absent)
 - **Outcome Confidence**: From frontmatter `outcome_confidence` field (integer or null if absent)
-- **Is Normalized**: Derived from filename — `true` if filename matches `^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$`, otherwise `false`
+- **Is Normalized**: Derived from filename — `true` if filename matches `^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9-]+\.md$`, otherwise `false`
 
 Store parsed issues in a list for analysis.
 

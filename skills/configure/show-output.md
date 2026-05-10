@@ -30,7 +30,7 @@ Issues Configuration
   capture_template: {{config.issues.capture_template}}  (default: full)
   templates_dir:    {{config.issues.templates_dir}}     (default: none)
   priorities:       {{config.issues.priorities}}        (default: P0-P5)
-  categories:       [bugs, features, enhancements]      (+ any custom)
+  categories:       [bugs, features, enhancements, epics]      (+ any custom)
 
 Edit: /ll:configure issues
 ```
@@ -168,7 +168,7 @@ Sync Configuration
   provider:         {{config.sync.provider}}                      (default: github)
   GitHub:
     repo:           {{config.sync.github.repo}}                   (default: auto-detect)
-    label_mapping:  {{config.sync.github.label_mapping}}          (default: BUG→bug, FEAT→enhancement, ENH→enhancement)
+    label_mapping:  {{config.sync.github.label_mapping}}          (default: BUG→bug, FEAT→enhancement, ENH→enhancement, EPIC→epic)
     priority_labels: {{config.sync.github.priority_labels}}       (default: true)
     sync_completed: {{config.sync.github.sync_completed}}         (default: false)
 

@@ -273,7 +273,7 @@ ISSUE FORMATTED: [ISSUE-ID]
 
 ## ISSUE
 - File: [path]
-- Type: [BUG|FEAT|ENH]
+- Type: [BUG|FEAT|ENH|EPIC]
 - Title: [title]
 
 ## GAPS IDENTIFIED
@@ -311,7 +311,7 @@ AUTO-FORMAT: [ISSUE-ID]
 
 ## ISSUE
 - File: [path]
-- Type: [BUG|FEAT|ENH]
+- Type: [BUG|FEAT|ENH|EPIC]
 - Title: [title]
 - Mode: Auto-format [--dry-run | --all]
 

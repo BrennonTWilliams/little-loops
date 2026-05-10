@@ -26,7 +26,7 @@ This command uses project configuration from `.ll/ll-config.json`:
 
 Issue files must follow the naming pattern `P[0-5]-[PREFIX]-[NNN]-[slug].md` where:
 - `P[0-5]` is the priority prefix
-- `[PREFIX]` is the category prefix (BUG, FEAT, ENH)
+- `[PREFIX]` is the category prefix (BUG, FEAT, ENH, EPIC)
 - `[NNN]` is a 3+ digit **globally unique** sequential ID (e.g., 001, 042, 1234)
 - `[slug]` is a descriptive slug
 
@@ -145,7 +145,7 @@ for dir in {{config.issues.base_dir}}/*/; do
         ls "$dir"*.md 2>/dev/null | while read file; do
             basename=$(basename "$file")
             # Check if filename contains valid ID pattern: PREFIX-NNN
-            if ! echo "$basename" | grep -qE '(BUG|FEAT|ENH)-[0-9]{3,}'; then
+            if ! echo "$basename" | grep -qE '(BUG|FEAT|ENH|EPIC)-[0-9]{3,}'; then
                 echo "  INVALID: $basename"
             fi
         done
@@ -155,7 +155,7 @@ done
 
 ### 1b. Detect Cross-Type Duplicate IDs
 
-Issue IDs must be **globally unique** across all types (BUG, FEAT, ENH) and all directories (including `completed/`). Scan for ID numbers used by multiple files:
+Issue IDs must be **globally unique** across all types (BUG, FEAT, ENH, EPIC) and all directories (including `completed/`). Scan for ID numbers used by multiple files:
 
 ```bash
 # Build a map of ID numbers to files (include completed/ to catch reused IDs)
@@ -163,7 +163,7 @@ mkdir -p .loops/tmp
 find {{config.issues.base_dir}} -name "*.md" -type f | while read file; do
     basename=$(basename "$file")
     # Extract the numeric ID (e.g., 007 from BUG-007 or FEAT-007)
-    id_num=$(echo "$basename" | grep -oE '(BUG|FEAT|ENH)-[0-9]{3,}' | grep -oE '[0-9]{3,}')
+    id_num=$(echo "$basename" | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]{3,}' | grep -oE '[0-9]{3,}')
     if [ -n "$id_num" ]; then
         echo "$id_num:$file"
     fi
@@ -191,13 +191,14 @@ For each active issue file (skip `completed/` and `deferred/`), read its content
 | "broken", "regression", "error", "crash", "fails", "wrong behavior", "should not", "defect", "incorrect", "unexpected" | BUG |
 | "new capability", "users can't currently", "add support for", "implement", "missing feature", "not yet possible" | FEAT |
 | "improve", "optimize", "enhance", "refactor", "better UX", "reduce", "increase performance", "simplify" | ENH |
+| "epic", "initiative", "umbrella", "rollup", "decompose into", "coordinate", "milestone", "multi-issue" | EPIC |
 
 **For each issue file:**
 
 1. Use the `Read` tool to read the file content
 2. Extract the current type prefix from the filename (BUG, FEAT, or ENH)
 3. Also read the `type:` field from YAML frontmatter — if the frontmatter type disagrees with the filename prefix, that is a secondary signal of misclassification
-4. Count signal keywords in Summary, Motivation/Current Behavior, and Root Cause sections for each candidate type (BUG, FEAT, ENH)
+4. Count signal keywords in Summary, Motivation/Current Behavior, and Root Cause sections for each candidate type (BUG, FEAT, ENH, EPIC)
 5. Compute a confidence score: `(signals_for_top_type) / (total_signals + 1)` (add 1 to avoid division by zero)
 6. If the top-inferred type differs from the filename prefix AND confidence ≥ **0.7**: flag as a type mismatch
 
@@ -207,7 +208,7 @@ For each active issue file (skip `completed/` and `deferred/`), read its content
 ```
 TYPE_MISMATCHES=[]
 for each issue file:
-    current_type = extract prefix from filename (BUG|FEAT|ENH)
+    current_type = extract prefix from filename (BUG|FEAT|ENH|EPIC)
     inferred_type = top-scoring type from heuristics
     confidence = score for inferred_type
     frontmatter_type = read from YAML 'type:' field
@@ -232,6 +233,7 @@ Map directories to category prefixes based on configuration:
 | `bugs/` | BUG | `P[X]-BUG-[NNN]-[slug].md` |
 | `features/` | FEAT | `P[X]-FEAT-[NNN]-[slug].md` |
 | `enhancements/` | ENH | `P[X]-ENH-[NNN]-[slug].md` |
+| `epics/` | EPIC | `P[X]-EPIC-[NNN]-[slug].md` |
 
 ### 3. Find Next Available ID (Global)
 
@@ -253,6 +255,7 @@ For each file needing normalization (missing ID OR duplicate ID):
    - `bugs/` → `BUG`
    - `features/` → `FEAT`
    - `enhancements/` → `ENH`
+   - `epics/` → `EPIC`
 
 3. **Assign next ID** - Use the next globally unique sequential number (not per-category).
    - For **missing IDs**: Assign the next available global ID
@@ -329,6 +332,7 @@ git mv "{{config.issues.base_dir}}/[source-dir]/[old-name].md" \
 - BUG → `bugs/`
 - FEAT → `features/`
 - ENH → `enhancements/`
+- EPIC → `epics/`
 
 ### 7. Update Internal References (Optional)
 
@@ -410,6 +414,7 @@ For each issue file:
 | No completed/ in bugs/ | ✅ Pass / ❌ Found N files | Moved to completed/ |
 | No completed/ in features/ | ✅ Pass / ❌ Found N files | Moved to completed/ |
 | No completed/ in enhancements/ | ✅ Pass / ❌ Found N files | Moved to completed/ |
+| No completed/ in epics/ | ✅ Pass / ❌ Found N files | Moved to completed/ |
 | completed/ is flat | ✅ Pass / ❌ Found N sub-dirs | Flattened |
 
 ## Missing ID Fixes
@@ -448,11 +453,11 @@ For each issue file:
 
 A filename is considered **valid** if it matches:
 ```regex
-^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$
+^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9-]+\.md$
 ```
 
 A filename **needs normalization** if:
-- Missing category prefix (`BUG`, `FEAT`, `ENH`)
+- Missing category prefix (`BUG`, `FEAT`, `ENH`, `EPIC`)
 - Missing 3+ digit ID number
 - Has non-standard prefix format
 - **Uses an ID number that exists with a different prefix** (cross-type duplicate)
@@ -467,12 +472,13 @@ The `.issues/` directory must follow this structure:
 ├── bugs/           # Active bugs ONLY (no completed/ or deferred/ sub-dir)
 ├── features/       # Active features ONLY (no completed/ or deferred/ sub-dir)
 ├── enhancements/   # Active enhancements ONLY (no completed/ or deferred/ sub-dir)
+├── epics/          # Active epics ONLY (no completed/ or deferred/ sub-dir)
 ├── completed/      # ALL completed issues (flat, no sub-folders)
 └── deferred/       # ALL deferred/parked issues (flat, no sub-folders)
 ```
 
 **Violations detected and auto-fixed:**
-- `bugs/completed/`, `features/completed/`, `enhancements/completed/` directories existing
+- `bugs/completed/`, `features/completed/`, `enhancements/completed/`, `epics/completed/` directories existing
 - Sub-directories within `completed/` (e.g., `completed/bugs/`, `completed/old/`)
 
 ---

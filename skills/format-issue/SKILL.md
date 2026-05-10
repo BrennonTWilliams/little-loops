@@ -8,7 +8,7 @@ allowed-tools:
   - Bash(git:*)
 arguments:
   - name: issue_id
-    description: Issue ID to format (e.g., BUG-071, FEAT-225, ENH-042)
+    description: Issue ID to format (e.g., BUG-071, FEAT-225, ENH-042, EPIC-008)
     required: false
   - name: flags
     description: "Optional flags: --auto (non-interactive), --all (all active issues), --dry-run (preview)"
@@ -31,14 +31,14 @@ This skill uses project configuration from `.ll/ll-config.json`:
 
 $ARGUMENTS
 
-- **issue_id** (optional): Issue ID to format (e.g., BUG-071, FEAT-225, ENH-042)
+- **issue_id** (optional): Issue ID to format (e.g., BUG-071, FEAT-225, ENH-042, EPIC-008)
   - If provided, formats that specific issue
   - If omitted with `--all`, processes all active issues
   - If omitted without `--all`, selects highest-priority active issue
 
 - **flags** (optional): Command behavior flags
   - `--auto` - Enable non-interactive auto-format mode (applies inferred changes without prompts)
-  - `--all` - Process all active issues (bugs/, features/, enhancements/), skip completed/
+  - `--all` - Process all active issues (bugs/, features/, enhancements/, epics/), skip completed/
   - `--dry-run` - Preview changes without applying them (no file modifications)
   - `--check` — Check-only mode for FSM loop evaluators. Dry-run of auto mode: run analysis, print `[ID] format: N gaps found` per non-compliant issue, exit 1 if any gaps, exit 0 if all compliant. Implies `--auto --dry-run`.
 
@@ -112,7 +112,7 @@ fi
 ```bash
 # Find all active issues (not in completed/)
 declare -a ISSUE_FILES
-for dir in {{config.issues.base_dir}}/{bugs,features,enhancements}/; do
+for dir in {{config.issues.base_dir}}/{bugs,features,enhancements,epics}/; do
     if [ -d "$dir" ]; then
         while IFS= read -r file; do
             ISSUE_FILES+=("$file")
@@ -132,7 +132,7 @@ echo "Found ${#ISSUE_FILES[@]} active issues to format"
 
 1. Read the issue file completely
 2. Parse the frontmatter (discovered_date, discovered_by, etc.)
-3. Identify issue type from filename or ID prefix (BUG/FEAT/ENH)
+3. Identify issue type from filename or ID prefix (BUG/FEAT/ENH/EPIC)
 4. Extract existing sections and content
 
 **When `ALL_MODE` is true (batch processing):**
@@ -204,7 +204,7 @@ For each section that has content, evaluate against these checks:
 
 #### Type-Specific Quality Checks
 
-Read `quality_checks.[TYPE]` from the per-type template `templates/{type}-sections.json` for the issue's type (BUG/FEAT/ENH). Apply each quality check to the corresponding section content.
+Read `quality_checks.[TYPE]` from the per-type template `templates/{type}-sections.json` for the issue's type (BUG/FEAT/ENH/EPIC). Apply each quality check to the corresponding section content.
 
 #### Classification
 
@@ -296,6 +296,7 @@ For each selected item, gather the information interactively:
    - For BUGs: After "## Summary" or "## Current Behavior"
    - For FEATs: After "## Expected Behavior" or before "## Proposed Solution"
    - For ENHs: After "## Context" or before "## Impact"
+   - For EPICs: After "## Summary" or before "## Child Issues" (EPICs coordinate child issues; placement should keep child-issue lists adjacent)
 4. Format additions consistently with existing content
 
 **MANDATORY — append session log entry programmatically (required in ALL code paths, including "no changes needed"):**
@@ -311,7 +312,7 @@ print('Session log entry written.' if result else 'WARNING: session JSONL not fo
 
 Replace `ISSUE_FILE_PATH` with the absolute path to the issue file being formatted. **Never skip this step**, even when the issue is already fully compliant and no structural changes were made. This programmatic write guarantees `is_formatted()` returns `True` for this issue in subsequent `ll-issues refine-status` calls.
 
-See [templates.md](templates.md) for example additions by issue type (BUG, FEAT, ENH).
+See [templates.md](templates.md) for example additions by issue type (BUG, FEAT, ENH, EPIC).
 
 ### 6. Finalize
 

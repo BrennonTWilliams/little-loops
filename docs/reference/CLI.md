@@ -20,7 +20,7 @@ These flags appear across multiple tools:
 | `--quiet` | `-q` | Suppress non-essential output | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-sync` |
 | `--only` | | Comma-separated issue IDs to process exclusively | `ll-auto`, `ll-parallel`, `ll-sprint run` |
 | `--skip` | | Comma-separated issue IDs to exclude | `ll-auto`, `ll-parallel`, `ll-sprint` |
-| `--type` | | Comma-separated issue types: `BUG`, `FEAT`, `ENH` | `ll-auto`, `ll-parallel`, `ll-sprint` |
+| `--type` | | Comma-separated issue types: `BUG`, `FEAT`, `ENH`, `EPIC` | `ll-auto`, `ll-parallel`, `ll-sprint` |
 | `--config` | | Path to project root (default: current directory) | `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-sync` |
 | `--timeout` | `-t` | Timeout in seconds per issue | `ll-parallel`, `ll-sprint run` |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100, default: from config) | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-loop resume` |
@@ -105,7 +105,7 @@ Process all backlog issues sequentially in priority order. On startup, `ll-auto`
 | `--quiet` | `-q` | Suppress non-essential output |
 | `--only` | | Process only these issue IDs (comma-separated) |
 | `--skip` | | Skip these issue IDs (comma-separated) |
-| `--type` | | Process only these types: `BUG`, `FEAT`, `ENH` |
+| `--type` | | Process only these types: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--config` | | Path to project root |
 | `--category` | `-c` | Filter to category: `bugs`, `features`, `enhancements` |
 | `--priority` | `-p` | Comma-separated priority levels to process (e.g., `P1,P2`) |
@@ -156,7 +156,7 @@ Process issues concurrently using isolated git worktrees.
 | `--quiet` | `-q` | Suppress non-essential output |
 | `--only` | | Process only these issue IDs |
 | `--skip` | | Skip these issue IDs |
-| `--type` | | Process only these types: `BUG`, `FEAT`, `ENH` |
+| `--type` | | Process only these types: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--max-issues` | `-m` | Limit total issues processed |
 | `--config` | | Path to project root |
 | `--idle-timeout` | | Kill worker if no output for N seconds (0 to disable) |
@@ -199,7 +199,7 @@ Create a new sprint.
 | `--max-workers` | `-w` | Max parallel workers (default: 2) |
 | `--timeout` | `-t` | Timeout per issue in seconds (default: 3600) |
 | `--skip` | | Issue IDs to exclude |
-| `--type` | | Filter by type: `BUG`, `FEAT`, `ENH` |
+| `--type` | | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 
 #### `ll-sprint run <sprint>` / `ll-sprint r <sprint>`
 
@@ -496,7 +496,7 @@ List active issues with optional filters.
 
 | Flag | Description |
 |------|-------------|
-| `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
+| `--type` | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
 | `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
 | `--flat` | Output flat list for scripting |
@@ -510,7 +510,7 @@ Count active issues. Outputs a single integer by default, or a JSON object with 
 
 | Flag | Description |
 |------|-------------|
-| `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
+| `--type` | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
 | `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
 | `--json` / `-j` | Output JSON with `total`, `status`, `by_type`, and `by_priority` breakdowns |
@@ -541,7 +541,7 @@ Search issues with filters and sorting.
 | Argument/Flag | Description |
 |---------------|-------------|
 | `query` | (Optional) Text to match against title and body (case-insensitive) |
-| `--type` | Filter by type: `BUG`, `FEAT`, `ENH` (repeatable) |
+| `--type` | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` (repeatable) |
 | `--priority` | Filter by priority: `P0`–`P5` or range e.g. `P0-P2` (repeatable) |
 | `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
 | `--include-completed` | Include completed issues (alias for `--status all`) |
@@ -561,7 +561,7 @@ Suggest a dependency-ordered implementation sequence.
 
 | Flag | Description |
 |------|-------------|
-| `--type` | Filter by issue type: `BUG`, `FEAT`, `ENH` |
+| `--type` | Filter by issue type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--limit` | Maximum issues to show (default: 10) |
 | `--json` / `-j` | Output sequence as JSON array |
 | `--config` | Path to project root |
@@ -572,7 +572,7 @@ Display an impact vs. effort matrix for active issues.
 
 | Flag | Description |
 |------|-------------|
-| `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
+| `--type` | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--json` / `-j` | Output as JSON object with quadrant keys |
 
 #### `ll-issues refine-status` / `ll-issues rs`
@@ -582,13 +582,13 @@ Show refinement depth table sorted by commands touched. Columns: ID, Pri, size, 
 | Argument/Flag | Description |
 |---------------|-------------|
 | `ISSUE-ID` | (Optional) Filter to a single issue by ID (e.g. `FEAT-873`, `BUG-525`). Ignores `--type` when set. Exits 1 if the issue is not found. |
-| `--type` | Filter by type: `BUG`, `FEAT`, `ENH` (ignored when `ISSUE-ID` is provided) |
+| `--type` | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` (ignored when `ISSUE-ID` is provided) |
 | `--format` | Output format: `table` (default), `json` (NDJSON) |
 | `--json` / `-j` | Output as JSON array; with `ISSUE-ID` outputs a single JSON object instead |
 | `--no-key` | Suppress the key/legend section at the bottom of output |
 | `--config` | Path to project root |
 
-The `Norm` column checks filenames against `^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$`. JSON output includes a `"normalized": true/false` boolean field per record.
+The `Norm` column checks filenames against `^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9-]+\.md$`. JSON output includes a `"normalized": true/false` boolean field per record.
 
 **Narrow terminal support**: When the table exceeds the available terminal width, columns are automatically elided in priority order. The default drop sequence is `source` → `norm` → `fmt` → `size` → `chsrf` → `ambig` → `tcov` → `cmplx` → `confidence` → `ready` → `total`; any remaining command columns are then dropped rightmost-first. `id`, `priority`, and `title` are always pinned. The `title` column maintains a minimum width of 20 characters. The drop order is configurable via `refine_status.elide_order` in `ll-config.json` — see [CONFIGURATION.md](CONFIGURATION.md#refine_status).
 
@@ -934,7 +934,7 @@ Export topic-filtered excerpts from completed issue history.
 | `--directory` | `-d` | Path to issues directory |
 | `--since` | | Only include issues completed after DATE (YYYY-MM-DD) |
 | `--min-relevance` | | Minimum relevance score (default: 0.5) |
-| `--type` | | Filter by type: `BUG`, `FEAT`, `ENH` |
+| `--type` | | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--scoring` | | Relevance method: `intersection` (default), `bm25`, `hybrid` |
 
 **Examples:**

@@ -46,6 +46,7 @@ Color is enabled when `sys.stdout.isatty()` is `True` and `NO_COLOR` env var is 
 | `BUG` | `38;5;208` | Orange |
 | `FEAT` | `32` | Green |
 | `ENH` | `34` | Blue |
+| `EPIC` | `35` | Purple-magenta |
 
 Edge colors (used in FSM diagrams — applied to both label text and connector line characters):
 
@@ -143,7 +144,7 @@ Width is computed dynamically: the maximum of all content line lengths plus 2 pa
 
 ## Issue List: `scripts/little_loops/cli/issues/list_cmd.py`
 
-`cmd_list` groups issues by type (BUG/FEAT/ENH) and colorizes each row:
+`cmd_list` groups issues by type (BUG/FEAT/ENH/EPIC) and colorizes each row:
 
 - Type group headers: bold + type color
 - Issue IDs: type color

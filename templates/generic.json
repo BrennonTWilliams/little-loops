@@ -32,7 +32,8 @@
     "categories": {
       "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
       "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
-      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
+      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
+      "epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"}
     }
   },
   "product": {

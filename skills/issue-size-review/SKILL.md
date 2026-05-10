@@ -114,7 +114,7 @@ Apply scoring heuristics to each issue:
 | File count | +2 | Count file paths (patterns like `src/`, `.py`, `.ts`, `.md`) mentioned in issue |
 | Section complexity | +2 | "Proposed Solution" or "Implementation" sections >300 words |
 | Multiple concerns | +3 | Multiple `##` subsections in solution, or phrases like "additionally", "also need to" |
-| Dependency mentions | +2 | References to other issues (BUG-/FEAT-/ENH-) or "depends on", "blocked by" |
+| Dependency mentions | +2 | References to other issues (BUG-/FEAT-/ENH-/EPIC-) or "depends on", "blocked by" |
 | Word count | +2 | >800 words total in issue file |
 
 **Maximum score: 11 points**
@@ -208,7 +208,7 @@ For each candidate issue:
    ---
    id: [TYPE]-[NNN]
    priority: [P0-P5]
-   type: [BUG|FEAT|ENH]
+   type: [BUG|FEAT|ENH|EPIC]
    parent_issue: [PARENT-ID]
    ---
 

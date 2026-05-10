@@ -51,6 +51,11 @@
         "prefix": "ENH",
         "dir": "enhancements",
         "action": "improve"
+      },
+      "epics": {
+        "prefix": "EPIC",
+        "dir": "epics",
+        "action": "coordinate"
       }
     }
   },

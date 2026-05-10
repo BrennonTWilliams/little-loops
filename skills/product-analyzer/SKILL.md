@@ -201,7 +201,7 @@ summary:
 
 findings:
   - type: [feature_gap|ux_improvement|business_value]
-    issue_type: [FEAT|ENH]
+    issue_type: [FEAT|ENH|EPIC]
     title: "[Clear, actionable title]"
     goal_alignment: "[Priority name or vision reference]"
     goal_alignment_rating: [Strong|Partial|Weak|Missing]

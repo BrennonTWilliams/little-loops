@@ -142,7 +142,8 @@ For interactive editing, use `/ll:configure`.
       "label_mapping": {
         "BUG": "bug",
         "FEAT": "enhancement",
-        "ENH": "enhancement"
+        "ENH": "enhancement",
+        "EPIC": "epic"
       },
       "priority_labels": true,
       "sync_completed": false,
@@ -429,7 +430,7 @@ GitHub Issues synchronization for `/ll:sync-issues`:
 | `enabled` | `false` | Enable GitHub Issues sync feature |
 | `provider` | `"github"` | Issue tracking provider (currently only GitHub) |
 | `github.repo` | `null` | GitHub repository in owner/repo format (auto-detected if null) |
-| `github.label_mapping` | `{"BUG": "bug", ...}` | Map issue types to GitHub labels |
+| `github.label_mapping` | `{"BUG": "bug", ..., "EPIC": "epic"}` | Map issue types (BUG/FEAT/ENH/EPIC) to GitHub labels |
 | `github.priority_labels` | `true` | Add priority as GitHub label (e.g., "P1") |
 | `github.sync_completed` | `false` | Also sync completed issues (close on GitHub) |
 | `github.state_file` | `.ll/ll-sync-state.json` | File to track sync state |
@@ -651,6 +652,7 @@ Override ANSI color codes for issue type labels in list and card output.
 | `BUG` | `38;5;208` | Orange |
 | `FEAT` | `32` | Green |
 | `ENH` | `34` | Blue |
+| `EPIC` | `35` | Purple-magenta |
 
 ### `cli.colors.fsm_active_state`
 

@@ -136,7 +136,7 @@ Issues to evaluate:
 [For each issue in the batch:]
 - **File**: [path]
 - **ID**: [ISSUE-ID]
-- **Type**: [BUG/FEAT/ENH]
+- **Type**: [BUG/FEAT/ENH/EPIC]
 - **Priority**: [P0-P5]
 - **Title**: [title]
 - **Summary**: [first 200 chars of summary]
