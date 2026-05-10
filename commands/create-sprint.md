@@ -413,7 +413,7 @@ The report includes:
 
 Additionally, **check for issues blocked by non-sprint issues**:
 - For each sprint issue's `## Blocked By` entries:
-  - If the blocker is NOT in the sprint issue set AND NOT in `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`:
+  - If the blocker is NOT in the sprint issue set AND does NOT have `status: done` or `status: cancelled` frontmatter:
     - Warn: "[ISSUE-ID] is blocked by [BLOCKER-ID] which is not in this sprint"
 - Present warnings to user if any found
 

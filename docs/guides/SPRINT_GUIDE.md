@@ -189,7 +189,7 @@ Before the first wave runs, `ll-sprint` validates the sprint:
 - Issue files exist on disk
 - No dependency cycles
 - Wave structure computed and displayed
-- Issues already in `completed/` are auto-skipped silently; if all issues are already completed, the sprint exits with success immediately
+- Issues with `status: done` or `status: cancelled` in frontmatter are auto-skipped silently; if all issues are already completed, the sprint exits with success immediately
 
 The execution plan is printed before any work begins:
 

@@ -1265,12 +1265,12 @@ issues:
         assert waves[0][0].issue_id == "BUG-001"
 
     def test_sprint_completed_dependencies_satisfied(self, tmp_path: Path) -> None:
-        """Test blockers in completed dir are treated as satisfied."""
+        """Test blockers with status: done frontmatter are treated as satisfied."""
         from little_loops.dependency_graph import DependencyGraph
 
         issues_dir = tmp_path / ".issues"
         issues_dir.mkdir()
-        for category in ["bugs", "completed"]:
+        for category in ["bugs"]:
             (issues_dir / category).mkdir()
 
         config_dir = tmp_path / ".ll"
@@ -1289,9 +1289,9 @@ issues:
         with open(config_dir / "ll-config.json", "w") as f:
             json.dump(config_data, f)
 
-        # BUG-002 depends on BUG-001, but BUG-001 is completed
-        (issues_dir / "completed" / "P1-BUG-001-done.md").write_text(
-            "# BUG-001: Done\n\n## Summary\nAlready completed."
+        # BUG-002 depends on BUG-001, but BUG-001 is completed via frontmatter
+        (issues_dir / "bugs" / "P1-BUG-001-done.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-001: Done\n\n## Summary\nAlready completed."
         )
         (issues_dir / "bugs" / "P1-BUG-002-depends.md").write_text(
             "# BUG-002: Depends\n\n## Summary\nDepends on completed BUG-001.\n\n"
@@ -1706,9 +1706,9 @@ issues:
         )
 
     def test_completed_issues_excluded_from_waves(self, tmp_path: Path, monkeypatch: Any) -> None:
-        """Test that issues in completed/ are skipped before wave dispatch (ENH-581).
+        """Test that issues with status: done are skipped before wave dispatch (ENH-1424).
 
-        When a sprint contains issues that have already been moved to completed/,
+        When a sprint contains issues that have status: done frontmatter,
         they should be silently skipped (not dispatched to a worker slot).
         Active issues in the same sprint should still be executed normally.
         """
@@ -1718,7 +1718,7 @@ issues:
 
         issues_dir = tmp_path / ".issues"
         issues_dir.mkdir()
-        for category in ["bugs", "completed"]:
+        for category in ["bugs"]:
             (issues_dir / category).mkdir()
 
         config_dir = tmp_path / ".ll"
@@ -1736,9 +1736,9 @@ issues:
         with open(config_dir / "ll-config.json", "w") as f:
             json.dump(config_data, f)
 
-        # BUG-001 already completed — lives in completed/
-        (issues_dir / "completed" / "P1-BUG-001-done.md").write_text(
-            "# BUG-001: Done\n\n## Summary\nAlready completed."
+        # BUG-001 already completed — status: done frontmatter in bugs/
+        (issues_dir / "bugs" / "P1-BUG-001-done.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-001: Done\n\n## Summary\nAlready completed."
         )
         # BUG-002 still active — lives in bugs/
         (issues_dir / "bugs" / "P1-BUG-002-active.md").write_text(
@@ -1791,9 +1791,9 @@ issues:
         assert "BUG-002" in executed_issues
 
     def test_all_completed_issues_returns_zero(self, tmp_path: Path, monkeypatch: Any) -> None:
-        """Test that a sprint where all issues are already completed exits cleanly (ENH-581).
+        """Test that a sprint where all issues have status: done exits cleanly (ENH-1424).
 
-        When every issue in a sprint has been moved to completed/, the sprint
+        When every issue in a sprint has status: done frontmatter, the sprint
         should log a message and return 0 without entering the wave dispatch loop.
         """
         import argparse
@@ -1802,7 +1802,7 @@ issues:
 
         issues_dir = tmp_path / ".issues"
         issues_dir.mkdir()
-        for category in ["bugs", "completed"]:
+        for category in ["bugs"]:
             (issues_dir / category).mkdir()
 
         config_dir = tmp_path / ".ll"
@@ -1820,12 +1820,12 @@ issues:
         with open(config_dir / "ll-config.json", "w") as f:
             json.dump(config_data, f)
 
-        # Both issues already in completed/
-        (issues_dir / "completed" / "P1-BUG-001-done.md").write_text(
-            "# BUG-001: Done\n\n## Summary\nAlready completed."
+        # Both issues already done via frontmatter in bugs/
+        (issues_dir / "bugs" / "P1-BUG-001-done.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-001: Done\n\n## Summary\nAlready completed."
         )
-        (issues_dir / "completed" / "P2-BUG-002-done.md").write_text(
-            "# BUG-002: Done\n\n## Summary\nAlso already completed."
+        (issues_dir / "bugs" / "P2-BUG-002-done.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-002: Done\n\n## Summary\nAlso already completed."
         )
 
         sprints_dir = tmp_path / ".sprints"

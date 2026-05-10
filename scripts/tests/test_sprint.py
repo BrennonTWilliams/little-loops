@@ -1690,7 +1690,7 @@ class TestSprintEdit:
     def test_edit_prune_removes_completed(
         self, tmp_path: Path, monkeypatch: Any, capsys: Any
     ) -> None:
-        """Prune removes issues that are in the completed directory."""
+        """Prune removes issues with status: done frontmatter."""
         import argparse
 
         from little_loops.cli import sprint as cli
@@ -1698,11 +1698,10 @@ class TestSprintEdit:
         sprints_dir, _, manager = self._setup_edit_project(tmp_path)
         monkeypatch.chdir(tmp_path)
 
-        # Move BUG-001 to completed
-        completed_dir = tmp_path / ".issues" / "completed"
-        (completed_dir / "P1-BUG-001-test-bug.md").write_text("# BUG-001: Done")
-        # Remove from active
-        (tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md").unlink()
+        # BUG-001 marked done via frontmatter (stays in bugs/ dir)
+        (tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-001: Done"
+        )
 
         args = argparse.Namespace(
             sprint="test-sprint",
@@ -1728,7 +1727,7 @@ class TestSprintEdit:
     def test_edit_prune_recognizes_epic_in_completed(
         self, tmp_path: Path, monkeypatch: Any, capsys: Any
     ) -> None:
-        """Prune removes an EPIC issue that has moved to the completed directory."""
+        """Prune removes an EPIC issue with status: done frontmatter."""
         import argparse
 
         from little_loops.cli import sprint as cli
@@ -1746,11 +1745,12 @@ class TestSprintEdit:
         with open(sprints_dir / "test-sprint.yaml", "w") as f:
             yaml.dump(sprint_data, f, default_flow_style=False, sort_keys=False)
 
-        # EPIC-005 exists only in completed (already moved)
+        # EPIC-005 in epics/ with status: done frontmatter
         epics_dir = tmp_path / ".issues" / "epics"
         epics_dir.mkdir(exist_ok=True)
-        completed_dir = tmp_path / ".issues" / "completed"
-        (completed_dir / "P2-EPIC-005-test-epic.md").write_text("# EPIC-005: Done")
+        (epics_dir / "P2-EPIC-005-test-epic.md").write_text(
+            "---\nstatus: done\n---\n\n# EPIC-005: Done"
+        )
 
         args = argparse.Namespace(
             sprint="test-sprint",

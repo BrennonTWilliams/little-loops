@@ -158,28 +158,8 @@ def _cmd_sprint_run(
         if filtered > 0:
             logger.info(f"Filtered {filtered} issue(s) by type: {', '.join(sorted(type_prefixes))}")
 
-    # Pre-validate: skip issues already moved to completed/ (ENH-581)
+    # Pre-validate: skip issues with status: done/cancelled (ENH-1424)
     pre_completed_skipped: list[str] = []
-    if config is not None:
-        completed_dir = config.get_completed_dir()
-        if completed_dir.exists():
-            still_active: list[str] = []
-            for issue_id in issues_to_process:
-                if list(completed_dir.glob(f"*-{issue_id}-*.md")):
-                    logger.info(f"  {issue_id}: already in completed/, skipping")
-                    pre_completed_skipped.append(issue_id)
-                else:
-                    still_active.append(issue_id)
-            if pre_completed_skipped:
-                logger.info(
-                    f"Pre-validation: {len(pre_completed_skipped)} issue(s) already completed, "
-                    f"{len(still_active)} active"
-                )
-                issues_to_process = still_active
-
-    if pre_completed_skipped and not issues_to_process:
-        logger.info("All sprint issues already completed - nothing to process")
-        return 0
 
     # Validate issues exist
     valid = manager.validate_issues(issues_to_process)
@@ -189,6 +169,29 @@ def _cmd_sprint_run(
         logger.error(f"Issue IDs not found: {', '.join(sorted(invalid))}")
         logger.info("Cannot execute sprint with missing issues")
         return 1
+
+    # Skip issues already completed via frontmatter status (ENH-1424)
+    from little_loops.frontmatter import parse_frontmatter
+
+    still_active: list[str] = []
+    for issue_id in issues_to_process:
+        path = valid[issue_id]
+        fm = parse_frontmatter(path.read_text(encoding="utf-8"))
+        if fm.get("status", "open") in ("done", "cancelled"):
+            logger.info(f"  {issue_id}: already completed (status: {fm.get('status')}), skipping")
+            pre_completed_skipped.append(issue_id)
+        else:
+            still_active.append(issue_id)
+    if pre_completed_skipped:
+        logger.info(
+            f"Pre-validation: {len(pre_completed_skipped)} issue(s) already completed, "
+            f"{len(still_active)} active"
+        )
+        issues_to_process = still_active
+
+    if pre_completed_skipped and not issues_to_process:
+        logger.info("All sprint issues already completed - nothing to process")
+        return 0
 
     # Load full IssueInfo objects for dependency analysis
     issue_infos = manager.load_issue_infos(issues_to_process)

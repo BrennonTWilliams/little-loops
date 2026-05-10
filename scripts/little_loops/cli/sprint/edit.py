@@ -13,8 +13,6 @@ from little_loops.sprint import SprintManager
 
 def _cmd_sprint_edit(args: argparse.Namespace, manager: SprintManager) -> int:
     """Edit a sprint's issue list."""
-    import re
-
     logger = Logger()
     sprint = manager.load(args.sprint)
     if not sprint:
@@ -68,15 +66,15 @@ def _cmd_sprint_edit(args: argparse.Namespace, manager: SprintManager) -> int:
         valid = manager.validate_issues(sprint.issues)
         invalid_ids = set(sprint.issues) - set(valid.keys())
 
-        # Also detect completed issues
-        completed_ids: set[str] = set()
-        if manager.config:
-            completed_dir = manager.config.get_completed_dir()
-            if completed_dir.exists():
-                for path in completed_dir.glob("*.md"):
-                    match = re.search(r"(BUG|FEAT|ENH|EPIC)-(\d+)", path.name)
-                    if match:
-                        completed_ids.add(f"{match.group(1)}-{match.group(2)}")
+        # Also detect completed issues via frontmatter status (ENH-1424)
+        from little_loops.frontmatter import parse_frontmatter
+
+        completed_ids = {
+            issue_id
+            for issue_id, path in valid.items()
+            if parse_frontmatter(path.read_text(encoding="utf-8")).get("status", "open")
+            in ("done", "cancelled")
+        }
 
         prune_ids = invalid_ids | (completed_ids & set(sprint.issues))
         if prune_ids:
