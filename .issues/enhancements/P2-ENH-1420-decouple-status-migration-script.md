@@ -16,6 +16,18 @@ One-time migration script that moves all files from `deferred/` and `completed/`
 
 Decomposed from ENH-1390: Decouple Issue Status from Directory Structure
 
+## Current Behavior
+
+Files for completed and deferred issues are stored in `.issues/completed/` and `.issues/deferred/` subdirectories. Approximately 140 older completed files lack the `completed_at:` frontmatter field. No tooling exists to move these files into the new directory-per-type layout that ENH-1390 establishes.
+
+## Expected Behavior
+
+Running the migration script moves all files from `.issues/completed/` and `.issues/deferred/` into their corresponding type directories (`.issues/bugs/`, `.issues/features/`, `.issues/enhancements/`, `.issues/epics/`) with `status: done` or `status: deferred` written into frontmatter, and `completed_at:` backfilled for files that were missing it. The `completed/` and `deferred/` directories are left empty or removed.
+
+## Motivation
+
+ENH-1390 decouples issue status from directory structure, requiring all ~1,346 issues currently in `completed/` and `deferred/` to move to type-based directories. Without this migration script the cutover cannot happen safely at scale. Manual migration of 1,346 files is error-prone; an automated script with dry-run mode is the only practical path.
+
 ## Proposed Solution
 
 ### Step 4 — Migration script
@@ -71,7 +83,24 @@ After migration is confirmed complete:
 - `completed/` and `deferred/` directories are empty (or removed) post-migration
 - `ll-auto`, `ll-sprint`, and `ll-parallel` process `status: open` issues correctly after migration
 
+## Scope Boundaries
+
+- **In scope**: Moving files from `completed/` and `deferred/` into type directories; backfilling `completed_at:` for completed files lacking it; post-migration cleanup of deprecated `get_completed_dir()`/`get_deferred_dir()` stubs and git-log fallback tiers
+- **Out of scope**: Updating discovery tools or lifecycle commands (covered by ENH-1418, ENH-1419); modifying issue file content beyond frontmatter fields; handling non-issue files that may exist in those directories; making the script reusable for future migrations
+
+## Impact
+
+- **Priority**: P2 — Blocked on ENH-1418 and ENH-1419; capstone step for ENH-1390 but not independently urgent until those land
+- **Effort**: Medium — New CLI script + test suite; clear requirements and reuses existing `update_frontmatter()` and `_parse_completion_date()` utilities
+- **Risk**: High — 1,346 files at risk of data loss if logic is incorrect; dry-run mode is mandatory before production run
+- **Breaking Change**: Yes — Files physically move; any code that hardcodes `.issues/completed/` or `.issues/deferred/` paths will break
+
+## Labels
+
+`migration`, `decouple-status`, `issue-management`
+
 ## Session Log
+- `/ll:format-issue` - 2026-05-10T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/293739bc-9ebc-4dac-a29c-99529166ae17.jsonl`
 - `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
 
 ---

@@ -16,6 +16,13 @@ Update the `ll-issues` CLI commands, `ll-sync`, sprint runner, parallel orchestr
 
 Decomposed from ENH-1390: Decouple Issue Status from Directory Structure
 
+## Motivation
+
+This enhancement propagates the `status:` frontmatter model (established in ENH-1417) across all user-facing CLI tools, sync, sprint runner, parallel orchestrator, and dependency tools:
+- Removes directory-as-status coupling from `ll-issues list/show/count`, `ll-sync`, sprint runner, and `ll-deps`
+- Enables issues in any status to live in type-scoped directories (`bugs/`, `features/`, etc.) rather than status-named dirs
+- Unblocks ENH-1418 and ENH-1421 from running concurrently once ENH-1417 lands
+
 ## Proposed Solution
 
 ### Step 3 — `ll-issues list` and display
@@ -45,6 +52,15 @@ Decomposed from ENH-1390: Decouple Issue Status from Directory Structure
 ### `cli/auto.py` validation
 
 - `scripts/little_loops/cli/auto.py`: delegates to `AutoManager` which calls `find_issues()` (directory-scoped) — no additional changes needed here once `find_issues()` is updated in ENH-1418, but verify no direct directory references remain
+
+## Implementation Steps
+
+1. Update `ll-issues list/show/count` — read `status:` from `IssueInfo.status`; align `--status` choices with new enum (Step 3)
+2. Update `ll-sync` — scan type dirs; map `IssueInfo.status` to GitHub open/closed instead of directory checks (Step 6)
+3. Update sprint runner (`run.py`, `edit.py`, `show.py`) — replace `get_completed_dir()` lookups with frontmatter `status: done` checks
+4. Update dependency tools (`deps.py`, `dependency_mapper/operations.py`) — filter by status field instead of dir name
+5. Verify `cli/auto.py` has no remaining direct directory references after ENH-1418 lands
+6. Update all corresponding tests (list in Tests to Update section)
 
 ## Files to Modify
 
@@ -79,7 +95,20 @@ Decomposed from ENH-1390: Decouple Issue Status from Directory Structure
 - Dependency tools exclude done/deferred issues via status field
 - All updated tests pass
 
+## Success Metrics
+
+- Zero calls to `get_completed_dir()` or `get_deferred_dir()` remain in the listed files after changes
+- `ll-issues list` returns correct results for `--status open`, `--status done`, `--status deferred`, and `--status all`
+- `ll-sync` correctly maps `status: done` → remote closed and `status: open` → remote open without directory checks
+- All updated tests pass without regressions
+
+## Scope Boundaries
+
+- **In scope**: `ll-issues list/show/count`, `ll-sync`, sprint runner (`run.py`/`edit.py`/`show.py`), parallel orchestrator discovery, `ll-deps`, `dependency_mapper/operations.py`, and their tests
+- **Out of scope**: Core `IssueInfo.status` model and `find_issues()` (ENH-1417/ENH-1418); command/skill/doc updates (ENH-1421); migration script (ENH-1420); any new status vocab beyond the enum established in ENH-1417
+
 ## Session Log
+- `/ll:format-issue` - 2026-05-10T15:18:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa41123a-15d8-4c8c-adaa-e1f58a46abea.jsonl`
 - `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
 
 ---

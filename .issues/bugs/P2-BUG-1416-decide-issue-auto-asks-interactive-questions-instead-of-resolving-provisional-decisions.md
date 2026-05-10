@@ -28,6 +28,14 @@ Phase 3 of `skills/decide-issue/SKILL.md` exits when `OPTIONS = 0` (no formal `O
 
 **Anchor:** Phase 3 in `skills/decide-issue/SKILL.md`
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Phase 3 scope is limited to `## Proposed Solution`**: the option scan only reads the Proposed Solution section; ENH-1390's provisional decision was in Implementation Steps (Step 11), so Phase 3 never saw it — Phase 3b must scan ALL sections
+- **Interactive question is emergent, not explicit**: `skills/decide-issue/SKILL.md` contains no `AskUserQuestion` call anywhere; the conversational "Want me to edit Step N?" emerges because the LLM hits the `OPTIONS = 0` clean exit while `decision_needed: true` is still set and no further instructions exist — Phase 3b must supply explicit `--auto` instructions for this path to eliminate the gap
+- **`ll-issues set-flag` does not exist**: the `ll-issues` CLI (`scripts/little_loops/cli/issues/__init__.py`) registers `check-flag` (read-only) but has no `set-flag` subcommand; Phase 3b must write `decision_needed: false` via the Edit tool inline `---` block replacement, following the same pattern as Phase 7b of `skills/decide-issue/SKILL.md`
+
 ## Expected Behavior
 
 In `--auto` mode, when no formal option blocks are found, the skill should scan all sections for provisional decision language and, if a single clear approach is named, lock it in (edit the issue text to make it declarative, run `ll-issues set-flag ISSUE_ID decision_needed false`) and report what was resolved. If no clear winner can be inferred, record it as unresolvable and exit — no interactive questions in `--auto` mode.
@@ -68,6 +76,15 @@ Extend **Phase 3** of `skills/decide-issue/SKILL.md` with a new sub-phase that a
 
 The ENH-1390 case is the canonical example: Step 11 had `(e.g., completed_at: frontmatter field)` — one named approach in a provisional wrapper. Phase 3b should lock in `completed_at:` as the definitive field name.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Correct frontmatter write mechanism**: replace `ll-issues set-flag ISSUE_ID decision_needed false` (non-existent) with Edit tool inline `---` block replacement; see Phase 7b of `skills/decide-issue/SKILL.md` for the exact model and `skills/confidence-check/SKILL.md` Phase 4.6 for the canonical declarative flag-write pattern without AskUserQuestion
+- **Scan all sections, not just Proposed Solution**: Phase 3 already restricts to `## Proposed Solution`; Phase 3b must search ALL sections (Implementation Steps, Summary, etc.) since ENH-1390's provisional language was in Step 11
+- **New test class needed**: add `TestPhase3bInlineProvisionalScan` to `scripts/tests/test_decide_issue_skill.py` covering: (a) Phase 3b section documented in SKILL.md, (b) provisional patterns `(e.g., ...)` / `TBD` / `"fundamental rethink"` enumerated, (c) single-winner path (edit + clear `decision_needed`) documented, (d) ambiguous path (unresolvable log, no AskUserQuestion) documented, (e) `AUTO_MODE=true` + `OPTIONS=0` guard explicitly conditioned
+- **Broader autodev impact**: `scripts/little_loops/issue_manager.py:718` and `scripts/little_loops/parallel/worker_pool.py:376` both invoke decide-issue as a Python decision gate and continue to implementation even on failure (no hard stop) — Phase 3b failure mode should match: log unresolvable, leave `decision_needed: true`, exit cleanly without blocking
+
 ## Integration Map
 
 ### Files to Modify
@@ -77,10 +94,13 @@ The ENH-1390 case is the canonical example: Step 11 had `(e.g., completed_at: fr
 - `scripts/little_loops/loops/autodev.yaml` — `run_decide` and `rerun_confidence_after_decide` states depend on correct `--auto` behavior
 
 ### Similar Patterns
-- TBD — search for similar `OPTIONS = 0` guard logic in other decide-related skills: `grep -r "OPTIONS" skills/`
+- `skills/decide-issue/SKILL.md` Phase 7b — existing Edit-tool inline `---` block replacement (model for Phase 3b's `decision_needed: false` write)
+- `skills/confidence-check/SKILL.md` Phase 4.6 — declarative `decision_needed: true` set without AskUserQuestion (same approach Phase 3b should use for the `false` case)
+- `skills/issue-size-review/SKILL.md` Auto Mode Behavior — pattern for silent exit with status log when result is ambiguous (no AskUserQuestion)
 
 ### Tests
-- TBD — identify test files for decide-issue skill: `find scripts/tests -name "*decide*"`
+- `scripts/tests/test_decide_issue_skill.py` — existing structural tests; no test class covers Phase 3b auto-mode + provisional language; add `TestPhase3bInlineProvisionalScan`
+- `scripts/tests/test_issue_manager.py` — `TestDecisionNeededGate`: mocked tests for the Python decision gate that calls decide-issue (not the skill itself)
 
 ### Documentation
 - N/A
@@ -106,5 +126,6 @@ The ENH-1390 case is the canonical example: Step 11 had `(e.g., completed_at: fr
 Open
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-10T15:16:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
 - `/ll:format-issue` - 2026-05-10T15:11:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7801123-27a3-4b5b-aa78-0beb3e563702.jsonl`
 - `/ll:capture-issue` - 2026-05-10T15:06:51Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd8097a3-3488-4878-8cb6-494af00ec7f4.jsonl`
