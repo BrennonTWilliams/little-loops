@@ -180,7 +180,6 @@ Uses project configuration from `.ll/ll-config.json`:
 
 - `issues.base_dir` - Base directory for issues (default: `.issues`)
 - `issues.categories` - Bug/feature/enhancement directory config
-- `issues.completed_dir` - Completed issues directory (default: `completed`)
 - `sprints.sprints_dir` - Sprint definitions directory (default: `.sprints`)
 
 ## Integration

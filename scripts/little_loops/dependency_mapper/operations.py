@@ -250,26 +250,25 @@ def fix_dependencies(
 def gather_all_issue_ids(issues_dir: Path, config: BRConfig | None = None) -> set[str]:
     """Scan all issue directories for issue IDs (lightweight, filename-only).
 
-    Scans active-category and completed subdirectories for markdown files
-    with issue ID patterns in their filenames.
+    Scans type-scoped category directories (bugs/, features/, enhancements/,
+    epics/) for markdown files with issue ID patterns in their filenames.
+    Done and deferred issues remain in type dirs with status frontmatter, so
+    scanning only type dirs finds all known IDs.
 
     Args:
         issues_dir: Path to the issues base directory (e.g., .issues)
         config: Optional project config.  When supplied, active category names
-            and the completed-directory name are read from config so that
-            custom categories are included.  When omitted, falls back to
-            ``["bugs", "features", "enhancements", "completed"]``.
+            are read from config so that custom categories are included.
+            When omitted, falls back to
+            ``["bugs", "features", "enhancements", "epics"]``.
 
     Returns:
-        Set of all issue IDs found across all categories and completed.
+        Set of all issue IDs found across all type-scoped category directories.
     """
     if config is not None:
-        subdirs = config.issue_categories + [
-            config.get_completed_dir().name,
-            config.get_deferred_dir().name,
-        ]
+        subdirs = config.issue_categories
     else:
-        subdirs = ["bugs", "features", "enhancements", "epics", "completed", "deferred"]
+        subdirs = ["bugs", "features", "enhancements", "epics"]
 
     ids: set[str] = set()
     for subdir in subdirs:

@@ -633,21 +633,20 @@ class TestGatherAllIssueIds:
     """Tests for gathering issue IDs from filesystem."""
 
     def test_scans_all_categories(self, tmp_path: Path) -> None:
-        """Test that IDs are gathered from bugs, features, enhancements, epics, and completed."""
+        """Test that IDs are gathered from bugs, features, enhancements, and epics type dirs."""
         (tmp_path / "bugs").mkdir()
         (tmp_path / "features").mkdir()
         (tmp_path / "enhancements").mkdir()
         (tmp_path / "epics").mkdir()
-        (tmp_path / "completed").mkdir()
 
         (tmp_path / "bugs" / "P1-BUG-001-test.md").write_text("# BUG-001")
+        (tmp_path / "bugs" / "P1-BUG-002-done.md").write_text("---\nstatus: done\n---\n\n# BUG-002")
         (tmp_path / "features" / "P2-FEAT-010-feature.md").write_text("# FEAT-010")
         (tmp_path / "enhancements" / "P3-ENH-100-improve.md").write_text("# ENH-100")
         (tmp_path / "epics" / "P2-EPIC-001-foo.md").write_text("# EPIC-001")
-        (tmp_path / "completed" / "P1-BUG-002-done.md").write_text("# BUG-002")
 
         ids = gather_all_issue_ids(tmp_path)
-        assert ids == {"BUG-001", "FEAT-010", "ENH-100", "EPIC-001", "BUG-002"}
+        assert ids == {"BUG-001", "BUG-002", "FEAT-010", "ENH-100", "EPIC-001"}
 
     def test_empty_directory(self, tmp_path: Path) -> None:
         """Test with no subdirectories."""
@@ -693,8 +692,8 @@ class TestGatherAllIssueIds:
         ids = gather_all_issue_ids(issues_dir, config=config)
         assert ids == {"ENH-042"}
 
-    def test_config_includes_completed_dir(self, tmp_path: Path) -> None:
-        """Config-provided completed_dir name is used for the completed scan."""
+    def test_scans_type_dirs_including_done_issues(self, tmp_path: Path) -> None:
+        """Type dirs are scanned including done-status issues; completed_dir is not used."""
         import json
 
         from little_loops.config import BRConfig
@@ -702,8 +701,9 @@ class TestGatherAllIssueIds:
         issues_dir = tmp_path / ".issues"
         (issues_dir / "bugs").mkdir(parents=True)
         (issues_dir / "bugs" / "P1-BUG-001-open.md").write_text("# BUG-001")
-        (issues_dir / "archive").mkdir()
-        (issues_dir / "archive" / "P1-BUG-002-done.md").write_text("# BUG-002")
+        (issues_dir / "bugs" / "P1-BUG-002-done.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-002"
+        )
 
         config_dir = tmp_path / ".ll"
         config_dir.mkdir()
@@ -714,7 +714,6 @@ class TestGatherAllIssueIds:
                 "categories": {
                     "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
                 },
-                "completed_dir": "archive",
             },
         }
         (config_dir / "ll-config.json").write_text(json.dumps(config_data))
@@ -1112,7 +1111,6 @@ class TestMainCLI:
         (issues_dir / "bugs").mkdir()
         (issues_dir / "features").mkdir()
         (issues_dir / "enhancements").mkdir()
-        (issues_dir / "completed").mkdir()
 
         # Create minimal config
         ll_dir = tmp_path / ".ll"
@@ -1130,7 +1128,6 @@ class TestMainCLI:
         (issues_dir / "bugs").mkdir()
         (issues_dir / "features").mkdir()
         (issues_dir / "enhancements").mkdir()
-        (issues_dir / "completed").mkdir()
 
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
@@ -1148,7 +1145,6 @@ class TestMainCLI:
         bugs_dir.mkdir()
         (issues_dir / "features").mkdir()
         (issues_dir / "enhancements").mkdir()
-        (issues_dir / "completed").mkdir()
 
         (bugs_dir / "P1-BUG-001-test-bug.md").write_text(
             "# BUG-001: Test Bug\n\n## Summary\n\nFix `scripts/config.py`\n"
@@ -1171,7 +1167,6 @@ class TestMainCLI:
         enh_dir = issues_dir / "enhancements"
         enh_dir.mkdir()
         (issues_dir / "features").mkdir()
-        (issues_dir / "completed").mkdir()
 
         # BUG-001 and ENH-010 share 2 files → AND condition met → appears in analysis
         (bugs_dir / "P1-BUG-001-test-bug.md").write_text(
@@ -1496,7 +1491,6 @@ class TestMainCLIFix:
         features_dir.mkdir()
         (issues_dir / "bugs").mkdir()
         (issues_dir / "enhancements").mkdir()
-        (issues_dir / "completed").mkdir()
 
         # FEAT-001: blocker (missing backlink to FEAT-002)
         (features_dir / "P1-FEAT-001-blocker.md").write_text(
@@ -1561,7 +1555,6 @@ class TestMainCLIFix:
         features_dir.mkdir()
         (issues_dir / "bugs").mkdir()
         (issues_dir / "enhancements").mkdir()
-        (issues_dir / "completed").mkdir()
 
         (features_dir / "P1-FEAT-001-ok.md").write_text(
             "# FEAT-001: OK\n\n## Summary\n\nTest.\n\n## Labels\n\n`feature`\n"
@@ -1594,7 +1587,6 @@ class TestMainCLIApply:
         features_dir.mkdir()
         (issues_dir / "bugs").mkdir()
         (issues_dir / "enhancements").mkdir()
-        (issues_dir / "completed").mkdir()
 
         feat001 = features_dir / "P1-FEAT-001-blocker.md"
         feat001.write_text("# FEAT-001: Blocker\n\n## Summary\n\nTest.\n\n## Labels\n\n`feature`\n")
@@ -1618,7 +1610,6 @@ class TestMainCLIApply:
         enh_dir = issues_dir / "enhancements"
         enh_dir.mkdir()
         (issues_dir / "features").mkdir()
-        (issues_dir / "completed").mkdir()
 
         (bugs_dir / "P1-BUG-001-test-bug.md").write_text(
             "# BUG-001: Test Bug\n\n## Summary\n\nFix `scripts/config.py`\n"
