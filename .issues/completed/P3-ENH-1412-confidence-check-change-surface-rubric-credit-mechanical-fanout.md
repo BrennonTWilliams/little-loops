@@ -4,14 +4,15 @@ type: ENH
 priority: P3
 status: open
 captured_at: '2026-05-10T00:49:33Z'
+completed_at: '2026-05-10T14:49:06Z'
 discovered_date: '2026-05-10'
 discovered_by: capture-issue
 confidence_score: 100
-outcome_confidence: 79
+outcome_confidence: 86
 score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
-score_change_surface: 18
+score_change_surface: 25
 ---
 
 # ENH-1412: Refine Change Surface rubric to credit enumerated mechanical fanouts
@@ -110,6 +111,25 @@ After this change, FEAT-1407-style issues score 25/25 on Change Surface (it has 
 5. Verify: re-run `/ll:confidence-check` on FEAT-1407; confirm Criterion D rises from 0 → 25 (or 18) and outcome_confidence rises accordingly. Spot-check on a code-fanout issue (e.g. one of the recent BUG-13xx issues that touch many call sites) to confirm Pattern A still applies.
 6. Add a regression test to `scripts/tests/test_confidence_check_skill.py` if its style admits prose-rubric assertions (e.g. asserting both "Pattern A" and "Pattern B" headings + the verifiability-table rows are present in `skills/confidence-check/SKILL.md`); otherwise rely on the FEAT-1407 manual re-score as the verification artifact.
 7. Update related docs only if they reproduce the rubric inline: `docs/reference/API.md`, `docs/guides/ISSUE_MANAGEMENT_GUIDE.md`, `docs/reference/COMMANDS.md` (audit each for rubric prose; many only mention `/ll:confidence-check` by name and do not need updating).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on live codebase analysis:_
+
+**Confirmed line numbers** (`skills/confidence-check/SKILL.md`, 682 lines total — verify before editing):
+- Criterion D heading + scoring table: **lines 367-382** (step 1 estimated 354-369)
+- Phase 4.5 (Findings Write-Back): **lines 432-479** (step 1 estimated 419-466)
+- Phase 4.6 (Decision-Needed Flag): **lines 481-499** (step 1 estimated 471-511)
+- Phase 4.7 (Missing-Artifacts Flag): **lines 501-521** (step 1 estimated 471-511)
+- Worked example inline table: **lines 652-657** (step 1 estimated 650-657)
+
+**Phase 4.8 insertion point**: Phase 4.7 ends at line ~521; `### Auto Mode Behavior` begins at line ~523. Insert Phase 4.8 between these two headings — the gap is exactly 1 blank line.
+
+**Test file baseline** (`scripts/tests/test_confidence_check_skill.py`, 208 lines):
+- `TestCriterionDDualPattern` class: does NOT exist yet — write fresh
+- `TestPhase48LargeFileSurfaceSuppression` class: does NOT exist yet — write fresh
+- Model both after `TestDecisionNeededFlagWriteBack` (lines 86-127) and `TestMissingArtifactsFlagWriteBack` (lines 130-171) — identical 6-test structure
+- `_phase_text()` for the new classes should key on `"### Phase 4.8:"` as the heading string
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -234,6 +254,11 @@ class TestPhase48LargeFileSurfaceSuppression:
 ### Documentation
 - (Optional) `docs/reference/API.md`, `docs/guides/ISSUE_MANAGEMENT_GUIDE.md`, `docs/reference/COMMANDS.md` — audit each before editing; most reference confidence-check by name without reproducing the rubric.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md` — `sort_keys[].key` enum description and `columns` description both list `score_change_surface`; **no update needed** since the field name is unchanged, but audit before editing [Agent 2 finding]
+- `docs/reference/CLI.md` — documents `--score-change-surface` flag under `ll-issues set-scores`; **no update needed** since the CLI flag is unchanged, but audit before editing [Agent 2 finding]
+- `.issues/enhancements/P3-ENH-1413-...md` — open sibling issue contains "Criterion D (Change Surface)" text multiple times; if ENH-1412 renames the criterion heading in SKILL.md, ENH-1413's body text becomes stale — update the sibling issue's references after ENH-1412 lands [Agent 2 finding]
+
 ### Configuration
 - N/A
 
@@ -254,11 +279,28 @@ class TestPhase48LargeFileSurfaceSuppression:
 - FEAT-1389: parent EPIC; future children may hit the same scoring pattern.
 - ENH-1413: sibling refinement — split Criterion A (Complexity) into Breadth × Depth to fix the file-count double-count between A and D. Composes with this issue but is independently mergeable.
 
+## Resolution
+
+Implemented the dual-pattern Criterion D rubric in `skills/confidence-check/SKILL.md`:
+- Criterion D renamed to "Change Surface / Fanout Verifiability"
+- Pattern A (code blast radius) retains the original count-based scoring table
+- Pattern B (enumerated mechanical fanout) uses a new verifiability-based table (enumeration + grep + automated test)
+- Detection heuristic classifies issues by presence of uniform-substitution language + enumerated Files to Touch list (>5 files)
+- Added Phase 4.8 for large-file-surface risk-phrase suppression when Pattern B + verification chain detected
+- Added Pattern A vs Pattern B worked examples in the Examples section
+- Updated label in `refine_status.py` and `ISSUE_TEMPLATE.md` to match new criterion heading
+- Added `TestCriterionDDualPattern` and `TestPhase48LargeFileSurfaceSuppression` test classes (8 new tests, all pass)
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-10T14:45:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d3fbf53-11df-4123-b09d-c40a2dd2ecd8.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82c63ff4-db5c-4e59-810d-728950c519de.jsonl`
+- `/ll:wire-issue` - 2026-05-10T14:39:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53bdb699-3a45-41f3-aedb-29193b8f19ee.jsonl`
+- `/ll:refine-issue` - 2026-05-10T14:35:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b7e602a-b2e1-4533-813b-72b5edfd0b67.jsonl`
 - `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2c7ce99-47aa-48a1-876b-c2f744b66423.jsonl`
 - `/ll:wire-issue` - 2026-05-10T04:08:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62659fe4-d489-47aa-b301-b9bdee7803ac.jsonl`
 - `/ll:refine-issue` - 2026-05-10T03:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d75ce7f-2881-4167-a665-bd1bbb4f69da.jsonl`
 - `/ll:format-issue` - 2026-05-10T02:01:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/983e540e-227c-4cd1-bd1c-d34619c7c558.jsonl`
+- `/ll:manage-issue` - 2026-05-10T14:49:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46846dc2-7fae-479f-81c0-7ff4c1279c2c.jsonl`
 - `/ll:capture-issue` - 2026-05-10T00:49:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba13deab-d917-4b01-b05e-c45e8583e56f.jsonl`
 
 ---

@@ -364,22 +364,37 @@ Evaluate each criterion and assign a score (0-25 points each, max 100):
 | Several design decisions left open, will require judgment calls | 10 |
 | Fundamental approach unclear, multiple competing options unresolved | 0 |
 
-#### Criterion D: Change Surface (0-25 points)
+#### Criterion D: Change Surface / Fanout Verifiability (0-25 points)
 
-**What to check**: How many callers or dependents does the modified code have?
+**What to check**: What is the change's blast radius — and if it's a mechanical sweep, how well-enumerated and verifiable is the fanout?
 
 **Detection method**:
-1. For each key file in the Integration Map, use Grep to count references/imports across the codebase
-2. Check the issue's "Dependent Files" section for caller count
-3. Higher caller count = more places that could break
+1. Classify the change as **Pattern A** (code blast radius) or **Pattern B** (enumerated mechanical fanout):
+   - **Pattern B** applies when ALL of the following are true:
+     - The issue body uses language like "all", "every", "across", or "each" alongside a specific list of files
+     - The "Files to Touch" section enumerates >5 markdown, config, or template files
+     - Each site receives a uniform substitution (e.g., adding a value to a type enum, replacing a regex string)
+   - **Pattern A** applies in all other cases — function/API callers, code changes where each modified site may behave differently
+2. For **Pattern A**: count references/imports across the codebase using Grep on key Integration Map files; check the issue's "Dependent Files" section for caller count
+3. For **Pattern B**: evaluate the verifiability chain — does the issue include an enumerated file list, a verification grep, and an automated wiring test?
 
-**Scoring**:
+**Scoring** (apply the table matching the detected pattern):
+
+**Pattern A — Blast Radius** (code changes, callers, API surface):
 | Finding | Score |
 |---------|-------|
 | 0-2 callers/dependents — isolated change | 25 |
 | 3-5 callers/dependents — manageable surface | 18 |
 | 6-10 callers/dependents — broad surface | 10 |
 | 11+ callers/dependents — very wide blast radius | 0 |
+
+**Pattern B — Enumerated Mechanical Fanout** (uniform substitutions across an enumerated file list):
+| Finding | Score |
+|---------|-------|
+| Sites enumerated + verification grep + automated test asserting completeness | 25 |
+| Sites enumerated + verification grep, no automated test | 18 |
+| Sites enumerated, no verification command | 10 |
+| Sites not enumerated (unbounded sweep) | 0 |
 
 ### Phase 3: Score and Recommend
 
@@ -520,6 +535,28 @@ If any signal phrase is found in the Outcome Risk Factors content written by Pha
 
 If no signal phrase is found, leave `missing_artifacts` unchanged.
 
+### Phase 4.8: Large-File-Surface Suppression
+
+**Skip this phase if**: `CHECK_MODE` is true (no writes in check mode).
+
+After Phase 4.5 writes Outcome Risk Factors, scan the generated risk-factor content for signal phrases that indicate a penalized file surface — but only when the change is a Pattern B mechanical fanout with a complete verification chain. When that combination is detected, suppress the misleading risk phrase.
+
+This phase only has effect when Phase 4.5 produced Outcome Risk Factors (i.e., `HAS_FINDINGS` is true and `outcome_confidence < config.commands.confidence_gate.outcome_threshold`); if Phase 4.5 was skipped, no signal phrases will be present.
+
+**Signal phrases** (any match triggers the suppression check):
+- "large file surface"
+- "wide change surface"
+- "many files touched"
+- "broad surface area"
+
+If any signal phrase is found in the Outcome Risk Factors content written by Phase 4.5, AND the issue qualifies as Pattern B (enumerated file list + verification grep present in the issue body):
+
+1. Use the Edit tool to insert `mechanical_fanout_suppressed: true` into the issue frontmatter `---` block (after `score_change_surface` if present, otherwise alongside the other score fields)
+2. **Idempotency**: skip the write if `mechanical_fanout_suppressed` is already `true`
+3. Log to terminal output: `✓ mechanical_fanout_suppressed set to true — Pattern B fanout with verification chain detected; large-surface risk phrase suppressed`
+
+If no signal phrase is found, or if the issue does not qualify as Pattern B, leave frontmatter unchanged.
+
 ### Auto Mode Behavior
 
 When `AUTO_MODE` is true:
@@ -655,6 +692,25 @@ This skill is referenced in `/ll:manage-issue` Phase 2 as a recommended pre-plan
 | Vague feature, 20 files, no tests | 45: STOP | 20: VERY LOW | Refine issue first |
 | Ready enhancement, 8 files, some ambiguity | 85: PROCEED WITH CAUTION | 50: LOW | Start, but expect iteration |
 | Blocked dependency, simple fix | 55: STOP | 80: HIGH | Unblock first, then easy win |
+
+### Criterion D Pattern A vs Pattern B
+
+The following examples illustrate how Criterion D distinguishes code blast radius (Pattern A) from a fully-enumerated mechanical fanout (Pattern B).
+
+**Pattern A — code blast radius** (function renamed; callers in 15 files across 3 modules):
+| Criterion | Score | Rationale |
+|-----------|-------|-----------|
+| Change Surface / Fanout Verifiability | 0/25 | 15 callers across modules — very wide blast radius; each call site may behave differently |
+
+**Pattern B — enumerated mechanical fanout** (43 markdown files; uniform `BUG\|FEAT\|ENH` → `BUG\|FEAT\|ENH\|EPIC` regex substitution; verification grep provided; doc-wiring pytest specified):
+| Criterion | Score | Rationale |
+|-----------|-------|-----------|
+| Change Surface / Fanout Verifiability | 25/25 | All 43 sites enumerated in "Files to Touch"; verification grep proves completeness; automated wiring test specified — full Pattern B chain present |
+
+**Pattern B — enumerated fanout, no verification** (12 config files; uniform field addition; file list present but no grep or test):
+| Criterion | Score | Rationale |
+|-----------|-------|-----------|
+| Change Surface / Fanout Verifiability | 10/25 | Sites enumerated but no verification command — completeness unproven |
 
 ### Usage Patterns
 

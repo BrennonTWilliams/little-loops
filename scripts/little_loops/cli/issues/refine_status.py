@@ -543,5 +543,5 @@ def _print_key(all_cmds: list[str]) -> None:
     print(f"  {'cmplx':<12} Outcome criterion A \u2013 Complexity (0\u201325)")
     print(f"  {'tcov':<12} Outcome criterion B \u2013 Test Coverage (0\u201325)")
     print(f"  {'ambig':<12} Outcome criterion C \u2013 Ambiguity (0\u201325)")
-    print(f"  {'chsrf':<12} Outcome criterion D \u2013 Change Surface (0\u201325)")
+    print(f"  {'chsrf':<12} Outcome criterion D \u2013 Change Surface / Fanout Verifiability (0\u201325)")
     print(f"  {'total':<12} Number of /ll:* skills applied")

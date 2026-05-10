@@ -205,3 +205,50 @@ class TestPhase45OutcomeThreshold:
         assert "outcome_confidence < 60" not in phase_4_6_text, (
             "Phase 4.6 guard must not use hardcoded '< 60'; use outcome_threshold instead (BUG-1289)"
         )
+
+
+class TestCriterionDDualPattern:
+    """Criterion D must distinguish Pattern A (code blast radius) from Pattern B (enumerated mechanical fanout)."""
+
+    def _criterion_d_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("#### Criterion D:")
+        next_heading = content.find("\n####", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_pattern_a_heading_present(self) -> None:
+        assert "Pattern A" in self._criterion_d_text()
+
+    def test_pattern_b_heading_present(self) -> None:
+        assert "Pattern B" in self._criterion_d_text()
+
+    def test_verifiability_table_row_present(self) -> None:
+        assert "verification grep" in self._criterion_d_text()
+
+    def test_original_count_table_retained_for_pattern_a(self) -> None:
+        assert "0-2 callers" in self._criterion_d_text()
+
+
+class TestPhase48LargeFileSurfaceSuppression:
+    """Phase 4.8 must exist and mirror the Phase 4.6/4.7 boilerplate."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("### Phase 4.8:")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_phase_4_8_heading_exists(self) -> None:
+        assert "Phase 4.8:" in SKILL_FILE.read_text()
+
+    def test_check_mode_guard_present(self) -> None:
+        assert "CHECK_MODE" in self._phase_text()
+
+    def test_no_ask_user_question(self) -> None:
+        assert "AskUserQuestion" not in self._phase_text()
+
+    def test_signal_phrases_documented(self) -> None:
+        text = self._phase_text()
+        assert "large file surface" in text or "Signal phrases" in text
