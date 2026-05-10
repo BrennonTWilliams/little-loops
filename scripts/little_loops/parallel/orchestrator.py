@@ -1193,7 +1193,7 @@ class ParallelOrchestrator:
             )
 
     def _complete_issue_lifecycle_if_needed(self, issue_id: str) -> bool:
-        """Complete issue lifecycle if the issue file wasn't moved during merge.
+        """Complete issue lifecycle by writing ``status: done`` to frontmatter.
 
         Args:
             issue_id: ID of the issue to complete
@@ -1207,24 +1207,13 @@ class ParallelOrchestrator:
             return False
 
         original_path = info.path
-        completed_dir = self.br_config.get_completed_dir()
-        completed_path = completed_dir / original_path.name
 
-        # Check if already moved to completed
-        if completed_path.exists():
-            return True
-
-        # Check if still in original location
         if not original_path.exists():
             return True
 
-        # Issue file still in original location - complete lifecycle
-        self.logger.info(f"Completing lifecycle for {issue_id} (merged but file not moved)")
+        self.logger.info(f"Completing lifecycle for {issue_id} (frontmatter status update)")
 
         try:
-            completed_dir.mkdir(parents=True, exist_ok=True)
-
-            # Read original content
             content = original_path.read_text()
 
             # Add resolution section if not already present
@@ -1252,30 +1241,15 @@ class ParallelOrchestrator:
 """
                 content += resolution
 
-            # Inject completed_at timestamp into frontmatter before the git mv,
-            # so both the success and failure write-back paths capture it.
             content = update_frontmatter(
                 content,
-                {"completed_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")},
+                {
+                    "status": "done",
+                    "completed_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                },
             )
-
-            # Use git mv if possible (before writing content to avoid "destination exists")
-            result = self._git_lock.run(
-                ["mv", str(original_path), str(completed_path)],
-                cwd=self.repo_path,
-            )
-
-            if result.returncode != 0:
-                # git mv failed (destination may exist or other error)
-                self.logger.warning(f"git mv failed for {issue_id}: {result.stderr}")
-                # Write content to destination (may overwrite existing)
-                completed_path.write_text(content)
-                # Remove source if it still exists
-                original_path.unlink(missing_ok=True)
-            else:
-                # git mv succeeded, write updated content
-                completed_path.write_text(content)
-                append_session_log_entry(completed_path, "ll-parallel")
+            original_path.write_text(content)
+            append_session_log_entry(original_path, "ll-parallel")
 
             # Stage and commit
             self._git_lock.run(
@@ -1286,7 +1260,7 @@ class ParallelOrchestrator:
             action = self.br_config.get_category_action(info.issue_type)
             commit_msg = f"""{action}({info.issue_type}): complete {issue_id} lifecycle
 
-Parallel merge fallback - issue file moved to completed.
+Parallel merge fallback - status: done written to frontmatter.
 
 Issue: {issue_id}
 Type: {info.issue_type}

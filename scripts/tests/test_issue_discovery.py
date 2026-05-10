@@ -79,7 +79,11 @@ def sample_config_with_enh() -> dict[str, Any]:
 
 @pytest.fixture
 def issues_with_content(temp_project_dir: Path, sample_config_with_enh: dict[str, Any]) -> Path:
-    """Create issue directories with sample issues containing detailed content."""
+    """Create issue directories with sample issues containing detailed content.
+
+    Post-ENH-1418: completed issues live in their type directories with
+    ``status: done`` frontmatter — no separate completed/ directory.
+    """
     # Write config
     config_path = temp_project_dir / ".ll" / "ll-config.json"
     config_path.write_text(json.dumps(sample_config_with_enh))
@@ -88,17 +92,19 @@ def issues_with_content(temp_project_dir: Path, sample_config_with_enh: dict[str
     bugs_dir = issues_base / "bugs"
     enh_dir = issues_base / "enhancements"
     features_dir = issues_base / "features"
-    completed_dir = issues_base / "completed"
 
     bugs_dir.mkdir(parents=True)
     enh_dir.mkdir(parents=True)
     features_dir.mkdir(parents=True)
-    completed_dir.mkdir(parents=True)
 
     # Bug with file path reference
     (
         bugs_dir / "P1-BUG-001-circular-dependency.md"
-    ).write_text("""# BUG-001: Circular dependency in auth module
+    ).write_text("""---
+status: open
+---
+
+# BUG-001: Circular dependency in auth module
 
 ## Summary
 There is a circular import between auth.py and users.py.
@@ -112,7 +118,11 @@ ImportError when loading auth module.
 """)
 
     # Enhancement with code snippet
-    (enh_dir / "P2-ENH-001-refactor-services.md").write_text("""# ENH-001: Refactor services.py
+    (enh_dir / "P2-ENH-001-refactor-services.md").write_text("""---
+status: open
+---
+
+# ENH-001: Refactor services.py
 
 ## Summary
 The services.py file has grown too large and should be split.
@@ -125,8 +135,12 @@ The services.py file has grown too large and should be split.
 Split into smaller modules by responsibility.
 """)
 
-    # Completed issue
-    (completed_dir / "P2-ENH-002-old-refactor.md").write_text("""# ENH-002: Old refactoring task
+    # Completed issue (status: done in the type dir, not a separate completed/ dir)
+    (enh_dir / "P2-ENH-002-old-refactor.md").write_text("""---
+status: done
+---
+
+# ENH-002: Old refactoring task
 
 ## Summary
 This was a previous refactoring task for utils.py.
@@ -403,21 +417,24 @@ class TestFindExistingIssue:
 
 
 class TestReopenIssue:
-    """Tests for reopen_issue function."""
+    """Tests for reopen_issue function (frontmatter-based, ENH-1418)."""
 
-    def test_reopen_moves_to_active_dir(
+    def test_reopen_writes_status_open(
         self, temp_project_dir: Path, issues_with_content: Path
     ) -> None:
-        """Test that reopening moves issue from completed to active."""
+        """Reopening a done issue rewrites status: open in place; file stays in type dir."""
+        from little_loops.frontmatter import parse_frontmatter
+
         config = BRConfig(temp_project_dir)
         logger = Logger()
 
-        completed_path = temp_project_dir / ".issues" / "completed" / "P2-ENH-002-old-refactor.md"
-        assert completed_path.exists()
+        done_path = temp_project_dir / ".issues" / "enhancements" / "P2-ENH-002-old-refactor.md"
+        assert done_path.exists()
+        assert parse_frontmatter(done_path.read_text()).get("status") == "done"
 
         new_path = reopen_issue(
             config,
-            completed_path,
+            done_path,
             reopen_reason="Problem recurred",
             new_context="The utils.py file has grown again.",
             source_command="audit-architecture",
@@ -425,20 +442,21 @@ class TestReopenIssue:
         )
 
         assert new_path is not None
+        # Same file (resolves to same path); file is not moved
         assert new_path.exists()
-        assert "enhancements" in str(new_path)
-        assert not completed_path.exists()
+        assert new_path.samefile(done_path)
+        assert parse_frontmatter(new_path.read_text()).get("status") == "open"
 
     def test_reopen_adds_section(self, temp_project_dir: Path, issues_with_content: Path) -> None:
         """Test that reopening adds a Reopened section."""
         config = BRConfig(temp_project_dir)
         logger = Logger()
 
-        completed_path = temp_project_dir / ".issues" / "completed" / "P2-ENH-002-old-refactor.md"
+        done_path = temp_project_dir / ".issues" / "enhancements" / "P2-ENH-002-old-refactor.md"
 
         new_path = reopen_issue(
             config,
-            completed_path,
+            done_path,
             reopen_reason="Regression detected",
             new_context="New findings here.",
             source_command="audit-docs",
@@ -458,7 +476,7 @@ class TestReopenIssue:
         config = BRConfig(temp_project_dir)
         logger = Logger()
 
-        nonexistent = temp_project_dir / ".issues" / "completed" / "P0-BUG-999-fake.md"
+        nonexistent = temp_project_dir / ".issues" / "enhancements" / "P0-BUG-999-fake.md"
 
         result = reopen_issue(
             config,
@@ -929,10 +947,15 @@ class TestReopenIssueWithClassification:
         config = BRConfig(temp_project_dir)
         logger = Logger()
 
-        # Create a new completed issue for this test
-        completed_dir = temp_project_dir / ".issues" / "completed"
-        completed_path = completed_dir / "P1-BUG-020-regression-test.md"
-        completed_path.write_text("""# BUG-020: Regression test issue
+        # Create a done issue in the type dir (post-ENH-1418 model)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        completed_path = bugs_dir / "P1-BUG-020-regression-test.md"
+        completed_path.write_text("""---
+status: done
+---
+
+# BUG-020: Regression test issue
 
 ## Summary
 Test issue for regression reopening.
@@ -972,10 +995,15 @@ Test issue for regression reopening.
         config = BRConfig(temp_project_dir)
         logger = Logger()
 
-        # Create a new completed issue for this test
-        completed_dir = temp_project_dir / ".issues" / "completed"
-        completed_path = completed_dir / "P1-BUG-021-invalid-fix-test.md"
-        completed_path.write_text("""# BUG-021: Invalid fix test issue
+        # Create a done issue in the type dir (post-ENH-1418 model)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        completed_path = bugs_dir / "P1-BUG-021-invalid-fix-test.md"
+        completed_path.write_text("""---
+status: done
+---
+
+# BUG-021: Invalid fix test issue
 
 ## Summary
 Test issue for invalid fix reopening.

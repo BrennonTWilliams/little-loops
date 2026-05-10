@@ -113,47 +113,25 @@ def _parse_discovered_by(fm: dict[str, Any]) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _batch_completion_dates(completed_dir: Path) -> dict[str, date]:
-    """Fetch git add-dates for all files in completed_dir in one git log call.
+def _batch_completion_dates(_issues_dir: Path) -> dict[str, date]:
+    """No-op stub kept for legacy callers.
+
+    The previous implementation used ``git log --diff-filter=A`` against
+    ``completed/`` to detect when issue files were *moved* into completion.
+    With status decoupled from directory location (ENH-1418), files no
+    longer move on completion; ``completed_at:`` frontmatter is the primary
+    source of truth, with a per-file ``git log -1`` fallback in
+    ``_parse_completion_date``. ENH-1420 will backfill ``completed_at`` for
+    pre-decoupling issues, after which the per-file fallback can also be
+    removed.
 
     Args:
-        completed_dir: Path to .issues/completed/
+        _issues_dir: Unused (kept for signature stability).
 
     Returns:
-        Mapping from filename (basename only) to the date it was first added in git.
+        An empty mapping.
     """
-    try:
-        result = subprocess.run(
-            [
-                "git",
-                "log",
-                "--diff-filter=A",
-                "--name-only",
-                "--format=%x00%as",
-                "--",
-                str(completed_dir),
-            ],
-            capture_output=True,
-            text=True,
-            cwd=completed_dir.parent,
-        )
-    except OSError:
-        return {}
-
-    if result.returncode != 0 or not result.stdout.strip():
-        return {}
-
-    dates: dict[str, date] = {}
-    current_date: date | None = None
-    for line in result.stdout.splitlines():
-        if line.startswith("\x00"):
-            try:
-                current_date = date.fromisoformat(line[1:])
-            except ValueError:
-                current_date = None
-        elif line.strip() and current_date:
-            dates[Path(line.strip()).name] = current_date
-    return dates
+    return {}
 
 
 def _parse_completion_date(
@@ -201,10 +179,11 @@ def _parse_completion_date(
     if batch_dates is not None:
         return batch_dates.get(file_path.name)
 
-    # Fallback to git log: date file was added to completed/ in git history
+    # Fallback to git log: most recent commit date for this file (typically
+    # the close/done commit, since status writes are the latest change).
     try:
         result = subprocess.run(
-            ["git", "log", "--diff-filter=A", "--format=%as", "-1", "--", str(file_path)],
+            ["git", "log", "--format=%as", "-1", "--", str(file_path)],
             capture_output=True,
             text=True,
             cwd=file_path.parent,
@@ -307,25 +286,60 @@ def _detect_processing_agent(content: str, discovered_source: str | None = None)
     return "manual"
 
 
-def scan_completed_issues(completed_dir: Path) -> list[CompletedIssue]:
-    """Scan completed directory for issue files.
+def scan_completed_issues(
+    issues_dir: Path,
+    category_dirs: list[str] | None = None,
+) -> list[CompletedIssue]:
+    """Scan type directories for issues with ``status: done`` frontmatter.
+
+    Files no longer move into a ``completed/`` subdirectory on completion
+    (ENH-1418). Completion is detected by ``status: done`` in the file's
+    YAML frontmatter; files remain in their original type directory
+    (``bugs/``, ``features/``, ``enhancements/``, ``epics/``).
+
+    For backwards compatibility with pre-decoupling repos, a sibling
+    ``completed/`` directory under ``issues_dir`` is also scanned when
+    present so legacy completed issues continue to surface.
 
     Args:
-        completed_dir: Path to .issues/completed/
+        issues_dir: Path to ``.issues/`` (the parent of category dirs).
+        category_dirs: Optional override of category subdirectories to scan.
+            Defaults to ``["bugs", "features", "enhancements", "epics"]``.
 
     Returns:
-        List of parsed CompletedIssue objects
+        List of parsed ``CompletedIssue`` objects, sorted by file path.
     """
     issues: list[CompletedIssue] = []
 
-    if not completed_dir.exists():
+    if not issues_dir.exists():
         return issues
 
-    batch_dates = _batch_completion_dates(completed_dir)
+    scan_dirs = category_dirs or ["bugs", "features", "enhancements", "epics"]
+    paths_to_scan: list[Path] = []
+    for category_dir in scan_dirs:
+        category_path = issues_dir / category_dir
+        if not category_path.exists():
+            continue
+        for file_path in category_path.glob("*.md"):
+            try:
+                content = file_path.read_text(encoding="utf-8")
+                fm = parse_frontmatter(content)
+            except Exception as e:
+                logger.warning("Failed to read %s: %s", file_path, e)
+                continue
+            if fm.get("status") != "done":
+                continue
+            paths_to_scan.append(file_path)
 
-    for file_path in sorted(completed_dir.glob("*.md")):
+    # Legacy completed/ directory (pre-ENH-1418); scan unconditionally
+    # so older repos keep working until ENH-1420 backfills.
+    legacy_completed = issues_dir / "completed"
+    if legacy_completed.exists():
+        paths_to_scan.extend(legacy_completed.glob("*.md"))
+
+    for file_path in sorted(paths_to_scan):
         try:
-            issue = parse_completed_issue(file_path, batch_dates=batch_dates)
+            issue = parse_completed_issue(file_path)
             issues.append(issue)
         except Exception as e:
             logger.warning("Failed to parse %s: %s", file_path, e)

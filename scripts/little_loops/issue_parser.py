@@ -129,10 +129,19 @@ def get_next_issue_number(config: BRConfig, category: str | None = None) -> int:
     # Get all known prefixes from configuration
     all_prefixes = [cat_config.prefix for cat_config in config.issues.categories.values()]
 
-    # Directories to scan: ALL category directories + completed + deferred
-    dirs_to_scan = [config.get_completed_dir(), config.get_deferred_dir()]
+    # Directories to scan: ALL category directories. Status (open/done/deferred)
+    # now lives in frontmatter, so all issues — active and inactive — are in
+    # their type dir. We still scan the legacy completed/ and deferred/ dirs
+    # if they happen to exist (in-flight migration safety).
+    dirs_to_scan: list[Path] = []
     for cat_name in config.issues.categories:
         dirs_to_scan.append(config.get_issue_dir(cat_name))
+    legacy_completed = config.project_root / config.issues.base_dir / "completed"
+    legacy_deferred = config.project_root / config.issues.base_dir / "deferred"
+    if legacy_completed.exists():
+        dirs_to_scan.append(legacy_completed)
+    if legacy_deferred.exists():
+        dirs_to_scan.append(legacy_deferred)
 
     if not all_prefixes:
         return max_num + 1
@@ -763,22 +772,6 @@ def find_issues(
     parser = IssueParser(config)
     issues: list[IssueInfo] = []
 
-    # Get completed and deferred directories for duplicate detection
-    completed_dir = config.get_completed_dir()
-    deferred_dir = config.get_deferred_dir()
-
-    # Pre-materialize filename sets once to avoid O(N) stat syscalls in the hot loop
-    completed_names = (
-        frozenset(p.name for p in completed_dir.glob("*.md"))
-        if completed_dir.exists()
-        else frozenset()
-    )
-    deferred_names = (
-        frozenset(p.name for p in deferred_dir.glob("*.md"))
-        if deferred_dir.exists()
-        else frozenset()
-    )
-
     # Determine which categories to search
     if category:
         categories = [category] if category in config.issue_categories else []
@@ -791,13 +784,10 @@ def find_issues(
             continue
 
         for issue_file in issue_dir.glob("*.md"):
-            # Pre-flight check: skip if already exists in completed or deferred directory
-            if issue_file.name in completed_names:
-                continue
-            if issue_file.name in deferred_names:
-                continue
-
             info = parser.parse_file(issue_file)
+            # Status-based filter: skip done/cancelled/deferred regardless of dir
+            if info.status in ("done", "cancelled", "deferred"):
+                continue
             # Apply skip filter
             if info.issue_id in skip_ids:
                 continue

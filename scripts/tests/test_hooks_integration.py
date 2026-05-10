@@ -1036,11 +1036,20 @@ class TestIssueCompletionLog:
         return Path(__file__).parent.parent.parent / "hooks/scripts/issue-completion-log.sh"
 
     def _make_input(self, dest_path: str, transcript_path: str) -> str:
-        """Build JSON stdin for the hook simulating a git mv to completed/."""
+        """Build JSON stdin for the hook simulating a PostToolUse Write of status: done."""
         return json.dumps(
             {
-                "tool_name": "Bash",
-                "tool_input": {"command": f"git mv .issues/bugs/P3-BUG-870.md {dest_path}"},
+                "tool_name": "Write",
+                "tool_input": {
+                    "file_path": dest_path,
+                    "content": (
+                        "---\n"
+                        "status: done\n"
+                        "discovered_date: 2026-01-01\n"
+                        "---\n\n"
+                        "# BUG-870: Test\n\n## Session Log\n"
+                    ),
+                },
                 "transcript_path": transcript_path,
             }
         )
@@ -1058,16 +1067,21 @@ class TestIssueCompletionLog:
     ):
         """Session log entry is appended even when transcript path contains single quotes.
 
-        Before the fix, shell interpolation of $TRANSCRIPT_PATH into a Python string
-        literal caused a SyntaxError for paths with single quotes. The error was
-        swallowed by || true so returncode stayed 0 but no entry was written.
+        Paths with single quotes used to break shell interpolation into the Python
+        snippet; passing via env vars keeps them safe. The hook detects a Write
+        marking an issue file `status: done` in frontmatter and appends a session
+        log entry.
         """
         import os
 
-        completed_dir = tmp_path / ".issues" / "completed"
-        completed_dir.mkdir(parents=True)
-        issue_file = completed_dir / "P3-BUG-870-test.md"
-        issue_file.write_text("---\ndiscovered_date: 2026-01-01\n---\n# Test\n\n## Session Log\n")
+        # Issue file lives in its category dir (frontmatter status flips in place
+        # under the new model — no move to completed/).
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P3-BUG-870-test.md"
+        issue_file.write_text(
+            "---\nstatus: done\ndiscovered_date: 2026-01-01\n---\n# Test\n\n## Session Log\n"
+        )
 
         transcript_dir = tmp_path / "transcripts"
         transcript_dir.mkdir()
@@ -1090,9 +1104,12 @@ class TestIssueCompletionLog:
                 f"Hook exited non-zero: {result.returncode}\n{result.stderr}"
             )
             content = issue_file.read_text()
-            assert "hook:posttooluse-git-mv" in content, (
+            assert "hook:posttooluse-status-done" in content, (
                 f"Session log entry not appended for transcript path {transcript_name!r}. "
                 "Likely a Python SyntaxError was silently swallowed."
+            )
+            assert transcript_name in content, (
+                f"Transcript path {transcript_name!r} missing from session log entry."
             )
         finally:
             os.chdir(original_dir)

@@ -308,91 +308,6 @@ def _is_git_tracked(file_path: Path) -> bool:
     return bool(result.stdout.strip())
 
 
-def _cleanup_stale_source(original_path: Path, issue_id: str, logger: Logger) -> None:
-    """Remove orphaned source file and commit cleanup.
-
-    Args:
-        original_path: Path to the stale source file
-        issue_id: Issue identifier for commit message
-        logger: Logger for output
-    """
-    original_path.unlink()
-    try:
-        subprocess.run(["git", "add", "-A"], capture_output=True, text=True, timeout=30)
-        subprocess.run(
-            ["git", "commit", "-m", f"cleanup: remove stale {issue_id} from bugs/"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning(f"Git command timed out during cleanup of {issue_id}")
-
-
-def _move_issue_to_completed(
-    original_path: Path,
-    completed_path: Path,
-    content: str,
-    logger: Logger,
-) -> bool:
-    """Move issue file to completed dir, preferring git mv for history.
-
-    Checks if source is under git version control before attempting git mv.
-    If source is tracked, uses git mv for history preservation.
-    If source is not tracked, uses manual copy + delete directly.
-
-    Args:
-        original_path: Source path of issue file
-        completed_path: Destination path in completed directory
-        content: Updated file content to write
-        logger: Logger for output
-
-    Returns:
-        True if move succeeded
-    """
-    # Handle pre-existing destination (e.g., from parallel worker or worktree leak)
-    if completed_path.exists():
-        logger.info(f"Destination already exists: {completed_path.name}, updating content")
-        completed_path.write_text(content)
-        original_path.unlink(missing_ok=True)
-        return True
-
-    # Check if source is under git version control before attempting git mv
-    source_tracked = _is_git_tracked(original_path)
-
-    if source_tracked:
-        # Source is tracked, use git mv for history preservation
-        try:
-            result = subprocess.run(
-                ["git", "mv", str(original_path), str(completed_path)],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        except subprocess.TimeoutExpired:
-            logger.warning("git mv timed out, falling back to manual copy")
-            completed_path.write_text(content)
-            original_path.unlink(missing_ok=True)
-            return True
-
-        if result.returncode != 0:
-            # git mv failed, fall back to manual copy + delete
-            logger.warning(f"git mv failed: {result.stderr}")
-            completed_path.write_text(content)
-            original_path.unlink(missing_ok=True)
-        else:
-            logger.success(f"Used git mv to move {original_path.stem}")
-            # Write updated content to the moved file
-            completed_path.write_text(content)
-    else:
-        # Source is not tracked, use manual copy + delete directly
-        logger.info(f"Source not tracked by git, using manual copy: {original_path.name}")
-        completed_path.write_text(content)
-        original_path.unlink(missing_ok=True)
-
-    return True
-
-
 def _commit_issue_completion(
     info: IssueInfo,
     commit_prefix: str,
@@ -452,31 +367,41 @@ def _commit_issue_completion(
 
 
 def verify_issue_completed(info: IssueInfo, config: BRConfig, logger: Logger) -> bool:
-    """Verify that an issue was moved to completed directory.
+    """Verify that an issue was marked as completed via frontmatter.
+
+    Reads the issue file's ``status:`` frontmatter; ``done`` (or ``cancelled``)
+    means the close path ran successfully. Files no longer move on completion,
+    so this is a pure frontmatter check.
 
     Args:
         info: Issue info
-        config: Project configuration
+        config: Project configuration (unused; kept for signature stability)
         logger: Logger for output
 
     Returns:
-        True if issue is in completed directory
+        True if issue's frontmatter shows it is done/cancelled
     """
-    completed_path = config.get_completed_dir() / info.path.name
-    original_path = info.path
+    from little_loops.frontmatter import parse_frontmatter
 
-    if completed_path.exists() and not original_path.exists():
-        logger.success(f"Verified: {info.issue_id} properly moved to completed")
+    path = info.path
+    if not path.exists():
+        # Source removed without lifecycle update — treat as completed for back-compat
+        # with any external scripts that delete files manually.
+        logger.warning(f"Warning: {info.issue_id} source not found at {path}")
         return True
 
-    if completed_path.exists() and original_path.exists():
-        logger.warning(f"Warning: {info.issue_id} exists in BOTH locations")
+    try:
+        fm = parse_frontmatter(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.warning(f"Warning: failed to read {info.issue_id} frontmatter: {e}")
+        return False
 
-    if not original_path.exists():
-        logger.warning(f"Warning: {info.issue_id} was deleted but not moved to completed")
+    status = fm.get("status", "open")
+    if status in ("done", "cancelled"):
+        logger.success(f"Verified: {info.issue_id} status={status}")
         return True
 
-    logger.warning(f"Warning: {info.issue_id} was NOT moved to completed")
+    logger.warning(f"Warning: {info.issue_id} status={status} (expected done/cancelled)")
     return False
 
 
@@ -612,18 +537,7 @@ def close_issue(
     Returns:
         True if successful, False otherwise
     """
-    completed_dir = config.get_completed_dir()
-    completed_dir.mkdir(parents=True, exist_ok=True)
-
     original_path = info.path
-    completed_path = completed_dir / original_path.name
-
-    # Safety checks - handle stale state gracefully
-    if completed_path.exists():
-        logger.info(f"{info.issue_id} already in completed/ - cleaning up source")
-        if original_path.exists():
-            _cleanup_stale_source(original_path, info.issue_id, logger)
-        return True
 
     if not original_path.exists():
         logger.info(f"{info.issue_id} source already removed - nothing to close")
@@ -646,15 +560,16 @@ def close_issue(
                     return False
 
     try:
-        # Prepare content with resolution section
+        # Prepare content with resolution section, then write status + completed_at
         resolution = _build_closure_resolution(
             close_status, close_reason, fix_commit, files_changed
         )
         content = _prepare_issue_content(original_path, resolution)
-        content = update_frontmatter(content, {"completed_at": _completed_at_now()})
-
-        # Move to completed directory
-        _move_issue_to_completed(original_path, completed_path, content, logger)
+        content = update_frontmatter(
+            content,
+            {"status": "done", "completed_at": _completed_at_now()},
+        )
+        original_path.write_text(content, encoding="utf-8")
 
         # Commit the closure
         commit_body = f"""{info.issue_id} - {close_status}
@@ -673,7 +588,7 @@ Status: {close_status}"""
                     "event": "issue.closed",
                     "ts": _iso_now(),
                     "issue_id": info.issue_id,
-                    "file_path": str(completed_path),
+                    "file_path": str(original_path),
                     "close_reason": close_reason,
                 }
             )
@@ -703,18 +618,7 @@ def complete_issue_lifecycle(
     Returns:
         True if successful, False otherwise
     """
-    completed_dir = config.get_completed_dir()
-    completed_dir.mkdir(parents=True, exist_ok=True)
-
     original_path = info.path
-    completed_path = completed_dir / original_path.name
-
-    # Safety checks - handle stale state gracefully
-    if completed_path.exists():
-        logger.info(f"{info.issue_id} already in completed/ - cleaning up source")
-        if original_path.exists():
-            _cleanup_stale_source(original_path, info.issue_id, logger)
-        return True
 
     if not original_path.exists():
         logger.info(f"{info.issue_id} source already removed - nothing to complete")
@@ -723,15 +627,16 @@ def complete_issue_lifecycle(
     logger.info(f"Completing lifecycle for {info.issue_id} (command may have exited early)...")
 
     try:
-        # Prepare content with resolution section
+        # Prepare content with resolution section, then write status + completed_at
         action = config.get_category_action(info.issue_type)
         resolution = _build_completion_resolution(action)
         content = _prepare_issue_content(original_path, resolution)
-        content = update_frontmatter(content, {"completed_at": _completed_at_now()})
-
-        # Move to completed directory
-        _move_issue_to_completed(original_path, completed_path, content, logger)
-        append_session_log_entry(completed_path, "ll-auto")
+        content = update_frontmatter(
+            content,
+            {"status": "done", "completed_at": _completed_at_now()},
+        )
+        original_path.write_text(content, encoding="utf-8")
+        append_session_log_entry(original_path, "ll-auto")
 
         # Commit the completion
         commit_body = f"""implement {info.issue_id}
@@ -750,7 +655,7 @@ Status: Completed via fallback lifecycle completion"""
                     "event": "issue.completed",
                     "ts": _iso_now(),
                     "issue_id": info.issue_id,
-                    "file_path": str(completed_path),
+                    "file_path": str(original_path),
                 }
             )
         return True
@@ -796,11 +701,13 @@ def defer_issue(
     reason: str | None = None,
     event_bus: EventBus | None = None,
 ) -> bool:
-    """Defer an issue by moving it from its active directory to deferred/.
+    """Defer an issue by writing ``status: deferred`` to its frontmatter.
+
+    The file remains in its type directory; only the ``status:`` field changes.
 
     Args:
         info: Issue info
-        config: Project configuration
+        config: Project configuration (unused; kept for signature stability)
         logger: Logger for output
         reason: Reason for deferring
         event_bus: Optional EventBus for event emission
@@ -808,16 +715,7 @@ def defer_issue(
     Returns:
         True if successful, False otherwise
     """
-    deferred_dir = config.get_deferred_dir()
-    deferred_dir.mkdir(parents=True, exist_ok=True)
-
     original_path = info.path
-    deferred_path = deferred_dir / original_path.name
-
-    # Safety checks
-    if deferred_path.exists():
-        logger.info(f"{info.issue_id} already in deferred/")
-        return True
 
     if not original_path.exists():
         logger.info(f"{info.issue_id} source not found - nothing to defer")
@@ -829,14 +727,11 @@ def defer_issue(
     logger.info(f"Deferring {info.issue_id}: {reason}")
 
     try:
-        # Prepare content with deferred section
         deferred_section = _build_deferred_section(reason)
         content = original_path.read_text(encoding="utf-8") + deferred_section
+        content = update_frontmatter(content, {"status": "deferred"})
+        original_path.write_text(content, encoding="utf-8")
 
-        # Move to deferred directory (reuse the same move helper)
-        _move_issue_to_completed(original_path, deferred_path, content, logger)
-
-        # Commit the deferral
         commit_body = f"""{info.issue_id} - Deferred
 
 Reason: {reason}"""
@@ -849,7 +744,7 @@ Reason: {reason}"""
                     "event": "issue.deferred",
                     "ts": _iso_now(),
                     "issue_id": info.issue_id,
-                    "file_path": str(deferred_path),
+                    "file_path": str(original_path),
                     "reason": reason,
                 }
             )
@@ -931,68 +826,44 @@ def undefer_issue(
     logger: Logger,
     reason: str | None = None,
 ) -> Path | None:
-    """Move an issue from deferred/ back to its original category directory.
+    """Undefer an issue by writing ``status: open`` to its frontmatter.
+
+    The file remains where it is (in its type directory); only the ``status:``
+    field is updated.
 
     Args:
         config: Project configuration
-        deferred_issue_path: Path to issue in deferred/
+        deferred_issue_path: Path to deferred issue (still in its type dir)
         logger: Logger for output
         reason: Reason for undeferring
 
     Returns:
-        New path to undeferred issue, or None if failed
+        Path to undeferred issue, or None if failed
     """
-    from little_loops.issue_discovery.search import _get_category_from_issue_path
-
     if not deferred_issue_path.exists():
         logger.error(f"Deferred issue not found: {deferred_issue_path}")
-        return None
-
-    # Determine target category directory from filename
-    category = _get_category_from_issue_path(deferred_issue_path, config)
-    target_dir = config.get_issue_dir(category)
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    target_path = target_dir / deferred_issue_path.name
-
-    # Safety check - don't overwrite existing active issue
-    if target_path.exists():
-        logger.warning(f"Active issue already exists: {target_path}")
         return None
 
     if not reason:
         reason = "Ready to resume active work"
 
-    logger.info(f"Undeferring {deferred_issue_path.name} -> {category}/")
+    logger.info(f"Undeferring {deferred_issue_path.name}")
 
     try:
-        content = deferred_issue_path.read_text(encoding="utf-8")
-        content += _build_undeferred_section(reason)
-
-        # Parse IssueInfo before git mv so the path still exists
         info = IssueParser(config).parse_file(deferred_issue_path)
 
-        # Try git mv first for history preservation
-        result = subprocess.run(
-            ["git", "mv", str(deferred_issue_path), str(target_path)],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            logger.warning(f"git mv failed, using manual copy: {result.stderr}")
-            target_path.write_text(content, encoding="utf-8")
-            deferred_issue_path.unlink()
-        else:
-            target_path.write_text(content, encoding="utf-8")
+        content = deferred_issue_path.read_text(encoding="utf-8")
+        content += _build_undeferred_section(reason)
+        content = update_frontmatter(content, {"status": "open"})
+        deferred_issue_path.write_text(content, encoding="utf-8")
 
         commit_body = f"""{info.issue_id} - Undeferred
 
 Reason: {reason}"""
         _commit_issue_completion(info, "undefer", commit_body, logger)
 
-        logger.success(f"Undeferred: {target_path.name}")
-        return target_path
+        logger.success(f"Undeferred: {deferred_issue_path.name}")
+        return deferred_issue_path
 
     except Exception as e:
         logger.error(f"Failed to undefer issue: {e}")

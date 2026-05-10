@@ -1927,16 +1927,16 @@ class TestFailureClassification:
         self, mock_config: BRConfig, sample_issue: IssueInfo, temp_project_dir: Path
     ) -> None:
         """BUG-1386 Change 3: non-zero Phase 2 exit is treated as success when
-        the issue has already been moved to .issues/completed/."""
+        the issue's frontmatter already shows ``status: done`` (post-ENH-1418)."""
         from little_loops.issue_manager import process_issue_inplace
 
         mock_logger = MagicMock()
 
-        # Place the completed issue file where the guard will find it
-        completed_dir = temp_project_dir / ".issues" / "completed"
-        completed_dir.mkdir(parents=True)
-        completed_file = completed_dir / f"P1-{sample_issue.issue_id}-done.md"
-        completed_file.write_text("# completed")
+        # Post-ENH-1418: completion is signalled by frontmatter, not file location.
+        sample_issue.path.write_text(
+            "---\nstatus: done\n---\n\n# completed",
+            encoding="utf-8",
+        )
 
         ready_output = f"## VERDICT\nREADY\n\n## VALIDATED_FILE\n{sample_issue.path}"
         ready_result = MagicMock(returncode=0, stdout=ready_output, stderr="")

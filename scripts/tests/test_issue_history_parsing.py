@@ -240,122 +240,115 @@ class TestParseCompletionDate:
         assert result is None
 
 
-class TestBatchCompletionDates:
-    """Tests for _batch_completion_dates and the N+1 fix in scan_completed_issues."""
-
-    def test_scan_completed_issues_single_git_log_call(self, tmp_path: Path) -> None:
-        """scan_completed_issues must call git log at most once regardless of file count."""
-        completed_dir = tmp_path / "completed"
-        completed_dir.mkdir()
-
-        # Create 3 dateless files — each would trigger its own git log without the fix
-        for i in range(1, 4):
-            (completed_dir / f"P1-BUG-{i:03d}-issue.md").write_text("# BUG\n\nNo date.\n")
-
-        batch_output = (
-            "\x002026-01-10\n"
-            "\n"
-            "completed/P1-BUG-001-issue.md\n"
-            "completed/P1-BUG-002-issue.md\n"
-            "\n"
-            "\x002026-01-05\n"
-            "\n"
-            "completed/P1-BUG-003-issue.md\n"
-        )
-        mock_result = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout=batch_output, stderr=""
-        )
-        with patch(
-            "little_loops.issue_history.parsing.subprocess.run", return_value=mock_result
-        ) as mock_run:
-            issues = scan_completed_issues(completed_dir)
-
-        mock_run.assert_called_once()
-        assert len(issues) == 3
-        dates = {i.issue_id: i.completed_date for i in issues}
-        assert dates["BUG-001"] == date(2026, 1, 10)
-        assert dates["BUG-002"] == date(2026, 1, 10)
-        assert dates["BUG-003"] == date(2026, 1, 5)
-
-    def test_batch_dates_not_found_returns_none(self, tmp_path: Path) -> None:
-        """Files missing from the batch result get None as the completion date."""
-        completed_dir = tmp_path / "completed"
-        completed_dir.mkdir()
-        (completed_dir / "P2-ENH-001-enh.md").write_text("# ENH\n\nNo date.\n")
-
-        # Batch returns empty (file not in git history yet)
-        mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-        with patch("little_loops.issue_history.parsing.subprocess.run", return_value=mock_result):
-            issues = scan_completed_issues(completed_dir)
-
-        assert len(issues) == 1
-        assert issues[0].completed_date is None
-
-    def test_frontmatter_date_skips_git_log_entirely(self, tmp_path: Path) -> None:
-        """Files with an inline Resolution date never trigger any git log call."""
-        completed_dir = tmp_path / "completed"
-        completed_dir.mkdir()
-        (completed_dir / "P1-BUG-001-dated.md").write_text(
-            "## Resolution\n\n- **Completed**: 2026-03-01\n"
-        )
-
-        # Batch returns empty; per-file fallback must not be called either
-        mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-        with patch(
-            "little_loops.issue_history.parsing.subprocess.run", return_value=mock_result
-        ) as mock_run:
-            issues = scan_completed_issues(completed_dir)
-
-        # Only the one batch call is made; no per-file call
-        mock_run.assert_called_once()
-        assert issues[0].completed_date == date(2026, 3, 1)
-
-
 class TestScanCompletedIssues:
-    """Tests for scan_completed_issues function."""
+    """Tests for scan_completed_issues function (frontmatter-based, ENH-1418).
+
+    Post-ENH-1418, ``scan_completed_issues(issues_dir)`` scans type
+    subdirectories (``bugs/``, ``features/``, etc.) and surfaces files
+    with ``status: done`` in their YAML frontmatter. A legacy
+    ``completed/`` sibling directory is also scanned when present for
+    back-compat.
+    """
 
     def test_scan_empty_directory(self, tmp_path: Path) -> None:
-        """Test scanning empty directory."""
-        completed_dir = tmp_path / "completed"
-        completed_dir.mkdir()
+        """Empty issues_dir returns an empty list."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
 
-        issues = scan_completed_issues(completed_dir)
+        issues = scan_completed_issues(issues_dir)
 
         assert issues == []
 
     def test_scan_nonexistent_directory(self, tmp_path: Path) -> None:
         """Test scanning nonexistent directory."""
-        completed_dir = tmp_path / "nonexistent"
+        issues_dir = tmp_path / "nonexistent"
 
-        issues = scan_completed_issues(completed_dir)
+        issues = scan_completed_issues(issues_dir)
 
         assert issues == []
 
     def test_scan_multiple_issues(self, tmp_path: Path) -> None:
-        """Test scanning multiple issues."""
-        completed_dir = tmp_path / "completed"
-        completed_dir.mkdir()
+        """Files with status: done across type dirs are returned."""
+        issues_dir = tmp_path / ".issues"
+        for cat in ("bugs", "features", "enhancements"):
+            (issues_dir / cat).mkdir(parents=True)
 
-        (completed_dir / "P0-BUG-001-critical.md").write_text("# BUG-001\n")
-        (completed_dir / "P1-ENH-002-improve.md").write_text("# ENH-002\n")
-        (completed_dir / "P2-FEAT-003-feature.md").write_text("# FEAT-003\n")
+        (issues_dir / "bugs" / "P0-BUG-001-critical.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-001\n"
+        )
+        (issues_dir / "enhancements" / "P1-ENH-002-improve.md").write_text(
+            "---\nstatus: done\n---\n\n# ENH-002\n"
+        )
+        (issues_dir / "features" / "P2-FEAT-003-feature.md").write_text(
+            "---\nstatus: done\n---\n\n# FEAT-003\n"
+        )
 
-        issues = scan_completed_issues(completed_dir)
+        issues = scan_completed_issues(issues_dir)
 
         assert len(issues) == 3
         ids = {i.issue_id for i in issues}
         assert ids == {"BUG-001", "ENH-002", "FEAT-003"}
 
+    def test_scan_skips_active_issues(self, tmp_path: Path) -> None:
+        """Issues without status: done are skipped."""
+        issues_dir = tmp_path / ".issues"
+        bugs_dir = issues_dir / "bugs"
+        bugs_dir.mkdir(parents=True)
+
+        (bugs_dir / "P1-BUG-001-done.md").write_text("---\nstatus: done\n---\n\n# BUG-001\n")
+        (bugs_dir / "P1-BUG-002-open.md").write_text("---\nstatus: open\n---\n\n# BUG-002\n")
+        (bugs_dir / "P1-BUG-003-deferred.md").write_text(
+            "---\nstatus: deferred\n---\n\n# BUG-003\n"
+        )
+        (bugs_dir / "P1-BUG-004-no-fm.md").write_text("# BUG-004 — no frontmatter\n")
+
+        issues = scan_completed_issues(issues_dir)
+
+        ids = {i.issue_id for i in issues}
+        assert ids == {"BUG-001"}
+
+    def test_scan_legacy_completed_dir(self, tmp_path: Path) -> None:
+        """Pre-ENH-1418 files in a legacy completed/ sibling dir are still surfaced."""
+        issues_dir = tmp_path / ".issues"
+        legacy = issues_dir / "completed"
+        legacy.mkdir(parents=True)
+
+        (legacy / "P1-BUG-099-legacy.md").write_text("# BUG-099\n")
+
+        issues = scan_completed_issues(issues_dir)
+
+        assert len(issues) == 1
+        assert issues[0].issue_id == "BUG-099"
+
+    def test_scan_custom_category_dirs(self, tmp_path: Path) -> None:
+        """category_dirs override is honored; default categories are not scanned."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "bugs").mkdir(parents=True)
+        (issues_dir / "tasks").mkdir(parents=True)
+
+        (issues_dir / "bugs" / "P1-BUG-001-skip.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-001\n"
+        )
+        (issues_dir / "tasks" / "P3-FEAT-099-pick.md").write_text(
+            "---\nstatus: done\n---\n\n# FEAT-099\n"
+        )
+
+        issues = scan_completed_issues(issues_dir, category_dirs=["tasks"])
+
+        assert len(issues) == 1
+        assert issues[0].issue_id == "FEAT-099"
+
     def test_scan_ignores_non_md_files(self, tmp_path: Path) -> None:
         """Test scanning ignores non-markdown files."""
-        completed_dir = tmp_path / "completed"
-        completed_dir.mkdir()
+        issues_dir = tmp_path / ".issues"
+        bugs_dir = issues_dir / "bugs"
+        bugs_dir.mkdir(parents=True)
 
-        (completed_dir / "P1-BUG-001-test.md").write_text("# BUG-001\n")
-        (completed_dir / "readme.txt").write_text("Not an issue\n")
-        (completed_dir / ".gitkeep").write_text("")
+        (bugs_dir / "P1-BUG-001-test.md").write_text("---\nstatus: done\n---\n\n# BUG-001\n")
+        (bugs_dir / "readme.txt").write_text("Not an issue\n")
+        (bugs_dir / ".gitkeep").write_text("")
 
-        issues = scan_completed_issues(completed_dir)
+        issues = scan_completed_issues(issues_dir)
 
         assert len(issues) == 1
         assert issues[0].issue_id == "BUG-001"

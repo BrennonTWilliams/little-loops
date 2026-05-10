@@ -38,36 +38,58 @@ def _get_all_issue_files(
 ) -> list[tuple[Path, bool]]:
     """Get all issue files with their completion status.
 
+    Status is read from each file's YAML ``status:`` frontmatter (ENH-1418).
+    Files live in their type directories (``bugs/``, ``features/`` etc.)
+    regardless of completion state. ``is_completed`` in the returned tuples
+    is ``True`` for done/cancelled/deferred issues (i.e. non-active).
+
+    For backwards compatibility, files in legacy ``completed/`` and
+    ``deferred/`` sibling directories are also surfaced when their
+    respective ``include_*`` flag is set.
+
     Args:
         config: Project configuration
-        include_completed: Whether to include completed issues
+        include_completed: Whether to include completed/cancelled issues
         include_deferred: Whether to include deferred issues
 
     Returns:
-        List of (path, is_completed) tuples.
-        For deferred issues, is_completed is set to True (non-active).
+        List of ``(path, is_completed)`` tuples.
     """
+    from little_loops.frontmatter import parse_frontmatter
+
     files: list[tuple[Path, bool]] = []
 
-    # Active issues
     for category in config.issue_categories:
         issue_dir = config.get_issue_dir(category)
-        if issue_dir.exists():
-            for f in issue_dir.glob("*.md"):
+        if not issue_dir.exists():
+            continue
+        for f in issue_dir.glob("*.md"):
+            try:
+                fm = parse_frontmatter(f.read_text(encoding="utf-8"))
+            except Exception:
+                files.append((f, False))
+                continue
+            status = fm.get("status", "open")
+            if status in ("done", "cancelled"):
+                if include_completed:
+                    files.append((f, True))
+            elif status == "deferred":
+                if include_deferred:
+                    files.append((f, True))
+            else:
                 files.append((f, False))
 
-    # Completed issues
+    # Legacy completed/ and deferred/ sibling dirs (pre-ENH-1418)
     if include_completed:
-        completed_dir = config.get_completed_dir()
-        if completed_dir.exists():
-            for f in completed_dir.glob("*.md"):
+        legacy_completed = config.get_completed_dir()
+        if legacy_completed.exists():
+            for f in legacy_completed.glob("*.md"):
                 files.append((f, True))
 
-    # Deferred issues
     if include_deferred:
-        deferred_dir = config.get_deferred_dir()
-        if deferred_dir.exists():
-            for f in deferred_dir.glob("*.md"):
+        legacy_deferred = config.get_deferred_dir()
+        if legacy_deferred.exists():
+            for f in legacy_deferred.glob("*.md"):
                 files.append((f, True))
 
     return files
@@ -362,8 +384,11 @@ def reopen_issue(
 
     target_path = target_dir / completed_issue_path.name
 
-    # Safety check - don't overwrite existing active issue
-    if target_path.exists():
+    # Safety check - don't overwrite a *different* active issue at the
+    # target. If the completed_issue_path is already at target_path
+    # (post-ENH-1418: file lives in its type dir), this is the same file
+    # and we just rewrite frontmatter in place.
+    if target_path.exists() and target_path.resolve() != completed_issue_path.resolve():
         logger.warning(f"Active issue already exists: {target_path}")
         return None
 
@@ -376,10 +401,10 @@ def reopen_issue(
         logger.info(f"Reopening {completed_issue_path.name} -> {category}/")
 
     try:
-        # Read and update content
+        from little_loops.frontmatter import update_frontmatter
+
         content = completed_issue_path.read_text(encoding="utf-8")
 
-        # Add reopened section with classification info
         reopen_section = _build_reopen_section(
             reopen_reason,
             new_context,
@@ -388,22 +413,25 @@ def reopen_issue(
             regression_evidence,
         )
         content += reopen_section
+        content = update_frontmatter(content, {"status": "open"})
 
-        # Try git mv first for history preservation
-        result = subprocess.run(
-            ["git", "mv", str(completed_issue_path), str(target_path)],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            # Fall back to manual copy
-            logger.warning(f"git mv failed, using manual copy: {result.stderr}")
-            target_path.write_text(content, encoding="utf-8")
-            completed_issue_path.unlink()
+        same_file = completed_issue_path.resolve() == target_path.resolve()
+        if same_file:
+            # Post-ENH-1418: file already in its type dir; just rewrite content.
+            completed_issue_path.write_text(content, encoding="utf-8")
         else:
-            # Write updated content
-            target_path.write_text(content, encoding="utf-8")
+            # Legacy path: file lives in completed/ — move it back to the type dir.
+            result = subprocess.run(
+                ["git", "mv", str(completed_issue_path), str(target_path)],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                logger.warning(f"git mv failed, using manual copy: {result.stderr}")
+                target_path.write_text(content, encoding="utf-8")
+                completed_issue_path.unlink()
+            else:
+                target_path.write_text(content, encoding="utf-8")
 
         logger.success(f"Reopened: {target_path.name}")
         return target_path

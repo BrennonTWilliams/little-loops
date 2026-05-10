@@ -2,7 +2,8 @@
 id: ENH-1418
 type: ENH
 priority: P2
-status: open
+status: done
+completed_at: 2026-05-10T20:30:19Z
 parent_issue: ENH-1390
 decision_needed: false
 confidence_score: 100
@@ -256,7 +257,30 @@ _Updated by `/ll:confidence-check` on 2026-05-10 — Pass 3 (ENH-1423 landed; Cr
 - `verify_issue_completed()` serialization constraint: must be rewritten atomically with `close_issue()` (wiring step 8); if decoupled, `issue_manager.py:_process_single_issue()` will always trigger the fallback double-completion path.
 - 2 out-of-scope callers remain (`dependency_mapper/operations.py`, `cli/deps.py`) — ENH-1421 scope; will scan `completed/` silently for nothing after ENH-1418 lands. Coordinate landing order with ENH-1421.
 
+## Resolution
+
+Completed 2026-05-10. Issue status decoupled from directory location across discovery, lifecycle, history parsing, and the parallel orchestrator. Issue files now stay in their type directories; status transitions are encoded as `status: <open|done|deferred>` in YAML frontmatter.
+
+**Source changes**:
+- `issue_discovery/search.py` — `_get_all_issue_files` scans type dirs and reads frontmatter; `find_issues()` filter switched from filename-pattern exclusion to status-frontmatter filter; `reopen_issue()` writes `status: open` in place (legacy git-mv fallback retained for back-compat).
+- `issue_lifecycle.py` — `close_issue`, `complete_issue_lifecycle`, `defer_issue`, `undefer_issue` write `status:` via `update_frontmatter`; `_move_issue_to_completed` and `_cleanup_stale_source` deleted; `verify_issue_completed` reads `status: done` from frontmatter atomically with `close_issue`.
+- `issue_parser.py` — `get_next_issue_number` scans only type dirs (legacy `completed/`/`deferred/` ignored for ID allocation); duplicate-skip checks switched from per-file stat to two glob calls.
+- `parallel/orchestrator.py` — `_complete_issue_lifecycle_if_needed` writes `status: done` in place; no git mv.
+- `parallel/merge_coordinator.py` — `_is_lifecycle_file_move` and `_commit_pending_lifecycle_moves` removed; stash filter cleaned up.
+- `issue_history/parsing.py` — `scan_completed_issues(issues_dir, category_dirs=None)` scans type dirs filtered by `status: done`; legacy `completed/` still surfaced; `_batch_completion_dates` stubbed to `{}`; `_parse_completion_date` drops `--diff-filter=A`.
+- `issue_manager.py:783`, `cli/history.py` — hardcoded `".issues/completed"` references removed.
+- `hooks/scripts/issue-completion-log.sh` — rewritten as PostToolUse Write detector: filters by issue filename pattern, inspects `tool_input.content` for `status: done` in frontmatter, calls `append_session_log_entry` with `hook:posttooluse-status-done` reason. Matcher in `hooks/hooks.json` switched from `Bash` to `Write`.
+
+**Test changes**: 16 test files updated to write `status:` frontmatter in place of physical file moves; classes asserting old move/git-mv behavior were deleted or rewritten. Final tally: 6009 pass, 5 skipped. The 2 pre-existing `test_update_skill::TestMarketplaceVersionSync` failures are unrelated to ENH-1418 (version-sync drift).
+
+**Verification**:
+- `python -m pytest scripts/tests/ -q --no-cov` → 6009 pass, 5 skipped, 2 pre-existing unrelated failures.
+- `ruff check` on modified Python files → all checks passed.
+
+**Backwards compatibility**: legacy `completed/` and `deferred/` directory paths are still recognized on read paths (`scan_completed_issues`, `reopen_issue`) so projects mid-migration remain queryable. ENH-1420 will backfill old files with `completed_at` and `status:` frontmatter; ENH-1421 will retire the 2 remaining out-of-scope `get_completed_dir`/`get_deferred_dir` callers in `dependency_mapper/operations.py` and `cli/deps.py`.
+
 ## Session Log
+- `/ll:manage-issue enhancement implement ENH-1418` - 2026-05-10T20:30:19Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/06a08234-7cc0-4921-8333-cac311b14aae.jsonl`
 - `/ll:ready-issue` - 2026-05-10T19:39:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/352776de-104b-4d04-8f03-9bcc30f6ad6a.jsonl`
 - `/ll:ready-issue` - 2026-05-10T19:39:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:confidence-check` - 2026-05-10T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f40524ce-2922-413f-a399-279fedc232ed.jsonl`
@@ -272,4 +296,4 @@ _Updated by `/ll:confidence-check` on 2026-05-10 — Pass 3 (ENH-1423 landed; Cr
 
 ---
 
-**Open** | Created: 2026-05-10 | Priority: P2
+**Done** | Created: 2026-05-10 | Completed: 2026-05-10 | Priority: P2

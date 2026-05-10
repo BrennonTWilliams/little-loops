@@ -124,19 +124,19 @@ def config_file(temp_project_dir: Path, sample_config: dict[str, Any]) -> Path:
 
 @pytest.fixture
 def issues_dir(temp_project_dir: Path) -> Path:
-    """Create issue directories with sample issues."""
+    """Create issue type directories with sample issues.
+
+    Post-ENH-1418: status lives in frontmatter, not in directory location, so
+    no ``completed/`` or ``deferred/`` sibling dirs are created here.
+    """
     issues_base = temp_project_dir / ".issues"
     bugs_dir = issues_base / "bugs"
     features_dir = issues_base / "features"
     epics_dir = issues_base / "epics"
-    completed_dir = issues_base / "completed"
-    deferred_dir = issues_base / "deferred"
 
     bugs_dir.mkdir(parents=True)
     features_dir.mkdir(parents=True)
     epics_dir.mkdir(parents=True)
-    completed_dir.mkdir(parents=True)
-    deferred_dir.mkdir(parents=True)
 
     # Create sample bug issues
     (bugs_dir / "P0-BUG-001-critical-crash.md").write_text(

@@ -10,6 +10,7 @@ from little_loops import RouteContext, RouteDecision
 from little_loops.events import EventBus
 from little_loops.extension import ExtensionLoader, wire_extensions
 from little_loops.extensions.reference_interceptor import ReferenceInterceptorExtension
+from little_loops.frontmatter import parse_frontmatter
 from little_loops.issue_parser import IssueInfo
 
 # ---------------------------------------------------------------------------
@@ -155,7 +156,6 @@ class TestInterceptorVeto:
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir(parents=True, exist_ok=True)
         (ll_dir / "ll-config.json").write_text(json.dumps(config_data))
-        (tmp_path / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
 
         config = BRConfig(tmp_path)
         logger = MagicMock(spec=Logger)
@@ -163,11 +163,9 @@ class TestInterceptorVeto:
 
         ext = ReferenceInterceptorExtension()
 
-        # Patch git operations to avoid real git calls
-        with (
-            upatch("little_loops.issue_lifecycle._move_issue_to_completed"),
-            upatch("little_loops.issue_lifecycle._commit_issue_completion"),
-        ):
+        # Patch the commit step to avoid real git calls; status write happens
+        # in-place via frontmatter, so no file-move helper to patch.
+        with upatch("little_loops.issue_lifecycle._commit_issue_completion"):
             result = close_issue(
                 info=info,
                 config=config,
@@ -178,6 +176,7 @@ class TestInterceptorVeto:
             )
 
         assert result is True
+        assert parse_frontmatter(info.path.read_text()).get("status") == "done"
 
 
 # ---------------------------------------------------------------------------

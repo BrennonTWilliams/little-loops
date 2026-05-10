@@ -777,13 +777,22 @@ def process_issue_inplace(
 
     # Handle implementation failure
     if result.returncode != 0:
-        # Guard: if the issue was already moved to completed/ by the subprocess
-        # (e.g., a guillotine fresh session that finished and then triggered a
-        # spurious Option E --continue failure), treat as success so Phase 3 runs.
-        _completed_dir = (config.repo_path or Path.cwd()) / ".issues" / "completed"
-        if any(_completed_dir.glob(f"*{info.issue_id}*.md")):
+        # Guard: if the issue's frontmatter already shows status: done by the
+        # subprocess (e.g., a guillotine fresh session that finished and then
+        # triggered a spurious Option E --continue failure), treat as success
+        # so Phase 3 runs.
+        already_done = False
+        if info.path.exists():
+            try:
+                from little_loops.frontmatter import parse_frontmatter
+
+                _fm = parse_frontmatter(info.path.read_text(encoding="utf-8"))
+                already_done = _fm.get("status") in ("done", "cancelled")
+            except Exception:
+                already_done = False
+        if already_done:
             logger.warning(
-                f"Phase 2 exited non-zero but {info.issue_id} is already in completed/; "
+                f"Phase 2 exited non-zero but {info.issue_id} status is done/cancelled; "
                 "treating as success (continuation artefact)"
             )
             result = subprocess.CompletedProcess(

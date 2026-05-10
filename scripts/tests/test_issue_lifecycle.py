@@ -12,9 +12,7 @@ Provides comprehensive test coverage for issue lifecycle management including:
 from __future__ import annotations
 
 import json
-import re
 import subprocess
-import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -23,13 +21,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.config import BRConfig
+from little_loops.frontmatter import parse_frontmatter
 from little_loops.issue_lifecycle import (
     FailureType,
     _build_closure_resolution,
     _build_completion_resolution,
-    _cleanup_stale_source,
     _commit_issue_completion,
-    _move_issue_to_completed,
     _prepare_issue_content,
     classify_failure,
     close_issue,
@@ -58,7 +55,7 @@ def sample_issue_info(tmp_path: Path) -> IssueInfo:
     """Create a sample IssueInfo for testing."""
     issue_path = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
     issue_path.parent.mkdir(parents=True, exist_ok=True)
-    issue_path.write_text("# BUG-001: Test Bug\n\n## Summary\nTest content.")
+    issue_path.write_text("---\nstatus: open\n---\n\n# BUG-001: Test Bug\n\n## Summary\nTest content.")
     return IssueInfo(
         path=issue_path,
         issue_type="bugs",
@@ -66,14 +63,6 @@ def sample_issue_info(tmp_path: Path) -> IssueInfo:
         issue_id="BUG-001",
         title="Test Bug",
     )
-
-
-@pytest.fixture(autouse=True)
-def suppress_deprecation_warnings():  # noqa: ANN201
-    """Suppress DeprecationWarning from get_completed_dir()/get_deferred_dir() call sites."""
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-        yield
 
 
 @pytest.fixture
@@ -93,8 +82,6 @@ def sample_config(tmp_path: Path) -> BRConfig:
                 "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
                 "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
             },
-            "completed_dir": "completed",
-            "deferred_dir": "deferred",
             "priorities": ["P0", "P1", "P2", "P3"],
         },
     }
@@ -103,13 +90,11 @@ def sample_config(tmp_path: Path) -> BRConfig:
     config_path = ll_dir / "ll-config.json"
     config_path.write_text(json.dumps(config_data, indent=2))
 
-    # Create issue directories
+    # Create issue type directories (status now lives in frontmatter, not directories)
     issues_dir = tmp_path / ".issues"
     (issues_dir / "bugs").mkdir(parents=True, exist_ok=True)
     (issues_dir / "features").mkdir(parents=True, exist_ok=True)
     (issues_dir / "enhancements").mkdir(parents=True, exist_ok=True)
-    (issues_dir / "completed").mkdir(parents=True, exist_ok=True)
-    (issues_dir / "deferred").mkdir(parents=True, exist_ok=True)
 
     return BRConfig(tmp_path)
 
@@ -243,238 +228,6 @@ class TestPrepareIssueContent:
 # =============================================================================
 
 
-class TestCleanupStaleSource:
-    """Tests for _cleanup_stale_source function."""
-
-    def test_removes_file_and_commits(self, tmp_path: Path, mock_logger: MagicMock) -> None:
-        """Test that file is removed and git commands are called."""
-        # Create a file to remove
-        issue_file = tmp_path / "stale-issue.md"
-        issue_file.write_text("Stale content")
-
-        captured_commands: list[list[str]] = []
-
-        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            captured_commands.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        with patch("subprocess.run", side_effect=mock_run):
-            _cleanup_stale_source(issue_file, "BUG-001", mock_logger)
-
-        # File should be removed
-        assert not issue_file.exists()
-
-        # Git add -A should be called
-        add_cmds = [c for c in captured_commands if c == ["git", "add", "-A"]]
-        assert len(add_cmds) == 1
-
-        # Git commit should be called with cleanup message
-        commit_cmds = [c for c in captured_commands if "commit" in c]
-        assert len(commit_cmds) == 1
-        assert "cleanup" in commit_cmds[0][3].lower()
-        assert "BUG-001" in commit_cmds[0][3]
-
-
-class TestMoveIssueToCompleted:
-    """Tests for _move_issue_to_completed function."""
-
-    def test_git_mv_success(self, tmp_path: Path, mock_logger: MagicMock) -> None:
-        """Test successful git mv path."""
-        original = tmp_path / "bugs" / "issue.md"
-        completed = tmp_path / "completed" / "issue.md"
-        original.parent.mkdir(parents=True, exist_ok=True)
-        completed.parent.mkdir(parents=True, exist_ok=True)
-        original.write_text("Original content")
-
-        content = "Updated content with resolution"
-
-        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "git" in cmd and "mv" in cmd:
-                # Simulate git mv by actually moving
-                original.rename(completed)
-                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            if "git" in cmd and "ls-files" in cmd:
-                # Simulate file being tracked
-                return subprocess.CompletedProcess(cmd, 0, stdout=str(original), stderr="")
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        with patch("subprocess.run", side_effect=mock_run):
-            result = _move_issue_to_completed(original, completed, content, mock_logger)
-
-        assert result is True
-        assert completed.exists()
-        assert completed.read_text() == content
-        mock_logger.success.assert_called()
-
-    def test_git_mv_fallback(self, tmp_path: Path, mock_logger: MagicMock) -> None:
-        """Test fallback to manual copy+delete when git mv fails."""
-        original = tmp_path / "bugs" / "issue.md"
-        completed = tmp_path / "completed" / "issue.md"
-        original.parent.mkdir(parents=True, exist_ok=True)
-        completed.parent.mkdir(parents=True, exist_ok=True)
-        original.write_text("Original content")
-
-        content = "Updated content with resolution"
-
-        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "git" in cmd and "mv" in cmd:
-                # Simulate git mv failure
-                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="fatal: error")
-            if "git" in cmd and "ls-files" in cmd:
-                # Simulate file being tracked (so we attempt git mv)
-                return subprocess.CompletedProcess(cmd, 0, stdout=str(original), stderr="")
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        with patch("subprocess.run", side_effect=mock_run):
-            result = _move_issue_to_completed(original, completed, content, mock_logger)
-
-        assert result is True
-        assert completed.exists()
-        assert completed.read_text() == content
-        assert not original.exists()
-        mock_logger.warning.assert_called()
-
-    def test_destination_already_exists(self, tmp_path: Path, mock_logger: MagicMock) -> None:
-        """Test handling when destination file already exists (BUG-009 fix)."""
-        original = tmp_path / "bugs" / "issue.md"
-        completed = tmp_path / "completed" / "issue.md"
-        original.parent.mkdir(parents=True, exist_ok=True)
-        completed.parent.mkdir(parents=True, exist_ok=True)
-
-        # Both files exist - simulating the race condition or worktree leak
-        original.write_text("Original content")
-        completed.write_text("Older content already at destination")
-
-        new_content = "Updated content with resolution"
-
-        # No subprocess call should be made since we detect existing destination
-        result = _move_issue_to_completed(original, completed, new_content, mock_logger)
-
-        assert result is True
-        assert completed.exists()
-        assert completed.read_text() == new_content  # Content updated
-        assert not original.exists()  # Source removed
-        mock_logger.info.assert_called()  # Logged the skip
-
-    def test_destination_exists_source_already_gone(
-        self, tmp_path: Path, mock_logger: MagicMock
-    ) -> None:
-        """Test handling when destination exists but source is already gone."""
-        original = tmp_path / "bugs" / "issue.md"
-        completed = tmp_path / "completed" / "issue.md"
-        original.parent.mkdir(parents=True, exist_ok=True)
-        completed.parent.mkdir(parents=True, exist_ok=True)
-
-        # Only destination exists - source already moved/deleted
-        completed.write_text("Content at destination")
-
-        new_content = "Updated content with resolution"
-
-        result = _move_issue_to_completed(original, completed, new_content, mock_logger)
-
-        assert result is True
-        assert completed.exists()
-        assert completed.read_text() == new_content  # Content updated
-        assert not original.exists()  # Source still doesn't exist
-        mock_logger.info.assert_called()
-
-    def test_untracked_source_skips_git_mv(self, tmp_path: Path, mock_logger: MagicMock) -> None:
-        """Test that untracked source files use manual copy without attempting git mv."""
-        original = tmp_path / "bugs" / "issue.md"
-        completed = tmp_path / "completed" / "issue.md"
-        original.parent.mkdir(parents=True, exist_ok=True)
-        completed.parent.mkdir(parents=True, exist_ok=True)
-        original.write_text("Original content")
-
-        content = "Updated content with resolution"
-
-        git_mv_attempted = False
-
-        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            nonlocal git_mv_attempted
-            if "git" in cmd and "mv" in cmd:
-                git_mv_attempted = True
-                # Simulate git mv failure for untracked file
-                return subprocess.CompletedProcess(
-                    cmd, 1, stdout="", stderr="fatal: not under version control"
-                )
-            if "git" in cmd and "ls-files" in cmd:
-                # Simulate file not being tracked
-                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        with patch("subprocess.run", side_effect=mock_run):
-            result = _move_issue_to_completed(original, completed, content, mock_logger)
-
-        assert result is True
-        assert completed.exists()
-        assert completed.read_text() == content
-        assert not original.exists()
-        # With the fix, git mv should NOT be attempted when source is not tracked
-        assert not git_mv_attempted
-        mock_logger.info.assert_called()
-
-    def test_tracked_source_uses_git_mv(self, tmp_path: Path, mock_logger: MagicMock) -> None:
-        """Test that tracked source files use git mv for history preservation."""
-        original = tmp_path / "bugs" / "issue.md"
-        completed = tmp_path / "completed" / "issue.md"
-        original.parent.mkdir(parents=True, exist_ok=True)
-        completed.parent.mkdir(parents=True, exist_ok=True)
-        original.write_text("Original content")
-
-        content = "Updated content with resolution"
-
-        git_mv_attempted = False
-
-        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            nonlocal git_mv_attempted
-            if "git" in cmd and "mv" in cmd:
-                git_mv_attempted = True
-                # Simulate successful git mv
-                original.rename(completed)
-                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            if "git" in cmd and "ls-files" in cmd:
-                # Simulate file being tracked
-                return subprocess.CompletedProcess(cmd, 0, stdout=str(original), stderr="")
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        with patch("subprocess.run", side_effect=mock_run):
-            result = _move_issue_to_completed(original, completed, content, mock_logger)
-
-        assert result is True
-        assert completed.exists()
-        assert completed.read_text() == content
-        # With the fix, git mv SHOULD be attempted when source is tracked
-        assert git_mv_attempted
-        mock_logger.success.assert_called()
-
-    def test_source_deleted_by_concurrent_worker(
-        self, tmp_path: Path, mock_logger: MagicMock
-    ) -> None:
-        """Test no FileNotFoundError when source is deleted by another worker (BUG-421)."""
-        original = tmp_path / "bugs" / "issue.md"
-        completed = tmp_path / "completed" / "issue.md"
-        original.parent.mkdir(parents=True, exist_ok=True)
-        completed.parent.mkdir(parents=True, exist_ok=True)
-
-        # Both files exist - simulating parallel completion
-        original.write_text("Original content")
-        completed.write_text("Already completed by another worker")
-
-        new_content = "Updated content with resolution"
-
-        # Delete original before the function runs to simulate race condition
-        original.unlink()
-
-        # Should NOT raise FileNotFoundError thanks to missing_ok=True
-        result = _move_issue_to_completed(original, completed, new_content, mock_logger)
-
-        assert result is True
-        assert completed.exists()
-        assert completed.read_text() == new_content
-        assert not original.exists()
-
-
 class TestCommitIssueCompletion:
     """Tests for _commit_issue_completion function."""
 
@@ -546,19 +299,18 @@ class TestCommitIssueCompletion:
 
 
 class TestVerifyIssueCompleted:
-    """Tests for verify_issue_completed function."""
+    """Tests for verify_issue_completed function (frontmatter-based, ENH-1418)."""
 
-    def test_properly_moved(
+    def test_status_done(
         self, tmp_path: Path, sample_config: BRConfig, mock_logger: MagicMock
     ) -> None:
-        """Test verification when issue properly moved to completed."""
-        # Create issue in completed, not in original location
-        completed_dir = tmp_path / ".issues" / "completed"
-        completed_file = completed_dir / "P1-BUG-001-test.md"
-        completed_file.write_text("Completed issue")
+        """status: done frontmatter on a file in its type dir verifies as completed."""
+        issue_path = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test.md"
+        issue_path.parent.mkdir(parents=True, exist_ok=True)
+        issue_path.write_text("---\nstatus: done\n---\n\n# BUG-001: Test")
 
         info = IssueInfo(
-            path=tmp_path / ".issues" / "bugs" / "P1-BUG-001-test.md",
+            path=issue_path,
             issue_type="bugs",
             priority="P1",
             issue_id="BUG-001",
@@ -570,18 +322,16 @@ class TestVerifyIssueCompleted:
         assert result is True
         mock_logger.success.assert_called()
 
-    def test_exists_in_both_locations(
+    def test_status_cancelled(
         self, tmp_path: Path, sample_config: BRConfig, mock_logger: MagicMock
     ) -> None:
-        """Test warning when issue exists in both locations."""
-        # Create in both locations
-        original = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test.md"
-        completed = tmp_path / ".issues" / "completed" / "P1-BUG-001-test.md"
-        original.write_text("Original")
-        completed.write_text("Completed")
+        """status: cancelled is also a valid completion state."""
+        issue_path = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test.md"
+        issue_path.parent.mkdir(parents=True, exist_ok=True)
+        issue_path.write_text("---\nstatus: cancelled\n---\n\n# BUG-001: Test")
 
         info = IssueInfo(
-            path=original,
+            path=issue_path,
             issue_type="bugs",
             priority="P1",
             issue_id="BUG-001",
@@ -590,15 +340,34 @@ class TestVerifyIssueCompleted:
 
         result = verify_issue_completed(info, sample_config, mock_logger)
 
-        # Returns False because original still exists
+        assert result is True
+        mock_logger.success.assert_called()
+
+    def test_status_open_returns_false(
+        self, tmp_path: Path, sample_config: BRConfig, mock_logger: MagicMock
+    ) -> None:
+        """status: open or missing means not yet completed."""
+        issue_path = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test.md"
+        issue_path.parent.mkdir(parents=True, exist_ok=True)
+        issue_path.write_text("---\nstatus: open\n---\n\n# BUG-001: Test")
+
+        info = IssueInfo(
+            path=issue_path,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-001",
+            title="Test",
+        )
+
+        result = verify_issue_completed(info, sample_config, mock_logger)
+
         assert result is False
         mock_logger.warning.assert_called()
 
-    def test_deleted_but_not_moved(
+    def test_source_missing_returns_true(
         self, tmp_path: Path, sample_config: BRConfig, mock_logger: MagicMock
     ) -> None:
-        """Test warning when issue deleted but not moved to completed."""
-        # Neither file exists
+        """If file has been removed entirely, treat as completed for back-compat."""
         info = IssueInfo(
             path=tmp_path / ".issues" / "bugs" / "P1-BUG-001-test.md",
             issue_type="bugs",
@@ -609,29 +378,7 @@ class TestVerifyIssueCompleted:
 
         result = verify_issue_completed(info, sample_config, mock_logger)
 
-        # Returns True (issue is gone) but with warning
         assert result is True
-        mock_logger.warning.assert_called()
-
-    def test_not_moved(
-        self, tmp_path: Path, sample_config: BRConfig, mock_logger: MagicMock
-    ) -> None:
-        """Test warning when issue still in original location."""
-        # Only original exists
-        original = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test.md"
-        original.write_text("Still here")
-
-        info = IssueInfo(
-            path=original,
-            issue_type="bugs",
-            priority="P1",
-            issue_id="BUG-001",
-            title="Test",
-        )
-
-        result = verify_issue_completed(info, sample_config, mock_logger)
-
-        assert result is False
         mock_logger.warning.assert_called()
 
 
@@ -876,7 +623,7 @@ More context after"""
 
 
 class TestCloseIssue:
-    """Tests for close_issue function."""
+    """Tests for close_issue function (frontmatter-based, ENH-1418)."""
 
     def test_full_close_flow(
         self,
@@ -885,24 +632,9 @@ class TestCloseIssue:
         sample_issue_info: IssueInfo,
         mock_logger: MagicMock,
     ) -> None:
-        """Test complete close flow with git operations."""
-        captured_commands: list[list[str]] = []
+        """close_issue writes status: done + completed_at to frontmatter at the original path."""
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            captured_commands.append(cmd)
-            if "mv" in cmd:
-                # Simulate git mv
-                src = Path(cmd[2])
-                dst = Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
-                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            if "ls-files" in cmd:
-                # Simulate file being tracked
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
-                )
             if "commit" in cmd:
                 return subprocess.CompletedProcess(cmd, 0, stdout="[main abc123] commit", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -919,54 +651,16 @@ class TestCloseIssue:
         assert result is True
         mock_logger.success.assert_called()
 
-        # Verify completed file exists
-        completed = sample_config.get_completed_dir() / sample_issue_info.path.name
-        assert completed.exists()
-
-        # Verify resolution section added
-        content = completed.read_text()
+        # File stays in its type dir; only frontmatter changes
+        assert sample_issue_info.path.exists()
+        content = sample_issue_info.path.read_text()
         assert "## Resolution" in content
         assert "Already Fixed" in content
-        # Verify completed_at frontmatter injection (FEAT-1170)
-        assert "completed_at:" in content
-        match = re.search(r"completed_at:\s*'?(\S+?)'?\s*$", content, re.MULTILINE)
-        assert match is not None
-        assert match.group(1).endswith("Z")
 
-    def test_close_when_already_completed(
-        self,
-        tmp_path: Path,
-        sample_config: BRConfig,
-        mock_logger: MagicMock,
-    ) -> None:
-        """Test closing when issue already in completed directory."""
-        # Create issue in completed
-        completed_dir = sample_config.get_completed_dir()
-        completed_file = completed_dir / "P1-BUG-001-test.md"
-        completed_file.write_text("Already completed")
-
-        # Create original also (stale state)
-        original = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test.md"
-        original.parent.mkdir(parents=True, exist_ok=True)
-        original.write_text("Original")
-
-        info = IssueInfo(
-            path=original,
-            issue_type="bugs",
-            priority="P1",
-            issue_id="BUG-001",
-            title="Test",
-        )
-
-        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        with patch("subprocess.run", side_effect=mock_run):
-            result = close_issue(info, sample_config, mock_logger, None, None)
-
-        assert result is True
-        # Original should be cleaned up
-        assert not original.exists()
+        fm = parse_frontmatter(content)
+        assert fm.get("status") == "done"
+        completed_at = fm.get("completed_at", "").strip("'\"")
+        assert completed_at.endswith("Z")
 
     def test_close_with_defaults(
         self,
@@ -978,22 +672,16 @@ class TestCloseIssue:
         """Test close with default reason and status."""
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                src = Path(cmd[2])
-                dst = Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
             result = close_issue(sample_issue_info, sample_config, mock_logger, None, None)
 
         assert result is True
-        completed = sample_config.get_completed_dir() / sample_issue_info.path.name
-        content = completed.read_text()
+        content = sample_issue_info.path.read_text()
         assert "Closed - Invalid" in content
         assert "unknown" in content
+        assert parse_frontmatter(content).get("status") == "done"
 
     def test_close_source_already_removed(
         self,
@@ -1022,9 +710,11 @@ class TestCloseIssue:
         sample_issue_info: IssueInfo,
         mock_logger: MagicMock,
     ) -> None:
-        """Interceptor returning False vetoes close; no files are moved."""
+        """Interceptor returning False vetoes close; frontmatter is not updated."""
         veto_interceptor = MagicMock()
         veto_interceptor.before_issue_close.return_value = False
+
+        original_content = sample_issue_info.path.read_text()
 
         result = close_issue(
             sample_issue_info,
@@ -1037,10 +727,9 @@ class TestCloseIssue:
 
         assert result is False
         veto_interceptor.before_issue_close.assert_called_once_with(sample_issue_info)
-        # Original file must not have been moved
-        assert sample_issue_info.path.exists()
-        completed = sample_config.get_completed_dir() / sample_issue_info.path.name
-        assert not completed.exists()
+        # File untouched (frontmatter still status: open)
+        assert sample_issue_info.path.read_text() == original_content
+        assert parse_frontmatter(sample_issue_info.path.read_text()).get("status") == "open"
 
     def test_interceptor_passthrough_allows_close(
         self,
@@ -1054,12 +743,6 @@ class TestCloseIssue:
         allow_interceptor.before_issue_close.return_value = None
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                src = Path(cmd[2])
-                dst = Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -1074,8 +757,7 @@ class TestCloseIssue:
 
         assert result is True
         allow_interceptor.before_issue_close.assert_called_once_with(sample_issue_info)
-        completed = sample_config.get_completed_dir() / sample_issue_info.path.name
-        assert completed.exists()
+        assert parse_frontmatter(sample_issue_info.path.read_text()).get("status") == "done"
 
     def test_multiple_interceptors_called_in_order(
         self,
@@ -1093,12 +775,6 @@ class TestCloseIssue:
         interceptor_b.before_issue_close.side_effect = lambda info: call_order.append("b") or None
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                src = Path(cmd[2])
-                dst = Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -1127,6 +803,8 @@ class TestCloseIssue:
         interceptor_b = MagicMock()
         interceptor_b.before_issue_close.return_value = None
 
+        original_content = sample_issue_info.path.read_text()
+
         result = close_issue(
             sample_issue_info,
             sample_config,
@@ -1139,8 +817,8 @@ class TestCloseIssue:
         assert result is False
         interceptor_a.before_issue_close.assert_called_once_with(sample_issue_info)
         interceptor_b.before_issue_close.assert_not_called()
-        # Original file must not have been moved
-        assert sample_issue_info.path.exists()
+        # File untouched
+        assert sample_issue_info.path.read_text() == original_content
 
 
 # =============================================================================
@@ -1149,7 +827,7 @@ class TestCloseIssue:
 
 
 class TestCompleteIssueLifecycle:
-    """Tests for complete_issue_lifecycle function."""
+    """Tests for complete_issue_lifecycle function (frontmatter-based, ENH-1418)."""
 
     def test_full_complete_flow(
         self,
@@ -1158,23 +836,9 @@ class TestCompleteIssueLifecycle:
         sample_issue_info: IssueInfo,
         mock_logger: MagicMock,
     ) -> None:
-        """Test complete lifecycle completion flow."""
-        captured_commands: list[list[str]] = []
+        """complete_issue_lifecycle writes status: done + completed_at to frontmatter at the original path."""
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            captured_commands.append(cmd)
-            if "mv" in cmd:
-                src = Path(cmd[2])
-                dst = Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
-                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            if "ls-files" in cmd:
-                # Simulate file being tracked
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
-                )
             if "commit" in cmd:
                 return subprocess.CompletedProcess(cmd, 0, stdout="[main def456] commit", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -1185,53 +849,16 @@ class TestCompleteIssueLifecycle:
         assert result is True
         mock_logger.success.assert_called()
 
-        # Verify completed file
-        completed = sample_config.get_completed_dir() / sample_issue_info.path.name
-        assert completed.exists()
-
-        # Verify resolution with action
-        content = completed.read_text()
+        # File stays at the original path
+        assert sample_issue_info.path.exists()
+        content = sample_issue_info.path.read_text()
         assert "## Resolution" in content
         assert "**Action**: fix" in content  # bugs category action
-        # Verify completed_at frontmatter injection (FEAT-1170)
-        assert "completed_at:" in content
-        match = re.search(r"completed_at:\s*'?(\S+?)'?\s*$", content, re.MULTILINE)
-        assert match is not None
-        assert match.group(1).endswith("Z")
 
-    def test_complete_when_already_in_completed(
-        self,
-        tmp_path: Path,
-        sample_config: BRConfig,
-        mock_logger: MagicMock,
-    ) -> None:
-        """Test completion when already in completed directory."""
-        # Create in completed
-        completed_dir = sample_config.get_completed_dir()
-        completed_file = completed_dir / "P1-BUG-001-test.md"
-        completed_file.write_text("Already done")
-
-        # Create stale original
-        original = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test.md"
-        original.parent.mkdir(parents=True, exist_ok=True)
-        original.write_text("Original")
-
-        info = IssueInfo(
-            path=original,
-            issue_type="bugs",
-            priority="P1",
-            issue_id="BUG-001",
-            title="Test",
-        )
-
-        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        with patch("subprocess.run", side_effect=mock_run):
-            result = complete_issue_lifecycle(info, sample_config, mock_logger)
-
-        assert result is True
-        assert not original.exists()
+        fm = parse_frontmatter(content)
+        assert fm.get("status") == "done"
+        completed_at = fm.get("completed_at", "").strip("'\"")
+        assert completed_at.endswith("Z")
 
     def test_complete_source_already_removed(
         self,
@@ -1260,19 +887,9 @@ class TestCompleteIssueLifecycle:
         sample_issue_info: IssueInfo,
         mock_logger: MagicMock,
     ) -> None:
-        """Test handling of completion failure."""
+        """Test handling of write failure."""
 
-        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                raise OSError("Disk full")
-            if "ls-files" in cmd:
-                # Simulate file being tracked so git mv is attempted
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
-                )
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        with patch("subprocess.run", side_effect=mock_run):
+        with patch.object(Path, "write_text", side_effect=OSError("Disk full")):
             result = complete_issue_lifecycle(sample_issue_info, sample_config, mock_logger)
 
         assert result is False
@@ -1285,9 +902,8 @@ class TestCompleteIssueLifecycle:
         mock_logger: MagicMock,
     ) -> None:
         """Test that correct action verb is used for different categories."""
-        # Create feature issue
         feature_path = tmp_path / ".issues" / "features" / "P1-FEAT-001-test.md"
-        feature_path.write_text("# FEAT-001: Test Feature")
+        feature_path.write_text("---\nstatus: open\n---\n\n# FEAT-001: Test Feature")
 
         info = IssueInfo(
             path=feature_path,
@@ -1298,46 +914,26 @@ class TestCompleteIssueLifecycle:
         )
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                src = Path(cmd[2])
-                dst = Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
-            if "ls-files" in cmd:
-                # Simulate file being tracked
-                return subprocess.CompletedProcess(cmd, 0, stdout=str(feature_path), stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
             result = complete_issue_lifecycle(info, sample_config, mock_logger)
 
         assert result is True
-        completed = sample_config.get_completed_dir() / feature_path.name
-        content = completed.read_text()
+        content = feature_path.read_text()
         assert "**Action**: implement" in content  # features category action
+        assert parse_frontmatter(content).get("status") == "done"
 
-    def test_appends_session_log_on_successful_move(
+    def test_appends_session_log_on_successful_completion(
         self,
         tmp_path: Path,
         sample_config: BRConfig,
         sample_issue_info: IssueInfo,
         mock_logger: MagicMock,
     ) -> None:
-        """append_session_log_entry is called after a successful move to completed."""
+        """append_session_log_entry is called after frontmatter is updated to status: done."""
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                src = Path(cmd[2])
-                dst = Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
-                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            if "ls-files" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
-                )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with (
@@ -1358,7 +954,7 @@ class TestCompleteIssueLifecycle:
 
 
 class TestDeferIssue:
-    """Tests for defer_issue function."""
+    """Tests for defer_issue function (frontmatter-based, ENH-1418)."""
 
     def test_defer_success(
         self,
@@ -1367,19 +963,9 @@ class TestDeferIssue:
         sample_issue_info: IssueInfo,
         mock_logger: MagicMock,
     ) -> None:
-        """Test successful deferral with git operations."""
+        """defer_issue writes status: deferred to frontmatter at the original path."""
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                src, dst = Path(cmd[2]), Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
-                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            if "ls-files" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
-                )
             if "commit" in cmd:
                 return subprocess.CompletedProcess(cmd, 0, stdout="[main abc123] commit", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -1394,27 +980,12 @@ class TestDeferIssue:
 
         assert result is True
         mock_logger.success.assert_called()
-        deferred = sample_config.get_deferred_dir() / sample_issue_info.path.name
-        assert deferred.exists()
-        content = deferred.read_text()
+        # File stays in its type dir
+        assert sample_issue_info.path.exists()
+        content = sample_issue_info.path.read_text()
         assert "## Deferred" in content
         assert "Waiting for dependency" in content
-
-    def test_defer_already_deferred(
-        self,
-        sample_config: BRConfig,
-        sample_issue_info: IssueInfo,
-        mock_logger: MagicMock,
-    ) -> None:
-        """Test deferring an already-deferred issue."""
-        deferred_dir = sample_config.get_deferred_dir()
-        deferred_path = deferred_dir / sample_issue_info.path.name
-        deferred_path.write_text("Already deferred content")
-
-        result = defer_issue(sample_issue_info, sample_config, mock_logger, reason="test")
-
-        assert result is True
-        mock_logger.info.assert_called()
+        assert parse_frontmatter(content).get("status") == "deferred"
 
     def test_defer_source_missing(
         self,
@@ -1444,49 +1015,36 @@ class TestDeferIssue:
         """Test deferral uses default reason when none provided."""
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                src, dst = Path(cmd[2]), Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
-                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            if "ls-files" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
-                )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
             result = defer_issue(sample_issue_info, sample_config, mock_logger, reason=None)
 
         assert result is True
-        deferred = sample_config.get_deferred_dir() / sample_issue_info.path.name
-        content = deferred.read_text()
+        content = sample_issue_info.path.read_text()
         assert "Intentionally set aside" in content
+        assert parse_frontmatter(content).get("status") == "deferred"
 
 
 class TestUndeferIssue:
-    """Tests for undefer_issue function."""
+    """Tests for undefer_issue function (frontmatter-based, ENH-1418)."""
 
     def test_undefer_success(
         self,
         sample_config: BRConfig,
         mock_logger: MagicMock,
     ) -> None:
-        """Test successful undeferral back to active category."""
-        deferred_dir = sample_config.get_deferred_dir()
-        deferred_path = deferred_dir / "P1-BUG-001-test-bug.md"
-        deferred_path.write_text("# BUG-001: Test Bug\n\n## Summary\nTest.")
+        """undefer_issue writes status: open to frontmatter at the existing path."""
+        bugs_dir = sample_config.get_issue_dir("bugs")
+        deferred_path = bugs_dir / "P1-BUG-001-test-bug.md"
+        deferred_path.write_text(
+            "---\nstatus: deferred\n---\n\n# BUG-001: Test Bug\n\n## Summary\nTest."
+        )
 
         call_log: list[list[str]] = []
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
             call_log.append(list(cmd))
-            if "mv" in cmd:
-                src, dst = Path(cmd[2]), Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -1495,10 +1053,13 @@ class TestUndeferIssue:
             )
 
         assert result is not None
+        # File stays in its type dir; same path returned
+        assert result == deferred_path
         assert result.parent.name == "bugs"
         content = result.read_text()
         assert "## Undeferred" in content
         assert "Ready to work on" in content
+        assert parse_frontmatter(content).get("status") == "open"
         mock_logger.success.assert_called()
 
         # Verify git commit was called with correct message
@@ -1507,31 +1068,6 @@ class TestUndeferIssue:
         commit_msg = commit_cmds[0][commit_cmds[0].index("-m") + 1]
         assert "undefer(bugs):" in commit_msg
         assert "BUG-001" in commit_msg
-
-    def test_undefer_feature_goes_to_features(
-        self,
-        sample_config: BRConfig,
-        mock_logger: MagicMock,
-    ) -> None:
-        """Test undeferring a feature issue returns to features/ dir."""
-        deferred_dir = sample_config.get_deferred_dir()
-        deferred_path = deferred_dir / "P2-FEAT-042-cool-feature.md"
-        deferred_path.write_text("# FEAT-042: Cool Feature\n")
-
-        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                src, dst = Path(cmd[2]), Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
-                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        with patch("subprocess.run", side_effect=mock_run):
-            result = undefer_issue(sample_config, deferred_path, mock_logger)
-
-        assert result is not None
-        assert result.parent.name == "features"
 
     def test_undefer_source_missing(
         self,
@@ -1543,68 +1079,21 @@ class TestUndeferIssue:
         assert result is None
         mock_logger.error.assert_called()
 
-    def test_undefer_target_exists(
-        self,
-        sample_config: BRConfig,
-        mock_logger: MagicMock,
-    ) -> None:
-        """Test undeferring when active issue already exists."""
-        # Create both deferred and active versions
-        deferred_dir = sample_config.get_deferred_dir()
-        deferred_path = deferred_dir / "P1-BUG-001-test-bug.md"
-        deferred_path.write_text("# BUG-001: Deferred version")
-
-        bugs_dir = sample_config.get_issue_dir("bugs")
-        active_path = bugs_dir / "P1-BUG-001-test-bug.md"
-        active_path.write_text("# BUG-001: Active version")
-
-        result = undefer_issue(sample_config, deferred_path, mock_logger, reason="test")
-
-        assert result is None
-        mock_logger.warning.assert_called()
-
-    def test_undefer_git_mv_fallback(
-        self,
-        sample_config: BRConfig,
-        mock_logger: MagicMock,
-    ) -> None:
-        """Test undeferral falls back to manual copy when git mv fails."""
-        deferred_dir = sample_config.get_deferred_dir()
-        deferred_path = deferred_dir / "P1-BUG-001-test-bug.md"
-        deferred_path.write_text("# BUG-001: Test Bug")
-
-        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="git mv failed")
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        with patch("subprocess.run", side_effect=mock_run):
-            result = undefer_issue(sample_config, deferred_path, mock_logger)
-
-        assert result is not None
-        assert result.exists()
-        assert not deferred_path.exists()
-        content = result.read_text()
-        assert "## Undeferred" in content
-
     def test_undefer_commits(
         self,
         sample_config: BRConfig,
         mock_logger: MagicMock,
     ) -> None:
         """Test that undefer_issue creates a git commit with the correct message."""
-        deferred_dir = sample_config.get_deferred_dir()
-        deferred_path = deferred_dir / "P2-BUG-007-old-bug.md"
-        deferred_path.write_text("# BUG-007: Old Bug\n\n## Summary\nDeferred before.")
+        bugs_dir = sample_config.get_issue_dir("bugs")
+        deferred_path = bugs_dir / "P2-BUG-007-old-bug.md"
+        deferred_path.write_text(
+            "---\nstatus: deferred\n---\n\n# BUG-007: Old Bug\n\n## Summary\nDeferred before."
+        )
 
         committed_messages: list[str] = []
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                src, dst = Path(cmd[2]), Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
             if "commit" in cmd:
                 idx = cmd.index("-m")
                 committed_messages.append(cmd[idx + 1])
@@ -1649,19 +1138,7 @@ class TestEventBusEmission:
         bus.register(lambda e: received.append(e))
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                src, dst = Path(cmd[2]), Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
-                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            if "ls-files" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
-                )
-            if "commit" in cmd:
-                return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
             result = close_issue(
@@ -1678,7 +1155,8 @@ class TestEventBusEmission:
         event = received[0]
         assert event["event"] == "issue.closed"
         assert event["issue_id"] == sample_issue_info.issue_id
-        assert "file_path" in event
+        # file_path is the type-dir path; file stays in place
+        assert event["file_path"] == str(sample_issue_info.path)
         assert event["close_reason"] == "already_fixed"
         assert "ts" in event
 
@@ -1697,19 +1175,7 @@ class TestEventBusEmission:
         bus.register(lambda e: received.append(e))
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                src, dst = Path(cmd[2]), Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
-                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            if "ls-files" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
-                )
-            if "commit" in cmd:
-                return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
             result = complete_issue_lifecycle(
@@ -1724,7 +1190,7 @@ class TestEventBusEmission:
         event = received[0]
         assert event["event"] == "issue.completed"
         assert event["issue_id"] == sample_issue_info.issue_id
-        assert "file_path" in event
+        assert event["file_path"] == str(sample_issue_info.path)
         assert "ts" in event
 
     def test_defer_issue_emits_event(
@@ -1734,7 +1200,7 @@ class TestEventBusEmission:
         sample_issue_info: IssueInfo,
         mock_logger: MagicMock,
     ) -> None:
-        """defer_issue() emits issue.deferred event."""
+        """defer_issue() emits issue.deferred event with type-dir file_path."""
         from little_loops.events import EventBus
 
         received: list[dict[str, Any]] = []
@@ -1742,19 +1208,7 @@ class TestEventBusEmission:
         bus.register(lambda e: received.append(e))
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            if "mv" in cmd:
-                src, dst = Path(cmd[2]), Path(cmd[3])
-                if src.exists():
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    src.rename(dst)
-                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-            if "ls-files" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
-                )
-            if "commit" in cmd:
-                return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
             result = defer_issue(
@@ -1770,7 +1224,8 @@ class TestEventBusEmission:
         event = received[0]
         assert event["event"] == "issue.deferred"
         assert event["issue_id"] == sample_issue_info.issue_id
-        assert "file_path" in event
+        # file_path points to the type-dir path (no longer moves to deferred/)
+        assert event["file_path"] == str(sample_issue_info.path)
         assert event["reason"] == "Waiting for dependency"
         assert "ts" in event
 

@@ -163,30 +163,11 @@ class MergeCoordinator:
         for line in status_result.stdout.splitlines():
             if not line or line.startswith("??"):
                 continue
-            # Skip lifecycle file moves (issue files moved to completed/)
-            # These are managed by orchestrator and cause stash pop conflicts
-            if self._is_lifecycle_file_move(line):
-                self.logger.debug(f"Skipping lifecycle file move from stash: {line}")
-                continue
             # Extract file path from porcelain format (XY filename or XY -> filename for renames)
             # Format: XY filename  or  XY old -> new (XY is exactly 2 chars + 1 space)
             file_path = line[3:].split(" -> ")[-1].strip()
             if file_path == state_file_str or file_path.endswith(state_file_name):
                 continue  # Skip state file - orchestrator manages it independently
-            # Skip files in completed/deferred directory - these are lifecycle-managed.
-            # Handle both .issues/completed/ (with dot) and issues/completed/ (without dot).
-            # Use startswith to anchor the match and avoid false positives on paths like
-            # "my-issues/completed/file.py" that contain the substring but are unrelated.
-            if (
-                file_path.startswith(".issues/completed/")
-                or file_path.startswith(".issues/deferred/")
-                or file_path.startswith("issues/completed/")
-                or file_path.startswith("issues/deferred/")
-            ):
-                self.logger.debug(
-                    f"Skipping completed/deferred directory file from stash: {file_path}"
-                )
-                continue
             # Skip Claude Code context state file - managed externally
             if file_path.endswith("ll-context-state.json"):
                 self.logger.debug(f"Skipping Claude context state file from stash: {file_path}")
@@ -359,106 +340,6 @@ class MergeCoordinator:
             return False
 
         self.logger.debug(f"Restored tracking for {state_file}")
-        return True
-
-    def _is_lifecycle_file_move(self, porcelain_line: str) -> bool:
-        """Check if a porcelain status line represents a lifecycle file move.
-
-        Lifecycle file moves are issue files being moved to completed/ directory.
-        These are managed by the orchestrator and should not be stashed, as they
-        will conflict with the merge when popping.
-
-        Args:
-            porcelain_line: A line from `git status --porcelain` output
-
-        Returns:
-            True if this is a lifecycle file move that should be excluded from stash
-        """
-        # Rename entries have format: R  old_path -> new_path
-        if not porcelain_line.startswith("R"):
-            return False
-
-        # Check if it's a move to completed/ directory
-        if " -> " not in porcelain_line:
-            return False
-
-        # Extract destination path (after " -> ")
-        parts = porcelain_line[3:].split(" -> ")
-        if len(parts) != 2:
-            return False
-
-        dest_path = parts[1].strip()
-
-        # Check if destination is in completed or deferred directory (with or without dot prefix).
-        # Use startswith to anchor the match to the path root, preventing false positives on
-        # paths like "my-issues/completed/file.py" that contain the substring but are unrelated.
-        return (
-            dest_path.startswith(".issues/completed/")
-            or dest_path.startswith(".issues/deferred/")
-            or dest_path.startswith("issues/completed/")
-            or dest_path.startswith("issues/deferred/")
-        )
-
-    def _commit_pending_lifecycle_moves(self) -> bool:
-        """Commit any uncommitted lifecycle file moves.
-
-        Lifecycle file moves (issue files moved to completed/) are excluded from
-        stashing to prevent stash pop conflicts. However, if they remain uncommitted
-        when a merge starts, they will block the merge. This method commits any such
-        pending moves before the merge proceeds.
-
-        Returns:
-            True if any lifecycle moves were committed or none existed,
-            False if commit failed
-        """
-        # Check for lifecycle file moves in git status
-        status_result = self._git_lock.run(
-            ["status", "--porcelain"],
-            cwd=self.repo_path,
-            timeout=30,
-        )
-
-        lifecycle_moves = []
-        for line in status_result.stdout.splitlines():
-            if self._is_lifecycle_file_move(line):
-                lifecycle_moves.append(line)
-
-        if not lifecycle_moves:
-            return True
-
-        self.logger.info(
-            f"Found {len(lifecycle_moves)} uncommitted lifecycle file move(s), committing..."
-        )
-
-        # Stage all changes (lifecycle moves should already be staged from git mv,
-        # but add -A ensures any associated content changes are included)
-        self._git_lock.run(
-            ["add", "-A"],
-            cwd=self.repo_path,
-            timeout=30,
-        )
-
-        # Commit the lifecycle moves
-        commit_result = self._git_lock.run(
-            [
-                "commit",
-                "-m",
-                "chore(issues): commit pending lifecycle file moves\n\n"
-                "Auto-committed before merge to prevent conflicts.",
-            ],
-            cwd=self.repo_path,
-            timeout=30,
-        )
-
-        if commit_result.returncode != 0:
-            if "nothing to commit" in commit_result.stdout.lower():
-                # This shouldn't happen since we detected moves, but handle gracefully
-                self.logger.debug("No changes to commit despite detecting lifecycle moves")
-                return True
-            self.logger.error(f"Failed to commit lifecycle moves: {commit_result.stderr}")
-            return False
-
-        self.logger.info("Committed pending lifecycle file moves")
         return True
 
     def _is_local_changes_error(self, error_output: str) -> bool:
@@ -735,20 +616,6 @@ class MergeCoordinator:
             # Mark state file as assume-unchanged to prevent pull --rebase conflicts
             # The orchestrator continuously updates the state file during processing
             self._mark_state_file_assume_unchanged()
-
-            # Commit any uncommitted lifecycle file moves before stash/merge
-            # These are excluded from stash to prevent pop conflicts, so they must
-            # be committed to avoid blocking the merge (BUG-018 fix)
-            if not self._commit_pending_lifecycle_moves():
-                self._consecutive_failures += 1
-                if self._consecutive_failures >= 3:
-                    self._paused = True
-                    self.logger.error(
-                        f"Circuit breaker tripped after {self._consecutive_failures} consecutive failures. "
-                        "Merge coordinator paused. Manual recovery required."
-                    )
-                self._handle_failure(request, "Failed to commit pending lifecycle moves")
-                return
 
             # Stash any local changes before merge operations
             had_local_changes = self._stash_local_changes()

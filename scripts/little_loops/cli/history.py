@@ -196,11 +196,10 @@ Examples:
     configure_output(config.cli)
     logger = Logger(use_color=use_color_enabled())
     issues_dir = args.directory or config.project_root / config.issues.base_dir
-    completed_dir = issues_dir / "completed"
 
     if args.command == "summary":
         # Existing summary logic
-        issues = scan_completed_issues(completed_dir)
+        issues = scan_completed_issues(issues_dir)
         summary = calculate_summary(issues)
 
         if args.json:
@@ -214,7 +213,7 @@ Examples:
         # New analyze logic (FEAT-110)
         from datetime import date as date_type
 
-        issues = scan_completed_issues(completed_dir)
+        issues = scan_completed_issues(issues_dir)
 
         since_date = date_type.fromisoformat(args.since) if args.since else None
         until_date = date_type.fromisoformat(args.until) if args.until else None
@@ -251,7 +250,7 @@ Examples:
 
         from little_loops.issue_history.analysis import _load_issue_contents
 
-        issues = scan_completed_issues(completed_dir)
+        issues = scan_completed_issues(issues_dir)
         contents = _load_issue_contents(issues)
 
         since_date = None
