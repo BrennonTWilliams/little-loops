@@ -6,6 +6,12 @@ status: open
 captured_at: '2026-05-10T00:49:33Z'
 discovered_date: '2026-05-10'
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-1412: Refine Change Surface rubric to credit enumerated mechanical fanouts
@@ -105,6 +111,15 @@ After this change, FEAT-1407-style issues score 25/25 on Change Surface (it has 
 6. Add a regression test to `scripts/tests/test_confidence_check_skill.py` if its style admits prose-rubric assertions (e.g. asserting both "Pattern A" and "Pattern B" headings + the verifiability-table rows are present in `skills/confidence-check/SKILL.md`); otherwise rely on the FEAT-1407 manual re-score as the verification artifact.
 7. Update related docs only if they reproduce the rubric inline: `docs/reference/API.md`, `docs/guides/ISSUE_MANAGEMENT_GUIDE.md`, `docs/reference/COMMANDS.md` (audit each for rubric prose; many only mention `/ll:confidence-check` by name and do not need updating).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. If the criterion heading is renamed (e.g., "Change Surface" → "Change Surface / Fanout Verifiability"), update `scripts/little_loops/cli/issues/refine_status.py` `print_legend()` at line 546 — hardcodes `"Outcome criterion D – Change Surface (0–25)"` and will diverge from the skill heading if left unchanged.
+9. If the criterion label changes, update `scripts/little_loops/issue_parser.py` — `IssueInfo.score_change_surface` field docstring at line 246 names `"Criterion D – Change Surface"`.
+10. Audit `docs/reference/ISSUE_TEMPLATE.md` Frontmatter Fields table row for `score_change_surface` — update description string if criterion name changes (currently: `"Outcome criterion D – Change Surface (0–25)"`).
+11. Add regression tests to `scripts/tests/test_confidence_check_skill.py` — add `TestCriterionDDualPattern` and `TestPhase48LargeFileSurfaceSuppression` using the `_phase_text()` heading-search pattern (see Tests section for full code). These classes mirror `TestDecisionNeededFlagWriteBack` and `TestMissingArtifactsFlagWriteBack` exactly.
+
 ## Acceptance Criteria
 
 - `skills/confidence-check/SKILL.md` Criterion D distinguishes Pattern A (code blast radius) from Pattern B (enumerated mechanical fanout) with separate scoring tables, structured to match the four-part criterion template (heading / What to check / Detection method / Scoring) and the type-fork precedent of Criterion 3.
@@ -122,6 +137,9 @@ No CLI/API changes. The `confidence-check` CLI flags (`--score-change-surface`, 
 
 ### Files to Modify
 - `skills/confidence-check/SKILL.md` — Criterion D rubric (lines 354-369); add new Phase 4.8 after the current Phase 4.7 (which ends at line 511); add 1-2 worked examples following the inline-table format at lines 650-657. Phase 4.5 itself (lines 419-466) is **not** modified — the suppression scaffolding is a new sibling phase, not an edit inside 4.5.
+- `scripts/little_loops/cli/issues/refine_status.py` — `print_legend()` at line 546 hardcodes `"Outcome criterion D – Change Surface (0–25)"`; update label to match new criterion heading if renamed [Agent 2 finding]
+- `scripts/little_loops/issue_parser.py` — `IssueInfo.score_change_surface` field docstring names "Change Surface"; update if criterion label changes [Agent 2 finding]
+- (Optional) `docs/reference/ISSUE_TEMPLATE.md` — field row names "Change Surface" and "Criterion D" in the Frontmatter Fields table; update description string if criterion name changes [Agent 2 finding]
 - (Optional) `docs/reference/API.md` if it cross-references the rubric (audit before editing — most references are by name only).
 - (Optional) `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` if it discusses confidence scoring approaches (audit before editing).
 - (Optional) `docs/reference/COMMANDS.md` if it reproduces the rubric inline (audit before editing).
@@ -132,6 +150,13 @@ The rubric is LLM-applied prose; "callers" are commands/skills/loops that invoke
 - **Commands**: `commands/refine-issue.md`, `commands/create-sprint.md`, `commands/help.md`.
 - **FSM loops**: `scripts/little_loops/loops/autodev.yaml`, `scripts/little_loops/loops/issue-refinement.yaml`, `scripts/little_loops/loops/refine-to-ready-issue.yaml`, `scripts/little_loops/loops/recursive-refine.yaml`.
 - **CLI plumbing (no change required)**: `scripts/little_loops/cli/issues/set_scores.py:46-47` (handles `score_change_surface` frontmatter write); `scripts/little_loops/cli/issues/__init__.py` (registers `--score-change-surface` flag).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issue_parser.py` — `IssueInfo` dataclass has `score_change_surface` field (lines 241-246); no code change required — rubric refinement is upstream of the field definition [Agent 1 finding]
+- `scripts/little_loops/cli/issues/check_readiness.py` — validates `outcome_confidence` against configured thresholds; no code change required [Agent 1 finding]
+- `scripts/little_loops/cli/issues/refine_status.py` — displays `score_change_surface` in `ll-issues refine-status` output; no code change required [Agent 1 finding]
+- `scripts/little_loops/cli/issues/show.py` — shows `score_change_surface` in `ll-issues show` JSON/table output; no code change required [Agent 1 finding]
+- `scripts/little_loops/config/features.py` — reads `outcome_confidence` for confidence-first sort strategy; no code change required [Agent 1 finding]
 
 ### Similar Patterns
 - **Dual-pattern / type-fork rubric template**: `skills/confidence-check/SKILL.md:219-263` (Criterion 3 — the only existing forked criterion in the file). Uses bold-labeled per-variant headings and one full scoring table per branch under a single criterion. Direct model for the new Pattern A / Pattern B Criterion D layout.
@@ -144,6 +169,67 @@ The rubric is LLM-applied prose; "callers" are commands/skills/loops that invoke
 - `scripts/tests/test_confidence_check_skill.py` — primary skill unit-test file; check whether its style supports prose-rubric assertions (e.g. presence of "Pattern A" and "Pattern B" headings) and add a small regression assertion if so.
 - `scripts/tests/test_set_scores_cli.py` — covers `--score-change-surface` CLI behavior; **no change needed** (rubric refinement is upstream of the CLI, score-write contract is unchanged).
 - **Live-verification artifact** (primary): re-run `/ll:confidence-check` on FEAT-1407 (Pattern B comparator) and on one Pattern A code-fanout issue (e.g. a recent BUG-13xx with many call sites) and capture before/after `outcome_confidence`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Tests to write** (new classes in `scripts/tests/test_confidence_check_skill.py`, following the `_phase_text()` heading-search pattern used by `TestDecisionNeededFlagWriteBack` and `TestMissingArtifactsFlagWriteBack`):
+
+```python
+class TestCriterionDDualPattern:
+    """Criterion D must distinguish Pattern A (code blast radius) from Pattern B (enumerated mechanical fanout)."""
+
+    def _criterion_d_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("#### Criterion D:")
+        next_heading = content.find("\n####", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_pattern_a_heading_present(self) -> None:
+        assert "Pattern A" in self._criterion_d_text()
+
+    def test_pattern_b_heading_present(self) -> None:
+        assert "Pattern B" in self._criterion_d_text()
+
+    def test_verifiability_table_row_present(self) -> None:
+        assert "verification grep" in self._criterion_d_text()
+
+    def test_original_count_table_retained_for_pattern_a(self) -> None:
+        assert "0-2 callers" in self._criterion_d_text()
+
+
+class TestPhase48LargeFileSurfaceSuppression:
+    """Phase 4.8 must exist and mirror the Phase 4.6/4.7 boilerplate."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("### Phase 4.8:")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_phase_4_8_heading_exists(self) -> None:
+        assert "Phase 4.8:" in SKILL_FILE.read_text()
+
+    def test_check_mode_guard_present(self) -> None:
+        assert "CHECK_MODE" in self._phase_text()
+
+    def test_no_ask_user_question(self) -> None:
+        assert "AskUserQuestion" not in self._phase_text()
+
+    def test_signal_phrases_documented(self) -> None:
+        text = self._phase_text()
+        assert "large file surface" in text or "Signal phrases" in text
+```
+
+**Tests unaffected** (no code changes needed — field name, type, and CLI contract are unchanged):
+- `scripts/tests/test_set_scores_cli.py` — test values are arbitrary, not scoring-table milestones
+- `scripts/tests/test_issue_parser.py` — roundtrip parse/display of `score_change_surface`; arbitrary fixture values
+- `scripts/tests/test_refine_status.py` — display behavior unchanged; uses arbitrary fixture values
+- `scripts/tests/test_issues_cli.py` — round-trip parsing/display tests; unaffected
+- `scripts/tests/test_builtin_loops.py` — FSM state topology tests; routing unchanged
+- `scripts/tests/test_issue_size_review_skill.py` — reads `outcome_confidence`; unaffected
+- `scripts/tests/test_action.py` — tests skill invocation mechanics; unaffected
 
 ### Documentation
 - (Optional) `docs/reference/API.md`, `docs/guides/ISSUE_MANAGEMENT_GUIDE.md`, `docs/reference/COMMANDS.md` — audit each before editing; most reference confidence-check by name without reproducing the rubric.
@@ -169,6 +255,8 @@ The rubric is LLM-applied prose; "callers" are commands/skills/loops that invoke
 - ENH-1413: sibling refinement — split Criterion A (Complexity) into Breadth × Depth to fix the file-count double-count between A and D. Composes with this issue but is independently mergeable.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2c7ce99-47aa-48a1-876b-c2f744b66423.jsonl`
+- `/ll:wire-issue` - 2026-05-10T04:08:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62659fe4-d489-47aa-b301-b9bdee7803ac.jsonl`
 - `/ll:refine-issue` - 2026-05-10T03:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d75ce7f-2881-4167-a665-bd1bbb4f69da.jsonl`
 - `/ll:format-issue` - 2026-05-10T02:01:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/983e540e-227c-4cd1-bd1c-d34619c7c558.jsonl`
 - `/ll:capture-issue` - 2026-05-10T00:49:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba13deab-d917-4b01-b05e-c45e8583e56f.jsonl`
