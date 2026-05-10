@@ -237,6 +237,7 @@ _Added by `/ll:confidence-check` on 2026-05-10_
 - **Hook update requires dual-trigger**: issue-completion-log.sh must support both `git mv → completed/` (Python CLI path, until ENH-1419 lands) and `status: done` frontmatter write (skill path). Implement dual-trigger; update test_hooks_integration.py accordingly.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-10T19:43:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:confidence-check` - 2026-05-10T20:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 - `/ll:wire-issue` - 2026-05-10T19:25:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed9a9795-a7b0-47a3-97cf-548f6a30ffc0.jsonl`
 - `/ll:refine-issue` - 2026-05-10T19:18:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d50dc5b-3010-4dbf-b8c8-0d07870901cd.jsonl`
@@ -246,3 +247,9 @@ _Added by `/ll:confidence-check` on 2026-05-10_
 ---
 
 **Open** | Created: 2026-05-10 | Priority: P2
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-10): This issue and ENH-1418 both replace git-log-based `completed/` detection with frontmatter-based status queries, but at different layers — ENH-1418 rewrites `_batch_completion_dates()` in `issue_history/parsing.py` (Python backend), while this issue updates `manage-release.md` (command layer). Before merging this issue, verify that the timestamp comparison logic in `manage-release.md` (full ISO `completed_at:` range comparison) is consistent with ENH-1418's `_batch_completion_dates()` fallback strategy. If they diverge, extract a shared utility or document the intentional difference. Related: ENH-1418.

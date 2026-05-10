@@ -113,6 +113,7 @@ A team evaluating ll wants to see what extensions are available. They run `ll ex
 **Open** | Created: 2026-04-02 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-10T19:40:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
@@ -121,3 +122,9 @@ A team evaluating ll wants to see what extensions are available. They run `ll ex
 - `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
 - `/ll:verify-issues` - 2026-04-03T02:58:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/233246d6-aba3-4c73-842f-437f09922574.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-10): This issue covers **Extensions only** — third-party PyPI packages following the `little-loops-ext-*` naming convention that declare `[tool.little-loops.extension]` manifests and are discoverable via `ll extensions search/list/check`. Host-integration adapters (Codex CLI via FEAT-957, Pi Coding Agent via FEAT-992) are **NOT extensions** in this sense: they have no PyPI presence, no extension manifest, and are NOT included in the `ll extensions` registry or discovery commands. Do not design the manifest schema or CLI commands to accommodate host adapters. These are orthogonal systems — use "Extensions" (PyPI ecosystem) vs "Host Adapters" or "Host Plugins" as the canonical naming split.

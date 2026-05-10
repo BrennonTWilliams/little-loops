@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-04-04
 discovered_by: capture-issue
+blocked_by: [FEAT-1112]
 ---
 
 # FEAT-948: Rules and Decisions Log for Issue Compliance
@@ -279,6 +280,7 @@ ll-issues decisions sync                        # write active required rules to
 - `scripts/little_loops/sprint.py:142-202` dataclass + YAML pattern confirmed ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-10T19:45:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`

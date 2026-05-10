@@ -107,6 +107,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 — Verified 2026-04-11
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-10T19:40:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-26T19:43:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
@@ -123,3 +124,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Note** (added by `/ll:audit-issue-conflicts`): Blocked by FEAT-957 (establishes the plugin-compatibility pattern + reusable config-resolution abstraction) and FEAT-918 (event streaming lifecycle that plugin hooks must target). Reuse the config-directory-resolution abstraction introduced by FEAT-957 rather than independently patching `config/core.py` and `lib/common.sh`.
 
 **Note** (added by `/ll:audit-issue-conflicts`, 2026-05-01): Once FEAT-957 publishes its event-mapping table (host event → ll hook intent) referencing the FEAT-1116 hook-intent contract, FEAT-992 MUST reuse that mapping rather than inventing a parallel Pi-event → ll-hook mapping. Before scaffolding `pi-plugin/`, verify FEAT-957's mapping table exists and confirm whether Pi's lifecycle event names cleanly project onto it. If they don't, update the shared mapping table jointly with FEAT-957 rather than diverging.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-10): This issue implements a **Host Adapter** (Pi Coding Agent integration), NOT an Extension in the FEAT-917 sense. Host adapters have no PyPI manifest and are NOT discoverable via `ll extensions` commands. Do not reference FEAT-917's extension registry from this issue's implementation. The canonical naming: "Extensions" = PyPI packages (`little-loops-ext-*`); "Host Adapters" = per-host wiring under `hooks/adapters/`.

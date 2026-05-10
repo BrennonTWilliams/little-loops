@@ -204,6 +204,7 @@ _No documents linked._
 — Verified 2026-04-11
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-10T19:40:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
@@ -232,3 +233,5 @@ _No documents linked._
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The `codex-plugin/` TypeScript directory structure (session.ts, tool.ts, compact.ts) described in the Proposed Solution and Integration Map is superseded by FEAT-1116's hook-intent abstraction model. When implementing, use the thin adapter stub approach under `hooks/adapters/codex/` (calling into `python -m little_loops.hooks.<intent>`) rather than scaffolding a full TS plugin directory. Do NOT create `codex-plugin/`.
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The implementation MUST NOT extend `hooks/scripts/lib/common.sh:ll_resolve_config()` directly. FEAT-1116 will port that function to Python (`scripts/little_loops/hooks/common.py`). Add `.codex/` to the ordered candidate list in the new Python `common.py` module introduced by FEAT-1116 instead. Add this constraint to the "Files to Modify" list and implementation steps.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-10): This issue implements a **Host Adapter** (Codex CLI integration), NOT an Extension in the FEAT-917 sense. Host adapters live under `hooks/adapters/codex/`, have no PyPI manifest, and are NOT discoverable via `ll extensions` commands. Do not reference FEAT-917's extension registry schema or `ll extensions` CLI from this issue's implementation. The canonical naming: "Extensions" = PyPI packages (`little-loops-ext-*`); "Host Adapters" = per-host wiring under `hooks/adapters/`.

@@ -102,6 +102,7 @@ Extend `scripts/little_loops/doc_counts.py` with a skill-size checker function a
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-10T19:45:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-09T21:28:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
@@ -125,3 +126,5 @@ Extend `scripts/little_loops/doc_counts.py` with a skill-size checker function a
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): After ENH-494 ships and extracts overflow content from `audit-claude-config`, `confidence-check`, `init`, and `manage-issue` SKILL.md files, re-verify that the 500-line threshold is still meaningful (i.e., the remaining SKILL.md files are not all trivially under 500 lines). Confirm the threshold before publishing `ll-verify-skills` — if ENH-494 brings all files well below 500 lines, the tool may need a lower threshold or per-file annotations to remain useful.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-10): Once ENH-1394 ships, skills tagged `disable-model-invocation: true` in their frontmatter are intentionally excluded from the Claude Code listing budget and may legitimately exceed 500 lines (since they are never loaded into the prompt token budget). The `ll-verify-skills` lint tool MUST skip (or report in a separate informational category, not as a violation) any SKILL.md that has `disable-model-invocation: true`. Implement this exclusion rule at the same time as or after ENH-1394 lands. Related: ENH-1394, ENH-1398.

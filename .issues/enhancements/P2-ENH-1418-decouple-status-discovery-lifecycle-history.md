@@ -257,6 +257,8 @@ _Updated by `/ll:confidence-check` on 2026-05-10 — Pass 3 (ENH-1423 landed; Cr
 - 2 out-of-scope callers remain (`dependency_mapper/operations.py`, `cli/deps.py`) — ENH-1421 scope; will scan `completed/` silently for nothing after ENH-1418 lands. Coordinate landing order with ENH-1421.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-10T19:39:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/352776de-104b-4d04-8f03-9bcc30f6ad6a.jsonl`
+- `/ll:ready-issue` - 2026-05-10T19:39:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:confidence-check` - 2026-05-10T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f40524ce-2922-413f-a399-279fedc232ed.jsonl`
 - `/ll:confidence-check` - 2026-05-10T19:20:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed9a9795-a7b0-47a3-97cf-548f6a30ffc0.jsonl`
 - `/ll:refine-issue` - 2026-05-10T19:16:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74aeeec5-fc5d-4f88-a949-3a7e09578427.jsonl`

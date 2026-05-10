@@ -24,11 +24,11 @@ Product-analyzer is a no-op on any project that hasn't manually created a `ll-go
 
 ## Proposed Solution
 
-### 1. `skills/product-analyzer/SKILL.md`
+**Ownership model**: Goals discovery belongs in `commands/scan-product.md` (the command), not in the skill. The skill must remain stateless with respect to goals sourcing — it trusts `GOALS_CONTENT` injected by the command and never reads the filesystem independently for goals. This keeps the skill composable and testable in isolation.
 
-**Change guardrail**: Remove the hard-stop on missing goals file. Instead, route to discovery.
+### 1. `commands/scan-product.md`
 
-**Add Section 2b — Goals Discovery** (runs when goals file is absent):
+**Step 1.2 — Discovery path** (replaces hard-exit when goals file is absent):
 
 ```
 1. Read config: goals_discovery.max_files (default 5), goals_discovery.required_files (default ["README.md"])
@@ -44,24 +44,24 @@ Product-analyzer is a no-op on any project that hasn't manually created a `ll-go
 5. Synthesize a temporary goals context:
    - Infer primary persona from README "for" / "who uses" language
    - Infer priorities from section headers, feature lists, roadmap items
-   - Mark with goals_source: discovered and discovered_from: [list of files]
-6. Proceed with analysis using synthesized context
+   - Set goals_source: discovered, discovered_from: [list of files]
+6. Inject synthesized context as GOALS_CONTENT into the skill invocation
 ```
 
-**Update output metadata**:
+**Remove** the duplicate hard-exit block at Step 1.2.
+
+### 2. `skills/product-analyzer/SKILL.md`
+
+**Change guardrail**: Remove the hard-stop on missing goals file. The skill now **always** expects `GOALS_CONTENT` to be injected by the caller (scan-product or any other command). It must not read or discover goals independently.
+
+**Update output metadata** (passed through from injected context):
 ```yaml
 analysis_metadata:
-  goals_source: [explicit|discovered]  # new field
+  goals_source: [explicit|discovered]  # set by the command, passed to skill
   discovered_from: ["README.md", ...]  # only when goals_source: discovered
 ```
 
-**Update `skipped_reason`**: Only stop if `product.enabled: false` (explicit opt-out). Remove `goals_file_missing` as a terminal condition.
-
-### 2. `commands/scan-product.md`
-
-- **Remove** the hard-exit block on missing goals file (Step 1.2)
-- Replace with: "If goals file missing, note that discovery mode will be used — the skill handles it"
-- Remove the redundant goals-file read in Step 2 when the skill will discover independently (or keep it for the summary display but don't fail on absence)
+**Update `skipped_reason`**: Only stop if `product.enabled: false` (explicit opt-out) or if `GOALS_CONTENT` is absent (caller error). Remove `goals_file_missing` as a terminal condition.
 
 ## Acceptance Criteria
 
@@ -80,8 +80,8 @@ analysis_metadata:
 ## Integration Map
 
 ### Files to Modify
-- `skills/product-analyzer/SKILL.md` — remove hard-stop, add Section 2b discovery logic, update output metadata schema
-- `commands/scan-product.md` — remove hard-exit block at Step 1.2, update Step 2 to not fail on absent goals file
+- `commands/scan-product.md` — replace hard-exit block at Step 1.2 with discovery logic; inject synthesized GOALS_CONTENT into skill invocation
+- `skills/product-analyzer/SKILL.md` — remove hard-stop on missing goals file; remove any independent goals-file read; trust injected GOALS_CONTENT; update output metadata schema
 
 ### Dependent Files (Callers/Importers)
 - `commands/scan-product.md` — top-level caller of `skills/product-analyzer`
@@ -121,6 +121,7 @@ analysis_metadata:
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-10T19:39:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-10T14:27:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-09T21:28:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:format-issue` - 2026-05-09T21:12:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe401f22-7fbb-48c3-8ae7-e1588507294c.jsonl`
