@@ -1023,15 +1023,15 @@ Close GitHub issues for completed local issues.
 
 | Flag | Description |
 |------|-------------|
-| `--all-completed` | Close all GitHub issues whose local counterparts are in `completed/` |
+| `--all-completed` | Close all GitHub issues whose local counterparts have `status: done` or `status: cancelled` |
 
 #### `ll-sync reopen [issue_ids...]`
 
-Reopen GitHub issues for locally-active issues. If the issue file is in `completed/`, it is moved back to its active category directory (`bugs/`, `features/`, or `enhancements/`).
+Reopen GitHub issues for locally-active issues. After a successful reopen, the issue's `status` frontmatter is updated to `open`; the file stays in its type directory (`bugs/`, `features/`, etc.).
 
 | Flag | Description |
 |------|-------------|
-| `--all-reopened` | Reopen all GitHub issues whose local counterparts have moved back to an active directory |
+| `--all-reopened` | Reopen all GitHub issues whose local counterparts are not closed on GitHub |
 
 **Examples:**
 ```bash

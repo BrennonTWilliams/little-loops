@@ -2,7 +2,8 @@
 id: ENH-1423
 type: ENH
 priority: P2
-status: open
+status: done
+completed_at: 2026-05-10T18:01:15Z
 parent_issue: ENH-1419
 decision_needed: false
 confidence_score: 98
@@ -135,7 +136,26 @@ _Wiring pass added by `/ll:wire-issue`:_
   - `reopen_issues()` calls `update_frontmatter(issue_path, {"status": "open"})` after a successful GitHub reopen (no `git mv` call)
   - `_find_local_issue()` finds a `status: done` issue in `bugs/` (type dir) without any `completed/` fallback pass
 
+## Resolution
+
+Implemented all 10 steps from the issue plan:
+
+- `sync.py` `_get_local_issues()`: replaced `get_completed_dir()` glob with status filter on type-dir scan (done/cancelled excluded when `sync_completed=False`)
+- `sync.py` `close_issues()`: replaced `get_completed_dir().glob()` with type-dir scan filtering `status in ("done", "cancelled")`
+- `sync.py` `reopen_issues()`: removed git mv block; calls `update_frontmatter(content, {"status": "open"})` after successful GitHub reopen
+- `sync.py` `_find_local_issue()`: removed second-pass completed-dir glob; added explicit type-dir fallback scan
+- `sync.py` imports: added `update_frontmatter` to frontmatter import
+- `cli/sync.py`: updated `--all-completed` help text
+- `test_sync.py`: migrated all completed-dir fixtures to type dirs with `status: done`; updated 8 affected tests; renamed 2 tests; added 3 new tests (TestGetLocalIssues)
+- `test_cli.py`: removed `"completed_dir": "completed"` from 5 config dicts; removed `completed/` from directory creation loops
+- `docs/reference/CLI.md`: updated `ll-sync close` and `ll-sync reopen` descriptions
+- `commands/sync-issues.md`: fixed status-action find template (removed `*/completed/*` exclusion)
+
+Zero `get_completed_dir()` or `get_deferred_dir()` calls remain in `sync.py`. All 252 tests pass.
+
 ## Session Log
+- `hook:posttooluse-git-mv` - 2026-05-10T18:01:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce241dac-979a-45b3-9fe3-99f7de889379.jsonl`
+- `/ll:ready-issue` - 2026-05-10T17:51:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f3593ae-6212-4462-8aa4-340ec46773e5.jsonl`
 - `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c94e8a9-aa8e-4703-b2bd-c9c8fded7b56.jsonl`
 - `/ll:wire-issue` - 2026-05-10T17:47:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4394f412-f674-4bd5-a857-951ceede64a5.jsonl`
 - `/ll:refine-issue` - 2026-05-10T17:41:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80589cd9-0071-4d69-8045-5fbc3b9a2e61.jsonl`

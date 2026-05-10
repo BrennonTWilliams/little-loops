@@ -290,7 +290,6 @@ class TestMainAutoIntegration:
                 "issues": {
                     "base_dir": ".issues",
                     "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
-                    "completed_dir": "completed",
                     "priorities": ["P0", "P1", "P2"],
                 },
                 "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
@@ -477,7 +476,6 @@ class TestMainParallelIntegration:
                 "issues": {
                     "base_dir": ".issues",
                     "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
-                    "completed_dir": "completed",
                     "priorities": ["P0", "P1", "P2"],
                 },
                 "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
@@ -1468,7 +1466,6 @@ class TestMainAutoAdditionalCoverage:
                 "issues": {
                     "base_dir": ".issues",
                     "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
-                    "completed_dir": "completed",
                     "priorities": ["P0", "P1", "P2"],
                 },
                 "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
@@ -1583,7 +1580,6 @@ class TestMainParallelAdditionalCoverage:
                 "issues": {
                     "base_dir": ".issues",
                     "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
-                    "completed_dir": "completed",
                     "priorities": ["P0", "P1", "P2"],
                 },
                 "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
@@ -2367,14 +2363,13 @@ class TestMainSprintAdditionalCoverage:
                             "action": "implement",
                         },
                     },
-                    "completed_dir": "completed",
                 },
             }
             (ll_dir / "ll-config.json").write_text(json.dumps(config))
 
             # Create issue directories
             issues_dir = project / ".issues"
-            for category in ["bugs", "features", "completed"]:
+            for category in ["bugs", "features"]:
                 (issues_dir / category).mkdir(parents=True)
 
             # Create sample issues

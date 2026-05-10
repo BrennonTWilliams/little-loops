@@ -82,7 +82,7 @@ Examples:
     close_parser.add_argument(
         "--all-completed",
         action="store_true",
-        help="Close all GitHub issues whose local counterparts are in completed/",
+        help="Close all GitHub issues whose local counterparts have status: done or status: cancelled",
     )
 
     # Reopen subcommand

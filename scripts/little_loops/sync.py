@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from little_loops.frontmatter import parse_frontmatter, strip_frontmatter
+from little_loops.frontmatter import parse_frontmatter, strip_frontmatter, update_frontmatter
 from little_loops.issue_parser import get_next_issue_number
 from little_loops.issue_template import assemble_issue_markdown, load_issue_sections
 
@@ -272,13 +272,10 @@ class GitHubSyncManager:
             category_dir = self.config.get_issue_dir(category)
             if category_dir.exists():
                 for issue_file in category_dir.glob("*.md"):
-                    issues.append(issue_file)
-
-        # Include completed if configured
-        if self.sync_config.github.sync_completed:
-            completed_dir = self.config.get_completed_dir()
-            if completed_dir.exists():
-                for issue_file in completed_dir.glob("*.md"):
+                    if not self.sync_config.github.sync_completed:
+                        fm = parse_frontmatter(issue_file.read_text(encoding="utf-8"))
+                        if fm.get("status", "open") in ("done", "cancelled"):
+                            continue
                     issues.append(issue_file)
 
         return issues
@@ -752,10 +749,12 @@ class GitHubSyncManager:
         for issue_path in self._get_local_issues():
             if self._extract_issue_id(issue_path.name) == issue_id:
                 return issue_path
-        # Also check completed directory
-        completed_dir = self.config.get_completed_dir()
-        if completed_dir.exists():
-            for issue_file in completed_dir.glob("*.md"):
+        # Search all type dirs (catches done/cancelled issues excluded when sync_completed=False)
+        for category in self.config.issue_categories:
+            category_dir = self.config.get_issue_dir(category)
+            if not category_dir.exists():
+                continue
+            for issue_file in category_dir.glob("*.md"):
                 if self._extract_issue_id(issue_file.name) == issue_id:
                     return issue_file
         return None
@@ -923,12 +922,16 @@ class GitHubSyncManager:
         files_to_close: list[tuple[Path, str]] = []  # (path, issue_id)
 
         if all_completed:
-            completed_dir = self.config.get_completed_dir()
-            if completed_dir.exists():
-                for issue_file in completed_dir.glob("*.md"):
-                    eid = self._extract_issue_id(issue_file.name)
-                    if eid:
-                        files_to_close.append((issue_file, eid))
+            for category in self.config.issue_categories:
+                category_dir = self.config.get_issue_dir(category)
+                if not category_dir.exists():
+                    continue
+                for issue_file in category_dir.glob("*.md"):
+                    fm = parse_frontmatter(issue_file.read_text(encoding="utf-8"))
+                    if fm.get("status", "open") in ("done", "cancelled"):
+                        eid = self._extract_issue_id(issue_file.name)
+                        if eid:
+                            files_to_close.append((issue_file, eid))
         elif issue_ids:
             for eid in issue_ids:
                 issue_path = self._find_local_issue(eid)
@@ -1069,31 +1072,12 @@ class GitHubSyncManager:
                 )
                 result.updated.append(f"{issue_id} → #{github_number} (reopened)")
                 self.logger.success(f"Reopened GitHub issue #{github_number} for {issue_id}")
+                new_content = update_frontmatter(content, {"status": "open"})
+                issue_path.write_text(new_content, encoding="utf-8")
             except subprocess.CalledProcessError as e:
                 result.failed.append((issue_id, f"gh issue reopen failed: {e.stderr}"))
                 self.logger.error(f"Failed to reopen GitHub issue #{github_number}: {e.stderr}")
                 continue
-
-            # Move local file from completed/ back to active directory if needed
-            completed_dir = self.config.get_completed_dir()
-            if issue_path.parent == completed_dir:
-                type_prefix = issue_id.split("-")[0]
-                category_map = {"BUG": "bugs", "FEAT": "features", "ENH": "enhancements", "EPIC": "epics"}
-                category = category_map.get(type_prefix)
-                if category:
-                    target_dir = self.config.get_issue_dir(category)
-                    target_path = target_dir / issue_path.name
-                    try:
-                        subprocess.run(
-                            ["git", "mv", str(issue_path), str(target_path)],
-                            check=True,
-                            capture_output=True,
-                        )
-                        self.logger.info(f"Moved {issue_path.name} back to {category}/")
-                    except subprocess.CalledProcessError:
-                        target_path.write_text(content, encoding="utf-8")
-                        issue_path.unlink()
-                        self.logger.info(f"Moved {issue_path.name} back to {category}/ (fallback)")
 
         if result.failed:
             result.success = False

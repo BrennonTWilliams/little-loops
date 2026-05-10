@@ -381,7 +381,6 @@ class TestGitHubSyncManager:
         (issues_dir / "bugs").mkdir(parents=True)
         (issues_dir / "features").mkdir(parents=True)
         (issues_dir / "enhancements").mkdir(parents=True)
-        (issues_dir / "completed").mkdir(parents=True)
 
         return BRConfig(tmp_path)
 
@@ -633,22 +632,22 @@ github_issue: 1
         assert "Failed to query GitHub" in status.github_error
         mock_logger.warning.assert_called()
 
-    def test_get_local_issues_excludes_completed(
+    def test_get_local_issues_excludes_done_status(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
-        """Completed issues are excluded unless configured."""
-        # Create active issue
+        """Issues with status: done are excluded when sync_completed=False."""
+        # Create active issue (no status = defaults to open)
         issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-active.md"
         issue_file.write_text("# BUG-001: Active")
 
-        # Create completed issue
-        completed_file = tmp_path / ".issues" / "completed" / "P1-BUG-002-done.md"
-        completed_file.write_text("# BUG-002: Done")
+        # Create done issue in type dir
+        done_file = tmp_path / ".issues" / "bugs" / "P1-BUG-002-done.md"
+        done_file.write_text("---\nstatus: done\n---\n\n# BUG-002: Done")
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         issues = manager._get_local_issues()
 
-        # Should only include active issue
+        # Should only include active issue; done issue excluded when sync_completed=False
         issue_names = [p.name for p in issues]
         assert "P1-BUG-001-active.md" in issue_names
         assert "P1-BUG-002-done.md" not in issue_names
@@ -678,9 +677,9 @@ github_issue: 1
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
         """Pulled issues do not collide with completed issue numbers."""
-        # BUG-042 exists in completed, active bugs only go up to 005
+        # BUG-042 exists as a done issue in the type dir, active bugs only go up to 005
         (tmp_path / ".issues" / "bugs" / "P2-BUG-005-active.md").write_text("# BUG-005")
-        (tmp_path / ".issues" / "completed" / "P1-BUG-042-done.md").write_text("# BUG-042")
+        (tmp_path / ".issues" / "bugs" / "P1-BUG-042-done.md").write_text("---\nstatus: done\n---\n\n# BUG-042")
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         result = SyncResult(action="pull", success=True)
@@ -845,7 +844,6 @@ class TestDryRun:
         (issues_dir / "bugs").mkdir(parents=True)
         (issues_dir / "features").mkdir(parents=True)
         (issues_dir / "enhancements").mkdir(parents=True)
-        (issues_dir / "completed").mkdir(parents=True)
 
         return BRConfig(tmp_path)
 
@@ -1063,7 +1061,6 @@ class TestDiffIssue:
         (issues_dir / "bugs").mkdir(parents=True)
         (issues_dir / "features").mkdir(parents=True)
         (issues_dir / "enhancements").mkdir(parents=True)
-        (issues_dir / "completed").mkdir(parents=True)
         return BRConfig(tmp_path)
 
     @pytest.fixture
@@ -1282,7 +1279,6 @@ class TestCloseIssue:
         (issues_dir / "bugs").mkdir(parents=True)
         (issues_dir / "features").mkdir(parents=True)
         (issues_dir / "enhancements").mkdir(parents=True)
-        (issues_dir / "completed").mkdir(parents=True)
         return BRConfig(tmp_path)
 
     @pytest.fixture
@@ -1293,8 +1289,8 @@ class TestCloseIssue:
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
         """close_issues closes a specific GitHub issue."""
-        issue_file = tmp_path / ".issues" / "completed" / "P1-BUG-001-test-bug.md"
-        issue_file.write_text("---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1318,13 +1314,14 @@ class TestCloseIssue:
     def test_close_all_completed(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
-        """close_issues with all_completed closes all completed issues."""
-        completed_dir = tmp_path / ".issues" / "completed"
-        (completed_dir / "P1-BUG-001-bug.md").write_text(
-            "---\ngithub_issue: 42\n---\n\n# BUG-001: Bug\n\nBody.\n"
+        """close_issues with all_completed closes issues with status: done from type dirs."""
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        (bugs_dir / "P1-BUG-001-bug.md").write_text(
+            "---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Bug\n\nBody.\n"
         )
-        (completed_dir / "P2-ENH-002-enh.md").write_text(
-            "---\ngithub_issue: 43\n---\n\n# ENH-002: Enhancement\n\nBody.\n"
+        enhancements_dir = tmp_path / ".issues" / "enhancements"
+        (enhancements_dir / "P2-ENH-002-enh.md").write_text(
+            "---\nstatus: done\ngithub_issue: 43\n---\n\n# ENH-002: Enhancement\n\nBody.\n"
         )
 
         manager = GitHubSyncManager(mock_config, mock_logger)
@@ -1344,8 +1341,8 @@ class TestCloseIssue:
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
         """close_issues skips issues not synced to GitHub."""
-        issue_file = tmp_path / ".issues" / "completed" / "P1-BUG-001-test-bug.md"
-        issue_file.write_text("---\ndiscovered_by: test\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\nstatus: done\ndiscovered_by: test\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1360,8 +1357,8 @@ class TestCloseIssue:
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
         """close_issues in dry-run mode does not call gh."""
-        issue_file = tmp_path / ".issues" / "completed" / "P1-BUG-001-test-bug.md"
-        issue_file.write_text("---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
 
         manager = GitHubSyncManager(mock_config, mock_logger, dry_run=True)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1438,19 +1435,19 @@ class TestReopenIssue:
         (issues_dir / "bugs").mkdir(parents=True)
         (issues_dir / "features").mkdir(parents=True)
         (issues_dir / "enhancements").mkdir(parents=True)
-        (issues_dir / "completed").mkdir(parents=True)
+        (issues_dir / "epics").mkdir(parents=True)
         return BRConfig(tmp_path)
 
     @pytest.fixture
     def mock_logger(self) -> MagicMock:
         return MagicMock(spec=Logger)
 
-    def test_reopen_specific_issue_in_completed(
+    def test_reopen_specific_issue_in_type_dir(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
-        """reopen_issues reopens a GitHub issue and moves file from completed/ to active."""
-        issue_file = tmp_path / ".issues" / "completed" / "P1-BUG-001-test-bug.md"
-        issue_file.write_text("---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+        """reopen_issues reopens a GitHub issue and updates its status frontmatter to open."""
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1459,11 +1456,7 @@ class TestReopenIssue:
                 mock_run.return_value = subprocess.CompletedProcess(
                     args=[], returncode=0, stdout="", stderr=""
                 )
-                with patch("subprocess.run") as mock_subprocess:
-                    mock_subprocess.return_value = subprocess.CompletedProcess(
-                        args=[], returncode=0, stdout="", stderr=""
-                    )
-                    result = manager.reopen_issues(issue_ids=["BUG-001"])
+                result = manager.reopen_issues(issue_ids=["BUG-001"])
 
         assert result.success is True
         assert len(result.updated) == 1
@@ -1474,13 +1467,14 @@ class TestReopenIssue:
         assert "reopen" in call_args
         assert "42" in call_args
         assert "--comment" in call_args
+        assert "status: open" in issue_file.read_text()
 
-    def test_reopen_epic_from_completed(
+    def test_reopen_epic_updates_status(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
-        """reopen_issues moves an EPIC issue from completed/ to epics/ via category_map."""
-        issue_file = tmp_path / ".issues" / "completed" / "P2-EPIC-001-my-epic.md"
-        issue_file.write_text("---\ngithub_issue: 99\n---\n\n# EPIC-001: My Epic\n\nBody.\n")
+        """reopen_issues updates status frontmatter to open for an EPIC in its type dir."""
+        issue_file = tmp_path / ".issues" / "epics" / "P2-EPIC-001-my-epic.md"
+        issue_file.write_text("---\nstatus: done\ngithub_issue: 99\n---\n\n# EPIC-001: My Epic\n\nBody.\n")
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1489,15 +1483,12 @@ class TestReopenIssue:
                 mock_run.return_value = __import__("subprocess").CompletedProcess(
                     args=[], returncode=0, stdout="", stderr=""
                 )
-                with patch("subprocess.run") as mock_subprocess:
-                    mock_subprocess.return_value = __import__("subprocess").CompletedProcess(
-                        args=[], returncode=0, stdout="", stderr=""
-                    )
-                    result = manager.reopen_issues(issue_ids=["EPIC-001"])
+                result = manager.reopen_issues(issue_ids=["EPIC-001"])
 
         assert result.success is True
         assert len(result.updated) == 1
         assert "reopened" in result.updated[0]
+        assert "status: open" in issue_file.read_text()
 
     def test_reopen_specific_issue_in_active(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
@@ -1582,8 +1573,8 @@ class TestReopenIssue:
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
         """reopen_issues skips issues not synced to GitHub."""
-        issue_file = tmp_path / ".issues" / "completed" / "P1-BUG-001-test-bug.md"
-        issue_file.write_text("---\ndiscovered_by: test\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\nstatus: done\ndiscovered_by: test\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1598,8 +1589,8 @@ class TestReopenIssue:
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
         """reopen_issues in dry-run mode does not call gh."""
-        issue_file = tmp_path / ".issues" / "completed" / "P1-BUG-001-test-bug.md"
-        issue_file.write_text("---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
 
         manager = GitHubSyncManager(mock_config, mock_logger, dry_run=True)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1642,3 +1633,106 @@ class TestReopenIssue:
         assert result.success is False
         assert len(result.failed) == 1
         assert "not found" in result.failed[0][1]
+
+    def test_find_local_issue_finds_done_in_type_dir(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """_find_local_issue finds a status: done issue in its type dir without completed/ fallback."""
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-done-bug.md"
+        issue_file.write_text("---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Done Bug\n\nBody.\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        found = manager._find_local_issue("BUG-001")
+
+        assert found == issue_file
+
+
+class TestGetLocalIssues:
+    """Tests for _get_local_issues status-based filtering."""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path: Path) -> BRConfig:
+        """Create a mock BRConfig with test directories."""
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        config_file = ll_dir / "ll-config.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "sync": {
+                        "enabled": True,
+                        "github": {
+                            "repo": "test/repo",
+                            "sync_completed": True,
+                        },
+                    },
+                    "issues": {"base_dir": ".issues"},
+                }
+            )
+        )
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "bugs").mkdir(parents=True)
+        (issues_dir / "features").mkdir(parents=True)
+        (issues_dir / "enhancements").mkdir(parents=True)
+        return BRConfig(tmp_path)
+
+    @pytest.fixture
+    def mock_logger(self) -> MagicMock:
+        return MagicMock(spec=Logger)
+
+    def test_get_local_issues_includes_done_when_sync_completed(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """_get_local_issues includes status: done issues when sync_completed=True."""
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        (bugs_dir / "P1-BUG-001-open.md").write_text(
+            "---\nstatus: open\ngithub_issue: 1\n---\n\n# BUG-001: Open Bug\n"
+        )
+        (bugs_dir / "P2-BUG-002-done.md").write_text(
+            "---\nstatus: done\ngithub_issue: 2\n---\n\n# BUG-002: Done Bug\n"
+        )
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        issues = manager._get_local_issues()
+
+        names = [p.name for p in issues]
+        assert "P1-BUG-001-open.md" in names
+        assert "P2-BUG-002-done.md" in names
+
+    def test_get_local_issues_excludes_done_when_sync_completed_false(
+        self, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """_get_local_issues excludes status: done issues when sync_completed=False."""
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        config_file = ll_dir / "ll-config.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "sync": {
+                        "enabled": True,
+                        "github": {
+                            "repo": "test/repo",
+                            "sync_completed": False,
+                        },
+                    },
+                    "issues": {"base_dir": ".issues"},
+                }
+            )
+        )
+        config = BRConfig(tmp_path)
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P1-BUG-001-open.md").write_text(
+            "---\nstatus: open\ngithub_issue: 1\n---\n\n# BUG-001: Open Bug\n"
+        )
+        (bugs_dir / "P2-BUG-002-done.md").write_text(
+            "---\nstatus: done\ngithub_issue: 2\n---\n\n# BUG-002: Done Bug\n"
+        )
+
+        manager = GitHubSyncManager(config, mock_logger)
+        issues = manager._get_local_issues()
+
+        names = [p.name for p in issues]
+        assert "P1-BUG-001-open.md" in names
+        assert "P2-BUG-002-done.md" not in names
