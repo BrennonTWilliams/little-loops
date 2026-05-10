@@ -7,6 +7,12 @@ captured_at: '2026-05-10T15:06:51Z'
 discovered_date: '2026-05-10'
 discovered_by: capture-issue
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1416: decide-issue --auto asks interactive questions instead of resolving provisional decisions
@@ -85,6 +91,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **New test class needed**: add `TestPhase3bInlineProvisionalScan` to `scripts/tests/test_decide_issue_skill.py` covering: (a) Phase 3b section documented in SKILL.md, (b) provisional patterns `(e.g., ...)` / `TBD` / `"fundamental rethink"` enumerated, (c) single-winner path (edit + clear `decision_needed`) documented, (d) ambiguous path (unresolvable log, no AskUserQuestion) documented, (e) `AUTO_MODE=true` + `OPTIONS=0` guard explicitly conditioned
 - **Broader autodev impact**: `scripts/little_loops/issue_manager.py:718` and `scripts/little_loops/parallel/worker_pool.py:376` both invoke decide-issue as a Python decision gate and continue to implementation even on failure (no hard stop) — Phase 3b failure mode should match: log unresolvable, leave `decision_needed: true`, exit cleanly without blocking
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+1. Update `docs/reference/COMMANDS.md` — in the `### /ll:decide-issue` section, update the **Frontmatter write-back** sentence to cover the Phase 3b provisional-scan resolution path (not only the formal-option path)
+2. Add `TestPhase3bInlineProvisionalScan` to `scripts/tests/test_decide_issue_skill.py` — follow `TestDecisionNeededFlagWriteBack` pattern from `test_confidence_check_skill.py`; assert: Phase 3b heading exists, `AUTO_MODE` guard documented, provisional patterns enumerated, single-winner write-back documented, `AskUserQuestion` absent inside Phase 3b
+
 ## Integration Map
 
 ### Files to Modify
@@ -92,6 +105,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/autodev.yaml` — `run_decide` and `rerun_confidence_after_decide` states depend on correct `--auto` behavior
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `check_decision_needed` gate reads `decision_needed` via `ll-issues check-flag`; Phase 3b's flag write flows correctly through this gate [Agent 1]
+- `scripts/little_loops/loops/recursive-refine.yaml` — `check_decision_needed` gate uses `grep -q "decision_needed: true"`; Phase 3b's Edit-tool write to `decision_needed: false` causes grep to not match as intended [Agent 1]
+- `scripts/little_loops/issue_manager.py` — `process_issue_inplace()` (~line 718) invokes `decide-issue --auto` when `info.decision_needed is True`; no code change needed, behavior improves automatically [Agent 1]
+- `scripts/little_loops/parallel/worker_pool.py` — `_process_issue_impl()` (~line 376) invokes via `get_decide_command(issue_id)`; no code change needed [Agent 1]
 
 ### Similar Patterns
 - `skills/decide-issue/SKILL.md` Phase 7b — existing Edit-tool inline `---` block replacement (model for Phase 3b's `decision_needed: false` write)
@@ -102,8 +121,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_decide_issue_skill.py` — existing structural tests; no test class covers Phase 3b auto-mode + provisional language; add `TestPhase3bInlineProvisionalScan`
 - `scripts/tests/test_issue_manager.py` — `TestDecisionNeededGate`: mocked tests for the Python decision gate that calls decide-issue (not the skill itself)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_worker_pool.py` — `TestWorkerPoolDecisionNeededGate`: verifies `_process_issue_impl()` invokes decide-issue when `decision_needed=True`; not broken by Phase 3b but confirms the call chain [Agent 3]
+- `scripts/tests/test_orchestrator.py` — `TestDecisionNeededRouting`: dispatch-layer tests; unaffected by Phase 3b [Agent 3]
+- `scripts/tests/test_confidence_check_skill.py` — `TestDecisionNeededFlagWriteBack`: reference template for `TestPhase3bInlineProvisionalScan` — use its `_phase_text()` helper pattern and `AskUserQuestion` prohibition assertion style [Agent 3]
+
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/COMMANDS.md` — `### /ll:decide-issue` section: **Frontmatter write-back** sentence currently implies `decision_needed: false` is only written after formal-option annotation; add coverage of the Phase 3b provisional-scan resolution path [Agent 2]
 
 ### Configuration
 - N/A
@@ -126,6 +152,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 Open
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-10T17:44:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5934faa-d742-411a-abba-c8d29afc864b.jsonl`
+- `/ll:wire-issue` - 2026-05-10T17:31:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff4254f7-df99-4fc7-838e-192f8779492e.jsonl`
 - `/ll:refine-issue` - 2026-05-10T15:16:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
 - `/ll:format-issue` - 2026-05-10T15:11:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7801123-27a3-4b5b-aa78-0beb3e563702.jsonl`
 - `/ll:capture-issue` - 2026-05-10T15:06:51Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd8097a3-3488-4878-8cb6-494af00ec7f4.jsonl`
