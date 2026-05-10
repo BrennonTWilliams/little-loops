@@ -269,7 +269,7 @@ def gather_all_issue_ids(issues_dir: Path, config: BRConfig | None = None) -> se
             config.get_deferred_dir().name,
         ]
     else:
-        subdirs = ["bugs", "features", "enhancements", "completed", "deferred"]
+        subdirs = ["bugs", "features", "enhancements", "epics", "completed", "deferred"]
 
     ids: set[str] = set()
     for subdir in subdirs:
@@ -277,7 +277,7 @@ def gather_all_issue_ids(issues_dir: Path, config: BRConfig | None = None) -> se
         if not d.exists():
             continue
         for f in d.glob("*.md"):
-            match = re.search(r"(BUG|FEAT|ENH)-(\d+)", f.name)
+            match = re.search(r"(BUG|FEAT|ENH|EPIC)-(\d+)", f.name)
             if match:
                 ids.add(f"{match.group(1)}-{match.group(2)}")
     return ids

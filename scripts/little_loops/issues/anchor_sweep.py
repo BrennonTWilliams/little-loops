@@ -26,7 +26,7 @@ _FILE_LINE = re.compile(
     re.MULTILINE,
 )
 
-_ACTIVE_CATEGORIES = ("bugs", "features", "enhancements")
+_ACTIVE_CATEGORIES = ("bugs", "features", "enhancements", "epics")
 
 
 @dataclass

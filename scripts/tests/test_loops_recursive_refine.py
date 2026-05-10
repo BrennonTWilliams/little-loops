@@ -777,7 +777,7 @@ def build_parent_map():
         )
         children = []
         for f in r.stdout.splitlines():
-            m = re.search(r'(BUG|FEAT|ENH)-(\d+)', os.path.basename(f))
+            m = re.search(r'(BUG|FEAT|ENH|EPIC)-(\d+)', os.path.basename(f))
             if m:
                 children.append(f'{m.group(1)}-{m.group(2)}')
         if children:

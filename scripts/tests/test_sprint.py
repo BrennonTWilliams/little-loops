@@ -1456,7 +1456,7 @@ class TestSprintEdit:
         issues_dir = tmp_path / ".issues"
         issues_dir.mkdir()
 
-        for category in ["bugs", "features", "enhancements", "completed"]:
+        for category in ["bugs", "features", "enhancements", "epics", "completed"]:
             (issues_dir / category).mkdir()
 
         config_dir = tmp_path / ".ll"
@@ -1480,6 +1480,7 @@ class TestSprintEdit:
                         "dir": "enhancements",
                         "action": "improve",
                     },
+                    "epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"},
                 },
                 "completed_dir": "completed",
             },
@@ -1723,6 +1724,49 @@ class TestSprintEdit:
         captured = capsys.readouterr()
         output = captured.out.lower()
         assert "pruned" in output or "prune" in output
+
+    def test_edit_prune_recognizes_epic_in_completed(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Prune removes an EPIC issue that has moved to the completed directory."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        sprints_dir, _, manager = self._setup_edit_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        # Rewrite the sprint YAML to include EPIC-005
+        sprint_data = {
+            "name": "test-sprint",
+            "description": "Test sprint",
+            "created": "2026-01-01T00:00:00Z",
+            "issues": ["BUG-001", "FEAT-010", "EPIC-005"],
+        }
+        with open(sprints_dir / "test-sprint.yaml", "w") as f:
+            yaml.dump(sprint_data, f, default_flow_style=False, sort_keys=False)
+
+        # EPIC-005 exists only in completed (already moved)
+        epics_dir = tmp_path / ".issues" / "epics"
+        epics_dir.mkdir(exist_ok=True)
+        completed_dir = tmp_path / ".issues" / "completed"
+        (completed_dir / "P2-EPIC-005-test-epic.md").write_text("# EPIC-005: Done")
+
+        args = argparse.Namespace(
+            sprint="test-sprint",
+            add=None,
+            remove=None,
+            prune=True,
+            revalidate=False,
+            config=None,
+        )
+
+        result = cli._cmd_sprint_edit(args, manager)
+        assert result == 0
+
+        updated = manager.load("test-sprint")
+        assert updated is not None
+        assert "EPIC-005" not in updated.issues
 
     def test_edit_prune_nothing_to_prune(
         self, tmp_path: Path, monkeypatch: Any, capsys: Any

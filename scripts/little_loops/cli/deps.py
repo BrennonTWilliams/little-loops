@@ -47,7 +47,7 @@ def _load_issues(
     for non_active_dir in [config.get_completed_dir(), config.get_deferred_dir()]:
         if non_active_dir.exists():
             for f in non_active_dir.glob("*.md"):
-                match = _re.search(r"(BUG|FEAT|ENH)-(\d+)", f.name)
+                match = _re.search(r"(BUG|FEAT|ENH|EPIC)-(\d+)", f.name)
                 if match:
                     completed_ids.add(f"{match.group(1)}-{match.group(2)}")
 

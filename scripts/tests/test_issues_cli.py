@@ -3624,7 +3624,7 @@ class TestIssuesCLIAnchorSweep:
         """anchor-sweep --dry-run on empty issues dir reports no references found."""
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
-        for cat in ("bugs", "features", "enhancements"):
+        for cat in ("bugs", "features", "enhancements", "epics"):
             (temp_project_dir / ".issues" / cat).mkdir(parents=True, exist_ok=True)
 
         with patch.object(
@@ -3649,7 +3649,7 @@ class TestIssuesCLIAnchorSweep:
         """asw alias works identically to anchor-sweep."""
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
-        for cat in ("bugs", "features", "enhancements"):
+        for cat in ("bugs", "features", "enhancements", "epics"):
             (temp_project_dir / ".issues" / cat).mkdir(parents=True, exist_ok=True)
 
         with patch.object(
@@ -3732,3 +3732,34 @@ class TestIssuesCLIAnchorSweep:
             result = main_issues()
 
         assert result == 1
+
+    def test_epic_issues_are_scanned(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """anchor-sweep scans epics/ in addition to bugs/, features/, enhancements/."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        for cat in ("bugs", "features", "enhancements", "epics"):
+            (temp_project_dir / ".issues" / cat).mkdir(parents=True, exist_ok=True)
+
+        epics_dir = temp_project_dir / ".issues" / "epics"
+        epic_file = epics_dir / "P2-EPIC-001-test-epic.md"
+        epic_file.write_text("# EPIC-001: Test Epic\n\n## Summary\nTop-level grouping.\n")
+
+        monkeypatch.chdir(temp_project_dir)
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "anchor-sweep", "--dry-run", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "EPIC-001" in captured.out or "No file:line references" in captured.out

@@ -9,6 +9,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+completed_at: 2026-05-10T14:35:03Z
 ---
 
 # FEAT-1411: EPIC Type — Regex-Based Callers, Anchor Sweep, and Tests
@@ -104,6 +105,7 @@ _ACTIVE_CATEGORIES = ("bugs", "features", "enhancements", "epics")
   1. Line 1460 — extend the dir-creation loop: `["bugs", "features", "enhancements", "completed"]` → add `"epics"`
   2. The `config_data` dict inside that fixture has a `"categories"` block with no `"epics"` entry — add it
   Once both are updated, add an EPIC-aware prune scenario asserting an `EPIC-NNN` file is recognized by `--prune`.
+  Note: the `for category in [...]` loop is at line 1459 (not 1460).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -201,11 +203,20 @@ has landed first — or coordinate the conftest.py change to land together with 
 - **Risk**: Low - Additive changes only; existing BUG/FEAT/ENH regex alternations remain unchanged
 - **Breaking Change**: No
 
+## Status
+
+Completed
+
+## Resolution
+
+Implemented all regex extensions (`BUG|FEAT|ENH` → `BUG|FEAT|ENH|EPIC`) across 5 callers plus the fallback dir list in `operations.py`. Added `"epics"` to `_ACTIVE_CATEGORIES` in `anchor_sweep.py`. Updated tests in all 4 test files and added an EPIC anchor-sweep scenario test. Updated CLI.md and CONFIGURATION.md docs. All 325 targeted tests pass.
+
 ## Labels
 
 `regex`, `testing`, `epic-type`, `child-issue`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-10T14:30:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/924aad7a-19a6-4969-a1ac-995eb95f6db8.jsonl`
 - `/ll:confidence-check` - 2026-05-10T15:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
 - `/ll:wire-issue` - 2026-05-10T14:25:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b252132-81fd-48fa-abf4-43fc7a785312.jsonl`
 - `/ll:refine-issue` - 2026-05-10T14:17:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc6b66f-7fdc-4662-b3d3-ddd2f4692bcc.jsonl`

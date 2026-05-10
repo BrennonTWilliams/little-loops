@@ -60,10 +60,11 @@ class TestExtractEntities:
 
     def test_issue_ids(self) -> None:
         """Extracts issue IDs from content."""
-        content = "Working on BUG-123 and FEAT-045"
+        content = "Working on BUG-123 and FEAT-045 and EPIC-001"
         entities = extract_entities(content)
         assert "BUG-123" in entities
         assert "FEAT-045" in entities
+        assert "EPIC-001" in entities
 
     def test_issue_ids_case_insensitive(self) -> None:
         """Extracts issue IDs case-insensitively and normalizes to uppercase."""

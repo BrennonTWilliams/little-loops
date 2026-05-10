@@ -107,7 +107,7 @@ Process all backlog issues sequentially in priority order. On startup, `ll-auto`
 | `--skip` | | Skip these issue IDs (comma-separated) |
 | `--type` | | Process only these types: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--config` | | Path to project root |
-| `--category` | `-c` | Filter to category: `bugs`, `features`, `enhancements` |
+| `--category` | `-c` | Filter to category: `bugs`, `features`, `enhancements`, `epics` |
 | `--priority` | `-p` | Comma-separated priority levels to process (e.g., `P1,P2`) |
 | `--verbose` | `-v` | Show full prompt text; default shows abbreviated 5-line preview |
 | `--idle-timeout` | | Kill worker if no output for N seconds (0 to disable) |
@@ -734,7 +734,7 @@ ll-issues asw --dry-run                          # Alias: asw
 
 #### `ll-issues anchor-sweep` / `ll-issues asw`
 
-Scan all active issue files (`bugs/`, `features/`, `enhancements/`) for bare `file:line` references outside code fences and rewrite them to enclosing function/class/section anchors. Uses a language-agnostic regex backwards-scan (no AST) covering Python, TypeScript, JavaScript, Go, Rust, Ruby, Java, C#, and Markdown.
+Scan all active issue files (`bugs/`, `features/`, `enhancements/`, `epics/`) for bare `file:line` references outside code fences and rewrite them to enclosing function/class/section anchors. Uses a language-agnostic regex backwards-scan (no AST) covering Python, TypeScript, JavaScript, Go, Rust, Ruby, Java, C#, and Markdown.
 
 | Flag | Description |
 |------|-------------|

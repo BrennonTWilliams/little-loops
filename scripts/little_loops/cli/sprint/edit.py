@@ -74,7 +74,7 @@ def _cmd_sprint_edit(args: argparse.Namespace, manager: SprintManager) -> int:
             completed_dir = manager.config.get_completed_dir()
             if completed_dir.exists():
                 for path in completed_dir.glob("*.md"):
-                    match = re.search(r"(BUG|FEAT|ENH)-(\d+)", path.name)
+                    match = re.search(r"(BUG|FEAT|ENH|EPIC)-(\d+)", path.name)
                     if match:
                         completed_ids.add(f"{match.group(1)}-{match.group(2)}")
 

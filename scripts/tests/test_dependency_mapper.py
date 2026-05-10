@@ -633,19 +633,21 @@ class TestGatherAllIssueIds:
     """Tests for gathering issue IDs from filesystem."""
 
     def test_scans_all_categories(self, tmp_path: Path) -> None:
-        """Test that IDs are gathered from bugs, features, enhancements, and completed."""
+        """Test that IDs are gathered from bugs, features, enhancements, epics, and completed."""
         (tmp_path / "bugs").mkdir()
         (tmp_path / "features").mkdir()
         (tmp_path / "enhancements").mkdir()
+        (tmp_path / "epics").mkdir()
         (tmp_path / "completed").mkdir()
 
         (tmp_path / "bugs" / "P1-BUG-001-test.md").write_text("# BUG-001")
         (tmp_path / "features" / "P2-FEAT-010-feature.md").write_text("# FEAT-010")
         (tmp_path / "enhancements" / "P3-ENH-100-improve.md").write_text("# ENH-100")
+        (tmp_path / "epics" / "P2-EPIC-001-foo.md").write_text("# EPIC-001")
         (tmp_path / "completed" / "P1-BUG-002-done.md").write_text("# BUG-002")
 
         ids = gather_all_issue_ids(tmp_path)
-        assert ids == {"BUG-001", "FEAT-010", "ENH-100", "BUG-002"}
+        assert ids == {"BUG-001", "FEAT-010", "ENH-100", "EPIC-001", "BUG-002"}
 
     def test_empty_directory(self, tmp_path: Path) -> None:
         """Test with no subdirectories."""

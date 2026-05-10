@@ -25,7 +25,7 @@ FILE_PATTERN = re.compile(r"[\w./-]+\.(?:md|py|json|yaml|yml|js|ts|tsx|jsx|sh|to
 PHASE_PATTERN = re.compile(r"phase[- ]?\d+", re.IGNORECASE)
 MODULE_PATTERN = re.compile(r"module[- ]?\d+", re.IGNORECASE)
 COMMAND_PATTERN = re.compile(r"/[\w:-]+")
-ISSUE_PATTERN = re.compile(r"(?:BUG|FEAT|ENH)-\d+", re.IGNORECASE)
+ISSUE_PATTERN = re.compile(r"(?:BUG|FEAT|ENH|EPIC)-\d+", re.IGNORECASE)
 
 # Verb class taxonomy for semantic similarity
 VERB_CLASSES: dict[str, set[str]] = {

@@ -261,7 +261,7 @@ Issue management settings:
 | `next_issue.strategy` | `"confidence_first"` | Selection order for `ll-issues next-issue` / `next-issues`. Named preset: `confidence_first` or `priority_first`. See [`issues.next_issue`](#issuesnext_issue). |
 | `next_issue.sort_keys` | `null` | Optional list of `{key, direction}` entries that overrides `strategy` with a custom sort order. |
 
-**Custom Categories**: The three core categories (bugs, features, enhancements) are always included automatically. You can add custom categories and they will be merged with the required ones:
+**Custom Categories**: The four core categories (bugs, features, enhancements, epics) are always included automatically. You can add custom categories and they will be merged with the required ones:
 
 ```json
 {
