@@ -2,7 +2,8 @@
 id: ENH-1428
 type: ENH
 priority: P2
-status: open
+status: done
+completed_at: 2026-05-10T21:36:24Z
 parent_issue: ENH-1422
 confidence_score: 100
 outcome_confidence: 78
@@ -22,6 +23,14 @@ Update `docs/reference/CLI.md` and `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` to re
 ## Parent Issue
 
 Decomposed from ENH-1422: Decouple Issue Status — ll-issues CLI (list/show/count/search)
+
+## Current Behavior
+
+Documentation in `docs/reference/CLI.md`, `docs/guides/ISSUE_MANAGEMENT_GUIDE.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/GETTING_STARTED.md`, `docs/reference/API.md`, and `README.md` still references the old directory-based status vocabulary (`active`, `completed`, `deferred`, `active (default)`) that was replaced by frontmatter-based status in ENH-1427. Users following these docs will supply stale `--status` values that produce unexpected results.
+
+## Expected Behavior
+
+All documentation reflects the current frontmatter-based status vocabulary (`open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled`) with `open` as the default. No remaining references to `--status active`, `--status completed`, or `active (default)` exist in any `docs/` or `README` file.
 
 ## Motivation
 
@@ -132,6 +141,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/GETTING_STARTED.md` status enum lists only the six shipped values; no "not active, not completed" directory-model phrasing
 - `scripts/tests/test_enh1428_doc_wiring.py` exists and passes
 
+## Impact
+
+- **Priority**: P2 — Without this, users following the docs will supply stale `--status` values; the mismatch between docs and shipped CLI creates confusion and failed commands.
+- **Effort**: Medium — Multiple doc files to update (7 files), but all changes are text substitutions with no runtime code changes.
+- **Risk**: Low — Documentation-only changes; no runtime behavior is affected.
+- **Breaking Change**: No
+
+## Labels
+
+`documentation`, `enhancement`, `ll-issues`, `status`
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-05-10_
@@ -144,7 +164,13 @@ _Added by `/ll:confidence-check` on 2026-05-10_
 - 7 files touched across distinct doc directories; each requires slightly different vocabulary updates (table rows, prose rewrites, inline examples) rather than a single uniform substitution. Risk of missing a location — use the negative assertions in the wiring test as the completeness check.
 - Minor open question resolved during research: `--include-completed` flag (CLI.md:547) still exists in code (`scripts/little_loops/cli/issues/__init__.py:198`) — keep the row but update its description to use new status vocabulary instead of `active/completed`.
 
+## Resolution
+
+Updated 7 documentation files to reflect frontmatter-based status vocabulary (`open/in_progress/blocked/deferred/done/cancelled`) introduced by ENH-1427. All stale `--status active`, `--status completed`, and directory-model prose removed. Created `scripts/tests/test_enh1428_doc_wiring.py` with 31 wiring tests (all pass). `ll-verify-docs` passes.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-10T21:36:24Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be39e338-241c-4325-ba20-779c072a84de.jsonl`
+- `/ll:ready-issue` - 2026-05-10T21:32:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be39e338-241c-4325-ba20-779c072a84de.jsonl`
 - `/ll:confidence-check` - 2026-05-10T21:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/073e9f7f-9842-49ed-99f5-f42a29385746.jsonl`
 - `/ll:refine-issue` - 2026-05-10T21:19:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f597c5b-71d2-4636-a269-729638a87833.jsonl`
 - `/ll:confidence-check` - 2026-05-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f1fbcc4-921a-4867-adfe-8fef6dd9af14.jsonl`

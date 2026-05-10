@@ -3093,7 +3093,7 @@ ll-issues nxs --path            # ranked list as file paths
 ll-issues search [QUERY] [OPTIONS]
 ```
 
-Search across active, completed, and/or deferred issues with rich filtering, sorting, and output options.
+Search across issues with rich filtering, sorting, and output options.
 
 **Arguments:**
 - `QUERY` - Optional text to match against title and body (case-insensitive substring)
@@ -3101,8 +3101,8 @@ Search across active, completed, and/or deferred issues with rich filtering, sor
 **Filters:**
 - `--type {BUG,FEAT,ENH,EPIC}` - Filter by issue type (repeatable)
 - `--priority P` - Filter by priority P0–P5 or range e.g. `P0-P2` (repeatable)
-- `--status {active,completed,deferred,all}` - Filter by status (default: `active`)
-- `--include-completed` - Include completed issues (alias for `--status all`)
+- `--status {open,in_progress,blocked,deferred,done,cancelled,all}` - Filter by status (default: `open`)
+- `--include-completed` - Include issues of all statuses (alias for `--status all`)
 - `--label LABEL` - Filter by label tag in the `## Labels` section (repeatable)
 - `--since DATE` - Only issues discovered on or after DATE (`YYYY-MM-DD`)
 - `--until DATE` - Only issues discovered on or before DATE (`YYYY-MM-DD`)
@@ -3119,8 +3119,8 @@ Search across active, completed, and/or deferred issues with rich filtering, sor
 
 **Examples:**
 ```bash
-ll-issues search                           # list all active issues
-ll-issues search "caching" --include-completed
+ll-issues search                           # list all open issues
+ll-issues search "caching" --status all
 ll-issues search --type BUG --priority P0-P2
 ll-issues search --since 2026-01-01 --sort date
 ll-issues search --label api --json
@@ -3138,7 +3138,7 @@ Display a formatted summary card for a single issue. Accepts three input formats
 - Type + ID: `ll-issues show FEAT-518`
 - Priority + Type + ID: `ll-issues show P3-FEAT-518`
 
-Searches all active category directories and the completed directory. Displays a box-drawing character card with:
+Searches all type directories regardless of status. Displays a box-drawing character card with:
 - **Metadata**: priority, status, effort, risk level
 - **Scores**: confidence score, outcome confidence (when present in frontmatter)
 - **Details**: summary text (word-wrapped to fit card width), source (`discovered_by` alias), norm (✓/✗ filename convention check), fmt (✓/✗ required sections check), integration file count, labels, session log history with command counts

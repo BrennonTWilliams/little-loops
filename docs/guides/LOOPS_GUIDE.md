@@ -1158,7 +1158,7 @@ on_handoff: spawn        # loop-level field
 max_iterations: 20
 states:
   discover:
-    action: "ll-issues list --status active"
+    action: "ll-issues list --status open"
     capture: active_issues
     next: refine
   refine:

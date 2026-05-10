@@ -492,13 +492,13 @@ Print the next globally unique issue number across all types.
 
 #### `ll-issues list` / `ll-issues l`
 
-List active issues with optional filters.
+List issues with optional filters.
 
 | Flag | Description |
 |------|-------------|
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
-| `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
+| `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all` |
 | `--flat` | Output flat list for scripting |
 | `--json` / `-j` | Output as JSON array; each entry includes `id`, `title`, `priority`, `type`, `status`, `path`, and `labels` |
 | `--limit` / `-n` | Cap output at N issues (must be ≥ 1) |
@@ -506,19 +506,19 @@ List active issues with optional filters.
 
 #### `ll-issues count` / `ll-issues c`
 
-Count active issues. Outputs a single integer by default, or a JSON object with breakdowns.
+Count issues. Outputs a single integer by default, or a JSON object with breakdowns.
 
 | Flag | Description |
 |------|-------------|
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
-| `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
+| `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all` |
 | `--json` / `-j` | Output JSON with `total`, `status`, `by_type`, and `by_priority` breakdowns |
 | `--config` | Path to project root |
 
 #### `ll-issues show <issue_id>` / `ll-issues s <issue_id>`
 
-Show summary card for a single issue. Accepts short form (`518`), type-prefixed (`FEAT-518`), or full (`P3-FEAT-518`). Searches all active category directories, the completed directory, and the deferred directory.
+Show summary card for a single issue. Accepts short form (`518`), type-prefixed (`FEAT-518`), or full (`P3-FEAT-518`). Searches all type directories regardless of status.
 
 The card includes: ID, title, priority, status, effort, risk, confidence scores, dimension scores (Cmplx, Tcov, Ambig, Chsrf — when present), source (discovered_by), norm (normalized filename check), fmt (formatted/required sections check), integration file count, labels, `captured_at` / `completed_at` timestamps (when present), session history, and path.
 
@@ -528,7 +528,7 @@ The card includes: ID, title, priority, status, effort, risk, confidence scores,
 
 #### `ll-issues path <issue_id>` / `ll-issues p <issue_id>`
 
-Print the relative file path for an issue ID. Accepts short form (`1009`), type-prefixed (`FEAT-1009`), or full (`P3-FEAT-1009`). Searches all active category directories, the completed directory, and the deferred directory. Exits 0 on match, 1 if not found.
+Print the relative file path for an issue ID. Accepts short form (`1009`), type-prefixed (`FEAT-1009`), or full (`P3-FEAT-1009`). Searches all type directories regardless of status. Exits 0 on match, 1 if not found.
 
 | Flag | Description |
 |------|-------------|
@@ -543,8 +543,8 @@ Search issues with filters and sorting.
 | `query` | (Optional) Text to match against title and body (case-insensitive) |
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` (repeatable) |
 | `--priority` | Filter by priority: `P0`–`P5` or range e.g. `P0-P2` (repeatable) |
-| `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
-| `--include-completed` | Include completed issues (alias for `--status all`) |
+| `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all` |
+| `--include-completed` | Include issues of all statuses (alias for `--status all`) |
 | `--label` | Filter by label tag (repeatable) |
 | `--since` | Only issues on or after DATE (YYYY-MM-DD) |
 | `--until` | Only issues on or before DATE (YYYY-MM-DD) |
@@ -656,7 +656,7 @@ Deprioritize an active issue by bumping its priority prefix and appending a `## 
 - Renames the issue file with the new priority prefix (e.g., `P3-FEAT-955` → `P5-FEAT-955`) using `git mv` for tracked files to preserve history, falling back to an atomic rename for untracked files
 - Appends a `## Skip Log` section with ISO timestamp and the provided reason (or `"No reason provided"` if omitted)
 - If the issue is already at the target priority, the file is not renamed but the Skip Log entry is still appended
-- Only works on issues in active directories (`bugs/`, `features/`, `enhancements/`, `epics/`)
+- Works on issues in any type directory (`bugs/`, `features/`, `enhancements/`, `epics/`)
 - Prints the new file path to stdout on success
 
 **Examples:**
@@ -688,7 +688,7 @@ ll-issues list --type BUG --json             # JSON filtered by type
 ll-issues count                              # Total active issue count
 ll-issues count --json                       # JSON with breakdowns
 ll-issues count --type BUG                   # Count bugs only
-ll-issues count --status completed           # Count completed issues
+ll-issues count --status done                # Count done issues
 ll-issues count --status all                 # Total across all statuses
 ll-issues show FEAT-518
 ll-issues show 518

@@ -427,14 +427,14 @@ Issue management and visualization utilities:
 
 ```bash
 ll-issues next-id                             # Next available issue number
-ll-issues list                                # List all active issues
+ll-issues list                                # List all open issues
 ll-issues list --type FEAT --priority P2      # Filter by type and priority
 ll-issues list --flat                         # Flat output for scripting
 ll-issues list --json                         # JSON output for scripting
 ll-issues count                               # Total active issue count
 ll-issues count --type BUG                    # Count bugs only
 ll-issues count --json                        # JSON with breakdowns
-ll-issues count --status completed            # Count completed issues
+ll-issues count --status done                 # Count done issues
 ll-issues count --status all                  # Total across all statuses
 ll-issues search "caching"                    # Search by keyword
 ll-issues search --type BUG --priority P0-P2  # Filter bugs by priority range
