@@ -315,20 +315,37 @@ Evaluate each criterion and assign a score (0-25 points each, max 100):
 
 #### Criterion A: Complexity (0-25 points)
 
-**What to check**: How many files and how deep are the changes required?
+**What to check**: What is the shape of the change — how many distinct sites are touched (Breadth) and how complex is each site change (Depth)?
 
 **Detection method**:
-1. Count files listed in the issue's "Integration Map" or "Files to Modify" section
-2. Assess depth of changes: surface-level API changes vs. deep internal rewiring
-3. Check if changes span multiple subsystems (skills, scripts, config, docs)
 
-**Scoring**:
+**Breadth** — count of distinct change sites:
+1. Count files listed in the issue's "Integration Map" or "Files to Modify" section
+2. Check if changes span multiple subsystems (skills, scripts, config, docs)
+
+**Depth** — per-site change complexity, judged on the typical site (not the worst):
+1. Read the change descriptions: "substitute", "add row", "schema row", "doc edit" → Mechanical
+2. Look for "logic change", "function body", "contained" → Local
+3. Look for "shared state", "cross-module", "multi-function" → Moderate
+4. Look for "restructure", "rewiring", "contract changes", "architectural" → Deep
+
+**Scoring** (apply both tables and sum Breadth + Depth for the criterion total):
+
+**Breadth (0-12 points)** — number of distinct change sites:
 | Finding | Score |
 |---------|-------|
-| 1-2 files, isolated change in one subsystem | 25 |
-| 3-5 files, changes in one or two subsystems | 18 |
-| 6-10 files, changes span multiple subsystems | 10 |
-| 11+ files or deep architectural changes | 0 |
+| 1-2 sites | 12 |
+| 3-5 sites | 9 |
+| 6-15 sites | 5 |
+| 16+ sites | 0 |
+
+**Depth (0-13 points)** — per-site change complexity:
+| Finding | Score |
+|---------|-------|
+| Mechanical/uniform — text substitution, type-list addition, schema row, doc edit | 13 |
+| Local — small function or method body, contained logic change | 9 |
+| Moderate — multi-function or cross-module logic with shared state | 5 |
+| Deep — architectural rewiring, control-flow restructuring, contract changes | 0 |
 
 #### Criterion B: Test Coverage (0-25 points)
 
@@ -474,7 +491,7 @@ _Added by `/ll:confidence-check` on [YYYY-MM-DD]_
 _(omit this subsection if no gaps)_
 
 ### Outcome Risk Factors
-- [risk 1]
+- [risk 1 — phrase by dominant axis: "deep per-site complexity" for low-Depth issues, "broad enumeration across N sites" for high-Breadth issues]
 _(omit this subsection if no risk factors)_
 ```
 
@@ -711,6 +728,31 @@ The following examples illustrate how Criterion D distinguishes code blast radiu
 | Criterion | Score | Rationale |
 |-----------|-------|-----------|
 | Change Surface / Fanout Verifiability | 10/25 | Sites enumerated but no verification command — completeness unproven |
+
+### Criterion A Breadth × Depth
+
+The following examples illustrate how Criterion A distinguishes wide-shallow sweeps from narrow-deep refactors.
+
+**Wide-shallow sweep** (43-file uniform regex substitution; each site is a one-line text replacement; files enumerated in "Files to Touch"):
+| Criterion | Score | Rationale |
+|-----------|-------|-----------|
+| Complexity — Breadth | 0/12 | 43 sites — exceeds 16+, wide enumeration |
+| Complexity — Depth | 13/13 | Mechanical: uniform text substitution across all sites |
+| **Criterion A total** | **13/25** | Breadth 0 + Depth 13 — correctly reflects low per-site risk despite file count |
+
+**Narrow-deep refactor** (3-file change; restructures the dependency injection core; alters shared contracts across callers):
+| Criterion | Score | Rationale |
+|-----------|-------|-----------|
+| Complexity — Breadth | 9/12 | 3 sites — small enumeration |
+| Complexity — Depth | 0/13 | Deep: architectural rewiring with contract changes |
+| **Criterion A total** | **9/25** | Breadth 9 + Depth 0 — correctly scores lower than file count alone would suggest |
+
+**Simple isolated change** (1-2 files; small method body update; no shared state):
+| Criterion | Score | Rationale |
+|-----------|-------|-----------|
+| Complexity — Breadth | 12/12 | 1-2 sites — fully isolated |
+| Complexity — Depth | 13/13 | Mechanical/Local: contained method body change |
+| **Criterion A total** | **25/25** | Full score — common case unchanged |
 
 ### Usage Patterns
 

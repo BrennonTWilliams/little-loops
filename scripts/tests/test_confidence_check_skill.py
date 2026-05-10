@@ -230,6 +230,55 @@ class TestCriterionDDualPattern:
         assert "0-2 callers" in self._criterion_d_text()
 
 
+class TestCriterionABreadthDepthSplit:
+    """Criterion A must be split into Breadth (0-12) and Depth (0-13) sub-scores summing to 25."""
+
+    def _criterion_a_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("#### Criterion A:")
+        next_heading = content.find("\n####", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_breadth_sub_table_present(self) -> None:
+        assert "Breadth" in self._criterion_a_text(), (
+            "Criterion A must contain a Breadth sub-table"
+        )
+
+    def test_depth_sub_table_present(self) -> None:
+        assert "Depth" in self._criterion_a_text(), (
+            "Criterion A must contain a Depth sub-table"
+        )
+
+    def test_breadth_max_is_12(self) -> None:
+        assert "0-12" in self._criterion_a_text(), (
+            "Criterion A Breadth sub-score must be 0-12 points"
+        )
+
+    def test_depth_max_is_13(self) -> None:
+        assert "0-13" in self._criterion_a_text(), (
+            "Criterion A Depth sub-score must be 0-13 points"
+        )
+
+    def test_breadth_detection_method_present(self) -> None:
+        text = self._criterion_a_text()
+        assert "Integration Map" in text or "Files to Modify" in text, (
+            "Criterion A must document Breadth detection method (file enumeration)"
+        )
+
+    def test_depth_detection_method_present(self) -> None:
+        text = self._criterion_a_text()
+        assert "substitute" in text or "rewiring" in text, (
+            "Criterion A must document Depth detection method (change-description language)"
+        )
+
+    def test_criterion_a_heading_preserved(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "#### Criterion A:" in content, (
+            "The '#### Criterion A:' heading must be preserved exactly (used as section anchor)"
+        )
+
+
 class TestPhase48LargeFileSurfaceSuppression:
     """Phase 4.8 must exist and mirror the Phase 4.6/4.7 boilerplate."""
 

@@ -3,11 +3,22 @@ id: ENH-1390
 type: ENH
 priority: P2
 status: open
-captured_at: "2026-05-09T20:26:09Z"
-discovered_date: "2026-05-09"
+captured_at: '2026-05-09T20:26:09Z'
+discovered_date: '2026-05-09'
 discovered_by: capture-issue
-relates_to: [FEAT-1389, ENH-1391, ENH-1392, ENH-1393]
+relates_to:
+- FEAT-1389
+- ENH-1391
+- ENH-1392
+- ENH-1393
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 50
+score_complexity: 0
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 0
+size: Very Large
 ---
 
 # ENH-1390: Decouple Issue Status from Directory Structure
@@ -50,6 +61,38 @@ Moving an issue to `deferred/` or `completed/` requires a file rename/move, whic
 3. Migrate existing files: move all files from `deferred/` into their type directories with `status: deferred`; move `completed/` files with `status: done`
 4. Keep `completed/` and `deferred/` as empty archived directories (or remove entirely) after migration
 5. Update all documentation, skills, and commands that reference `deferred/` or `completed/` paths
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-05-10.
+
+Two sub-decisions were flagged as unresolved by `/ll:confidence-check`. Both are resolved here.
+
+#### Sub-decision 1: Completion-Date Tracking Strategy (Step 11)
+
+**Selected**: `completed_at:` frontmatter field — retain and rely on it exclusively; remove the git-log fallback tiers after migration backfills old files.
+
+**Reasoning**: `completed_at:` is already written at all three lifecycle close paths today (`issue_lifecycle.py:654`, `issue_lifecycle.py:730`, `parallel/orchestrator.py:1257`) and `_parse_completion_date()` in `issue_history/parsing.py` already reads this field first (lines 185–190) before falling back to Resolution section text and git-log. 130+ of ~270 completed files already carry the field. The alternative (deriving completion date by parsing git diffs for `status: done` changes) has no existing analog in the codebase and would require new complex infrastructure. Step 11 implementation: keep `completed_at:` write calls as-is; once migration backfills old files, the git-log fallback tiers in `_parse_completion_date()` can be removed.
+
+#### Sub-decision 2: Release Detection in `manage-release.md` (Step 7 / commands update)
+
+**Selected**: `completed_at:` date range — query issues where `status: done` and `completed_at` falls between the previous tag's commit timestamp and HEAD.
+
+**Reasoning**: `completed_at:` is the established source of truth for completion time and aligns with the frontmatter-as-state direction of this issue. The `released_at:` write-back approach has zero existing instances in the codebase and would make `manage-release.md` a file-writer for the first time — a new behavior class with no test patterns. The git-content-diff approach becomes fragile after the bulk migration commit causes all issue files to appear in a single git range and requires new diff-parsing infrastructure. **Constraint**: the migration script (Step 4) MUST backfill `completed_at:` for the ~140 older completed files that lack it — the git-log fallback path already in `_parse_completion_date()` can be used to derive those dates during migration. `manage-release.md` must compare full ISO timestamps (not date-only) against the previous tag's commit timestamp to avoid the BUG-942 off-by-one failure mode.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|------------|------------|-------------|------|-------|
+| Sub-decision 1: `completed_at:` field **(selected)** | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| Sub-decision 1: git-log diff parsing | 0/3 | 0/3 | 0/3 | 0/3 | 0/12 |
+| Sub-decision 2: `completed_at:` date range **(selected)** | 3/3 | 2/3 | 3/3 | 2/3 | 10/12 |
+| Sub-decision 2: `released_at:` write-back | 0/3 | 1/3 | 1/3 | 1/3 | 3/12 |
+| Sub-decision 2: git tag range + content diff | 2/3 | 1/3 | 2/3 | 1/3 | 6/12 |
+
+**Key evidence**:
+- Sub-decision 1: `update_frontmatter(content, {"completed_at": _completed_at_now()})` called at `issue_lifecycle.py:654,730` and `orchestrator.py:1257`; `_parse_completion_date()` reads `completed_at:` as priority-1 source of truth; test coverage exists at `test_issue_history_parsing.py:109–117`.
+- Sub-decision 2: ~130/270 completed files already carry `completed_at:`; BUG-942's date-comparison failure mode is avoidable with full ISO timestamp comparison; `released_at:` has 0 instances in corpus; git-content-diff breaks under a bulk migration commit.
 
 ## API/Interface
 
@@ -236,7 +279,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover relevant docs._
 
 `issue-model`, `sync-compatibility`, `migration`, `captured`
 
+## Confidence Check Notes
+
+_Updated by `/ll:confidence-check` on 2026-05-10 (post decide-issue pass)_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 50/100 → LOW
+
+### Outcome Risk Factors
+- **Large file surface**: 40+ files span Python core (16), command definitions (12), skills (4), and test suite (10+) — plan incremental verification at each layer; avoid a single mega-commit.
+- **Migration sequencing**: 1,346 files in `completed/`+`deferred/` must be migrated before or atomically with discovery-tool updates; a dry-run mode is strongly advised to prevent mid-migration inconsistency.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-05-10T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/13dea43d-146d-4382-8d31-ebf45e40bef4.jsonl`
+- `/ll:decide-issue` - 2026-05-10T15:04:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f5236e3-1417-491a-92a7-2794bf5493ce.jsonl`
+- `/ll:confidence-check` - 2026-05-10T16:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87b169e7-5eaf-4702-a6c2-f5adc1a32387.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d698784-5e18-4e45-be50-dff8f0b838ba.jsonl`
 - `/ll:wire-issue` - 2026-05-10T14:49:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a376d2-9151-49b7-8e68-34248e20fb85.jsonl`
 - `/ll:refine-issue` - 2026-05-10T14:40:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a256e37f-c7eb-492b-a32d-7b20fd8a9be6.jsonl`
 - `/ll:format-issue` - 2026-05-09T20:39:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf87852d-ec5b-4a4d-959f-57a040534f19.jsonl`
