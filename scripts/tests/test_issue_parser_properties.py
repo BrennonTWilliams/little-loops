@@ -80,6 +80,10 @@ class TestIssueInfoProperties:
         blocks=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
         discovered_by=st.one_of(st.none(), st.text(min_size=1, max_size=50)),
         status=st.sampled_from(["open", "in_progress", "blocked", "deferred", "done", "cancelled"]),
+        parent=st.one_of(st.none(), st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True)),
+        depends_on=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
+        relates_to=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
+        duplicate_of=st.one_of(st.none(), st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True)),
     )
     @settings(max_examples=200)
     def test_roundtrip_serialization(
@@ -93,6 +97,10 @@ class TestIssueInfoProperties:
         blocks: list[str],
         discovered_by: str | None,
         status: str,
+        parent: str | None,
+        depends_on: list[str],
+        relates_to: list[str],
+        duplicate_of: str | None,
     ) -> None:
         """IssueInfo survives roundtrip through to_dict/from_dict."""
         original = IssueInfo(
@@ -105,6 +113,10 @@ class TestIssueInfoProperties:
             blocks=blocks,
             discovered_by=discovered_by,
             status=status,
+            parent=parent,
+            depends_on=depends_on,
+            relates_to=relates_to,
+            duplicate_of=duplicate_of,
         )
         restored = IssueInfo.from_dict(original.to_dict())
 
@@ -117,6 +129,10 @@ class TestIssueInfoProperties:
         assert restored.blocks == original.blocks
         assert restored.discovered_by == original.discovered_by
         assert restored.status == original.status
+        assert restored.parent == original.parent
+        assert restored.depends_on == original.depends_on
+        assert restored.relates_to == original.relates_to
+        assert restored.duplicate_of == original.duplicate_of
 
     @given(priority=st.sampled_from(["P0", "P1", "P2", "P3", "P4", "P5"]))
     def test_priority_int_valid_priorities(self, priority: str) -> None:

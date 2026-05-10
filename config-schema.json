@@ -196,6 +196,35 @@
             }
           },
           "additionalProperties": false
+        },
+        "parent": {
+          "type": "string",
+          "description": "Parent issue ID (e.g., EPIC-123 or ENH-100)"
+        },
+        "blocked_by": {
+          "type": "array",
+          "description": "List of issue IDs that block this issue",
+          "items": {
+            "type": "string"
+          }
+        },
+        "depends_on": {
+          "type": "array",
+          "description": "List of issue IDs this issue depends on (soft prerequisite)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "relates_to": {
+          "type": "array",
+          "description": "List of issue IDs related to this issue",
+          "items": {
+            "type": "string"
+          }
+        },
+        "duplicate_of": {
+          "type": "string",
+          "description": "Issue ID that this issue duplicates"
         }
       },
       "additionalProperties": false

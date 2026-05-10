@@ -226,13 +226,33 @@ class TestIssueParserFuzz:
     @given(
         blocked_by=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=100),
         blocks=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=100),
+        depends_on=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=100),
+        relates_to=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=100),
     )
     @settings(max_examples=200)
     def test_dependency_parsing_handles_lists(
-        self, blocked_by: list[str], blocks: list[str]
+        self,
+        blocked_by: list[str],
+        blocks: list[str],
+        depends_on: list[str],
+        relates_to: list[str],
     ) -> None:
         """Dependency parsing should handle large lists without crashing."""
-        content = "# Test\n\n"
+        frontmatter_lines = []
+        if depends_on:
+            frontmatter_lines.append("depends_on:")
+            for dep in depends_on:
+                frontmatter_lines.append(f"  - {dep}")
+        if relates_to:
+            frontmatter_lines.append("relates_to:")
+            for dep in relates_to:
+                frontmatter_lines.append(f"  - {dep}")
+
+        content = ""
+        if frontmatter_lines:
+            content = "---\n" + "\n".join(frontmatter_lines) + "\n---\n"
+
+        content += "# Test\n\n"
         if blocked_by:
             content += "## Blocked By\n\n"
             for dep in blocked_by:

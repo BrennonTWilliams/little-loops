@@ -234,6 +234,10 @@ class IssueInfo:
         session_command_counts: Per-command occurrence counts from the ## Session Log section
         labels: Labels extracted from the ## Labels section of the issue file
         status: Issue lifecycle status read from frontmatter; defaults to "open"
+        parent: Parent issue ID (e.g., EPIC-123); populated from frontmatter `parent:` or deprecated `parent_issue:`
+        depends_on: List of issue IDs this issue depends on (soft prerequisite)
+        relates_to: List of related issue IDs; populated from frontmatter `relates_to:` or deprecated `related:`
+        duplicate_of: Issue ID that this issue duplicates
     """
 
     path: Path
@@ -243,6 +247,10 @@ class IssueInfo:
     title: str
     blocked_by: list[str] = field(default_factory=list)
     blocks: list[str] = field(default_factory=list)
+    parent: str | None = None
+    depends_on: list[str] = field(default_factory=list)
+    relates_to: list[str] = field(default_factory=list)
+    duplicate_of: str | None = None
     discovered_by: str | None = None
     epic: str | None = None
     product_impact: ProductImpact | None = None
@@ -282,6 +290,10 @@ class IssueInfo:
             "title": self.title,
             "blocked_by": self.blocked_by,
             "blocks": self.blocks,
+            "parent": self.parent,
+            "depends_on": self.depends_on,
+            "relates_to": self.relates_to,
+            "duplicate_of": self.duplicate_of,
             "discovered_by": self.discovered_by,
             "epic": self.epic,
             "product_impact": (self.product_impact.to_dict() if self.product_impact else None),
@@ -314,6 +326,10 @@ class IssueInfo:
             title=data["title"],
             blocked_by=data.get("blocked_by", []),
             blocks=data.get("blocks", []),
+            parent=data.get("parent"),
+            depends_on=data.get("depends_on", []),
+            relates_to=data.get("relates_to", []),
+            duplicate_of=data.get("duplicate_of"),
             discovered_by=data.get("discovered_by"),
             epic=data.get("epic"),
             product_impact=ProductImpact.from_dict(data.get("product_impact")),
@@ -453,15 +469,44 @@ class IssueParser:
 
         status = frontmatter.get("status", "open")
 
+        parent = frontmatter.get("parent")
+        if parent is None and (alias_val := frontmatter.get("parent_issue")):
+            logger.warning(
+                "%s: deprecated frontmatter key 'parent_issue' — rename to 'parent'",
+                issue_path.name,
+            )
+            parent = alias_val
+
+        duplicate_of = frontmatter.get("duplicate_of")
+
+        relates_to: list[str] = []
+        if alias_val := frontmatter.get("related"):
+            logger.warning(
+                "%s: deprecated frontmatter key 'related' — rename to 'relates_to'",
+                issue_path.name,
+            )
+            relates_to = (
+                [id.strip() for id in alias_val.strip("\"'").split(",") if id.strip()]
+                if isinstance(alias_val, str)
+                else list(alias_val)
+            )
+
+        depends_on: list[str] = []
+
         # Parse title and dependencies from file content
         title = self._parse_title_from_content(content, issue_path)
         blocked_by = self._parse_blocked_by(content)
         blocks = self._parse_blocks(content)
 
-        # Also read blocked_by/blocks from frontmatter (newer canonical format).
+        # Also read blocked_by/blocks/depends_on/relates_to from frontmatter (canonical format).
         # When both sources provide values and they differ, prefer frontmatter and warn
         # so stale body sections are surfaced rather than silently merged.
-        for fm_key, body_ids in (("blocked_by", blocked_by), ("blocks", blocks)):
+        for fm_key, body_ids in (
+            ("blocked_by", blocked_by),
+            ("blocks", blocks),
+            ("depends_on", depends_on),
+            ("relates_to", relates_to),
+        ):
             fm_val = frontmatter.get(fm_key)
             if not fm_val:
                 continue
@@ -498,6 +543,10 @@ class IssueParser:
             title=title,
             blocked_by=blocked_by,
             blocks=blocks,
+            parent=parent,
+            depends_on=depends_on,
+            relates_to=relates_to,
+            duplicate_of=duplicate_of,
             discovered_by=discovered_by,
             epic=epic,
             product_impact=product_impact,

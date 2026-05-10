@@ -187,3 +187,35 @@ class TestConfigSchema:
         assert webhook_props["batch_ms"]["type"] == "integer"
         assert webhook_props["batch_ms"]["default"] == 1000
         assert webhook_props["headers"]["type"] == "object"
+
+    def test_issues_relationship_fields_in_schema(self) -> None:
+        """Relationship fields must be declared inside issues.properties.
+
+        The issues block has additionalProperties: false, so any config that
+        sets parent/blocked_by/depends_on/relates_to/duplicate_of will be
+        rejected unless they are declared here.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        issues = data["properties"]["issues"]
+        assert issues.get("additionalProperties") is False, (
+            "issues block is expected to have additionalProperties: false — "
+            "if that changes, this test's rationale no longer holds"
+        )
+        issue_props = issues["properties"]
+
+        # Single-value string fields
+        for field in ("parent", "duplicate_of"):
+            assert field in issue_props, (
+                f"issues.{field} is not declared; configs using it will be "
+                "rejected by additionalProperties: false"
+            )
+            assert issue_props[field]["type"] == "string"
+
+        # Array-of-strings fields
+        for field in ("blocked_by", "depends_on", "relates_to"):
+            assert field in issue_props, (
+                f"issues.{field} is not declared; configs using it will be "
+                "rejected by additionalProperties: false"
+            )
+            assert issue_props[field]["type"] == "array"
+            assert issue_props[field]["items"] == {"type": "string"}

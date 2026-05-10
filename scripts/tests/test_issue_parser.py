@@ -1578,6 +1578,213 @@ class TestDependencyParsing:
 
         assert info.blocked_by == ["ENH-419", "ENH-422"]
 
+    def test_parse_parent_from_frontmatter(self, tmp_path: Path) -> None:
+        """parent: frontmatter key is parsed into IssueInfo.parent."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P2-ENH-001-test.md"
+        issue_file.write_text("---\nparent: EPIC-10\n---\n# ENH-001: Test\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.parent == "EPIC-10"
+
+    def test_parse_parent_issue_alias_emits_warning(
+        self, tmp_path: Path, caplog: Any
+    ) -> None:
+        """Deprecated parent_issue: alias populates parent and emits a warning."""
+        import json
+        import logging
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P2-ENH-002-test.md"
+        issue_file.write_text("---\nparent_issue: EPIC-20\n---\n# ENH-002: Test\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        with caplog.at_level(logging.WARNING, logger="little_loops.issue_parser"):
+            info = parser.parse_file(issue_file)
+
+        assert info.parent == "EPIC-20"
+        assert any("parent_issue" in r.message for r in caplog.records)
+        assert any("deprecated" in r.message for r in caplog.records)
+
+    def test_parse_depends_on_from_frontmatter(self, tmp_path: Path) -> None:
+        """depends_on: YAML list in frontmatter is parsed into IssueInfo.depends_on."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P2-ENH-003-test.md"
+        issue_file.write_text(
+            "---\ndepends_on:\n  - ENH-100\n  - ENH-101\n---\n# ENH-003: Test\n"
+        )
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.depends_on == ["ENH-100", "ENH-101"]
+
+    def test_parse_relates_to_from_frontmatter(self, tmp_path: Path) -> None:
+        """relates_to: YAML list in frontmatter is parsed into IssueInfo.relates_to."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P2-ENH-004-test.md"
+        issue_file.write_text(
+            "---\nrelates_to:\n  - FEAT-50\n  - BUG-99\n---\n# ENH-004: Test\n"
+        )
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.relates_to == ["FEAT-50", "BUG-99"]
+
+    def test_parse_related_alias_emits_warning(
+        self, tmp_path: Path, caplog: Any
+    ) -> None:
+        """Deprecated related: alias populates relates_to and emits a warning."""
+        import json
+        import logging
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P2-ENH-005-test.md"
+        issue_file.write_text(
+            "---\nrelated:\n  - FEAT-30\n  - BUG-40\n---\n# ENH-005: Test\n"
+        )
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        with caplog.at_level(logging.WARNING, logger="little_loops.issue_parser"):
+            info = parser.parse_file(issue_file)
+
+        assert info.relates_to == ["FEAT-30", "BUG-40"]
+        assert any("related" in r.message for r in caplog.records)
+        assert any("deprecated" in r.message for r in caplog.records)
+
+    def test_parse_duplicate_of_from_frontmatter(self, tmp_path: Path) -> None:
+        """duplicate_of: frontmatter key is parsed into IssueInfo.duplicate_of."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P3-BUG-006-test.md"
+        issue_file.write_text("---\nduplicate_of: BUG-001\n---\n# BUG-006: Test\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.duplicate_of == "BUG-001"
+
+    def test_new_relationship_fields_default_to_empty(self) -> None:
+        """New relationship fields default to None/empty list when absent."""
+        info = IssueInfo(
+            path=Path("/test/path.md"),
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-007",
+            title="Test",
+        )
+        assert info.parent is None
+        assert info.depends_on == []
+        assert info.relates_to == []
+        assert info.duplicate_of is None
+
+    def test_new_relationship_fields_roundtrip_serialization(self) -> None:
+        """New relationship fields survive to_dict/from_dict roundtrip."""
+        original = IssueInfo(
+            path=Path("/test/path.md"),
+            issue_type="enhancements",
+            priority="P2",
+            issue_id="ENH-008",
+            title="Test",
+            parent="EPIC-1",
+            depends_on=["ENH-5", "ENH-6"],
+            relates_to=["FEAT-10"],
+            duplicate_of="ENH-3",
+        )
+
+        data = original.to_dict()
+
+        assert data["parent"] == "EPIC-1"
+        assert data["depends_on"] == ["ENH-5", "ENH-6"]
+        assert data["relates_to"] == ["FEAT-10"]
+        assert data["duplicate_of"] == "ENH-3"
+
+        restored = IssueInfo.from_dict(data)
+        assert restored.parent == original.parent
+        assert restored.depends_on == original.depends_on
+        assert restored.relates_to == original.relates_to
+        assert restored.duplicate_of == original.duplicate_of
+
+    def test_from_dict_defaults_empty_new_relationship_fields(self) -> None:
+        """from_dict provides correct defaults for missing new relationship fields."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "bugs",
+            "priority": "P1",
+            "issue_id": "BUG-009",
+            "title": "Legacy Issue",
+        }
+        info = IssueInfo.from_dict(data)
+
+        assert info.parent is None
+        assert info.depends_on == []
+        assert info.relates_to == []
+        assert info.duplicate_of is None
+
 
 class TestIssueInfoTestable:
     """Tests for IssueInfo.testable field."""
