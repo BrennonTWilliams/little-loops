@@ -50,12 +50,12 @@ class TestInitSkillWiring:
 
 
 class TestConfigureAreasWiring:
-    """skills/configure/areas.md must show 16 CLI tools including ll-create-extension and ll-action."""
+    """skills/configure/areas.md must show 17 CLI tools including ll-create-extension and ll-action."""
 
-    def test_count_updated_to_16(self) -> None:
+    def test_count_updated_to_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 16" in content, (
-            "skills/configure/areas.md must show 'Authorize all 16' ll- CLI tools"
+        assert "Authorize all 17" in content, (
+            "skills/configure/areas.md must show 'Authorize all 17' ll- CLI tools"
         )
 
     def test_ll_create_extension_in_enumeration(self) -> None:
@@ -74,10 +74,10 @@ class TestFeat1045DocUpdates:
             "README.md must have an ll-create-extension section in the CLI Tools block"
         )
 
-    def test_readme_tool_count_is_17(self) -> None:
+    def test_readme_tool_count_is_18(self) -> None:
         content = README.read_text()
-        assert "17 CLI tools" in content, (
-            "README.md must say '17 CLI tools' (incremented from 16 after ll-generate-schemas landed)"
+        assert "18 CLI tools" in content, (
+            "README.md must say '18 CLI tools' (incremented from 17 after ll-migrate landed)"
         )
 
     def test_claude_md_lists_ll_create_extension(self) -> None:
@@ -189,16 +189,16 @@ class TestFeat1229LlActionWiring:
         content = README.read_text()
         assert "ll-action" in content, "README.md must have an ll-action section in CLI Tools"
 
-    def test_readme_tool_count_is_17(self) -> None:
+    def test_readme_tool_count_is_18(self) -> None:
         content = README.read_text()
-        assert "17 CLI tools" in content, (
-            "README.md must say '17 CLI tools' after ll-generate-schemas was added"
+        assert "18 CLI tools" in content, (
+            "README.md must say '18 CLI tools' after ll-migrate was added"
         )
 
-    def test_configure_areas_count_is_16(self) -> None:
+    def test_configure_areas_count_is_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 16" in content, (
-            "skills/configure/areas.md must show 'Authorize all 16' ll- CLI tools"
+        assert "Authorize all 17" in content, (
+            "skills/configure/areas.md must show 'Authorize all 17' ll- CLI tools"
         )
 
     def test_configure_areas_lists_ll_action(self) -> None:

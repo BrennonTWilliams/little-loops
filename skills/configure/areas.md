@@ -820,7 +820,7 @@ questions:
     question: "Which ll- CLI commands should be allowed?"
     options:
       - label: "All ll- commands (Recommended)"
-        description: "Authorize all 16 ll- CLI tools and handoff write: ll-action, ll-issues, ll-auto, ll-parallel, ll-sprint, ll-loop, ll-workflows, ll-messages, ll-history, ll-deps, ll-sync, ll-verify-docs, ll-check-links, ll-gitignore, ll-create-extension, ll-logs, Write(.ll/ll-continue-prompt.md)"
+        description: "Authorize all 17 ll- CLI tools and handoff write: ll-action, ll-issues, ll-auto, ll-parallel, ll-sprint, ll-loop, ll-workflows, ll-messages, ll-history, ll-deps, ll-sync, ll-verify-docs, ll-check-links, ll-gitignore, ll-migrate, ll-create-extension, ll-logs, Write(.ll/ll-continue-prompt.md)"
       - label: "Keep current"
         description: "Keep existing entries without changes"
     multiSelect: false

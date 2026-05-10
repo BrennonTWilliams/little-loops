@@ -1153,6 +1153,26 @@ ll-gitignore --quiet          # Suppress non-essential output
 
 ---
 
+### ll-migrate
+
+One-time migration script that moves all issues from `completed/` and `deferred/` directories into their type-based directories, backfills `completed_at:` for older completed files, and sets correct `status:` frontmatter. Part of the ENH-1390 status-decoupling migration.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--dry-run` | `-n` | Preview all planned moves without modifying files |
+| `--config` | `-C` | Path to project root (default: current directory) |
+
+**Examples:**
+```bash
+ll-migrate --dry-run   # Preview all planned moves (strongly advised before running)
+ll-migrate             # Execute migration
+ll-migrate --config /path/to/project  # Run for a specific project
+```
+
+---
+
 ### ll-verify-docs
 
 Verify that documented counts (commands, agents, skills) match actual file counts.

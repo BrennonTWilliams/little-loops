@@ -87,7 +87,7 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 - **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
 - **28 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
-- **17 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, etc.) for autonomous and parallel issue processing
+- **18 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, etc.) for autonomous and parallel issue processing
 - **43 FSM loops** for recurring automation workflows (backlog triage, sprint building, quality checks, and more)
 - **Configuration system** with project-type templates for Python, JavaScript, TypeScript, Go, Rust, Java (Maven/Gradle), .NET, and a generic fallback
 
@@ -496,6 +496,17 @@ ll-gitignore --dry-run        # Preview suggestions without modifying .gitignore
 ```
 
 Run `ll-gitignore --help` for all options.
+
+### ll-migrate
+
+One-time migration script that moves all issues from `completed/` and `deferred/` into their type-based directories (`.issues/bugs/`, `.issues/features/`, etc.), backfills `completed_at:` frontmatter for older completed files, and sets correct `status:` values. Part of the ENH-1390 status-decoupling migration.
+
+```bash
+ll-migrate --dry-run   # Preview all planned moves (strongly advised before running)
+ll-migrate             # Execute migration
+```
+
+Run `ll-migrate --help` for all options.
 
 ### ll-generate-schemas
 
