@@ -140,21 +140,21 @@ def issues_dir(temp_project_dir: Path) -> Path:
 
     # Create sample bug issues
     (bugs_dir / "P0-BUG-001-critical-crash.md").write_text(
-        "# BUG-001: Critical crash on startup\n\n## Summary\nApp crashes on launch."
+        "---\nstatus: open\n---\n# BUG-001: Critical crash on startup\n\n## Summary\nApp crashes on launch."
     )
     (bugs_dir / "P1-BUG-002-slow-query.md").write_text(
-        "# BUG-002: Slow database query\n\n## Summary\nQuery takes too long."
+        "---\nstatus: open\n---\n# BUG-002: Slow database query\n\n## Summary\nQuery takes too long."
     )
     (bugs_dir / "P2-BUG-003-ui-glitch.md").write_text(
-        "# BUG-003: UI glitch in sidebar\n\n## Summary\nSidebar flickers."
+        "---\nstatus: open\n---\n# BUG-003: UI glitch in sidebar\n\n## Summary\nSidebar flickers."
     )
 
     # Create sample feature issues
     (features_dir / "P1-FEAT-001-dark-mode.md").write_text(
-        "# FEAT-001: Add dark mode\n\n## Summary\nImplement dark theme."
+        "---\nstatus: open\n---\n# FEAT-001: Add dark mode\n\n## Summary\nImplement dark theme."
     )
     (features_dir / "P2-FEAT-002-export-csv.md").write_text(
-        "# FEAT-002: Export to CSV\n\n## Summary\nAdd CSV export functionality."
+        "---\nstatus: open\n---\n# FEAT-002: Export to CSV\n\n## Summary\nAdd CSV export functionality."
     )
 
     return issues_base

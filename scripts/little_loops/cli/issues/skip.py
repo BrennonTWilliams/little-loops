@@ -28,17 +28,18 @@ def cmd_skip(config: BRConfig, args: argparse.Namespace) -> int:
     """
     from little_loops.cli.issues.show import _resolve_issue_id
     from little_loops.issue_lifecycle import skip_issue
+    from little_loops.issue_parser import IssueParser
 
     path = _resolve_issue_id(config, args.issue_id)
     if path is None:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
         return 1
 
-    # Only skip active issues
-    parent_name = path.parent.name
-    if parent_name in ("completed", "deferred"):
+    # Only skip non-terminal issues (check frontmatter status, not directory)
+    issue_info = IssueParser(config).parse_file(path)
+    if issue_info.status in ("done", "cancelled", "deferred"):
         print(
-            f"Error: Issue '{args.issue_id}' is in {parent_name}/, not an active issue.",
+            f"Error: Issue '{args.issue_id}' has status '{issue_info.status}', not an active issue.",
             file=sys.stderr,
         )
         return 1

@@ -30,12 +30,12 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
         _sort_issues,
     )
 
-    status = getattr(args, "status", "active") or "active"
-    include_active = status in ("active", "all")
-    include_completed = status in ("completed", "all")
+    status = getattr(args, "status", "open") or "open"
+    include_open = status in ("open", "in_progress", "blocked", "all")
+    include_done = status in ("done", "cancelled", "all")
     include_deferred = status in ("deferred", "all")
 
-    raw = _load_issues_with_status(config, include_active, include_completed, include_deferred)
+    raw = _load_issues_with_status(config, include_open, include_done, include_deferred)
 
     from little_loops.cli_args import parse_priorities
 
@@ -140,7 +140,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
             issue_type = issue.issue_id.split("-", 1)[0]
             colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
             colored_priority = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
-            status_tag = f" [{stat}]" if stat != "active" else ""
+            status_tag = f" [{stat}]" if stat not in ("open", "in_progress") else ""
             lines.append(f"  {colored_priority}  {colored_id}  {issue.title}{status_tag}")
         lines.append("")
     lines.append(f"Total: {len(issues_with_status)} active issues")

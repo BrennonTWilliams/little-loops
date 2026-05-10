@@ -74,12 +74,10 @@ def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
     if numeric_id is None:
         return None
 
-    # Build search directories: all active categories + completed + deferred
+    # Build search directories: type-scoped dirs only
     search_dirs: list[Path] = []
     for category in config.issue_categories:
         search_dirs.append(config.get_issue_dir(category))
-    search_dirs.append(config.get_completed_dir())
-    search_dirs.append(config.get_deferred_dir())
 
     # Search for matching files
     for search_dir in search_dirs:
@@ -134,14 +132,17 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         else:
             title = path.stem
 
-    # Determine status
-    parent_name = path.parent.name
-    if parent_name == "completed":
-        status = "Completed"
-    elif parent_name == "deferred":
-        status = "Deferred"
-    else:
-        status = "Open"
+    # Determine status from frontmatter field
+    raw_status = frontmatter.get("status", "open")
+    _STATUS_DISPLAY = {
+        "done": "Completed",
+        "cancelled": "Cancelled",
+        "deferred": "Deferred",
+        "in_progress": "In Progress",
+        "blocked": "Blocked",
+        "open": "Open",
+    }
+    status = _STATUS_DISPLAY.get(str(raw_status), str(raw_status).replace("_", " ").title())
 
     # Extract optional frontmatter fields
     confidence = frontmatter.get("confidence_score")

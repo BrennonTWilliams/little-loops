@@ -123,9 +123,9 @@ Examples:
     ls.add_argument(
         "--status",
         "-S",
-        choices=["active", "completed", "deferred", "all"],
-        default="active",
-        help="Filter by status (default: active)",
+        choices=["open", "in_progress", "blocked", "deferred", "done", "cancelled", "all"],
+        default="open",
+        help="Filter by status (default: open)",
     )
     ls.add_argument(
         "--flat",
@@ -190,9 +190,9 @@ Examples:
     sr.add_argument(
         "--status",
         "-S",
-        choices=["active", "completed", "deferred", "all"],
-        default="active",
-        help="Filter by status (default: active)",
+        choices=["open", "in_progress", "blocked", "deferred", "done", "cancelled", "all"],
+        default="open",
+        help="Filter by status (default: open)",
     )
     sr.add_argument(
         "--include-completed",
@@ -260,9 +260,9 @@ Examples:
     cnt.add_argument(
         "--status",
         "-S",
-        choices=["active", "completed", "deferred", "all"],
-        default="active",
-        help="Filter by status (default: active)",
+        choices=["open", "in_progress", "blocked", "deferred", "done", "cancelled", "all"],
+        default="open",
+        help="Filter by status (default: open)",
     )
     cnt.add_argument("--json", "-j", action="store_true", help="Output as JSON with breakdowns")
     add_config_arg(cnt)

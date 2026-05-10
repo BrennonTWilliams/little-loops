@@ -23,12 +23,12 @@ def cmd_count(config: BRConfig, args: argparse.Namespace) -> int:
     """
     from little_loops.cli.issues.search import _load_issues_with_status
 
-    status = getattr(args, "status", "active") or "active"
-    include_active = status in ("active", "all")
-    include_completed = status in ("completed", "all")
+    status = getattr(args, "status", "open") or "open"
+    include_open = status in ("open", "in_progress", "blocked", "all")
+    include_done = status in ("done", "cancelled", "all")
     include_deferred = status in ("deferred", "all")
 
-    raw = _load_issues_with_status(config, include_active, include_completed, include_deferred)
+    raw = _load_issues_with_status(config, include_open, include_done, include_deferred)
     issues = [issue for issue, _stat in raw]
 
     from little_loops.cli_args import parse_priorities

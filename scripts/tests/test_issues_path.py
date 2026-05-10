@@ -253,19 +253,20 @@ class TestPathAlias:
         assert out.endswith("P3-FEAT-1009-my-feature.md")
 
 
-class TestPathSearchesAllDirs:
-    """Tests that path searches completed and deferred directories."""
+class TestPathSearchesTypeDirs:
+    """Tests that path searches type-scoped directories regardless of status."""
 
-    def test_finds_issue_in_completed(
+    def test_finds_issue_with_done_status(
         self,
         temp_project_dir: Path,
         sample_config: dict[str, Any],
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Finds issues in completed/ directory."""
+        """Finds issues in type dirs even when status is 'done'."""
         _write_config(temp_project_dir, sample_config)
-        _, completed_dir, _ = _setup_dirs(temp_project_dir)
-        _make_issue(completed_dir, "P3-FEAT-1009-my-feature.md", "FEAT-1009: My Feature")
+        features_dir, _, _ = _setup_dirs(temp_project_dir)
+        content = "---\nstatus: done\n---\n\n# FEAT-1009: My Feature\n\n## Summary\nTest issue.\n"
+        (features_dir / "P3-FEAT-1009-my-feature.md").write_text(content)
 
         with patch.object(
             sys, "argv", ["ll-issues", "path", "1009", "--config", str(temp_project_dir)]
@@ -276,19 +277,20 @@ class TestPathSearchesAllDirs:
 
         out = capsys.readouterr().out.strip()
         assert result == 0
-        assert "completed" in out
+        assert "features" in out
         assert out.endswith("P3-FEAT-1009-my-feature.md")
 
-    def test_finds_issue_in_deferred(
+    def test_finds_issue_with_deferred_status(
         self,
         temp_project_dir: Path,
         sample_config: dict[str, Any],
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Finds issues in deferred/ directory."""
+        """Finds issues in type dirs even when status is 'deferred'."""
         _write_config(temp_project_dir, sample_config)
-        _, _, deferred_dir = _setup_dirs(temp_project_dir)
-        _make_issue(deferred_dir, "P3-FEAT-1009-my-feature.md", "FEAT-1009: My Feature")
+        features_dir, _, _ = _setup_dirs(temp_project_dir)
+        content = "---\nstatus: deferred\n---\n\n# FEAT-1009: My Feature\n\n## Summary\nTest issue.\n"
+        (features_dir / "P3-FEAT-1009-my-feature.md").write_text(content)
 
         with patch.object(
             sys, "argv", ["ll-issues", "path", "FEAT-1009", "--config", str(temp_project_dir)]
@@ -299,5 +301,5 @@ class TestPathSearchesAllDirs:
 
         out = capsys.readouterr().out.strip()
         assert result == 0
-        assert "deferred" in out
+        assert "features" in out
         assert out.endswith("P3-FEAT-1009-my-feature.md")

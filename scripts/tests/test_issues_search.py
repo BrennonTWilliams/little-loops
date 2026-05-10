@@ -26,45 +26,43 @@ def search_issues_dir(temp_project_dir: Path, sample_config: dict[str, Any]) -> 
     bugs_dir = issues_base / "bugs"
     features_dir = issues_base / "features"
     epics_dir = issues_base / "epics"
-    completed_dir = issues_base / "completed"
-    deferred_dir = issues_base / "deferred"
-    for d in (bugs_dir, features_dir, epics_dir, completed_dir, deferred_dir):
+    for d in (bugs_dir, features_dir, epics_dir):
         d.mkdir(parents=True, exist_ok=True)
 
     # Active bugs
     (bugs_dir / "P0-BUG-001-critical-crash.md").write_text(
-        "---\ndiscovered_date: 2026-01-10T00:00:00Z\n---\n"
+        "---\nstatus: open\ndiscovered_date: 2026-01-10T00:00:00Z\n---\n"
         "# BUG-001: Critical crash on startup\n\n## Summary\nApp crashes on launch.\n\n"
         "## Labels\n`bug`, `critical`\n"
     )
     (bugs_dir / "P2-BUG-002-caching-issue.md").write_text(
-        "---\ndiscovered_date: 2026-02-15T00:00:00Z\n---\n"
+        "---\nstatus: open\ndiscovered_date: 2026-02-15T00:00:00Z\n---\n"
         "# BUG-002: Caching problem in API\n\n## Summary\nCache invalidation is broken.\n\n"
         "## Labels\n`bug`, `api`, `cache`\n"
     )
 
     # Active features
     (features_dir / "P1-FEAT-010-dark-mode.md").write_text(
-        "---\ndiscovered_date: 2026-01-20T00:00:00Z\n---\n"
+        "---\nstatus: open\ndiscovered_date: 2026-01-20T00:00:00Z\n---\n"
         "# FEAT-010: Add dark mode\n\n## Summary\nImplement dark theme.\n\n"
         "## Labels\n`feature`, `ui`\n"
     )
     (features_dir / "P3-FEAT-011-export-csv.md").write_text(
-        "---\ndiscovered_date: 2026-03-01T00:00:00Z\n---\n"
+        "---\nstatus: open\ndiscovered_date: 2026-03-01T00:00:00Z\n---\n"
         "# FEAT-011: Export to CSV\n\n## Summary\nAdd CSV export functionality.\n\n"
         "## Labels\n`feature`, `api`\n"
     )
 
     # Active epic
     (epics_dir / "P2-EPIC-020-platform-unification.md").write_text(
-        "---\ndiscovered_date: 2026-02-01T00:00:00Z\n---\n"
+        "---\nstatus: open\ndiscovered_date: 2026-02-01T00:00:00Z\n---\n"
         "# EPIC-020: Platform unification\n\n## Summary\nUnify all platform components.\n\n"
         "## Labels\n`epic`, `platform`\n"
     )
 
-    # Completed issue
-    (completed_dir / "P1-BUG-003-fixed-login.md").write_text(
-        "---\ndiscovered_date: 2025-12-01T00:00:00Z\n---\n"
+    # Done issue — lives in type dir with status: done frontmatter
+    (bugs_dir / "P1-BUG-003-fixed-login.md").write_text(
+        "---\nstatus: done\ndiscovered_date: 2025-12-01T00:00:00Z\n---\n"
         "# BUG-003: Login redirect fails\n\n## Summary\nLogin caching issue was fixed.\n\n"
         "## Labels\n`bug`, `auth`\n"
     )
@@ -389,7 +387,7 @@ class TestSearchStatusFilter:
         captured = capsys.readouterr()
         assert result == 0
         assert "BUG-003" in captured.out
-        assert "[completed]" in captured.out
+        assert "[done]" in captured.out
 
     def test_status_all(
         self,
@@ -420,7 +418,7 @@ class TestSearchStatusFilter:
         with patch.object(
             sys,
             "argv",
-            ["ll-issues", "search", "--status", "completed", "--config", str(temp_project_dir)],
+            ["ll-issues", "search", "--status", "done", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli.issues import main_issues
 

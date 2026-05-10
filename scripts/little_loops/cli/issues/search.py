@@ -105,47 +105,47 @@ def _parse_priority_filter(priority_values: list[str]) -> set[str]:
 
 def _load_issues_with_status(
     config: BRConfig,
-    include_active: bool,
-    include_completed: bool,
+    include_open: bool,
+    include_done: bool,
     include_deferred: bool,
 ) -> list[tuple[IssueInfo, str]]:
-    """Load issues from the relevant directories, tagged with their status.
+    """Load issues from type directories, tagged with their frontmatter status.
+
+    Scans only type-scoped directories (bugs/, features/, etc.) and reads
+    ``IssueInfo.status`` from frontmatter instead of inferring status from the
+    directory name.
 
     Returns:
-        List of (IssueInfo, status) where status is 'active', 'completed', or 'deferred'.
+        List of (IssueInfo, status) where status is the frontmatter value
+        (e.g. 'open', 'in_progress', 'blocked', 'done', 'cancelled', 'deferred').
     """
     from little_loops.issue_parser import IssueParser
 
     parser = IssueParser(config)
     results: list[tuple[IssueInfo, str]] = []
 
-    if include_active:
-        for category in config.issue_categories:
-            issue_dir = config.get_issue_dir(category)
-            if issue_dir.exists():
-                for f in sorted(issue_dir.glob("*.md")):
-                    try:
-                        results.append((parser.parse_file(f), "active"))
-                    except Exception:
-                        continue
-
-    if include_completed:
-        completed_dir = config.get_completed_dir()
-        if completed_dir.exists():
-            for f in sorted(completed_dir.glob("*.md")):
-                try:
-                    results.append((parser.parse_file(f), "completed"))
-                except Exception:
-                    continue
-
-    if include_deferred:
-        deferred_dir = config.get_deferred_dir()
-        if deferred_dir.exists():
-            for f in sorted(deferred_dir.glob("*.md")):
-                try:
-                    results.append((parser.parse_file(f), "deferred"))
-                except Exception:
-                    continue
+    for category in config.issue_categories:
+        issue_dir = config.get_issue_dir(category)
+        if not issue_dir.exists():
+            continue
+        for f in sorted(issue_dir.glob("*.md")):
+            try:
+                issue = parser.parse_file(f)
+                status = issue.status  # frontmatter field, default "open"
+                if status in ("open", "in_progress", "blocked"):
+                    if include_open:
+                        results.append((issue, status))
+                elif status in ("done", "cancelled"):
+                    if include_done:
+                        results.append((issue, status))
+                elif status == "deferred":
+                    if include_deferred:
+                        results.append((issue, status))
+                elif include_open:
+                    # Unknown status: treat as open
+                    results.append((issue, status))
+            except Exception:
+                continue
 
     return results
 
@@ -268,16 +268,16 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
         Exit code (0 = success)
     """
     # Resolve status flags
-    status = getattr(args, "status", "active")
+    status = getattr(args, "status", "open")
     if getattr(args, "include_completed", False):
         status = "all"
 
-    include_active = status in ("active", "all")
-    include_completed = status in ("completed", "all")
+    include_open = status in ("open", "in_progress", "blocked", "all")
+    include_done = status in ("done", "cancelled", "all")
     include_deferred = status in ("deferred", "all")
 
     # Load issues
-    raw = _load_issues_with_status(config, include_active, include_completed, include_deferred)
+    raw = _load_issues_with_status(config, include_open, include_done, include_deferred)
 
     # Parse additional metadata (dates, labels) only when needed
     query: str | None = getattr(args, "query", None)
@@ -447,7 +447,7 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
             issue_type = issue.issue_id.split("-", 1)[0]
             colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
             colored_priority = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
-            status_tag = f" [{stat}]" if stat != "active" else ""
+            status_tag = f" [{stat}]" if stat not in ("open", "in_progress") else ""
             lines.append(f"  {colored_priority}  {colored_id}  {issue.title}{status_tag}")
         lines.append("")
     lines.append(f"Total: {len(issues_out)} issue(s) found")
