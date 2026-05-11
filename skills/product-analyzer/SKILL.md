@@ -51,7 +51,12 @@ skipped_reason: "not_enabled"
 
 ### 2. Load Product Goals
 
-Read and parse the goals file:
+| Scenario | Behavior |
+|----------|----------|
+| `GOALS_CONTENT` present in invoking prompt | Use injected content directly — do not re-read the goals file |
+| Invoked standalone (no injected content) | Read from `product.goals_file` config path (default: `.ll/ll-goals.md`) |
+
+When reading from file, parse the goals file:
 
 1. Read the goals file path resolved in step 1 (`product.goals_file`, default: `.ll/ll-goals.md`)
 2. Extract YAML frontmatter:
@@ -159,6 +164,8 @@ evidence:
 ```
 
 ### 6. Deduplication Check
+
+**This is the canonical deduplication step. Callers (e.g., `scan-product`) must not re-deduplicate.**
 
 Before finalizing findings:
 

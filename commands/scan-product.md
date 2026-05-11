@@ -107,6 +107,8 @@ Read and parse the goals file to provide context for analysis:
    - `PRIORITIES_COUNT`: Number of strategic priorities
    - `GOALS_CONTENT`: Full markdown for passing to skill
 
+**Note**: `GOALS_CONTENT` is injected into the skill prompt under `## Goals Document`. The skill trusts this injected content and will not re-read the goals file when it is provided.
+
 ### 3. Gather Metadata
 
 Collect git and repository information for traceability and GitHub permalinks:
@@ -185,10 +187,9 @@ After the product-analyzer skill completes:
    - Count findings by type (feature_gap, ux_improvement, business_value)
    - Identify any skipped issues and reasons
 
-2. **Deduplicate against existing issues**:
-   - The skill performs initial deduplication
-   - Review `duplicate_of` field in findings
-   - Remove findings marked as duplicates
+2. **Trust skill deduplication**:
+   - The skill is the sole responsible party for deduplication — do not re-filter findings
+   - Use the skill's `skipped_issues` list directly for reporting counts
 
 3. **Assign priorities** based on product-aware criteria:
 
