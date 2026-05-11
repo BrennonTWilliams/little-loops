@@ -242,7 +242,7 @@ Question: "Would you like to enable product analysis? It scans your codebase aga
 
 Options:
   - label: "Yes, enable product analysis (Recommended)"
-    description: "Creates .ll/ll-goals.md from the template and enables /ll:scan-product"
+    description: "Creates .ll/ll-goals.md for richer analysis (scan-product works without it)"
   - label: "No, skip for now"
     description: "You can enable later by running /ll:configure product"
 ```
