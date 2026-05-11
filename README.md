@@ -15,15 +15,67 @@
   <a href="https://pypi.org/project/little-loops/">
     <img src="https://img.shields.io/pypi/v/little-loops?style=flat-square&label=PyPI" alt="PyPI Version">
   </a>
+  <a href="https://docs.little-loops.ai">
+    <img src="https://img.shields.io/badge/docs-little--loops.ai-blue?style=flat-square" alt="Docs">
+  </a>
 </p>
 
 # little-loops
 
-little-loops turns Claude Code into a full development workflow engine. It adds issue tracking, automated code fixes, sprint planning, and parallel processing — so Claude can manage entire backlogs, not just one-off prompts. Install the plugin, point it at your codebase, and let it discover, plan, implement, and verify changes autonomously.
+A dev toolkit for long-horizon, eval-gated AI software development. Built as a Claude Code plugin.
 
-## Quick Start
+little-loops gives AI agents three things they're missing: **durability** (the run outlives the session), **consistency** (the toolbelt is the process), and **verification** (the eval is the spec). Together they remove the invisible ceiling that keeps agents doing small tasks well and shipping features poorly.
 
-### Install
+## The three claims
+
+### 1. The session ends. The run doesn't.
+
+The unit of work is the feature, the sprint, or the overnight optimization — not a single chat. Runs survive terminal close, context exhaustion, and laptop sleep. Parallel sprints fan out across isolated worktrees and complete independently of your terminal.
+
+- **`ll-parallel`** — kick off N concurrent feature implementations in isolated worktrees. Walk away. They converge without you.
+- **`--background` + `ll-loop resume`** — runs survive terminal close, sleep, and reboot. Resume picks up exactly where it stopped, mid-trajectory.
+- **`harness-optimize`** — score-gated overnight optimization runs. Accept-or-revert each mutation. If interrupted, resume to the highest-scoring commit.
+- **Session handoff** — a fresh context picks up mid-issue without losing the thread. Context limits stop being a planning constraint.
+
+*Ship features, not sessions.*
+
+### 2. The toolbelt is the process.
+
+Raw agents re-derive the same structural moves differently each run. The `ll-` CLI removes the improvisation surface: context gathering, issue lifecycle, sprint moves, and worktree setup all run as typed commands. Two runs of the same feature land in the same shape — by construction, not by prompting.
+
+- **20 typed CLI tools** (`ll-issue`, `ll-sprint`, `ll-loop`, `ll-parallel`, `ll-action`, etc.) — structural work runs as commands, not improvised tool calls
+- **`/ll:manage-issue`** — composes the CLIs into a fixed plan → implement → verify → complete sequence. The agent reasons *inside* steps, not about *which* steps to take
+- **Skill harnesses** (`/ll:ready-issue`, `/ll:wire-issue`, `/ll:confidence-check`) — same inputs, same gates, same outputs
+- **Worktree setup, branch naming, issue ID generation** — mechanical operations that produce identical structure across runs
+
+*Same feature, same shape, every run.*
+
+### 3. The harness is the spec. And the harness writes itself.
+
+Eval-driven development: TDD's analog for agent-built software. Define what "working" looks like first, then iterate until the harness passes. The eval grades, writes, and improves itself — removing the harness engineering tax that keeps most teams skipping evals entirely.
+
+**The eval grades:**
+- Six layered gate types — exit code, deterministic external state, full agentic user simulation, LLM-as-judge, diff size invariant, no-op detection
+- Cheapest gates run first. Failures route back to execution rather than advancing
+- Stall detection catches the "already done" no-op that silently burns through iteration budgets
+
+**The eval writes itself:**
+- `/ll:create-eval-from-issues` — turn an issue's acceptance criteria into a runnable harness in under a minute
+- `/ll:create-loop` — auto-derive the full evaluation pipeline from your project config
+- Annotated templates and `ll-loop validate` — dry-run the FSM before paying for a real run
+
+**The eval improves itself:**
+- `harness-optimize` — hill-climbing on harness artifacts. One targeted edit per iteration, benchmark, accept on rising score, revert otherwise
+- APO loop category with five prompt-optimization strategies — point it at a prompt, converge to a target score
+- `/ll:audit-loop-run` — four-valued verdict (`met` / `phantom` / `partial` / `degraded`) catches failure modes humans miss
+
+*Point at an issue. Get a harness.*
+
+---
+
+## Install
+
+**Prerequisites:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) + Python 3.11+
 
 ```bash
 # Add the GitHub repository as a marketplace
@@ -31,6 +83,9 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 
 # Install the plugin
 /plugin install ll@little-loops
+
+# Install CLI tools (for ll-parallel, ll-loop, ll-auto, etc.)
+pip install little-loops
 ```
 
 <details>
@@ -63,570 +118,65 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 
 </details>
 
-### First Commands
+---
+
+## First 60 seconds
+
+### Scan and triage a codebase
 
 ```bash
-# Auto-detect project type and generate config
-/ll:init
-
-# Check code quality
-/ll:check-code all
-
-# Run tests
-/ll:run-tests unit
-
-# Scan for issues
-/ll:scan-codebase
-
-# Manage an issue end-to-end (plan, implement, verify, complete)
-/ll:manage-issue bug fix BUG-001
+/ll:init                  # Auto-detect project type, generate config
+/ll:scan-codebase         # Find issues (technical)
+/ll:prioritize-issues     # Auto-assign P0–P5 priorities
+/ll:map-dependencies      # Cross-issue dependency graph
 ```
 
-## What's Included
-
-- **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
-- **8 specialized agents** for codebase analysis, pattern finding, and web research
-- **28 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
-- **20 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, etc.) for autonomous and parallel issue processing
-- **42 FSM loops** for recurring automation workflows (backlog triage, sprint building, quality checks, and more)
-- **Configuration system** with project-type templates for Python, JavaScript, TypeScript, Go, Rust, Java (Maven/Gradle), .NET, and a generic fallback
-
-## Commands
-
-Commands are organized by workflow capability. Skills (marked with `^` in `/ll:help`) are also invoked as `/ll:` commands and are included in the tables below. Run `/ll:help` for the full reference.
-
-### Issue Discovery
-
-| Command | Description |
-|---------|-------------|
-| `/ll:capture-issue [input]` | Capture issues from conversation or description |
-| `/ll:scan-codebase` | Find new issues (technical) |
-| `/ll:scan-product` | Find new issues (product-focused) |
-| `/ll:audit-architecture [focus]` | Analyze architecture for patterns and improvements |
-| `/ll:product-analyzer` | Analyze codebase against product goals for feature gaps |
-
-### Issue Refinement
-
-| Command | Description |
-|---------|-------------|
-| `/ll:normalize-issues` | Fix invalid issue filenames |
-| `/ll:prioritize-issues` | Assign priorities (P0-P5) to issues |
-| `/ll:align-issues <category>` | Validate issues against key documents |
-| `/ll:format-issue [id]` | Format issue files to align with template v2.0 structure |
-| `/ll:refine-issue [id]` | Refine issue with codebase-driven research |
-| `/ll:decide-issue [id]` | Resolve competing implementation options using codebase evidence |
-| `/ll:verify-issues` | Verify issues against codebase |
-| `/ll:tradeoff-review-issues` | Evaluate issues for utility vs complexity |
-| `/ll:ready-issue [id]` | Validate issue for implementation |
-| `/ll:issue-workflow` | Quick reference for issue management workflow |
-| `/ll:issue-size-review` | Evaluate issue size/complexity and propose decomposition |
-| `/ll:map-dependencies` | Analyze cross-issue dependencies based on file overlap |
-| `/ll:wire-issue [path]` | Complete integration point wiring for refined issues |
-| `/ll:audit-issue-conflicts` | Scan open issues for conflicting requirements, objectives, or architectural decisions |
-
-### Planning & Implementation
-
-| Command | Description |
-|---------|-------------|
-| `/ll:create-sprint [name] [--issues]` | Create sprint (explicit or auto-suggested) |
-| `/ll:review-sprint [name]` | Review sprint health and suggest improvements |
-| `/ll:manage-issue <type> <action> [id]` | Full issue lifecycle (plan, implement, verify, complete) |
-| `/ll:iterate-plan [path]` | Update existing implementation plans |
-| `/ll:confidence-check [id]` | Pre-implementation confidence check for readiness |
-| `/ll:go-no-go [id|sprint] [--check]` | Adversarial GO/NO-GO verdict via pro/con debate agents |
-
-### Code Quality
-
-| Command | Description |
-|---------|-------------|
-| `/ll:check-code [mode]` | Run linting, formatting, type checks |
-| `/ll:run-tests [scope]` | Run test suites |
-| `/ll:audit-docs [scope] [--fix]` | Audit documentation for accuracy and completeness |
-| `/ll:update-docs [--since <date\|ref>] [--fix]` | Identify stale or missing docs from recent commits and completed issues |
-| `/ll:find-dead-code` | Find unused code |
-
-### Git & Release
-
-| Command | Description |
-|---------|-------------|
-| `/ll:commit` | Create commits with approval |
-| `/ll:open-pr [target_branch]` | Open pull request for current branch |
-| `/ll:describe-pr` | Generate PR description |
-| `/ll:manage-release [action] [version]` | Manage releases, tags, and changelogs |
-| `/ll:sync-issues [mode]` | Sync local issues with GitHub Issues |
-| `/ll:cleanup-worktrees [mode]` | Clean orphaned git worktrees |
-
-### Automation & Loops
-
-| Command | Description |
-|---------|-------------|
-| `/ll:create-loop` | Interactive FSM loop creation |
-| `/ll:create-eval-from-issues <issue-id> [...]` | Generate eval harness YAML from issue IDs |
-| `/ll:review-loop` | Review and improve existing FSM loop configurations |
-| `/ll:debug-loop-run` | Analyze loop execution history for actionable issues |
-| `/ll:audit-loop-run [loop-name] [--no-rubric-audit]` | Audit loop goal achievement: artifact mutations, contracts, phantom success |
-| `/ll:cleanup-loops [--dry-run] [--threshold N]` | Find and clean stuck or stale loop processes |
-| `/ll:rename-loop <old> <new> [--dry-run] [--yes]` | Rename a loop and update all references |
-| `/ll:loop-suggester [file|--from-commands]` | Suggest FSM loops from message history or command catalog |
-| `/ll:workflow-automation-proposer` | Synthesize workflow patterns into automation proposals |
-
-### Meta-Analysis
-
-| Command | Description |
-|---------|-------------|
-| `/ll:audit-claude-config [scope]` | Audit Claude Code plugin configuration |
-| `/ll:analyze-workflows [file]` | Analyze user message patterns for automation |
-| `/ll:analyze-history` | Analyze issue history for project health and trends |
-| `/ll:improve-claude-md` | Rewrite CLAUDE.md with `<important if>` blocks for scoped instruction attention |
-
-### Session & Config
-
-| Command | Description |
-|---------|-------------|
-| `/ll:init [flags]` | Initialize config for a project (auto-detects type) |
-| `/ll:configure [area]` | Interactive configuration editor |
-| `/ll:update [--plugin\|--package\|--all] [--dry-run]` | Update little-loops plugin and pip package |
-| `/ll:publish <version\|patch\|minor\|major> [--dry-run]` | Bump version in source files (maintainers only — project-local, not shipped in plugin) |
-| `/ll:help` | Show available commands and usage |
-| `/ll:handoff [context]` | Generate continuation prompt for session handoff |
-| `/ll:resume [prompt_file]` | Resume from previous session's continuation prompt |
-| `/ll:toggle-autoprompt [setting]` | Toggle automatic prompt optimization |
-
-**Automatic context monitoring**: Enable `context_monitor.enabled` to get warnings when context fills up (~80%). The system will remind you to run `/ll:handoff` before context exhaustion. See [Session Handoff Guide](docs/guides/SESSION_HANDOFF.md) for details.
-
-## Agents
-
-| Agent | Description |
-|-------|-------------|
-| `codebase-analyzer` | Analyze implementation details |
-| `codebase-locator` | Find files by feature/topic |
-| `codebase-pattern-finder` | Find code patterns and examples |
-| `consistency-checker` | Cross-component consistency validation |
-| `plugin-config-auditor` | Plugin configuration auditing |
-| `prompt-optimizer` | Codebase context for prompt enhancement |
-| `web-search-researcher` | Research web information |
-| `workflow-pattern-analyzer` | Analyze workflow patterns and dependencies |
-
-## Skills
-
-| Skill `^` | Capability Group | Description |
-|-----------|-----------------|-------------|
-| `capture-issue`^ | Issue Discovery | Capture issues from conversation or description |
-| `issue-workflow`^ | Issue Discovery / Refinement | Quick reference for issue management workflow |
-| `issue-size-review`^ | Issue Discovery / Refinement | Evaluate issue size/complexity and propose decomposition |
-| `format-issue`^ | Issue Refinement | Format issue files to align with template v2.0 structure |
-| `map-dependencies`^ | Issue Discovery / Refinement | Analyze cross-issue dependencies based on file overlap |
-| `product-analyzer`^ | Scanning & Analysis | Analyze codebase against product goals for feature gaps |
-| `confidence-check`^ | Planning & Implementation | Pre-implementation confidence check for readiness validation |
-| `manage-issue`^ | Planning & Implementation | Autonomously manage issues — plan, implement, verify, and complete |
-| `audit-docs`^ | Code Quality | Audit documentation for accuracy and completeness |
-| `update-docs`^ | Code Quality | Identify stale or missing docs from recent commits and completed issues |
-| `create-loop`^ | Automation & Loops | Create new FSM loop configuration interactively |
-| `create-eval-from-issues`^ | Automation & Loops | Generate eval harness YAML from issue IDs |
-| `review-loop`^ | Automation & Loops | Review and improve existing FSM loop configurations |
-| `debug-loop-run`^ | Automation & Loops | Analyze loop execution history to synthesize actionable issues from fault and effectiveness signals |
-| `audit-loop-run`^ | Automation & Loops | Audit loop goal achievement: artifact mutations, threshold contracts, phantom convergence detection |
-| `cleanup-loops`^ | Automation & Loops | Find stuck/stale loops, diagnose root causes, and clean them up |
-| `rename-loop`^ | Automation & Loops | Rename a loop and update all references to maintain full functionality |
-| `workflow-automation-proposer`^ | Automation & Loops | Synthesize workflow patterns into automation proposals |
-| `audit-claude-config`^ | Meta-Analysis | Comprehensive audit of Claude Code plugin configuration |
-| `improve-claude-md`^ | Meta-Analysis | Rewrite CLAUDE.md with `<important if>` blocks for scoped instruction attention |
-| `analyze-history`^ | Meta-Analysis | Analyze issue history for project health, trends, and progress |
-| `init`^ | Session & Config | Initialize little-loops configuration for a project |
-| `configure`^ | Session & Config | Interactively configure specific areas in ll-config.json |
-| `update`^ | Session & Config | Update little-loops plugin and package (consumer-first) |
-| `go-no-go`^ | Planning & Implementation | Adversarial GO/NO-GO verdict via pro/con debate agents |
-| `decide-issue`^ | Issue Refinement | Resolve competing implementation options via codebase evidence scoring |
-| `wire-issue`^ | Issue Refinement | Complete integration point wiring for refined issues |
-| `audit-issue-conflicts`^     | Issue Refinement           | Scan open issues for conflicting requirements and architectural decisions |
-
-## CLI Tools
-
-**Requires Python 3.11+**. Install from PyPI:
+### Ship an issue end-to-end
 
 ```bash
-pip install little-loops
+/ll:manage-issue bug fix BUG-001   # Plan → implement → verify → complete
 ```
 
-<details>
-<summary>Developer install (editable, with test dependencies)</summary>
+### Fan out a parallel sprint
 
 ```bash
-pip install -e "./scripts[dev]"
+ll-sprint create v2-launch --issues FEAT-001,FEAT-002,FEAT-003
+ll-parallel --workers 3            # Three isolated worktrees, three features, zero babysitting
 ```
 
-</details>
-
-### ll-action
-
-Invoke any ll skill as a one-shot command with JSON-structured output. Supports streaming NDJSON events (for dashboard SSE) or a single JSON object (for scripting):
+### Eval-driven development
 
 ```bash
-ll-action invoke refine-issue --args P2-ENH-1229         # stream NDJSON events
-ll-action invoke confidence-check --args FEAT-042 --output json  # single JSON result
-ll-action capabilities                                    # check Claude availability + skill list
-ll-action list                                            # list all skills with descriptions
+/ll:create-eval-from-issues FEAT-001   # Turn acceptance criteria into a runnable harness
+ll-loop validate harness-optimize      # Dry-run the FSM before paying for a real run
+ll-loop run harness-optimize -b        # Score-gated hill climbing in the background
 ```
 
-Run `ll-action --help` for all options.
+---
 
-### ll-auto
+## What's included
 
-Process all backlog issues sequentially in priority order:
+- **28 slash commands** — issue discovery, refinement, planning, code quality, git, automation
+- **8 specialized agents** — codebase analysis, pattern finding, consistency checking, web research
+- **28 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
+- **20 CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
+- **47 FSM loops** — recurring automation workflows (backlog triage, sprint building, eval harnesses)
+- **Configuration system** — project-type templates for Python, JS/TS, Go, Rust, Java, .NET, and generic
 
-```bash
-ll-auto                          # Process all issues
-ll-auto --max-issues 5           # Limit to 5 issues
-ll-auto --resume                 # Resume from state
-ll-auto --dry-run                # Preview only
-```
+Full reference: [Command Reference](docs/reference/COMMANDS.md) · [CLI Reference](docs/reference/CLI.md)
 
-Run `ll-auto --help` for all options.
-
-### ll-parallel
-
-Process issues concurrently using isolated git worktrees:
-
-```bash
-ll-parallel                      # Process with default workers
-ll-parallel --workers 3          # Use 3 parallel workers
-ll-parallel --dry-run            # Preview what would be processed
-ll-parallel --resume             # Resume from previous state
-ll-parallel --cleanup            # Clean up orphaned worktrees and exit
-```
-
-Run `ll-parallel --help` for all options.
-
-### ll-loop
-
-FSM-based automation loop execution (create loops with `/ll:create-loop`):
-
-```bash
-ll-loop run <loop-name>                   # Execute a loop by name
-ll-loop run <loop-name> -b               # Run as background daemon
-ll-loop run <loop-name> --show-diagrams  # Show FSM diagram after each step
-ll-loop run <loop-name> --clear --show-diagrams  # Live in-place FSM diagram dashboard
-ll-loop run <loop-name> --delay 2    # Pause 2s between iterations
-ll-loop list                     # List all available loops
-ll-loop list --running           # List only running loops
-ll-loop list --builtin           # List only built-in loops
-ll-loop list --json              # JSON array of available loops
-ll-loop list --status interrupted  # Filter running loops by status (e.g., interrupted, awaiting_continuation)
-ll-loop stop <loop-name>         # Stop all running instances of a loop
-ll-loop status <loop-name>       # Show loop status (aggregates across all instances)
-ll-loop status <loop-name> --json  # Loop state as JSON (array when 2+ instances running)
-ll-loop resume <loop-name>       # Resume interrupted loop (errors if 2+ match; use --instance-id to select — not shown in --help)
-ll-loop validate <loop-name>     # Validate loop definition
-ll-loop history <loop-name>      # Show loop execution history (lists archived runs)
-ll-loop history <loop-name> <run_id>  # Inspect a specific archived run
-ll-loop test <loop-name>         # Run a single test iteration
-ll-loop simulate <loop-name>     # Trace execution interactively
-ll-loop install <loop-name>      # Copy built-in loop to .loops/
-ll-loop show <loop-name>                   # Show loop details and structure
-ll-loop show <loop-name> --json            # Show loop details as JSON
-ll-loop show <loop-name> --json --resolved # Show with sub-loop states expanded
-```
-
-Run `ll-loop --help` for all options. See [Loops Guide](docs/guides/LOOPS_GUIDE.md) for loop authoring.
-
-### ll-sprint
-
-Define and execute curated issue sets with dependency-aware ordering:
-
-```bash
-ll-sprint create sprint-1 --issues BUG-001,FEAT-010
-ll-sprint run sprint-1           # Execute a sprint
-ll-sprint list                   # List all sprints
-ll-sprint list --json            # JSON array of all sprints
-ll-sprint show sprint-1          # Show sprint details
-ll-sprint edit sprint-1 --add BUG-045  # Edit sprint issue list
-ll-sprint delete sprint-1        # Delete a sprint
-ll-sprint analyze sprint-1       # Analyze for file conflicts
-```
-
-Run `ll-sprint --help` for all options.
-
-### ll-messages
-
-Extract user messages from Claude Code session logs:
-
-```bash
-ll-messages                      # Last 100 messages to file
-ll-messages -n 50                # Last 50 messages
-ll-messages --since 2026-01-01   # Messages since date
-```
-
-Run `ll-messages --help` for all options.
-
-### ll-logs
-
-Discover and extract ll-relevant JSONL entries from Claude Code session logs:
-
-```bash
-ll-logs discover                          # List all projects with ll activity
-ll-logs tail --loop <name>               # Stream live events from an active loop session
-ll-logs extract --all                    # Extract all projects to logs/
-ll-logs extract --project /path          # Extract one project to logs/<slug>/
-ll-logs extract --all --cmd ll-history   # Filter to ll-history invocations
-```
-
-Run `ll-logs --help` for all options.
-
-### ll-sync
-
-Sync local `.issues/` files with GitHub Issues:
-
-```bash
-ll-sync status                   # Show sync status
-ll-sync push                     # Push all local issues to GitHub
-ll-sync pull                     # Pull GitHub Issues to local
-ll-sync diff [issue_id]          # Show diff between local and GitHub issues
-ll-sync close [issue_ids...]     # Close GitHub issues for completed local issues
-ll-sync reopen [issue_ids...]    # Reopen GitHub issues for locally-active issues
-```
-
-Requires `sync.enabled: true` in config. Run `ll-sync --help` for all options.
-
-### ll-history
-
-View completed issue statistics and generate documentation:
-
-```bash
-ll-history summary               # Display issue statistics
-ll-history summary --json        # Output as JSON
-ll-history analyze               # Full analysis with trends and debt metrics
-ll-history export "topic" # Export topic-filtered issue excerpts
-ll-history export "sprint" --output docs/arch/sprint.md
-```
-
-### ll-workflows
-
-Identify multi-step workflow patterns from user message history:
-
-```bash
-ll-workflows analyze --input messages.jsonl --patterns step1.yaml
-```
-
-### ll-deps
-
-Cross-issue dependency discovery and validation:
-
-```bash
-ll-deps analyze                  # Full analysis with markdown output
-ll-deps analyze --graph          # Include ASCII dependency graph
-ll-deps validate                 # Validate existing dependency references
-ll-deps fix                      # Auto-fix broken refs, stale refs, backlinks
-ll-deps apply                    # Apply proposed deps >= 0.7 confidence
-ll-deps apply --dry-run          # Preview without writing
-ll-deps apply FEAT-001 blocks FEAT-002  # Manual explicit pair
-```
-
-### ll-issues
-
-Issue management and visualization utilities:
-
-```bash
-ll-issues next-id                             # Next available issue number
-ll-issues list                                # List all open issues
-ll-issues list --type FEAT --priority P2      # Filter by type and priority
-ll-issues list --flat                         # Flat output for scripting
-ll-issues list --json                         # JSON output for scripting
-ll-issues count                               # Total active issue count
-ll-issues count --type BUG                    # Count bugs only
-ll-issues count --json                        # JSON with breakdowns
-ll-issues count --status done                 # Count done issues
-ll-issues count --status all                  # Total across all statuses
-ll-issues search "caching"                    # Search by keyword
-ll-issues search --type BUG --priority P0-P2  # Filter bugs by priority range
-ll-issues show FEAT-001                       # Show summary card for an issue
-ll-issues show FEAT-001 --json                # Show issue as JSON
-ll-issues path 1001                           # Resolve numeric ID to file path
-ll-issues path FEAT-1001                      # Resolve TYPE-NNN to file path
-ll-issues path FEAT-1001 --json               # Output as {"path": "..."}
-ll-issues sequence                            # Dependency-ordered implementation sequence
-ll-issues sequence --limit 5                  # Show top 5 issues to work on
-ll-issues sequence --json                     # JSON output for scripting
-ll-issues impact-effort                       # ASCII impact vs effort matrix
-ll-issues impact-effort --type FEAT           # Filter matrix to a specific issue type
-ll-issues impact-effort --json                # JSON object with quadrant arrays
-ll-issues refine-status                       # Refinement depth table sorted by commands touched
-ll-issues refine-status --type BUG            # Filter to bugs only
-ll-issues refine-status --format json         # JSONL output for scripting
-ll-issues refine-status FEAT-873             # Single-issue view
-ll-issues refine-status FEAT-873 --json      # Single issue as JSON object
-ll-issues clusters                           # Visualize dependency clusters as box diagrams
-ll-issues clusters --json                    # JSON array of cluster objects
-ll-issues clusters --include-orphans         # Include isolated issues with no relationships
-ll-issues clusters --min-connections 2       # Only clusters where a node has ≥2 connections
-ll-issues next-action                         # Next refinement action needed (for FSM loop use)
-ll-issues next-issue                          # Highest-confidence issue ID (for FSM loop use)
-ll-issues next-issues                         # All active issues in ranked order (alias: nxs)
-ll-issues next-issues 5                       # Top 5 ranked issues
-ll-issues nxs --json                          # Ranked list as JSON array
-ll-issues nxs --path                          # Ranked list as file paths
-ll-issues skip FEAT-001                       # Deprioritize issue to P5 (move out of active queue)
-ll-issues skip FEAT-001 --priority P4         # Deprioritize to specific priority
-ll-issues check-readiness FEAT-001            # Exit 0 if confidence/outcome thresholds are met
-ll-issues check-readiness FEAT-001 --readiness 85 --outcome 70
-ll-issues set-scores BUG-1307 --confidence 95 --outcome 80  # Write scores to frontmatter (used by confidence-check Phase 4)
-ll-issues set-scores BUG-1307 --confidence 95 --outcome 80 --score-complexity 22 --score-test-coverage 20 --score-ambiguity 25 --score-change-surface 15
-ll-issues append-log <issue_path> <command>   # Append a session log entry to an issue file
-ll-issues anchor-sweep --dry-run              # Preview file:line → anchor rewrites in active issues
-ll-issues anchor-sweep                        # Rewrite file:line references to enclosing anchors
-```
-
-### ll-create-extension
-
-Scaffold a new extension repo with a `pyproject.toml` entry point, a skeleton `on_event` handler implementing `LLExtension`, and an example test using `LLTestBus`:
-
-```bash
-ll-create-extension my-ext            # Scaffold extension named "my-ext"
-ll-create-extension my-ext --dry-run  # Preview scaffold output without writing files
-```
-
-Run `ll-create-extension --help` for all options.
-
-### ll-gitignore
-
-Suggest and apply `.gitignore` patterns based on untracked files:
-
-```bash
-ll-gitignore                  # Show suggestions and apply approved patterns
-ll-gitignore --dry-run        # Preview suggestions without modifying .gitignore
-```
-
-Run `ll-gitignore --help` for all options.
-
-### ll-migrate
-
-One-time migration script that moves all issues from `completed/` and `deferred/` into their type-based directories (`.issues/bugs/`, `.issues/features/`, etc.), backfills `completed_at:` frontmatter for older completed files, and sets correct `status:` values. Part of the ENH-1390 status-decoupling migration.
-
-```bash
-ll-migrate --dry-run   # Preview all planned moves (strongly advised before running)
-ll-migrate             # Execute migration
-```
-
-Run `ll-migrate --help` for all options.
-
-### ll-migrate-relationships
-
-One-time migration script that renames deprecated relationship frontmatter keys across all `.md` files in `.issues/`: `parent_issue:` → `parent:` and `related:` → `relates_to:`. Part of the ENH-1434 relationship field standardization.
-
-```bash
-ll-migrate-relationships --dry-run   # Preview all planned renames
-ll-migrate-relationships             # Execute migration
-```
-
-Run `ll-migrate-relationships --help` for all options.
-
-### ll-migrate-labels
-
-One-time migration script that moves freeform `## Labels` body sections to `labels:` frontmatter across all `.md` files in `.issues/`. Part of the ENH-1392 labels field addition.
-
-```bash
-ll-migrate-labels --dry-run   # Preview all planned migrations
-ll-migrate-labels             # Execute migration
-```
-
-Run `ll-migrate-labels --help` for all options.
-
-### ll-generate-schemas
-
-Regenerate JSON Schema files for all `LLEvent` types into `docs/reference/schemas/`. This is a maintainer tool used when adding new event types to the plugin.
-
-```bash
-ll-generate-schemas       # Regenerate all schema files
-ll-generate-schemas --help
-```
-
-### ll-verify-docs / ll-check-links
-
-Documentation verification utilities:
-
-```bash
-ll-verify-docs                   # Check documented counts match actual
-ll-check-links                   # Check markdown for broken links
-ll-check-links -C docs/          # Check specific directory
-```
-
-## Configuration
-
-little-loops uses `.ll/ll-config.json` for project-specific settings. Run `/ll:init` to auto-detect your project type and generate a config, or `/ll:configure` for interactive editing. All settings have sensible defaults.
-
-For the full configuration reference — all sections, options, variable substitution, and command overrides — see [Configuration Reference](docs/reference/CONFIGURATION.md).
-
-## Project Examples
-
-### Python Project
-
-```json
-{
-  "project": {
-    "src_dir": "src/",
-    "test_cmd": "pytest tests/ -v",
-    "lint_cmd": "ruff check src/",
-    "type_cmd": "mypy src/"
-  }
-}
-```
-
-### Node.js Project
-
-```json
-{
-  "project": {
-    "src_dir": "src/",
-    "test_cmd": "npm test",
-    "lint_cmd": "eslint src/",
-    "type_cmd": "tsc --noEmit"
-  }
-}
-```
-
-### Go Project
-
-```json
-{
-  "project": {
-    "src_dir": "./",
-    "test_cmd": "go test ./...",
-    "lint_cmd": "golangci-lint run",
-    "type_cmd": null
-  }
-}
-```
-
-## Quick Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Config not loading | Run `/ll:init` or check `.ll/ll-config.json` exists |
-| Command not found | Verify plugin is enabled in `.claude/settings.local.json` |
-| `ll-auto`/`ll-parallel` not found | Run `pip install little-loops` |
-| Worktree errors | Run `ll-parallel --cleanup` then `git worktree prune` |
-| Issues not discovered | Check `issues.base_dir` config matches your `.issues/` path |
-| Resume not working | Delete state file (`.auto-manage-state.json` or `.parallel-manage-state.json`) |
-
-For detailed solutions, see [Troubleshooting Guide](docs/development/TROUBLESHOOTING.md).
+---
 
 ## Documentation
 
-- [**docs.little-loops.ai**](https://docs.little-loops.ai) - Hosted documentation site (searchable, dark mode, mobile-friendly)
-- [**Documentation Index**](docs/index.md) - Complete reference for all documentation
-- [Configuration Reference](docs/reference/CONFIGURATION.md) - Full config options and examples
-- [Command Reference](docs/reference/COMMANDS.md) - All slash commands with usage
-- [CLI Reference](docs/reference/CLI.md) - All `ll-` CLI tools with flags and examples
-- [Loops Guide](docs/guides/LOOPS_GUIDE.md) - Loop creation, FSM YAML, and practical examples
-- [Session Handoff Guide](docs/guides/SESSION_HANDOFF.md) - Context management and session continuation
-- [Merge Coordinator Guide](docs/development/MERGE-COORDINATOR.md) - Sophisticated merge coordination for parallel processing
-- [Troubleshooting Guide](docs/development/TROUBLESHOOTING.md) - Common issues and solutions
-- [Architecture Overview](docs/ARCHITECTURE.md) - System design and diagrams
-- [API Reference](docs/reference/API.md) - Python module documentation
-
-## Development
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and guidelines.
+- **[docs.little-loops.ai](https://docs.little-loops.ai)** — hosted docs (searchable, dark mode, mobile)
+- [Configuration Reference](docs/reference/CONFIGURATION.md) — all options, variable substitution, overrides
+- [Loops Guide](docs/guides/LOOPS_GUIDE.md) — FSM YAML authoring, loop patterns, practical examples
+- [Session Handoff Guide](docs/guides/SESSION_HANDOFF.md) — context management and continuation
+- [Architecture Overview](docs/ARCHITECTURE.md) — system design and diagrams
+- [Troubleshooting](docs/development/TROUBLESHOOTING.md) — common issues and solutions
+- [Contributing](CONTRIBUTING.md) — development setup, testing, guidelines
 
 ## License
 
-MIT License
+MIT
