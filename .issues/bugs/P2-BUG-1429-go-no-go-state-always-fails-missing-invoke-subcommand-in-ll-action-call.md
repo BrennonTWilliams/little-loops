@@ -1,7 +1,14 @@
 ---
-captured_at: "2026-05-10T21:55:32Z"
-discovered_date: "2026-05-10"
+captured_at: '2026-05-10T21:55:32Z'
+discovered_date: '2026-05-10'
 discovered_by: capture-issue
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1429: go_no_go state always fails — missing `invoke` subcommand in ll-action call
@@ -102,7 +109,14 @@ The go/no-go gate is completely non-functional across all loop runs. Every issue
 - `scripts/little_loops/cli/action.py` — `cmd_invoke` (correct `ll-action invoke` interface)
 
 ### Similar Patterns
-- TBD — grep other `ll-action` calls in loop YAMLs: `grep -r "ll-action" scripts/little_loops/loops/` to verify no similar missing-subcommand issues
+- No other `ll-action` calls exist in any loop YAML — the two `go_no_go` states are the only occurrences across `scripts/little_loops/loops/`
+- `scripts/tests/test_builtin_loops.py:991` — `TestAutoRefineAndImplementLoop.test_implement_issue_uses_impl_id` — exact pattern to follow: `assert "${captured.impl_id.output}" in state.get("action", "")`
+- `scripts/tests/test_builtin_loops.py:1002` — `TestAutoRefineAndImplementLoop.test_implement_issue_has_completed_guard` — multi-string assertion pattern: assert multiple substrings in a single action field
+- `scripts/tests/test_builtin_loops.py:648` — `TestIssueRefinementSubLoop.test_breakdown_issue_action_contains_auto` — flag-presence assertion pattern: `assert "--auto" in state.get("action", "")`
+
+### FSM Routing Internals (Root Cause Data Flow)
+- `scripts/little_loops/fsm/evaluators.py` — `evaluate_exit_code()` maps exit code 2 → verdict `"error"` (exit 0 → `"yes"`, exit 1 → `"no"`, anything else → `"error"`)
+- `scripts/little_loops/fsm/executor.py` — `FSMExecutor._route()` resolves `verdict == "error"` against `state.on_error` → `"implement_issue"`
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — `TestAutoRefineAndImplementLoop`, `TestSprintRefineAndImplementLoop`
@@ -132,5 +146,7 @@ The go/no-go gate is completely non-functional across all loop runs. Every issue
 Open
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-11T04:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:refine-issue` - 2026-05-11T03:55:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c9e9569-92e4-4074-b074-855b72dfd162.jsonl`
 - `/ll:format-issue` - 2026-05-10T21:58:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7661ef27-0ff5-4f08-98fe-9ba4e693d34a.jsonl`
 - `/ll:capture-issue` - 2026-05-10T21:55:32Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59c0f1a4-24eb-4243-bf34-3449d41f1dfe.jsonl`
