@@ -1,15 +1,15 @@
 ---
 captured_at: '2026-05-09T20:48:12Z'
-completed_at: 2026-05-11T05:45:22Z
+completed_at: 2026-05-11 05:45:22+00:00
 discovered_date: 2026-05-09
 discovered_by: capture-issue
 blocked_by:
 - ENH-1395
 confidence_score: 100
-outcome_confidence: 75
-score_complexity: 14
+outcome_confidence: 81
+score_complexity: 13
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 25
 status: done
 ---
@@ -79,6 +79,19 @@ Exits 0 if under budget, exits 1 if over (listing top-contributing skills).
 6. Register in all CLI tool listings: `commands/help.md`, `.claude/CLAUDE.md`, `docs/reference/CLI.md`; increment `"20 CLI tools"` count in `README.md` only — do NOT add a `### ll-` section there (README is a hero page; see CONTRIBUTING.md § "Documentation wiring for new CLI tools") [updated 2026-05-10]
 7. Add to release checklist in `CONTRIBUTING.md`
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Add `ll-verify-skill-budget` bullet to `scripts/little_loops/cli/__init__.py` module docstring (after line 24, before the closing `"""`) — follow the pattern of every other tool listed there
+9. Update `skills/configure/areas.md` line ~823 — change `"Authorize all 19"` to `"Authorize all 20"` and append `, ll-verify-skill-budget` to the tool enumeration
+10. Add `"Bash(ll-verify-skill-budget:*)"` permission entry to `skills/init/SKILL.md` — follow the pattern of existing `ll-` tool permissions in that file
+11. Update `scripts/tests/test_create_extension_wiring.py` lines ~57 and ~196 — change `"Authorize all 19"` to `"Authorize all 20"` to match the updated `areas.md`
+12. Add `"skill_budget"` property to `config-schema.json` root `"properties"` object: `{"type": "object", "additionalProperties": false, "properties": {"threshold_tokens": {"type": "integer", "default": 2000, "description": "..."}}}` — prevents schema validation failure for users who set this config key
+13. Add `skill_budget.threshold_tokens` documentation to `docs/reference/CONFIGURATION.md`
+14. Update `README.md` line 46 — change `"21 typed CLI tools"` to `"22 typed CLI tools"` (line 162 was already updated to 22)
+15. Add `TestCheckSkillBudget` class to `scripts/tests/test_doc_counts.py` — direct unit tests for `check_skill_budget()` and `_parse_skill_frontmatter()`; cover: empty skills dir, `disable-model-invocation: true` skipped, per-skill token count, violations threshold, `under_budget` boundary
+
 ## Integration Map
 
 ### Files to Modify
@@ -97,6 +110,9 @@ Exits 0 if under budget, exits 1 if over (listing top-contributing skills).
 - `scripts/tests/test_cli_docs.py:TestMainVerifyDocs` — test pattern to follow
 - `scripts/little_loops/cli/__init__.py` — add `main_verify_skill_budget` to the existing `from little_loops.cli.docs import ...` line (line ~31) and to the `__all__` list (line ~55)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/__init__.py` module docstring (lines 1–25) — `ll-verify-skill-budget` is absent from the prose bullet list; every other tool in `__all__` is listed there [Agent 2 finding]
+
 ### Similar Patterns
 - ENH-977 (`ll-verify-skills`) — nearly identical implementation pattern, different metric
 - `scripts/little_loops/doc_counts.py:verify_documentation()` — **actual pattern to follow** for `check_skill_budget()` (`check_skill_sizes()` referenced in Proposed Solution does not exist yet — ENH-977 is still open)
@@ -108,12 +124,29 @@ Exits 0 if under budget, exits 1 if over (listing top-contributing skills).
 - `scripts/tests/test_cli_docs.py` — add `TestMainVerifySkillBudget`
 - `scripts/tests/test_skill_budget_checker.py` — unit tests for `check_skill_budget()`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_create_extension_wiring.py` — two assertions at lines ~57 and ~196 assert `"Authorize all 19"`; must be updated to `"Authorize all 20"` after `skills/configure/areas.md` is updated [Agent 2 finding — tests will break]
+- `scripts/tests/test_doc_counts.py` — `check_skill_budget()`, `SkillBudgetResult`, and `_parse_skill_frontmatter()` have zero direct unit tests; add `TestCheckSkillBudget` following existing `TestVerifyDocumentation` pattern; cover: empty skills dir, `disable-model-invocation: true` skipped, per-skill token count (`len(desc) // 4`), violations threshold, `under_budget` boundary [Agent 3 finding — new tests needed]
+
 ### Documentation
 - `CONTRIBUTING.md` — release checklist
 - `docs/reference/CLI.md` — tool reference
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md` — `skill_budget.threshold_tokens` config key is not documented here; every other config section consumed by CLI tools has a corresponding entry [Agent 2 finding]
+- `README.md` line 46 — reads `"21 typed CLI tools"` (stale); line 162 was updated to 22 as part of ENH-1396 but line 46 was missed [Agent 2 finding]
+
 ### Configuration
 - `.ll/ll-config.json` — optional `skill_budget.threshold_tokens` override
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `config-schema.json` — `skill_budget` property is absent; `"additionalProperties": false` at root means any `ll-config.json` that sets `skill_budget.threshold_tokens` would fail JSON Schema validation; needs a `"skill_budget": {"type": "object", "properties": {"threshold_tokens": {"type": "integer", "default": 2000}}}` entry [Agent 2 finding — schema-breaking gap]
+
+### Registration/Manifest Files
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/configure/areas.md` line ~823 — reads `"Authorize all 19 ll- CLI tools"` and lists 19 tools; `ll-verify-skill-budget` is absent; update count to 20 and append `, ll-verify-skill-budget` to the enumeration [Agent 2 finding]
+- `skills/init/SKILL.md` — no `"Bash(ll-verify-skill-budget:*)"` permission entry; every other `ll-` CLI tool added after ENH-1229 has a corresponding bash permission block here [Agent 2 finding]
 
 ## Impact
 
@@ -142,7 +175,19 @@ Implemented `ll-verify-skill-budget` CLI tool following the issue specification:
 
 Smoke test shows current budget: 283 / 2000 tokens (well under).
 
+## Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis (2026-05-11):_
+
+**Implementation confirmed complete.** All files from the Integration Map exist and match the spec. One divergence from the planned test layout:
+
+- `scripts/tests/test_skill_budget_checker.py` — planned as a separate unit test file for `check_skill_budget()`, but was **not created**. All 4 tests (CLI-level) live in `TestMainVerifySkillBudget` inside `scripts/tests/test_cli_docs.py`. `check_skill_budget()` is not directly unit-tested (only exercised via mock through the CLI tests).
+- `scripts/little_loops/cli/__init__.py` module docstring (line 1) does not mention `ll-verify-skill-budget` by name (only `ll-verify-docs` and `ll-check-links` are listed), though it is fully wired into `__all__` and the import line.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-05-11T08:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38e20085-241b-48a3-893e-e46ebddac9e2.jsonl`
+- `/ll:wire-issue` - 2026-05-11T07:30:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24af1a8f-9e6d-4c05-9a57-efe2d79185bc.jsonl`
+- `/ll:refine-issue` - 2026-05-11T07:25:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d3e3a3cf-8897-4b2b-8a8c-8909db5a8fa2.jsonl`
 - `/ll:ready-issue` - 2026-05-11T05:40:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcf6c4cd-34a6-4c1d-a785-a4a894e46e06.jsonl`
 - `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e50aaae6-0d95-4912-933d-ced1e60f4a38.jsonl`
 - `/ll:refine-issue` - 2026-05-11T05:35:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8be7f96b-7cbf-4c8c-981d-b0cfe9fe338a.jsonl`
