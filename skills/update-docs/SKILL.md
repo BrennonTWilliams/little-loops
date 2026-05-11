@@ -1,5 +1,6 @@
 ---
 description: Use when asked to update docs, find stale documentation, or check doc coverage after a sprint.
+disable-model-invocation: true
 argument-hint: "[--since <date|git-ref>] [--fix]"
 allowed-tools:
   - Read

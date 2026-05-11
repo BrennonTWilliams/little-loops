@@ -1,5 +1,6 @@
 ---
 description: Use when asked to audit Claude Code config, validate plugin settings, or diagnose plugin issues.
+disable-model-invocation: true
 argument-hint: "[scope]"
 allowed-tools:
   - Read

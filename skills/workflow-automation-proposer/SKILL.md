@@ -1,5 +1,6 @@
 ---
 description: Use when asked to propose automations or suggest automation opportunities from workflow patterns.
+disable-model-invocation: true
 model: sonnet
 allowed-tools:
   - Read

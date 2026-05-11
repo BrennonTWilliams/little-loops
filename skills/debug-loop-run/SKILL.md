@@ -1,5 +1,6 @@
 ---
 description: Use when asked to analyze loop execution history, investigate loop failures, or find loop issues.
+disable-model-invocation: true
 argument-hint: "[loop-name] [--tail N] [--skip-issue-creation] [--auto]"
 model: sonnet
 allowed-tools:

@@ -1,5 +1,6 @@
 ---
 description: Use when asked to improve or rewrite CLAUDE.md or increase LLM instruction adherence.
+disable-model-invocation: true
 argument-hint: "[--dry-run] [--file path]"
 allowed-tools:
   - Read

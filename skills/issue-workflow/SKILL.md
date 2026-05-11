@@ -1,5 +1,6 @@
 ---
 description: Use when asked about the issue lifecycle, command order for issues, or how to manage issues.
+disable-model-invocation: true
 model: haiku
 ---
 

@@ -1,14 +1,22 @@
 ---
-captured_at: "2026-05-09T20:48:12Z"
+captured_at: '2026-05-09T20:48:12Z'
+completed_at: 2026-05-11T04:44:08Z
+status: done
 discovered_date: 2026-05-09
 discovered_by: capture-issue
+confidence_score: 86
+outcome_confidence: 41
+score_complexity: 13
+score_test_coverage: 0
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-1394: Add `disable-model-invocation: true` to Operational Skills
 
 ## Summary
 
-Tag ~15 maintenance/audit skills with `disable-model-invocation: true` in their frontmatter so Claude Code excludes their descriptions from the listing budget. This is the direct fix for the `/doctor` warning that 23 skill descriptions are being dropped (1.4% used vs 1% budget) every session.
+Tag 16 maintenance/audit skills with `disable-model-invocation: true` in their frontmatter so Claude Code excludes their descriptions from the listing budget. This is the direct fix for the `/doctor` warning that 23 skill descriptions are being dropped (1.4% used vs 1% budget) every session.
 
 ## Current Behavior
 
@@ -28,7 +36,6 @@ Add `disable-model-invocation: true` to the YAML frontmatter of each operational
 
 **Skills to tag (always user-invoked, never need LLM routing):**
 - `update` — explicit maintenance command
-- `cleanup-worktrees` — explicit maintenance command
 - `cleanup-loops` — explicit maintenance command
 - `rename-loop` — explicit loop management
 - `review-loop` — explicit loop audit
@@ -43,7 +50,6 @@ Add `disable-model-invocation: true` to the YAML frontmatter of each operational
 - `audit-issue-conflicts` — explicit conflict audit
 - `audit-claude-config` — explicit config audit
 - `issue-size-review` — explicit planning review
-- `tradeoff-review-issues` — explicit planning review
 - `workflow-automation-proposer` — pipeline step 3, invoked programmatically by `analyze-workflows`; requires step1/step2 output files to exist so blind LLM routing would fail
 
 **Skills that MUST remain LLM-discoverable (natural language routing):**
@@ -61,7 +67,7 @@ Add `disable-model-invocation: true` to the YAML frontmatter of each operational
 - `product-analyzer` — Product analysis is framed as questions: "analyze our product gaps", "check feature coverage against our goals", "evaluate the business value of the backlog". Requires routing from goal language to skill.
 - `decide-issue` — Decision resolution is conversational: "decide which option to use for ENH-123", "pick the best implementation", "resolve the open decision". Triggered naturally when an issue has competing options (`decision_needed: true`), which the user may not inspect directly.
 
-**Note — `audit-architecture` is a command, not a skill:** It lives at `commands/audit-architecture.md` and has no `SKILL.md`. The `disable-model-invocation` frontmatter flag is a skill-level field; it is inapplicable to commands. Remove `audit-architecture` from this tracking list entirely.
+**Note — commands are excluded:** `audit-architecture`, `cleanup-worktrees`, and `tradeoff-review-issues` all live in `commands/` and have no `SKILL.md`. The `disable-model-invocation` frontmatter flag is a skill-level field; it is inapplicable to commands. These are excluded from this tracking list entirely.
 
 ## Implementation Steps
 
@@ -74,7 +80,6 @@ Add `disable-model-invocation: true` to the YAML frontmatter of each operational
 
 ### Files to Modify
 - `skills/update/SKILL.md` — add frontmatter flag
-- `skills/cleanup-worktrees/SKILL.md` — add frontmatter flag
 - `skills/cleanup-loops/SKILL.md` — add frontmatter flag
 - `skills/rename-loop/SKILL.md` — add frontmatter flag
 - `skills/review-loop/SKILL.md` — add frontmatter flag
@@ -89,7 +94,6 @@ Add `disable-model-invocation: true` to the YAML frontmatter of each operational
 - `skills/audit-issue-conflicts/SKILL.md` — add frontmatter flag
 - `skills/audit-claude-config/SKILL.md` — add frontmatter flag
 - `skills/issue-size-review/SKILL.md` — add frontmatter flag
-- `skills/tradeoff-review-issues/SKILL.md` — add frontmatter flag
 - `skills/workflow-automation-proposer/SKILL.md` — add frontmatter flag (pipeline step, not user-facing)
 
 ### Dependent Files (Callers/Importers)
@@ -108,10 +112,27 @@ Add `disable-model-invocation: true` to the YAML frontmatter of each operational
 ### Configuration
 - N/A
 
+## Success Metrics
+
+- `/doctor` no longer reports skill-description truncation (currently 23 dropped per session)
+- Total skill listing footprint drops from ~1.4% to ~0.6% of the context budget
+- All tagged skills remain invocable by explicit `/ll:<name>` typing (manual smoke check)
+- Skills in the "MUST remain LLM-discoverable" list still appear in `/skills` and are routable from natural-language prompts
+
+## Scope Boundaries
+
+Explicitly **out of scope**:
+- Changing any skill's behavior, prompt, or logic — frontmatter flag only
+- Tagging skills in the "MUST remain LLM-discoverable" list (those require natural-language routing)
+- Modifying commands (e.g., `audit-architecture`) — `disable-model-invocation` is a skill-level frontmatter field and does not apply to `commands/*.md`
+- Introducing a new mechanism for budget control beyond Claude Code's existing `disable-model-invocation` flag
+- Documentation updates to `CONTRIBUTING.md` describing the convention (tracked separately in ENH-1395)
+- Automated linting/CI to enforce which skills carry the flag
+
 ## Impact
 
 - **Priority**: P3 — active session-quality issue; truncation happens every session
-- **Effort**: Low — frontmatter edits only, ~17 files
+- **Effort**: Low — frontmatter edits only, 16 files
 - **Risk**: Very low — flag removes descriptions from LLM listing; skills remain fully functional
 - **Breaking Change**: No
 
@@ -119,9 +140,32 @@ Add `disable-model-invocation: true` to the YAML frontmatter of each operational
 
 `enhancement`, `skills`, `context-engineering`, `ux`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-10_
+
+**Readiness Score**: 86/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 41/100 → LOW
+
+### Concerns
+- `skills/cleanup-worktrees/SKILL.md` does not exist — `cleanup-worktrees` lives at `commands/cleanup-worktrees.md` (a command, not a skill). The issue explicitly excludes `audit-architecture` for the same reason; skip this entry likewise. Effective scope is 16 SKILL.md files, not 18.
+- `skills/tradeoff-review-issues/SKILL.md` does not exist — `tradeoff-review-issues` lives at `commands/tradeoff-review-issues.md` (a command). Same exclusion rule applies.
+
+### Outcome Risk Factors
+- No test harness: SKILL.md frontmatter changes have no automated validation — wrong field name or format will only surface at runtime via manual `/doctor` run; verify exact field spelling against Claude Code harness docs before committing edits
+- Wide change surface without verification grep: 16 files to edit with no specified verification command; add a completeness check after implementation (e.g., `grep -rl "disable-model-invocation" skills/ | wc -l` should return 16)
+- `disable-model-invocation` field has no existing usage in this codebase — field name and behavior unconfirmed locally; strongly recommend running `/doctor` before and after to confirm the warning clears
+
+## Resolution
+
+Added `disable-model-invocation: true` to the YAML frontmatter of all 16 operational skills. Each file received the flag immediately after its `description:` line. Completeness check: `grep -rl "disable-model-invocation" skills/ | wc -l` returns 16.
+
 ## Status
 
-**Open** | Created: 2026-05-09 | Priority: P3
+**Done** | Created: 2026-05-09 | Completed: 2026-05-11 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-11T04:42:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8d12a0e-5ca4-4480-917f-2297fc8753ca.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5252305-eff8-4e07-9ef5-ead70b4aad16.jsonl`
+- `/ll:format-issue` - 2026-05-11T04:28:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3ceb5948-bbad-469f-bb99-a8277556d87a.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:48:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`

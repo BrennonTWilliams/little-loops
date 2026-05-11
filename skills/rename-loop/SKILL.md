@@ -1,5 +1,6 @@
 ---
 description: Rename a loop and update all references in YAMLs, tests, and docs.
+disable-model-invocation: true
 
 argument-hint: "<old-name> <new-name> [--dry-run] [--yes]"
 model: sonnet

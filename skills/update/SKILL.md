@@ -1,5 +1,6 @@
 ---
 description: Use when asked to update little-loops, the plugin, or the pip package.
+disable-model-invocation: true
 argument-hint: "[flags]"
 allowed-tools:
   - Bash(python3:*)

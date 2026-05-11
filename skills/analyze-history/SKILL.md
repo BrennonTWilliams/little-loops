@@ -1,5 +1,6 @@
 ---
 description: Use when asked about project health, velocity, bug trends, or whether we're making progress.
+disable-model-invocation: true
 model: haiku
 allowed-tools:
   - Bash(ll-history:*)

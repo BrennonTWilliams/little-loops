@@ -1,5 +1,6 @@
 ---
 description: Use when asked to evaluate issue size, decompose large issues, or audit backlog complexity.
+disable-model-invocation: true
 model: sonnet
 allowed-tools:
   - Read

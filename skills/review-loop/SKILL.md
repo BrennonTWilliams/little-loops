@@ -1,5 +1,6 @@
 ---
 description: Use when asked to review loop config quality, validate loop YAML, or audit a loop definition.
+disable-model-invocation: true
 allowed-tools:
   - Bash(ll-loop:*)
   - Read

@@ -1,5 +1,6 @@
 ---
 description: Use when asked to assess loop effectiveness, audit goal achievement, or detect phantom success.
+disable-model-invocation: true
 argument-hint: "[loop-name] [--tail N] [--no-rubric-audit] [--skip-issue-creation] [--auto]"
 model: sonnet
 allowed-tools:

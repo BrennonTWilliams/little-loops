@@ -1,5 +1,6 @@
 ---
 description: Use when asked to clean up stuck loops, kill dead loop processes, or troubleshoot loop state.
+disable-model-invocation: true
 argument-hint: "[--dry-run] [--threshold N]"
 model: sonnet
 allowed-tools:

@@ -1,5 +1,6 @@
 ---
 description: Use when asked to detect conflicting requirements or incompatible decisions across open issues.
+disable-model-invocation: true
 argument-hint: "[--auto] [--dry-run]"
 model: sonnet
 allowed-tools:

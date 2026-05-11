@@ -1,5 +1,6 @@
 ---
 description: Use when asked to audit documentation accuracy, coverage, or find documentation gaps.
+disable-model-invocation: true
 argument-hint: "[scope]"
 allowed-tools:
   - Read
