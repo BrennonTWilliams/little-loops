@@ -1646,28 +1646,6 @@ class TestSessionStartValidation:
         finally:
             os.chdir(original_dir)
 
-    def test_warns_product_without_goals(self, hook_script: Path, tmp_path: Path):
-        """Warns when product.enabled is true but goals file missing."""
-        import os
-
-        original_dir = os.getcwd()
-        try:
-            os.chdir(tmp_path)
-            config_dir = tmp_path / ".ll"
-            config_dir.mkdir()
-            (config_dir / "ll-config.json").write_text(json.dumps({"product": {"enabled": True}}))
-
-            result = subprocess.run(
-                [str(hook_script)],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-
-            assert "product.enabled is true but goals file not found" in result.stderr
-        finally:
-            os.chdir(original_dir)
-
     def test_no_warnings_when_properly_configured(self, hook_script: Path, tmp_path: Path):
         """No warnings when enabled features have required sub-configuration."""
         import os
@@ -1677,9 +1655,6 @@ class TestSessionStartValidation:
             os.chdir(tmp_path)
             config_dir = tmp_path / ".ll"
             config_dir.mkdir()
-
-            # Create goals file for product
-            (config_dir / "ll-goals.md").write_text("# Goals\n")
 
             (config_dir / "ll-config.json").write_text(
                 json.dumps(

@@ -130,17 +130,6 @@ validate_enabled_features() {
             echo "[little-loops] Warning: documents.enabled is true but no document categories configured" >&2
         fi
     fi
-
-    # product.enabled requires goals file to exist
-    local product_enabled
-    product_enabled=$(jq -r '.product.enabled // false' "$config_file" 2>/dev/null)
-    if [ "$product_enabled" = "true" ]; then
-        local goals_file
-        goals_file=$(jq -r '.product.goals_file // ".ll/ll-goals.md"' "$config_file" 2>/dev/null)
-        if [ ! -f "$goals_file" ]; then
-            echo "[little-loops] Warning: product.enabled is true but goals file not found: $goals_file" >&2
-        fi
-    fi
 }
 
 # Display config (with optional local overrides)
