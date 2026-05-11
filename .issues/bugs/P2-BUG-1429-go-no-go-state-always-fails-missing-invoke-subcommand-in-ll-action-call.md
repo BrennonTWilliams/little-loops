@@ -1,6 +1,6 @@
 ---
 captured_at: '2026-05-10T21:55:32Z'
-completed_at: '2026-05-11T04:04:14Z'
+completed_at: '2026-05-11T04:04:50Z'
 discovered_date: '2026-05-10'
 discovered_by: capture-issue
 decision_needed: false
@@ -10,6 +10,7 @@ score_complexity: 22
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # BUG-1429: go_no_go state always fails — missing `invoke` subcommand in ll-action call
@@ -154,6 +155,7 @@ Fixed by adding the `invoke` subcommand to `ll-action` calls in both loop YAMLs:
 - Added `test_go_no_go_uses_ll_action_invoke` to both test classes in `test_builtin_loops.py`
 
 ## Session Log
+- `ll-auto` - 2026-05-11T04:04:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d73c76b2-ac03-4421-ad2a-ae8303011078.jsonl`
 - `/ll:ready-issue` - 2026-05-11T04:01:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d73c76b2-ac03-4421-ad2a-ae8303011078.jsonl`
 - `/ll:confidence-check` - 2026-05-11T04:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 - `/ll:refine-issue` - 2026-05-11T03:55:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c9e9569-92e4-4074-b074-855b72dfd162.jsonl`
