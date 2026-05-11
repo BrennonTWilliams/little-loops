@@ -200,12 +200,26 @@ class DependencyGraph:
         processed: set[str] = set(completed)
 
         while True:
-            # Get issues ready to run (all blockers in processed set)
+            # Get issues ready to run (all hard blockers in processed set)
             wave = self.get_ready_issues(completed=processed)
             if not wave:
                 break
+
+            # Soft ordering: nudge depends_on targets into this wave when their
+            # hard blockers are all satisfied by processed ∪ current wave.
+            after_wave: set[str] = processed | {i.issue_id for i in wave}
+            nudged: list[IssueInfo] = []
+            for issue in wave:
+                for target_id in self.depends_on_edges.get(issue.issue_id, set()):
+                    if target_id in after_wave or target_id not in self.issues:
+                        continue
+                    if not self.get_blocking_issues(target_id, after_wave):
+                        nudged.append(self.issues[target_id])
+                        after_wave.add(target_id)
+            wave.extend(nudged)
+
             waves.append(wave)
-            # Mark this wave as processed for next iteration
+            # Mark this wave (including nudged) as processed for next iteration
             for issue in wave:
                 processed.add(issue.issue_id)
 

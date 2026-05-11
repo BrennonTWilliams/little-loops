@@ -696,6 +696,36 @@ class TestGetExecutionWaves:
 
         assert waves == []
 
+    def test_depends_on_soft_ordering(self) -> None:
+        """depends_on target is nudged into the current wave when its hard blockers are satisfied."""
+        # FEAT-001 and FEAT-003 have no hard blockers (wave 0 naturally)
+        # FEAT-002 is hard-blocked by FEAT-003 (wave 1 naturally)
+        # FEAT-001 depends_on FEAT-002 — after wave 0 collects FEAT-001 and FEAT-003,
+        # FEAT-002's only hard blocker (FEAT-003) is in the current wave, so FEAT-002
+        # is nudged into wave 0 alongside FEAT-001.
+        issue_a = make_issue("FEAT-001", depends_on=["FEAT-002"])
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-003"])
+        issue_c = make_issue("FEAT-003")
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+
+        waves = graph.get_execution_waves()
+
+        wave0_ids = {i.issue_id for i in waves[0]}
+        assert "FEAT-002" in wave0_ids, "depends_on target should be nudged into wave 0"
+        assert "FEAT-001" in wave0_ids
+        assert "FEAT-003" in wave0_ids
+
+    def test_depends_on_does_not_hard_block(self) -> None:
+        """A depends_on target being absent or in the same wave never prevents the dependent."""
+        # FEAT-001 depends_on FEAT-999 (not in graph) — FEAT-001 still enters a wave
+        issue_a = make_issue("FEAT-001", depends_on=["FEAT-999"])
+        graph = DependencyGraph.from_issues([issue_a])
+
+        waves = graph.get_execution_waves()
+
+        assert len(waves) == 1
+        assert waves[0][0].issue_id == "FEAT-001"
+
 
 def _make_issue_with_content(
     issue_id: str,
