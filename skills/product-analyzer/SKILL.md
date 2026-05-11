@@ -5,6 +5,7 @@ allowed-tools:
   - Read
   - Glob
   - Grep
+  - Bash(date:*)
 ---
 
 # Product Analyzer Skill
@@ -45,14 +46,14 @@ First, verify product analysis is enabled:
 If any check fails, return:
 ```yaml
 findings: []
-skipped_reason: "[enabled_missing|goals_file_missing|not_enabled]"
+skipped_reason: "not_enabled"
 ```
 
 ### 2. Load Product Goals
 
 Read and parse the goals file:
 
-1. Read `.ll/ll-goals.md`
+1. Read the goals file path resolved in step 1 (`product.goals_file`, default: `.ll/ll-goals.md`)
 2. Extract YAML frontmatter:
    - `version`: Goals schema version
    - `persona`: User persona (id, name, role)
@@ -117,6 +118,7 @@ type: ux_improvement
 issue_type: ENH
 title: "[Clear description of UX issue]"
 goal_alignment: "[Related priority or vision]"
+goal_alignment_rating: [Strong|Partial|Weak|Missing]
 persona_impact: "[Persona name]"
 user_pain: "[Specific pain point description]"
 business_value: [High|Medium|Low]
@@ -144,6 +146,7 @@ type: business_value
 issue_type: ENH
 title: "[Clear description of opportunity]"
 goal_alignment: "[Related strategic priority]"
+goal_alignment_rating: [Strong|Partial|Weak|Missing]
 persona_impact: "[Persona if applicable]"
 business_value: [High|Medium|Low]
 effort: [Small|Medium|Large]
@@ -164,13 +167,13 @@ Before finalizing findings:
    - Title similarity (same topic)
    - File path overlap (same code area)
    - Goal alignment overlap
-3. If duplicate found, mark finding with `duplicate_of: "[issue-id]"`
-
-**Skip findings that are exact duplicates** of existing issues.
+3. Classify duplicates:
+   - **Exact duplicates** (same title/topic): omit from `findings`; add to `skipped_issues` with `reason: duplicate_of_[issue-id]`
+   - **Near-duplicates** (significant overlap but distinct): include in `findings` with `duplicate_of: "[issue-id]"` set (informational only)
 
 ## Output Format
 
-Return findings as structured YAML:
+Return findings as structured YAML. Before writing output, run `date -u +"%Y-%m-%dT%H:%M:%SZ"` and use the result for `analysis_timestamp` — never approximate it.
 
 ```yaml
 analysis_metadata:
