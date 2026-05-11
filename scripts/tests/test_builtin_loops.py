@@ -1141,7 +1141,9 @@ class TestAutodevLoop:
             "recheck_after_size_review",
             "decide_current",
             "run_decide",
+            "mark_decide_ran",
             "rerun_confidence_after_decide",
+            "snap_and_size_review",
             "run_wire",
             "run_refine",
             "implement_current",
@@ -1638,10 +1640,12 @@ class TestAutodevLoop:
         state = data["states"].get("run_decide", {})
         assert state.get("fragment") == "with_rate_limit_handling"
 
-    def test_run_decide_next_routes_to_rerun_confidence_after_decide(self, data: dict) -> None:
-        """run_decide.next must route to rerun_confidence_after_decide so scores are refreshed before gating."""
+    def test_run_decide_next_routes_to_mark_decide_ran(self, data: dict) -> None:
+        """ENH-1415: run_decide.next must route to mark_decide_ran so the decide-ran flag is
+        set before the refreshed-score gate; mark_decide_ran in turn routes to
+        rerun_confidence_after_decide."""
         state = data["states"].get("run_decide", {})
-        assert state.get("next") == "rerun_confidence_after_decide"
+        assert state.get("next") == "mark_decide_ran"
 
     def test_run_decide_on_error_routes_to_implement_current(self, data: dict) -> None:
         """run_decide.on_error must fall through to recheck_after_decide (degraded mode)."""
@@ -1710,6 +1714,85 @@ class TestAutodevLoop:
         state = data["states"].get("rerun_confidence_after_decide", {})
         assert state.get("on_rate_limit_exhausted") == "done", (
             f"rerun_confidence_after_decide.on_rate_limit_exhausted should be 'done', got {state.get('on_rate_limit_exhausted')!r}"
+        )
+
+    # ENH-1415: route post-decide outcome failures to size-review instead of dropping the issue.
+
+    def test_mark_decide_ran_state_exists(self, data: dict) -> None:
+        """ENH-1415: mark_decide_ran must be present so decide_current can short-circuit
+        on re-entry from recheck_after_size_review."""
+        assert "mark_decide_ran" in data["states"], (
+            "mark_decide_ran state missing — ENH-1415 fix not applied"
+        )
+
+    def test_mark_decide_ran_next_routes_to_rerun_confidence_after_decide(
+        self, data: dict
+    ) -> None:
+        """ENH-1415: mark_decide_ran.next must route to rerun_confidence_after_decide so the
+        post-decide score refresh still runs."""
+        state = data["states"].get("mark_decide_ran", {})
+        assert state.get("next") == "rerun_confidence_after_decide"
+        assert state.get("on_error") == "rerun_confidence_after_decide"
+
+    def test_mark_decide_ran_writes_decide_ran_flag(self, data: dict) -> None:
+        """ENH-1415: mark_decide_ran.action must write the .loops/tmp/autodev-decide-ran flag."""
+        state = data["states"].get("mark_decide_ran", {})
+        action = state.get("action", "")
+        assert "autodev-decide-ran" in action, (
+            f"mark_decide_ran.action must write autodev-decide-ran, got {action!r}"
+        )
+
+    def test_snap_and_size_review_state_exists(self, data: dict) -> None:
+        """ENH-1415: snap_and_size_review must be present so recheck_after_decide can
+        route outcome failures to decomposition rather than dropping them."""
+        assert "snap_and_size_review" in data["states"], (
+            "snap_and_size_review state missing — ENH-1415 fix not applied"
+        )
+
+    def test_snap_and_size_review_next_routes_to_run_size_review(self, data: dict) -> None:
+        """ENH-1415: snap_and_size_review must hand off to run_size_review."""
+        state = data["states"].get("snap_and_size_review", {})
+        assert state.get("next") == "run_size_review"
+        assert state.get("on_error") == "run_size_review"
+
+    def test_snap_and_size_review_refreshes_pre_ids(self, data: dict) -> None:
+        """ENH-1415: snap_and_size_review must snapshot current IDs into autodev-pre-ids.txt
+        so enqueue_or_skip's diff captures only this size-review's children."""
+        state = data["states"].get("snap_and_size_review", {})
+        action = state.get("action", "")
+        assert "autodev-pre-ids.txt" in action, (
+            f"snap_and_size_review.action must write autodev-pre-ids.txt, got {action!r}"
+        )
+
+    def test_recheck_after_decide_on_no_routes_to_snap_and_size_review(self, data: dict) -> None:
+        """ENH-1415: when outcome still fails after decide, route to snap_and_size_review so
+        the issue gets a decomposition attempt rather than being silently dropped."""
+        state = data["states"].get("recheck_after_decide", {})
+        assert state.get("on_no") == "snap_and_size_review", (
+            f"recheck_after_decide.on_no should be 'snap_and_size_review' "
+            f"(was 'dequeue_next' pre-ENH-1415), got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "snap_and_size_review", (
+            f"recheck_after_decide.on_error should also fall through to snap_and_size_review, "
+            f"got {state.get('on_error')!r}"
+        )
+
+    def test_decide_current_checks_decide_ran_flag(self, data: dict) -> None:
+        """ENH-1415: decide_current must check the autodev-decide-ran flag so it short-circuits
+        to implement_current when re-entered from recheck_after_size_review."""
+        state = data["states"].get("decide_current", {})
+        action = state.get("action", "")
+        assert "autodev-decide-ran" in action, (
+            f"decide_current.action must check autodev-decide-ran, got {action!r}"
+        )
+
+    def test_dequeue_next_clears_autodev_decide_ran(self, data: dict) -> None:
+        """ENH-1415: dequeue_next must clear the per-iteration autodev-decide-ran flag so
+        the next issue starts without a stale decide-ran marker."""
+        state = data["states"].get("dequeue_next", {})
+        action = state.get("action", "")
+        assert "autodev-decide-ran" in action, (
+            f"dequeue_next.action must clear autodev-decide-ran, got {action!r}"
         )
 
 

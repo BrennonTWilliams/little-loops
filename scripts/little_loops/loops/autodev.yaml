@@ -71,6 +71,7 @@ states:
       printf '%s' "$CURRENT" > .loops/tmp/autodev-inflight
 
       rm -f .loops/tmp/recursive-refine-broke-down .loops/tmp/autodev-broke-down
+      rm -f .loops/tmp/autodev-decide-ran
       (ll-issues list --json | python3 -c "
       import json, sys
       try:
@@ -148,7 +149,14 @@ states:
     # Check if the issue requires a decision before implementation. Reads
     # decision_needed from ll-issues show --json; if true, runs /ll:decide-issue
     # to resolve competing options before handing off to ll-auto.
-    action: "ll-issues check-flag ${captured.input.output} decision_needed"
+    # ENH-1415: when re-entered after size-review (recheck_after_size_review →
+    # on_yes), short-circuit straight to implement_current if decide already
+    # ran in this iteration. The flag is cleared per-issue at dequeue_next.
+    action: |
+      if [ -f .loops/tmp/autodev-decide-ran ]; then
+        exit 1
+      fi
+      ll-issues check-flag ${captured.input.output} decision_needed
     fragment: shell_exit
     on_yes: run_decide
     on_no: implement_current
@@ -162,9 +170,20 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:decide-issue ${captured.input.output} --auto"
     action_type: slash_command
-    next: rerun_confidence_after_decide
+    next: mark_decide_ran
     on_error: recheck_after_decide
     on_rate_limit_exhausted: done
+
+  mark_decide_ran:
+    # ENH-1415: record that decide has already run for the current issue so
+    # decide_current short-circuits if size-review routes back via
+    # recheck_after_size_review → on_yes: decide_current. The flag is cleared
+    # per-issue at dequeue_next.
+    action: |
+      printf '1' > .loops/tmp/autodev-decide-ran
+    action_type: shell
+    next: rerun_confidence_after_decide
+    on_error: rerun_confidence_after_decide
 
   rerun_confidence_after_decide:
     # After /ll:decide-issue resolves open design questions, the Ambiguity
@@ -184,8 +203,11 @@ states:
   recheck_after_decide:
     # Re-validate readiness/outcome scores after rerun_confidence_after_decide
     # so that implementation only proceeds when thresholds are met. Mirrors
-    # check_passed logic; routes to dequeue_next on failure to avoid
-    # re-triggering decide on the same issue in the same iteration.
+    # check_passed logic. ENH-1415: on failure, route to snap_and_size_review
+    # rather than dropping the issue. After decide runs, the only outcome
+    # dimensions that can still drag the score below threshold are Complexity
+    # and Change Surface — both decomposable. The decide-ran flag set by
+    # mark_decide_ran prevents re-entering decide if size-review routes back.
     action: |
       ll-issues check-readiness ${captured.input.output} \
         --readiness ${context.readiness_threshold} \
@@ -193,8 +215,28 @@ states:
         && echo "${captured.input.output}" >> .loops/tmp/autodev-passed.txt
     fragment: shell_exit
     on_yes: implement_current
-    on_no: dequeue_next
-    on_error: dequeue_next
+    on_no: snap_and_size_review
+    on_error: snap_and_size_review
+
+  snap_and_size_review:
+    # ENH-1415: snapshot current issue IDs as the new pre-ids baseline before
+    # handing off to run_size_review, so enqueue_or_skip's diff reflects only
+    # the children created by this explicit size-review (mirrors
+    # size_review_snap on the no-decide path). Reached when recheck_after_decide
+    # still fails outcome after decide has run.
+    action: |
+      ll-issues list --json | python3 -c "
+      import json, sys
+      try:
+          issues = json.load(sys.stdin)
+          for i in sorted(i['id'] for i in issues):
+              print(i)
+      except Exception:
+          pass
+      " > .loops/tmp/autodev-pre-ids.txt
+    action_type: shell
+    next: run_size_review
+    on_error: run_size_review
 
   run_wire:
     # Run /ll:wire-issue to resolve absent files or unwired integration points

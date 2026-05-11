@@ -2,11 +2,18 @@
 id: ENH-1415
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-05-10T15:06:51Z'
+completed_at: '2026-05-11T04:23:01Z'
 discovered_date: '2026-05-10'
 discovered_by: capture-issue
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-1415: autodev loop dead-ends after decide fails outcome instead of routing to size review
@@ -43,13 +50,13 @@ An issue that passes the decide gate but still fails outcome has unresolvable co
 
 **File**: `scripts/little_loops/loops/autodev.yaml`
 
-1. **`dequeue_next` action** — add cleanup of the decide-ran flag:
+1. **`dequeue_next` action** (line 73) — add cleanup of the decide-ran flag:
    ```yaml
    rm -f .loops/tmp/autodev-decide-ran
    ```
    alongside the existing `rm -f .loops/tmp/recursive-refine-broke-down .loops/tmp/autodev-broke-down`.
 
-2. **New state `mark_decide_ran`** — inserted between `run_decide` and `rerun_confidence_after_decide`:
+2. **New state `mark_decide_ran`** — inserted between `run_decide` and `rerun_confidence_after_decide`; place immediately after `run_decide` (line 156):
    ```yaml
    mark_decide_ran:
        action: |
@@ -58,9 +65,9 @@ An issue that passes the decide gate but still fails outcome has unresolvable co
        next: rerun_confidence_after_decide
        on_error: rerun_confidence_after_decide
    ```
-   Change `run_decide → next: rerun_confidence_after_decide` → `next: mark_decide_ran`.
+   Change `run_decide → next:` (line 165) from `rerun_confidence_after_decide` → `mark_decide_ran`.
 
-3. **New state `snap_and_size_review`** — snapshots current issue IDs as the new pre-ids baseline then routes to `run_size_review`:
+3. **New state `snap_and_size_review`** — snapshots current issue IDs as the new pre-ids baseline then routes to `run_size_review`; place immediately after `recheck_after_decide` (line 184). Same ID-listing pattern used by `dequeue_next` (lines 74–82):
    ```yaml
    snap_and_size_review:
        action: |
@@ -75,12 +82,12 @@ An issue that passes the decide gate but still fails outcome has unresolvable co
        on_error: run_size_review
    ```
 
-4. **`recheck_after_decide`** — change `on_no`:
+4. **`recheck_after_decide`** (line 196) — change `on_no`:
    ```yaml
    on_no: snap_and_size_review   # was: dequeue_next
    ```
 
-5. **`decide_current`** — add flag check to prevent re-entering decide after size review routes back:
+5. **`decide_current`** (line 147) — add flag check to prevent re-entering decide after size review routes back. `recheck_after_size_review → on_yes: decide_current` is the re-entry path; the flag short-circuits to `on_no: implement_current`:
    ```yaml
    decide_current:
        action: |
@@ -92,6 +99,21 @@ An issue that passes the decide gate but still fails outcome has unresolvable co
        on_yes: run_decide
        on_no: implement_current
    ```
+
+6. **Test updates in `scripts/tests/test_builtin_loops.py`** — `TestAutodevLoop` class (line 1106); all tests are YAML-inspection style reading `autodev.yaml`:
+   - Update `test_run_decide_next_routes_to_rerun_confidence_after_decide` (line 1641) → assert `mark_decide_ran`
+   - Add `test_mark_decide_ran_state_exists` and `test_mark_decide_ran_next_routes_to_rerun_confidence_after_decide`
+   - Add `test_snap_and_size_review_state_exists` and `test_snap_and_size_review_next_routes_to_run_size_review`
+   - Add `test_recheck_after_decide_on_no_routes_to_snap_and_size_review` (replaces the implicit `dequeue_next` expectation)
+   - Add `test_decide_current_checks_decide_ran_flag` (assert `autodev-decide-ran` appears in `action`)
+   - Add `test_dequeue_next_clears_autodev_decide_ran` (assert `autodev-decide-ran` in `dequeue_next` action)
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `docs/guides/LOOPS_GUIDE.md` — revise the autodev FSM flow diagram (section `### 'autodev' — Targeted Refine-and-Implement for Specific Issues`, lines 457–492) to show the two new states and the corrected routing arrows (`run_decide → mark_decide_ran → rerun_confidence_after_decide`, `recheck_after_decide on_no → snap_and_size_review`)
+8. Update `scripts/tests/test_builtin_loops.py:TestAutodevLoop.test_required_states_exist` (line 1122) — add `"mark_decide_ran"` and `"snap_and_size_review"` to the `required` set so their presence is enforced
 
 ### Loop-safety reasoning
 
@@ -112,10 +134,15 @@ An issue that passes the decide gate but still fails outcome has unresolvable co
 - `recheck_after_size_review → on_no: dequeue_next` in autodev.yaml — similar terminal routing pattern to keep consistent
 
 ### Tests
-- TBD — integration test for autodev loop routing after decide fails outcome
+- `scripts/tests/test_builtin_loops.py` — `TestAutodevLoop` class (line 1106); YAML-inspection style; add new tests and update one existing test (see Implementation Steps)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py:TestAutodevLoop.test_required_states_exist` (line 1122) — the `required` set must have `mark_decide_ran` and `snap_and_size_review` added; without this, the new states are never enforced by the test suite [Agent 3 finding]
 
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — hand-maintained autodev FSM flow diagram (lines 457–492) shows old routing arrows (`run_decide → rerun_confidence_after_decide`, `recheck_after_decide → dequeue_next`) and prose note describing the outcome-failure triage path without the size-review fallback; must be updated to reflect the two new states and changed routing [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -144,5 +171,9 @@ An issue that passes the decide gate but still fails outcome has unresolvable co
 Open
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-11T04:14:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/434cd6f1-1c19-47b3-ac79-b4c966da01c9.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3bf36aa9-1036-4dd8-8564-5f14b46a48c1.jsonl`
+- `/ll:wire-issue` - 2026-05-11T04:10:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/442aad7e-8297-428d-b587-e8f1fc9b8799.jsonl`
+- `/ll:refine-issue` - 2026-05-11T04:05:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d73c76b2-ac03-4421-ad2a-ae8303011078.jsonl`
 - `/ll:format-issue` - 2026-05-10T15:10:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd8097a3-3488-4878-8cb6-494af00ec7f4.jsonl`
 - `/ll:capture-issue` - 2026-05-10T15:06:51Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd8097a3-3488-4878-8cb6-494af00ec7f4.jsonl`
