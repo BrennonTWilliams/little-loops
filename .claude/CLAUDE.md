@@ -35,7 +35,7 @@ Personal development preferences.
 ```
 commands/       # Slash commands (/ll:*)
 agents/         # Subagent definitions
-skills/         # Skill definitions (28 skills)
+skills/         # Skill definitions (29 skills)
 hooks/          # Lifecycle hooks and prompts
 scripts/        # Python package (little_loops)
 templates/      # Project-type config templates
@@ -116,6 +116,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-verify-skill-budget` - Check skill description token footprint against listing budget (exit 1 if over)
 - `ll-check-links` - Check markdown documentation for broken links
 - `ll-issues` - Issue management and visualization (next-id, list, show, sequence, impact-effort, refine-status, anchor-sweep)
+- `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale); record creation is owned by `/ll:explore-api`
 - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
 - `ll-migrate` - One-time migration of completed/deferred issues to type-based directories (ENH-1390)
 - `ll-migrate-relationships` - One-time migration that renames `parent_issue:` → `parent:` and `related:` → `relates_to:` across all issue files (ENH-1434)

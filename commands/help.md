@@ -114,6 +114,12 @@ SCANNING & ANALYSIS
 /ll:find-dead-code
     Analyze codebase for deprecated, unused, or dead code
 
+/ll:explore-api "<target>" [--assume "<claim>"]...
+    Guide an Ingest → Hypothesize → Execute → Refine exploration of an external
+    API/library and persist a LearnTestRecord to .ll/learning-tests/<slug>.md
+    so future agents can skip rediscovery (via ll-learning-tests check)
+    CLI: ll-learning-tests
+
 CODE QUALITY
 ------------
 /ll:check-code [mode]
@@ -279,7 +285,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 **Issue Discovery**: `capture-issue`, `scan-codebase`, `scan-product`, `audit-architecture`
 **Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`, `refine-issue`, `wire-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`, `audit-issue-conflicts`
 **Planning & Implementation**: `create-sprint`, `review-sprint`, `manage-issue`, `iterate-plan`
-**Scanning & Analysis**: `find-dead-code`
+**Scanning & Analysis**: `find-dead-code`, `explore-api`
 **Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
 **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
 **Automation & Loops**: `create-loop`, `create-eval-from-issues`, `loop-suggester`, `audit-loop-run`

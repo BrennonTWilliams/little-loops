@@ -23,7 +23,7 @@ flowchart TB
     subgraph "Claude Code Plugin"
         CMD[Commands<br/>28 slash commands]
         AGT[Agents<br/>8 specialized agents]
-        SKL[Skills<br/>28 composable skills]
+        SKL[Skills<br/>29 composable skills]
     end
 
     subgraph "Configuration"
@@ -94,7 +94,7 @@ little-loops/
 │       └── lib/
 │           └── common.sh    # Shared shell functions
 ├── loops/                   # Built-in FSM loop definitions (YAML); composable as sub-loops
-├── skills/                  # 28 skill definitions
+├── skills/                  # 29 skill definitions
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md
 │   ├── debug-loop-run/      # User-invoked
@@ -1020,6 +1020,69 @@ This principle is validated by published research on long-context LLM architectu
 **Relationship to ENH-499**: The inter-issue context checkpoint (implemented in ENH-499) applies this principle at issue boundaries — it triggers a structured summarization reset rather than re-running tool calls to reconstruct state.
 
 - **Skill pre-expansion** (`skill_expander.expand_skill`) eliminates the `ToolSearch → Skill` deferred-tool round-trip when `ll-auto` spawns Claude subprocesses: the full skill/command Markdown is read, config placeholders substituted, and the resulting self-contained prompt string is passed directly. This removes one tool call from every Phase 1 and Phase 2 invocation.
+
+---
+
+## Learning Test Registry
+
+The Learning Test Registry is a persistent store of proven facts about external systems (APIs, SDKs, libraries) that the codebase or its agents depend on. It exists so that expensive exploration work — "how does the Anthropic streaming API actually shape its events?" — is captured once and reused indefinitely.
+
+### Lifecycle
+
+The registry is populated by the `/ll:explore-api` skill, which walks the four-phase **Feathers Learning Test** loop:
+
+```mermaid
+flowchart LR
+    INGEST[Phase 1: Ingest<br/>check existing record<br/>read docs/source]
+    HYPOTHESIZE[Phase 2: Hypothesize<br/>3–7 falsifiable claims]
+    EXECUTE[Phase 3: Execute<br/>run proof script<br/>capture stdout/stderr]
+    REFINE[Phase 4: Refine<br/>classify pass/fail/untested<br/>write LearnTestRecord]
+    INGEST --> HYPOTHESIZE
+    HYPOTHESIZE --> EXECUTE
+    EXECUTE --> REFINE
+    REFINE -.-> INGEST
+```
+
+Phase 1 short-circuits if `ll-learning-tests check "<target>"` already returns a record — future agents skip rediscovery for free, which is the whole point.
+
+### Schema
+
+Records are YAML-frontmatter Markdown files stored under `.ll/learning-tests/<slug>.md`. The `LearnTestRecord` dataclass (`scripts/little_loops/learning_tests.py`) has five fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `target` | `str` | Free-text human-readable name |
+| `date` | `str` | ISO date the record was written |
+| `status` | `Literal["proven", "refuted", "stale"]` | `proven` if any assertion passed; `stale` is set via `mark-stale` |
+| `assertions` | `list[Assertion]` | Each `{claim: str, result: "pass"|"fail"|"untested"}` |
+| `raw_output_path` | `str \| None` | Pointer to `.ll/learning-tests/raw/<slug>.txt` |
+
+Slug derivation uses `little_loops.issue_parser.slugify()` (lowercase, strip non-word chars, collapse whitespace and hyphens), so `"Anthropic SDK streaming"` becomes `anthropic-sdk-streaming.md`.
+
+### Storage Layout
+
+```
+.ll/learning-tests/
+├── <slug>.md              # one LearnTestRecord per target
+├── ...
+└── raw/                   # raw stdout/stderr captures from proof scripts
+    ├── <slug>.txt
+    └── ...
+```
+
+The `raw/` subdirectory is created on demand by `/ll:explore-api` — `write_record()` does not auto-create it. Files in `raw/` are the unedited output of the proof script; they are evidence, not summaries.
+
+### CLI Surface
+
+`ll-learning-tests` (`scripts/little_loops/cli/learning_tests.py`) is intentionally narrow: it owns reads and stale-marking, but not writes.
+
+| Subcommand | Purpose | Exit codes |
+|---|---|---|
+| `check "<target>"` | Print JSON record by target name | `0` if found, `1` if missing |
+| `list` | Print JSON array of all records | always `0` |
+| `mark-stale "<target>"` | Set `status: stale` on an existing record | `0` |
+
+There is no `write`/`add` subcommand. Record creation is owned by `/ll:explore-api` (and any future skill variants) so the prompt context — claims, reasoning, proof script — is captured alongside the result, not just the result alone. Skills emit the on-disk YAML directly via the `Write` tool to match the format that `write_record()` produces.
 
 ---
 

@@ -119,7 +119,7 @@ little-loops/
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
 ├── loops/                # Built-in FSM loop definitions (43 YAML files)
-├── skills/               # 28 skill definitions (user-invocable workflows)
+├── skills/               # 29 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── debug-loop-run/               # Analyze loop execution history
 │   ├── audit-loop-run/               # Audit loop goal achievement
@@ -130,6 +130,7 @@ little-loops/
 │   ├── cleanup-loops/                # Find and clean stuck loop processes
 │   ├── confidence-check/             # Pre-implementation confidence check
 │   ├── decide-issue/                 # Resolve competing implementation options
+│   ├── explore-api/                  # Guided 4-phase external-API exploration with LearnTestRecord output
 │   ├── go-no-go/                     # Adversarial GO/NO-GO issue assessment
 │   ├── configure/                    # Configure ll-config.json
 │   ├── create-eval-from-issues/      # Generate eval harness YAML from issue IDs
