@@ -54,8 +54,8 @@ class TestConfigureAreasWiring:
 
     def test_count_updated_to_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 17" in content, (
-            "skills/configure/areas.md must show 'Authorize all 17' ll- CLI tools"
+        assert "Authorize all 18" in content, (
+            "skills/configure/areas.md must show 'Authorize all 18' ll- CLI tools"
         )
 
     def test_ll_create_extension_in_enumeration(self) -> None:
@@ -76,8 +76,8 @@ class TestFeat1045DocUpdates:
 
     def test_readme_tool_count_is_18(self) -> None:
         content = README.read_text()
-        assert "18 CLI tools" in content, (
-            "README.md must say '18 CLI tools' (incremented from 17 after ll-migrate landed)"
+        assert "19 CLI tools" in content, (
+            "README.md must say '19 CLI tools' (incremented from 17 after ll-migrate landed)"
         )
 
     def test_claude_md_lists_ll_create_extension(self) -> None:
@@ -191,14 +191,14 @@ class TestFeat1229LlActionWiring:
 
     def test_readme_tool_count_is_18(self) -> None:
         content = README.read_text()
-        assert "18 CLI tools" in content, (
-            "README.md must say '18 CLI tools' after ll-migrate was added"
+        assert "19 CLI tools" in content, (
+            "README.md must say '19 CLI tools' after ll-migrate was added"
         )
 
     def test_configure_areas_count_is_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 17" in content, (
-            "skills/configure/areas.md must show 'Authorize all 17' ll- CLI tools"
+        assert "Authorize all 18" in content, (
+            "skills/configure/areas.md must show 'Authorize all 18' ll- CLI tools"
         )
 
     def test_configure_areas_lists_ll_action(self) -> None:
@@ -226,3 +226,23 @@ class TestFeat1229LlActionWiring:
         assert "action.py" in content, (
             "CONTRIBUTING.md must include action.py in the cli/ directory tree"
         )
+
+
+class TestEnh1435LlMigrateRelationshipsWiring:
+    """ENH-1435: ll-migrate-relationships must be registered in all 4 doc files."""
+
+    def test_help_md_lists_ll_migrate_relationships(self) -> None:
+        content = HELP_MD.read_text()
+        assert "ll-migrate-relationships" in content
+
+    def test_claude_md_lists_ll_migrate_relationships(self) -> None:
+        content = CLAUDE_MD.read_text()
+        assert "ll-migrate-relationships" in content
+
+    def test_cli_reference_has_ll_migrate_relationships_section(self) -> None:
+        content = CLI_REFERENCE.read_text()
+        assert "ll-migrate-relationships" in content
+
+    def test_readme_has_ll_migrate_relationships_section(self) -> None:
+        content = README.read_text()
+        assert "ll-migrate-relationships" in content

@@ -1173,6 +1173,26 @@ ll-migrate --config /path/to/project  # Run for a specific project
 
 ---
 
+### ll-migrate-relationships
+
+One-time migration script that renames deprecated relationship frontmatter keys in all `.md` files under `.issues/`: `parent_issue:` → `parent:` and `related:` → `relates_to:`. Part of the ENH-1434 relationship field standardization.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--dry-run` | `-n` | Preview all planned renames without modifying files |
+| `--config` | `-C` | Path to project root (default: current directory) |
+
+**Examples:**
+```bash
+ll-migrate-relationships --dry-run   # Preview all planned renames
+ll-migrate-relationships             # Execute migration
+ll-migrate-relationships --config /path/to/project  # Run for a specific project
+```
+
+---
+
 ### ll-verify-docs
 
 Verify that documented counts (commands, agents, skills) match actual file counts.

@@ -87,7 +87,7 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 - **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
 - **28 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
-- **18 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, etc.) for autonomous and parallel issue processing
+- **19 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, etc.) for autonomous and parallel issue processing
 - **43 FSM loops** for recurring automation workflows (backlog triage, sprint building, quality checks, and more)
 - **Configuration system** with project-type templates for Python, JavaScript, TypeScript, Go, Rust, Java (Maven/Gradle), .NET, and a generic fallback
 
@@ -507,6 +507,17 @@ ll-migrate             # Execute migration
 ```
 
 Run `ll-migrate --help` for all options.
+
+### ll-migrate-relationships
+
+One-time migration script that renames deprecated relationship frontmatter keys across all `.md` files in `.issues/`: `parent_issue:` → `parent:` and `related:` → `relates_to:`. Part of the ENH-1434 relationship field standardization.
+
+```bash
+ll-migrate-relationships --dry-run   # Preview all planned renames
+ll-migrate-relationships             # Execute migration
+```
+
+Run `ll-migrate-relationships --help` for all options.
 
 ### ll-generate-schemas
 

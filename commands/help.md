@@ -237,6 +237,7 @@ ll-verify-docs    Verify documented counts match actual file counts
 ll-check-links    Check markdown documentation for broken links
 ll-gitignore      Suggest and apply .gitignore patterns based on untracked files
 ll-migrate        Migrate completed/deferred issues to type-based directories (one-time, ENH-1390)
+ll-migrate-relationships Rename deprecated relationship frontmatter keys in all issue files (one-time, ENH-1434)
 ll-create-extension Scaffold a new little-loops extension project
 ll-generate-schemas Regenerate JSON Schema files for all LLEvent types (maintainer tool)
 ll-logs           Discover and extract ll-relevant log entries from Claude project logs
