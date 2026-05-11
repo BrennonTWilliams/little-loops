@@ -1390,6 +1390,34 @@ ll-generate-schemas -o path/to/schemas/      # Custom output directory
 
 ---
 
+### ll-generate-skill-descriptions
+
+> **Release utility:** Run before tagging a release to batch-refresh skill descriptions.
+
+Auto-generate concise (≤100 character) descriptions for LLM-discoverable skills using the Claude CLI. For each `skills/*/SKILL.md` that does **not** have `disable-model-invocation: true`, it extracts trigger keywords and a body excerpt, prompts Claude to produce a single-line description, and optionally writes it back to the frontmatter.
+
+Dry-run by default (previews proposed descriptions without modifying files).
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--apply` | Write generated descriptions back to `SKILL.md` frontmatter |
+| `--quiet` | Suppress per-skill output; only print final summary |
+
+**Exit codes:** `0` = success (no errors), `1` = one or more skills failed or skills directory not found
+
+**Examples:**
+```bash
+ll-generate-skill-descriptions               # Dry-run: preview proposed descriptions
+ll-generate-skill-descriptions --apply       # Write descriptions back to SKILL.md files
+ll-generate-skill-descriptions --quiet       # Suppress per-skill output
+```
+
+> **See also:** [CONTRIBUTING.md New Skill Checklist](../../CONTRIBUTING.md) for the classification policy and when to run this tool.
+
+---
+
 ### mcp-call
 
 Thin CLI wrapper for direct MCP tool invocation via JSON-RPC. Reads `.mcp.json` from the current directory, spawns the MCP server subprocess, performs the JSON-RPC initialize handshake, calls `tools/call`, and writes the MCP response envelope to stdout.

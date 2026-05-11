@@ -240,6 +240,7 @@ ll-migrate        Migrate completed/deferred issues to type-based directories (o
 ll-migrate-relationships Rename deprecated relationship frontmatter keys in all issue files (one-time, ENH-1434)
 ll-create-extension Scaffold a new little-loops extension project
 ll-generate-schemas Regenerate JSON Schema files for all LLEvent types (maintainer tool)
+ll-generate-skill-descriptions Auto-generate ≤100-char skill descriptions via Claude CLI (release utility)
 ll-logs           Discover and extract ll-relevant log entries from Claude project logs
 
 ================================================================================

@@ -21,6 +21,7 @@ Provides command-line interfaces for automated issue management:
 - ll-migrate-labels: Migrate freeform ## Labels body sections to labels: frontmatter
 - ll-create-extension: Scaffold a new little-loops extension project
 - ll-generate-schemas: Generate JSON Schema files for all LLEvent types (internal: dev tooling)
+- ll-generate-skill-descriptions: Auto-generate ≤100-char skill descriptions via Claude CLI
 """
 
 from little_loops.cli.action import main_action
@@ -38,6 +39,7 @@ from little_loops.cli.migrate import main_migrate
 from little_loops.cli.migrate_labels import main_migrate_labels
 from little_loops.cli.migrate_relationships import main_migrate_relationships
 from little_loops.cli.parallel import main_parallel
+from little_loops.cli.generate_skill_descriptions import main_generate_skill_descriptions
 from little_loops.cli.schemas import main_generate_schemas  # internal: dev tooling
 from little_loops.cli.sprint import (
     _render_dependency_graph,
@@ -54,6 +56,7 @@ __all__ = [
     "main_create_extension",
     "main_deps",
     "main_generate_schemas",  # internal: dev tooling
+    "main_generate_skill_descriptions",
     "main_gitignore",
     "main_history",
     "main_migrate",

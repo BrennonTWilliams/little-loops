@@ -121,6 +121,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-migrate-labels` - One-time migration that moves freeform `## Labels` body sections to `labels:` frontmatter across all issue files (ENH-1392)
 - `ll-create-extension` - Scaffold a new extension repo with entry-point, skeleton handler, and LLTestBus example
 - `ll-generate-schemas` - Regenerate JSON Schema files for all `LLEvent` types into `docs/reference/schemas/` (maintainer tool)
+- `ll-generate-skill-descriptions` - Auto-generate ≤100-char skill descriptions via Claude CLI; skips `disable-model-invocation: true` skills (release utility)
 
 Install: `pip install -e "./scripts[dev]"`
 

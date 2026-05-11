@@ -67,6 +67,7 @@ ll-migrate-labels = "little_loops.cli:main_migrate_labels"
 ll-logs = "little_loops.cli:main_logs"
 # internal: dev tooling — regenerates docs/reference/schemas/ after LLEvent changes
 ll-generate-schemas = "little_loops.cli:main_generate_schemas"
+ll-generate-skill-descriptions = "little_loops.cli:main_generate_skill_descriptions"
 mcp-call = "little_loops.mcp_call:main"
 
 [project.entry-points."little_loops.extensions"]

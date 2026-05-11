@@ -54,8 +54,8 @@ class TestConfigureAreasWiring:
 
     def test_count_updated_to_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 18" in content, (
-            "skills/configure/areas.md must show 'Authorize all 18' ll- CLI tools"
+        assert "Authorize all 19" in content, (
+            "skills/configure/areas.md must show 'Authorize all 19' ll- CLI tools"
         )
 
     def test_ll_create_extension_in_enumeration(self) -> None:
@@ -76,7 +76,7 @@ class TestFeat1045DocUpdates:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "20 CLI tools" in content, "README.md must say '20 CLI tools'"
+        assert "21 CLI tools" in content, "README.md must say '21 CLI tools'"
 
     def test_claude_md_lists_ll_create_extension(self) -> None:
         content = CLAUDE_MD.read_text()
@@ -189,12 +189,12 @@ class TestFeat1229LlActionWiring:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "20 CLI tools" in content, "README.md must say '20 CLI tools'"
+        assert "21 CLI tools" in content, "README.md must say '21 CLI tools'"
 
     def test_configure_areas_count_is_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 18" in content, (
-            "skills/configure/areas.md must show 'Authorize all 18' ll- CLI tools"
+        assert "Authorize all 19" in content, (
+            "skills/configure/areas.md must show 'Authorize all 19' ll- CLI tools"
         )
 
     def test_configure_areas_lists_ll_action(self) -> None:
@@ -222,6 +222,34 @@ class TestFeat1229LlActionWiring:
         assert "action.py" in content, (
             "CONTRIBUTING.md must include action.py in the cli/ directory tree"
         )
+
+
+class TestEnh1395LlGenerateSkillDescriptionsWiring:
+    """ENH-1395: ll-generate-skill-descriptions must be registered in all doc files."""
+
+    def test_help_md_lists_tool(self) -> None:
+        assert "ll-generate-skill-descriptions" in HELP_MD.read_text()
+
+    def test_claude_md_lists_tool(self) -> None:
+        assert "ll-generate-skill-descriptions" in CLAUDE_MD.read_text()
+
+    def test_cli_reference_has_section(self) -> None:
+        assert "ll-generate-skill-descriptions" in CLI_REFERENCE.read_text()
+
+    def test_configure_areas_lists_tool(self) -> None:
+        assert "ll-generate-skill-descriptions" in (PROJECT_ROOT / "skills" / "configure" / "areas.md").read_text()
+
+    def test_contributing_md_has_new_skill_checklist(self) -> None:
+        content = CONTRIBUTING_MD.read_text()
+        assert "New Skill Checklist" in content
+
+    def test_contributing_md_mentions_doctor(self) -> None:
+        content = CONTRIBUTING_MD.read_text()
+        assert "/doctor" in content
+
+    def test_contributing_md_mentions_disable_model_invocation(self) -> None:
+        content = CONTRIBUTING_MD.read_text()
+        assert "disable-model-invocation" in content
 
 
 class TestEnh1435LlMigrateRelationshipsWiring:

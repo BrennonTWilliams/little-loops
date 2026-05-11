@@ -182,6 +182,7 @@ little-loops/
         ├── cli/                 # CLI entry points
         │   ├── __init__.py
         │   ├── action.py        # ll-action one-shot skill invocation CLI
+        │   ├── generate_skill_descriptions.py  # ll-generate-skill-descriptions release utility
         │   ├── auto.py
         │   ├── create_extension.py  # ll-create-extension scaffold CLI
         │   ├── docs.py
@@ -505,6 +506,20 @@ description: |
 ```
 
 **Description convention**: The `description` field is a **trigger document** — Claude uses it to decide when to auto-activate the skill. Lead with trigger conditions ("Use when..."), not a capability summary. Include 5-10 quoted trigger keywords matching natural user phrasing. This reduces missed activations and false positives.
+
+### New Skill Checklist
+
+Before adding a new skill, answer:
+
+1. **Will users always type this command explicitly?**
+   If yes → add `disable-model-invocation: true` to frontmatter. Examples: `update`, `cleanup-worktrees`, `audit-loop-run`, `analyze-history`.
+
+2. **Should the LLM route to this skill from natural language?**
+   If yes → keep default (no flag). Keep the `description` field ≤ 100 characters. No bullet lists in descriptions.
+
+3. **Before release:** run `/doctor` and verify "0 skill descriptions dropped". If any are dropped, tag more skills with `disable-model-invocation: true` or shorten descriptions.
+
+> **Optional utility:** `ll-generate-skill-descriptions` auto-generates minimal (≤100 char) descriptions from SKILL.md content using Claude (dry-run by default; use `--apply` to write back). Useful before a release to batch-refresh descriptions for LLM-discoverable skills.
 
 Skills are user-invocable workflows that activate based on trigger keywords or explicit invocation. Prefer creating skills over agents for new functionality (see development preferences in CLAUDE.md).
 

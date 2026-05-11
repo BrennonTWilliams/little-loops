@@ -1,5 +1,6 @@
 ---
 captured_at: '2026-05-09T20:48:12Z'
+completed_at: '2026-05-11T05:30:26Z'
 discovered_date: 2026-05-09
 discovered_by: capture-issue
 confidence_score: 95
@@ -10,6 +11,7 @@ score_ambiguity: 21
 score_change_surface: 25
 decision_needed: false
 missing_artifacts: true
+status: done
 ---
 
 # ENH-1395: Add New-Skill Classification Policy to CONTRIBUTING.md
@@ -56,6 +58,9 @@ Before adding a new skill, answer:
 1. Open `CONTRIBUTING.md` and locate the "Skills" section
 2. Add the "New Skill Checklist" subsection with the decision tree above
 3. Add a release checklist item in the existing release process section (if one exists) referencing `/doctor`
+4. Create `scripts/little_loops/cli/generate_skill_descriptions.py` following the `action.py` pattern with `run_claude_command`
+5. Register `ll-generate-skill-descriptions` entry point in `scripts/pyproject.toml`
+6. Add `scripts/tests/test_generate_skill_descriptions.py` with a smoke test that mocks `run_claude_command` and verifies: skips `disable-model-invocation: true` skills, calls the mock once per eligible skill, and writes descriptions ≤ 100 chars under `--apply`
 
 ## Integration Map
 
@@ -69,13 +74,18 @@ Before adding a new skill, answer:
 - Existing "New Command Checklist" or similar sections in `CONTRIBUTING.md` (if present)
 
 ### Tests
-- N/A
+- `scripts/tests/test_generate_skill_descriptions.py` — smoke test mocking `run_claude_command`; covers: skip logic for `disable-model-invocation: true` skills, call count, description length enforcement, `--apply` write-back
 
 ### Documentation
 - `CONTRIBUTING.md` — the only file changed
 
 ### Configuration
 - N/A
+
+## Scope Boundaries
+
+- **In scope**: Adding the "New Skill Checklist" section to `CONTRIBUTING.md`; adding a release checklist item for `/doctor`; creating `ll-generate-skill-descriptions` CLI tool in `scripts/little_loops/cli/generate_skill_descriptions.py`; registering the entry point in `pyproject.toml`; adding a smoke test in `scripts/tests/test_generate_skill_descriptions.py`
+- **Out of scope**: Retroactively tagging existing skills with `disable-model-invocation: true` (handled by ENH-1394); changes to the listing budget logic itself; any UI or dashboard for skill management; enforcement via CI lint rules (policy only, not automated gating)
 
 ## Impact
 
@@ -104,6 +114,8 @@ _Updated by `/ll:confidence-check` on 2026-05-11_
 - **New CLI file does not exist**: `scripts/little_loops/cli/generate_skill_descriptions.py` must be created from scratch — ensure it is registered in `pyproject.toml` and installed before testing
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-11T05:30:26Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-11T05:23:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b41ab03-b510-443f-b7e6-9b080476758a.jsonl`
 - `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05b43bc1-4bad-4cee-aaf6-69179c4dd816.jsonl`
 - `/ll:decide-issue` - 2026-05-11T05:14:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44ebe857-57a3-4a0b-8ab5-0e68ff9a9869.jsonl`
 - `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db4b4e79-bda6-447b-aee5-e3e1b6b6a142.jsonl`
