@@ -29,9 +29,14 @@ ISSUE DISCOVERY
     Flags: --quick, --deep, --focus [area]
 
 /ll:scan-product
-    Scan codebase for product-focused issues based on goals document
+    Scan codebase for product-focused issues using goals file if present, or auto-discovering goals
     Requires: product.enabled in ll-config.json
     Skills: product-analyzer
+
+/ll:product-analyzer [focus-area]
+    Analyze product goals and return raw YAML findings (no issue files created)
+    focus-area: gaps|ux|opportunities|<goal-id>|<persona> (optional)
+    Note: Use /ll:scan-product for full workflow with issue file creation
 
 /ll:audit-architecture [focus] [flags]
     Analyze codebase architecture for patterns and improvements

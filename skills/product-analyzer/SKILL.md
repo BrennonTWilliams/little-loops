@@ -1,5 +1,10 @@
 ---
-description: Use when asked to analyze product goals, check feature gaps, or evaluate business value.
+description: Use when asked to analyze product goals, check feature gaps, or evaluate business value. Returns raw YAML findings. For full scan with issue file creation, use `/ll:scan-product`.
+argument-hint: "[focus-area]"
+arguments:
+  - name: focus-area
+    description: "Optional: limit analysis to a specific goal ID, persona, or 'gaps|ux|opportunities'"
+    required: false
 model: sonnet
 allowed-tools:
   - Read
@@ -285,3 +290,21 @@ Your job is to identify gaps between **product vision** and **code reality**. Fo
 - Business value (what would advance strategic priorities)
 
 Leave technical quality issues to the technical scanning tools.
+
+## Examples
+
+```
+# Full product analysis (used by /ll:scan-product internally)
+/ll:product-analyzer
+
+# Focus on feature gaps only
+/ll:product-analyzer gaps
+
+# Focus on persona UX issues only
+/ll:product-analyzer ux
+
+# Focus on business value opportunities
+/ll:product-analyzer opportunities
+```
+
+**Note**: This skill returns raw YAML findings. To create issue files from these findings, use `/ll:scan-product` instead.

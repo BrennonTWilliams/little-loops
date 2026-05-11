@@ -128,7 +128,7 @@ Scan codebase for product-focused issues based on goals document (requires `prod
 
 **Prerequisites:**
 - Product analysis enabled in config
-- Goals file exists (`.ll/ll-goals.md` by default)
+- Goals file (`.ll/ll-goals.md`) if present; otherwise goals are discovered automatically from project docs
 
 ### `/ll:prioritize-issues`
 Analyze issues and assign priority levels (P0-P5).
@@ -233,11 +233,14 @@ Scan all open issues for conflicting requirements, objectives, or architectural 
 **Trigger keywords:** "audit conflicts", "conflicting issues", "requirement conflicts", "check for contradictions"
 
 ### `/ll:product-analyzer`
-Analyze codebase against product goals to identify feature gaps, user experience improvements, and business value opportunities.
+Analyze codebase against product goals to identify feature gaps, user experience improvements, and business value opportunities. Returns raw YAML findings; use `/ll:scan-product` for full workflow with issue file creation.
+
+**Arguments:**
+- `focus-area` (optional): Limit analysis to a specific goal ID, persona, or one of `gaps|ux|opportunities`
 
 **Prerequisites:**
 - Product analysis enabled in config (`product.enabled: true`)
-- Goals file exists (`.ll/ll-goals.md` by default)
+- Goals file (`.ll/ll-goals.md`) if present; otherwise goals are discovered automatically from project docs
 
 ### `/ll:confidence-check`
 Pre-implementation confidence check that validates readiness and estimates outcome confidence before coding begins. Produces dual scores: a Readiness Score (go/no-go) and an Outcome Confidence Score (implementation risk).
