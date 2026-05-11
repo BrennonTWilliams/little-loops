@@ -574,10 +574,10 @@ class IssueInfo:
     impact: int | None = None              # Impact estimate (1=low, 2=medium, 3=high)
     confidence_score: int | None = None    # Readiness score (0-100) from /ll:confidence-check
     outcome_confidence: int | None = None  # Outcome confidence (0-100) from /ll:confidence-check
-    score_complexity: int | None = None    # Outcome criterion A – Complexity (0-25) from /ll:confidence-check
+    score_complexity: int | None = None    # Outcome criterion A – Complexity (0-25; Breadth 0-12 + Depth 0-13) from /ll:confidence-check
     score_test_coverage: int | None = None # Outcome criterion B – Test Coverage (0-25) from /ll:confidence-check
     score_ambiguity: int | None = None     # Outcome criterion C – Ambiguity (0-25) from /ll:confidence-check
-    score_change_surface: int | None = None # Outcome criterion D – Change Surface (0-25) from /ll:confidence-check
+    score_change_surface: int | None = None # Outcome criterion D – Change Surface / Fanout Verifiability (0-25; Pattern A blast-radius or Pattern B enumerated mechanical fanout) from /ll:confidence-check
     size: str | None = None               # Issue size from /ll:issue-size-review (Small, Medium, Large, Very Large)
     testable: bool | None = None           # False = skip TDD phase; None = treat as testable
     decision_needed: bool | None = None    # Set to true by /ll:refine-issue (2+ options) or /ll:confidence-check (unresolved decision); cleared by /ll:decide-issue
@@ -606,6 +606,30 @@ Convert to dictionary for JSON serialization.
 def from_dict(cls, data: dict[str, Any]) -> IssueInfo
 ```
 Create from dictionary.
+
+#### Confidence-Check Score Rubrics (Outcome Criteria A & D)
+
+<!-- TODO: update-docs stub — ENH-1412 / ENH-1413 — drafted 2026-05-10 -->
+> **Stub**: Auto-drafted by `/ll:update-docs`. Source of truth is `skills/confidence-check/SKILL.md`; expand here if reference-doc readers need the rubric without opening the skill.
+
+The `score_complexity` and `score_change_surface` fields are composite scores produced by `/ll:confidence-check`. They were refactored in ENH-1413 and ENH-1412 respectively into sub-axis structures:
+
+**Criterion A — Complexity (0–25 = Breadth 0–12 + Depth 0–13)** _(ENH-1413)_
+
+- **Breadth** scores how many files/components the change touches (detected by enumeration in the issue's integration map).
+- **Depth** scores how complex the change is per-site (detected from change-description language: "rewrite", "refactor", "new abstraction" → high; "rename", "add flag", "extend table" → low).
+- Risk factors phrase concerns by the dominant axis ("wide-shallow" vs "narrow-deep").
+
+**Criterion D — Change Surface / Fanout Verifiability (0–25)** _(ENH-1412)_
+
+Dual-pattern rubric — the issue is scored under whichever pattern fits:
+
+- **Pattern A — Code blast radius** (count-based): Score by how many files/symbols the change ripples to. Used for novel changes whose effects cannot be enumerated up-front.
+- **Pattern B — Enumerated mechanical fanout** (verifiability-based): Score by completeness of the verification chain (issue enumerates all sites + greppable invariant + automated test that asserts coverage). A complete chain earns a full score even with a large file count, because the change is mechanically verifiable.
+- Phase 4.8 suppresses large-file-surface risk phrases when Pattern B's verification chain is complete.
+
+See `skills/confidence-check/SKILL.md` for the full rubric tables, examples, and phase definitions.
+<!-- END TODO stub -->
 
 ### ProductImpact
 
