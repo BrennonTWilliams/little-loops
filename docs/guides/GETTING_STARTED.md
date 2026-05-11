@@ -235,7 +235,7 @@ Analyzes code organization and design patterns rather than individual bugs. Good
 #    → Compares codebase against your goals document, finds feature gaps
 ```
 
-Requires a product goals file (configured in `ll-config.json`). Useful for identifying what the codebase is missing relative to what you said you wanted to build.
+Uses product goals file if present (`.ll/ll-goals.md`), or discovers goals automatically from README and roadmap docs. Useful for identifying what the codebase is missing relative to what you said you wanted to build.
 
 ### Manual Capture
 
