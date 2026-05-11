@@ -7,8 +7,6 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 _SAMPLE_CONFIG = {
     "project": {"name": "test-project", "src_dir": "scripts/"},
     "issues": {
@@ -99,9 +97,7 @@ class TestMigrateLabelsBodyToFrontmatter:
     def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
         """--dry-run previews changes without modifying files."""
         project = _make_project(tmp_path)
-        original = (
-            "---\nstatus: open\n---\n# BUG-004: Dry run\n\n## Labels\n`cli`\n"
-        )
+        original = "---\nstatus: open\n---\n# BUG-004: Dry run\n\n## Labels\n`cli`\n"
         issue = project / ".issues" / "bugs" / "P1-BUG-004-dry.md"
         issue.write_text(original)
 

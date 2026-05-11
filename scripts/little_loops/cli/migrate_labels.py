@@ -10,9 +10,7 @@ from little_loops.cli_args import add_config_arg, add_dry_run_arg
 from little_loops.frontmatter import parse_frontmatter
 
 _FM_FIELD_RE = re.compile(r"^---\s*$", re.MULTILINE)
-_LABELS_SECTION_RE = re.compile(
-    r"^## Labels\s*\n(.*?)(?=\n## |\Z)", re.MULTILINE | re.DOTALL
-)
+_LABELS_SECTION_RE = re.compile(r"^## Labels\s*\n(.*?)(?=\n## |\Z)", re.MULTILINE | re.DOTALL)
 
 
 def _parse_body_labels(content: str) -> list[str]:

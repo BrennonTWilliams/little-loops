@@ -425,11 +425,15 @@ class GitHubSyncManager:
         effective_number: int | None = None
         if github_number:
             # Update existing issue
-            self._update_github_issue(int(github_number), full_title, body, issue_id, result, milestone)
+            self._update_github_issue(
+                int(github_number), full_title, body, issue_id, result, milestone
+            )
             effective_number = int(github_number)
         else:
             # Create new issue
-            new_number = self._create_github_issue(full_title, body, labels, issue_id, result, milestone)
+            new_number = self._create_github_issue(
+                full_title, body, labels, issue_id, result, milestone
+            )
             if new_number:
                 # Update local frontmatter
                 self._update_local_frontmatter(issue_path, content, new_number)
@@ -698,15 +702,12 @@ class GitHubSyncManager:
         # Strip ll-managed labels (type, priority, blocked-by) to keep only user-facing labels
         _managed_prefixes = ("p0", "p1", "p2", "p3", "p4", "p5", "blocked-by")
         _managed_type_labels = {
-            v.lower()
-            for v in (self.sync_config.github.label_mapping or {}).values()
-            if v
+            v.lower() for v in (self.sync_config.github.label_mapping or {}).values() if v
         }
         user_labels = [
             lbl
             for lbl in gh_labels
-            if lbl.lower() not in _managed_prefixes
-            and lbl.lower() not in _managed_type_labels
+            if lbl.lower() not in _managed_prefixes and lbl.lower() not in _managed_type_labels
         ]
 
         frontmatter = {

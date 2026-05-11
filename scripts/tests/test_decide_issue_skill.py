@@ -246,9 +246,7 @@ class TestPhase3bInlineProvisionalScan:
 
     def test_provisional_pattern_tbd_documented(self) -> None:
         text = self._phase_text()
-        assert "TBD" in text, (
-            "Phase 3b must document the TBD inline design marker pattern"
-        )
+        assert "TBD" in text, "Phase 3b must document the TBD inline design marker pattern"
 
     def test_provisional_pattern_replacement_language_documented(self) -> None:
         text = self._phase_text()

@@ -157,8 +157,12 @@ class IssuesConfig:
         return cls(
             base_dir=data.get("base_dir", ".issues"),
             categories=categories,
-            completed_dir=data.get("completed_dir", "completed"),  # deprecated: kept for backward compat
-            deferred_dir=data.get("deferred_dir", "deferred"),  # deprecated: kept for backward compat
+            completed_dir=data.get(
+                "completed_dir", "completed"
+            ),  # deprecated: kept for backward compat
+            deferred_dir=data.get(
+                "deferred_dir", "deferred"
+            ),  # deprecated: kept for backward compat
             priorities=data.get("priorities", ["P0", "P1", "P2", "P3", "P4", "P5"]),
             templates_dir=data.get("templates_dir"),
             capture_template=data.get("capture_template", "full"),

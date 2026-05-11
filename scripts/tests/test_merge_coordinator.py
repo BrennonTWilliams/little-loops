@@ -833,7 +833,6 @@ Please move or remove them before you merge."""
         assert "TEST-001" in coordinator._failed
 
 
-
 class TestWaitForCompletion:
     """Tests for wait_for_completion method (BUG-019 fix)."""
 
@@ -2163,7 +2162,6 @@ class TestMergeConflictRouting:
 
         assert request.status == MergeStatus.FAILED
         assert "parse" in request.error.lower()
-
 
 
 class TestCleanupWorktreeFallback:

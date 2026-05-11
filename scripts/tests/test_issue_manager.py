@@ -756,9 +756,7 @@ class TestAutoManagerLabelFilter:
         (issues_dir / "P2-BUG-002-cli-issue.md").write_text(
             "---\nlabels:\n  - cli\n---\n# BUG-002: CLI issue\n"
         )
-        (issues_dir / "P3-BUG-003-no-labels.md").write_text(
-            "---\n---\n# BUG-003: No labels\n"
-        )
+        (issues_dir / "P3-BUG-003-no-labels.md").write_text("---\n---\n# BUG-003: No labels\n")
 
         return temp_project_dir
 
@@ -785,9 +783,7 @@ class TestAutoManagerLabelFilter:
         assert issue is not None
         assert issue.issue_id == "BUG-001"
 
-    def test_label_filter_non_matching_returns_none(
-        self, temp_project_with_labels: Path
-    ) -> None:
+    def test_label_filter_non_matching_returns_none(self, temp_project_with_labels: Path) -> None:
         """label_filter that matches no issues returns None."""
         from little_loops.config import BRConfig
         from little_loops.issue_manager import AutoManager

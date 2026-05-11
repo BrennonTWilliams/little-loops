@@ -679,7 +679,9 @@ github_issue: 1
         """Pulled issues do not collide with completed issue numbers."""
         # BUG-042 exists as a done issue in the type dir, active bugs only go up to 005
         (tmp_path / ".issues" / "bugs" / "P2-BUG-005-active.md").write_text("# BUG-005")
-        (tmp_path / ".issues" / "bugs" / "P1-BUG-042-done.md").write_text("---\nstatus: done\n---\n\n# BUG-042")
+        (tmp_path / ".issues" / "bugs" / "P1-BUG-042-done.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-042"
+        )
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         result = SyncResult(action="pull", success=True)
@@ -836,8 +838,12 @@ This is the body.
 
         with patch("little_loops.sync._run_gh_command") as mock_run:
             mock_run.side_effect = [
-                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),  # gh issue edit
-                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),  # gh issue comment
+                subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="", stderr=""
+                ),  # gh issue edit
+                subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="", stderr=""
+                ),  # gh issue comment
             ]
             manager._push_single_issue(issue_file, "BUG-002", result)
 
@@ -1326,7 +1332,9 @@ class TestCloseIssue:
     ) -> None:
         """close_issues closes a specific GitHub issue."""
         issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
-        issue_file.write_text("---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+        issue_file.write_text(
+            "---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n"
+        )
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1378,7 +1386,9 @@ class TestCloseIssue:
     ) -> None:
         """close_issues skips issues not synced to GitHub."""
         issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
-        issue_file.write_text("---\nstatus: done\ndiscovered_by: test\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+        issue_file.write_text(
+            "---\nstatus: done\ndiscovered_by: test\n---\n\n# BUG-001: Test Bug\n\nBody.\n"
+        )
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1394,7 +1404,9 @@ class TestCloseIssue:
     ) -> None:
         """close_issues in dry-run mode does not call gh."""
         issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
-        issue_file.write_text("---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+        issue_file.write_text(
+            "---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n"
+        )
 
         manager = GitHubSyncManager(mock_config, mock_logger, dry_run=True)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1483,7 +1495,9 @@ class TestReopenIssue:
     ) -> None:
         """reopen_issues reopens a GitHub issue and updates its status frontmatter to open."""
         issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
-        issue_file.write_text("---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+        issue_file.write_text(
+            "---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n"
+        )
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1510,7 +1524,9 @@ class TestReopenIssue:
     ) -> None:
         """reopen_issues updates status frontmatter to open for an EPIC in its type dir."""
         issue_file = tmp_path / ".issues" / "epics" / "P2-EPIC-001-my-epic.md"
-        issue_file.write_text("---\nstatus: done\ngithub_issue: 99\n---\n\n# EPIC-001: My Epic\n\nBody.\n")
+        issue_file.write_text(
+            "---\nstatus: done\ngithub_issue: 99\n---\n\n# EPIC-001: My Epic\n\nBody.\n"
+        )
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1610,7 +1626,9 @@ class TestReopenIssue:
     ) -> None:
         """reopen_issues skips issues not synced to GitHub."""
         issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
-        issue_file.write_text("---\nstatus: done\ndiscovered_by: test\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+        issue_file.write_text(
+            "---\nstatus: done\ndiscovered_by: test\n---\n\n# BUG-001: Test Bug\n\nBody.\n"
+        )
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1626,7 +1644,9 @@ class TestReopenIssue:
     ) -> None:
         """reopen_issues in dry-run mode does not call gh."""
         issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
-        issue_file.write_text("---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+        issue_file.write_text(
+            "---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n"
+        )
 
         manager = GitHubSyncManager(mock_config, mock_logger, dry_run=True)
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
@@ -1675,7 +1695,9 @@ class TestReopenIssue:
     ) -> None:
         """_find_local_issue finds a status: done issue in its type dir without completed/ fallback."""
         issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-done-bug.md"
-        issue_file.write_text("---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Done Bug\n\nBody.\n")
+        issue_file.write_text(
+            "---\nstatus: done\ngithub_issue: 42\n---\n\n# BUG-001: Done Bug\n\nBody.\n"
+        )
 
         manager = GitHubSyncManager(mock_config, mock_logger)
         found = manager._find_local_issue("BUG-001")

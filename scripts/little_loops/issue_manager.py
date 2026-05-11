@@ -1050,8 +1050,7 @@ class AutoManager:
             and (self.type_prefixes is None or i.issue_id.split("-", 1)[0] in self.type_prefixes)
             and (self.priority_filter is None or i.priority in self.priority_filter)
             and (
-                self.label_filter is None
-                or any(lb.lower() in self.label_filter for lb in i.labels)
+                self.label_filter is None or any(lb.lower() in self.label_filter for lb in i.labels)
             )
         ]
 

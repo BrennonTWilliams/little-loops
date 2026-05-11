@@ -2048,7 +2048,9 @@ class TestReconcileStaleRuns:
         history_dirs = list((tmp_path / ".history").iterdir())
         assert len(history_dirs) == 4
 
-    def test_dead_pid_file_is_archived(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_dead_pid_file_is_archived(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Files with status=running and a dead PID are archived."""
         monkeypatch.setattr("little_loops.fsm.persistence._process_alive", lambda pid: False)
 

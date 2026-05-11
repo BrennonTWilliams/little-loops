@@ -113,7 +113,9 @@ Examples:
 
     ls = subs.add_parser("list", aliases=["l"], help="List active issues")
     ls.set_defaults(command="list")
-    ls.add_argument("--type", "-T", choices=["BUG", "FEAT", "ENH", "EPIC"], help="Filter by issue type")
+    ls.add_argument(
+        "--type", "-T", choices=["BUG", "FEAT", "ENH", "EPIC"], help="Filter by issue type"
+    )
     ls.add_argument(
         "--priority",
         "-p",
@@ -263,7 +265,9 @@ Examples:
 
     cnt = subs.add_parser("count", aliases=["c"], help="Count active issues")
     cnt.set_defaults(command="count")
-    cnt.add_argument("--type", "-T", choices=["BUG", "FEAT", "ENH", "EPIC"], help="Filter by issue type")
+    cnt.add_argument(
+        "--type", "-T", choices=["BUG", "FEAT", "ENH", "EPIC"], help="Filter by issue type"
+    )
     cnt.add_argument(
         "--priority",
         "-p",
@@ -284,7 +288,9 @@ Examples:
         "sequence", aliases=["seq"], help="Suggest implementation order based on dependencies"
     )
     seq.set_defaults(command="sequence")
-    seq.add_argument("--type", "-T", choices=["BUG", "FEAT", "ENH", "EPIC"], help="Filter by issue type")
+    seq.add_argument(
+        "--type", "-T", choices=["BUG", "FEAT", "ENH", "EPIC"], help="Filter by issue type"
+    )
     seq.add_argument(
         "--limit", "-n", type=int, default=10, help="Maximum number of issues to show (default: 10)"
     )
@@ -305,7 +311,9 @@ Examples:
 
     ie = subs.add_parser("impact-effort", aliases=["ie"], help="Display impact vs effort matrix")
     ie.set_defaults(command="impact-effort")
-    ie.add_argument("--type", "-T", choices=["BUG", "FEAT", "ENH", "EPIC"], help="Filter by issue type")
+    ie.add_argument(
+        "--type", "-T", choices=["BUG", "FEAT", "ENH", "EPIC"], help="Filter by issue type"
+    )
     ie.add_argument("--json", "-j", action="store_true", help="Output as JSON object")
     add_config_arg(ie)
 

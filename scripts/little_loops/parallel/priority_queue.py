@@ -254,8 +254,6 @@ class IssuePriorityQueue:
 
         # Apply label filter
         if label_filter:
-            filtered = [
-                i for i in filtered if any(lb.lower() in label_filter for lb in i.labels)
-            ]
+            filtered = [i for i in filtered if any(lb.lower() in label_filter for lb in i.labels)]
 
         return filtered

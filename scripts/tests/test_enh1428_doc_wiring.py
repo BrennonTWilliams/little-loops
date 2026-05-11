@@ -24,9 +24,11 @@ class TestCliMdStatusVocab:
 
     def test_new_status_choices_present(self) -> None:
         content = CLI_MD.read_text()
-        assert "open` (default)" in content or "`open` (default)" in content or "open (default)" in content, (
-            "docs/reference/CLI.md must show `open` as the default --status value"
-        )
+        assert (
+            "open` (default)" in content
+            or "`open` (default)" in content
+            or "open (default)" in content
+        ), "docs/reference/CLI.md must show `open` as the default --status value"
 
     def test_in_progress_choice_present(self) -> None:
         content = CLI_MD.read_text()
@@ -36,9 +38,7 @@ class TestCliMdStatusVocab:
 
     def test_done_choice_present(self) -> None:
         content = CLI_MD.read_text()
-        assert "done" in content, (
-            "docs/reference/CLI.md must list `done` as a --status choice"
-        )
+        assert "done" in content, "docs/reference/CLI.md must list `done` as a --status choice"
 
     def test_cancelled_choice_present(self) -> None:
         content = CLI_MD.read_text()
@@ -100,9 +100,9 @@ class TestApiMdStatusVocab:
 
     def test_stale_show_section_prose_absent(self) -> None:
         content = API_MD.read_text()
-        assert "Searches all active category directories and the completed directory" not in content, (
-            "docs/reference/API.md show section must not use directory-model prose"
-        )
+        assert (
+            "Searches all active category directories and the completed directory" not in content
+        ), "docs/reference/API.md show section must not use directory-model prose"
 
     def test_stale_search_prose_absent(self) -> None:
         content = API_MD.read_text()

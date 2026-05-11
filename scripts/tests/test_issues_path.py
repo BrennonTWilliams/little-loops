@@ -289,7 +289,9 @@ class TestPathSearchesTypeDirs:
         """Finds issues in type dirs even when status is 'deferred'."""
         _write_config(temp_project_dir, sample_config)
         features_dir, _, _ = _setup_dirs(temp_project_dir)
-        content = "---\nstatus: deferred\n---\n\n# FEAT-1009: My Feature\n\n## Summary\nTest issue.\n"
+        content = (
+            "---\nstatus: deferred\n---\n\n# FEAT-1009: My Feature\n\n## Summary\nTest issue.\n"
+        )
         (features_dir / "P3-FEAT-1009-my-feature.md").write_text(content)
 
         with patch.object(

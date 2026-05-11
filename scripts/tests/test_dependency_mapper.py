@@ -1045,9 +1045,7 @@ class TestValidateFrontmatterFields:
     def test_warns_parent_issue_key(self, tmp_path: Path, caplog: object) -> None:
         """Warns when a file has the deprecated parent_issue key."""
         issue_file = tmp_path / "feat-001.md"
-        issue_file.write_text(
-            "---\nid: FEAT-001\nparent_issue: EPIC-001\n---\n# FEAT-001\n"
-        )
+        issue_file.write_text("---\nid: FEAT-001\nparent_issue: EPIC-001\n---\n# FEAT-001\n")
         issue = make_issue("FEAT-001", path=issue_file)
         with caplog.at_level(logging.WARNING, logger="little_loops.dependency_mapper.analysis"):  # type: ignore[union-attr]
             validate_frontmatter_fields([issue])
@@ -1057,9 +1055,7 @@ class TestValidateFrontmatterFields:
     def test_warns_related_key(self, tmp_path: Path, caplog: object) -> None:
         """Warns when a file has the deprecated related key."""
         issue_file = tmp_path / "feat-002.md"
-        issue_file.write_text(
-            "---\nid: FEAT-002\nrelated: ENH-001\n---\n# FEAT-002\n"
-        )
+        issue_file.write_text("---\nid: FEAT-002\nrelated: ENH-001\n---\n# FEAT-002\n")
         issue = make_issue("FEAT-002", path=issue_file)
         with caplog.at_level(logging.WARNING, logger="little_loops.dependency_mapper.analysis"):  # type: ignore[union-attr]
             validate_frontmatter_fields([issue])
@@ -1500,9 +1496,7 @@ class TestMainCLI:
         captured = capsys.readouterr()  # type: ignore[union-attr]
         assert "BUG-999" in captured.out
 
-    def test_validate_json_output_includes_new_fields(
-        self, tmp_path: Path, capsys: object
-    ) -> None:
+    def test_validate_json_output_includes_new_fields(self, tmp_path: Path, capsys: object) -> None:
         """ll-deps analyze --format json includes broken_depends_on_refs and broken_relates_to_refs."""
         issues_dir = tmp_path / ".issues"
         issues_dir.mkdir()

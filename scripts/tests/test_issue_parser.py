@@ -1600,9 +1600,7 @@ class TestDependencyParsing:
 
         assert info.parent == "EPIC-10"
 
-    def test_parse_parent_issue_alias_emits_warning(
-        self, tmp_path: Path, caplog: Any
-    ) -> None:
+    def test_parse_parent_issue_alias_emits_warning(self, tmp_path: Path, caplog: Any) -> None:
         """Deprecated parent_issue: alias populates parent and emits a warning."""
         import json
         import logging
@@ -1642,9 +1640,7 @@ class TestDependencyParsing:
         bugs_dir = tmp_path / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P2-ENH-003-test.md"
-        issue_file.write_text(
-            "---\ndepends_on:\n  - ENH-100\n  - ENH-101\n---\n# ENH-003: Test\n"
-        )
+        issue_file.write_text("---\ndepends_on:\n  - ENH-100\n  - ENH-101\n---\n# ENH-003: Test\n")
 
         config = BRConfig(tmp_path)
         parser = IssueParser(config)
@@ -1666,9 +1662,7 @@ class TestDependencyParsing:
         bugs_dir = tmp_path / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P2-ENH-004-test.md"
-        issue_file.write_text(
-            "---\nrelates_to:\n  - FEAT-50\n  - BUG-99\n---\n# ENH-004: Test\n"
-        )
+        issue_file.write_text("---\nrelates_to:\n  - FEAT-50\n  - BUG-99\n---\n# ENH-004: Test\n")
 
         config = BRConfig(tmp_path)
         parser = IssueParser(config)
@@ -1676,9 +1670,7 @@ class TestDependencyParsing:
 
         assert info.relates_to == ["FEAT-50", "BUG-99"]
 
-    def test_parse_related_alias_emits_warning(
-        self, tmp_path: Path, caplog: Any
-    ) -> None:
+    def test_parse_related_alias_emits_warning(self, tmp_path: Path, caplog: Any) -> None:
         """Deprecated related: alias populates relates_to and emits a warning."""
         import json
         import logging
@@ -1693,9 +1685,7 @@ class TestDependencyParsing:
         bugs_dir = tmp_path / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P2-ENH-005-test.md"
-        issue_file.write_text(
-            "---\nrelated:\n  - FEAT-30\n  - BUG-40\n---\n# ENH-005: Test\n"
-        )
+        issue_file.write_text("---\nrelated:\n  - FEAT-30\n  - BUG-40\n---\n# ENH-005: Test\n")
 
         config = BRConfig(tmp_path)
         parser = IssueParser(config)
@@ -2704,9 +2694,7 @@ class TestIssueInfoMilestone:
         enhancements_dir = tmp_path / ".issues" / "enhancements"
         enhancements_dir.mkdir(parents=True)
         issue_file = enhancements_dir / "P3-ENH-1393-test.md"
-        issue_file.write_text(
-            "---\nmilestone: sprint-2026-q2\n---\n# ENH-1393: Test\n"
-        )
+        issue_file.write_text("---\nmilestone: sprint-2026-q2\n---\n# ENH-1393: Test\n")
 
         config = BRConfig(tmp_path)
         parser = IssueParser(config)

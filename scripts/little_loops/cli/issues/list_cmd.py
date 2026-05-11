@@ -49,7 +49,10 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
         for issue, stat in raw
         if (not type_filter or issue.issue_id.split("-", 1)[0] == type_filter)
         and (not priority_filter or issue.priority in priority_filter)
-        and (not label_filters or any(lf.lower() in [lb.lower() for lb in issue.labels] for lf in label_filters))
+        and (
+            not label_filters
+            or any(lf.lower() in [lb.lower() for lb in issue.labels] for lf in label_filters)
+        )
         and (not milestone_filter or issue.milestone == milestone_filter)
     ]
 

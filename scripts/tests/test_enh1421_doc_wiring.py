@@ -41,7 +41,8 @@ class TestManageReleaseDecoupled:
     def test_no_git_log_difffilter_completed_dir(self) -> None:
         content = MANAGE_RELEASE.read_text()
         bad_lines = [
-            line for line in content.splitlines()
+            line
+            for line in content.splitlines()
             if "git log --diff-filter=A" in line and ".issues/completed/" in line
         ]
         assert not bad_lines, (

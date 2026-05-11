@@ -488,7 +488,6 @@ _DEPRECATED_RELATIONSHIP_KEYS = frozenset({"parent_issue", "related"})
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---", re.DOTALL)
 
 
-
 def validate_frontmatter_fields(issues: list[IssueInfo]) -> None:
     """Warn about deprecated relationship frontmatter keys found in issue files on disk.
 

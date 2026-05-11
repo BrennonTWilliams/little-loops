@@ -514,7 +514,6 @@ class TestIssuesCLIList:
         # issues_dir has 5 issues (3 bugs + 2 features)
         assert len(lines) == 5
 
-
     def test_list_filter_by_label_match(
         self,
         temp_project_dir: Path,
@@ -614,14 +613,19 @@ class TestIssuesCLIList:
         (bugs_dir / "P0-BUG-001-crash.md").write_text(
             "---\nstatus: open\nmilestone: sprint-2026-q2\n---\n# BUG-001: Crash\n"
         )
-        (bugs_dir / "P1-BUG-002-slow.md").write_text(
-            "---\nstatus: open\n---\n# BUG-002: Slow\n"
-        )
+        (bugs_dir / "P1-BUG-002-slow.md").write_text("---\nstatus: open\n---\n# BUG-002: Slow\n")
 
         with patch.object(
             sys,
             "argv",
-            ["ll-issues", "list", "--milestone", "sprint-2026-q2", "--config", str(temp_project_dir)],
+            [
+                "ll-issues",
+                "list",
+                "--milestone",
+                "sprint-2026-q2",
+                "--config",
+                str(temp_project_dir),
+            ],
         ):
             from little_loops.cli import main_issues
 
@@ -650,7 +654,14 @@ class TestIssuesCLIList:
         with patch.object(
             sys,
             "argv",
-            ["ll-issues", "list", "--milestone", "sprint-2026-q2", "--config", str(temp_project_dir)],
+            [
+                "ll-issues",
+                "list",
+                "--milestone",
+                "sprint-2026-q2",
+                "--config",
+                str(temp_project_dir),
+            ],
         ):
             from little_loops.cli import main_issues
 

@@ -173,7 +173,7 @@ def _cmd_sprint_run(
     # Write milestone: field back to issue files for all valid issues in this sprint
     from little_loops.frontmatter import parse_frontmatter, update_frontmatter
 
-    for issue_id, path in valid.items():
+    for _issue_id, path in valid.items():
         content = path.read_text(encoding="utf-8")
         updated = update_frontmatter(content, {"milestone": sprint.name})
         if updated != content:
@@ -211,11 +211,7 @@ def _cmd_sprint_run(
     label_filter = parse_labels(getattr(args, "label", None))
     if label_filter:
         original_count = len(issue_infos)
-        issue_infos = [
-            i
-            for i in issue_infos
-            if any(lb.lower() in label_filter for lb in i.labels)
-        ]
+        issue_infos = [i for i in issue_infos if any(lb.lower() in label_filter for lb in i.labels)]
         filtered = original_count - len(issue_infos)
         if filtered > 0:
             logger.info(f"Filtered {filtered} issue(s) by label: {', '.join(sorted(label_filter))}")

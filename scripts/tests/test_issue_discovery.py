@@ -98,9 +98,7 @@ def issues_with_content(temp_project_dir: Path, sample_config_with_enh: dict[str
     features_dir.mkdir(parents=True)
 
     # Bug with file path reference
-    (
-        bugs_dir / "P1-BUG-001-circular-dependency.md"
-    ).write_text("""---
+    (bugs_dir / "P1-BUG-001-circular-dependency.md").write_text("""---
 status: open
 ---
 

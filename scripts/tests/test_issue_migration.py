@@ -12,7 +12,6 @@ from unittest.mock import patch
 from little_loops.cli.migrate import main_migrate
 from little_loops.frontmatter import parse_frontmatter
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -61,9 +60,7 @@ def _make_mock_run(
 ) -> Any:
     """Return a subprocess.run mock function."""
 
-    def mock_run(
-        cmd: list[str], **kwargs: Any
-    ) -> subprocess.CompletedProcess[str]:
+    def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         _ = kwargs
         if "ls-files" in cmd:
             stdout = cmd[-1] if git_tracked else ""
@@ -111,9 +108,7 @@ class TestMigrateCompleted:
     def test_backfills_completed_at_from_git_log(self, tmp_path: Path) -> None:
         project = _make_project(tmp_path)
         src = project / ".issues" / "completed" / "P2-ENH-100-thing.md"
-        src.write_text(
-            "---\nid: ENH-100\ntype: ENH\npriority: P2\nstatus: done\n---\n\n# Enh\n"
-        )
+        src.write_text("---\nid: ENH-100\ntype: ENH\npriority: P2\nstatus: done\n---\n\n# Enh\n")
 
         with patch("subprocess.run", side_effect=_make_mock_run(git_log_date="2023-06-15")):
             rc = _run_migrate(project)

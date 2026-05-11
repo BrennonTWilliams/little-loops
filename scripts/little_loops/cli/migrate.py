@@ -12,7 +12,6 @@ from little_loops.cli_args import add_config_arg, add_dry_run_arg
 from little_loops.frontmatter import parse_frontmatter
 from little_loops.issue_lifecycle import _is_git_tracked
 
-
 _FILENAME_PREFIX_RE = re.compile(r"^(?:P\d+-)?([A-Z]+)-\d+")
 _FM_FIELD_RE = re.compile(r"^---\s*$", re.MULTILINE)
 
@@ -125,8 +124,7 @@ Examples:
 
     # Build prefix → category-key mapping (e.g. "BUG" → "bugs")
     prefix_to_key: dict[str, str] = {
-        cat.prefix.upper(): key
-        for key, cat in config._issues.categories.items()
+        cat.prefix.upper(): key for key, cat in config._issues.categories.items()
     }
 
     if dry_run:
@@ -182,7 +180,9 @@ Examples:
         updated_content = _set_fields(content, {k: str(v) for k, v in updates.items()})
 
         prefix = "[DRY RUN] " if dry_run else ""
-        print(f"  {prefix}MOVE {file_path.relative_to(repo_root)} → {target_path.relative_to(repo_root)}")
+        print(
+            f"  {prefix}MOVE {file_path.relative_to(repo_root)} → {target_path.relative_to(repo_root)}"
+        )
 
         if not dry_run:
             try:
@@ -196,8 +196,10 @@ Examples:
             moved += 1
 
     print()
-    print(f"Results: {moved} files {'would be ' if dry_run else ''}moved, "
-          f"{backfilled} completed_at fields backfilled.")
+    print(
+        f"Results: {moved} files {'would be ' if dry_run else ''}moved, "
+        f"{backfilled} completed_at fields backfilled."
+    )
     if untyped:
         print(f"  Untyped (needs manual review): {len(untyped)}")
         for p in untyped:

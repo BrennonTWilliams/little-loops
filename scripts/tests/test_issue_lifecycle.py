@@ -55,7 +55,9 @@ def sample_issue_info(tmp_path: Path) -> IssueInfo:
     """Create a sample IssueInfo for testing."""
     issue_path = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
     issue_path.parent.mkdir(parents=True, exist_ok=True)
-    issue_path.write_text("---\nstatus: open\n---\n\n# BUG-001: Test Bug\n\n## Summary\nTest content.")
+    issue_path.write_text(
+        "---\nstatus: open\n---\n\n# BUG-001: Test Bug\n\n## Summary\nTest content."
+    )
     return IssueInfo(
         path=issue_path,
         issue_type="bugs",

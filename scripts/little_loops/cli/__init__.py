@@ -30,13 +30,13 @@ from little_loops.cli.deps import main_deps
 from little_loops.cli.docs import main_check_links, main_verify_docs
 from little_loops.cli.gitignore import main_gitignore
 from little_loops.cli.history import main_history
-from little_loops.cli.migrate import main_migrate
-from little_loops.cli.migrate_labels import main_migrate_labels
-from little_loops.cli.migrate_relationships import main_migrate_relationships
 from little_loops.cli.issues import main_issues
 from little_loops.cli.logs import main_logs
 from little_loops.cli.loop import main_loop
 from little_loops.cli.messages import main_messages
+from little_loops.cli.migrate import main_migrate
+from little_loops.cli.migrate_labels import main_migrate_labels
+from little_loops.cli.migrate_relationships import main_migrate_relationships
 from little_loops.cli.parallel import main_parallel
 from little_loops.cli.schemas import main_generate_schemas  # internal: dev tooling
 from little_loops.cli.sprint import (

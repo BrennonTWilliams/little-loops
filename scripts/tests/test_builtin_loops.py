@@ -1004,13 +1004,17 @@ class TestAutoRefineAndImplementLoop:
         state = data["states"].get("implement_issue", {})
         action = state.get("action", "")
         assert "completed" in action, "implement_issue action must check .issues/completed/"
-        assert "exit 0" in action, "implement_issue action must exit 0 when issue is already completed"
+        assert "exit 0" in action, (
+            "implement_issue action must exit 0 when issue is already completed"
+        )
 
     def test_go_no_go_uses_ll_action_invoke(self, data: dict) -> None:
         """go_no_go must call ll-action via the invoke subcommand, not pass the skill as a subcommand."""
         state = data["states"].get("go_no_go", {})
         action = state.get("action", "")
-        assert "ll-action invoke" in action, "go_no_go action must use 'll-action invoke', not 'll-action go-no-go'"
+        assert "ll-action invoke" in action, (
+            "go_no_go action must use 'll-action invoke', not 'll-action go-no-go'"
+        )
         assert "--check" in action, "go_no_go action must pass --check flag"
 
     def test_skip_and_continue_uses_input_capture(self, data: dict) -> None:
@@ -1093,13 +1097,17 @@ class TestSprintRefineAndImplementLoop:
         state = data["states"].get("implement_issue", {})
         action = state.get("action", "")
         assert "completed" in action, "implement_issue action must check .issues/completed/"
-        assert "exit 0" in action, "implement_issue action must exit 0 when issue is already completed"
+        assert "exit 0" in action, (
+            "implement_issue action must exit 0 when issue is already completed"
+        )
 
     def test_go_no_go_uses_ll_action_invoke(self, data: dict) -> None:
         """go_no_go must call ll-action via the invoke subcommand, not pass the skill as a subcommand."""
         state = data["states"].get("go_no_go", {})
         action = state.get("action", "")
-        assert "ll-action invoke" in action, "go_no_go action must use 'll-action invoke', not 'll-action go-no-go'"
+        assert "ll-action invoke" in action, (
+            "go_no_go action must use 'll-action invoke', not 'll-action go-no-go'"
+        )
         assert "--check" in action, "go_no_go action must pass --check flag"
 
 
@@ -1725,9 +1733,7 @@ class TestAutodevLoop:
             "mark_decide_ran state missing — ENH-1415 fix not applied"
         )
 
-    def test_mark_decide_ran_next_routes_to_rerun_confidence_after_decide(
-        self, data: dict
-    ) -> None:
+    def test_mark_decide_ran_next_routes_to_rerun_confidence_after_decide(self, data: dict) -> None:
         """ENH-1415: mark_decide_ran.next must route to rerun_confidence_after_decide so the
         post-decide score refresh still runs."""
         state = data["states"].get("mark_decide_ran", {})

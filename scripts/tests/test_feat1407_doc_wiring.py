@@ -4,6 +4,7 @@ Verifies that key skill/command/doc .md files include EPIC in type lists.
 """
 
 from __future__ import annotations
+
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent

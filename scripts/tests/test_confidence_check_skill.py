@@ -241,14 +241,10 @@ class TestCriterionABreadthDepthSplit:
         return content[start:end]
 
     def test_breadth_sub_table_present(self) -> None:
-        assert "Breadth" in self._criterion_a_text(), (
-            "Criterion A must contain a Breadth sub-table"
-        )
+        assert "Breadth" in self._criterion_a_text(), "Criterion A must contain a Breadth sub-table"
 
     def test_depth_sub_table_present(self) -> None:
-        assert "Depth" in self._criterion_a_text(), (
-            "Criterion A must contain a Depth sub-table"
-        )
+        assert "Depth" in self._criterion_a_text(), "Criterion A must contain a Depth sub-table"
 
     def test_breadth_max_is_12(self) -> None:
         assert "0-12" in self._criterion_a_text(), (
@@ -256,9 +252,7 @@ class TestCriterionABreadthDepthSplit:
         )
 
     def test_depth_max_is_13(self) -> None:
-        assert "0-13" in self._criterion_a_text(), (
-            "Criterion A Depth sub-score must be 0-13 points"
-        )
+        assert "0-13" in self._criterion_a_text(), "Criterion A Depth sub-score must be 0-13 points"
 
     def test_breadth_detection_method_present(self) -> None:
         text = self._criterion_a_text()
