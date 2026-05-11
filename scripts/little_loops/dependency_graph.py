@@ -43,11 +43,13 @@ class DependencyGraph:
         issues: Mapping from issue_id to IssueInfo
         blocked_by: Mapping from issue_id to set of blocking issue_ids
         blocks: Mapping from issue_id to set of blocked issue_ids
+        depends_on_edges: Mapping from issue_id to set of soft-prerequisite issue_ids
     """
 
     issues: dict[str, IssueInfo] = field(default_factory=dict)
     blocked_by: dict[str, set[str]] = field(default_factory=dict)
     blocks: dict[str, set[str]] = field(default_factory=dict)
+    depends_on_edges: dict[str, set[str]] = field(default_factory=dict)
 
     @classmethod
     def from_issues(
@@ -122,6 +124,22 @@ class DependencyGraph:
                 if issue.issue_id not in graph.blocked_by.get(blocked_id, set()):
                     graph.blocked_by[blocked_id].add(issue.issue_id)
                     graph.blocks[issue.issue_id].add(blocked_id)
+
+        # Third pass: populate depends_on_edges (soft prerequisite relationships).
+        # depends_on is one-directional — no reverse edge is built here.
+        for issue in issues:
+            for target_id in issue.depends_on:
+                if target_id in completed:
+                    continue
+                if target_id not in all_issue_ids:
+                    if all_known_ids is None or target_id not in all_known_ids:
+                        logger.warning(
+                            f"Issue {issue.issue_id} has depends_on unknown issue {target_id}"
+                        )
+                    continue
+                if issue.issue_id not in graph.depends_on_edges:
+                    graph.depends_on_edges[issue.issue_id] = set()
+                graph.depends_on_edges[issue.issue_id].add(target_id)
 
         return graph
 

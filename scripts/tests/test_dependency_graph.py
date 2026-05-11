@@ -16,6 +16,7 @@ def make_issue(
     priority: str = "P1",
     blocked_by: list[str] | None = None,
     blocks: list[str] | None = None,
+    depends_on: list[str] | None = None,
 ) -> IssueInfo:
     """Helper to create test IssueInfo objects."""
     return IssueInfo(
@@ -26,6 +27,7 @@ def make_issue(
         title=f"Test {issue_id}",
         blocked_by=blocked_by or [],
         blocks=blocks or [],
+        depends_on=depends_on or [],
     )
 
 
@@ -176,6 +178,33 @@ class TestDependencyGraphConstruction:
 
         # BUG-002 is completed so the edge should not be added
         assert "BUG-002" not in graph.blocks.get("BUG-001", set())
+
+    def test_depends_on_edges_populated(self) -> None:
+        """Test that depends_on_edges is populated from IssueInfo.depends_on."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002", depends_on=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        assert graph.depends_on_edges.get("FEAT-002") == {"FEAT-001"}
+        assert "FEAT-001" not in graph.depends_on_edges
+
+    def test_depends_on_completed_target_skipped(self) -> None:
+        """Test that a depends_on pointing at a completed ID is not added as an edge."""
+        issue_a = make_issue("FEAT-001", depends_on=["COMPLETED-999"])
+
+        graph = DependencyGraph.from_issues([issue_a], completed_ids={"COMPLETED-999"})
+
+        assert "FEAT-001" not in graph.depends_on_edges
+
+    def test_depends_on_unknown_target_warns(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that an unknown depends_on ID emits a warning with the expected substring."""
+        issue = make_issue("FEAT-001", depends_on=["NONEXISTENT-999"])
+
+        graph = DependencyGraph.from_issues([issue])
+
+        assert "FEAT-001" not in graph.depends_on_edges
+        assert "depends_on unknown issue NONEXISTENT-999" in caplog.text
 
 
 class TestGetReadyIssues:
@@ -674,6 +703,7 @@ def _make_issue_with_content(
     priority: str = "P1",
     blocked_by: list[str] | None = None,
     blocks: list[str] | None = None,
+    depends_on: list[str] | None = None,
 ) -> IssueInfo:
     """Helper to create IssueInfo with mock path returning given content.
 
@@ -692,6 +722,7 @@ def _make_issue_with_content(
         title=f"Test {issue_id}",
         blocked_by=blocked_by or [],
         blocks=blocks or [],
+        depends_on=depends_on or [],
     )
 
 

@@ -841,6 +841,7 @@ Build graph from list of issues.
 | `issues` | `dict[str, IssueInfo]` | Mapping of issue ID to `IssueInfo` |
 | `blocked_by` | `dict[str, set[str]]` | Mapping of issue ID to blocker IDs |
 | `blocks` | `dict[str, set[str]]` | Reverse mapping (what each issue blocks) |
+| `depends_on_edges` | `dict[str, set[str]]` | Mapping of issue ID to soft-prerequisite issue IDs |
 
 #### Methods
 
