@@ -678,7 +678,7 @@ states:
           parent_to_children = {}
           for iid in all_ids:
               r = subprocess.run(
-                  ['grep', '-rl', f'parent_issue: {iid}', '.issues/'],
+                  ['grep', '-rl', f'parent: {iid}', '.issues/'],
                   capture_output=True, text=True
               )
               children = []

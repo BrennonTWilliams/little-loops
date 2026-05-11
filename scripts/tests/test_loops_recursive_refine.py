@@ -772,7 +772,7 @@ def build_parent_map():
     parent_to_children = {}
     for iid in all_ids:
         r = subprocess.run(
-            ['grep', '-rl', f'parent_issue: {iid}', '.issues/'],
+            ['grep', '-rl', f'parent: {iid}', '.issues/'],
             capture_output=True, text=True
         )
         children = []
@@ -1023,17 +1023,17 @@ PYEOF
         (loops_tmp / "recursive-refine-skipped-cycle.txt").write_text("")
         (loops_tmp / "recursive-refine-skipped-budget.txt").write_text("")
 
-        # Stub issue files with parent_issue frontmatter so grep can find them
+        # Stub issue files with parent frontmatter so grep can find them
         issues_dir = tmp_path / ".issues" / "enhancements"
         issues_dir.mkdir(parents=True)
         (issues_dir / "P3-ENH-200-child-a.md").write_text(
-            "---\nid: ENH-200\nparent_issue: ENH-100\n---\n"
+            "---\nid: ENH-200\nparent: ENH-100\n---\n"
         )
         (issues_dir / "P3-ENH-201-child-b.md").write_text(
-            "---\nid: ENH-201\nparent_issue: ENH-100\n---\n"
+            "---\nid: ENH-201\nparent: ENH-100\n---\n"
         )
         (issues_dir / "P3-ENH-300-grandchild.md").write_text(
-            "---\nid: ENH-300\nparent_issue: ENH-201\n---\n"
+            "---\nid: ENH-300\nparent: ENH-201\n---\n"
         )
 
         result = _bash(self._DONE_SCRIPT, tmp_path)
