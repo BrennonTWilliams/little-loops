@@ -93,7 +93,7 @@ states:
 
   go_no_go:
     fragment: shell_exit
-    action: "ll-action go-no-go \"${captured.impl_id.output} --check --auto\""
+    action: "ll-action invoke go-no-go --args \"${captured.impl_id.output} --check --auto\""
     on_yes: implement_issue
     on_no: implement_next
     on_error: implement_issue

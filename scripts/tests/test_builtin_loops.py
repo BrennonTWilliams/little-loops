@@ -1006,6 +1006,13 @@ class TestAutoRefineAndImplementLoop:
         assert "completed" in action, "implement_issue action must check .issues/completed/"
         assert "exit 0" in action, "implement_issue action must exit 0 when issue is already completed"
 
+    def test_go_no_go_uses_ll_action_invoke(self, data: dict) -> None:
+        """go_no_go must call ll-action via the invoke subcommand, not pass the skill as a subcommand."""
+        state = data["states"].get("go_no_go", {})
+        action = state.get("action", "")
+        assert "ll-action invoke" in action, "go_no_go action must use 'll-action invoke', not 'll-action go-no-go'"
+        assert "--check" in action, "go_no_go action must pass --check flag"
+
     def test_skip_and_continue_uses_input_capture(self, data: dict) -> None:
         """skip_and_continue must reference captured.input.output (not impl_id)."""
         state = data["states"].get("skip_and_continue", {})
@@ -1087,6 +1094,13 @@ class TestSprintRefineAndImplementLoop:
         action = state.get("action", "")
         assert "completed" in action, "implement_issue action must check .issues/completed/"
         assert "exit 0" in action, "implement_issue action must exit 0 when issue is already completed"
+
+    def test_go_no_go_uses_ll_action_invoke(self, data: dict) -> None:
+        """go_no_go must call ll-action via the invoke subcommand, not pass the skill as a subcommand."""
+        state = data["states"].get("go_no_go", {})
+        action = state.get("action", "")
+        assert "ll-action invoke" in action, "go_no_go action must use 'll-action invoke', not 'll-action go-no-go'"
+        assert "--check" in action, "go_no_go action must pass --check flag"
 
 
 class TestAutodevLoop:

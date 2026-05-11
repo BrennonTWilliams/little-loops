@@ -1,5 +1,6 @@
 ---
 captured_at: '2026-05-10T21:55:32Z'
+completed_at: '2026-05-11T04:04:14Z'
 discovered_date: '2026-05-10'
 discovered_by: capture-issue
 decision_needed: false
@@ -143,9 +144,17 @@ The go/no-go gate is completely non-functional across all loop runs. Every issue
 
 ## Status
 
-Open
+done
+
+## Resolution
+
+Fixed by adding the `invoke` subcommand to `ll-action` calls in both loop YAMLs:
+- `auto-refine-and-implement.yaml`: `ll-action go-no-go "..."` → `ll-action invoke go-no-go --args "..."`
+- `sprint-refine-and-implement.yaml`: same one-line fix
+- Added `test_go_no_go_uses_ll_action_invoke` to both test classes in `test_builtin_loops.py`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-11T04:01:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d73c76b2-ac03-4421-ad2a-ae8303011078.jsonl`
 - `/ll:confidence-check` - 2026-05-11T04:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 - `/ll:refine-issue` - 2026-05-11T03:55:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c9e9569-92e4-4074-b074-855b72dfd162.jsonl`
 - `/ll:format-issue` - 2026-05-10T21:58:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7661ef27-0ff5-4f08-98fe-9ba4e693d34a.jsonl`
