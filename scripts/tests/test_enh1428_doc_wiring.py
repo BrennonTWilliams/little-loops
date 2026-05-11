@@ -169,24 +169,22 @@ class TestLoopsGuideStatusVocab:
 
 
 class TestReadmeStatusVocab:
-    """README.md must use frontmatter-based status vocabulary in examples."""
+    """README.md must not contain stale status vocabulary from the old catalog format.
 
-    def test_status_done_example_present(self) -> None:
-        content = README.read_text()
+    CLI examples moved to docs/reference/CLI.md in the README rewrite; these tests
+    guard against stale vocabulary re-appearing in the hero page.
+    """
+
+    def test_cli_md_status_done_example_present(self) -> None:
+        content = CLI_MD.read_text()
         assert "--status done" in content, (
-            "README.md must show `--status done` in examples (not `--status completed`)"
+            "docs/reference/CLI.md must show `--status done` in examples (not `--status completed`)"
         )
 
     def test_stale_status_completed_absent(self) -> None:
         content = README.read_text()
         assert "--status completed" not in content, (
             "README.md must not reference `--status completed` (replaced by `--status done`)"
-        )
-
-    def test_open_issues_comment_present(self) -> None:
-        content = README.read_text()
-        assert "open issues" in content, (
-            "README.md `ll-issues list` comment should reference 'open issues' not 'active issues'"
         )
 
     def test_stale_active_issues_comment_absent(self) -> None:
