@@ -6,7 +6,7 @@ status: open
 discovered_date: 2026-05-02
 completed_at: 2026-05-03T18:08:34Z
 discovered_by: research-synthesis
-related:
+
 - ENH-1337
 - ENH-1338
 decision_needed: false
@@ -16,6 +16,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+relates_to: ['ENH-1337', 'ENH-1338']
 ---
 
 # ENH-1339: Per-Issue Refinement Budget Cap in `recursive-refine`
@@ -230,7 +231,6 @@ Implemented all acceptance criteria. Added `check_attempt_budget` gate state bet
 - `scripts/little_loops/loops/recursive-refine.yaml:27` — `max_refine_count` declaration (currently unused).
 - `scripts/little_loops/loops/recursive-refine.yaml:63` (`dequeue_next`) and `:87` (`capture_baseline`) — insertion points.
 - 2026 research: [Anthropic Building Effective Agents](https://www.anthropic.com/research/building-effective-agents), [Microsoft CORPGEN](https://www.marktechpost.com/2026/02/26/microsoft-research-introduces-corpgen-to-manage-multi-horizon-tasks-for-autonomous-ai-agents-using-hierarchical-planning-and-memory/).
-
 
 ## Session Log
 - `/ll:ready-issue` - 2026-05-03T18:01:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eeb05989-bb52-4f97-a9e6-6cfc0bf7e810.jsonl`

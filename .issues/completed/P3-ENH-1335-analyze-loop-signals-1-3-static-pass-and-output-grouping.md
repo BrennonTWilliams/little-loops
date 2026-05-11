@@ -2,7 +2,7 @@
 id: ENH-1335
 type: ENH
 priority: P3
-parent_issue: ENH-1327
+
 confidence_score: 100
 outcome_confidence: 71
 score_complexity: 10
@@ -10,6 +10,7 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
 completed_at: 2026-05-03T04:57:18Z
+parent: ENH-1327
 ---
 
 # ENH-1335: Add Effectiveness Signals 1-3 + Static Pass + Output Grouping to `/ll:analyze-loop`

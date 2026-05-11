@@ -7,7 +7,7 @@ title: "ll-logs: generate logs/index.md after extraction"
 discovered_date: 2026-04-23
 discovered_by: issue-size-review
 decision_needed: false
-parent_issue: FEAT-1272
+
 confidence_score: 95
 outcome_confidence: 93
 score_complexity: 25
@@ -16,6 +16,7 @@ score_ambiguity: 25
 score_change_surface: 25
 captured_at: 2026-04-23T00:00:00Z
 completed_at: 2026-04-23T22:01:09Z
+parent: FEAT-1272
 ---
 
 # FEAT-1274: ll-logs: generate logs/index.md after extraction

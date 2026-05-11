@@ -2,7 +2,7 @@
 id: ENH-1354
 type: ENH
 priority: P2
-parent_issue: ENH-1351
+
 confidence_score: 100
 outcome_confidence: 78
 score_complexity: 10
@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-05-03T19:56:24Z
+parent: ENH-1351
 ---
 
 # ENH-1354: Multi-Instance Loop — instance_id Generation and File Path Scoping

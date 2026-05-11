@@ -3,7 +3,7 @@ id: ENH-1417
 type: ENH
 priority: P2
 status: done
-parent_issue: ENH-1390
+
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 82
@@ -12,6 +12,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-05-10T15:44:53Z
+parent: ENH-1390
 ---
 
 # ENH-1417: Decouple Issue Status — Core Data Model, IssueInfo, and Config Deprecation

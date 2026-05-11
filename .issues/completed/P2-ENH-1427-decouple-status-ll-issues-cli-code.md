@@ -3,7 +3,7 @@ id: ENH-1427
 type: ENH
 priority: P2
 status: done
-parent_issue: ENH-1422
+
 confidence_score: 100
 outcome_confidence: 75
 score_complexity: 14
@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 completed_at: 2026-05-10T17:22:15Z
+parent: ENH-1422
 ---
 
 # ENH-1427: Decouple Issue Status — ll-issues CLI Code Changes

@@ -4,7 +4,8 @@ type: ENH
 priority: P2
 status: done
 completed_at: '2026-05-10T00:00:00Z'
-parent_issue: ENH-1419
+
+parent: ENH-1419
 ---
 
 # ENH-1426: Decouple Issue Status — Parallel Orchestrator, skip.py, and issue_manager

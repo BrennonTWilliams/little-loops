@@ -3,8 +3,9 @@ discovered_date: 2026-04-11
 discovered_by: issue-size-review
 confidence_score: 100
 outcome_confidence: 100
-parent_issue: FEAT-1029
+
 blocked_by: FEAT-1028
+parent: FEAT-1029
 ---
 
 # FEAT-1031: audit-issue-conflicts — Structural Tests
@@ -88,7 +89,6 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 SKILL_FILE = PROJECT_ROOT / "skills" / "audit-issue-conflicts" / "SKILL.md"
-
 
 class TestAuditIssueConflictsSkillExists:
     """Verify the audit-issue-conflicts skill file is present and well-formed."""

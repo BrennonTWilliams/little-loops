@@ -5,7 +5,7 @@ priority: P2
 status: open
 discovered_date: 2026-04-17
 parent: ENH-1138
-related: [ENH-1138, ENH-1134]
+
 size: Very Large
 confidence_score: 100
 outcome_confidence: 70
@@ -13,6 +13,7 @@ score_complexity: 10
 score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
+relates_to: ['ENH-1138', 'ENH-1134']
 ---
 
 # ENH-1140: 429 Resilience — Prose Doc Updates (Loops Guide, Config, Architecture)

@@ -2,7 +2,7 @@
 id: ENH-1355
 type: ENH
 priority: P2
-parent_issue: ENH-1351
+
 decision_needed: false
 confidence_score: 98
 outcome_confidence: 72
@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 22
 score_change_surface: 25
 size: Very Large
+parent: ENH-1351
 ---
 
 # ENH-1355: Multi-Instance Loop — Aggregated CLI (status/stop/resume/list) + Docs & Skills

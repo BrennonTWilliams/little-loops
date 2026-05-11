@@ -1,10 +1,11 @@
 ---
 discovered_date: "2026-04-12"
 discovered_by: issue-size-review
-parent_issue: FEAT-1072
+
 testable: false
 confidence_score: 78
 outcome_confidence: 68
+parent: FEAT-1072
 ---
 
 # FEAT-1078: Parallel State Wiring, Display, and Docs

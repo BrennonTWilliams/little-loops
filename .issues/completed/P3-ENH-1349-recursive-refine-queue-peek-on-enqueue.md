@@ -7,7 +7,7 @@ discovered_date: 2026-05-03
 discovered_by: capture-issue
 captured_at: '2026-05-03T16:43:25Z'
 completed_at: '2026-05-03T21:45:54Z'
-related:
+
 - ENH-1348
 - ENH-1350
 - ENH-1341
@@ -17,6 +17,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+relates_to: ['ENH-1348', 'ENH-1350', 'ENH-1341']
 ---
 
 # ENH-1349: Queue Peek After Enqueue in `recursive-refine`

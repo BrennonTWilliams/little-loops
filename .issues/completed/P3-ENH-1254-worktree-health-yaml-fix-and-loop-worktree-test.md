@@ -1,7 +1,7 @@
 ---
 id: ENH-1254
 priority: P3
-parent_issue: ENH-1248
+
 discovered_date: "2026-04-22"
 discovered_by: issue-size-review
 size: Small
@@ -13,6 +13,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-04-22T20:27:41Z
+parent: ENH-1248
 ---
 
 # ENH-1254: worktree-health.yaml Grep Fix + cmd_run(worktree=True) Integration Test

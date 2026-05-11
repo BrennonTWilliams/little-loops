@@ -5,7 +5,8 @@ priority: P4
 status: open
 discovered_date: 2026-04-15
 discovered_by: capture-issue
-related: [FEAT-1113, ENH-1114]
+
+relates_to: ['FEAT-1113', 'ENH-1114']
 ---
 
 # FEAT-1112: Unified Session Store (SQLite + FTS5)
@@ -66,7 +67,6 @@ Context-mode (github.com/mksglu/context-mode) uses a per-project SQLite + FTS5 d
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): `ll-logs` (FEAT-1002) is a downstream consumer that ships in Phase 1 reading JSONL directly from `~/.claude/projects/`. Once this store lands, a follow-up refactor will migrate `ll-logs` internals to query the SQLite database while preserving its CLI interface. Plan the schema to accommodate the fields ll-logs currently extracts from JSONL (see FEAT-1002 for field list).
-
 
 ## Verification Notes
 

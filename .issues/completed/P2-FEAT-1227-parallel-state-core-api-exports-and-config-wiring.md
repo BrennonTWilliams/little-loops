@@ -2,7 +2,7 @@
 discovered_date: "2026-04-21"
 completed_at: 2026-04-21T16:05:52Z
 discovered_by: issue-size-review
-parent_issue: FEAT-1080
+
 size: Medium
 confidence_score: 90
 outcome_confidence: 78
@@ -10,6 +10,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+parent: FEAT-1080
 ---
 
 # FEAT-1227: Parallel State Core API Exports and Config Wiring

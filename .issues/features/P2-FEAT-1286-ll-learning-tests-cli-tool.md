@@ -5,7 +5,7 @@ priority: P2
 captured_at: '2026-04-25T00:00:00Z'
 discovered_date: '2026-04-25'
 discovered_by: issue-size-review
-parent_issue: FEAT-1282
+
 size: Small
 confidence_score: 98
 outcome_confidence: 64
@@ -13,6 +13,7 @@ score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
+parent: FEAT-1282
 ---
 
 # FEAT-1286: ll-learning-tests CLI Tool
@@ -229,7 +230,6 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - FEAT-1285 (learning_tests module) must be complete first
 
-
 ## Blocks
 
 - FEAT-1283
@@ -241,7 +241,6 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ---
 
 **Open** | Created: 2026-04-25 | Priority: P2
-
 
 ## Verification Notes
 

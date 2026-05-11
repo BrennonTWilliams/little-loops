@@ -4,7 +4,7 @@ type: ENH
 priority: P2
 status: done
 completed_at: 2026-05-10T20:30:19Z
-parent_issue: ENH-1390
+
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 70
@@ -12,6 +12,7 @@ score_complexity: 9
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
+parent: ENH-1390
 ---
 
 # ENH-1418: Decouple Issue Status — Discovery, Lifecycle, and History Redesign

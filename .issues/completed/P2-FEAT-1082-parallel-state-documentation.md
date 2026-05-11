@@ -1,10 +1,11 @@
 ---
 discovered_date: "2026-04-12"
 discovered_by: issue-size-review
-parent_issue: FEAT-1078
+
 testable: false
 confidence_score: 95
 outcome_confidence: 63
+parent: FEAT-1078
 ---
 
 # FEAT-1082: Parallel State Documentation

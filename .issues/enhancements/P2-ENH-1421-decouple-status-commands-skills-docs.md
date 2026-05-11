@@ -4,7 +4,7 @@ type: ENH
 priority: P2
 status: done
 completed_at: 2026-05-10T21:02:24Z
-parent_issue: ENH-1390
+
 decision_needed: false
 missing_artifacts: false
 confidence_score: 100
@@ -13,6 +13,7 @@ score_complexity: 13
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+parent: ENH-1390
 ---
 
 # ENH-1421: Decouple Issue Status — Commands, Skills, and Documentation

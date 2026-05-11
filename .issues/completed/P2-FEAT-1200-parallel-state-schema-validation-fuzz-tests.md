@@ -1,7 +1,7 @@
 ---
 discovered_date: "2026-04-20"
 discovered_by: issue-size-review
-parent_issue: FEAT-1077
+
 size: Very Large
 confidence_score: 80
 outcome_confidence: 93
@@ -9,6 +9,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+parent: FEAT-1077
 ---
 
 # FEAT-1200: Parallel State Schema, Validation, and Fuzz Tests

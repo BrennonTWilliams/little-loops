@@ -5,8 +5,9 @@ priority: P4
 status: open
 discovered_date: 2026-04-05
 discovered_by: issue-size-review
-parent_issue: FEAT-769
+
 blocked_by: [FEAT-959, FEAT-1116]
+parent: FEAT-769
 ---
 
 # FEAT-960: OpenCode Shell Hooks Path Abstraction

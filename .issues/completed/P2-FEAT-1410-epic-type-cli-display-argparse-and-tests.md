@@ -2,7 +2,7 @@
 id: FEAT-1410
 type: FEAT
 priority: P2
-parent_issue: FEAT-1409
+
 confidence_score: 100
 outcome_confidence: 71
 score_complexity: 10
@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 completed_at: 2026-05-10T00:00:42Z
+parent: FEAT-1409
 ---
 
 # FEAT-1410: EPIC Type — CLI Display, Argparse Choices, and Tests

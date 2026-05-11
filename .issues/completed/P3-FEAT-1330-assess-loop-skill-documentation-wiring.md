@@ -2,7 +2,7 @@
 id: FEAT-1330
 type: FEAT
 priority: P3
-parent_issue: FEAT-1325
+
 completed_at: 2026-05-03T03:22:26Z
 confidence_score: 98
 outcome_confidence: 71
@@ -11,6 +11,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
 size: Large
+parent: FEAT-1325
 ---
 
 # FEAT-1330: `/ll:assess-loop` Skill — Documentation & Wiring

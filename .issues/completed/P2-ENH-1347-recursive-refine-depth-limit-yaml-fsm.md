@@ -2,7 +2,7 @@
 id: ENH-1347
 type: ENH
 priority: P2
-parent_issue: ENH-1344
+
 size: Medium
 confidence_score: 100
 outcome_confidence: 79
@@ -11,6 +11,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-05-03T16:51:28Z
+parent: ENH-1344
 ---
 
 # ENH-1347: YAML FSM Depth Tracking for `recursive-refine` Depth Limit

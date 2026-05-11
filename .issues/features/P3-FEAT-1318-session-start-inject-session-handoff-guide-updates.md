@@ -7,7 +7,7 @@ discovered_date: 2026-05-01
 discovered_by: issue-size-review
 blocked_by: [FEAT-1315]
 parent: FEAT-1316
-related: [FEAT-1315, FEAT-1316, FEAT-1317, FEAT-1319]
+
 size: Medium
 confidence_score: 86
 outcome_confidence: 78
@@ -15,6 +15,7 @@ score_complexity: 25
 score_test_coverage: 10
 score_ambiguity: 18
 score_change_surface: 25
+relates_to: ['FEAT-1315', 'FEAT-1316', 'FEAT-1317', 'FEAT-1319']
 ---
 
 # FEAT-1318: SessionStart Inject — Session Handoff Guide Updates

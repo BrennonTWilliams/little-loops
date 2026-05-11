@@ -5,7 +5,7 @@ priority: P2
 status: open
 discovered_date: 2026-04-17
 parent: ENH-1145
-related: [ENH-1144, ENH-1145, ENH-1148, ENH-1149]
+
 size: Medium
 confidence_score: 80
 outcome_confidence: 100
@@ -13,6 +13,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+relates_to: ['ENH-1144', 'ENH-1145', 'ENH-1148', 'ENH-1149']
 ---
 
 # ENH-1147: 429 Resilience — Heartbeat Tests: Schema Updates
@@ -114,7 +115,6 @@ _Added by `/ll:confidence-check` on 2026-04-17_
 
 ## Status
 - [ ] Open
-
 
 ---
 

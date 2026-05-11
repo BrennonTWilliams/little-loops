@@ -6,7 +6,8 @@ status: deferred
 discovered_date: 2026-04-18
 discovered_by: capture-issue
 blocked_by: [FEAT-1112, FEAT-1116, FEAT-1156, FEAT-1157, FEAT-1158]
-related: [FEAT-1112, FEAT-1113]
+
+relates_to: ['FEAT-1112', 'FEAT-1113']
 ---
 
 # FEAT-1159: Continuous Session Event Capture with PreCompact Guarantee and SessionStart Injection

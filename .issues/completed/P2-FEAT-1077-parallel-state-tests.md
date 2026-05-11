@@ -1,7 +1,7 @@
 ---
 discovered_date: "2026-04-12"
 discovered_by: issue-size-review
-parent_issue: FEAT-1072
+
 confidence_score: 80
 outcome_confidence: 78
 score_complexity: 10
@@ -9,6 +9,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
 size: Very Large
+parent: FEAT-1072
 ---
 
 # FEAT-1077: Parallel State Tests

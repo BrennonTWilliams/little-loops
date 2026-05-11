@@ -5,7 +5,7 @@ priority: P3
 status: open
 discovered_date: 2026-04-15
 discovered_by: capture-issue
-related: []
+
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 60
@@ -14,6 +14,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
 size: Very Large
+relates_to: []
 ---
 
 # ENH-1115: Progressive Throttling for FSM Loop Tool Calls
@@ -216,7 +217,6 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Feature not yet implemented ✓
 - **Line numbers corrected** (2026-05-06): All executor.py references updated to current state. Key current lines: counter block 181-210 (slot at 211), storm detection 1192-1200, retry pop at 285, max_retries exhaustion 307-332, `_run_action_or_route` call sites at 533/557. Schema rate-limit fields now at 298-302. Persistence decision resolved (no `LoopState` changes needed).
 - **Persistence decision resolved** (2026-05-06): `_throttle_counts` resets on resume — not serialized to `LoopState`.
-
 
 ## Confidence Check Notes
 

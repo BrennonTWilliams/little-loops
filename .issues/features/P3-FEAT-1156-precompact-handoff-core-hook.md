@@ -7,7 +7,8 @@ discovered_date: 2026-04-18
 discovered_by: issue-size-review
 blocked_by: [FEAT-1112, FEAT-1116]
 parent: FEAT-1113
-related: [ENH-152, ENH-495, FEAT-150, FEAT-1157, FEAT-1158]
+
+relates_to: ['ENH-152', 'ENH-495', 'FEAT-150', 'FEAT-1157', 'FEAT-1158']
 ---
 
 # FEAT-1156: PreCompact Handoff Hook — Core Implementation
@@ -91,7 +92,6 @@ FEAT-1112 (session store) is not yet implemented; gather state without it:
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): FEAT-1116 (hook-intent abstraction layer) is migrating PreCompact hooks from `hooks/scripts/` shell scripts to Python core handlers with thin per-host adapters. This issue adds a new shell script in the legacy layer FEAT-1116 is retiring. Implement `precompact-handoff.sh` as specified here for the MVP, but scope it to be replaced by — or restructured as — the Python core handler + Claude Code adapter pattern once FEAT-1116's PreCompact migration scaffolding is in place.
-
 
 ## Verification Notes
 

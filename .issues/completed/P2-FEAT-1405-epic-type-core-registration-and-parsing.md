@@ -3,7 +3,7 @@ id: FEAT-1405
 type: FEAT
 priority: P2
 status: open
-parent_issue: FEAT-1389
+
 captured_at: '2026-05-09T00:00:00Z'
 completed_at: '2026-05-09T22:51:58Z'
 discovered_date: '2026-05-09'
@@ -14,6 +14,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
 decision_needed: false
+parent: FEAT-1389
 ---
 
 # FEAT-1405: EPIC Type — Core Registration and Parsing

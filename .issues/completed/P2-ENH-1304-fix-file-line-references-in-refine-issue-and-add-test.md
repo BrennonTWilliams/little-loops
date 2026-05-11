@@ -1,5 +1,5 @@
 ---
-parent_issue: ENH-1299
+
 discovered_date: "2026-04-27"
 discovered_by: issue-size-review
 decision_needed: false
@@ -11,6 +11,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-04-27T18:43:56Z
+parent: ENH-1299
 ---
 
 # ENH-1304: Fix `file:line` references in `commands/refine-issue.md` and add verification test

@@ -1,7 +1,7 @@
 ---
 discovered_date: "2026-04-22"
 discovered_by: issue-size-review
-parent_issue: ENH-1197
+
 depends_on: [FEAT-1075, ENH-1176]
 decision_needed: false
 size: Medium
@@ -13,6 +13,7 @@ score_ambiguity: 18
 score_change_surface: 25
 captured_at: 2026-04-22T00:00:00Z
 completed_at: 2026-04-22T18:49:46Z
+parent: ENH-1197
 ---
 
 # ENH-1246: Extend Startup Scan to Detect Ghost Git Worktree Refs

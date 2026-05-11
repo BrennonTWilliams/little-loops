@@ -3,8 +3,9 @@ discovered_date: 2026-04-07
 discovered_by: issue-size-review
 confidence_score: 95
 outcome_confidence: 78
-parent_issue: FEAT-988
+
 testable: false
+parent: FEAT-988
 ---
 
 # FEAT-991: FSMExecutor Hook Dispatch — Skill and Docs Update

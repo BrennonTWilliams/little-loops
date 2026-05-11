@@ -5,7 +5,7 @@ priority: P2
 status: completed
 discovered_date: 2026-04-17
 parent: ENH-1135
-related: [ENH-1131, ENH-1132, ENH-1133, ENH-1134]
+
 size: Very Large
 confidence_score: 100
 outcome_confidence: 71
@@ -13,6 +13,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+relates_to: ['ENH-1131', 'ENH-1132', 'ENH-1133', 'ENH-1134']
 ---
 
 # ENH-1144: 429 Resilience — Heartbeat Core Code

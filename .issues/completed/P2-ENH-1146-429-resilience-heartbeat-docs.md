@@ -5,7 +5,7 @@ priority: P2
 status: open
 discovered_date: 2026-04-17
 parent: ENH-1135
-related: [ENH-1131, ENH-1144]
+
 size: Very Large
 confidence_score: 90
 outcome_confidence: 64
@@ -13,6 +13,7 @@ score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
+relates_to: ['ENH-1131', 'ENH-1144']
 ---
 
 # ENH-1146: 429 Resilience — Heartbeat Documentation

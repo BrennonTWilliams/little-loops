@@ -1,10 +1,11 @@
 ---
 discovered_date: "2026-04-12"
 discovered_by: issue-size-review
-parent_issue: FEAT-1082
+
 testable: false
 confidence_score: 93
 outcome_confidence: 71
+parent: FEAT-1082
 ---
 
 # FEAT-1083: Parallel State Core Reference Documentation

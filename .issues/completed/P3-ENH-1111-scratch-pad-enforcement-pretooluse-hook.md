@@ -5,7 +5,7 @@ priority: P3
 status: open
 discovered_date: 2026-04-15
 discovered_by: capture-issue
-related: [FEAT-1116]
+
 confidence_score: 98
 outcome_confidence: 68
 score_complexity: 10
@@ -13,6 +13,7 @@ score_test_coverage: 18
 score_ambiguity: 22
 score_change_surface: 18
 size: Very Large
+relates_to: ['FEAT-1116']
 ---
 
 # ENH-1111: Scratch-Pad Enforcement via PreToolUse Hook
@@ -152,7 +153,6 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Related completed: ENH-498 observation masking in ll-auto/parallel; BUG-817 scratch path migration
 - Related: ENH-1114 (intent parameter), FEAT-1116 (hook-intent abstraction — ENH-1111 is a candidate to port into that framework later)
 - Hook contract: `docs/claude-code/hooks-reference.md:807-828` (updatedInput), `:395` (permission_mode), `:712-751` (Bash/Read tool_input schemas)
-
 
 ## Session Log
 - `hook:posttooluse-git-mv` - 2026-04-17T03:12:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fc25386-a9f0-4e75-8434-c659db481895.jsonl`

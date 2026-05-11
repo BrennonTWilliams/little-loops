@@ -1,7 +1,7 @@
 ---
 discovered_date: "2026-04-12"
 discovered_by: issue-size-review
-parent_issue: FEAT-1072
+
 confidence_score: 90
 outcome_confidence: 71
 score_complexity: 18
@@ -9,6 +9,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
 size: Very Large
+parent: FEAT-1072
 ---
 
 # FEAT-1074: Parallel State Schema and Validation

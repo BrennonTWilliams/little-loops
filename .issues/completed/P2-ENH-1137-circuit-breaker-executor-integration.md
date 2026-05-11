@@ -5,7 +5,7 @@ priority: P2
 status: completed
 discovered_date: 2026-04-17
 parent: ENH-1134
-related: [ENH-1134, ENH-1136, ENH-1132]
+
 depends_on: [ENH-1136]
 size: Large
 confidence_score: 95
@@ -14,6 +14,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+relates_to: ['ENH-1134', 'ENH-1136', 'ENH-1132']
 ---
 
 # ENH-1137: 429 Resilience — Executor Integration & CLI Wiring

@@ -7,7 +7,7 @@ discovered_date: 2026-05-01
 discovered_by: issue-size-review
 blocked_by: [FEAT-1315, FEAT-1317, FEAT-1318]
 parent: FEAT-1316
-related: [FEAT-1315, FEAT-1316, FEAT-1317, FEAT-1318]
+
 size: Very Large
 confidence_score: 80
 outcome_confidence: 76
@@ -15,6 +15,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 22
 score_change_surface: 18
+relates_to: ['FEAT-1315', 'FEAT-1316', 'FEAT-1317', 'FEAT-1318']
 ---
 
 # FEAT-1319: SessionStart Inject — Command/Skill Updates and Wiring Test
@@ -142,7 +143,6 @@ ARCHITECTURE = PROJECT_ROOT / "docs" / "ARCHITECTURE.md"
 SESSION_HANDOFF = PROJECT_ROOT / "docs" / "guides" / "SESSION_HANDOFF.md"
 CONFIGURE_AREAS = PROJECT_ROOT / "skills" / "configure" / "areas.md"
 
-
 class TestArchitectureWiring:
     """docs/ARCHITECTURE.md must reference session-start-inject.sh."""
 
@@ -153,7 +153,6 @@ class TestArchitectureWiring:
             "so users can discover the session-context injection script"
         )
 
-
 class TestSessionHandoffWiring:
     """docs/guides/SESSION_HANDOFF.md must reference .ll/ll-session-injected."""
 
@@ -163,7 +162,6 @@ class TestSessionHandoffWiring:
             "docs/guides/SESSION_HANDOFF.md must reference .ll/ll-session-injected "
             "so users know the marker file that tracks injection state"
         )
-
 
 class TestConfigureAreasWiring:
     """skills/configure/areas.md must reference session-start-inject.sh."""

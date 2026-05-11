@@ -5,9 +5,10 @@ priority: P4
 status: backlog
 discovered_date: 2026-04-11
 discovered_by: issue-size-review
-parent_issue: ENH-1040
+
 confidence_score: 100
 outcome_confidence: 100
+parent: ENH-1040
 ---
 
 # ENH-1046: Fix `extensions` key placement in `config-schema.json`
@@ -90,7 +91,6 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CONFIG_SCHEMA = PROJECT_ROOT / "config-schema.json"
-
 
 class TestConfigSchema:
     """Regression guards for config-schema.json structure."""

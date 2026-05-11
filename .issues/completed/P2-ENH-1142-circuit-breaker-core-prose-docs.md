@@ -6,7 +6,7 @@ status: completed
 completed_date: 2026-04-17
 discovered_date: 2026-04-17
 parent: ENH-1140
-related: [ENH-1138, ENH-1134, ENH-1141]
+
 size: Medium
 confidence_score: 100
 outcome_confidence: 78
@@ -15,6 +15,7 @@ score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
 testable: false
+relates_to: ['ENH-1138', 'ENH-1134', 'ENH-1141']
 ---
 
 # ENH-1142: 429 Resilience — Circuit Breaker Core Prose Doc Updates

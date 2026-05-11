@@ -5,7 +5,7 @@ priority: P2
 status: completed
 discovered_date: 2026-04-17
 parent: ENH-1151
-related: [ENH-1144, ENH-1150, ENH-1152]
+
 size: Small
 confidence_score: 100
 outcome_confidence: 100
@@ -13,6 +13,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+relates_to: ['ENH-1144', 'ENH-1150', 'ENH-1152']
 ---
 
 # ENH-1153: 429 Resilience — Heartbeat Doc-Wiring Tests

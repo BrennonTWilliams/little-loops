@@ -5,7 +5,7 @@ priority: P2
 status: completed
 discovered_date: 2026-04-17
 parent: ENH-1134
-related: [ENH-1134, ENH-1132]
+
 size: Medium
 confidence_score: 100
 outcome_confidence: 93
@@ -13,6 +13,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+relates_to: ['ENH-1134', 'ENH-1132']
 ---
 
 # ENH-1136: 429 Resilience — `rate_limit_circuit.py` Module + Unit Tests

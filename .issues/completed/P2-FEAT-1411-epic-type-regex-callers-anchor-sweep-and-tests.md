@@ -2,7 +2,7 @@
 id: FEAT-1411
 type: FEAT
 priority: P2
-parent_issue: FEAT-1409
+
 confidence_score: 100
 outcome_confidence: 78
 score_complexity: 10
@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-05-10T14:35:03Z
+parent: FEAT-1409
 ---
 
 # FEAT-1411: EPIC Type — Regex-Based Callers, Anchor Sweep, and Tests

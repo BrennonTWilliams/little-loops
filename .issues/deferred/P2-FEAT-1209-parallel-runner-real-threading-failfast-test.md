@@ -1,7 +1,7 @@
 ---
 discovered_date: "2026-04-20"
 discovered_by: issue-size-review
-parent_issue: FEAT-1206
+
 size: Small
 confidence_score: 90
 outcome_confidence: 100
@@ -9,6 +9,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+parent: FEAT-1206
 ---
 
 # FEAT-1209: TestParallelRunnerRealThreading — Fail Fast Cancellation Test

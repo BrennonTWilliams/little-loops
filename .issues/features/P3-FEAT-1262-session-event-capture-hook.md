@@ -7,7 +7,8 @@ discovered_date: 2026-04-22
 discovered_by: issue-size-review
 blocked_by: [FEAT-1116, FEAT-1112]
 parent: FEAT-1159
-related: [FEAT-1112, FEAT-1156, FEAT-1264]
+
+relates_to: ['FEAT-1112', 'FEAT-1156', 'FEAT-1264']
 ---
 
 # FEAT-1262: Session Event Capture Hook (`session-capture.sh`)
@@ -112,7 +113,6 @@ FEAT-1116 risk: `session-capture.sh` is a PostToolUse shell script in the layer 
 - Consumer of this output: FEAT-1264 (precompact-handoff.sh event-log integration)
 - Session store integration: FEAT-1112 (optional; JSONL fallback always available)
 - Hook utilities: `hooks/scripts/lib/common.sh` (`acquire_lock`, `release_lock`, `ll_feature_enabled`, `ll_config_value`)
-
 
 ## Scope Boundary
 

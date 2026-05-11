@@ -1,7 +1,7 @@
 ---
 id: FEAT-1215
 priority: P2
-parent_issue: FEAT-1213
+
 discovered_date: "2026-04-21"
 discovered_by: issue-size-review
 confidence_score: 78
@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
 size: Very Large
+parent: FEAT-1213
 ---
 
 # FEAT-1215: Parallel State Config Round-Trip Tests and Fixture

@@ -5,13 +5,14 @@ priority: P3
 status: open
 discovered_date: 2026-04-15
 discovered_by: capture-issue
-related: [FEAT-959, FEAT-960, FEAT-961, FEAT-962, FEAT-957, FEAT-992, FEAT-1117]
+
 confidence_score: 95
 outcome_confidence: 60
 score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 22
 score_change_surface: 10
+relates_to: ['FEAT-959', 'FEAT-960', 'FEAT-961', 'FEAT-962', 'FEAT-957', 'FEAT-992', 'FEAT-1117']
 ---
 
 # FEAT-1116: Hook-Intent Abstraction Layer for Multi-Host Support
@@ -239,7 +240,6 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Inspiration: context-mode platform-agnostic hook design across 12 host agents
 - Recommended next step: `/ll:iterate-plan FEAT-1116` to validate the boundary between core handlers and adapters before touching the OpenCode work
-
 
 ## Confidence Check Notes
 

@@ -8,7 +8,7 @@ discovered_date: 2026-04-23
 discovered_by: issue-size-review
 completed_at: 2026-04-23T21:26:55Z
 decision_needed: false
-parent_issue: FEAT-1272
+
 confidence_score: 100
 outcome_confidence: 100
 score_complexity: 25
@@ -16,6 +16,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 size: Very Large
+parent: FEAT-1272
 ---
 
 # FEAT-1273: ll-logs: extract subcommand core (--project, --all, --cmd)

@@ -1,7 +1,7 @@
 ---
 id: ENH-1251
 priority: P3
-parent_issue: ENH-1247
+
 discovered_date: "2026-04-22"
 completed_at: 2026-04-22T19:28:52Z
 discovered_by: issue-size-review
@@ -13,6 +13,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+parent: ENH-1247
 ---
 
 # ENH-1251: Unlock Before Remove in worktree_utils.cleanup_worktree

@@ -2,7 +2,7 @@
 id: ENH-1344
 type: ENH
 priority: P2
-parent_issue: ENH-1337
+
 confidence_score: 100
 outcome_confidence: 71
 score_complexity: 10
@@ -10,6 +10,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
 size: Very Large
+parent: ENH-1337
 ---
 
 # ENH-1344: Implement Per-Subtree Depth Limit in `recursive-refine`

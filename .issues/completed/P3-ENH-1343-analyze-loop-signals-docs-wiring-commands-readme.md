@@ -2,7 +2,7 @@
 id: ENH-1343
 type: ENH
 priority: P3
-parent_issue: ENH-1336
+
 confidence_score: 100
 outcome_confidence: 86
 score_complexity: 18
@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-05-03T05:31:31Z
+parent: ENH-1336
 ---
 
 # ENH-1343: Documentation Wiring for All 5 Signals in `/ll:analyze-loop` (COMMANDS.md, Tests, README)

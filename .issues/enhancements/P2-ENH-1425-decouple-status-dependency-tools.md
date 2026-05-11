@@ -4,13 +4,14 @@ type: ENH
 priority: P2
 status: done
 completed_at: 2026-05-10T21:05:25Z
-parent_issue: ENH-1419
+
 confidence_score: 100
 outcome_confidence: 86
 score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+parent: ENH-1419
 ---
 
 # ENH-1425: Decouple Issue Status — Dependency Tools

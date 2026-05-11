@@ -6,7 +6,7 @@ captured_at: "2026-04-25T00:00:00Z"
 completed_at: "2026-04-25T19:36:39Z"
 discovered_date: "2026-04-25"
 discovered_by: issue-size-review
-parent_issue: FEAT-1282
+
 size: Medium
 decision_needed: false
 confidence_score: 85
@@ -15,6 +15,7 @@ score_complexity: 0
 score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 25
+parent: FEAT-1282
 ---
 
 # FEAT-1285: Learning Test Registry Python Module
@@ -255,7 +256,6 @@ All acceptance criteria met:
 **Files created**: `scripts/little_loops/learning_tests.py`, `scripts/tests/test_learning_tests.py`
 
 **Files modified**: `config/features.py`, `config/core.py`, `config/__init__.py`, `__init__.py`, `config-schema.json`, `test_config.py`, `test_config_schema.py`, `test_extension.py`, `docs/reference/API.md`, `docs/ARCHITECTURE.md`, `CONTRIBUTING.md`, `docs/reference/CONFIGURATION.md`
-
 
 ## Confidence Check Notes
 

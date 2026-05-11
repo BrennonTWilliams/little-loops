@@ -4,7 +4,7 @@ type: FEAT
 priority: P2
 status: completed
 testable: false
-parent_issue: FEAT-1389
+
 captured_at: '2026-05-09T00:00:00Z'
 completed_at: 2026-05-10T03:57:02Z
 discovered_date: '2026-05-09'
@@ -15,6 +15,7 @@ score_complexity: 0
 score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
+parent: FEAT-1389
 ---
 
 # FEAT-1407: EPIC Type — Skills, Commands, and Documentation Updates
@@ -287,7 +288,6 @@ SKILL_ISSUE_WORKFLOW = PROJECT_ROOT / "skills" / "issue-workflow" / "SKILL.md"
 DOC_CLAUDE_MD = PROJECT_ROOT / ".claude" / "CLAUDE.md"
 DOC_ARCHITECTURE = PROJECT_ROOT / "docs" / "ARCHITECTURE.md"
 
-
 class TestCaptureIssueEpicWiring:
     """skills/capture-issue/SKILL.md must include EPIC creation flow."""
 
@@ -299,14 +299,12 @@ class TestCaptureIssueEpicWiring:
         content = SKILL_CAPTURE.read_text()
         assert "epics/" in content, "capture-issue must route EPICs to .issues/epics/"
 
-
 class TestNormalizeIssuesEpicWiring:
     """commands/normalize-issues.md must include EPIC in validation regex."""
 
     def test_epic_in_validation_regex(self) -> None:
         content = SKILL_NORMALIZE.read_text()
         assert "EPIC" in content, "normalize-issues.md must include EPIC in validation patterns"
-
 
 class TestFormatIssueEpicWiring:
     """skills/format-issue/SKILL.md must include For EPICs placement branch."""
@@ -315,7 +313,6 @@ class TestFormatIssueEpicWiring:
         content = SKILL_FORMAT.read_text()
         assert "EPIC" in content, "format-issue SKILL.md must include EPIC type branch"
 
-
 class TestIssueWorkflowEpicWiring:
     """skills/issue-workflow/SKILL.md must list epics/ directory."""
 
@@ -323,14 +320,12 @@ class TestIssueWorkflowEpicWiring:
         content = SKILL_ISSUE_WORKFLOW.read_text()
         assert "epics/" in content, "issue-workflow must list epics/ in directory table"
 
-
 class TestClaudeMdEpicWiring:
     """.claude/CLAUDE.md issue type list must include EPIC."""
 
     def test_epic_in_type_list(self) -> None:
         content = DOC_CLAUDE_MD.read_text()
         assert "EPIC" in content, ".claude/CLAUDE.md must list EPIC as a valid issue type"
-
 
 class TestArchitectureEpicWiring:
     """docs/ARCHITECTURE.md must show epics/ in issue hierarchy."""

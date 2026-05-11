@@ -6,10 +6,11 @@ status: closed
 title: "Document `agent:` and `tools:` fields in skills/create-loop/reference.md"
 discovered_date: 2026-04-09
 discovered_by: issue-size-review
-parent_issue: ENH-1014
+
 confidence_score: 95
 outcome_confidence: 93
 testable: false
+parent: ENH-1014
 ---
 
 # ENH-1016: Document `agent:` and `tools:` fields in skills/create-loop/reference.md

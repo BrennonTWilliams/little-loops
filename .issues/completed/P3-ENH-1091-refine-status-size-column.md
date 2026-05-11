@@ -4,10 +4,11 @@ type: ENH
 priority: P3
 discovered_date: 2026-04-12
 discovered_by: issue-size-review
-parent_issue: ENH-1089
+
 confidence_score: 100
 outcome_confidence: 70
 size: Very Large
+parent: ENH-1089
 ---
 
 # ENH-1091: ll-issues refine-status shows Size column

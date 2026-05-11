@@ -2,7 +2,7 @@
 id: ENH-1434
 type: ENH
 priority: P2
-parent_issue: ENH-1431
+
 depends_on:
 - ENH-1430
 status: done
@@ -13,6 +13,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+parent: ENH-1431
 ---
 
 # ENH-1434: Relationship Migration — Core Script, Wiring, and Tests

@@ -1,7 +1,7 @@
 ---
 discovered_date: "2026-04-12"
 discovered_by: issue-size-review
-parent_issue: FEAT-1078
+
 testable: false
 confidence_score: 90
 outcome_confidence: 63
@@ -10,6 +10,7 @@ score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 18
 size: Very Large
+parent: FEAT-1078
 ---
 
 # FEAT-1080: Parallel State FSM API Exports and Config Wiring

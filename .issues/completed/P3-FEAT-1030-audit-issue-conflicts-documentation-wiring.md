@@ -3,9 +3,10 @@ discovered_date: 2026-04-11
 discovered_by: issue-size-review
 confidence_score: 85
 outcome_confidence: 80
-parent_issue: FEAT-1029
+
 blocked_by: FEAT-1028
 testable: false
+parent: FEAT-1029
 ---
 
 # FEAT-1030: audit-issue-conflicts — Documentation Wiring

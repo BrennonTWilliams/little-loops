@@ -3,7 +3,8 @@ discovered_date: 2026-04-07
 discovered_by: issue-size-review
 confidence_score: 95
 outcome_confidence: 75
-parent_issue: FEAT-988
+
+parent: FEAT-988
 ---
 
 # FEAT-990: FSMExecutor Hook Dispatch — Tests and Code Wiring

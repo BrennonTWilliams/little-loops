@@ -6,7 +6,7 @@ status: completed
 discovered_date: 2026-04-17
 completed_date: 2026-04-17
 parent: ENH-1145
-related: [ENH-1144, ENH-1145, ENH-1147, ENH-1148]
+
 size: Small
 confidence_score: 95
 outcome_confidence: 93
@@ -14,6 +14,7 @@ score_complexity: 25
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+relates_to: ['ENH-1144', 'ENH-1145', 'ENH-1147', 'ENH-1148']
 ---
 
 # ENH-1149: 429 Resilience — Heartbeat Tests: Display, Spot-checks & Conditional

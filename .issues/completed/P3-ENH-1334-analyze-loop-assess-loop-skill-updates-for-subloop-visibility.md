@@ -2,7 +2,7 @@
 id: ENH-1334
 type: ENH
 priority: P3
-parent_issue: ENH-1326
+
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 78
@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-05-02T22:11:40Z
+parent: ENH-1326
 ---
 
 # ENH-1334: `analyze-loop` and `assess-loop` Skill Updates for Sub-loop Visibility

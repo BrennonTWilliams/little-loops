@@ -2,7 +2,7 @@
 id: ENH-1333
 type: ENH
 priority: P3
-parent_issue: ENH-1326
+
 confidence_score: 100
 outcome_confidence: 85
 score_complexity: 10
@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-05-02T21:48:36Z
+parent: ENH-1326
 ---
 
 # ENH-1333: `ll-loop show --resolved`: CLI Flag and Sub-loop Expansion with Tests

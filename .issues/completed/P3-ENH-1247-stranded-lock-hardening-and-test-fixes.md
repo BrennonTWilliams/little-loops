@@ -1,7 +1,7 @@
 ---
 discovered_date: "2026-04-22"
 discovered_by: issue-size-review
-parent_issue: ENH-1197
+
 depends_on: [FEAT-1075, ENH-1176]
 decision_needed: false
 size: Very Large
@@ -11,6 +11,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+parent: ENH-1197
 ---
 
 # ENH-1247: Stranded Lock File Hardening + Breaking Test Updates

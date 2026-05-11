@@ -6,10 +6,11 @@ status: active
 title: "Document `agent:` and `tools:` fields in docs/reference/API.md"
 discovered_date: 2026-04-09
 discovered_by: issue-size-review
-parent_issue: ENH-1014
+
 confidence_score: 95
 outcome_confidence: 85
 testable: false
+parent: ENH-1014
 ---
 
 # ENH-1015: Document `agent:` and `tools:` fields in docs/reference/API.md

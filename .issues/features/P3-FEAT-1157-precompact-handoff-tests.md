@@ -7,7 +7,8 @@ discovered_date: 2026-04-18
 discovered_by: issue-size-review
 blocked_by: [FEAT-1112, FEAT-1156]
 parent: FEAT-1113
-related: [FEAT-1156, FEAT-1158]
+
+relates_to: ['FEAT-1156', 'FEAT-1158']
 ---
 
 # FEAT-1157: PreCompact Handoff Hook — Integration Tests
@@ -76,7 +77,6 @@ For each: read the test, understand the mtime assumption, confirm whether an aut
 
 - Depends on: FEAT-1156 (hook must exist before these tests can pass)
 - Docs: FEAT-1158
-
 
 ## Session Log
 - `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`

@@ -7,7 +7,7 @@ discovered_date: 2026-04-22
 discovered_by: issue-size-review
 blocked_by: [FEAT-1156, FEAT-1116]
 parent: FEAT-1159
-related: [FEAT-1156, FEAT-1264, FEAT-1262]
+
 confidence_score: 88
 outcome_confidence: 64
 score_complexity: 10
@@ -15,6 +15,7 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
 size: Very Large
+relates_to: ['FEAT-1156', 'FEAT-1264', 'FEAT-1262']
 ---
 
 # FEAT-1263: SessionStart Context Injector (`session-start-inject.sh`)
@@ -271,7 +272,6 @@ FEAT-1116 risk: `session-start-inject.sh` is a SessionStart shell script in the 
 - Richer input when available: FEAT-1264 (event-log-driven snapshot)
 - Hook utilities: `hooks/scripts/lib/common.sh` (`get_mtime`, `ll_config_value`, `ll_feature_enabled`)
 - Consumer compatibility: `commands/resume.md:28-42`, `scripts/little_loops/subprocess_utils.py:31-58`
-
 
 ## Confidence Check Notes
 

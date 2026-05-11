@@ -2,7 +2,7 @@
 id: ENH-1345
 type: ENH
 priority: P2
-parent_issue: ENH-1337
+
 confidence_score: 90
 outcome_confidence: 78
 score_complexity: 18
@@ -11,6 +11,7 @@ score_ambiguity: 25
 score_change_surface: 25
 testable: false
 completed_at: 2026-05-03T17:05:44Z
+parent: ENH-1337
 ---
 
 # ENH-1345: Document `max_depth` Parameter for `recursive-refine`

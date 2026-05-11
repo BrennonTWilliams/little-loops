@@ -2,7 +2,7 @@
 id: ENH-1435
 type: ENH
 priority: P2
-parent_issue: ENH-1431
+
 depends_on:
 - ENH-1434
 status: done
@@ -13,6 +13,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+parent: ENH-1431
 ---
 
 # ENH-1435: Relationship Migration — Docs and Count Assertion Sync

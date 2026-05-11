@@ -6,7 +6,7 @@ status: deferred
 discovered_date: 2026-04-15
 discovered_by: capture-issue
 blocked_by: [FEAT-1112]
-related: [ENH-152, ENH-495, FEAT-150]
+
 confidence_score: 95
 outcome_confidence: 56
 score_complexity: 10
@@ -14,6 +14,7 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 10
 size: Very Large
+relates_to: ['ENH-152', 'ENH-495', 'FEAT-150']
 ---
 
 # FEAT-1113: PreCompact Auto-Handoff Hook
@@ -172,7 +173,6 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Inspiration: context-mode PreCompact snapshots
 - Related (completed): ENH-152 persistent handoff reminder, FEAT-150 continuation prompt integration, ENH-495 structured handoff, BUG-819 missed handoff silently continues
 - Depends on: FEAT-1112 unified session store (for efficient state reconstruction; fallback path available without it — see Integration Map)
-
 
 ## Confidence Check Notes
 

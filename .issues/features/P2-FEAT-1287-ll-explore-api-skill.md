@@ -5,8 +5,9 @@ priority: P2
 captured_at: "2026-04-25T00:00:00Z"
 discovered_date: "2026-04-25"
 discovered_by: issue-size-review
-parent_issue: FEAT-1282
+
 size: Medium
+parent: FEAT-1282
 ---
 
 # FEAT-1287: ll:explore-api Skill
@@ -142,7 +143,6 @@ Output: `.ll/learning-tests/<slug>.md` in `LearnTestRecord` format (FEAT-1285 sc
 ---
 
 **Open** | Created: 2026-04-25 | Priority: P2
-
 
 ## Verification Notes
 

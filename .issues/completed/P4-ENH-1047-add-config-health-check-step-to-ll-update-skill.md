@@ -5,10 +5,11 @@ priority: P4
 status: backlog
 discovered_date: 2026-04-11
 discovered_by: issue-size-review
-parent_issue: ENH-1040
+
 depends_on: ENH-1046
 confidence_score: 90
 outcome_confidence: 100
+parent: ENH-1040
 ---
 
 # ENH-1047: Add Config Health Check step to `ll:update` skill

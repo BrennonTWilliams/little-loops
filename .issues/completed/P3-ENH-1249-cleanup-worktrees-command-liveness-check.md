@@ -2,7 +2,7 @@
 completed_at: 2026-04-22T19:15:25Z
 discovered_date: "2026-04-22"
 discovered_by: issue-size-review
-parent_issue: ENH-1197
+
 depends_on: [FEAT-1075, ENH-1176]
 decision_needed: false
 size: Small
@@ -12,6 +12,7 @@ score_complexity: 25
 score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
+parent: ENH-1197
 ---
 
 # ENH-1249: Add PID Liveness Check to cleanup-worktrees Command

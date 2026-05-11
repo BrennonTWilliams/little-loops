@@ -2,7 +2,7 @@
 id: FEAT-1329
 type: FEAT
 priority: P3
-parent_issue: FEAT-1325
+
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 85
@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-05-02T20:22:36Z
+parent: FEAT-1325
 ---
 
 # FEAT-1329: `/ll:assess-loop` Skill — Core Implementation

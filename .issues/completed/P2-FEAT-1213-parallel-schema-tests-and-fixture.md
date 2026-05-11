@@ -1,7 +1,7 @@
 ---
 id: FEAT-1213
 priority: P2
-parent_issue: FEAT-1200
+
 discovered_date: "2026-04-21"
 discovered_by: issue-size-review
 size: Very Large
@@ -11,6 +11,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 20
 score_change_surface: 25
+parent: FEAT-1200
 ---
 
 # FEAT-1213: Parallel Schema Tests and Fixture

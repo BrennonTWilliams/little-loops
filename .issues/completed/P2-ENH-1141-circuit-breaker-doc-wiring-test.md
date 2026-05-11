@@ -6,7 +6,7 @@ status: completed
 discovered_date: 2026-04-17
 completed_date: 2026-04-17
 parent: ENH-1138
-related: [ENH-1138, ENH-1139, ENH-1140, ENH-1134]
+
 size: Small
 confidence_score: 100
 outcome_confidence: 100
@@ -14,6 +14,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+relates_to: ['ENH-1138', 'ENH-1139', 'ENH-1140', 'ENH-1134']
 ---
 
 # ENH-1141: 429 Resilience — Doc Wiring Test and Link Verification

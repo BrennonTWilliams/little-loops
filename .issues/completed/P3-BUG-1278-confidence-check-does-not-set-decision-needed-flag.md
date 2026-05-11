@@ -7,7 +7,7 @@ discovered_date: 2026-04-24
 discovered_by: capture-issue
 captured_at: "2026-04-24T21:18:45Z"
 completed_at: "2026-04-24T23:11:47Z"
-related: [BUG-1277]
+
 decision_needed: false
 confidence_score: 95
 outcome_confidence: 79
@@ -15,6 +15,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+relates_to: ['BUG-1277']
 ---
 
 # BUG-1278: `confidence-check` Does Not Set `decision_needed: true` When Unresolved Decisions Found

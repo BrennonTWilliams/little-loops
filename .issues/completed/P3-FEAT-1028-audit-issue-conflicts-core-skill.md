@@ -3,8 +3,9 @@ discovered_date: 2026-04-10
 discovered_by: issue-size-review
 confidence_score: 100
 outcome_confidence: 85
-parent_issue: FEAT-1027
+
 blocks: FEAT-1029
+parent: FEAT-1027
 ---
 
 # FEAT-1028: audit-issue-conflicts — Core Skill Implementation

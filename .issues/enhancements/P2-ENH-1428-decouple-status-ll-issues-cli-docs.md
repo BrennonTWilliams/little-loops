@@ -4,7 +4,7 @@ type: ENH
 priority: P2
 status: done
 completed_at: 2026-05-10T21:36:24Z
-parent_issue: ENH-1422
+
 confidence_score: 100
 outcome_confidence: 78
 score_complexity: 18
@@ -12,6 +12,7 @@ score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
 size: Very Large
+parent: ENH-1422
 ---
 
 # ENH-1428: Decouple Issue Status — ll-issues CLI Documentation Updates

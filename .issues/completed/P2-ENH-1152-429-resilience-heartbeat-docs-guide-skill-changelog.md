@@ -6,7 +6,7 @@ status: completed
 discovered_date: 2026-04-17
 completed_date: 2026-04-17
 parent: ENH-1151
-related: [ENH-1144, ENH-1150, ENH-1153]
+
 size: Medium
 confidence_score: 100
 outcome_confidence: 78
@@ -15,6 +15,7 @@ score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
 testable: false
+relates_to: ['ENH-1144', 'ENH-1150', 'ENH-1153']
 ---
 
 # ENH-1152: 429 Resilience — Heartbeat Docs (LOOPS_GUIDE, SKILL.md, CHANGELOG)

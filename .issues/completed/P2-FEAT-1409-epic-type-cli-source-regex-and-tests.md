@@ -2,7 +2,7 @@
 id: FEAT-1409
 type: FEAT
 priority: P2
-parent_issue: FEAT-1406
+
 confidence_score: 100
 outcome_confidence: 61
 score_complexity: 0
@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 size: Very Large
+parent: FEAT-1406
 ---
 
 # FEAT-1409: EPIC Type — CLI Source, Regex Extensions, and Tests

@@ -5,7 +5,8 @@ priority: P5
 status: deferred
 discovered_date: 2026-04-15
 discovered_by: confidence-check
-related: [FEAT-1116, FEAT-917]
+
+relates_to: ['FEAT-1116', 'FEAT-917']
 ---
 
 # FEAT-1117: Evaluate splitting `little_loops.hook_intents` into its own entry-point group

@@ -4,9 +4,10 @@ type: ENH
 priority: P3
 discovered_date: 2026-04-12
 discovered_by: issue-size-review
-parent_issue: ENH-1089
+
 confidence_score: 100
 outcome_confidence: 71
+parent: ENH-1089
 ---
 
 # ENH-1090: issue-size-review skill writes `size` frontmatter after assessment

@@ -7,7 +7,7 @@ title: "ll-logs: extract subcommand and logs/index.md generation"
 discovered_date: 2026-04-23
 discovered_by: issue-size-review
 decision_needed: false
-parent_issue: FEAT-1269
+
 size: Very Large
 confidence_score: 80
 outcome_confidence: 93
@@ -15,6 +15,7 @@ score_complexity: 25
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+parent: FEAT-1269
 ---
 
 # FEAT-1272: ll-logs: extract subcommand and logs/index.md generation

@@ -7,7 +7,7 @@ discovered_date: 2026-05-01
 discovered_by: issue-size-review
 blocked_by: [FEAT-1315]
 parent: FEAT-1316
-related: [FEAT-1315, FEAT-1316, FEAT-1318, FEAT-1319]
+
 size: Very Large
 confidence_score: 80
 outcome_confidence: 86
@@ -15,6 +15,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+relates_to: ['FEAT-1315', 'FEAT-1316', 'FEAT-1318', 'FEAT-1319']
 ---
 
 # FEAT-1317: SessionStart Inject — Reference Documentation Updates

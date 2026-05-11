@@ -3,7 +3,7 @@ id: FEAT-1406
 type: FEAT
 priority: P2
 status: open
-parent_issue: FEAT-1389
+
 captured_at: '2026-05-09T00:00:00Z'
 discovered_date: '2026-05-09'
 depends_on:
@@ -15,6 +15,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 size: Very Large
+parent: FEAT-1389
 ---
 
 # FEAT-1406: EPIC Type — CLI Display, Sync, and Tooling Integration

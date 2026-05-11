@@ -7,7 +7,7 @@ title: "ll-logs: discover subcommand and entry-point registration"
 discovered_date: 2026-04-23
 discovered_by: issue-size-review
 decision_needed: false
-parent_issue: FEAT-1269
+
 size: Very Large
 confidence_score: 100
 outcome_confidence: 61
@@ -17,6 +17,7 @@ score_ambiguity: 25
 score_change_surface: 0
 captured_at: 2026-04-23T00:00:00Z
 completed_at: 2026-04-23T20:48:10Z
+parent: FEAT-1269
 ---
 
 # FEAT-1271: ll-logs: discover subcommand and entry-point registration

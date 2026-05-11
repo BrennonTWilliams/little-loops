@@ -5,8 +5,9 @@ priority: P4
 status: open
 discovered_date: 2026-04-18
 discovered_by: capture-issue
-related: [FEAT-1159, FEAT-1112]
+
 blocked_by: [FEAT-1112]
+relates_to: ['FEAT-1159', 'FEAT-1112']
 ---
 
 # FEAT-1160: Context Window Analytics Command

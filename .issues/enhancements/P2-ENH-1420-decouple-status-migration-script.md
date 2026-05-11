@@ -4,13 +4,14 @@ type: ENH
 priority: P2
 status: done
 completed_at: 2026-05-10T22:12:31Z
-parent_issue: ENH-1390
+
 confidence_score: 95
 outcome_confidence: 75
 score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+parent: ENH-1390
 ---
 
 # ENH-1420: Decouple Issue Status — Migration Script

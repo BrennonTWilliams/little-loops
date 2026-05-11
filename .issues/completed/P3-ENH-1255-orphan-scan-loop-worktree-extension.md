@@ -1,7 +1,7 @@
 ---
 id: ENH-1255
 priority: P3
-parent_issue: ENH-1248
+
 depends_on:
 - ENH-1254
 discovered_date: '2026-04-22'
@@ -19,6 +19,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+parent: ENH-1248
 ---
 
 # ENH-1255: Orphan Scan Extension for ll-loop Worktrees (Decision-Gated)

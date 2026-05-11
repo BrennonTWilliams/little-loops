@@ -2,7 +2,7 @@
 id: ENH-1357
 type: ENH
 priority: P2
-parent_issue: ENH-1355
+
 confidence_score: 100
 outcome_confidence: 61
 score_complexity: 0
@@ -11,6 +11,7 @@ score_ambiguity: 25
 score_change_surface: 18
 testable: false
 completed_at: 2026-05-03T21:16:09Z
+parent: ENH-1355
 ---
 
 # ENH-1357: Multi-Instance Loop — Docs & Skills Updates

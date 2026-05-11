@@ -4,7 +4,7 @@ type: ENH
 priority: P2
 status: done
 completed_at: 2026-05-10T18:01:15Z
-parent_issue: ENH-1419
+
 decision_needed: false
 confidence_score: 98
 outcome_confidence: 75
@@ -12,6 +12,7 @@ score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
+parent: ENH-1419
 ---
 
 # ENH-1423: Decouple Issue Status — ll-sync

@@ -7,7 +7,7 @@ discovered_date: 2026-04-24
 discovered_by: capture-issue
 captured_at: "2026-04-24T21:18:45Z"
 completed_at: "2026-04-24T22:43:23Z"
-related: []
+
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 86
@@ -15,6 +15,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+relates_to: []
 ---
 
 # BUG-1277: autodev `decide_current` Gate Missing from Confidence-Fail Path

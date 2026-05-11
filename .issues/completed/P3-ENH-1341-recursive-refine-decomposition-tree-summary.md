@@ -6,7 +6,7 @@ status: completed
 discovered_date: 2026-05-02
 completed_at: 2026-05-03T18:39:24Z
 discovered_by: research-synthesis
-related:
+
 - ENH-1340
 decision_needed: false
 confidence_score: 98
@@ -15,6 +15,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+relates_to: ['ENH-1340']
 ---
 
 # ENH-1341: Render Decomposition Tree in `recursive-refine` `done` Summary
@@ -216,7 +217,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 - `scripts/little_loops/loops/recursive-refine.yaml:494` (`done` state, lines 494–527).
 - 2026 research: [Structured Graphs for Agent Execution](https://arxiv.org/html/2604.11378v1), [AI Agent Loops research](https://www.fixbrokenaiapps.com/blog/ai-agents-infinite-loops).
-
 
 ## Resolution
 

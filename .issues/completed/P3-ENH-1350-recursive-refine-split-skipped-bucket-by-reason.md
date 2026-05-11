@@ -7,7 +7,7 @@ discovered_date: 2026-05-03
 discovered_by: capture-issue
 captured_at: '2026-05-03T16:43:25Z'
 completed_at: '2026-05-03T22:10:02Z'
-related:
+
 - ENH-1339
 - ENH-1340
 - ENH-1341
@@ -19,6 +19,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+relates_to: ['ENH-1339', 'ENH-1340', 'ENH-1341', 'ENH-1347', 'ENH-1348']
 ---
 
 # ENH-1350: Split `recursive-refine` "Skipped" Bucket Into Meaningful Reason Categories
@@ -260,7 +261,6 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Effort**: Small — Additive writes + `done` reformat; no routing changes.
 - **Risk**: Low — `recursive-refine-skipped.txt` is unchanged; outer-loop callers unaffected.
 - **Breaking Change**: No — `done` output format changes (new rows), but no machine consumers of `done` output exist.
-
 
 ## Blocked By
 

@@ -5,7 +5,7 @@ priority: P2
 status: completed
 discovered_date: 2026-04-17
 parent: ENH-1138
-related: [ENH-1138, ENH-1134]
+
 size: Medium
 confidence_score: 100
 outcome_confidence: 85
@@ -14,6 +14,7 @@ score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
 testable: false
+relates_to: ['ENH-1138', 'ENH-1134']
 ---
 
 # ENH-1139: 429 Resilience — API.md Reference Updates for Circuit Breaker

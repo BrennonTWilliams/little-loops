@@ -6,7 +6,7 @@ status: completed
 discovered_date: 2026-05-02
 completed_at: 2026-05-03T17:47:10Z
 discovered_by: research-synthesis
-related:
+
 - ENH-1337
 - ENH-1339
 decision_needed: false
@@ -16,6 +16,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+relates_to: ['ENH-1337', 'ENH-1339']
 ---
 
 # ENH-1338: Cycle Detection / Visited-Set for `recursive-refine` Queue
@@ -161,7 +162,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 - `scripts/little_loops/loops/recursive-refine.yaml`: `parse_input` (line 33), `dequeue_next` (line 61), `enqueue_children` (line 197), `enqueue_or_skip` (line 350), `done` (line 403).
 - 2026 research: [Why AI Agents Get Stuck in Loops](https://www.fixbrokenaiapps.com/blog/ai-agents-infinite-loops), [Multi-Agent Orchestration Failure Playbook 2026](https://cogentinfo.com/resources/when-ai-agents-collide-multi-agent-orchestration-failure-playbook-for-2026), [Infinite Agent Loop](https://www.agentpatterns.tech/en/failures/infinite-loop).
-
 
 ## Resolution
 

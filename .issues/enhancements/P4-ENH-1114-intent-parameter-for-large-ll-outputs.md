@@ -5,8 +5,9 @@ priority: P4
 status: open
 discovered_date: 2026-04-15
 discovered_by: capture-issue
-related: [FEAT-1112, ENH-1111]
+
 blocked_by: [FEAT-1112]
+relates_to: ['FEAT-1112', 'ENH-1111']
 ---
 
 # ENH-1114: Intent Parameter for Large ll-* CLI Outputs
@@ -56,7 +57,6 @@ Context-mode (github.com/mksglu/context-mode) calls this "intent-driven filterin
 - No `--intent` flag in `ll-history`, `ll-deps`, or `ll-scan-codebase` ✓
 - No `scripts/little_loops/ranking.py` module ✓
 - Feature not yet implemented ✓
-
 
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`

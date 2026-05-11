@@ -1,5 +1,5 @@
 ---
-parent_issue: ENH-1298
+
 discovered_date: "2026-04-27"
 discovered_by: issue-size-review
 decision_needed: false
@@ -11,6 +11,7 @@ score_complexity: 10
 score_test_coverage: 0
 score_ambiguity: 25
 score_change_surface: 18
+parent: ENH-1298
 ---
 
 # ENH-1299: Fix `file:line` references in issue-authoring pipeline source files

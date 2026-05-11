@@ -7,7 +7,8 @@ discovered_date: 2026-04-18
 discovered_by: issue-size-review
 blocked_by: [FEAT-1112, FEAT-1156]
 parent: FEAT-1113
-related: [FEAT-1156, FEAT-1157]
+
+relates_to: ['FEAT-1156', 'FEAT-1157']
 ---
 
 # FEAT-1158: PreCompact Handoff Hook — Docs & Configuration
@@ -85,7 +86,6 @@ Decide whether `precompact_handoff` is opt-in (feature flag in config) or always
 - `skills/configure/areas.md:867` has no row for `precompact-handoff.sh` ✓
 - Blocked by FEAT-1156 (hook must exist before docs can be accurate) ✓
 - Feature not yet implemented ✓
-
 
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-05-10T14:27:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`

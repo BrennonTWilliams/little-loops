@@ -1,7 +1,7 @@
 ---
 id: ENH-1253
 priority: P3
-parent_issue: ENH-1247
+
 discovered_date: "2026-04-22"
 completed_at: 2026-04-22T19:39:02Z
 discovered_by: issue-size-review
@@ -13,6 +13,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+parent: ENH-1247
 ---
 
 # ENH-1253: Unlock Before Remove in orchestrator._cleanup_orphaned_worktrees

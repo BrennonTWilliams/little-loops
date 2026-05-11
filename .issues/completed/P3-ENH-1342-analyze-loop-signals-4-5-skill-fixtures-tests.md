@@ -2,7 +2,7 @@
 id: ENH-1342
 type: ENH
 priority: P3
-parent_issue: ENH-1336
+
 confidence_score: 100
 outcome_confidence: 86
 score_complexity: 18
@@ -10,6 +10,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-05-03T05:14:52Z
+parent: ENH-1336
 ---
 
 # ENH-1342: Implement Signals 4-5 in `/ll:analyze-loop` SKILL.md, Fixtures, and Synthesis Tests

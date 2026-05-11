@@ -5,7 +5,7 @@ priority: P2
 status: open
 discovered_date: 2026-05-02
 discovered_by: research-synthesis
-related:
+
 - ENH-1338
 - ENH-1339
 decision_needed: false
@@ -16,6 +16,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
 size: Very Large
+relates_to: ['ENH-1338', 'ENH-1339']
 ---
 
 # ENH-1337: Add Per-Subtree Depth Limit to `recursive-refine`
@@ -251,7 +252,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 - `scripts/little_loops/loops/recursive-refine.yaml` (states `parse_input`, `dequeue_next`, `enqueue_children`, `enqueue_or_skip`, `recheck_scores`, `run_size_review`, `done`).
 - 2026 research: [Recursive Language Models](https://www.primeintellect.ai/blog/rlm), [The Agent Loop Problem](https://medium.com/@Modexa/the-agent-loop-problem-when-smart-wont-stop-ccbf8489180f), [ReCAP](https://cs224r.stanford.edu/projects/pdfs/CS224R_RECAP.pdf).
-
 
 ---
 

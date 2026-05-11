@@ -3,7 +3,7 @@ id: ENH-1424
 type: ENH
 priority: P2
 status: done
-parent_issue: ENH-1419
+
 decision_needed: false
 confidence_score: 85
 outcome_confidence: 82
@@ -12,6 +12,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
 completed_at: 2026-05-10T18:29:14Z
+parent: ENH-1419
 ---
 
 # ENH-1424: Decouple Issue Status — Sprint Runner

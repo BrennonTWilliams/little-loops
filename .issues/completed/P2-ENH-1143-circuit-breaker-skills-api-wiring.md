@@ -5,7 +5,7 @@ priority: P2
 status: open
 discovered_date: 2026-04-17
 parent: ENH-1140
-related: [ENH-1138, ENH-1134, ENH-1141, ENH-1142]
+
 size: Medium
 confidence_score: 100
 outcome_confidence: 78
@@ -13,6 +13,7 @@ score_complexity: 18
 score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
+relates_to: ['ENH-1138', 'ENH-1134', 'ENH-1141', 'ENH-1142']
 ---
 
 # ENH-1143: 429 Resilience — Circuit Breaker Skills & API.md Wiring Updates

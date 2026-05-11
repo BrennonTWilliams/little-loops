@@ -3,7 +3,8 @@ discovered_date: 2026-02-10
 discovered_by: user_feedback
 completed_date: 2026-02-10
 implementation_session: 2026-02-10
-parent_issue: ENH-320
+
+parent: ENH-320
 ---
 
 # ENH-321: Add Integration Map Section to Issue Template

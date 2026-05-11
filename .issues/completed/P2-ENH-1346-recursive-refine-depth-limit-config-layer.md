@@ -2,7 +2,7 @@
 id: ENH-1346
 type: ENH
 priority: P2
-parent_issue: ENH-1344
+
 size: Medium
 decision_needed: false
 confidence_score: 100
@@ -12,6 +12,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-05-03T16:23:45Z
+parent: ENH-1344
 ---
 
 # ENH-1346: Config Schema + Python Config Layer for `recursive-refine` Depth Limit

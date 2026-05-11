@@ -3,8 +3,9 @@ discovered_date: 2026-04-10
 discovered_by: issue-size-review
 confidence_score: 80
 outcome_confidence: 70
-parent_issue: FEAT-1027
+
 blocked_by: FEAT-1028
+parent: FEAT-1027
 ---
 
 # FEAT-1029: audit-issue-conflicts — Wiring, Docs, and Tests

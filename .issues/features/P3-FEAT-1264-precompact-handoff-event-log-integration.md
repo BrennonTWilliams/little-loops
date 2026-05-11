@@ -7,7 +7,8 @@ discovered_date: 2026-04-22
 discovered_by: issue-size-review
 blocked_by: [FEAT-1156, FEAT-1262]
 parent: FEAT-1159
-related: [FEAT-1156, FEAT-1262, FEAT-1263, FEAT-1113]
+
+relates_to: ['FEAT-1156', 'FEAT-1262', 'FEAT-1263', 'FEAT-1113']
 ---
 
 # FEAT-1264: PreCompact Handoff — Event Log Integration
@@ -102,7 +103,6 @@ This issue modifies only `precompact-handoff.sh`. It does NOT modify:
 - Reads from: FEAT-1262 (`ll-session-events.jsonl`)
 - Downstream beneficiary: FEAT-1263 (richer snapshot → richer injection)
 - Original vision: FEAT-1159 Component 2 integration notes
-
 
 ## Session Log
 - `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`

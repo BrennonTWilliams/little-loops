@@ -5,7 +5,7 @@ priority: P2
 status: open
 discovered_date: 2026-04-17
 parent: ENH-1134
-related: [ENH-1134, ENH-1136, ENH-1137]
+
 size: Very Large
 confidence_score: 98
 outcome_confidence: 70
@@ -13,6 +13,7 @@ score_complexity: 10
 score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
+relates_to: ['ENH-1134', 'ENH-1136', 'ENH-1137']
 ---
 
 # ENH-1138: 429 Resilience — Documentation Updates for Circuit Breaker

@@ -2,7 +2,7 @@
 id: ENH-1356
 type: ENH
 priority: P2
-parent_issue: ENH-1355
+
 confidence_score: 95
 outcome_confidence: 85
 score_complexity: 10
@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-05-03T20:53:16Z
+parent: ENH-1355
 ---
 
 # ENH-1356: Multi-Instance Loop — Core Implementation + Tests
