@@ -811,6 +811,42 @@ This is the body.
         assert "github_url:" in updated_content
         assert "last_synced:" in updated_content
 
+    def test_get_labels_for_issue_with_blocked_by_adds_label(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """blocked_by frontmatter appends 'blocked-by' to label list."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        issue_path = tmp_path / ".issues" / "bugs" / "P1-BUG-123-test.md"
+        issue_path.write_text("---\nblocked_by:\n- BUG-001\n---\n# BUG-123: Test")
+
+        labels = manager._get_labels_for_issue(issue_path)
+        assert "blocked-by" in labels
+
+    def test_push_single_issue_adds_duplicate_of_comment(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """duplicate_of frontmatter causes a closing comment to be posted after update."""
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-002-dupe.md"
+        issue_file.write_text(
+            "---\ngithub_issue: 42\nduplicate_of: BUG-001\n---\n\n# BUG-002: Dupe Bug\n\nBody.\n"
+        )
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        result = SyncResult(action="push", success=True)
+
+        with patch("little_loops.sync._run_gh_command") as mock_run:
+            mock_run.side_effect = [
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),  # gh issue edit
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),  # gh issue comment
+            ]
+            manager._push_single_issue(issue_file, "BUG-002", result)
+
+        assert mock_run.call_count == 2
+        comment_args = mock_run.call_args_list[1][0][0]
+        assert "comment" in comment_args
+        assert "--body" in comment_args
+        assert "BUG-001" in comment_args[-1]
+
 
 class TestDryRun:
     """Tests for dry-run mode in GitHubSyncManager."""

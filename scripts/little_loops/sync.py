@@ -321,6 +321,12 @@ class GitHubSyncManager:
             if priority_match:
                 labels.append(priority_match.group(1).lower())
 
+        # Add blocked-by label if blocked_by frontmatter is non-empty
+        content = issue_path.read_text(encoding="utf-8")
+        fm = parse_frontmatter(content, coerce_types=True)
+        if fm.get("blocked_by"):
+            labels.append("blocked-by")
+
         return labels
 
     def push_issues(self, issue_ids: list[str] | None = None) -> SyncResult:
@@ -406,15 +412,30 @@ class GitHubSyncManager:
                 self.logger.info(f"Would create GitHub issue for {issue_id}")
             return
 
+        effective_number: int | None = None
         if github_number:
             # Update existing issue
             self._update_github_issue(int(github_number), full_title, body, issue_id, result)
+            effective_number = int(github_number)
         else:
             # Create new issue
             new_number = self._create_github_issue(full_title, body, labels, issue_id, result)
             if new_number:
                 # Update local frontmatter
                 self._update_local_frontmatter(issue_path, content, new_number)
+                effective_number = new_number
+
+        if effective_number and frontmatter.get("duplicate_of"):
+            _run_gh_command(
+                [
+                    "issue",
+                    "comment",
+                    str(effective_number),
+                    "--body",
+                    f"Duplicate of {frontmatter['duplicate_of']}.",
+                ],
+                self.logger,
+            )
 
     def _create_github_issue(
         self,

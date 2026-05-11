@@ -72,6 +72,7 @@ Push local issues to GitHub Issues.
    b. **Determine labels** based on config:
       - Map issue type to GitHub label: `{{config.sync.github.label_mapping}}`
       - Add priority label if `{{config.sync.github.priority_labels}}` is true
+      - Add `"blocked-by"` label if `blocked_by` frontmatter is non-empty
 
    c. **Check if already exists on GitHub**:
       ```bash
@@ -86,7 +87,8 @@ Push local issues to GitHub Issues.
         --title "{ISSUE-ID}: {title}" \
         --body "{body}" \
         --label "{type_label}" \
-        --label "{priority_label}"
+        --label "{priority_label}" \
+        --label "blocked-by"  # only when blocked_by frontmatter is non-empty
 
       # Or update existing
       gh issue edit {github_issue} \
