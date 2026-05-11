@@ -74,11 +74,9 @@ class TestFeat1045DocUpdates:
             "README.md must have an ll-create-extension section in the CLI Tools block"
         )
 
-    def test_readme_tool_count_is_18(self) -> None:
+    def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "19 CLI tools" in content, (
-            "README.md must say '19 CLI tools' (incremented from 17 after ll-migrate landed)"
-        )
+        assert "20 CLI tools" in content, "README.md must say '20 CLI tools'"
 
     def test_claude_md_lists_ll_create_extension(self) -> None:
         content = CLAUDE_MD.read_text()
@@ -189,11 +187,9 @@ class TestFeat1229LlActionWiring:
         content = README.read_text()
         assert "ll-action" in content, "README.md must have an ll-action section in CLI Tools"
 
-    def test_readme_tool_count_is_18(self) -> None:
+    def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "19 CLI tools" in content, (
-            "README.md must say '19 CLI tools' after ll-migrate was added"
-        )
+        assert "20 CLI tools" in content, "README.md must say '20 CLI tools'"
 
     def test_configure_areas_count_is_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
