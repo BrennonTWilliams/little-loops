@@ -3853,6 +3853,7 @@ class FSMLoop:
     context: dict[str, Any] = {}       # User-defined shared variables
     scope: list[str] = []              # Paths for concurrency control
     max_iterations: int = 50           # Safety limit
+    max_edge_revisits: int = 100       # Per-edge cycle detection limit (see below)
     backoff: float | None = None       # Seconds between iterations
     timeout: int | None = None         # Max runtime in seconds
     maintain: bool = False             # If True, restart after completion
@@ -3869,6 +3870,21 @@ class FSMLoop:
 | `get_all_state_names()` | `set[str]` | All defined state names |
 | `get_terminal_states()` | `set[str]` | States with `terminal=True` |
 | `get_all_referenced_states()` | `set[str]` | All states referenced by transitions |
+
+<!-- TODO: update-docs stub — dd260362 — drafted 2026-05-11 -->
+**`max_edge_revisits` — Per-edge cycle detection:**
+
+> **Stub**: Auto-drafted by `/ll:update-docs`. Fill in details.
+
+When any single state→state edge (e.g., `evaluate → fix`) is traversed more than `max_edge_revisits` times, the loop terminates immediately with `terminated_by="cycle_detected"` (exit code 1) rather than continuing until `max_iterations` is reached. This prevents tight infinite loops where two states bounce between each other indefinitely without making progress. Edge counts are persisted in `LoopState` so they survive a `--resume`. The default value of `100` covers all practical loops; lower it on short single-purpose loops to catch regressions faster.
+
+```yaml
+# Example: tighten cycle guard on a short loop
+name: quick-check
+max_iterations: 10
+max_edge_revisits: 5   # terminate if any edge fires more than 5 times
+```
+<!-- END TODO stub -->
 
 **Example:**
 ```python
@@ -4210,7 +4226,7 @@ result = executor.run()
 
 print(result.final_state)     # "done"
 print(result.iterations)      # Number of iterations
-print(result.terminated_by)   # "terminal", "max_iterations", "timeout", "signal", or "error"
+print(result.terminated_by)   # "terminal", "max_iterations", "timeout", "signal", "cycle_detected", or "error"
 ```
 
 #### ExecutionResult
@@ -4220,7 +4236,7 @@ print(result.terminated_by)   # "terminal", "max_iterations", "timeout", "signal
 class ExecutionResult:
     final_state: str                      # State when execution stopped
     iterations: int                       # Total iterations
-    terminated_by: str                    # Reason for termination
+    terminated_by: str                    # "terminal" | "max_iterations" | "timeout" | "signal" | "cycle_detected" | "error"
     duration_ms: int                      # Total execution time
     captured: dict[str, dict[str, Any]]   # Captured variable values
     error: str | None = None              # Error message if failed

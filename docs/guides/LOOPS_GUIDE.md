@@ -64,9 +64,24 @@ When a loop runs, the engine:
 1. Enters the **initial state** and runs its action
 2. Evaluates the result (exit code, output pattern, metric, etc.)
 3. Follows the matching **transition** to the next state
-4. Repeats until reaching a **terminal state** or hitting `max_iterations`
+4. Repeats until reaching a **terminal state**, hitting `max_iterations`, or triggering `max_edge_revisits` (see below)
 
 Use `/ll:create-loop` for an interactive wizard that guides you through creating loops, or write FSM YAML directly (see the [FSM Loop System Design](../generalized-fsm-loop.md) for the schema).
+
+<!-- TODO: update-docs stub — dd260362 — drafted 2026-05-11 -->
+**Safety limits:**
+
+> **Stub**: Auto-drafted by `/ll:update-docs`. Fill in details and integrate into loop YAML reference.
+
+Two loop-level fields guard against runaway loops:
+
+| Field | Default | Behavior |
+|-------|---------|----------|
+| `max_iterations` | `50` | Total state executions before the loop terminates with `terminated_by="max_iterations"` |
+| `max_edge_revisits` | `100` | Maximum times any single state→state edge may fire; terminates with `terminated_by="cycle_detected"` (exit code 1) when exceeded. Edge counts survive `--resume`. |
+
+`max_edge_revisits` catches tight two-state oscillations that would otherwise drain the entire `max_iterations` budget. Lower it (e.g., `max_edge_revisits: 5`) on short focused loops to surface regressions faster.
+<!-- END TODO stub -->
 
 ## Common Loop Patterns
 
@@ -2589,7 +2604,7 @@ flow:
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| Loop stuck in a cycle | Fix action isn't changing the result the evaluator sees | Check `ll-loop history` — if the same verdict repeats, adjust the fix action |
+| Loop stuck in a cycle | Fix action isn't changing the result the evaluator sees | Check `ll-loop history` — if the same verdict repeats, adjust the fix action. The executor also terminates automatically when any single edge is traversed more than `max_edge_revisits` times (default 100) with `terminated_by="cycle_detected"` |
 | Scope conflict error | Another loop holds a lock on overlapping paths | Find it with `ll-loop list --running` and stop it, or use `--queue` to wait |
 | LLM evaluator errors | Claude CLI auth or network issue | Ensure `claude` CLI is authenticated (`claude auth`), or use `--no-llm` to fall back to deterministic evaluators |
 | "No state found" on resume | Loop already completed or was never started | Check `ll-loop status` — completed loops have no resumable state |
