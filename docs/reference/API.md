@@ -3358,6 +3358,23 @@ Entry point for `ll-logs` command. Discover, extract, and tail Claude Code sessi
 
 ---
 
+### main_learning_tests
+
+```python
+def main_learning_tests() -> int
+```
+
+Entry point for `ll-learning-tests` command. Query and manage the learning test registry.
+
+**Returns:** 0 on success, 1 when target not found
+
+**Subcommands:**
+- `check <target>` — Print record JSON to stdout; exit 1 if not found
+- `list` — Print all records as a JSON array
+- `mark-stale <target>` — Set status=stale on a record; exit 1 if not found
+
+---
+
 ## little_loops.workflow_sequence
 
 Step 2 of a 3-step workflow analysis pipeline. Analyzes user message patterns to identify multi-step workflows, link related sessions, and detect workflow boundaries.

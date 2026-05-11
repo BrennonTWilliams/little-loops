@@ -1462,6 +1462,30 @@ mcp-call my-server/my-tool '{"key": "value"}'
 
 ---
 
+### ll-learning-tests
+
+Query and manage the learning test registry. Skills and loops call this via `Bash` to check coverage before proceeding.
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `check <target>` | Print record JSON; exit 1 if not found |
+| `list` | Print all records as a JSON array |
+| `mark-stale <target>` | Set status=stale; exit 1 if not found |
+
+**Examples:**
+```bash
+ll-learning-tests check "Anthropic SDK streaming"
+ll-learning-tests list
+ll-learning-tests mark-stale "Anthropic SDK streaming"
+ll-learning-tests --help
+```
+
+**Exit codes:** `0` = success, `1` = target not found
+
+---
+
 ## See Also
 
 - [COMMANDS.md](COMMANDS.md) — `/ll:` slash commands reference

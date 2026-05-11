@@ -22,6 +22,7 @@ Provides command-line interfaces for automated issue management:
 - ll-create-extension: Scaffold a new little-loops extension project
 - ll-generate-schemas: Generate JSON Schema files for all LLEvent types (internal: dev tooling)
 - ll-generate-skill-descriptions: Auto-generate ≤100-char skill descriptions via Claude CLI
+- ll-learning-tests: Query and manage the learning test registry
 """
 
 from little_loops.cli.action import main_action
@@ -33,6 +34,7 @@ from little_loops.cli.generate_skill_descriptions import main_generate_skill_des
 from little_loops.cli.gitignore import main_gitignore
 from little_loops.cli.history import main_history
 from little_loops.cli.issues import main_issues
+from little_loops.cli.learning_tests import main_learning_tests
 from little_loops.cli.logs import main_logs
 from little_loops.cli.loop import main_loop
 from little_loops.cli.messages import main_messages
@@ -62,6 +64,7 @@ __all__ = [
     "main_migrate",
     "main_migrate_labels",
     "main_migrate_relationships",
+    "main_learning_tests",
     "main_logs",
     "main_issues",
     "main_loop",

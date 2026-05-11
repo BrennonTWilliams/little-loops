@@ -247,6 +247,7 @@ ll-migrate-relationships Rename deprecated relationship frontmatter keys in all 
 ll-create-extension Scaffold a new little-loops extension project
 ll-generate-schemas Regenerate JSON Schema files for all LLEvent types (maintainer tool)
 ll-generate-skill-descriptions Auto-generate ≤100-char skill descriptions via Claude CLI (release utility)
+ll-learning-tests Query and manage the learning test registry (check/list/mark-stale)
 ll-logs           Discover and extract ll-relevant log entries from Claude project logs
 
 ================================================================================
