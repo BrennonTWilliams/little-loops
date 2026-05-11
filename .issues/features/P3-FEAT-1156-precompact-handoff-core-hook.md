@@ -102,6 +102,7 @@ FEAT-1112 (session store) is not yet implemented; gather state without it:
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-11T21:32:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/521f9c4d-aa09-4ad1-88fe-93826dacaa4a.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
@@ -120,3 +121,5 @@ FEAT-1112 (session store) is not yet implemented; gather state without it:
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The State Sources section specifies git diff/ll-issues/loops-JSON as the fallback approach — but does not acknowledge FEAT-1262's `.ll/ll-session-events.jsonl` as the richer primary source. If `.ll/ll-session-events.jsonl` is present and non-empty (i.e., FEAT-1262 has been shipping and running), prefer it as the primary source for the files-edited and decisions sections of the snapshot. Fall back to `git diff --name-only HEAD` and `ll-issues list` only when the JSONL is absent. FEAT-1264 (which formally integrates the event log) depends on this issue; this note ensures the fallback/primary distinction is documented in the implementation contract so FEAT-1264 doesn't need to re-explain the fallback semantics.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-11): This issue implements `precompact-handoff.sh` as a full-logic shell script. FEAT-1116 (Hook-Intent Abstraction Layer) will migrate PreCompact hooks to Python core handlers with thin per-host shell adapters. Implement the shell script as specified here for the MVP, but treat it as temporary: once FEAT-1116's PreCompact migration scaffolding lands, port the snapshot logic to a Python intent handler (e.g., `scripts/little_loops/hooks/pre_compact_handoff.py`) and replace `precompact-handoff.sh` with a thin Claude Code adapter that delegates to the Python handler. Do not embed new business logic in the shell script beyond what is required for the initial implementation.

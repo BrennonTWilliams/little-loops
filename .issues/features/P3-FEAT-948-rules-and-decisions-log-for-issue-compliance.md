@@ -280,6 +280,7 @@ ll-issues decisions sync                        # write active required rules to
 - `scripts/little_loops/sprint.py:142-202` dataclass + YAML pattern confirmed ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-11T21:32:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/521f9c4d-aa09-4ad1-88fe-93826dacaa4a.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-10T19:45:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
@@ -296,3 +297,5 @@ ll-issues decisions sync                        # write active required rules to
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): Both this issue and FEAT-1112 modify `hooks/scripts/session-start.sh` independently (FEAT-948 adds `ll-decisions sync` output; FEAT-1112 adds event ingestion wiring). Apply FEAT-948's `session-start.sh` changes after FEAT-1112 (and FEAT-1263) have merged, and re-verify the hook's exit-code behavior to ensure FEAT-948's body-output extension is additive and does not conflict with FEAT-1112's ingestion wiring.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-11): `.ll/decisions.yaml` is a user-edited, human-authored YAML file and must remain as such — it is not a candidate for migration into FEAT-1112's `.ll/session.db`. The two stores serve different purposes: `decisions.yaml` holds standing rules, per-issue decisions, and exceptions authored by a developer; `session.db` holds machine-generated tool-event and session data. FEAT-1112 is a prerequisite only for the query/sync infrastructure (e.g., `ll-decisions sync` writing to `.ll/ll.local.md` may benefit from FTS5 lookups); it does not imply decisions data moves to SQLite. When implementing, treat decisions.yaml as the source of truth and SQLite as a read-only index if used at all.

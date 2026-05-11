@@ -6,7 +6,7 @@ captured_at: "2026-04-25T18:06:01Z"
 discovered_date: "2026-04-25"
 discovered_by: capture-issue
 depends_on: [FEAT-1282]
-blocked_by: [FEAT-1286, ENH-1115]
+blocked_by: [FEAT-1286, ENH-1115, FEAT-1287]
 ---
 
 # FEAT-1283: `learning` FSM State for ll-loop
@@ -169,6 +169,7 @@ class LearningStateHandler:
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-11T21:32:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/521f9c4d-aa09-4ad1-88fe-93826dacaa4a.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-05T02:27:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d743dae1-3278-4abd-a763-b23632abd3cb.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`

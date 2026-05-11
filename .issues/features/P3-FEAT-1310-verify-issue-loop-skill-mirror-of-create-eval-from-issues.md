@@ -76,6 +76,27 @@ New skill: `skills/verify-issue-loop/SKILL.md`
 5. Add registration: append the skill to `.claude/CLAUDE.md` "Automation & Loops" line and ensure `/ll:help` discovers it (skills are auto-discovered via `skills/*/SKILL.md` glob — verify no extra wiring needed).
 6. Tests: add a unit/integration test in `scripts/tests/` that runs the skill against a fixture issue with N acceptance criteria and asserts the generated YAML has N verify-states + `done` + `failed`, and passes `ll-loop validate`.
 
+## Integration Map
+
+### Files to Modify
+- `skills/verify-issue-loop/SKILL.md` — New skill file to create (scaffold from sibling)
+- `.claude/CLAUDE.md` — Append skill to "Automation & Loops" group
+
+### Dependent Files (Callers/Importers)
+- TBD — use grep: `grep -r "verify-issue-loop" skills/ commands/ .claude/`
+
+### Similar Patterns
+- `skills/create-eval-from-issues/SKILL.md` — Primary pattern to mirror for argument parsing, issue resolution, YAML emission, `ll-loop validate` UX
+
+### Tests
+- `scripts/tests/` — New integration test: fixture issue with N acceptance criteria → assert N verify-states + `done` + `failed` + `ll-loop validate` passes
+
+### Documentation
+- N/A — Skills are auto-discovered via `skills/*/SKILL.md` glob; no manual doc updates needed
+
+### Configuration
+- N/A — No config changes needed
+
 ## Acceptance Criteria
 
 - [ ] `skills/verify-issue-loop/SKILL.md` exists with frontmatter, description, trigger keywords, and argument-hint mirroring `create-eval-from-issues`.
@@ -108,6 +129,7 @@ feature, skill, verification, fsm, loops, captured
 | `.claude/CLAUDE.md` | Skill registration / Automation & Loops grouping |
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-11T20:30:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a07d6155-3a77-4261-82da-bcebc9ff9d11.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
