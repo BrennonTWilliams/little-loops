@@ -28,7 +28,8 @@ from little_loops.cli.action import main_action
 from little_loops.cli.auto import main_auto
 from little_loops.cli.create_extension import main_create_extension
 from little_loops.cli.deps import main_deps
-from little_loops.cli.docs import main_check_links, main_verify_docs
+from little_loops.cli.docs import main_check_links, main_verify_docs, main_verify_skill_budget
+from little_loops.cli.generate_skill_descriptions import main_generate_skill_descriptions
 from little_loops.cli.gitignore import main_gitignore
 from little_loops.cli.history import main_history
 from little_loops.cli.issues import main_issues
@@ -39,7 +40,6 @@ from little_loops.cli.migrate import main_migrate
 from little_loops.cli.migrate_labels import main_migrate_labels
 from little_loops.cli.migrate_relationships import main_migrate_relationships
 from little_loops.cli.parallel import main_parallel
-from little_loops.cli.generate_skill_descriptions import main_generate_skill_descriptions
 from little_loops.cli.schemas import main_generate_schemas  # internal: dev tooling
 from little_loops.cli.sprint import (
     _render_dependency_graph,
@@ -70,6 +70,7 @@ __all__ = [
     "main_sprint",
     "main_sync",
     "main_verify_docs",
+    "main_verify_skill_budget",
     # Re-exported for backward compatibility (used in tests)
     "_render_execution_plan",
     "_render_dependency_graph",

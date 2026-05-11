@@ -104,6 +104,103 @@ Exit codes:
     return 0 if result.all_match else 1
 
 
+def main_verify_skill_budget() -> int:
+    """Entry point for ll-verify-skill-budget command.
+
+    Scan skill description tokens and fail if total exceeds the configured budget.
+
+    Returns:
+        Exit code (0 = under budget, 1 = over budget)
+    """
+    from little_loops.doc_counts import (
+        _DEFAULT_BUDGET_TOKENS,
+        check_skill_budget,
+    )
+
+    parser = argparse.ArgumentParser(
+        prog="ll-verify-skill-budget",
+        description="Verify skill description token footprint stays within listing budget",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s                    # Check against default 2000-token budget
+  %(prog)s --threshold 1500   # Custom token threshold
+
+Exit codes:
+  0 - Under budget
+  1 - Over budget
+""",
+    )
+
+    parser.add_argument(
+        "--threshold",
+        type=int,
+        default=None,
+        metavar="N",
+        help=f"Token budget threshold (default: {_DEFAULT_BUDGET_TOKENS}; overrides ll-config.json)",
+    )
+
+    parser.add_argument(
+        "-C",
+        "--directory",
+        type=Path,
+        default=None,
+        help="Base directory (default: current directory)",
+    )
+
+    args = parser.parse_args()
+
+    configure_output()
+    logger = Logger(use_color=use_color_enabled())
+
+    base_dir = args.directory or Path.cwd()
+
+    # Resolve threshold: CLI arg > config file > default
+    threshold = args.threshold
+    if threshold is None:
+        try:
+            from little_loops.config import BRConfig
+
+            threshold = (
+                BRConfig(base_dir)._raw_config.get("skill_budget", {}).get(
+                    "threshold_tokens", _DEFAULT_BUDGET_TOKENS
+                )
+            )
+        except Exception:
+            threshold = _DEFAULT_BUDGET_TOKENS
+
+    result = check_skill_budget(base_dir=base_dir, threshold_tokens=threshold)
+
+    # Per-skill breakdown header
+    print("Skill Description Token Budget Check")
+    print("=" * 40)
+    print(f"Threshold: {result.threshold_tokens} tokens")
+    print()
+
+    if result.skill_breakdown:
+        print(f"{'Tokens':>6}  Skill")
+        print(f"{'------':>6}  {'-----'}")
+        for skill_md, _, tokens in result.skill_breakdown:
+            marker = " !" if tokens >= 200 else "  "
+            print(f"{tokens:>6}{marker} {skill_md.parent.name}")
+        print()
+
+    if result.under_budget:
+        logger.success(
+            f"Total: {result.total_tokens} / {result.threshold_tokens} tokens — under budget"
+        )
+        return 0
+    else:
+        logger.error(
+            f"Total: {result.total_tokens} / {result.threshold_tokens} tokens — OVER BUDGET"
+        )
+        if result.violations:
+            print("\nTop contributors (≥200 tokens each):")
+            for skill_md, _, tokens in result.violations:
+                print(f"  {tokens:>6}  {skill_md.parent.name}")
+        return 1
+
+
 def main_check_links() -> int:
     """Entry point for ll-check-links command.
 

@@ -1245,6 +1245,29 @@ ll-verify-docs --fix              # Auto-fix mismatches
 
 ---
 
+### ll-verify-skill-budget
+
+Check that the total skill description token footprint stays within the Claude Code listing budget.
+
+Scans all `skills/*/SKILL.md` frontmatter `description` fields. Skips skills with `disable-model-invocation: true`. Token estimate: `len(description) // 4`. Exits 1 if total exceeds the threshold.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--threshold` | | Token budget threshold (default: 2000; overrides ll-config.json) |
+| `--directory` | `-C` | Base directory (default: current directory) |
+
+**Exit codes:** `0` = under budget, `1` = over budget
+
+**Examples:**
+```bash
+ll-verify-skill-budget                # Check against default 2000-token budget
+ll-verify-skill-budget --threshold 1500  # Custom threshold
+```
+
+---
+
 ### ll-check-links
 
 Check markdown documentation for broken links.

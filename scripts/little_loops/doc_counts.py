@@ -8,6 +8,9 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+_DEFAULT_BUDGET_TOKENS = 2000
+_DEFAULT_PER_SKILL_WARN_TOKENS = 200
+
 # Documentation files to check
 DOC_FILES = [
     "README.md",
@@ -239,6 +242,82 @@ def format_result_markdown(result: VerificationResult) -> str:
             )
 
     return "\n".join(lines)
+
+
+@dataclass
+class SkillBudgetResult:
+    """Result of checking skill description token budget."""
+
+    total_tokens: int
+    threshold_tokens: int
+    under_budget: bool
+    skill_breakdown: list[tuple[Path, str, int]]
+    violations: list[tuple[Path, str, int]]
+
+
+def _parse_skill_frontmatter(text: str) -> dict[str, str]:
+    """Extract flat key/value pairs from SKILL.md frontmatter."""
+    if not text.startswith("---"):
+        return {}
+    end = text.find("---", 3)
+    if end == -1:
+        return {}
+    fm: dict[str, str] = {}
+    for line in text[3:end].splitlines():
+        if ":" in line:
+            key, _, val = line.partition(":")
+            fm[key.strip()] = val.strip()
+    return fm
+
+
+def check_skill_budget(
+    base_dir: Path | None = None,
+    threshold_tokens: int = _DEFAULT_BUDGET_TOKENS,
+    per_skill_warn_tokens: int = _DEFAULT_PER_SKILL_WARN_TOKENS,
+) -> SkillBudgetResult:
+    """Scan skills/*/SKILL.md description fields, estimate tokens, check budget.
+
+    Skips skills with ``disable-model-invocation: true``.  Token estimate uses
+    the character-count approximation ``len(description) // 4``.
+
+    Args:
+        base_dir: Base directory (defaults to cwd)
+        threshold_tokens: Total token budget (default: 2000 = ~1% of 200k context)
+        per_skill_warn_tokens: Per-skill threshold for listing as a violation
+
+    Returns:
+        SkillBudgetResult with total, sorted breakdown, and per-skill violations
+    """
+    if base_dir is None:
+        base_dir = Path.cwd()
+
+    skills_dir = base_dir / "skills"
+    skill_breakdown: list[tuple[Path, str, int]] = []
+
+    if skills_dir.exists():
+        for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
+            try:
+                text = skill_md.read_text()
+            except OSError:
+                continue
+            fm = _parse_skill_frontmatter(text)
+            if fm.get("disable-model-invocation", "").lower() in ("true", "yes", "1"):
+                continue
+            description = fm.get("description", "")
+            tokens = len(description) // 4
+            skill_breakdown.append((skill_md, description, tokens))
+
+    skill_breakdown.sort(key=lambda x: x[2], reverse=True)
+    total_tokens = sum(t for _, _, t in skill_breakdown)
+    violations = [(p, d, t) for p, d, t in skill_breakdown if t >= per_skill_warn_tokens]
+
+    return SkillBudgetResult(
+        total_tokens=total_tokens,
+        threshold_tokens=threshold_tokens,
+        under_budget=total_tokens <= threshold_tokens,
+        skill_breakdown=skill_breakdown,
+        violations=violations,
+    )
 
 
 def fix_counts(base_dir: Path, result: VerificationResult) -> FixResult:

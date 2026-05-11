@@ -234,6 +234,7 @@ ll-deps           Cross-issue dependency analysis and validation
 ll-sync           Sync local issues with GitHub Issues
 ll-issues         Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, clusters, anchor-sweep)
 ll-verify-docs    Verify documented counts match actual file counts
+ll-verify-skill-budget Check skill description token footprint against listing budget
 ll-check-links    Check markdown documentation for broken links
 ll-gitignore      Suggest and apply .gitignore patterns based on untracked files
 ll-migrate        Migrate completed/deferred issues to type-based directories (one-time, ENH-1390)

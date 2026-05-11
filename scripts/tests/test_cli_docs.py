@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from little_loops.cli.docs import main_check_links, main_verify_docs
+from little_loops.cli.docs import main_check_links, main_verify_docs, main_verify_skill_budget
 
 
 class TestMainVerifyDocs:
@@ -347,3 +347,82 @@ class TestMainCheckLinks:
         assert result == 0
         call_args = mock_check.call_args[0]
         assert call_args[2] == 5  # timeout passed as 5
+
+
+class TestMainVerifySkillBudget:
+    """Tests for main_verify_skill_budget entry point."""
+
+    def _make_budget_result(self, under_budget: bool = True) -> MagicMock:
+        result = MagicMock()
+        result.under_budget = under_budget
+        result.total_tokens = 800 if under_budget else 2400
+        result.threshold_tokens = 2000
+        result.skill_breakdown = []
+        result.violations = []
+        return result
+
+    def test_under_budget_returns_0(self) -> None:
+        """Returns 0 when total tokens are under the budget."""
+        mock_result = self._make_budget_result(under_budget=True)
+
+        with (
+            patch("sys.argv", ["ll-verify-skill-budget"]),
+            patch(
+                "little_loops.doc_counts.check_skill_budget",
+                return_value=mock_result,
+            ),
+            patch("builtins.print"),
+        ):
+            result = main_verify_skill_budget()
+
+        assert result == 0
+
+    def test_over_budget_returns_1(self) -> None:
+        """Returns 1 when total tokens exceed the budget."""
+        mock_result = self._make_budget_result(under_budget=False)
+
+        with (
+            patch("sys.argv", ["ll-verify-skill-budget"]),
+            patch(
+                "little_loops.doc_counts.check_skill_budget",
+                return_value=mock_result,
+            ),
+            patch("builtins.print"),
+        ):
+            result = main_verify_skill_budget()
+
+        assert result == 1
+
+    def test_custom_threshold_passed_to_check(self) -> None:
+        """--threshold N is forwarded to check_skill_budget."""
+        mock_result = self._make_budget_result(under_budget=True)
+
+        with (
+            patch("sys.argv", ["ll-verify-skill-budget", "--threshold", "1500"]),
+            patch(
+                "little_loops.doc_counts.check_skill_budget",
+                return_value=mock_result,
+            ) as mock_check,
+            patch("builtins.print"),
+        ):
+            main_verify_skill_budget()
+
+        call_kwargs = mock_check.call_args[1]
+        assert call_kwargs["threshold_tokens"] == 1500
+
+    def test_custom_directory(self, tmp_path: Path) -> None:
+        """--directory uses provided path."""
+        mock_result = self._make_budget_result(under_budget=True)
+
+        with (
+            patch("sys.argv", ["ll-verify-skill-budget", "-C", str(tmp_path)]),
+            patch(
+                "little_loops.doc_counts.check_skill_budget",
+                return_value=mock_result,
+            ) as mock_check,
+            patch("builtins.print"),
+        ):
+            main_verify_skill_budget()
+
+        call_kwargs = mock_check.call_args[1]
+        assert call_kwargs["base_dir"] == tmp_path
