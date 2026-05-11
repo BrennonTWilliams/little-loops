@@ -119,7 +119,7 @@ little-loops/
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
 ├── loops/                # Built-in FSM loop definitions (43 YAML files)
-├── skills/               # 29 skill definitions (user-invocable workflows)
+├── skills/               # 30 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── debug-loop-run/               # Analyze loop execution history
 │   ├── audit-loop-run/               # Audit loop goal achievement
@@ -146,6 +146,7 @@ little-loops/
 │   ├── review-loop/                  # Review and improve FSM loop configurations
 │   ├── update/                       # Update little-loops components
 │   ├── update-docs/                  # Identify stale or missing documentation
+│   ├── verify-issue-loop/            # Generate FSM verification loop from issue acceptance criteria
 │   └── workflow-automation-proposer/ # Propose automations from patterns
 ├── templates/            # Project-type config templates
 ├── docs/                 # Documentation

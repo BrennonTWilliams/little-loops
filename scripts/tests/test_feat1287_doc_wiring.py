@@ -54,21 +54,21 @@ class TestExploreApiSkillExists:
 
 
 class TestReadmeSkillCount:
-    """README.md hero page must reflect 29 skills."""
+    """README.md hero page must reflect 30 skills."""
 
     def test_skill_count_updated(self) -> None:
         content = README.read_text()
-        assert "29 skills" in content, "README.md must show '29 skills'"
-        assert "28 skills" not in content, "README.md must not still show '28 skills'"
+        assert "30 skills" in content, "README.md must show '30 skills'"
+        assert "29 skills" not in content, "README.md must not still show '29 skills'"
 
 
 class TestContributingWiring:
-    """CONTRIBUTING.md must reflect 29 skills and list explore-api/ in the skills tree."""
+    """CONTRIBUTING.md must reflect 30 skills and list explore-api/ in the skills tree."""
 
     def test_skill_count_updated(self) -> None:
         content = CONTRIBUTING.read_text()
-        assert "29 skill definitions" in content, (
-            "CONTRIBUTING.md skill count line must show '29 skill definitions'"
+        assert "30 skill definitions" in content, (
+            "CONTRIBUTING.md skill count line must show '30 skill definitions'"
         )
 
     def test_explore_api_in_skills_tree(self) -> None:
@@ -79,11 +79,11 @@ class TestContributingWiring:
 
 
 class TestClaudeMdWiring:
-    """.claude/CLAUDE.md must reflect 29 skills and list ll-learning-tests as a CLI tool."""
+    """.claude/CLAUDE.md must reflect 30 skills and list ll-learning-tests as a CLI tool."""
 
     def test_skill_count_updated(self) -> None:
         content = CLAUDE_MD.read_text()
-        assert "(29 skills)" in content, "CLAUDE.md must show '(29 skills)'"
+        assert "(30 skills)" in content, "CLAUDE.md must show '(30 skills)'"
 
     def test_ll_learning_tests_in_cli_list(self) -> None:
         content = CLAUDE_MD.read_text()

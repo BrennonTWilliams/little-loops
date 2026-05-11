@@ -485,6 +485,23 @@ Generate a ready-to-run FSM eval harness YAML from one or more issue IDs. Reads 
 
 **See also:** `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, `/ll:create-loop`
 
+### `/ll:verify-issue-loop`
+Generate a ready-to-run FSM verification loop YAML from a single issue ID. Walks each acceptance criterion in order and asks an LLM whether the implementation satisfies it — failing fast on any criterion that fails. Verification counterpart to `/ll:create-eval-from-issues`: where `create-eval-from-issues` exercises a feature as a user would, `verify-issue-loop` checks that the implementation meets each acceptance criterion.
+
+**Arguments:**
+- `issue_id` (required): A single issue ID (e.g., `FEAT-919`, `ENH-950`, `BUG-347`). Accepts open or completed issues.
+
+**Output:** `.loops/verify-<ISSUE-ID>-<slug>.yaml` (validated with `ll-loop validate` before writing)
+
+**Structure:** One `verify-criterion-N` state per acceptance criterion with an `llm_structured` pass/fail evaluator; linear pass-routing (`on_yes: verify-criterion-<N+1>` or `done`; `on_no: failed`).
+
+**Usage:**
+```bash
+/ll:verify-issue-loop FEAT-919
+```
+
+**See also:** `/ll:create-eval-from-issues`, `/ll:create-loop`
+
 ### `/ll:loop-suggester`
 Analyze user message history to suggest FSM loop configurations automatically.
 
@@ -788,6 +805,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `resume` | Resume from continuation prompt |
 | `create-loop`^ | Interactive FSM loop creation |
 | `create-eval-from-issues`^ | Generate eval harness YAML from issue IDs |
+| `verify-issue-loop`^ | Generate verification loop YAML from a single issue's acceptance criteria |
 | `loop-suggester` | Suggest loops from message history |
 | `review-loop`^ | Review and improve existing FSM loop configurations |
 | `debug-loop-run`^ | Analyze loop execution history: synthesizes an Execution Summary (goal alignment, observed path) and extracts actionable issues from fault and effectiveness signals |

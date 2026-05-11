@@ -173,6 +173,11 @@ AUTOMATION & LOOPS
     Synthesizes execute prompt and llm_structured evaluation criteria from issue context
     Output: .loops/eval-harness-<slug>.yaml (validated before writing)
 
+/ll:verify-issue-loop <issue-id>
+    Generate an FSM verification loop YAML from a single issue's acceptance criteria
+    Synthesizes one verify-criterion-N state per criterion with llm_structured pass/fail
+    Output: .loops/verify-<ISSUE-ID>-<slug>.yaml (validated before writing)
+
 /ll:loop-suggester [file]
     Suggest FSM loops from user message history
 
@@ -288,7 +293,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 **Scanning & Analysis**: `find-dead-code`, `explore-api`
 **Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
 **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
-**Automation & Loops**: `create-loop`, `create-eval-from-issues`, `loop-suggester`, `audit-loop-run`
+**Automation & Loops**: `create-loop`, `create-eval-from-issues`, `loop-suggester`, `audit-loop-run`, `verify-issue-loop`
 **Meta-Analysis**: `audit-claude-config`, `analyze-workflows`, `improve-claude-md`
 **Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle-autoprompt`, `update`, `publish` *(maintainers only — project-local)*
 
