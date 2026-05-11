@@ -5,14 +5,13 @@ priority: P2
 captured_at: '2026-04-25T00:00:00Z'
 discovered_date: '2026-04-25'
 discovered_by: issue-size-review
-
 size: Small
-confidence_score: 98
-outcome_confidence: 64
-score_complexity: 10
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
 score_test_coverage: 18
-score_ambiguity: 18
-score_change_surface: 18
+score_ambiguity: 25
+score_change_surface: 25
 parent: FEAT-1282
 ---
 
@@ -130,6 +129,8 @@ def main_learning_tests() -> None:
 - `scripts/pyproject.toml` — add `ll-learning-tests` entry point
 - `commands/help.md` — add CLI tool entry
 - `docs/reference/CLI.md` — add reference section
+- `skills/init/SKILL.md` — add allow-list entry and CLAUDE.md boilerplate (owned by FEAT-1286)
+- `skills/configure/areas.md` — increment count and add to tool enumeration (owned by FEAT-1286)
 
 ### Dependent Files (Callers/Importers)
 
@@ -137,8 +138,8 @@ def main_learning_tests() -> None:
 - FSM loop evaluators (ENH-1283, ENH-1284) — will gate on `ll-learning-tests check` exit code
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `skills/init/SKILL.md` — Step 10: must add `"Bash(ll-learning-tests:*)"` to the hardcoded allow list JSON array; Step 11: must add `ll-learning-tests` to **both** CLAUDE.md boilerplate blocks (file-exists and create-new variants). Enforced by `test_ll_logs_wiring.py::TestInitSkillWiring` pattern. **Scope TBD**: not attributed in either FEAT-1286 or FEAT-1287 integration maps; assign to whichever issue implements this CLI tool or add as a follow-up step.
-- `skills/configure/areas.md` — "Authorize all 16" count in the "All ll- commands (Recommended)" option description must become `"Authorize all 17"` and `ll-learning-tests` added to the tool enumeration. Asserted by `test_create_extension_wiring.py::TestConfigureAreasWiring::test_count_updated_to_16` and `test_ll_logs_wiring.py::TestConfigureAreasWiring::test_authorize_all_count_is_16` — these tests **will fail** once `ll-learning-tests` is installed without this update. **Scope TBD**: same as above.
+- `skills/init/SKILL.md` — add `"Bash(ll-learning-tests:*)"` to the hardcoded allow list JSON array; add `ll-learning-tests` to **both** CLAUDE.md boilerplate blocks (file-exists and create-new variants). Enforced by `test_ll_logs_wiring.py::TestInitSkillWiring` pattern. **Owned by FEAT-1286** — belongs with CLI tool creation; FEAT-1287 does not touch this file.
+- `skills/configure/areas.md` — change "Authorize all 19" → "Authorize all 20" and insert `ll-learning-tests` into the tool enumeration string. Asserted by `test_create_extension_wiring.py::TestConfigureAreasWiring::test_count_updated_to_17` and `test_create_extension_wiring.py::TestFeat1229LlActionWiring::test_configure_areas_count_is_17` (see Corrected Count Values section for exact values). **Owned by FEAT-1286** — installing the CLI tool without this immediately fails wiring assertions; FEAT-1287 does not touch this file.
 
 ### Similar Patterns
 
@@ -205,12 +206,39 @@ _Wiring pass added by `/ll:wire-issue`:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 8. Add doc-wiring assertions to `scripts/tests/test_learning_tests_wiring.py` (or as a `TestDocWiring` class in `test_cli_learning_tests.py`) — assert `"ll-learning-tests"` is present in `commands/help.md` and `docs/reference/CLI.md`, following the pattern in `test_ll_logs_wiring.py::TestHelpMdWiring`
-9. Update `skills/init/SKILL.md` — Step 10: insert `"Bash(ll-learning-tests:*)"` into the JSON allow-list array; Step 11: add `ll-learning-tests` to both CLAUDE.md boilerplate blocks (file-exists and create-new variants). (**Scope TBD** — confirm whether this step lives in FEAT-1286 or FEAT-1287 before implementation)
-10. Update `skills/configure/areas.md` — change "Authorize all 16" → "Authorize all 17" and insert `ll-learning-tests` into the tool enumeration string to fix `test_count_updated_to_16` and `test_authorize_all_count_is_16` assertions. (**Scope TBD** — same as above)
+9. Update `skills/init/SKILL.md` — insert `"Bash(ll-learning-tests:*)"` into the JSON allow-list array; add `ll-learning-tests` to both CLAUDE.md boilerplate blocks (file-exists and create-new variants). Add a `TestInitSkillWiringLearningTests` class to `test_learning_tests_wiring.py` asserting both, following the `TestInitSkillWiring` pattern in `test_ll_logs_wiring.py`.
+10. Update `skills/configure/areas.md` — change "Authorize all 19" → "Authorize all 20" and insert `ll-learning-tests` into the tool enumeration string (see Corrected Count Values section for exact test method names and current assertion values).
 11. Update `docs/reference/API.md` — add `main_learning_tests` entry to the `## little_loops.cli` section (soft, documentation hygiene)
 12. Update `scripts/tests/test_create_extension_wiring.py` — change `"Authorize all 16"` → `"Authorize all 17"` in `TestConfigureAreasWiring.test_count_updated_to_16` and `TestFeat1229LlActionWiring.test_configure_areas_count_is_16`; change `"17 CLI tools"` → `"18 CLI tools"` in `TestFeat1045DocUpdates.test_readme_tool_count_is_17` and `TestFeat1229LlActionWiring.test_readme_tool_count_is_17` (the latter two contingent on README being updated)
 13. Update `scripts/tests/test_ll_logs_wiring.py` — change `"Authorize all 16"` → `"Authorize all 17"` in `TestConfigureAreasWiring.test_authorize_all_count_is_16`
-14. Update `README.md` line 90 — change `"17 CLI tools"` → `"18 CLI tools"` (**Scope TBD** — coordinate with FEAT-1287; must change atomically with `skills/configure/areas.md` and the count-asserting tests)
+14. Update `README.md` — see Corrected Count Values section for exact line numbers and new values; must change atomically with `skills/configure/areas.md` and the count-asserting tests in the same commit.
+
+### Codebase Research Findings — Corrected Count Values (Refreshed 2026-05-11)
+
+_Added by `/ll:refine-issue` — steps 12–14 above have stale count values; use these instead:_
+
+**`skills/configure/areas.md` current value**: `"Authorize all 19"` (19 tools). After adding `ll-learning-tests`, update to **`"Authorize all 20"`**.
+
+**Wiring test corrections** — referenced test names and assertion values in steps 12–13 are wrong:
+
+| File | Actual method name | Current assertion | Change to |
+|------|--------------------|-------------------|-----------|
+| `test_create_extension_wiring.py` | `TestConfigureAreasWiring.test_count_updated_to_17` (line 55) | `"Authorize all 19"` | `"Authorize all 20"` |
+| `test_create_extension_wiring.py` | `TestFeat1229LlActionWiring.test_configure_areas_count_is_17` (line 194) | `"Authorize all 19"` | `"Authorize all 20"` |
+| `test_ll_logs_wiring.py` | `TestConfigureAreasWiring.test_authorize_all_count_is_17` (line 43) | `"Authorize all 18"` (**currently failing** — areas.md has 19, not 18) | `"Authorize all 20"` |
+
+Methods `test_count_updated_to_16` and `test_authorize_all_count_is_16` (referenced in steps 12–13) **do not exist**. The actual method names are as shown above.
+
+**README.md current situation** (step 14 references "line 90: '17 CLI tools'" — stale):
+- Line 46: `"21 typed CLI tools"` → change to **`"22 typed CLI tools"`**
+- Line 162: `"22 CLI tools"` → change to **`"23 CLI tools"`**
+- Both `test_readme_tool_count_is_20` instances (lines 77 and 190 of `test_create_extension_wiring.py`) assert `"21 CLI tools"` — **currently failing** (neither README line contains the exact substring `"21 CLI tools"`). After updating README, change these assertions to `"22 CLI tools"` (to match the substring present in both `"22 typed CLI tools"` and `"22 CLI tools"` — pick the exact string that appears after your README change so the `in` check passes).
+
+**Recommended atomic sequence for step 14**:
+1. README line 46: `"21 typed CLI tools"` → `"22 typed CLI tools"`
+2. README line 162: `"22 CLI tools"` → `"23 CLI tools"`
+3. `test_create_extension_wiring.py` lines 79 and 192: `assert "21 CLI tools"` → `assert "22 CLI tools"` (matches the new line 46 substring)
+4. Fix `test_ll_logs_wiring.py` line 45 in the same commit (18 → 20 atomically — combining the stale 18→19 gap fix with the new 19→20 increment).
 
 ## Acceptance Criteria
 
@@ -253,17 +281,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-05-07_
+_Updated by `/ll:confidence-check` on 2026-05-11_
 
-**Readiness Score**: 98/100 → PROCEED
-**Outcome Confidence**: 64/100 → MODERATE
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 72/100 → MODERATE
 
 ### Outcome Risk Factors
 - **Import chain blast radius**: Adding `from little_loops.cli.learning_tests import main_learning_tests` to `cli/__init__.py` will break collection of 6 test files on any syntax or import error in the new module. Run the full test suite immediately after creating `cli/learning_tests.py` before any other step.
-- **Scope TBD cascades**: Steps 9/10/14 (init/SKILL.md, areas.md, README.md) are unassigned between FEAT-1286 and FEAT-1287. Installing `ll-learning-tests` without updating `areas.md` immediately fails 5 wiring assertions. Confirm ownership before implementation so these are handled atomically.
-- **Wiring test ordering matters**: Step 12/13 test updates (`"Authorize all 16"` → `"Authorize all 17"`) must be committed in the same pass as the `areas.md` change; a partial commit leaves CI broken.
+- **3 pre-existing test failures must be fixed atomically**: `test_ll_logs_wiring.py::test_authorize_all_count_is_17` (asserts "Authorize all 18", areas.md has "19"), and both `test_readme_tool_count_is_20` instances (assert "21 CLI tools", README has neither). These are confirmed failing today; the Corrected Count Values section (2026-05-11) provides the exact fix values. Include all in the same commit as the areas.md and README changes.
+
+_(Scope TBD for areas.md/init ownership — resolved 2026-05-11: both owned by FEAT-1286.)_
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7fd95d5-1e14-4e16-a7b4-1011718915cc.jsonl`
+- `/ll:refine-issue` - 2026-05-11T20:38:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e0e03e2a-39f4-49de-8637-407748f778a5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:confidence-check` - 2026-05-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66fedda1-ffa8-4033-891f-bc6637778822.jsonl`
 - `/ll:wire-issue` - 2026-05-08T00:05:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00ae4f34-19a1-41bc-a2ee-c2457df0be7a.jsonl`

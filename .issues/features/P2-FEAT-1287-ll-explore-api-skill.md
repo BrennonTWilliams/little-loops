@@ -69,7 +69,7 @@ Follow `skills/manage-issue/SKILL.md` as the canonical multi-phase skill templat
 
 - `README.md` — increment skill count (`"28 skills"` → `"29 skills"`) in the "What's included" bullet only. Do NOT add a skill table row or a `### ll-learning-tests` CLI section — README is now a hero page; CLI docs go in `docs/reference/CLI.md` and skill tables are removed from README. CLI count increment is owned by FEAT-1286. [wiring note updated 2026-05-10 after README rewrite]
 - `CONTRIBUTING.md` — increment skill count (line 125); add `├── explore-api/` to skills tree and `├── learning_tests.py` to module tree
-- `.claude/CLAUDE.md` — increment skill count (line 38); add `ll-learning-tests` to CLI tools list
+- `.claude/CLAUDE.md` — increment skill count (line 38); add `ll-learning-tests` to CLI tools list. Note: `skills/init/SKILL.md` allow-list and `skills/configure/areas.md` count increment are **owned by FEAT-1286** — do not touch those files here.
 - `docs/ARCHITECTURE.md` — add learning test registry section describing the lifecycle and registry format
 
 ## API/Interface
@@ -88,7 +88,7 @@ Output: `.ll/learning-tests/<slug>.md` in `LearnTestRecord` format (FEAT-1285 sc
 
 ### Files to Modify
 - `skills/explore-api/SKILL.md` — create (new skill)
-- `README.md` — skill count, CLI count, table row, CLI subsection
+- `README.md` — skill count only (CLI count owned by FEAT-1286)
 - `CONTRIBUTING.md` — skill count, skills tree, module tree
 - `.claude/CLAUDE.md` — skill count, CLI tools list
 - `docs/ARCHITECTURE.md` — add learning test registry section
@@ -162,4 +162,6 @@ Output: `.ll/learning-tests/<slug>.md` in `LearnTestRecord` format (FEAT-1285 sc
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): **Narrative doc ownership split with FEAT-1286.** FEAT-1287 owns: README skill table row (27→28), CONTRIBUTING skills tree, `.claude/CLAUDE.md`, and `docs/ARCHITECTURE.md`. FEAT-1286 owns CLI-surface docs (`commands/help.md`, `docs/reference/CLI.md`). The CLI count increment ("coordinate or pick up the diff here") is owned by FEAT-1286 — do not increment CLI count in this issue. Apply this issue's doc changes after FEAT-1286 has landed.
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): **Narrative doc ownership split with FEAT-1286.** FEAT-1287 owns: README skill count, CONTRIBUTING skills tree, `.claude/CLAUDE.md`, and `docs/ARCHITECTURE.md`. FEAT-1286 owns CLI-surface docs (`commands/help.md`, `docs/reference/CLI.md`). The CLI count increment is owned by FEAT-1286 — do not increment CLI count in this issue. Apply this issue's doc changes after FEAT-1286 has landed.
+
+**Note** (added 2026-05-11): **Wiring file ownership resolved.** `skills/init/SKILL.md` (allow-list + CLAUDE.md boilerplate blocks) and `skills/configure/areas.md` (count increment + tool enumeration) are owned by FEAT-1286. FEAT-1287 owns `.claude/CLAUDE.md` (skill count + CLI tools list), `CONTRIBUTING.md`, `README.md` (skill count only), and `docs/ARCHITECTURE.md`.

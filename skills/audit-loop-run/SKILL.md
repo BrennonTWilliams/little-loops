@@ -148,6 +148,7 @@ Key signals to flag (fault subset only):
 - Retry floods
 - Evaluate failures
 - Sub-loop verdict discarded
+- Throttle hard stop / hard transition (`throttle_stop` = loop halted; `throttle_hard` = loop redirected via `on_throttle_hard`)
 
 ---
 

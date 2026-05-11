@@ -2,17 +2,17 @@
 id: ENH-1115
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-04-15
 discovered_by: capture-issue
-
+completed_at: 2026-05-11T21:01:49Z
 decision_needed: false
 confidence_score: 100
-outcome_confidence: 60
-score_complexity: 0
-score_test_coverage: 25
+outcome_confidence: 82
+score_complexity: 22
+score_test_coverage: 10
 score_ambiguity: 25
-score_change_surface: 10
+score_change_surface: 25
 size: Very Large
 relates_to: []
 ---
@@ -161,6 +161,28 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Counter increment location**: `executor.py:533` and `executor.py:557` — the call sites of `_run_action_or_route` inside `_execute_state` — are the natural increment points (after each action call for the current state).
 - **Validation rule**: `validation.py` should enforce `normal_max < warn_max < hard_max` and that all three are positive integers when `throttle:` is present.
 
+_Updated by `/ll:refine-issue` 2026-05-11 — implementation status sweep:_
+
+**Core implementation is already complete.** The following acceptance criteria are met:
+- `ThrottleConfig` dataclass in `schema.py:228` with `from_dict`/`to_dict`, `throttle` + `on_throttle_hard` fields on `StateConfig:353-354`, `get_referenced_states` updated at `schema.py:519-520`
+- Default constants `_DEFAULT_THROTTLE_NORMAL_MAX/WARN_MAX/HARD_MAX` in `executor.py:73-75`; `THROTTLE_WARN/HARD/STOP_EVENT` constants at `executor.py:77-79` and exported from `__init__.py:94-96`
+- `_throttle_counts: dict[str, int]` at `executor.py:224`; reset at `executor.py:305`; `_check_throttle()` method at `executor.py:548` with warn/hard/stop logic and learning-state exemption at `executor.py:591-593`
+- Called at `executor.py:645` and `executor.py:674` (formerly 533/557 — shifted by implementation)
+- `validation.py:539-571` enforces `normal_max < warn_max < hard_max` ordering and positive-integer checks
+- `fsm-loop-schema.json:347-373` — `throttle` block and `on_throttle_hard` field added (hand-maintained file updated)
+- `generate_schemas.py` has throttle event schemas; `test_generate_schemas.py` count updated to 26
+- `layout.py:214-215` — `on_throttle_hard` edge added to `_collect_edges()`
+- `with_throttle` fragment in `common.yaml:64-75`
+- `TestThrottling` class in `test_fsm_executor.py:5976` covering warn, hard, stop, fallback, counter-reset, per-state override, and learning-state exemption (`test_learning_state_exempt_from_hard_max:6188`)
+- `TestThrottleFragment` implied by fragment existence; `test_fsm_validation.py:486` covers throttle validation
+- `test_enh1115_doc_wiring.py` exists; `CONFIGURATION.md:482-492`, `API.md:3965-3977` updated
+
+**Two acceptance criteria REMAIN UNMET** (these are the only implementation gaps):
+
+1. **No built-in loop template uses `throttle:` block** — `autodev.yaml` and `recursive-refine.yaml` confirmed to have no `throttle:` entry. Step 6 of the implementation plan targets these files.
+
+2. **`/ll:analyze-loop` does not surface throttle events** — The skill referenced as `analyze-loop` in this issue no longer exists; it was replaced by `skills/audit-loop-run/` and `skills/debug-loop-run/`. Neither skill's `SKILL.md` references throttle events. Step 8 should target `skills/audit-loop-run/SKILL.md` instead of `skills/analyze-loop/SKILL.md`.
+
 ## Implementation Steps
 
 1. **Schema** (`scripts/little_loops/fsm/schema.py:245-251`): Add optional `ThrottleConfig` dataclass with `normal_max`, `warn_max`, `hard_max: int | None = None` fields; add `throttle: ThrottleConfig | None = None` to `StateConfig`; add `from_dict`/`to_dict` handling following the `EvaluateConfig` nested pattern; add validation rule `normal_max < warn_max < hard_max` in `scripts/little_loops/fsm/validation.py`
@@ -170,7 +192,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 5. **Event exports** (`scripts/little_loops/fsm/__init__.py:90-92`): Export `THROTTLE_WARN_EVENT`, `THROTTLE_HARD_EVENT`, `THROTTLE_STOP_EVENT`; regenerate `fsm-loop-schema.json` via `ll-generate-schemas`
 6. **Fragment** (`scripts/little_loops/loops/lib/common.yaml:49-62`): Add `with_throttle` fragment with explicit `throttle:` defaults; add `throttle:` block to `autodev.yaml` or `recursive-refine.yaml` as the required built-in example
 7. **Tests** (`scripts/tests/test_fsm_executor.py:4584`): Add `TestThrottling` class modeled on `TestRateLimitRetries`; use `patch.multiple("little_loops.fsm.executor", _DEFAULT_THROTTLE_*)` for instant runs; cover warn-only, hard-transition, and stop-beyond-hard cases; add schema tests in `test_fsm_schema.py` and validation tests in `test_fsm_validation.py`
-8. **Telemetry** (`skills/analyze-loop/SKILL.md:115-177`): Add throttle event classification rules; update `docs/reference/EVENT-SCHEMA.md:247-298`, `docs/reference/CONFIGURATION.md:81-85`, and `docs/guides/LOOPS_GUIDE.md`
+8. **Telemetry** (`skills/audit-loop-run/SKILL.md`): Add throttle event classification rules (the `skills/analyze-loop/` path no longer exists — replaced by `audit-loop-run` and `debug-loop-run`); update `docs/reference/EVENT-SCHEMA.md:247-298`, `docs/reference/CONFIGURATION.md:81-85`, and `docs/guides/LOOPS_GUIDE.md`
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -248,7 +270,25 @@ Update first — Resolve the persistence decision at `persistence.py:457-460` be
 
 ---
 
+## Resolution
+
+**Completed**: 2026-05-11
+
+The two remaining acceptance criteria were addressed:
+
+1. **Built-in loop template with `throttle:` block** — Added `fragment: with_throttle` and `on_throttle_hard: enqueue_or_skip` to the `run_size_review` state in `scripts/little_loops/loops/recursive-refine.yaml`. This provides a defensive throttle guard on the slash-command state that runs `/ll:issue-size-review`.
+
+2. **`/ll:analyze-loop` surfaces throttle events** — Updated both loop analysis skills (the successors to `analyze-loop`):
+   - `skills/debug-loop-run/SKILL.md`: Added `throttle_warn`, `throttle_hard`, `throttle_stop` to the Step 2 event table; added `BUG — Throttle hard stop`, `ENH — Throttle hard transition`, and `NOTE — Throttle warnings` signal classification rules after the rate-limit exhaustion rule.
+   - `skills/audit-loop-run/SKILL.md`: Added throttle hard stop/transition to the Phase 1 fault signals list (Step 5).
+
+All 318 tests pass.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-11T21:01:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-05-11T20:55:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04014a8f-cb78-4e0c-a7dd-92bb73605fc6.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d387013f-4383-4764-82e2-3c331dc1a687.jsonl`
+- `/ll:refine-issue` - 2026-05-11T20:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e0e03e2a-39f4-49de-8637-407748f778a5.jsonl`
 - `/ll:ready-issue` - 2026-05-06T19:27:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a1022c87-10c1-48b8-b1ff-f52294d8bdcb.jsonl`
 - `/ll:confidence-check` - 2026-05-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1898cad7-7a7c-462d-9a8e-633b83916b6e.jsonl`
 - `/ll:refine-issue` - 2026-05-06T19:13:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df8da1ea-1180-4953-9482-243f9d2b5acf.jsonl`

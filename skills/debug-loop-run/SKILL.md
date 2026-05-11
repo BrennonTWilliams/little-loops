@@ -144,6 +144,9 @@ For each match, emit a Signal 3 entry into `static_issues`:
 | `retry_exhausted` | `state` (str), `retries` (int), `next` (str) |
 | `rate_limit_exhausted` | `state` (str), `retries` (int, total = short + long), `short_retries` (int), `long_retries` (int), `total_wait_seconds` (number), `next` (str) |
 | `rate_limit_waiting` | `state` (str), `elapsed_seconds` (number), `next_attempt_at` (str), `total_waited_seconds` (number), `budget_seconds` (number), `tier` (str: `"short"` or `"long"`) |
+| `throttle_warn` | `state` (str), `count` (int), `normal_max` (int), `warn_max` (int), `hard_max` (int) |
+| `throttle_hard` | `state` (str), `count` (int), `hard_max` (int), `next` (str or null) |
+| `throttle_stop` | `state` (str), `count` (int), `hard_max` (int) |
 | `loop_complete` | `terminated_by` (str), `final_state` (str), `iterations` (int) |
 | `loop_resume` | `from_state` (str), `iteration` (int) |
 
@@ -237,6 +240,24 @@ Scan the event list and classify signals using the rules below. Group events by 
 - Title: `"<state> rate-limit retries exhausted in <loop_name> loop; upstream 429 pressure"`
 - Include: `retries` (total), `short_retries`, `long_retries`, `total_wait_seconds`, event timestamps, and any neighbouring `rate_limit_exhausted` events on other states (potential storm)
 - **Note:** rate-limit exhaustion is distinct from a generic retry flood — the state is not misconfigured, the upstream service is refusing work. Classify separately from the Retry flood rule above. When `long_retries > 0`, the upstream was down for at least one long-wait ladder step (multi-minute outage).
+
+#### BUG — Throttle hard stop
+- Trigger: `throttle_stop` event is present (the executor exceeded `hard_max` calls within a single state visit with no `on_throttle_hard` target, and hard-stopped the loop)
+- Priority: P2
+- Title: `"<state> throttle hard-stop in <loop_name> loop — exceeded hard_max (<count> calls)"`
+- Include: `count`, `hard_max`, event timestamp
+
+#### ENH — Throttle hard transition
+- Trigger: `throttle_hard` event is present (the executor reached `hard_max` calls and transitioned to `on_throttle_hard`)
+- Priority: P3
+- Title: `"<state> throttle hard limit reached in <loop_name> loop — <count> calls, routed to <next>"`
+- Include: `count`, `hard_max`, `next` target state, event timestamp
+- **Note**: this is not necessarily a defect — the throttle guard worked as configured. Flag as ENH to prompt the user to consider whether `hard_max` needs tuning or whether the state has a runaway path.
+
+#### NOTE — Throttle warnings (informational only)
+- Trigger: `throttle_warn` events present for a state — **3 or more occurrences across the analyzed run**
+- Include an informational note: `"<state> hit throttle warn threshold <N>x — state may be doing excessive repeated work (warn_max=<warn_max>)"`
+- Do not generate an issue signal; emit as an informational note in the analysis output.
 
 #### NOTE — Intentional cycling (informational only)
 - When an intentional cycling state (no `on_retry`/`max_retries` config) appears in `state_enter` events **5 or more times**, **do not generate an issue signal**.
