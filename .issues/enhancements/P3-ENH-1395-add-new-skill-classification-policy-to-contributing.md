@@ -1,7 +1,15 @@
 ---
-captured_at: "2026-05-09T20:48:12Z"
+captured_at: '2026-05-09T20:48:12Z'
 discovered_date: 2026-05-09
 discovered_by: capture-issue
+confidence_score: 95
+outcome_confidence: 74
+score_complexity: 18
+score_test_coverage: 10
+score_ambiguity: 21
+score_change_surface: 25
+decision_needed: false
+missing_artifacts: true
 ---
 
 # ENH-1395: Add New-Skill Classification Policy to CONTRIBUTING.md
@@ -84,7 +92,21 @@ Before adding a new skill, answer:
 
 **Open** | Created: 2026-05-09 | Priority: P3
 
+## Confidence Check Notes
+
+_Updated by `/ll:confidence-check` on 2026-05-11_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 74/100 → MODERATE
+
+### Outcome Risk Factors
+- **Test coverage gap**: `generate_skill_descriptions.py` has no tests specified; failures in skill discovery, API calls, or frontmatter writes will go undetected — add at minimum a smoke test mocking `run_claude_command`
+- **New CLI file does not exist**: `scripts/little_loops/cli/generate_skill_descriptions.py` must be created from scratch — ensure it is registered in `pyproject.toml` and installed before testing
+
 ## Session Log
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05b43bc1-4bad-4cee-aaf6-69179c4dd816.jsonl`
+- `/ll:decide-issue` - 2026-05-11T05:14:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44ebe857-57a3-4a0b-8ab5-0e68ff9a9869.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db4b4e79-bda6-447b-aee5-e3e1b6b6a142.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:48:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`
 
@@ -100,3 +122,24 @@ ENH-1397 proposed a `ll-generate-skill-descriptions` CLI tool that auto-generate
 - For each `skills/*/SKILL.md`: skip `disable-model-invocation: true` skills; extract trigger keywords and first 500 chars of body; call Claude API to generate a description of ≤100 chars; dry-run by default with `--apply` to write back to frontmatter
 - Register CLI entry point in `scripts/pyproject.toml`; mention as optional release utility in `CONTRIBUTING.md`
 - Uses `ll-action` infrastructure or direct Anthropic SDK call (claude-haiku-4-5 — cheap, fast, sufficient)
+
+> **Selected:** Subprocess/CLI pattern (`run_claude_command` from `subprocess_utils.py` or `subprocess.run(["claude", "-p", ...])`) — SDK was deliberately removed after FEAT-044; every LLM-calling module routes through the `claude` CLI subprocess; established mock patterns exist
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-05-11.
+
+**Selected**: Subprocess/CLI pattern (`run_claude_command` from `subprocess_utils.py` or `subprocess.run(["claude", "-p", ...])`)
+
+**Reasoning**: The codebase explicitly removed the Anthropic SDK after FEAT-044 replaced the direct SDK call in `evaluate_llm_structured()` (`fsm/evaluators.py`) with `subprocess.run(["claude", "-p", ...])`. All four LLM-calling production modules now route through `run_claude_command` from `subprocess_utils.py`. Reusing this pattern requires no new dependencies, no re-adding of a removed dep, and leverages the established test mock (`patch("little_loops.subprocess_utils.run_claude_command")`) without any new fixture infrastructure.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Subprocess/CLI (`run_claude_command`) | 3/3 | 2/3 | 3/3 | 3/3 | 11/12 |
+| Direct Anthropic SDK | 1/3 | 2/3 | 1/3 | 2/3 | 6/12 |
+
+**Key evidence**:
+- **Subprocess/CLI**: `fsm/evaluators.py::evaluate_llm_structured()` is the direct analog — originally used `anthropic.Anthropic()`, then replaced with `subprocess.run(["claude", "-p", ...])`. Mock pattern: `patch("subprocess.run")` or `patch("little_loops.subprocess_utils.run_claude_command")`.
+- **Direct Anthropic SDK**: `anthropic>=0.40.0` was deliberately removed from `pyproject.toml`'s `[llm]` extras; zero modules currently import it; no mock fixtures exist anywhere in the test suite.
