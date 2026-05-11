@@ -87,8 +87,8 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 - **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
 - **28 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
-- **19 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, etc.) for autonomous and parallel issue processing
-- **43 FSM loops** for recurring automation workflows (backlog triage, sprint building, quality checks, and more)
+- **20 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, etc.) for autonomous and parallel issue processing
+- **42 FSM loops** for recurring automation workflows (backlog triage, sprint building, quality checks, and more)
 - **Configuration system** with project-type templates for Python, JavaScript, TypeScript, Go, Rust, Java (Maven/Gradle), .NET, and a generic fallback
 
 ## Commands
