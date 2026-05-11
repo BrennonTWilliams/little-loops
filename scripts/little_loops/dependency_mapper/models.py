@@ -55,22 +55,31 @@ class ValidationResult:
     """Result of validating existing dependency references.
 
     Attributes:
-        broken_refs: (issue_id, missing_ref_id) pairs
+        broken_refs: (issue_id, missing_ref_id) pairs for broken blocked_by refs
         missing_backlinks: (issue_id, should_have_backlink_from) pairs
         cycles: Cycle paths from DependencyGraph.detect_cycles()
         stale_completed_refs: (issue_id, completed_ref_id) pairs
+        broken_depends_on_refs: (issue_id, missing_ref_id) pairs for broken depends_on refs
+        broken_relates_to_refs: (issue_id, missing_ref_id) pairs for broken relates_to refs
     """
 
     broken_refs: list[tuple[str, str]] = field(default_factory=list)
     missing_backlinks: list[tuple[str, str]] = field(default_factory=list)
     cycles: list[list[str]] = field(default_factory=list)
     stale_completed_refs: list[tuple[str, str]] = field(default_factory=list)
+    broken_depends_on_refs: list[tuple[str, str]] = field(default_factory=list)
+    broken_relates_to_refs: list[tuple[str, str]] = field(default_factory=list)
 
     @property
     def has_issues(self) -> bool:
         """Return True if any validation problems were found."""
         return bool(
-            self.broken_refs or self.missing_backlinks or self.cycles or self.stale_completed_refs
+            self.broken_refs
+            or self.missing_backlinks
+            or self.cycles
+            or self.stale_completed_refs
+            or self.broken_depends_on_refs
+            or self.broken_relates_to_refs
         )
 
 

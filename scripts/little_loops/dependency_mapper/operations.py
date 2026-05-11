@@ -37,17 +37,28 @@ def apply_proposals(
     modified: set[str] = set()
 
     for proposal in proposals:
-        # Update source issue: add to ## Blocked By
         source_path = issue_files.get(proposal.source_id)
-        if source_path and source_path.exists():
-            _add_to_section(source_path, "Blocked By", proposal.target_id)
-            modified.add(str(source_path))
-
-        # Update target issue: add to ## Blocks
         target_path = issue_files.get(proposal.target_id)
-        if target_path and target_path.exists():
-            _add_to_section(target_path, "Blocks", proposal.source_id)
-            modified.add(str(target_path))
+
+        if proposal.reason == "depends_on":
+            if source_path and source_path.exists():
+                _add_to_section(source_path, "Depends On", proposal.target_id)
+                modified.add(str(source_path))
+        elif proposal.reason == "relates_to":
+            if source_path and source_path.exists():
+                _add_to_section(source_path, "Relates To", proposal.target_id)
+                modified.add(str(source_path))
+            if target_path and target_path.exists():
+                _add_to_section(target_path, "Relates To", proposal.source_id)
+                modified.add(str(target_path))
+        else:
+            # Default: Blocked By / Blocks relationship
+            if source_path and source_path.exists():
+                _add_to_section(source_path, "Blocked By", proposal.target_id)
+                modified.add(str(source_path))
+            if target_path and target_path.exists():
+                _add_to_section(target_path, "Blocks", proposal.source_id)
+                modified.add(str(target_path))
 
     return sorted(modified)
 
@@ -104,8 +115,8 @@ def _add_to_section(file_path: Path, section_name: str, issue_id: str) -> None:
         # Section doesn't exist — create it
         new_section = f"\n## {section_name}\n\n- {issue_id}\n"
 
-        # Try to insert before ## Labels or ## Status
-        for anchor in ("## Labels", "## Status"):
+        # Try to insert before ## Depends On, ## Relates To, ## Labels, or ## Status
+        for anchor in ("## Depends On", "## Relates To", "## Labels", "## Status"):
             anchor_match = re.search(rf"^{re.escape(anchor)}\s*$", content, re.MULTILINE)
             if anchor_match:
                 insert_pos = anchor_match.start()

@@ -1039,10 +1039,12 @@ Result of validating existing dependency references.
 @dataclass
 class ValidationResult:
     """Result of validating existing dependency references."""
-    broken_refs: list[tuple[str, str]]         # (issue_id, missing_ref_id)
-    missing_backlinks: list[tuple[str, str]]   # (issue_id, should_have_backlink_from)
-    cycles: list[list[str]]                    # Cycle paths
-    stale_completed_refs: list[tuple[str, str]]  # (issue_id, completed_ref_id)
+    broken_refs: list[tuple[str, str]]             # (issue_id, missing_ref_id) for blocked_by refs
+    missing_backlinks: list[tuple[str, str]]       # (issue_id, should_have_backlink_from)
+    cycles: list[list[str]]                        # Cycle paths
+    stale_completed_refs: list[tuple[str, str]]    # (issue_id, completed_ref_id)
+    broken_depends_on_refs: list[tuple[str, str]]  # (issue_id, missing_ref_id) for depends_on refs
+    broken_relates_to_refs: list[tuple[str, str]]  # (issue_id, missing_ref_id) for relates_to refs
 
     @property
     def has_issues(self) -> bool
@@ -1052,10 +1054,12 @@ class ValidationResult:
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `broken_refs` | `list[tuple[str, str]]` | References to nonexistent issues |
+| `broken_refs` | `list[tuple[str, str]]` | References to nonexistent issues in `blocked_by` or `duplicate_of` |
 | `missing_backlinks` | `list[tuple[str, str]]` | Asymmetric `Blocked By`/`Blocks` pairs |
 | `cycles` | `list[list[str]]` | Circular dependency chains |
 | `stale_completed_refs` | `list[tuple[str, str]]` | References to completed issues |
+| `broken_depends_on_refs` | `list[tuple[str, str]]` | References to nonexistent issues in `depends_on` |
+| `broken_relates_to_refs` | `list[tuple[str, str]]` | References to nonexistent issues in `relates_to` |
 
 **Properties:**
 - `has_issues` - Returns `True` if any validation problems were found
@@ -1181,6 +1185,21 @@ Checks for broken references to nonexistent issues, missing backlinks where A bl
 - `completed_ids` - Set of completed issue IDs
 
 **Returns:** `ValidationResult` with all detected problems
+
+Also checks broken refs in `depends_on`, `relates_to`, and `duplicate_of` fields.
+
+#### validate_frontmatter_fields
+
+```python
+def validate_frontmatter_fields(issues: list[IssueInfo]) -> None
+```
+
+Warn about deprecated relationship frontmatter keys found in issue files on disk.
+
+Reads the raw file content for each issue and emits a `logger.warning()` for any deprecated key (e.g., `parent_issue:`, `related:`) left over from pre-ENH-1434 migration.
+
+**Parameters:**
+- `issues` - List of parsed issue objects (must have a valid `.path` attribute)
 
 #### analyze_dependencies
 

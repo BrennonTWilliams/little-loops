@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -23,6 +24,7 @@ from little_loops.dependency_mapper import (
     format_text_graph,
     gather_all_issue_ids,
     validate_dependencies,
+    validate_frontmatter_fields,
 )
 from little_loops.issue_parser import IssueInfo
 
@@ -33,16 +35,23 @@ def make_issue(
     blocked_by: list[str] | None = None,
     blocks: list[str] | None = None,
     title: str | None = None,
+    depends_on: list[str] | None = None,
+    relates_to: list[str] | None = None,
+    duplicate_of: str | None = None,
+    path: Path | None = None,
 ) -> IssueInfo:
     """Helper to create test IssueInfo objects."""
     return IssueInfo(
-        path=Path(f"{issue_id.lower()}.md"),
+        path=path or Path(f"{issue_id.lower()}.md"),
         issue_type="features",
         priority=priority,
         issue_id=issue_id,
         title=title or f"Test {issue_id}",
         blocked_by=blocked_by or [],
         blocks=blocks or [],
+        depends_on=depends_on or [],
+        relates_to=relates_to or [],
+        duplicate_of=duplicate_of,
     )
 
 
@@ -947,6 +956,208 @@ class TestFormatTextGraph:
         text = format_text_graph(issues)
         assert "──→" not in text
         assert "-.→" not in text
+        assert "-->" not in text
+
+
+# =============================================================================
+# validate_dependencies — new relationship field tests
+# =============================================================================
+
+
+class TestValidateDependenciesNewFields:
+    """Tests for broken-ref detection in depends_on, relates_to, duplicate_of."""
+
+    def test_broken_depends_on_ref(self) -> None:
+        """Broken depends_on ref is detected."""
+        issues = [make_issue("FEAT-001", depends_on=["BUG-999"])]
+        result = validate_dependencies(issues)
+        assert ("FEAT-001", "BUG-999") in result.broken_depends_on_refs
+
+    def test_valid_depends_on_ref(self) -> None:
+        """Valid depends_on ref (resolved within the issue list) is not flagged."""
+        issues = [
+            make_issue("FEAT-001"),
+            make_issue("FEAT-002", depends_on=["FEAT-001"]),
+        ]
+        result = validate_dependencies(issues)
+        assert result.broken_depends_on_refs == []
+
+    def test_broken_relates_to_ref(self) -> None:
+        """Broken relates_to ref is detected."""
+        issues = [make_issue("FEAT-001", relates_to=["ENH-999"])]
+        result = validate_dependencies(issues)
+        assert ("FEAT-001", "ENH-999") in result.broken_relates_to_refs
+
+    def test_valid_relates_to_ref(self) -> None:
+        """Valid relates_to ref is not flagged."""
+        issues = [
+            make_issue("FEAT-001"),
+            make_issue("FEAT-002", relates_to=["FEAT-001"]),
+        ]
+        result = validate_dependencies(issues)
+        assert result.broken_relates_to_refs == []
+
+    def test_broken_duplicate_of_ref(self) -> None:
+        """Broken duplicate_of ref is detected in broken_refs."""
+        issues = [make_issue("FEAT-001", duplicate_of="BUG-999")]
+        result = validate_dependencies(issues)
+        assert ("FEAT-001", "BUG-999") in result.broken_refs
+
+    def test_valid_duplicate_of_ref_with_all_known(self) -> None:
+        """Valid duplicate_of ref via all_known_ids is not flagged."""
+        issues = [make_issue("FEAT-001", duplicate_of="BUG-042")]
+        result = validate_dependencies(issues, all_known_ids={"FEAT-001", "BUG-042"})
+        assert not any(r[1] == "BUG-042" for r in result.broken_refs)
+
+    def test_has_issues_includes_new_fields(self) -> None:
+        """has_issues is True when broken_depends_on_refs or broken_relates_to_refs is set."""
+        result = ValidationResult(broken_depends_on_refs=[("A", "B")])
+        assert result.has_issues
+
+        result2 = ValidationResult(broken_relates_to_refs=[("A", "B")])
+        assert result2.has_issues
+
+    def test_depends_on_skip_in_find_file_overlaps(self) -> None:
+        """Existing depends_on edges are not proposed again by find_file_overlaps."""
+        from little_loops.dependency_mapper.analysis import find_file_overlaps
+
+        issues = [
+            make_issue("FEAT-001", depends_on=["FEAT-002"]),
+            make_issue("FEAT-002"),
+        ]
+        contents = {
+            "FEAT-001": "## Files\n- `scripts/config.py`\n- `scripts/utils.py`\n",
+            "FEAT-002": "## Files\n- `scripts/config.py`\n- `scripts/utils.py`\n",
+        }
+        proposals, _ = find_file_overlaps(issues, contents)
+        proposed_pairs = {(p.source_id, p.target_id) for p in proposals}
+        assert ("FEAT-001", "FEAT-002") not in proposed_pairs
+
+
+# =============================================================================
+# validate_frontmatter_fields tests
+# =============================================================================
+
+
+class TestValidateFrontmatterFields:
+    """Tests for deprecated frontmatter key detection."""
+
+    def test_warns_parent_issue_key(self, tmp_path: Path, caplog: object) -> None:
+        """Warns when a file has the deprecated parent_issue key."""
+        issue_file = tmp_path / "feat-001.md"
+        issue_file.write_text(
+            "---\nid: FEAT-001\nparent_issue: EPIC-001\n---\n# FEAT-001\n"
+        )
+        issue = make_issue("FEAT-001", path=issue_file)
+        with caplog.at_level(logging.WARNING, logger="little_loops.dependency_mapper.analysis"):  # type: ignore[union-attr]
+            validate_frontmatter_fields([issue])
+        assert any("parent_issue" in r.message for r in caplog.records)  # type: ignore[union-attr]
+        assert any("deprecated" in r.message for r in caplog.records)  # type: ignore[union-attr]
+
+    def test_warns_related_key(self, tmp_path: Path, caplog: object) -> None:
+        """Warns when a file has the deprecated related key."""
+        issue_file = tmp_path / "feat-002.md"
+        issue_file.write_text(
+            "---\nid: FEAT-002\nrelated: ENH-001\n---\n# FEAT-002\n"
+        )
+        issue = make_issue("FEAT-002", path=issue_file)
+        with caplog.at_level(logging.WARNING, logger="little_loops.dependency_mapper.analysis"):  # type: ignore[union-attr]
+            validate_frontmatter_fields([issue])
+        assert any("related" in r.message for r in caplog.records)  # type: ignore[union-attr]
+
+    def test_no_warning_for_canonical_keys(self, tmp_path: Path, caplog: object) -> None:
+        """No warning when issue uses only canonical frontmatter keys."""
+        issue_file = tmp_path / "feat-003.md"
+        issue_file.write_text(
+            "---\nid: FEAT-003\nparent: EPIC-001\nrelates_to:\n- ENH-001\n---\n# FEAT-003\n"
+        )
+        issue = make_issue("FEAT-003", path=issue_file)
+        with caplog.at_level(logging.WARNING, logger="little_loops.dependency_mapper.analysis"):  # type: ignore[union-attr]
+            validate_frontmatter_fields([issue])
+        assert not caplog.records  # type: ignore[union-attr]
+
+    def test_skips_nonexistent_paths(self, tmp_path: Path) -> None:
+        """Does not raise when issue path does not exist."""
+        issue = make_issue("FEAT-004")  # path doesn't exist on disk
+        validate_frontmatter_fields([issue])  # should not raise
+
+
+# =============================================================================
+# format_report — new broken-ref field tests
+# =============================================================================
+
+
+class TestFormatReportNewFields:
+    """Tests for format_report rendering of new broken-ref fields."""
+
+    def test_broken_depends_on_refs_section(self) -> None:
+        """format_report renders Broken Depends-On References section."""
+        report = DependencyReport(
+            validation=ValidationResult(broken_depends_on_refs=[("FEAT-001", "BUG-999")]),
+            issue_count=1,
+        )
+        text = format_report(report)
+        assert "Broken Depends-On References" in text
+        assert "BUG-999" in text
+
+    def test_broken_relates_to_refs_section(self) -> None:
+        """format_report renders Broken Relates-To References section."""
+        report = DependencyReport(
+            validation=ValidationResult(broken_relates_to_refs=[("FEAT-001", "ENH-999")]),
+            issue_count=1,
+        )
+        text = format_report(report)
+        assert "Broken Relates-To References" in text
+        assert "ENH-999" in text
+
+    def test_absent_when_no_new_broken_refs(self) -> None:
+        """New sections are absent when no new broken refs exist."""
+        report = DependencyReport(
+            validation=ValidationResult(broken_refs=[("FEAT-001", "BUG-999")]),
+            issue_count=1,
+        )
+        text = format_report(report)
+        assert "Broken Depends-On References" not in text
+        assert "Broken Relates-To References" not in text
+
+
+# =============================================================================
+# format_text_graph — depends_on edge tests
+# =============================================================================
+
+
+class TestFormatTextGraphDependsOn:
+    """Tests for format_text_graph rendering of depends_on edges."""
+
+    def test_depends_on_edge_uses_arrow_symbol(self) -> None:
+        """depends_on relationship uses --> arrow."""
+        issues = [
+            make_issue("FEAT-001"),
+            make_issue("FEAT-002", depends_on=["FEAT-001"]),
+        ]
+        text = format_text_graph(issues)
+        assert "FEAT-001 --> FEAT-002" in text
+
+    def test_depends_on_legend_entry(self) -> None:
+        """Legend includes depends-on entry when --> edges are present."""
+        issues = [
+            make_issue("FEAT-001"),
+            make_issue("FEAT-002", depends_on=["FEAT-001"]),
+        ]
+        text = format_text_graph(issues)
+        assert "--> depends on" in text
+
+    def test_blocked_by_and_depends_on_distinct_arrows(self) -> None:
+        """blocked_by uses ──→ and depends_on uses --> on distinct pairs."""
+        issues = [
+            make_issue("FEAT-001", blocks=["FEAT-002"]),
+            make_issue("FEAT-002", blocked_by=["FEAT-001"]),
+            make_issue("FEAT-003"),
+            make_issue("FEAT-004", depends_on=["FEAT-003"]),
+        ]
+        text = format_text_graph(issues)
+        assert "──→" in text
+        assert "-->" in text
 
 
 # =============================================================================
@@ -1264,6 +1475,55 @@ class TestMainCLI:
         captured = capsys.readouterr()  # type: ignore[union-attr]
         # All three issues should be analyzed (report header shows count)
         assert "Issues analyzed**: 3" in captured.out
+
+    def test_validate_text_output_includes_broken_depends_on_refs(
+        self, tmp_path: Path, capsys: object
+    ) -> None:
+        """ll-deps validate text output includes broken depends_on refs."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        feat_dir = issues_dir / "features"
+        feat_dir.mkdir()
+        (issues_dir / "bugs").mkdir()
+        (issues_dir / "enhancements").mkdir()
+
+        (feat_dir / "P1-FEAT-001-test.md").write_text(
+            "---\ndepends_on:\n- BUG-999\n---\n# FEAT-001: Test\n"
+        )
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate"]):
+            main()
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        assert "BUG-999" in captured.out
+
+    def test_validate_json_output_includes_new_fields(
+        self, tmp_path: Path, capsys: object
+    ) -> None:
+        """ll-deps analyze --format json includes broken_depends_on_refs and broken_relates_to_refs."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        feat_dir = issues_dir / "features"
+        feat_dir.mkdir()
+        (issues_dir / "bugs").mkdir()
+        (issues_dir / "enhancements").mkdir()
+
+        (feat_dir / "P1-FEAT-001-test.md").write_text("# FEAT-001: Test\n")
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze", "--format", "json"]
+        ):
+            main()
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        assert "broken_depends_on_refs" in captured.out
+        assert "broken_relates_to_refs" in captured.out
 
 
 # =============================================================================

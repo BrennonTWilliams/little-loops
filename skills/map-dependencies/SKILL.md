@@ -133,6 +133,8 @@ Pairs with conflict score < 0.4 are reported as safe to run in parallel. These t
 - **Missing backlinks**: A blocked by B, but B doesn't list A in Blocks
 - **Cycles**: Circular dependency chains
 - **Stale references**: Dependencies on already-completed issues
+- **Broken depends-on references**: `depends_on` frontmatter entries referencing nonexistent issues
+- **Broken relates-to references**: `relates_to` frontmatter entries referencing nonexistent issues
 
 ## Applying Proposals
 

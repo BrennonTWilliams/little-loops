@@ -118,6 +118,20 @@ def format_report(
                 lines.append(f"- {issue_id}: blocked by {ref_id} (completed)")
             lines.append("")
 
+        if v.broken_depends_on_refs:
+            lines.append("### Broken Depends-On References")
+            lines.append("")
+            for issue_id, ref_id in v.broken_depends_on_refs:
+                lines.append(f"- {issue_id}: depends_on references nonexistent {ref_id}")
+            lines.append("")
+
+        if v.broken_relates_to_refs:
+            lines.append("### Broken Relates-To References")
+            lines.append("")
+            for issue_id, ref_id in v.broken_relates_to_refs:
+                lines.append(f"- {issue_id}: relates_to references nonexistent {ref_id}")
+            lines.append("")
+
     if not report.proposals and not report.parallel_safe and not v.has_issues:
         lines.append("No dependency proposals or validation issues found.")
         lines.append("")
@@ -147,12 +161,20 @@ def format_text_graph(
     issue_ids = {i.issue_id for i in issues}
     sorted_issues = sorted(issues, key=lambda i: (i.priority_int, i.issue_id))
 
-    # Build adjacency: blocker -> list of blocked issues
+    # Build adjacency: blocker -> list of blocked issues (blocked_by edges)
     blocks: dict[str, list[str]] = {}
     for issue in sorted_issues:
         for blocker_id in issue.blocked_by:
             if blocker_id in issue_ids:
                 blocks.setdefault(blocker_id, []).append(issue.issue_id)
+
+    # Build adjacency for depends_on edges (prerequisite -> dependent)
+    depends_on_edges: set[tuple[str, str]] = set()
+    for issue in sorted_issues:
+        for dep_id in issue.depends_on:
+            if dep_id in issue_ids:
+                blocks.setdefault(dep_id, []).append(issue.issue_id)
+                depends_on_edges.add((dep_id, issue.issue_id))
 
     # Add proposed edges
     proposed_edges: set[tuple[str, str]] = set()
@@ -171,6 +193,13 @@ def format_text_graph(
     visited: set[str] = set()
     chains: list[str] = []
 
+    def _arrow(src: str, tgt: str) -> str:
+        if (src, tgt) in proposed_edges:
+            return "-.→"
+        if (src, tgt) in depends_on_edges:
+            return "-->"
+        return "──→"
+
     def build_chain(issue_id: str) -> str:
         if issue_id in visited:
             return issue_id
@@ -179,15 +208,12 @@ def format_text_graph(
         if not targets:
             return issue_id
         if len(targets) == 1:
-            arrow = "-.→" if (issue_id, targets[0]) in proposed_edges else "──→"
-            return f"{issue_id} {arrow} {build_chain(targets[0])}"
+            return f"{issue_id} {_arrow(issue_id, targets[0])} {build_chain(targets[0])}"
         # Multiple branches: first inline, rest as separate chains
-        arrow = "-.→" if (issue_id, targets[0]) in proposed_edges else "──→"
-        result = f"{issue_id} {arrow} {build_chain(targets[0])}"
+        result = f"{issue_id} {_arrow(issue_id, targets[0])} {build_chain(targets[0])}"
         for other in targets[1:]:
             if other not in visited:
-                arrow_other = "-.→" if (issue_id, other) in proposed_edges else "──→"
-                chains.append(f"  {issue_id} {arrow_other} {build_chain(other)}")
+                chains.append(f"  {issue_id} {_arrow(issue_id, other)} {build_chain(other)}")
         return result
 
     for root in roots:
@@ -202,12 +228,18 @@ def format_text_graph(
 
     lines: list[str] = list(chains)
 
-    if any("──→" in c for c in chains) or any("-.→" in c for c in chains):
+    has_blocks = any("──→" in c for c in chains)
+    has_depends = any("-->" in c for c in chains)
+    has_proposed = any("-.→" in c for c in chains)
+
+    if has_blocks or has_depends or has_proposed:
         lines.append("")
         legend_parts = []
-        if any("──→" in c for c in chains):
+        if has_blocks:
             legend_parts.append("──→ blocks")
-        if any("-.→" in c for c in chains):
+        if has_depends:
+            legend_parts.append("--> depends on")
+        if has_proposed:
             legend_parts.append("-.→ proposed")
         lines.append(f"Legend: {', '.join(legend_parts)}")
 

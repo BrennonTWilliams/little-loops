@@ -306,6 +306,8 @@ Examples:
                     "missing_backlinks": report.validation.missing_backlinks,
                     "cycles": report.validation.cycles,
                     "stale_completed_refs": report.validation.stale_completed_refs,
+                    "broken_depends_on_refs": report.validation.broken_depends_on_refs,
+                    "broken_relates_to_refs": report.validation.broken_relates_to_refs,
                     "has_issues": report.validation.has_issues,
                 },
             }
@@ -360,6 +362,20 @@ Examples:
             lines.append("")
             for issue_id, ref_id in result.stale_completed_refs:
                 lines.append(f"- {issue_id}: blocked by {ref_id} (completed)")
+            lines.append("")
+
+        if result.broken_depends_on_refs:
+            lines.append("## Broken Depends-On References")
+            lines.append("")
+            for issue_id, ref_id in result.broken_depends_on_refs:
+                lines.append(f"- {issue_id}: depends_on references nonexistent {ref_id}")
+            lines.append("")
+
+        if result.broken_relates_to_refs:
+            lines.append("## Broken Relates-To References")
+            lines.append("")
+            for issue_id, ref_id in result.broken_relates_to_refs:
+                lines.append(f"- {issue_id}: relates_to references nonexistent {ref_id}")
             lines.append("")
 
         print("\n".join(lines))

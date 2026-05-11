@@ -263,11 +263,13 @@ def find_file_overlaps(
     Returns:
         Tuple of (proposed dependencies, parallel-safe pairs)
     """
-    # Build existing dependency set for skip check
+    # Build existing dependency set for skip check (blocked_by and depends_on)
     existing_deps: set[tuple[str, str]] = set()
     for issue in issues:
         for blocker_id in issue.blocked_by:
             existing_deps.add((issue.issue_id, blocker_id))
+        for dep_id in issue.depends_on:
+            existing_deps.add((issue.issue_id, dep_id))
 
     # Resolve overlap thresholds from config or defaults
     min_files = config.overlap_min_files if config else 2
@@ -464,11 +466,54 @@ def validate_dependencies(
                 if issue.issue_id not in target_blocks:
                     result.missing_backlinks.append((issue.issue_id, ref_id))
 
+        for ref_id in issue.depends_on:
+            if ref_id not in all_known:
+                result.broken_depends_on_refs.append((issue.issue_id, ref_id))
+
+        for ref_id in issue.relates_to:
+            if ref_id not in all_known:
+                result.broken_relates_to_refs.append((issue.issue_id, ref_id))
+
+        if issue.duplicate_of and issue.duplicate_of not in all_known:
+            result.broken_refs.append((issue.issue_id, issue.duplicate_of))
+
     # Cycle detection using DependencyGraph
     graph = DependencyGraph.from_issues(issues, completed, all_known_ids=all_known_ids)
     result.cycles = graph.detect_cycles()
 
     return result
+
+
+_DEPRECATED_RELATIONSHIP_KEYS = frozenset({"parent_issue", "related"})
+_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---", re.DOTALL)
+
+
+
+def validate_frontmatter_fields(issues: list[IssueInfo]) -> None:
+    """Warn about deprecated relationship frontmatter keys found in issue files on disk.
+
+    Reads the raw file content for each issue and emits a logger.warning()
+    for any deprecated key (e.g., ``parent_issue:``, ``related:``) left over
+    from pre-ENH-1434 migration.
+
+    Args:
+        issues: List of parsed issue objects (must have a valid .path attribute)
+    """
+    for issue in issues:
+        if not issue.path.exists():
+            continue
+        content = issue.path.read_text(encoding="utf-8")
+        fm_match = _FRONTMATTER_RE.match(content)
+        if not fm_match:
+            continue
+        fm_block = fm_match.group(1)
+        for key in _DEPRECATED_RELATIONSHIP_KEYS:
+            if re.search(rf"^{re.escape(key)}\s*:", fm_block, re.MULTILINE):
+                logger.warning(
+                    "%s: deprecated frontmatter key '%s' — rename to the canonical equivalent",
+                    issue.issue_id,
+                    key,
+                )
 
 
 def analyze_dependencies(

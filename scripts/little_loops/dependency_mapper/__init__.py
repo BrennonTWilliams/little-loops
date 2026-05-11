@@ -19,6 +19,7 @@ Public exports:
     compute_conflict_score: Compute semantic conflict score between two issues
     find_file_overlaps: Find issues with overlapping file references
     validate_dependencies: Validate existing dependency references
+    validate_frontmatter_fields: Warn about deprecated relationship frontmatter keys
     analyze_dependencies: Run full dependency analysis
 
     # Formatting
@@ -42,6 +43,7 @@ from little_loops.dependency_mapper.analysis import (
     compute_conflict_score,
     find_file_overlaps,
     validate_dependencies,
+    validate_frontmatter_fields,
 )
 from little_loops.dependency_mapper.formatting import (
     format_report,
@@ -73,6 +75,7 @@ __all__ = [
     "compute_conflict_score",
     "find_file_overlaps",
     "validate_dependencies",
+    "validate_frontmatter_fields",
     "analyze_dependencies",
     # Formatting
     "format_report",

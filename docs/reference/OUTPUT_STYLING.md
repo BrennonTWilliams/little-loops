@@ -273,11 +273,12 @@ REVIEW -- 2 potential dependency(ies) to review
 
 `format_report(report)` renders a Markdown dependency analysis report with tables.
 
-`format_text_graph(issues, proposals)` renders an ASCII dependency graph with two arrow styles:
+`format_text_graph(issues, proposals)` renders an ASCII dependency graph with three arrow styles:
 
 | Arrow | Meaning |
 |-------|---------|
-| `──→` | Existing dependency |
+| `──→` | Existing `blocked_by` dependency |
+| `-->` | Soft `depends_on` prerequisite |
 | `-.→` | Proposed dependency |
 
 ---
