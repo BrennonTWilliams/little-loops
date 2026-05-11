@@ -67,7 +67,7 @@ Follow `skills/manage-issue/SKILL.md` as the canonical multi-phase skill templat
 
 ### Documentation touchpoints (included here as these are the last deliverable)
 
-- `README.md` — increment skill count (27→28) and CLI tool count (16→17); add `explore-api^` skill table row; add `### ll-learning-tests` CLI subsection (CLI count increment shared with FEAT-1286 — coordinate or pick up the diff here)
+- `README.md` — increment skill count (`"28 skills"` → `"29 skills"`) in the "What's included" bullet only. Do NOT add a skill table row or a `### ll-learning-tests` CLI section — README is now a hero page; CLI docs go in `docs/reference/CLI.md` and skill tables are removed from README. CLI count increment is owned by FEAT-1286. [wiring note updated 2026-05-10 after README rewrite]
 - `CONTRIBUTING.md` — increment skill count (line 125); add `├── explore-api/` to skills tree and `├── learning_tests.py` to module tree
 - `.claude/CLAUDE.md` — increment skill count (line 38); add `ll-learning-tests` to CLI tools list
 - `docs/ARCHITECTURE.md` — add learning test registry section describing the lifecycle and registry format

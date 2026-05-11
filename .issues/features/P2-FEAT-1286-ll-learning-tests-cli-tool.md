@@ -184,7 +184,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/API.md` — soft coupling: the `## little_loops.cli` section enumerates individual `main_*` functions (`main_auto`, `main_loop`, `main_issues`); add `main_learning_tests` with its signature and subcommand table. Not test-enforced but is documentation hygiene.
-- `README.md` — `"17 CLI tools"` → `"18 CLI tools"` (line 90); test-enforced by `TestFeat1045DocUpdates.test_readme_tool_count_is_17` and `TestFeat1229LlActionWiring.test_readme_tool_count_is_17` in `test_create_extension_wiring.py`. **Scope note**: FEAT-1287 owns the narrative README update but this count must change atomically with `skills/configure/areas.md`; assign to whichever issue implements `ll-learning-tests` first. [Agent 2/3 finding]
+- `README.md` — increment `"20 CLI tools"` → `"21 CLI tools"` (count only — no `### ll-` section; README is now a hero page, CLI docs go in `CLI.md`). The old test names `test_readme_tool_count_is_17` no longer exist; the current count assertion is `test_readme_tool_count_is_20` in `TestFeat1045DocUpdates` and `TestFeat1229LlActionWiring`. Update it to assert `"21 CLI tools"`. [wiring note updated 2026-05-10 after README rewrite]
 
 ### Configuration
 

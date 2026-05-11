@@ -45,7 +45,7 @@ Threshold: Read from `.ll/ll-config.json` or default to 2000 tokens (1% of 200k 
 2. Add `main_verify_skill_budget()` entry point in `scripts/little_loops/cli/docs.py` — print per-skill token breakdown, total, threshold comparison; exit 1 if over budget
 3. Register entry point in `scripts/pyproject.toml` — `ll-verify-skill-budget = "little_loops.cli:main_verify_skill_budget"`
 4. Add tests: `TestMainVerifySkillBudget` class in `scripts/tests/test_cli_docs.py`
-5. Register in all CLI tool listings: `commands/help.md`, `.claude/CLAUDE.md`, `README.md`, `docs/reference/CLI.md`
+5. Register in all CLI tool listings: `commands/help.md`, `.claude/CLAUDE.md`, `docs/reference/CLI.md`; increment `"20 CLI tools"` count in `README.md` only — do NOT add a `### ll-` section there (README is a hero page; see CONTRIBUTING.md § "Documentation wiring for new CLI tools") [updated 2026-05-10]
 6. Add to release checklist in `CONTRIBUTING.md`
 
 ## Integration Map

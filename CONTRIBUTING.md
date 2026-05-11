@@ -323,6 +323,22 @@ test(config): add tests for configuration merging
 - Update CHANGELOG.md for user-facing changes
 - Ensure CI passes before requesting review
 
+### Documentation wiring for new CLI tools
+
+`README.md` is the hero page — positioning claims and quick demos, not a CLI catalog. When you add a new `ll-` CLI tool, do **not** add a `### ll-<toolname>` section to `README.md`.
+
+Instead, update these files:
+
+| File | What to update |
+|------|---------------|
+| `docs/reference/CLI.md` | Full `### ll-<toolname>` section with flags and examples |
+| `commands/help.md` | One-line entry in the CLI TOOLS block |
+| `.claude/CLAUDE.md` | One-line entry in the CLI Tools list |
+| `skills/configure/areas.md` | Add tool name; increment "Authorize all N" count |
+| `README.md` | Increment `"N CLI tools"` count only — no new section |
+
+Add a presence test in `scripts/tests/test_create_extension_wiring.py` that checks `CLI_REFERENCE`, `HELP_MD`, and `CLAUDE_MD` — not `README`. The structural guard in `test_readme_structure.py` will fail CI if a `### ll-` section lands in the README.
+
 ## Creating Issues
 
 Issues are tracked in `.issues/` with structured Markdown files following the v2.0 template.
