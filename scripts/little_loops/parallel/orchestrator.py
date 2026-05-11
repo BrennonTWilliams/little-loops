@@ -826,6 +826,7 @@ class ParallelOrchestrator:
             skip_ids=skip_ids,
             only_ids=self.parallel_config.only_ids,
             type_prefixes=self.parallel_config.type_prefixes,
+            label_filter=self.parallel_config.label_filter,
         )
 
         # Apply max issues limit

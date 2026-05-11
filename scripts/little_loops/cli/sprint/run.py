@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from little_loops.cli.output import use_color_enabled
 from little_loops.cli.sprint._helpers import _build_issue_contents, _render_dependency_analysis
-from little_loops.cli_args import _id_matches, parse_issue_ids, parse_issue_types
+from little_loops.cli_args import _id_matches, parse_issue_ids, parse_issue_types, parse_labels
 from little_loops.dependency_graph import DependencyGraph, refine_waves_for_contention
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.orchestrator import ParallelOrchestrator
@@ -198,6 +198,20 @@ def _cmd_sprint_run(
     if not issue_infos:
         logger.error("No issue files found")
         return 1
+
+    # Apply label filter if provided (must run after IssueInfo load since labels come from frontmatter)
+    label_filter = parse_labels(getattr(args, "label", None))
+    if label_filter:
+        original_count = len(issue_infos)
+        issue_infos = [
+            i
+            for i in issue_infos
+            if any(lb.lower() in label_filter for lb in i.labels)
+        ]
+        filtered = original_count - len(issue_infos)
+        if filtered > 0:
+            logger.info(f"Filtered {filtered} issue(s) by label: {', '.join(sorted(label_filter))}")
+        issues_to_process = [i.issue_id for i in issue_infos]
 
     # Gather all issue IDs on disk to avoid false "nonexistent" warnings
     from little_loops.dependency_mapper import gather_all_issue_ids

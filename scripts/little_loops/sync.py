@@ -327,6 +327,14 @@ class GitHubSyncManager:
         if fm.get("blocked_by"):
             labels.append("blocked-by")
 
+        # Add issue-level labels from frontmatter labels: field
+        fm_labels = fm.get("labels")
+        if fm_labels:
+            if isinstance(fm_labels, list):
+                labels.extend(str(lb) for lb in fm_labels)
+            elif isinstance(fm_labels, str):
+                labels.extend(lb.strip() for lb in fm_labels.split(",") if lb.strip())
+
         return labels
 
     def push_issues(self, issue_ids: list[str] | None = None) -> SyncResult:
@@ -679,6 +687,20 @@ class GitHubSyncManager:
             )
             self._sections_data[issue_type] = load_issue_sections(issue_type, templates_dir)
 
+        # Strip ll-managed labels (type, priority, blocked-by) to keep only user-facing labels
+        _managed_prefixes = ("p0", "p1", "p2", "p3", "p4", "p5", "blocked-by")
+        _managed_type_labels = {
+            v.lower()
+            for v in (self.sync_config.github.label_mapping or {}).values()
+            if v
+        }
+        user_labels = [
+            lbl
+            for lbl in gh_labels
+            if lbl.lower() not in _managed_prefixes
+            and lbl.lower() not in _managed_type_labels
+        ]
+
         frontmatter = {
             "github_issue": gh_number,
             "github_url": gh_url,
@@ -686,6 +708,8 @@ class GitHubSyncManager:
             "discovered_by": "github_sync",
             "discovered_date": today,
         }
+        if user_labels:
+            frontmatter["labels"] = user_labels
         section_content: dict[str, str] = {}
         if gh_body:
             section_content["Summary"] = gh_body

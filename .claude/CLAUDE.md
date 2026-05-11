@@ -118,6 +118,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
 - `ll-migrate` - One-time migration of completed/deferred issues to type-based directories (ENH-1390)
 - `ll-migrate-relationships` - One-time migration that renames `parent_issue:` → `parent:` and `related:` → `relates_to:` across all issue files (ENH-1434)
+- `ll-migrate-labels` - One-time migration that moves freeform `## Labels` body sections to `labels:` frontmatter across all issue files (ENH-1392)
 - `ll-create-extension` - Scaffold a new extension repo with entry-point, skeleton handler, and LLTestBus example
 - `ll-generate-schemas` - Regenerate JSON Schema files for all `LLEvent` types into `docs/reference/schemas/` (maintainer tool)
 

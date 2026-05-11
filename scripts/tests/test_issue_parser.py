@@ -2616,3 +2616,71 @@ class TestIssueInfoStatus:
         info = parser.parse_file(issue_file)
 
         assert info.status == "open"
+
+    def test_parse_labels_from_frontmatter(self, tmp_path: Path) -> None:
+        """labels: YAML list in frontmatter is parsed into IssueInfo.labels."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        enhancements_dir = tmp_path / ".issues" / "enhancements"
+        enhancements_dir.mkdir(parents=True)
+        issue_file = enhancements_dir / "P3-ENH-1392-test.md"
+        issue_file.write_text(
+            "---\nlabels:\n  - fsm\n  - cli\n  - quick-win\n---\n# ENH-1392: Test\n"
+        )
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.labels == ["fsm", "cli", "quick-win"]
+
+    def test_parse_labels_absent(self, tmp_path: Path) -> None:
+        """IssueInfo.labels defaults to empty list when labels: field is absent."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        enhancements_dir = tmp_path / ".issues" / "enhancements"
+        enhancements_dir.mkdir(parents=True)
+        issue_file = enhancements_dir / "P3-ENH-1392-no-labels.md"
+        issue_file.write_text("---\ndiscovered_by: scan\n---\n# ENH-1392: No Labels\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.labels == []
+
+    def test_parse_labels_empty_list(self, tmp_path: Path) -> None:
+        """labels: [] in frontmatter yields IssueInfo.labels == []."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        enhancements_dir = tmp_path / ".issues" / "enhancements"
+        enhancements_dir.mkdir(parents=True)
+        issue_file = enhancements_dir / "P3-ENH-1392-empty-labels.md"
+        issue_file.write_text("---\nlabels: []\n---\n# ENH-1392: Empty Labels\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.labels == []

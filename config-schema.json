@@ -225,6 +225,13 @@
         "duplicate_of": {
           "type": "string",
           "description": "Issue ID that this issue duplicates"
+        },
+        "labels": {
+          "type": "array",
+          "description": "Cross-cutting classification labels (e.g., fsm, cli, quick-win)",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false

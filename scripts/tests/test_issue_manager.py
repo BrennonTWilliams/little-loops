@@ -721,6 +721,96 @@ class TestAutoManagerPriorityFilter:
         assert issue.priority in {"P1", "P3"}
 
 
+class TestAutoManagerLabelFilter:
+    """Tests for AutoManager label_filter in _get_next_issue (ENH-1392)."""
+
+    @pytest.fixture
+    def temp_project_with_labels(self, temp_project_dir: Path) -> Path:
+        """Set up project with issues of different labels."""
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+
+        config_content = {
+            "project": {"name": "test-project"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                },
+                "completed_dir": "completed",
+            },
+            "automation": {
+                "timeout_seconds": 60,
+                "state_file": ".auto-manage-state.json",
+            },
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
+
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir()
+
+        (issues_dir / "P1-BUG-001-fsm-issue.md").write_text(
+            "---\nlabels:\n  - fsm\n  - quick-win\n---\n# BUG-001: FSM issue\n"
+        )
+        (issues_dir / "P2-BUG-002-cli-issue.md").write_text(
+            "---\nlabels:\n  - cli\n---\n# BUG-002: CLI issue\n"
+        )
+        (issues_dir / "P3-BUG-003-no-labels.md").write_text(
+            "---\n---\n# BUG-003: No labels\n"
+        )
+
+        return temp_project_dir
+
+    def test_label_filter_none_returns_all(self, temp_project_with_labels: Path) -> None:
+        """With label_filter=None, all issues are candidates."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_labels)
+        manager = AutoManager(config, dry_run=True, label_filter=None)
+
+        issue = manager._get_next_issue()
+        assert issue is not None
+
+    def test_label_filter_matching(self, temp_project_with_labels: Path) -> None:
+        """label_filter matching one issue's label returns that issue."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_labels)
+        manager = AutoManager(config, dry_run=True, label_filter={"fsm"})
+
+        issue = manager._get_next_issue()
+        assert issue is not None
+        assert issue.issue_id == "BUG-001"
+
+    def test_label_filter_non_matching_returns_none(
+        self, temp_project_with_labels: Path
+    ) -> None:
+        """label_filter that matches no issues returns None."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_labels)
+        manager = AutoManager(config, dry_run=True, label_filter={"nonexistent"})
+
+        issue = manager._get_next_issue()
+        assert issue is None
+
+    def test_label_filter_any_match(self, temp_project_with_labels: Path) -> None:
+        """label_filter matches issues that have any of the specified labels."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_labels)
+        manager = AutoManager(config, dry_run=True, label_filter={"quick-win"})
+
+        issue = manager._get_next_issue()
+        assert issue is not None
+        assert "quick-win" in [lb.lower() for lb in issue.labels]
+
+
 class TestAutoManagerQuietMode:
     """Tests for AutoManager quiet/verbose mode (ENH-188)."""
 

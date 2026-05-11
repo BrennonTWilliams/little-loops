@@ -109,6 +109,7 @@ Process all backlog issues sequentially in priority order. On startup, `ll-auto`
 | `--config` | | Path to project root |
 | `--category` | `-c` | Filter to category: `bugs`, `features`, `enhancements`, `epics` |
 | `--priority` | `-p` | Comma-separated priority levels to process (e.g., `P1,P2`) |
+| `--label` | | Comma-separated labels to process (e.g., `fsm,cli,quick-win`); matches issues with `labels:` frontmatter containing any of the specified values |
 | `--verbose` | `-v` | Show full prompt text; default shows abbreviated 5-line preview |
 | `--idle-timeout` | | Kill worker if no output for N seconds (0 to disable) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
@@ -126,6 +127,7 @@ ll-auto --skip BUG-003           # Skip a specific issue
 ll-auto --type BUG               # Process only bugs
 ll-auto --type BUG,ENH           # Process bugs and enhancements
 ll-auto --priority P1,P2         # Only process P1 and P2 issues
+ll-auto --label quick-win        # Only process issues tagged quick-win
 ll-auto --handoff-threshold 90   # Trigger handoff at 90% context usage
 ```
 
@@ -157,6 +159,7 @@ Process issues concurrently using isolated git worktrees.
 | `--only` | | Process only these issue IDs |
 | `--skip` | | Skip these issue IDs |
 | `--type` | | Process only these types: `BUG`, `FEAT`, `ENH`, `EPIC` |
+| `--label` | | Comma-separated labels to process (e.g., `fsm,quick-win`) |
 | `--max-issues` | `-m` | Limit total issues processed |
 | `--config` | | Path to project root |
 | `--idle-timeout` | | Kill worker if no output for N seconds (0 to disable) |
@@ -498,6 +501,7 @@ List issues with optional filters.
 |------|-------------|
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
+| `--label` | Filter by label from `labels:` frontmatter; repeatable for OR match |
 | `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all` |
 | `--flat` | Output flat list for scripting |
 | `--json` / `-j` | Output as JSON array; each entry includes `id`, `title`, `priority`, `type`, `status`, `path`, and `labels` |
@@ -1189,6 +1193,26 @@ One-time migration script that renames deprecated relationship frontmatter keys 
 ll-migrate-relationships --dry-run   # Preview all planned renames
 ll-migrate-relationships             # Execute migration
 ll-migrate-relationships --config /path/to/project  # Run for a specific project
+```
+
+---
+
+### ll-migrate-labels
+
+One-time migration script that reads the freeform `## Labels` body section from all `.md` files under `.issues/` and writes the labels as a `labels:` YAML list in frontmatter. Part of the ENH-1392 labels field addition.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--dry-run` | `-n` | Preview all planned migrations without modifying files |
+| `--config` | `-C` | Path to project root (default: current directory) |
+
+**Examples:**
+```bash
+ll-migrate-labels --dry-run   # Preview all planned migrations
+ll-migrate-labels             # Execute migration
+ll-migrate-labels --config /path/to/project  # Run for a specific project
 ```
 
 ---

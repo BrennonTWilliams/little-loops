@@ -194,15 +194,24 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     if risk_match:
         risk = risk_match.group(1).capitalize()
 
-    # Labels: extract backtick-delimited labels from ## Labels section
+    # Labels: prefer frontmatter labels: field; fall back to ## Labels body section
     labels: str | None = None
-    labels_match = re.search(
-        r"^## Labels\s*\n+(.*?)(?:\n\n|\n##|\Z)", content, re.MULTILINE | re.DOTALL
-    )
-    if labels_match:
-        found = re.findall(r"`([^`]+)`", labels_match.group(1))
-        if found:
-            labels = ", ".join(found)
+    fm_labels_raw = frontmatter.get("labels")
+    if fm_labels_raw:
+        if isinstance(fm_labels_raw, list):
+            fm_label_list = [str(lb) for lb in fm_labels_raw if lb]
+        else:
+            fm_label_list = [lb.strip() for lb in str(fm_labels_raw).split(",") if lb.strip()]
+        if fm_label_list:
+            labels = ", ".join(fm_label_list)
+    if not labels:
+        labels_match = re.search(
+            r"^## Labels\s*\n+(.*?)(?:\n\n|\n##|\Z)", content, re.MULTILINE | re.DOTALL
+        )
+        if labels_match:
+            found = re.findall(r"`([^`]+)`", labels_match.group(1))
+            if found:
+                labels = ", ".join(found)
 
     # Session log: parse ## Session Log for unique /ll:* commands with counts
     history: str | None = None

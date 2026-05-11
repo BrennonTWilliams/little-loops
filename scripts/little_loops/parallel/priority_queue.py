@@ -219,6 +219,7 @@ class IssuePriorityQueue:
         only_ids: set[str] | None = None,
         category: str | None = None,
         type_prefixes: set[str] | None = None,
+        label_filter: set[str] | None = None,
     ) -> list[IssueInfo]:
         """Scan issue directories and return sorted issues.
 
@@ -231,6 +232,7 @@ class IssuePriorityQueue:
             only_ids: If provided, only include these issue IDs
             category: Optional category filter (e.g., "bugs")
             type_prefixes: If provided, only include issues with these type prefixes
+            label_filter: If provided, only include issues with at least one of these labels
 
         Returns:
             List of IssueInfo sorted by priority then alphabetically
@@ -249,5 +251,11 @@ class IssuePriorityQueue:
 
         # Apply priority filter
         filtered = [i for i in all_issues if i.priority in priority_filter]
+
+        # Apply label filter
+        if label_filter:
+            filtered = [
+                i for i in filtered if any(lb.lower() in label_filter for lb in i.labels)
+            ]
 
         return filtered

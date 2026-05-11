@@ -313,6 +313,30 @@ def add_priority_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_label_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --label argument for filtering issues by label."""
+    parser.add_argument(
+        "--label",
+        type=str,
+        default=None,
+        help="Comma-separated labels to process (e.g., fsm,cli,quick-win)",
+    )
+
+
+def parse_labels(value: str | None) -> set[str] | None:
+    """Parse comma-separated labels into a set.
+
+    Args:
+        value: Comma-separated string like "fsm,cli" or None
+
+    Returns:
+        Set of lowercase label strings, or None if value is None
+    """
+    if value is None:
+        return None
+    return {lb.strip().lower() for lb in value.split(",") if lb.strip()}
+
+
 def add_type_arg(parser: argparse.ArgumentParser) -> None:
     """Add --type/-T argument for filtering issues by type prefix."""
     parser.add_argument(
@@ -362,7 +386,7 @@ def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     """Add arguments common to ll-auto command.
 
     Adds: --resume, --dry-run, --max-issues, --quiet, --only, --skip, --type, --priority,
-          --config, --idle-timeout, --handoff-threshold, --context-limit
+          --label, --config, --idle-timeout, --handoff-threshold, --context-limit
     """
     add_resume_arg(parser)
     add_dry_run_arg(parser)
@@ -372,6 +396,7 @@ def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     add_skip_arg(parser)
     add_type_arg(parser)
     add_priority_arg(parser)
+    add_label_arg(parser)
     add_config_arg(parser)
     add_idle_timeout_arg(parser)
     add_handoff_threshold_arg(parser)
@@ -381,8 +406,8 @@ def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
 def add_common_parallel_args(parser: argparse.ArgumentParser) -> None:
     """Add arguments common to parallel execution tools.
 
-    Adds: --dry-run, --resume, --max-workers, --timeout, --idle-timeout, --quiet, --only, --skip, --type, --config,
-          --context-limit
+    Adds: --dry-run, --resume, --max-workers, --timeout, --idle-timeout, --quiet, --only, --skip, --type, --label,
+          --config, --context-limit
     """
     add_dry_run_arg(parser)
     add_resume_arg(parser)
@@ -393,6 +418,7 @@ def add_common_parallel_args(parser: argparse.ArgumentParser) -> None:
     add_only_arg(parser)
     add_skip_arg(parser)
     add_type_arg(parser)
+    add_label_arg(parser)
     add_config_arg(parser)
     add_context_limit_arg(parser)
 
@@ -405,6 +431,7 @@ __all__ = [
     "add_skip_arg",
     "add_type_arg",
     "add_priority_arg",
+    "add_label_arg",
     "add_max_workers_arg",
     "add_timeout_arg",
     "add_idle_timeout_arg",
@@ -416,6 +443,7 @@ __all__ = [
     "parse_issue_ids",
     "parse_issue_types",
     "parse_priorities",
+    "parse_labels",
     "VALID_ISSUE_TYPES",
     "VALID_PRIORITIES",
     "add_common_auto_args",

@@ -18,6 +18,7 @@ Provides command-line interfaces for automated issue management:
 - ll-gitignore: Suggest and apply .gitignore patterns
 - ll-migrate: One-time migration of completed/deferred issues to type-based directories
 - ll-migrate-relationships: Rename parent_issue:/related: frontmatter keys to parent:/relates_to:
+- ll-migrate-labels: Migrate freeform ## Labels body sections to labels: frontmatter
 - ll-create-extension: Scaffold a new little-loops extension project
 - ll-generate-schemas: Generate JSON Schema files for all LLEvent types (internal: dev tooling)
 """
@@ -30,6 +31,7 @@ from little_loops.cli.docs import main_check_links, main_verify_docs
 from little_loops.cli.gitignore import main_gitignore
 from little_loops.cli.history import main_history
 from little_loops.cli.migrate import main_migrate
+from little_loops.cli.migrate_labels import main_migrate_labels
 from little_loops.cli.migrate_relationships import main_migrate_relationships
 from little_loops.cli.issues import main_issues
 from little_loops.cli.logs import main_logs
@@ -55,6 +57,7 @@ __all__ = [
     "main_gitignore",
     "main_history",
     "main_migrate",
+    "main_migrate_labels",
     "main_migrate_relationships",
     "main_logs",
     "main_issues",

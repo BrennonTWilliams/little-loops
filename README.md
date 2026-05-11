@@ -519,6 +519,17 @@ ll-migrate-relationships             # Execute migration
 
 Run `ll-migrate-relationships --help` for all options.
 
+### ll-migrate-labels
+
+One-time migration script that moves freeform `## Labels` body sections to `labels:` frontmatter across all `.md` files in `.issues/`. Part of the ENH-1392 labels field addition.
+
+```bash
+ll-migrate-labels --dry-run   # Preview all planned migrations
+ll-migrate-labels             # Execute migration
+```
+
+Run `ll-migrate-labels --help` for all options.
+
 ### ll-generate-schemas
 
 Regenerate JSON Schema files for all `LLEvent` types into `docs/reference/schemas/`. This is a maintainer tool used when adding new event types to the plugin.

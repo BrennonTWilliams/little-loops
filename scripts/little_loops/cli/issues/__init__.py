@@ -160,6 +160,13 @@ Examples:
     )
     ls.add_argument("--asc", action="store_true", default=False, help="Sort ascending")
     ls.add_argument("--desc", action="store_true", default=False, help="Sort descending")
+    ls.add_argument(
+        "--label",
+        action="append",
+        dest="label",
+        metavar="LABEL",
+        help="Filter by label (repeatable; matches issues whose labels: frontmatter contains LABEL)",
+    )
     add_config_arg(ls)
 
     sr = subs.add_parser("search", aliases=["sr"], help="Search issues with filters and sorting")

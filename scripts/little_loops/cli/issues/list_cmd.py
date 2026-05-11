@@ -41,12 +41,14 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
 
     type_filter = getattr(args, "type", None)
     priority_filter: set[str] | None = parse_priorities(getattr(args, "priority", None))
+    label_filters: list[str] = getattr(args, "label", None) or []
 
     filtered = [
         (issue, stat)
         for issue, stat in raw
         if (not type_filter or issue.issue_id.split("-", 1)[0] == type_filter)
         and (not priority_filter or issue.priority in priority_filter)
+        and (not label_filters or any(lf.lower() in [lb.lower() for lb in issue.labels] for lf in label_filters))
     ]
 
     # Sort

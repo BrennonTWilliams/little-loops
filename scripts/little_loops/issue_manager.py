@@ -949,6 +949,7 @@ class AutoManager:
         skip_ids: set[str] | None = None,
         type_prefixes: set[str] | None = None,
         priority_filter: set[str] | None = None,
+        label_filter: set[str] | None = None,
         verbose: bool = True,
         preview_full: bool = False,
     ) -> None:
@@ -965,6 +966,7 @@ class AutoManager:
             skip_ids: Issue IDs to skip (in addition to attempted issues)
             type_prefixes: If provided, only process issues with these type prefixes
             priority_filter: If provided, only process issues with these priority levels
+            label_filter: If provided, only process issues that have at least one of these labels
             verbose: Whether to output progress messages
             preview_full: If True, show full command content without truncation (--verbose flag).
         """
@@ -977,6 +979,7 @@ class AutoManager:
         self.skip_ids = skip_ids or set()
         self.type_prefixes = type_prefixes
         self.priority_filter = priority_filter
+        self.label_filter = label_filter
         self._preview_full = preview_full
 
         from little_loops.cli.output import use_color_enabled
@@ -1038,7 +1041,7 @@ class AutoManager:
         # Get issues that are ready (blockers satisfied)
         ready_issues = self.dep_graph.get_ready_issues(completed)
 
-        # Filter by skip_ids, only_ids, type_prefixes, priority_filter
+        # Filter by skip_ids, only_ids, type_prefixes, priority_filter, label_filter
         candidates = [
             i
             for i in ready_issues
@@ -1046,6 +1049,10 @@ class AutoManager:
             and (self.only_ids is None or any(_id_matches(i.issue_id, p) for p in self.only_ids))
             and (self.type_prefixes is None or i.issue_id.split("-", 1)[0] in self.type_prefixes)
             and (self.priority_filter is None or i.priority in self.priority_filter)
+            and (
+                self.label_filter is None
+                or any(lb.lower() in self.label_filter for lb in i.labels)
+            )
         ]
 
         if candidates:
@@ -1070,6 +1077,12 @@ class AutoManager:
         if self.priority_filter is not None:
             remaining = {
                 r for r in remaining if self.dep_graph.issues[r].priority in self.priority_filter
+            }
+        if self.label_filter is not None:
+            remaining = {
+                r
+                for r in remaining
+                if any(lb.lower() in self.label_filter for lb in self.dep_graph.issues[r].labels)
             }
 
         if remaining:

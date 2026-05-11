@@ -329,10 +329,11 @@ class ParallelConfig:
     ready_command: str = "ready-issue {{issue_id}}"
     manage_command: str = "manage-issue {{issue_type}} {{action}} {{issue_id}}"
     decide_command: str = "decide-issue {{issue_id}}"
-    # Issue ID filters
+    # Issue ID and label filters
     only_ids: set[str] | None = None
     skip_ids: set[str] | None = None
     type_prefixes: set[str] | None = None
+    label_filter: set[str] | None = None
     # Validation settings
     require_code_changes: bool = True  # If False, allow changes to only excluded dirs
     use_feature_branches: bool = (
@@ -421,6 +422,7 @@ class ParallelConfig:
             "only_ids": list(self.only_ids) if self.only_ids else None,
             "skip_ids": list(self.skip_ids) if self.skip_ids else None,
             "type_prefixes": list(self.type_prefixes) if self.type_prefixes else None,
+            "label_filter": list(self.label_filter) if self.label_filter else None,
             "require_code_changes": self.require_code_changes,
             "use_feature_branches": self.use_feature_branches,
             "merge_pending": self.merge_pending,
@@ -438,6 +440,7 @@ class ParallelConfig:
         only_ids_data = data.get("only_ids")
         skip_ids_data = data.get("skip_ids")
         type_prefixes_data = data.get("type_prefixes")
+        label_filter_data = data.get("label_filter")
         return cls(
             max_workers=data.get("max_workers", 2),
             p0_sequential=data.get("p0_sequential", True),
@@ -462,6 +465,7 @@ class ParallelConfig:
             only_ids=set(only_ids_data) if only_ids_data else None,
             skip_ids=set(skip_ids_data) if skip_ids_data else None,
             type_prefixes=set(type_prefixes_data) if type_prefixes_data else None,
+            label_filter=set(label_filter_data) if label_filter_data else None,
             require_code_changes=data.get("require_code_changes", True),
             use_feature_branches=data.get("use_feature_branches", False),
             merge_pending=data.get("merge_pending", False),

@@ -56,6 +56,7 @@ def main_sprint() -> int:
         add_context_limit_arg,
         add_dry_run_arg,
         add_handoff_threshold_arg,
+        add_label_arg,
         add_max_workers_arg,
         add_only_arg,
         add_quiet_arg,
@@ -130,6 +131,7 @@ Examples:
     add_only_arg(run_parser)
     add_skip_analysis_arg(run_parser)
     add_type_arg(run_parser)
+    add_label_arg(run_parser)
     add_handoff_threshold_arg(run_parser)
     add_context_limit_arg(run_parser)
 

@@ -515,6 +515,92 @@ class TestIssuesCLIList:
         assert len(lines) == 5
 
 
+    def test_list_filter_by_label_match(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --label shows only issues whose labels: frontmatter contains that label."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P0-BUG-001-crash.md").write_text(
+            "---\nstatus: open\nlabels:\n  - quick-win\n  - cli\n---\n# BUG-001: Crash\n"
+        )
+        (bugs_dir / "P1-BUG-002-slow.md").write_text(
+            "---\nstatus: open\nlabels:\n  - sync\n---\n# BUG-002: Slow\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--label", "quick-win", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-001" in captured.out
+        assert "BUG-002" not in captured.out
+
+    def test_list_filter_by_label_no_match(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --label with no matching issues prints 'No active issues'."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P0-BUG-001-crash.md").write_text(
+            "---\nstatus: open\nlabels:\n  - cli\n---\n# BUG-001: Crash\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--label", "nonexistent", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No active issues" in captured.out
+
+    def test_list_json_output_contains_labels_key(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --json output includes 'labels' key on every item."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert len(data) > 0
+        for item in data:
+            assert "labels" in item
+
+
 class TestIssuesCLISequence:
     """Tests for ll-issues sequence sub-command."""
 

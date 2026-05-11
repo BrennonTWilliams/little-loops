@@ -13,6 +13,7 @@ from little_loops.cli_args import (
     add_dry_run_arg,
     add_handoff_threshold_arg,
     add_idle_timeout_arg,
+    add_label_arg,
     add_max_issues_arg,
     add_only_arg,
     add_quiet_arg,
@@ -22,6 +23,7 @@ from little_loops.cli_args import (
     add_type_arg,
     parse_issue_ids,
     parse_issue_types,
+    parse_labels,
     parse_priorities,
 )
 from little_loops.config import BRConfig
@@ -135,6 +137,7 @@ Examples:
     add_only_arg(parser)
     add_skip_arg(parser)
     add_type_arg(parser)
+    add_label_arg(parser)
 
     # Add max-issues and config individually (different help text needed)
     add_max_issues_arg(parser)
@@ -181,6 +184,7 @@ Examples:
     only_ids = parse_issue_ids(args.only)
     skip_ids = parse_issue_ids(args.skip)
     type_prefixes = parse_issue_types(args.type)
+    label_filter = parse_labels(args.label)
 
     # Detect current branch for rebase/merge operations (BUG-439)
     _branch_result = subprocess.run(
@@ -195,6 +199,7 @@ Examples:
     parallel_config = config.create_parallel_config(
         max_workers=args.workers,
         priority_filter=sorted(priority_filter) if priority_filter is not None else None,
+        label_filter=label_filter,
         max_issues=args.max_issues,
         dry_run=args.dry_run,
         timeout_seconds=args.timeout,

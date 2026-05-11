@@ -529,6 +529,15 @@ class IssueParser:
             elif not body_ids:
                 body_ids.extend(fm_ids)
 
+        # Parse labels from frontmatter
+        labels: list[str] = []
+        fm_labels = frontmatter.get("labels")
+        if fm_labels:
+            if isinstance(fm_labels, str):
+                labels = [lb.strip() for lb in fm_labels.split(",") if lb.strip()]
+            else:
+                labels = [str(lb) for lb in fm_labels]
+
         # Parse session commands from ## Session Log section
         from little_loops.session_log import count_session_commands, parse_session_log
 
@@ -564,6 +573,7 @@ class IssueParser:
             missing_artifacts=missing_artifacts_value,
             session_commands=session_commands,
             session_command_counts=session_command_counts,
+            labels=labels,
             status=status,
         )
 

@@ -20,6 +20,7 @@ from little_loops.cli_args import (
     add_config_arg,
     add_dry_run_arg,
     add_idle_timeout_arg,
+    add_label_arg,
     add_max_workers_arg,
     add_only_arg,
     add_priority_arg,
@@ -30,6 +31,7 @@ from little_loops.cli_args import (
     parse_issue_ids,
     parse_issue_ids_ordered,
     parse_issue_types,
+    parse_labels,
     parse_priorities,
 )
 
@@ -557,11 +559,57 @@ class TestAddPriorityArg:
         assert args.priority == "P1,P2,P3"
 
 
+class TestAddLabelArg:
+    """Tests for add_label_arg() function."""
+
+    def test_adds_label_argument(self) -> None:
+        """Adds --label argument that accepts a string."""
+        parser = argparse.ArgumentParser()
+        add_label_arg(parser)
+        args = parser.parse_args(["--label", "fsm,cli"])
+        assert args.label == "fsm,cli"
+
+    def test_default_is_none(self) -> None:
+        """Default value is None when --label is omitted."""
+        parser = argparse.ArgumentParser()
+        add_label_arg(parser)
+        args = parser.parse_args([])
+        assert args.label is None
+
+
+class TestParseLabels:
+    """Tests for parse_labels() function."""
+
+    def test_none_returns_none(self) -> None:
+        """None input returns None."""
+        assert parse_labels(None) is None
+
+    def test_single_label(self) -> None:
+        """Single label string is parsed into a set."""
+        result = parse_labels("fsm")
+        assert result == {"fsm"}
+
+    def test_multiple_labels(self) -> None:
+        """Comma-separated labels are parsed into a set."""
+        result = parse_labels("fsm,cli,quick-win")
+        assert result == {"fsm", "cli", "quick-win"}
+
+    def test_lowercased(self) -> None:
+        """Labels are lowercased."""
+        result = parse_labels("FSM,CLI")
+        assert result == {"fsm", "cli"}
+
+    def test_whitespace_stripped(self) -> None:
+        """Whitespace around labels is stripped."""
+        result = parse_labels("fsm , cli")
+        assert result == {"fsm", "cli"}
+
+
 class TestAddCommonAutoArgs:
     """Tests for add_common_auto_args() function."""
 
     def test_adds_all_expected_arguments(self) -> None:
-        """Adds resume, dry-run, max-issues, only, skip, type, priority, config, idle-timeout, handoff-threshold."""
+        """Adds resume, dry-run, max-issues, only, skip, type, priority, label, config, idle-timeout, handoff-threshold."""
         parser = argparse.ArgumentParser()
         add_common_auto_args(parser)
         args = parser.parse_args(
@@ -578,6 +626,8 @@ class TestAddCommonAutoArgs:
                 "BUG",
                 "--priority",
                 "P1,P2",
+                "--label",
+                "fsm,cli",
                 "--config",
                 "/path",
                 "--idle-timeout",
@@ -593,6 +643,7 @@ class TestAddCommonAutoArgs:
         assert args.skip == "BUG-002"
         assert args.type == "BUG"
         assert args.priority == "P1,P2"
+        assert args.label == "fsm,cli"
         assert args.config is not None
         assert args.idle_timeout == 300
         assert args.handoff_threshold == 40

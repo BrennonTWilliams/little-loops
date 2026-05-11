@@ -12,6 +12,7 @@ from little_loops.cli_args import (
     parse_issue_ids,
     parse_issue_ids_ordered,
     parse_issue_types,
+    parse_labels,
     parse_priorities,
 )
 from little_loops.config import BRConfig
@@ -86,6 +87,7 @@ Examples:
     skip_ids = parse_issue_ids(args.skip)
     type_prefixes = parse_issue_types(args.type)
     priority_filter = parse_priorities(args.priority)
+    label_filter = parse_labels(args.label)
 
     manager = AutoManager(
         config=config,
@@ -97,6 +99,7 @@ Examples:
         skip_ids=skip_ids,
         type_prefixes=type_prefixes,
         priority_filter=priority_filter,
+        label_filter=label_filter,
         verbose=args.verbose or not args.quiet,
         preview_full=args.verbose,
     )

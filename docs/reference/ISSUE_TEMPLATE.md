@@ -897,6 +897,7 @@ Issue files may include a YAML frontmatter block at the top of the file. The fol
 | `depends_on` | list of strings | absent | Soft ordering prerequisites — preferred ordering before this issue is started, but not wave-gated (sprint proceeds without waiting). Use when sequencing is desirable but not strictly required. |
 | `relates_to` | list of strings | absent | Thematically related issue IDs with no ordering constraint. Used for cross-reference and discoverability; does not affect sprint wave scheduling. |
 | `duplicate_of` | string | absent | Bare issue ID of the issue this duplicates. Set when closing a duplicate; routes automated pipelines to the canonical issue instead. |
+| `labels` | list of strings | absent | Cross-cutting classification labels (e.g., `fsm`, `cli`, `quick-win`). Used by `ll-issues list --label`, `ll-auto --label`, `ll-sprint --label`, and `ll-parallel --label` to scope processing to a specific component or effort tier. Synced to GitHub labels on push. |
 
 ### `testable: false`
 
