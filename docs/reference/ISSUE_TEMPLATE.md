@@ -898,6 +898,7 @@ Issue files may include a YAML frontmatter block at the top of the file. The fol
 | `relates_to` | list of strings | absent | Thematically related issue IDs with no ordering constraint. Used for cross-reference and discoverability; does not affect sprint wave scheduling. |
 | `duplicate_of` | string | absent | Bare issue ID of the issue this duplicates. Set when closing a duplicate; routes automated pipelines to the canonical issue instead. |
 | `labels` | list of strings | absent | Cross-cutting classification labels (e.g., `fsm`, `cli`, `quick-win`). Used by `ll-issues list --label`, `ll-auto --label`, `ll-sprint --label`, and `ll-parallel --label` to scope processing to a specific component or effort tier. Synced to GitHub labels on push. |
+| `milestone` | string | absent | Sprint or milestone name this issue is assigned to (e.g., `sprint-2026-q2`). Written automatically by `ll-sprint run` when the sprint starts. Used by `ll-issues list --milestone` to filter issues by sprint, and by `ll-sync` to assign issues to the corresponding GitHub milestone on push. |
 
 ### `testable: false`
 

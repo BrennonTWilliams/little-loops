@@ -232,6 +232,10 @@
           "items": {
             "type": "string"
           }
+        },
+        "milestone": {
+          "type": "string",
+          "description": "Sprint or milestone name this issue is assigned to (e.g., sprint-2026-q2)"
         }
       },
       "additionalProperties": false

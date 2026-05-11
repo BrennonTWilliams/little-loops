@@ -233,6 +233,7 @@ class IssueInfo:
         session_commands: Distinct /ll:* commands found in the ## Session Log section
         session_command_counts: Per-command occurrence counts from the ## Session Log section
         labels: Labels extracted from the ## Labels section of the issue file
+        milestone: Sprint or milestone name this issue is assigned to; None if unassigned
         status: Issue lifecycle status read from frontmatter; defaults to "open"
         parent: Parent issue ID (e.g., EPIC-123); populated from frontmatter `parent:` or deprecated `parent_issue:`
         depends_on: List of issue IDs this issue depends on (soft prerequisite)
@@ -269,6 +270,7 @@ class IssueInfo:
     session_commands: list[str] = field(default_factory=list)
     session_command_counts: dict[str, int] = field(default_factory=dict)
     labels: list[str] = field(default_factory=list)
+    milestone: str | None = None
     status: str = "open"
 
     @property
@@ -312,6 +314,7 @@ class IssueInfo:
             "session_commands": self.session_commands,
             "session_command_counts": self.session_command_counts,
             "labels": self.labels,
+            "milestone": self.milestone,
             "status": self.status,
         }
 
@@ -348,6 +351,7 @@ class IssueInfo:
             session_commands=data.get("session_commands", []),
             session_command_counts=data.get("session_command_counts", {}),
             labels=data.get("labels", []),
+            milestone=data.get("milestone"),
             status=data.get("status", "open"),
         )
 
@@ -538,6 +542,9 @@ class IssueParser:
             else:
                 labels = [str(lb) for lb in fm_labels]
 
+        # Parse milestone from frontmatter
+        milestone: str | None = frontmatter.get("milestone") or None
+
         # Parse session commands from ## Session Log section
         from little_loops.session_log import count_session_commands, parse_session_log
 
@@ -574,6 +581,7 @@ class IssueParser:
             session_commands=session_commands,
             session_command_counts=session_command_counts,
             labels=labels,
+            milestone=milestone,
             status=status,
         )
 

@@ -167,6 +167,12 @@ Examples:
         metavar="LABEL",
         help="Filter by label (repeatable; matches issues whose labels: frontmatter contains LABEL)",
     )
+    ls.add_argument(
+        "--milestone",
+        dest="milestone",
+        metavar="MILESTONE",
+        help="Filter by milestone name (matches issues whose milestone: frontmatter equals MILESTONE)",
+    )
     add_config_arg(ls)
 
     sr = subs.add_parser("search", aliases=["sr"], help="Search issues with filters and sorting")

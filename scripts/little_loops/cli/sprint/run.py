@@ -170,9 +170,17 @@ def _cmd_sprint_run(
         logger.info("Cannot execute sprint with missing issues")
         return 1
 
-    # Skip issues already completed via frontmatter status (ENH-1424)
-    from little_loops.frontmatter import parse_frontmatter
+    # Write milestone: field back to issue files for all valid issues in this sprint
+    from little_loops.frontmatter import parse_frontmatter, update_frontmatter
 
+    for issue_id, path in valid.items():
+        content = path.read_text(encoding="utf-8")
+        updated = update_frontmatter(content, {"milestone": sprint.name})
+        if updated != content:
+            path.write_text(updated, encoding="utf-8")
+    logger.info(f"Set milestone: {sprint.name!r} on {len(valid)} issue file(s)")
+
+    # Skip issues already completed via frontmatter status (ENH-1424)
     still_active: list[str] = []
     for issue_id in issues_to_process:
         path = valid[issue_id]

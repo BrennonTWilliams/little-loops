@@ -2,8 +2,9 @@
 id: ENH-1393
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-09T20:26:09Z'
+completed_at: '2026-05-11T03:51:06Z'
 discovered_date: '2026-05-09'
 discovered_by: capture-issue
 relates_to:
@@ -200,6 +201,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover relevant docs._
 `issue-model`, `sync-compatibility`, `sprint`, `captured`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-11T03:51:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 - `/ll:ready-issue` - 2026-05-11T03:44:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe72425c-a94f-4479-9a2f-dc8b9fbb684f.jsonl`
 - `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68bdc5c1-2a99-4faf-9201-5e06c1424aa6.jsonl`
 - `/ll:wire-issue` - 2026-05-11T03:39:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20c5c5c8-7eb0-45b9-b45b-fbdb88d9ae44.jsonl`

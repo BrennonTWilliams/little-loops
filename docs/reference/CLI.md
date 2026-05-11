@@ -224,6 +224,8 @@ Execute a sprint.
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
 
+> **Milestone write-back**: When `ll-sprint run` starts, it writes `milestone: <sprint-name>` to the frontmatter of every issue in the sprint. This makes the sprint assignment visible on each issue file and enables `ll-issues list --milestone` filtering and `ll-sync` milestone assignment.
+
 #### `ll-sprint list` / `ll-sprint l`
 
 List all sprints.
@@ -502,9 +504,10 @@ List issues with optional filters.
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
 | `--label` | Filter by label from `labels:` frontmatter; repeatable for OR match |
+| `--milestone` | Filter by milestone name from `milestone:` frontmatter (exact match) |
 | `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all` |
 | `--flat` | Output flat list for scripting |
-| `--json` / `-j` | Output as JSON array; each entry includes `id`, `title`, `priority`, `type`, `status`, `path`, and `labels` |
+| `--json` / `-j` | Output as JSON array; each entry includes `id`, `title`, `priority`, `type`, `status`, `path`, `labels`, and `milestone` |
 | `--limit` / `-n` | Cap output at N issues (must be ≥ 1) |
 | `--config` | Path to project root |
 
@@ -1007,7 +1010,7 @@ Show sync status between local issues and GitHub.
 
 #### `ll-sync push [issue_ids...]`
 
-Push local issues to GitHub. If no IDs given, pushes all.
+Push local issues to GitHub. If no IDs given, pushes all. When an issue has a `milestone:` frontmatter field, `ll-sync push` passes it to `gh issue create/edit --milestone <name>` to assign the issue to the matching GitHub milestone (by title).
 
 #### `ll-sync pull`
 

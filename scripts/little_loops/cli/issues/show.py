@@ -249,6 +249,7 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         "integration_files": str(integration_files) if integration_files is not None else None,
         "risk": risk,
         "labels": labels,
+        "milestone": frontmatter.get("milestone") or None,
         "history": history,
         "path": rel_path,
         "source": source,
@@ -357,6 +358,8 @@ def _render_card(fields: dict[str, str | None]) -> str:
         detail_mid_parts.append(f"Integration: {fields['integration_files']} files")
     if fields.get("labels"):
         detail_mid_parts.append(f"Labels: {fields['labels']}")
+    if fields.get("milestone"):
+        detail_mid_parts.append(f"Milestone: {fields['milestone']}")
     if detail_mid_parts:
         detail_lines.append("  \u2502  ".join(detail_mid_parts))
     if fields.get("captured_at"):

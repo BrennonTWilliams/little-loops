@@ -600,6 +600,91 @@ class TestIssuesCLIList:
         for item in data:
             assert "labels" in item
 
+    def test_list_filter_by_milestone_match(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --milestone shows only issues whose milestone: frontmatter equals that name."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P0-BUG-001-crash.md").write_text(
+            "---\nstatus: open\nmilestone: sprint-2026-q2\n---\n# BUG-001: Crash\n"
+        )
+        (bugs_dir / "P1-BUG-002-slow.md").write_text(
+            "---\nstatus: open\n---\n# BUG-002: Slow\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--milestone", "sprint-2026-q2", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-001" in captured.out
+        assert "BUG-002" not in captured.out
+
+    def test_list_filter_by_milestone_no_match(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --milestone with no matching issues prints 'No active issues'."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P0-BUG-001-crash.md").write_text(
+            "---\nstatus: open\nmilestone: sprint-2026-q1\n---\n# BUG-001: Crash\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--milestone", "sprint-2026-q2", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No active issues" in captured.out
+
+    def test_list_json_output_contains_milestone_key(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --json output includes 'milestone' key on every item."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert len(data) > 0
+        for item in data:
+            assert "milestone" in item
+
 
 class TestIssuesCLISequence:
     """Tests for ll-issues sequence sub-command."""

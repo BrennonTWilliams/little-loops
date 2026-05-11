@@ -420,14 +420,16 @@ class GitHubSyncManager:
                 self.logger.info(f"Would create GitHub issue for {issue_id}")
             return
 
+        milestone: str | None = frontmatter.get("milestone") or None
+
         effective_number: int | None = None
         if github_number:
             # Update existing issue
-            self._update_github_issue(int(github_number), full_title, body, issue_id, result)
+            self._update_github_issue(int(github_number), full_title, body, issue_id, result, milestone)
             effective_number = int(github_number)
         else:
             # Create new issue
-            new_number = self._create_github_issue(full_title, body, labels, issue_id, result)
+            new_number = self._create_github_issue(full_title, body, labels, issue_id, result, milestone)
             if new_number:
                 # Update local frontmatter
                 self._update_local_frontmatter(issue_path, content, new_number)
@@ -452,6 +454,7 @@ class GitHubSyncManager:
         labels: list[str],
         issue_id: str,
         result: SyncResult,
+        milestone: str | None = None,
     ) -> int | None:
         """Create a new GitHub issue.
 
@@ -461,6 +464,8 @@ class GitHubSyncManager:
         args = ["issue", "create", "--title", title, "--body", body]
         for label in labels:
             args.extend(["--label", label])
+        if milestone:
+            args.extend(["--milestone", milestone])
 
         try:
             cmd_result = _run_gh_command(args, self.logger)
@@ -485,6 +490,7 @@ class GitHubSyncManager:
         body: str,
         issue_id: str,
         result: SyncResult,
+        milestone: str | None = None,
     ) -> None:
         """Update an existing GitHub issue."""
         args = [
@@ -496,6 +502,8 @@ class GitHubSyncManager:
             "--body",
             body,
         ]
+        if milestone:
+            args.extend(["--milestone", milestone])
         try:
             _run_gh_command(args, self.logger)
             result.updated.append(f"{issue_id} → #{github_number}")

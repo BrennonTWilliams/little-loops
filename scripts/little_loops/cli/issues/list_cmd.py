@@ -42,6 +42,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     type_filter = getattr(args, "type", None)
     priority_filter: set[str] | None = parse_priorities(getattr(args, "priority", None))
     label_filters: list[str] = getattr(args, "label", None) or []
+    milestone_filter: str | None = getattr(args, "milestone", None) or None
 
     filtered = [
         (issue, stat)
@@ -49,6 +50,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
         if (not type_filter or issue.issue_id.split("-", 1)[0] == type_filter)
         and (not priority_filter or issue.priority in priority_filter)
         and (not label_filters or any(lf.lower() in [lb.lower() for lb in issue.labels] for lf in label_filters))
+        and (not milestone_filter or issue.milestone == milestone_filter)
     ]
 
     # Sort
@@ -114,6 +116,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                     "status": stat,
                     "discovered_date": disc_date.date().isoformat() if disc_date else None,
                     "labels": lbls,
+                    "milestone": issue.milestone,
                 }
                 for issue, stat, disc_date, _comp_date, lbls in enriched
             ]
