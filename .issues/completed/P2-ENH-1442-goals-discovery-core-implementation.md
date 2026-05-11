@@ -5,12 +5,14 @@ type: ENH
 parent: ENH-1400
 blocked_by:
 - ENH-1402
-confidence_score: 90
-outcome_confidence: 75
+confidence_score: 100
+outcome_confidence: 68
 score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 18
-score_change_surface: 25
+score_change_surface: 18
+size: Very Large
+status: done
 ---
 
 # ENH-1442: Goals Discovery — Core Implementation (scan-product, product-analyzer, hooks, tests)
@@ -29,7 +31,7 @@ Decomposed from ENH-1400: Implement `goals_discovery` in product-analyzer
 - `skills/product-analyzer/SKILL.md` — remove hard-stop on missing goals file; remove `### 2. Load Product Goals` independent file read; update `analysis_metadata` with `goals_source` and `discovered_from` fields; update `skipped_reason` enum (replace `goals_file_missing` with `goals_content_missing`)
 - `hooks/scripts/session-start.sh` — downgrade `"Warning: product.enabled is true but goals file not found"` in `validate_enabled_features()` (lines 134–143) to an informational notice or remove it; missing `ll-goals.md` with `product.enabled: true` is valid after this change
 - `scripts/tests/test_hooks_integration.py` — update `test_warns_product_without_goals` (line 1649) assertion to match changed hook message (or remove if warning is dropped)
-- `scripts/tests/test_enh1400_product_analyzer_wiring.py` (new) — doc-wiring assertions per Integration Map
+- `scripts/tests/test_enh1442_doc_wiring.py` (new) — doc-wiring assertions per Integration Map
 
 ## Proposed Solution
 
@@ -68,7 +70,7 @@ Access config values via `{{config.product.goals_discovery.max_files}}` and `{{c
   ```
 - `skipped_reason` valid values after this change: `not_enabled`, `goals_content_missing` (new, for caller error)
 
-### `scripts/tests/test_enh1400_product_analyzer_wiring.py` (new)
+### `scripts/tests/test_enh1442_doc_wiring.py` (new)
 
 Assertions to include (follow pattern from `scripts/tests/test_enh1362_doc_wiring.py`):
 - `goals_file_missing` absent from `SKILL.md`
@@ -93,9 +95,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `hooks/scripts/session-start.sh:134–143` — `validate_enabled_features()` product block; the block reads `product.enabled` + `product.goals_file`, then runs `[ ! -f "$goals_file" ]` and echoes `"[little-loops] Warning: product.enabled is true but goals file not found: $goals_file"` to stderr
 - `skills/product-analyzer/SKILL.md:17` — `## Context` section preamble; item 1 reads "**Product Goals** (`.ll/ll-goals.md`)" as the sole source; update to mention both explicit and discovered sources alongside the explicit path [Wiring pass]
 - `skills/product-analyzer/SKILL.md:267` — `## What NOT to Do` section; contains "Don't proceed without `ll-goals.md`" instruction; must be removed or softened to reflect the discovery fallback path [Wiring pass]
+- `skills/product-analyzer/SKILL.md` — `### 3. Goal-Gap Analysis`, `### 4. Persona Journey Analysis`, `### 5. Business Value Opportunities` output templates; each evidence block hardcodes `file: ".ll/ll-goals.md"` as the evidence source; must be generalized to reflect the actual source file (discovered file path or `ll-goals.md`) when `goals_source: discovered` [Wiring pass 2]
+- `commands/scan-product.md` — `### 6.5. Confirm Issue Creation` and `### 8. Output Report` both display `**Goals File**: {{config.product.goals_file}}`; this will be misleading when goals were synthesized from discovered docs; must show actual source used (e.g., `**Goals Source**: auto-discovered from N docs` or the explicit path) [Wiring pass 2]
 
 ### New Files
-- `scripts/tests/test_enh1400_product_analyzer_wiring.py` — new doc-wiring test file; no existing ENH-1400 test file found
+- `scripts/tests/test_enh1442_doc_wiring.py` — new doc-wiring test file (follows codebase convention: `test_enh<issue-number>_doc_wiring.py`)
 
 ### Dependent Files (Callers/Importers)
 - `config-schema.json:767–786` — `goals_discovery` object already defined inside `product` with `max_files` (integer, default 5, range 1–20) and `required_files` (array, default `["README.md"]`); no schema changes needed
@@ -111,9 +115,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Tests
 - `scripts/tests/test_hooks_integration.py:1649` — existing test to update (asserts old warning string)
-- `scripts/tests/test_enh1400_product_analyzer_wiring.py` — new test file to create
+- `scripts/tests/test_enh1442_doc_wiring.py` — new test file to create
 - `scripts/tests/test_goals_parser.py` — existing goals-parser tests (no changes needed)
 - `scripts/tests/test_hooks_integration.py:1671` — `test_no_warnings_when_properly_configured`; passes `goals_file` in config and creates the file; stays green post-change but stops verifying meaningful behavior if the warning block is dropped — review whether a new assertion for the `Note:` message (if kept) is needed [Wiring pass]
+- `scripts/tests/test_enh1402_doc_wiring.py` — `TestGoalsFilePathFromConfig.test_section2_references_product_goals_file_config` (line ~122); calls `content.index("### 2. Load Product Goals")` and asserts `"product.goals_file"` is in that section; will raise `ValueError` if the heading is removed during ENH-1442 rewrite of Section 2 — **preserve the `### 2. Load Product Goals` heading** and ensure `product.goals_file` reference remains in the conditional branch [Wiring pass 2]
+- `scripts/tests/test_enh1403_doc_wiring.py` — `TestSkillSection2ConditionalGoalsRead.test_section2_references_product_goals_file_config` (line ~59); same `### 2. Load Product Goals` heading dependency; must also survive the Section 2 rewrite [Wiring pass 2]
 
 ### Documentation
 - `docs/reference/CONFIGURATION.md` — documents `product.goals_discovery` schema (handled in ENH-1443, not this issue)
@@ -138,7 +144,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 4. **Update `scripts/tests/test_hooks_integration.py:1649`** — Update `test_warns_product_without_goals` to assert the new informational message if kept, or remove the test if the warning block is dropped
 
-5. **Create `scripts/tests/test_enh1400_product_analyzer_wiring.py`** — Follow `scripts/tests/test_enh1362_doc_wiring.py` class-per-surface structure. Assertions per issue Proposed Solution:
+5. **Create `scripts/tests/test_enh1442_doc_wiring.py`** — Follow `scripts/tests/test_enh1362_doc_wiring.py` class-per-surface structure. Assertions per issue Proposed Solution:
    - `goals_file_missing` absent from `skills/product-analyzer/SKILL.md`
    - `goals_content_missing` present as a `skipped_reason` in `SKILL.md`
    - `### 2. Load Product Goals` does not unconditionally contain `Read .ll/ll-goals.md`
@@ -146,7 +152,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    - `{{config.product.goals_discovery.max_files}}` and `{{config.product.goals_discovery.required_files}}` present in `commands/scan-product.md`
    - `"Goals file not found"` hard-exit block absent from `commands/scan-product.md`
 
-6. **Run tests** — `python -m pytest scripts/tests/test_hooks_integration.py -v -k "product" && python -m pytest scripts/tests/test_enh1400_product_analyzer_wiring.py -v`
+6. **Run tests** — `python -m pytest scripts/tests/test_hooks_integration.py -v -k "product" && python -m pytest scripts/tests/test_enh1402_doc_wiring.py scripts/tests/test_enh1403_doc_wiring.py scripts/tests/test_enh1442_doc_wiring.py -v`
+   _(Note: `test_enh1400_product_analyzer_wiring.py` does not exist — the pre-existing wiring tests live in `test_enh1402` and `test_enh1403`)_
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -155,6 +162,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 7. **Update `skills/product-analyzer/SKILL.md` `## Context` section (line ~17)** — item 1 currently reads "**Product Goals** (`.ll/ll-goals.md`)"; update to reflect that goals may come from either explicit `ll-goals.md` or synthesized from discovered files
 8. **Update `skills/product-analyzer/SKILL.md` `## What NOT to Do` section (line ~267)** — remove or soften "Don't proceed without `ll-goals.md`" to reflect the discovery fallback path (missing `ll-goals.md` is now valid when discovery succeeds)
 9. **Verify `scripts/tests/test_hooks_integration.py:1671` (`test_no_warnings_when_properly_configured`)** — stays green but tests diminished behavior if the warning block is dropped; decide whether to add a new assertion for the `Note:` message (if kept) or leave as a smoke test
+10. **Generalize evidence `file:` fields in `skills/product-analyzer/SKILL.md` Sections 3–5** — each of `### 3. Goal-Gap Analysis`, `### 4. Persona Journey Analysis`, `### 5. Business Value Opportunities` contains an evidence block with `file: ".ll/ll-goals.md"`; update to reference the actual goals source file (use `{{goals_source_file}}` or equivalent placeholder to reflect discovered vs explicit path) [Wiring pass 2]
+11. **Update output display in `commands/scan-product.md` Steps 6.5 and 8** — both steps currently show `**Goals File**: {{config.product.goals_file}}`; change to display actual source: `**Goals Source**: {{config.product.goals_file}}` when explicit, or `**Goals Source**: auto-discovered from N files ({{GOALS_DISCOVERED_FROM}})` when in discovery mode [Wiring pass 2]
+12. **Verify `scripts/tests/test_enh1402_doc_wiring.py` and `test_enh1403_doc_wiring.py` survive Section 2 rewrite** — both files use `content.index("### 2. Load Product Goals")` to scope assertions; the heading must be preserved exactly; `product.goals_file` reference must remain in the conditional branch so their `test_section2_references_product_goals_file_config` assertions pass [Wiring pass 2]
 
 ## Acceptance Criteria
 
@@ -188,7 +198,36 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-05-11 | Priority: P2
 
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-05-11
+- **Reason**: Issue too large for single session (score: 11/11 — Very Large)
+
+### Decomposed Into
+- ENH-1444: Goals Discovery — Implementation (scan-product, SKILL.md, wiring tests)
+- ENH-1445: Goals Discovery — Hook Warning Fix + Test Update
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-11_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 68/100 → MODERATE
+
+### Outcome Risk Factors
+- **Moderate change breadth** — 6-15 distinct change sites across 5 files; manageable but requires systematic execution through all 12 implementation steps
+- **Compatibility constraints on two existing tests** — `test_enh1402_doc_wiring.py` and `test_enh1403_doc_wiring.py` both use `content.index("### 2. Load Product Goals")` and assert `product.goals_file` is in that section; the heading must be preserved exactly and the `product.goals_file` reference retained in the conditional branch during the Section 2 rewrite
+- **Discovery algorithm is markdown-only** — the new file-discovery and synthesis logic in `commands/scan-product.md` has no execution-level unit test; correctness depends on doc-wiring assertions plus manual walkthrough
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-05-11T19:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0abadba2-fa26-422a-8f2e-9ed2d2744c98.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/510b8632-aa30-48aa-84bd-7fbb58b199e9.jsonl`
+- `/ll:wire-issue` - 2026-05-11T19:19:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/58ce4a17-05ac-4da2-a843-1fdb8f6a75a6.jsonl`
+- `/ll:refine-issue` - 2026-05-11T19:13:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3036d514-e8b7-4f4f-bb91-7ecd12913690.jsonl`
+- `/ll:refine-issue` - 2026-05-11T19:13:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3036d514-e8b7-4f4f-bb91-7ecd12913690.jsonl`
 - `/ll:wire-issue` - 2026-05-11T08:20:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d5472e8-2046-416d-aef1-36891c83fc07.jsonl`
 - `/ll:refine-issue` - 2026-05-11T08:13:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a51073a8-32f8-4cb4-b8d7-89559d2abda8.jsonl`
 - `/ll:issue-size-review` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a400556-76fe-4ad7-9557-40b6a1c32a72.jsonl`

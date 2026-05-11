@@ -70,26 +70,35 @@ Before scanning, verify product analysis is properly configured:
      For more information, see FEAT-020: Product Analysis Opt-In Configuration.
      ```
 
-2. **Check goals file exists**:
+2. **Load goals context (explicit or discovered)**:
+   - Read `{{config.product.goals_discovery.max_files}}` (default 5) and `{{config.product.goals_discovery.required_files}}` (default `["README.md"]`)
    - Get goals file path from `product.goals_file` (default: `.ll/ll-goals.md`)
-   - Verify file exists using `test -f` or `ls`
-   - If missing, inform user and exit:
-     ```markdown
-     ## Product Goals File Not Found
 
-     Goals file not found: {{config.product.goals_file}}
+   **If `{{config.product.goals_file}}` exists** (explicit mode):
+   - Set `GOALS_SOURCE=explicit`
+   - `### 2. Load Product Context` will read the file and set `GOALS_CONTENT`
 
-     To use product scanning, create a goals document with your product vision,
-     personas, and strategic priorities.
+   **If `{{config.product.goals_file}}` is missing** (discovery mode):
+   - `Warning: '{{config.product.goals_file}}' not found — synthesizing goals context from discovered documentation`
+   - For each entry in `{{config.product.goals_discovery.required_files}}`: if absent, warn but continue
+   - Discover candidate files in priority order (up to `{{config.product.goals_discovery.max_files}}` total):
+     1. Entries in `{{config.product.goals_discovery.required_files}}` (if they exist)
+     2. `**/ROADMAP*.md`, `**/roadmap*.md`
+     3. `**/vision*.md`, `**/goals*.md`
+     4. `**/requirements*.md`, `**/product*.md`
+     5. `README.md` (always included)
+     6. `CONTRIBUTING.md`
+   - Read the discovered files; synthesize `GOALS_CONTENT` (infer persona from "for"/"who uses" language, infer priorities from headers and roadmap items)
+   - Set `GOALS_SOURCE=discovered`
+   - Set `GOALS_DISCOVERED_FROM=[list of files read]`
 
-     For more information, see FEAT-021: Goals/Vision Ingestion Mechanism.
-     ```
+   **Always proceed to Step 3 regardless of results.**
 
-If either check fails, stop execution. Do not proceed with scanning.
+If the `product.enabled` check fails, stop execution. Do not proceed with scanning.
 
 ### 2. Load Product Context
 
-Read and parse the goals file to provide context for analysis:
+**If `GOALS_SOURCE=explicit`**, read and parse the goals file to provide context for analysis:
 
 1. **Read the goals file**:
    ```bash
@@ -106,6 +115,10 @@ Read and parse the goals file to provide context for analysis:
    - `PERSONA_NAME`: Primary persona name
    - `PRIORITIES_COUNT`: Number of strategic priorities
    - `GOALS_CONTENT`: Full markdown for passing to skill
+
+**If `GOALS_SOURCE=discovered`**, `GOALS_CONTENT` is already synthesized from Step 1. Extract:
+- `PERSONA_NAME`: Inferred from "for"/"who uses" language in the discovered files
+- `PRIORITIES_COUNT`: Inferred from headers and roadmap items in the discovered files
 
 **Note**: `GOALS_CONTENT` is injected into the skill prompt under `## Goals Document`. The skill trusts this injected content and will not re-read the goals file when it is provided.
 
@@ -288,7 +301,7 @@ Before creating any files, present a summary to the user:
 ## Product Scan: Issues to Create
 
 ### Scan Context
-- **Goals File**: {{config.product.goals_file}}
+- **Goals Source**: `{{config.product.goals_file}}` (explicit) or `auto-discovered from {{GOALS_DISCOVERED_FROM}}` (when `GOALS_SOURCE=discovered`)
 - **Persona**: [PERSONA_NAME]
 - **Priorities Analyzed**: [PRIORITIES_COUNT]
 
@@ -343,7 +356,7 @@ Generate a comprehensive product scan report:
 - **Branch**: [BRANCH_NAME]
 - **Date**: [SCAN_DATE]
 - **Repository**: [REPO_OWNER]/[REPO_NAME]
-- **Goals File**: {{config.product.goals_file}}
+- **Goals Source**: `{{config.product.goals_file}}` (explicit) or `auto-discovered from {{GOALS_DISCOVERED_FROM}}` (when `GOALS_SOURCE=discovered`)
 - **Persona**: [PERSONA_NAME]
 - **Priorities Analyzed**: [PRIORITIES_COUNT]
 
