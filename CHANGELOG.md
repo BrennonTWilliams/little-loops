@@ -12,6 +12,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.100.0] - 2026-05-10
+
+### Added
+
+- **EPIC Type — Core Registration and Parsing** — Registers EPIC as a first-class issue type with core infrastructure, parsing, and schema support. (FEAT-1405)
+- **EPIC Type — Skills, Commands, and Documentation Updates** — Extends all skills, commands, and documentation surfaces to recognize and handle EPIC type issues. (FEAT-1407)
+- **EPIC Type — CLI Display, Argparse Choices, and Tests** — Adds EPIC to all CLI display paths, argparse choices, and test coverage. (FEAT-1410)
+- **EPIC Type — Regex-Based Callers, Anchor Sweep, and Tests** — Extends regex-based callers and anchor sweep to include EPIC type patterns. (FEAT-1411)
+- **Startup Reconciliation Sweep for Stale `.running/` Files** — FSM startup now detects and cleans up stale `.running/` state files left from interrupted sessions. (ENH-1399)
+
+### Fixed
+
+- **`decide-issue --auto` Asks Interactive Questions** — Adds Phase 3b inline provisional scan for `--auto` mode so provisional decisions are resolved non-interactively. (BUG-1416)
+- **`ll-loop` Go/No-Go Gate Broken** — Restored go/no-go gate by using the `invoke` subcommand in the `ll-action` call for loop states. (91a9166)
+- **`implement_issue` Hangs on Already-Completed Issues** — Added completion guard to prevent the FSM from hanging when `implement_issue` is invoked on an issue already marked done. (1f16f7c)
+- **`ll-issues list` Treats `status: completed` as Open** — Status `completed` is now treated as `done` in list output, matching the canonical status vocabulary. (d55db5c)
+
+### Changed
+
+- **Issue Status Decoupled from Directory Location** — `IssueInfo.status` field now drives all status checks across `ll-issues`, `ll-sync`, sprint runner, parallel orchestrator, and `issue_manager`; directory-based status methods are deprecated. (ENH-1417, ENH-1423, ENH-1424, ENH-1426, ENH-1427)
+- **Confidence-Check Criterion A Split into Breadth × Depth** — Criterion A (Complexity) is replaced by two sub-scores — Breadth (number of call sites) and Depth (layer-crossing) — for more precise assessment. (ENH-1413)
+- **Confidence-Check Criterion D Credits Mechanical Fanouts** — The Change Surface rubric now credits enumerated mechanical fanouts such as CLI flags and serialization fields. (ENH-1412)
+- **Relationship Migration Script** — Added `ll-migrate-relationships` to rename deprecated `parent_issue:` → `parent:` and `related:` → `relates_to:` across all issue files. (ENH-1434)
+- **Issue Model: `milestone:` and `labels:` Frontmatter Fields** — Added `milestone:` (with `--milestone` filter) and `labels:` (with `--label` filter) to `IssueInfo` and CLI. (a052e18, 85653bf)
+- **Dependency Graph Enhancements** — Added `depends_on_edges` field and soft-ordering of `depends_on` targets in `get_execution_waves()`. (0cc0fad, 22d2dce)
+- **Relationship Field Standardization** — Standardized `blocked_by`, `duplicate_of`, `relates_to`, and `parent` relationship fields across skills, docs, and GitHub sync. (16a3ae6, 694ea9f, e7d4d5d)
+- **`disable-model-invocation` Added to 16 Operational Skills** — Prevents accidental model calls from operational skills that should only perform file/tool operations. (2bc2e2f)
+
 ## [1.99.0] - 2026-05-09
 
 ### Added
@@ -103,7 +131,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.99.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.100.0...HEAD
+[1.100.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.99.0...v1.100.0
 [1.99.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.98.0...v1.99.0
 [1.98.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.97.0...v1.98.0
 [1.97.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.96.0...v1.97.0
