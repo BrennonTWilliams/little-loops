@@ -68,10 +68,10 @@ class TestConfigureAreasWiring:
 class TestFeat1045DocUpdates:
     """FEAT-1045: SDK documentation is accurate across all docs after implementation."""
 
-    def test_readme_cli_section_has_ll_create_extension(self) -> None:
-        content = README.read_text()
+    def test_cli_reference_has_ll_create_extension(self) -> None:
+        content = CLI_REFERENCE.read_text()
         assert "ll-create-extension" in content, (
-            "README.md must have an ll-create-extension section in the CLI Tools block"
+            "docs/reference/CLI.md must have an ll-create-extension section"
         )
 
     def test_readme_tool_count_is_20(self) -> None:
@@ -183,9 +183,9 @@ class TestFeat1229LlActionWiring:
         content = CLI_REFERENCE.read_text()
         assert "ll-action" in content, "docs/reference/CLI.md must have an ll-action section"
 
-    def test_readme_has_ll_action_section(self) -> None:
-        content = README.read_text()
-        assert "ll-action" in content, "README.md must have an ll-action section in CLI Tools"
+    def test_cli_reference_has_ll_action(self) -> None:
+        content = CLI_REFERENCE.read_text()
+        assert "ll-action" in content, "docs/reference/CLI.md must have an ll-action section"
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
@@ -237,8 +237,4 @@ class TestEnh1435LlMigrateRelationshipsWiring:
 
     def test_cli_reference_has_ll_migrate_relationships_section(self) -> None:
         content = CLI_REFERENCE.read_text()
-        assert "ll-migrate-relationships" in content
-
-    def test_readme_has_ll_migrate_relationships_section(self) -> None:
-        content = README.read_text()
         assert "ll-migrate-relationships" in content
