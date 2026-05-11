@@ -232,7 +232,7 @@ Use the type-specific label for this criterion:
 1. For **bugs**: Check issue has a "Problem Analysis" or "Root Cause" section with specific file:line references
 2. For **features**: Check issue has clear requirements (not just "add X" but "add X that does Y when Z")
 3. For **enhancements**: Check issue explains what's wrong with current behavior and what specifically should change
-4. For **epics**: Check the EPIC has a defined coordination scope (what it groups and why), an enumerated list of child issues (via `children:` frontmatter or `parent_issue: EPIC-NNN` references), and that each child is itself implementable (not a placeholder)
+4. For **epics**: Check the EPIC has a defined coordination scope (what it groups and why), an enumerated list of child issues (via `children:` frontmatter or `parent: EPIC-NNN` references in child issues), and that each child is itself implementable (not a placeholder)
 5. Verify claims in the issue against actual code (do referenced files/functions exist? do they behave as described?)
 
 **Scoring** (use the table matching the issue type):

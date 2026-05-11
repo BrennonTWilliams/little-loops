@@ -387,6 +387,21 @@ All issues should pass these checks:
 - Justify priority/effort/risk decisions
 - Link relevant documentation
 
+### Relationship Fields
+
+Issues use six frontmatter fields to express relationships between issues. Use the canonical names — deprecated names (`parent_issue`, `related`) are no longer accepted.
+
+| Field | Type | When to use |
+|-------|------|-------------|
+| `parent` | string | This issue was decomposed from a parent (e.g., `parent: ENH-179`) |
+| `blocked_by` | list | Hard dependency — this issue **cannot start** until listed issues are done; wave-gated in sprints |
+| `depends_on` | list | Soft ordering — this issue *should* come after listed issues, but sprint execution is not blocked |
+| `relates_to` | list | Thematically related issues with no ordering constraint; for cross-reference only |
+| `duplicate_of` | string | This issue duplicates another; set when closing as duplicate |
+| `blocks` | list | Computed inverse of `blocked_by`; written automatically by `ll-deps fix` — do not set manually |
+
+**`blocked_by` vs `depends_on`**: Use `blocked_by` only when ISSUE-B **must** complete before ISSUE-A can start (hard stop, sprint wave-gated). Use `depends_on` for preferred ordering that does not gate execution.
+
 ## Adding Commands
 
 Commands are defined as Markdown files in `commands/`:

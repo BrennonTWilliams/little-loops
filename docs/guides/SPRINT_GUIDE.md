@@ -44,6 +44,17 @@ Wave 3: FEAT-004             ← solo (Wave 2 done)
 
 You don't configure waves — you configure dependencies (via the `blocked_by` field in issue files), and the system derives the wave structure.
 
+### `blocked_by` vs `depends_on`
+
+Two relationship fields affect sprint scheduling differently:
+
+| Field | Arrow | Effect on sprint |
+|-------|-------|-----------------|
+| `blocked_by` | `──→` (hard dependency) | Wave-gated — the dependent issue is held back until all listed issues are done |
+| `depends_on` | `-->` (soft ordering) | Not wave-gated — recorded for context and `ll-deps` validation but does not delay execution |
+
+Use `blocked_by` when ISSUE-A **cannot start** until ISSUE-B is merged (e.g., ISSUE-A calls an API that ISSUE-B introduces). Use `depends_on` when the ordering is recommended but the issues can technically proceed in parallel (e.g., ISSUE-A tests a subsystem that ISSUE-B improves, but ISSUE-A is still valid without ISSUE-B).
+
 ### Single vs. Multi-Issue Waves
 
 - **Single-issue wave**: runs in-place without worktree overhead (fast path)
@@ -389,10 +400,10 @@ Build a sprint from issues related to a specific theme:
 When issues have a natural ordering, dependency-aware sprinting is the key advantage:
 
 ```
-1. Create issues with blocked_by fields:
+1. Create issues with blocked_by (hard) or depends_on (soft) fields:
      FEAT-010 has no blockers
-     FEAT-011 blocked_by: [FEAT-010]
-     FEAT-012 blocked_by: [FEAT-010]
+     FEAT-011 blocked_by: [FEAT-010]   # hard stop — wave-gated
+     FEAT-012 depends_on: [FEAT-010]   # soft ordering — not wave-gated
      FEAT-013 blocked_by: [FEAT-011, FEAT-012]
 2. /ll:map-dependencies            ← validates the graph, proposes missing edges
 3. ll-sprint create feature-sprint --issues FEAT-010,FEAT-011,FEAT-012,FEAT-013

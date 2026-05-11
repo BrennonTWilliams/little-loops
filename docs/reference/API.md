@@ -562,8 +562,12 @@ class IssueInfo:
     priority: str                           # e.g., "P1"
     issue_id: str                           # e.g., "BUG-123"
     title: str                              # Issue title
-    blocked_by: list[str] = []             # Issue IDs that block this issue
-    blocks: list[str] = []                 # Issue IDs that this issue blocks
+    blocked_by: list[str] = []             # Issue IDs that block this issue (hard dependency — wave-gated)
+    blocks: list[str] = []                 # Issue IDs that this issue blocks (computed inverse of blocked_by)
+    parent: str | None = None              # Parent issue ID this was decomposed from (e.g., "ENH-179")
+    depends_on: list[str] = []            # Soft ordering prerequisites (preferred ordering, not wave-gated)
+    relates_to: list[str] = []            # Thematically related issue IDs (no ordering constraint)
+    duplicate_of: str | None = None        # Issue ID this duplicates; set when closing a duplicate
     discovered_by: str | None = None       # Source command/workflow that created this issue
     product_impact: ProductImpact | None = None  # Product impact assessment
     effort: int | None = None              # Effort estimate (1=low, 2=medium, 3=high)

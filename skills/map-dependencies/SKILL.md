@@ -10,7 +10,22 @@ allowed-tools:
 
 # Map Dependencies Skill
 
-This skill performs cross-issue dependency analysis to discover missing relationships, validate existing references, and propose new `## Blocked By` / `## Blocks` entries.
+This skill performs cross-issue dependency analysis to discover missing relationships, validate existing references, and propose new dependency links using the canonical 6-field relationship vocabulary.
+
+### Canonical Relationship Fields
+
+Issues use six frontmatter fields to express relationships:
+
+| Field | Type | Meaning | Ordering |
+|-------|------|---------|---------|
+| `parent` | string | Parent issue this was decomposed from | — |
+| `blocked_by` | list | Hard dependencies — `──→` — must complete before this issue can start (wave-gated) | Hard stop |
+| `depends_on` | list | Soft ordering prerequisites — `-->` — preferred ordering but not wave-gated | Soft |
+| `relates_to` | list | Thematically related issues (no ordering constraint) | — |
+| `duplicate_of` | string | Superseded by another issue | — |
+| `blocks` | list | Computed inverse of `blocked_by`; written by `ll-deps fix` | — |
+
+Use `blocked_by` only when ISSUE-B **must** complete before ISSUE-A can start. For preferred-but-not-required ordering, use `depends_on` instead.
 
 ## When to Activate
 

@@ -209,7 +209,7 @@ For each candidate issue:
    id: [TYPE]-[NNN]
    priority: [P0-P5]
    type: [BUG|FEAT|ENH|EPIC]
-   parent_issue: [PARENT-ID]
+   parent: [PARENT-ID]
    ---
 
    # [TYPE]-[NNN]: [Specific Title]
@@ -274,7 +274,7 @@ For each approved decomposition:
 2. **Create child issue files**:
    - Determine target directory based on type (bugs/, features/, enhancements/)
    - Generate filename: `P[priority]-[TYPE]-[NNN]-[slug].md`
-   - Write issue content using the Phase 4 draft template; the frontmatter block **must** include `parent_issue: [PARENT-ID]` (bare issue ID, e.g. `ENH-179`) to make the parent→child relationship machine-readable
+   - Write issue content using the Phase 4 draft template; the frontmatter block **must** include `parent: [PARENT-ID]` (bare issue ID, e.g. `ENH-179`) to make the parent→child relationship machine-readable
    - For each child issue file created, append a session log entry:
 
 ```markdown

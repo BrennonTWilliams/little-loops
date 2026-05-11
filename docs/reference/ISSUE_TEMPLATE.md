@@ -519,7 +519,7 @@ As a user, I want the sprint to retry failures so that I don't have to manually 
 - [ ] Proposed Solution references existing utilities/patterns to reuse
 
 ### EPIC-Specific
-- [ ] Child Issues are enumerated (via `children:` frontmatter or `parent_issue: EPIC-NNN` references in child issues)
+- [ ] Child Issues are enumerated (via `children:` frontmatter or `parent: EPIC-NNN` references in child issues)
 - [ ] Each child is itself implementable (not a placeholder)
 - [ ] Coordination Scope is bounded: clearly states what is and is not in scope across the children
 - [ ] Acceptance Criteria describe cross-child outcomes, not duplicate per-child criteria
@@ -893,7 +893,10 @@ Issue files may include a YAML frontmatter block at the top of the file. The fol
 | `size` | string | absent | Size label written by `/ll:issue-size-review`: `Small`, `Medium`, `Large`, or `Very Large` |
 | `decision_needed` | bool | absent | Set to `true` by `/ll:refine-issue --auto` when 2+ implementation options are deposited into `Proposed Solution`; signals automated pipelines (`ll-auto`, `ll-parallel`) to invoke `/ll:decide-issue` before implementation; cleared to `false` by `/ll:decide-issue` after the winning option is annotated |
 | `missing_artifacts` | bool | absent | Set to `true` by `/ll:confidence-check` (Phase 4.7) when Outcome Risk Factors contain signal phrases indicating absent files or unwired components (e.g., "not yet created", "does not exist", "needs wiring"); routes autodev to `/ll:wire-issue` before attempting size-review |
-| `parent_issue` | string | absent | Bare issue ID of the parent issue that was decomposed to create this child (e.g., `ENH-179`). Written automatically by `/ll:issue-size-review` (Phase 4 and Phase 6) when generating child issues. Machine-readable; used alongside the `## Parent Issue` body section for parent→child tracing. |
+| `parent` | string | absent | Bare issue ID of the parent issue that was decomposed to create this child (e.g., `ENH-179`). Written automatically by `/ll:issue-size-review` (Phase 4 and Phase 6) when generating child issues. Machine-readable; used alongside the `## Parent Issue` body section for parent→child tracing. |
+| `depends_on` | list of strings | absent | Soft ordering prerequisites — preferred ordering before this issue is started, but not wave-gated (sprint proceeds without waiting). Use when sequencing is desirable but not strictly required. |
+| `relates_to` | list of strings | absent | Thematically related issue IDs with no ordering constraint. Used for cross-reference and discoverability; does not affect sprint wave scheduling. |
+| `duplicate_of` | string | absent | Bare issue ID of the issue this duplicates. Set when closing a duplicate; routes automated pipelines to the canonical issue instead. |
 
 ### `testable: false`
 

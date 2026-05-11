@@ -45,7 +45,11 @@ id: BUG-042
 title: Fix login timeout
 status: open
 priority: P2
-blocked_by: []
+parent: ENH-040            # parent issue this was decomposed from (omit if top-level)
+blocked_by: []             # hard dependencies — must complete before this issue starts
+depends_on: []             # soft ordering prerequisites — preferred order, not wave-gated
+relates_to: []             # thematically related issues (no ordering constraint)
+duplicate_of:              # set when closing as duplicate of another issue
 ---
 ```
 

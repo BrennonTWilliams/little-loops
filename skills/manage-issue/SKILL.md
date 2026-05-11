@@ -51,7 +51,7 @@ This command uses project configuration from `.ll/ll-config.json`:
 └── deferred/       # ALL deferred/parked issues go here (sibling to categories)
 ```
 
-**EPIC handling**: An EPIC is a coordination container, not a directly implementable unit. When `issue_type=epic`, do NOT proceed to implementation — instead, list the EPIC's child issues (via `parent_issue: EPIC-NNN` references or the EPIC's `children:` frontmatter), and redirect the user to run `/ll:manage-issue` on individual children, or to run `/ll:create-sprint` with the children for grouped execution. `ll-auto` and `ll-parallel` should be invoked with `--type BUG,FEAT,ENH` to skip EPICs in batch runs.
+**EPIC handling**: An EPIC is a coordination container, not a directly implementable unit. When `issue_type=epic`, do NOT proceed to implementation — instead, list the EPIC's child issues (via `parent: EPIC-NNN` references in child issues or the EPIC's `children:` frontmatter), and redirect the user to run `/ll:manage-issue` on individual children, or to run `/ll:create-sprint` with the children for grouped execution. `ll-auto` and `ll-parallel` should be invoked with `--type BUG,FEAT,ENH` to skip EPICs in batch runs.
 
 ---
 

@@ -231,12 +231,14 @@ questions:
 
 ```yaml
 questions:
-  - question: "Add blocked_by link: [ISSUE-A] should depend on [ISSUE-B]?"
+  - question: "Add dependency link: [ISSUE-A] should depend on [ISSUE-B]. Which field?"
     header: "[ISSUE-A]"
     multiSelect: false
     options:
-      - label: "Yes, add blocked_by frontmatter"
-        description: "Appends blocked_by: [ISSUE-B] to [ISSUE-A] frontmatter"
+      - label: "blocked_by (hard stop)"
+        description: "Appends blocked_by: [ISSUE-B] to [ISSUE-A] frontmatter — ISSUE-B must complete before ISSUE-A can start (wave-gated)"
+      - label: "depends_on (soft ordering)"
+        description: "Appends depends_on: [ISSUE-B] to [ISSUE-A] frontmatter — preferred when ordering is desirable but not strictly required"
       - label: "No, skip"
         description: "Leave both issues unchanged"
 ```
@@ -307,7 +309,7 @@ ll-issues append-log "[kept-issue-path]" /ll:audit-issue-conflicts
 
 ### add_dependency
 
-Append `blocked_by: [ISSUE-B]` to the frontmatter of the dependent issue file using Edit. Then append session log:
+Append either `blocked_by: [ISSUE-B]` (hard stop — must complete first) or `depends_on: [ISSUE-B]` (soft ordering — preferred when no hard dependency exists) to the frontmatter of the dependent issue file using Edit, according to the user's choice from the interactive prompt. Then append session log:
 
 ```bash
 ll-issues append-log "[issue-path]" /ll:audit-issue-conflicts
