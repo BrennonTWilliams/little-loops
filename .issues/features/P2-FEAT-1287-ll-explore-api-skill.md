@@ -138,7 +138,7 @@ Output: `.ll/learning-tests/<slug>.md` in `LearnTestRecord` format (FEAT-1285 sc
 
 ## Labels
 
-`feat`, `skill`, `learning-tests`, `captured`
+`feat`, `skill`, `learning-tests`, `learning-testing`, `captured`
 
 ---
 

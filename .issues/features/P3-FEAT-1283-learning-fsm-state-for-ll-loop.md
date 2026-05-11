@@ -157,7 +157,7 @@ class LearningStateHandler:
 
 ## Labels
 
-`enhancement`, `autonomy`, `fsm`, `learning-tests`, `captured`
+`enhancement`, `autonomy`, `fsm`, `learning-tests`, `learning-testing`, `captured`
 
 ## Verification Notes
 

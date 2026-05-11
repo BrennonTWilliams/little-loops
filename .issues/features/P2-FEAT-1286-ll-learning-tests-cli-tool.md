@@ -266,7 +266,7 @@ Methods `test_count_updated_to_16` and `test_authorize_all_count_is_16` (referen
 
 ## Labels
 
-`cli`, `new-feature`, `learning-tests`
+`cli`, `new-feature`, `learning-tests`, `learning-testing`
 
 ---
 

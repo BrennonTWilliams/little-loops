@@ -118,7 +118,7 @@ New skill: `skills/verify-issue-loop/SKILL.md`
 
 ## Labels
 
-feature, skill, verification, fsm, loops, captured
+feature, skill, verification, fsm, loops, learning-testing, captured
 
 ## Related Key Documentation
 
