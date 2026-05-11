@@ -85,6 +85,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "parameters",
         "scope",
         "max_iterations",
+        "max_edge_revisits",
         "backoff",
         "timeout",
         "default_timeout",
@@ -660,6 +661,13 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
             ValidationError(
                 message=f"max_iterations must be > 0, got {fsm.max_iterations}",
                 path="max_iterations",
+            )
+        )
+    if fsm.max_edge_revisits <= 0:
+        errors.append(
+            ValidationError(
+                message=f"max_edge_revisits must be > 0, got {fsm.max_edge_revisits}",
+                path="max_edge_revisits",
             )
         )
     if fsm.backoff is not None and fsm.backoff < 0:

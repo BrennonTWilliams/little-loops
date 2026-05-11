@@ -175,6 +175,32 @@ class TestFSMExecutorBasic:
         assert result.iterations == 3
         assert result.terminated_by == "max_iterations"
 
+    def test_cycle_detection_terminates_loop(self) -> None:
+        """Loop terminates with cycle_detected when the same edge is traversed too many times."""
+        fsm = FSMLoop(
+            name="test",
+            initial="loop",
+            max_iterations=100,
+            max_edge_revisits=3,
+            states={
+                "loop": StateConfig(
+                    action="fail.sh",
+                    on_yes="done",
+                    on_no="loop",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=1)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.terminated_by == "cycle_detected"
+        assert result.error is not None
+        assert "loop->loop" in result.error
+
     def test_unconditional_next_transition(self) -> None:
         """State with 'next' transitions unconditionally."""
         fsm = FSMLoop(

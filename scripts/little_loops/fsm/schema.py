@@ -680,6 +680,7 @@ class FSMLoop:
     parameters: dict[str, ParameterSpec] = field(default_factory=dict)
     scope: list[str] = field(default_factory=list)
     max_iterations: int = 50
+    max_edge_revisits: int = 100
     backoff: float | None = None
     timeout: int | None = None
     default_timeout: int | None = None
@@ -710,6 +711,8 @@ class FSMLoop:
             result["scope"] = self.scope
         if self.max_iterations != 50:
             result["max_iterations"] = self.max_iterations
+        if self.max_edge_revisits != 100:
+            result["max_edge_revisits"] = self.max_edge_revisits
         if self.backoff is not None:
             result["backoff"] = self.backoff
         if self.timeout is not None:
@@ -770,6 +773,7 @@ class FSMLoop:
             parameters=parameters,
             scope=data.get("scope", []),
             max_iterations=data.get("max_iterations", 50),
+            max_edge_revisits=data.get("max_edge_revisits", 100),
             backoff=data.get("backoff"),
             timeout=data.get("timeout"),
             default_timeout=data.get("default_timeout"),

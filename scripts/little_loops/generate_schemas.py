@@ -173,6 +173,19 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         },
         ["state", "retries", "next"],
     ),
+    "cycle_detected": _schema(
+        "cycle_detected",
+        "Cycle Detected",
+        "Emitted when the same edge is traversed too many times, indicating a tight infinite loop.",
+        {
+            "edge": _str("Edge key (from_state->to_state) that triggered detection"),
+            "from": _str("Source state of the cyclic edge"),
+            "to": _str("Target state of the cyclic edge"),
+            "count": _int("Number of times this edge was traversed"),
+            "max": _int("Configured max_edge_revisits limit"),
+        },
+        ["edge", "from", "to", "count", "max"],
+    ),
     "rate_limit_exhausted": _schema(
         "rate_limit_exhausted",
         "Rate Limit Exhausted",

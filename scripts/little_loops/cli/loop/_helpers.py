@@ -27,6 +27,7 @@ EXIT_CODES: dict[str, int] = {
     "handoff": 0,
     "max_iterations": 1,
     "timeout": 1,
+    "cycle_detected": 1,
 }
 
 # Module-level shutdown state for signal handling

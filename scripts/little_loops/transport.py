@@ -294,6 +294,7 @@ _OTEL_EVENT_TYPES = frozenset(
         "evaluate",
         "route",
         "retry_exhausted",
+        "cycle_detected",
         "handoff_detected",
         "handoff_spawned",
         "action_output",

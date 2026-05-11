@@ -110,6 +110,8 @@ class LoopState:
     # Count of consecutive rate_limit_exhausted emissions across states. Reset
     # on any non-rate-limited state outcome. Persisted for resume durability.
     consecutive_rate_limit_exhaustions: int = 0
+    # Per-edge revisit tracking for cycle detection.
+    edge_revisit_counts: dict[str, int] = field(default_factory=dict)
     active_sub_loop: str | None = None  # name of currently executing sub-loop (observability)
     pid: int | None = None  # OS PID of the process that started this run (for reconciliation sweep)
 
@@ -135,6 +137,8 @@ class LoopState:
             result["rate_limit_retries"] = self.rate_limit_retries
         if self.consecutive_rate_limit_exhaustions:
             result["consecutive_rate_limit_exhaustions"] = self.consecutive_rate_limit_exhaustions
+        if self.edge_revisit_counts:
+            result["edge_revisit_counts"] = self.edge_revisit_counts
         if self.active_sub_loop is not None:
             result["active_sub_loop"] = self.active_sub_loop
         if self.pid is not None:
@@ -183,6 +187,7 @@ class LoopState:
             retry_counts=data.get("retry_counts", {}),
             rate_limit_retries=migrated_rl,
             consecutive_rate_limit_exhaustions=data.get("consecutive_rate_limit_exhaustions", 0),
+            edge_revisit_counts=data.get("edge_revisit_counts", {}),
             active_sub_loop=data.get("active_sub_loop"),
             pid=data.get("pid"),
         )
@@ -539,6 +544,7 @@ class PersistentExecutor:
             retry_counts=dict(self._executor._retry_counts),
             rate_limit_retries={k: dict(v) for k, v in self._executor._rate_limit_retries.items()},
             consecutive_rate_limit_exhaustions=(self._executor._consecutive_rate_limit_exhaustions),
+            edge_revisit_counts=dict(self._executor._edge_revisit_counts),
             pid=self._run_pid,
         )
         self.persistence.save_state(state)
@@ -565,6 +571,8 @@ class PersistentExecutor:
             final_status = "awaiting_continuation"
         if result.terminated_by == "timeout":
             final_status = "timed_out"
+        if result.terminated_by == "cycle_detected":
+            final_status = "failed"
 
         final_state = LoopState(
             loop_name=self.fsm.name,
@@ -613,6 +621,7 @@ class PersistentExecutor:
         self._executor._consecutive_rate_limit_exhaustions = (
             state.consecutive_rate_limit_exhaustions
         )
+        self._executor._edge_revisit_counts = dict(state.edge_revisit_counts)
 
         # Restore accumulated elapsed time so duration_ms and ${loop.elapsed_ms} reflect
         # the full loop lifetime (all segments), not just the resumed segment.

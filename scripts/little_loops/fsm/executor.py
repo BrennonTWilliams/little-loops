@@ -223,6 +223,11 @@ class FSMExecutor:
         # (throttle counts measure instantaneous visit-level activity, not cumulative retries).
         self._throttle_counts: dict[str, int] = {}
 
+        # Per-edge revisit counter for cycle detection.
+        # _edge_revisit_counts["from_state->to_state"] = number of times that edge has fired.
+        # When any edge exceeds max_edge_revisits, the loop terminates with cycle_detected.
+        self._edge_revisit_counts: dict[str, int] = {}
+
         # Nesting depth for sub-loop event forwarding (0 = top-level, 1+ = sub-loop).
         # Set by the parent executor when constructing child executors.
         self._depth: int = 0
@@ -388,6 +393,26 @@ class FSMExecutor:
                         "to": resolved_next,
                     },
                 )
+
+                # Per-edge revisit tracking for cycle detection.
+                edge_key = f"{self.current_state}->{resolved_next}"
+                self._edge_revisit_counts[edge_key] = (
+                    self._edge_revisit_counts.get(edge_key, 0) + 1
+                )
+                if self._edge_revisit_counts[edge_key] > self.fsm.max_edge_revisits:
+                    self._emit("cycle_detected", {
+                        "edge": edge_key,
+                        "from": self.current_state,
+                        "to": resolved_next,
+                        "count": self._edge_revisit_counts[edge_key],
+                        "max": self.fsm.max_edge_revisits,
+                    })
+                    return self._finish(
+                        "cycle_detected",
+                        error=f"Cycle detected: edge {edge_key} traversed "
+                        f"{self._edge_revisit_counts[edge_key]} times "
+                        f"(limit: {self.fsm.max_edge_revisits})",
+                    )
 
                 self._prev_state = self.current_state
                 self.current_state = resolved_next

@@ -29,7 +29,7 @@ class ExecutionResult:
 
     final_state: str
     iterations: int
-    terminated_by: str  # "terminal", "max_iterations", "timeout", "signal", "error", "handoff"
+    terminated_by: str  # "terminal", "max_iterations", "timeout", "signal", "error", "handoff", "cycle_detected"
     duration_ms: int
     captured: dict[str, dict[str, Any]]
     error: str | None = None
