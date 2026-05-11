@@ -168,9 +168,35 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Status
 
-Open
+Done — 2026-05-11
+
+## Resolution
+
+Implemented in `scripts/little_loops/loops/autodev.yaml`:
+
+- Added `mark_decide_ran` state between `run_decide` and `rerun_confidence_after_decide`. Writes `.loops/tmp/autodev-decide-ran` so decide does not fire twice in the same iteration.
+- Added `snap_and_size_review` state. Snapshots current issue IDs into `autodev-pre-ids.txt` and hands off to `run_size_review`.
+- Changed `recheck_after_decide.on_no` and `on_error` from `dequeue_next` → `snap_and_size_review`. Issues that pass decide but still fail outcome now get a decomposition attempt instead of being silently dropped.
+- Updated `decide_current.action` to short-circuit (`exit 1` → `implement_current`) when the decide-ran flag is set, preventing decide re-entry from `recheck_after_size_review → on_yes: decide_current`.
+- Added `rm -f .loops/tmp/autodev-decide-ran` to `dequeue_next` so the flag is per-issue.
+
+Test coverage in `scripts/tests/test_builtin_loops.py::TestAutodevLoop`:
+
+- Added `mark_decide_ran` and `snap_and_size_review` to `test_required_states_exist`.
+- Renamed `test_run_decide_next_routes_to_rerun_confidence_after_decide` → `test_run_decide_next_routes_to_mark_decide_ran`.
+- Added 8 new tests covering: state existence, next-state routing, action-content invariants for `mark_decide_ran`, `snap_and_size_review`, `decide_current`'s flag check, and `dequeue_next`'s flag cleanup.
+
+Docs in `docs/guides/LOOPS_GUIDE.md`:
+
+- Updated the autodev FSM flow diagram to show `run_decide → mark_decide_ran → rerun_confidence_after_decide` and the new `recheck_after_decide → snap_and_size_review → run_size_review` fallback.
+- Updated the "Outcome failure triage" prose to describe the post-decide size-review fallback and the decide-ran flag's role in preventing duplicate decide invocations.
+
+Loop termination is preserved: size review either decomposes (children enqueued → `dequeue_next`), declines and the post-size score check passes (→ `decide_current` short-circuit → `implement_current`), or declines and scores still fail (→ `dequeue_next`). No new cycles introduced.
+
+Verified: `python -m pytest scripts/tests/` (6183 passed, 5 skipped); `ruff check` on modified files passes.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-11T04:23:01Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7076c3c3-e8f9-4573-a533-49645401bd10.jsonl`
 - `/ll:ready-issue` - 2026-05-11T04:14:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/434cd6f1-1c19-47b3-ac79-b4c966da01c9.jsonl`
 - `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3bf36aa9-1036-4dd8-8564-5f14b46a48c1.jsonl`
 - `/ll:wire-issue` - 2026-05-11T04:10:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/442aad7e-8297-428d-b587-e8f1fc9b8799.jsonl`
