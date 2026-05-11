@@ -344,7 +344,27 @@
         },
         "type": {
           "type": "string",
-          "description": "Optional state type marker. Set to 'learning' (FEAT-1283) to exempt this state from throttle hard_max enforcement; learning states legitimately make N tool calls per visit."
+          "description": "Optional state type marker. Set to 'learning' (FEAT-1283) to dispatch to the learning-state handler: queries the learning-tests registry for each target, invokes /ll:explore-api on miss/stale, routes to on_yes when all proven and on_blocked/on_no on refuted/retries-exhausted. Learning states are also exempt from throttle hard_max enforcement."
+        },
+        "learning": {
+          "type": "object",
+          "description": "FEAT-1283: configuration for type=learning states. Declares targets that must be proven against the learning-tests registry (ENH-1282) before the state advances. Required when type='learning'.",
+          "properties": {
+            "targets": {
+              "type": "array",
+              "description": "Ordered list of target identifiers (e.g. 'Anthropic SDK streaming'). Each is slugified internally when looking up registry records. All targets must reach status='proven' for the state to advance via on_yes.",
+              "items": {"type": "string"},
+              "minItems": 1
+            },
+            "max_retries": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 2,
+              "description": "Maximum /ll:explore-api invocations per target before routing to on_blocked/on_no with reason 'retries_exhausted'. Counts only re-exploration attempts; the initial registry lookup is free."
+            }
+          },
+          "required": ["targets"],
+          "additionalProperties": false
         },
         "throttle": {
           "type": "object",

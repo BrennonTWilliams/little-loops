@@ -381,6 +381,42 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
             )
         )
 
+    # FEAT-1283: type=learning requires a populated LearningConfig
+    if state.type == "learning" and state.learning is not None:
+        if not state.learning.targets:
+            errors.append(
+                ValidationError(
+                    message="type=learning requires non-empty 'learning.targets'",
+                    path=f"{path}.learning.targets",
+                )
+            )
+        if state.learning.max_retries < 0:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"learning.max_retries must be >= 0, got {state.learning.max_retries}"
+                    ),
+                    path=f"{path}.learning.max_retries",
+                )
+            )
+        if state.on_yes is None:
+            errors.append(
+                ValidationError(
+                    message="type=learning requires 'on_yes' (target for all-proven)",
+                    path=f"{path}.on_yes",
+                )
+            )
+        if state.on_blocked is None and state.on_no is None:
+            errors.append(
+                ValidationError(
+                    message=(
+                        "type=learning requires 'on_blocked' or 'on_no' "
+                        "(target for refuted / retries_exhausted)"
+                    ),
+                    path=f"{path}",
+                )
+            )
+
     # with: and context_passthrough are mutually exclusive
     if state.with_ and state.context_passthrough:
         errors.append(

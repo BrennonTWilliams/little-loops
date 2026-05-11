@@ -1932,15 +1932,24 @@ fix_issue:
 
 All three fields are optional; the defaults (`normal_max=3`, `warn_max=8`, `hard_max=12`) are inherited from the executor module constants.
 
-**`state_type: learning`** — Some states legitimately make many tool calls per visit (e.g. bulk batch operations, corpus-calibration runs). Mark them `state_type: learning` to exempt them from `hard_max` enforcement while still recording call counts in the telemetry stream:
+**`type: learning`** — Learning states (FEAT-1283) prove external-API/SDK assumptions against the learning-tests registry (ENH-1282) before advancing. They legitimately make N tool calls per visit (one `/ll:explore-api` invocation per unproven target), so they are exempt from `hard_max` enforcement. The dispatch handler iterates `learning.targets` in order: proven targets pass through immediately; missing or stale records trigger `/ll:explore-api <target>` (up to `learning.max_retries` times); refuted records or exhausted retries route to `on_blocked` (preferred) or `on_no`.
 
 ```yaml
-calibrate_corpus:
-  state_type: learning
-  action: "python calibrate.py"
-  action_type: shell
-  on_yes: done
+states:
+  learn:
+    type: learning
+    learning:
+      targets:
+        - "Anthropic SDK streaming"
+        - "GitHub API rate limits"
+      max_retries: 2
+    on_yes: planning      # all targets proven → continue
+    on_blocked: blocked   # any target refuted, or retries exhausted
 ```
+
+Required fields for `type: learning` states: `learning.targets` (non-empty), `on_yes`, and one of `on_blocked` / `on_no`. The dispatch emits `learning_target_proven`, `learning_target_stale`, `learning_explore_invoked`, `learning_target_refuted`, `learning_complete`, and `learning_blocked` events for observability — see `docs/reference/EVENT-SCHEMA.md` for full payloads.
+
+> Legacy `type: learning` states without a `learning:` sub-object fall through to normal action execution (preserving the pre-FEAT-1283 throttle-exemption-only behavior). Mixing `type: learning` with `action:` is supported only for that legacy path; new learning gates should always declare `learning.targets`.
 
 **Call-count telemetry** — On every action execution inside a state, the executor increments a `tool_call_count` field in the per-state record persisted to `LoopState`. `ll-loop show` surfaces this as part of the state history, making runaway states visible after the fact even when the loop was not terminated by `hard_max`.
 

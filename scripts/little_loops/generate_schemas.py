@@ -264,6 +264,74 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         },
         ["state", "count", "hard_max"],
     ),
+    # FEAT-1283: type=learning state dispatch events
+    "learning_target_proven": _schema(
+        "learning_target_proven",
+        "Learning Target Proven",
+        "Emitted when a target's learning-tests registry record is found with status='proven'. The state will advance to the next target (or to on_yes when all targets are proven).",
+        {
+            "state": _str("State name executing the learning dispatch"),
+            "target": _str("Target identifier (e.g. 'Anthropic SDK streaming')"),
+        },
+        ["state", "target"],
+    ),
+    "learning_target_stale": _schema(
+        "learning_target_stale",
+        "Learning Target Stale",
+        "Emitted when a target's registry record is missing or has status='stale', immediately before /ll:explore-api is invoked to (re-)prove it.",
+        {
+            "state": _str("State name executing the learning dispatch"),
+            "target": _str("Target identifier"),
+            "cause": _str("Why the record was treated as stale: 'missing' or 'stale'"),
+        },
+        ["state", "target", "cause"],
+    ),
+    "learning_explore_invoked": _schema(
+        "learning_explore_invoked",
+        "Learning Explore Invoked",
+        "Emitted just before the learning state invokes /ll:explore-api for a target. Pairs with action_start/action_complete from the underlying skill invocation.",
+        {
+            "state": _str("State name executing the learning dispatch"),
+            "target": _str("Target identifier being explored"),
+            "attempt": _int("Attempt number, 1-based, capped by learning.max_retries"),
+        },
+        ["state", "target", "attempt"],
+    ),
+    "learning_target_refuted": _schema(
+        "learning_target_refuted",
+        "Learning Target Refuted",
+        "Emitted when a target's registry record has status='refuted'. Routes to on_blocked / on_no.",
+        {
+            "state": _str("State name executing the learning dispatch"),
+            "target": _str("Target identifier"),
+        },
+        ["state", "target"],
+    ),
+    "learning_complete": _schema(
+        "learning_complete",
+        "Learning Complete",
+        "Emitted when every target in a learning state has been proven. The state transitions via on_yes.",
+        {
+            "state": _str("State name executing the learning dispatch"),
+            "targets": {
+                "type": "array",
+                "description": "List of target identifiers that were all proven",
+                "items": {"type": "string"},
+            },
+        },
+        ["state", "targets"],
+    ),
+    "learning_blocked": _schema(
+        "learning_blocked",
+        "Learning Blocked",
+        "Emitted when a learning state cannot advance: a target is refuted, or /ll:explore-api retries are exhausted without proving the target.",
+        {
+            "state": _str("State name executing the learning dispatch"),
+            "target": _str("Target that blocked progress"),
+            "reason": _str("'refuted' or 'retries_exhausted'"),
+        },
+        ["state", "target", "reason"],
+    ),
     "handoff_detected": _schema(
         "handoff_detected",
         "Handoff Detected",

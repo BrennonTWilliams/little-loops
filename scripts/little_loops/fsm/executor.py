@@ -545,6 +545,83 @@ class FSMExecutor:
             # max_iterations, timeout, signal — all are failure
             return interpolate(state.on_no, ctx) if state.on_no else None
 
+    def _execute_learning_state(
+        self, state: StateConfig, ctx: InterpolationContext
+    ) -> str | None:
+        """Execute a FEAT-1283 ``type: learning`` state.
+
+        Iterates ``state.learning.targets`` in order. For each target:
+          1. Look up its record in the learning-tests registry (ENH-1282).
+          2. If proven → continue.
+          3. If refuted → emit ``learning_target_refuted`` + ``learning_blocked``
+             and route to ``on_blocked`` (preferred) or ``on_no``.
+          4. If missing or stale → emit ``learning_target_stale`` and invoke
+             ``/ll:explore-api <target>`` via the executor's action_runner;
+             re-check the registry; repeat up to ``max_retries`` times before
+             emitting ``learning_blocked`` (reason ``retries_exhausted``) and
+             routing to ``on_blocked``/``on_no``.
+
+        When every target ends up proven, emit ``learning_complete`` and route
+        to ``on_yes``. Returns the resolved next-state name (or ``None`` when no
+        route is configured for the terminal verdict, mirroring ``_route``).
+        """
+        from little_loops.learning_tests import check_learning_test
+
+        assert state.learning is not None  # guarded by caller
+
+        def _blocked_target(reason: str, target: str) -> str | None:
+            self._emit(
+                "learning_blocked",
+                {"state": self.current_state, "target": target, "reason": reason},
+            )
+            route = state.on_blocked or state.on_no
+            return interpolate(route, ctx) if route else None
+
+        for target in state.learning.targets:
+            record = check_learning_test(target)
+
+            attempts = 0
+            while record is None or record.status == "stale":
+                if attempts >= state.learning.max_retries:
+                    return _blocked_target("retries_exhausted", target)
+
+                if record is None:
+                    self._emit(
+                        "learning_target_stale",
+                        {"state": self.current_state, "target": target, "cause": "missing"},
+                    )
+                else:
+                    self._emit(
+                        "learning_target_stale",
+                        {"state": self.current_state, "target": target, "cause": "stale"},
+                    )
+
+                self._emit(
+                    "learning_explore_invoked",
+                    {"state": self.current_state, "target": target, "attempt": attempts + 1},
+                )
+                self._run_action(f"/ll:explore-api {target}", state, ctx)
+                attempts += 1
+                record = check_learning_test(target)
+
+            if record.status == "refuted":
+                self._emit(
+                    "learning_target_refuted",
+                    {"state": self.current_state, "target": target},
+                )
+                return _blocked_target("refuted", target)
+
+            self._emit(
+                "learning_target_proven",
+                {"state": self.current_state, "target": target},
+            )
+
+        self._emit(
+            "learning_complete",
+            {"state": self.current_state, "targets": list(state.learning.targets)},
+        )
+        return interpolate(state.on_yes, ctx) if state.on_yes else None
+
     def _check_throttle(self, state: StateConfig, state_name: str) -> str | None:
         """Increment the per-state tool-call counter and enforce throttle thresholds.
 
@@ -634,6 +711,13 @@ class FSMExecutor:
                 if state.on_error:
                     return interpolate(state.on_error, ctx)
                 raise
+
+        # FEAT-1283: dispatch to learning-state handler when both type="learning"
+        # AND a LearningConfig is present. The bare `type="learning"` marker
+        # (used pre-FEAT-1283 only as a throttle hard_max exemption hint, see
+        # ThrottleConfig docstring) falls through to normal action execution.
+        if state.type == "learning" and state.learning is not None:
+            return self._execute_learning_state(state, ctx)
 
         # Handle unconditional transition
         if state.next:

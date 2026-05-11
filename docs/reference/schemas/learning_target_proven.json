@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-learning_target_proven.json",
+  "title": "Learning Target Proven",
+  "description": "Emitted when a target's learning-tests registry record is found with status='proven'. The state will advance to the next target (or to on_yes when all targets are proven).",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "target"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "state": {
+      "type": "string",
+      "description": "State name executing the learning dispatch"
+    },
+    "target": {
+      "type": "string",
+      "description": "Target identifier (e.g. 'Anthropic SDK streaming')"
+    }
+  },
+  "additionalProperties": true
+}

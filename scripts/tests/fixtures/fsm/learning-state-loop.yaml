@@ -1,0 +1,21 @@
+name: learning-state-loop
+description: Test fixture exercising the type=learning FSM state (FEAT-1283).
+initial: learn
+states:
+  learn:
+    type: learning
+    learning:
+      targets:
+        - "Anthropic SDK streaming"
+        - "GitHub API rate limits"
+      max_retries: 2
+    on_yes: planning
+    on_no: blocked
+  planning:
+    action: "echo planning"
+    on_yes: done
+    on_no: done
+  blocked:
+    terminal: true
+  done:
+    terminal: true

@@ -268,6 +268,44 @@ class ThrottleConfig:
 
 
 @dataclass
+class LearningConfig:
+    """Per-state configuration for FEAT-1283 `type: learning` dispatch.
+
+    Declares the list of external-API/SDK targets a learning state must prove
+    against the learning-tests registry (ENH-1282) before advancing. On a
+    missing or stale record, the state invokes `/ll:explore-api <target>` up to
+    `max_retries` times before transitioning to a blocked target.
+
+    Attributes:
+        targets: Ordered list of target identifiers (e.g. "Anthropic SDK
+            streaming"). Each is slugified internally when looking up the
+            registry record. All targets must reach status="proven" for the
+            state to advance via on_yes.
+        max_retries: Maximum number of `/ll:explore-api` invocations per target
+            before the state routes to on_blocked / on_no with reason
+            ``retries_exhausted``. Counts only re-exploration attempts; the
+            initial registry lookup is free. Distinct from ENH-1115's throttle
+            counter, which measures tool-call volume; learning states are
+            already exempt from throttle hard_max via FSMExecutor._check_throttle.
+    """
+
+    targets: list[str]
+    max_retries: int = 2
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON/YAML serialization."""
+        return {"targets": list(self.targets), "max_retries": self.max_retries}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LearningConfig:
+        """Create from dictionary (JSON/YAML deserialization)."""
+        return cls(
+            targets=list(data.get("targets") or []),
+            max_retries=int(data.get("max_retries", 2)),
+        )
+
+
+@dataclass
 class StateConfig:
     """Configuration for a single FSM state.
 
@@ -352,6 +390,7 @@ class StateConfig:
     type: str | None = None
     throttle: ThrottleConfig | None = None
     on_throttle_hard: str | None = None
+    learning: LearningConfig | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -419,6 +458,8 @@ class StateConfig:
             result["throttle"] = self.throttle.to_dict()
         if self.on_throttle_hard is not None:
             result["on_throttle_hard"] = self.on_throttle_hard
+        if self.learning is not None:
+            result["learning"] = self.learning.to_dict()
 
         return result
 
@@ -436,6 +477,10 @@ class StateConfig:
         throttle = None
         if "throttle" in data:
             throttle = ThrottleConfig.from_dict(data["throttle"])
+
+        learning = None
+        if "learning" in data:
+            learning = LearningConfig.from_dict(data["learning"])
 
         _known_on_keys = {
             "on_yes",
@@ -488,6 +533,7 @@ class StateConfig:
             type=data.get("type"),
             throttle=throttle,
             on_throttle_hard=data.get("on_throttle_hard"),
+            learning=learning,
         )
 
     def get_referenced_states(self) -> set[str]:

@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-learning_target_stale.json",
+  "title": "Learning Target Stale",
+  "description": "Emitted when a target's registry record is missing or has status='stale', immediately before /ll:explore-api is invoked to (re-)prove it.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "target",
+    "cause"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "state": {
+      "type": "string",
+      "description": "State name executing the learning dispatch"
+    },
+    "target": {
+      "type": "string",
+      "description": "Target identifier"
+    },
+    "cause": {
+      "type": "string",
+      "description": "Why the record was treated as stale: 'missing' or 'stale'"
+    }
+  },
+  "additionalProperties": true
+}

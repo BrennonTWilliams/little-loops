@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-learning_complete.json",
+  "title": "Learning Complete",
+  "description": "Emitted when every target in a learning state has been proven. The state transitions via on_yes.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "targets"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "state": {
+      "type": "string",
+      "description": "State name executing the learning dispatch"
+    },
+    "targets": {
+      "type": "array",
+      "description": "List of target identifiers that were all proven",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}

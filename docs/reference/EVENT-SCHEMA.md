@@ -354,6 +354,75 @@ Emitted when a state's tool-call count exceeds `hard_max` with no `on_throttle_h
 
 ---
 
+### `learning_target_proven`
+
+Emitted when a target's learning-tests registry record is found with `status='proven'`. The state continues to the next target (or to `on_yes` when all targets are proven).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | State name executing the learning dispatch |
+| `target` | `str` | Target identifier (e.g. "Anthropic SDK streaming") |
+
+---
+
+### `learning_target_stale`
+
+Emitted when a target's registry record is missing or has `status='stale'`, immediately before `/ll:explore-api` fires.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | State name executing the learning dispatch |
+| `target` | `str` | Target identifier |
+| `cause` | `str` | `"missing"` or `"stale"` |
+
+---
+
+### `learning_explore_invoked`
+
+Emitted just before the learning state invokes `/ll:explore-api <target>`. Pairs with `action_start`/`action_complete` from the underlying skill invocation.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | State name executing the learning dispatch |
+| `target` | `str` | Target identifier being explored |
+| `attempt` | `int` | Attempt number (1-based), capped by `learning.max_retries` |
+
+---
+
+### `learning_target_refuted`
+
+Emitted when a target's record has `status='refuted'`. Routes to `on_blocked` / `on_no`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | State name executing the learning dispatch |
+| `target` | `str` | Target identifier |
+
+---
+
+### `learning_complete`
+
+Emitted when every target in a learning state has been proven. The state transitions via `on_yes`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | State name executing the learning dispatch |
+| `targets` | `list[str]` | Targets that were all proven |
+
+---
+
+### `learning_blocked`
+
+Emitted when a learning state cannot advance: a target is refuted, or `/ll:explore-api` retries are exhausted without proving the target.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | State name executing the learning dispatch |
+| `target` | `str` | Target that blocked progress |
+| `reason` | `str` | `"refuted"` or `"retries_exhausted"` |
+
+---
+
 ### `handoff_detected`
 
 Emitted when the executor detects a handoff signal in the action output, indicating the loop needs to be paused and resumed in a fresh session.

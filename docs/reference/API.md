@@ -3981,6 +3981,7 @@ class StateConfig:
     rate_limit_long_wait_ladder: list[int] | None = None  # Long-wait ladder (default [300, 900, 1800, 3600]); index caps at last entry
     throttle: ThrottleConfig | None = None           # Per-state progressive tool-call throttling
     on_throttle_hard: str | None = None              # Target state when hard_max is reached (or hard-stop if unset)
+    learning: LearningConfig | None = None           # FEAT-1283: type=learning state targets + retry budget
 ```
 
 #### ThrottleConfig
@@ -4004,6 +4005,30 @@ class ThrottleConfig:
 | `THROTTLE_WARN_EVENT` | `"throttle_warn"` | Emitted when tool-call count reaches `warn_max` |
 | `THROTTLE_HARD_EVENT` | `"throttle_hard"` | Emitted when tool-call count reaches `hard_max` |
 | `THROTTLE_STOP_EVENT` | `"throttle_stop"` | Emitted when count exceeds `hard_max` with no `on_throttle_hard` (hard stop) |
+
+#### LearningConfig
+
+`from little_loops.fsm.schema import LearningConfig`
+
+FEAT-1283: per-state configuration for `type: learning` dispatch. The handler iterates `targets` in order, consults the learning-tests registry (ENH-1282) for each, and invokes `/ll:explore-api <target>` (up to `max_retries` times) when a record is missing or stale. The state advances via `on_yes` only after every target reaches status `proven`; refuted records and exhausted retries route to `on_blocked` (preferred) or `on_no`.
+
+```python
+@dataclass
+class LearningConfig:
+    targets: list[str]              # Ordered targets (slugified internally for registry lookups)
+    max_retries: int = 2            # Max /ll:explore-api invocations per target before routing to on_blocked
+```
+
+**Learning event types** (see `docs/reference/EVENT-SCHEMA.md` for full payloads):
+
+| Event | Description |
+|-------|-------------|
+| `learning_target_proven` | A target's registry record is current with status=`proven` |
+| `learning_target_stale` | A target's record is missing or stale; explore-api is about to fire |
+| `learning_explore_invoked` | The state is calling `/ll:explore-api <target>` (paired with `action_start`) |
+| `learning_target_refuted` | A target's record has status=`refuted`; state routes to blocked |
+| `learning_complete` | Every target proven; state advances via `on_yes` |
+| `learning_blocked` | State cannot advance (reason: `refuted` or `retries_exhausted`) |
 
 > **Rate-limit handling (two-tier):** When a state's action returns an HTTP 429, the executor runs a two-tier retry ladder. **Short-burst tier** (up to `max_rate_limit_retries` attempts) uses `rate_limit_backoff_base_seconds * 2^n` + jitter. Once the short tier is spent, the executor enters the **long-wait tier** and walks `rate_limit_long_wait_ladder` (advancing index on each 429, capped at the last entry). The FSM routes to `on_rate_limit_exhausted` only once `total_wait_seconds >= rate_limit_max_wait_seconds`. The jitter is important under `ll-parallel` to avoid thundering-herd re-requests after a shared 429.
 

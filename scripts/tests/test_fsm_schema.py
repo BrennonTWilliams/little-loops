@@ -18,6 +18,7 @@ from little_loops.fsm.schema import (
     CommandEntry,
     EvaluateConfig,
     FSMLoop,
+    LearningConfig,
     LLMConfig,
     LoopConfigOverrides,
     ParameterSpec,
@@ -2539,3 +2540,41 @@ class TestThrottleConfig:
     def test_state_type_field(self) -> None:
         state = StateConfig.from_dict({"action": "work.sh", "type": "learning", "on_yes": "done"})
         assert state.type == "learning"
+
+    def test_state_config_learning_round_trip(self) -> None:
+        """FEAT-1283: StateConfig round-trips LearningConfig via to_dict/from_dict."""
+        original = StateConfig(
+            type="learning",
+            learning=LearningConfig(
+                targets=["Anthropic SDK streaming", "GitHub API rate limits"],
+                max_retries=3,
+            ),
+            on_yes="planning",
+            on_no="blocked",
+        )
+        d = original.to_dict()
+        assert d["type"] == "learning"
+        assert d["learning"] == {
+            "targets": ["Anthropic SDK streaming", "GitHub API rate limits"],
+            "max_retries": 3,
+        }
+        restored = StateConfig.from_dict(d)
+        assert restored.type == "learning"
+        assert restored.learning is not None
+        assert restored.learning.targets == [
+            "Anthropic SDK streaming",
+            "GitHub API rate limits",
+        ]
+        assert restored.learning.max_retries == 3
+
+    def test_state_config_learning_default_max_retries(self) -> None:
+        state = StateConfig.from_dict(
+            {
+                "type": "learning",
+                "learning": {"targets": ["x"]},
+                "on_yes": "planning",
+                "on_no": "blocked",
+            }
+        )
+        assert state.learning is not None
+        assert state.learning.max_retries == 2

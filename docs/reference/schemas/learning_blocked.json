@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-learning_blocked.json",
+  "title": "Learning Blocked",
+  "description": "Emitted when a learning state cannot advance: a target is refuted, or /ll:explore-api retries are exhausted without proving the target.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "target",
+    "reason"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "state": {
+      "type": "string",
+      "description": "State name executing the learning dispatch"
+    },
+    "target": {
+      "type": "string",
+      "description": "Target that blocked progress"
+    },
+    "reason": {
+      "type": "string",
+      "description": "'refuted' or 'retries_exhausted'"
+    }
+  },
+  "additionalProperties": true
+}
