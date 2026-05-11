@@ -10,8 +10,9 @@ Before starting the wizard, initialize these counters:
 
 ```
 STEP = 0      # Current round number (incremented before each round)
-TOTAL = 6     # Working total (mandatory rounds: 1, 2, 3a, 6, 11, 12)
+TOTAL = 7     # Working total (mandatory rounds: 1, 2, 3a, 4, 6, 11, 12)
               # Round 3b is silent (automation always enabled, no user prompt)
+              # Round 4 is mandatory (product analysis opt-in)
               # Round 5a is conditional (only if parallel processing selected)
               # Round 7 is silent (advanced settings always skipped)
               # Hooks are always active via the plugin system — no installation round needed
@@ -225,8 +226,39 @@ Count active conditions for Round 5:
 
   if ACTIVE > 0: TOTAL += 1   # Round 5a only runs if parallel processing selected; max ACTIVE = 2
   # Round 5b and 5c are never shown (max ACTIVE never exceeds 2)
-  # Rounds 11 (Allowed Tools) and 12 (CLAUDE.md Docs) are always shown — already counted in TOTAL = 6
+  # Rounds 11 (Allowed Tools) and 12 (CLAUDE.md Docs) are always shown — already counted in TOTAL = 7
 ```
+
+## Round 4: Product Analysis - MANDATORY, ALWAYS RUNS
+
+**CRITICAL**: You MUST execute this round. The wizard is NOT complete until you have asked about product analysis. If you skipped here without asking, GO BACK and ask it now.
+
+Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Product Analysis
+
+Ask the user a single question using AskUserQuestion:
+
+```
+Question: "Would you like to enable product analysis? It scans your codebase against your product goals to find feature gaps and UX improvements."
+
+Options:
+  - label: "Yes, enable product analysis (Recommended)"
+    description: "Creates .ll/ll-goals.md from the template and enables /ll:scan-product"
+  - label: "No, skip for now"
+    description: "You can enable later by running /ll:configure product"
+```
+
+**If "Yes, enable product analysis" selected:**
+- Include `"product": { "enabled": true }` in the generated config
+- Track: `PRODUCT_ENABLED=true` (signals Step 8 to deploy the goals template)
+
+**If "No, skip for now" selected:**
+- Omit `product` section from config entirely (disabled is the schema default)
+- Track: `PRODUCT_ENABLED=false`
+
+**MANDATORY NEXT STEP - DO NOT SKIP:**
+After completing Round 4, you MUST immediately proceed to **Round 5 (Advanced Settings)** below.
+
+---
 
 ## Round 5: Advanced Settings (Dynamic)
 

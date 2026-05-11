@@ -324,7 +324,7 @@ Product analysis configuration for `/ll:scan-product`:
 | `goals_discovery.max_files` | `5` | Maximum markdown files to analyze for goal discovery (1-20) |
 | `goals_discovery.required_files` | `["README.md"]` | Files that must exist for discovery (warning if missing) |
 
-To enable product scanning, set `product.enabled: true` and create a goals file with your product vision, personas, and strategic priorities.
+For new projects, `/ll:init` sets `product.enabled: true` and deploys `.ll/ll-goals.md` automatically (opt-in during `--interactive`, enabled by default during `--yes`). For existing projects, set `product.enabled: true` in `.ll/ll-config.json` and create a goals file with your product vision, personas, and strategic priorities.
 
 ### `commands`
 
@@ -941,6 +941,8 @@ Fine-tune how product goal auto-discovery scans documentation:
 |-----------|---------|-------------|
 | `max_files` | `5` | Maximum markdown files to analyze (1-20) |
 | `required_files` | `["README.md"]` | Files that must exist (warning if missing) |
+
+> **Behavioral note:** These settings are active when `ll-goals.md` is absent — `max_files` limits how many files are read during discovery; `required_files` entries trigger a warning if missing but never block analysis.
 
 ### `prompt_optimization.bypass_prefix`
 

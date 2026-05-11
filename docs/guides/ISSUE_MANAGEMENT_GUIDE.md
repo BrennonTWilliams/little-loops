@@ -164,7 +164,7 @@ The description becomes the seed for the issue title and Summary field. Capture 
 To find issues you didn't know existed, use the scanning commands:
 
 - `/ll:scan-codebase` — analyzes code for bugs, technical debt, and improvement opportunities; creates issue files for each finding
-- `/ll:scan-product` — analyzes codebase against your `ll-goals.md` document to find feature gaps and UX problems (create `ll-goals.md` by copying `templates/ll-goals-template.md` to your repository root)
+- `/ll:scan-product` — analyzes codebase against your `ll-goals.md` document to find feature gaps and UX problems (`/ll:init` creates `.ll/ll-goals.md` automatically for new projects; if absent, scan-product discovers goals from existing docs)
 
 Both commands can generate many issues at once. Run them when onboarding to a new codebase or doing a periodic audit, then use `/ll:prioritize-issues` and `/ll:tradeoff-review-issues` to cull the low-value ones before investing in refinement.
 
