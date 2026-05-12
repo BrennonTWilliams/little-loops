@@ -25,6 +25,8 @@ ARCHITECTURE_DOC = PROJECT_ROOT / "docs" / "ARCHITECTURE.md"
 TROUBLESHOOTING_DOC = PROJECT_ROOT / "docs" / "development" / "TROUBLESHOOTING.md"
 WRITE_A_HOOK = PROJECT_ROOT / "docs" / "claude-code" / "write-a-hook.md"
 AUTOMATE_HOOKS = PROJECT_ROOT / "docs" / "claude-code" / "automate-workflows-with-hooks.md"
+MKDOCS_YML = PROJECT_ROOT / "mkdocs.yml"
+INDEX_MD = PROJECT_ROOT / "docs" / "index.md"
 
 
 class TestContributingWiring:
@@ -107,7 +109,7 @@ class TestConfigureAreasWiring:
 
 
 class TestAuditClaudeConfigWiring:
-    """audit-claude-config SKILL.md audit scope must include hooks/adapters/ and hooks/core/."""
+    """audit-claude-config SKILL.md audit scope must include hooks/adapters/ and scripts/little_loops/hooks/."""
 
     def test_audit_scope_includes_adapters(self) -> None:
         content = AUDIT_CLAUDE_CONFIG.read_text()
@@ -117,8 +119,9 @@ class TestAuditClaudeConfigWiring:
 
     def test_audit_scope_includes_core(self) -> None:
         content = AUDIT_CLAUDE_CONFIG.read_text()
-        assert "hooks/core/" in content, (
-            "audit-claude-config SKILL.md must include hooks/core/ in its audit scope"
+        assert "scripts/little_loops/hooks/" in content, (
+            "audit-claude-config SKILL.md must include scripts/little_loops/hooks/ "
+            "(host-agnostic Python handlers) in its audit scope"
         )
 
 
@@ -133,11 +136,14 @@ class TestInitSkillWiring:
 
 
 class TestClaudeMdWiring:
-    """.claude/CLAUDE.md hooks/ entry must show core/ and adapters/ subdirectory breakdown."""
+    """.claude/CLAUDE.md hooks/ entry must show host-agnostic handler location and adapters/ subdirectory."""
 
-    def test_hooks_entry_lists_core(self) -> None:
+    def test_hooks_entry_lists_handlers(self) -> None:
         content = CLAUDE_MD.read_text()
-        assert "core/" in content, ".claude/CLAUDE.md hooks/ entry must list hooks/core/"
+        assert "scripts/little_loops/hooks/" in content, (
+            ".claude/CLAUDE.md must list scripts/little_loops/hooks/ "
+            "as the host-agnostic Python handler location"
+        )
 
     def test_hooks_entry_lists_adapters(self) -> None:
         content = CLAUDE_MD.read_text()
@@ -245,4 +251,60 @@ class TestAutomateHooksWiring:
         content = AUTOMATE_HOOKS.read_text()
         assert "write-a-hook.md" in content, (
             "automate-workflows-with-hooks.md must cross-link to the authoring guide"
+        )
+
+
+class TestMkdocsNavWiring:
+    """mkdocs.yml nav must expose the Claude Code authoring docs."""
+
+    def test_nav_has_claude_code_group(self) -> None:
+        content = MKDOCS_YML.read_text()
+        assert "Claude Code:" in content, (
+            "mkdocs.yml nav must declare a 'Claude Code:' group for the claude-code/ docs"
+        )
+
+    def test_nav_lists_write_a_hook(self) -> None:
+        content = MKDOCS_YML.read_text()
+        assert "claude-code/write-a-hook.md" in content, (
+            "mkdocs.yml nav must include claude-code/write-a-hook.md so the authoring "
+            "guide is discoverable from the site nav"
+        )
+
+    def test_nav_lists_hooks_reference(self) -> None:
+        content = MKDOCS_YML.read_text()
+        assert "claude-code/hooks-reference.md" in content, (
+            "mkdocs.yml nav must include claude-code/hooks-reference.md"
+        )
+
+    def test_nav_lists_automate_workflows_with_hooks(self) -> None:
+        content = MKDOCS_YML.read_text()
+        assert "claude-code/automate-workflows-with-hooks.md" in content, (
+            "mkdocs.yml nav must include claude-code/automate-workflows-with-hooks.md"
+        )
+
+
+class TestIndexMdWiring:
+    """docs/index.md must surface the write-a-hook guide and mention hook intent types."""
+
+    def test_index_links_to_write_a_hook(self) -> None:
+        content = INDEX_MD.read_text()
+        assert "claude-code/write-a-hook.md" in content, (
+            "docs/index.md must link to claude-code/write-a-hook.md so the authoring "
+            "guide is discoverable from the documentation index"
+        )
+
+    def test_event_schema_entry_mentions_hook_intent_types(self) -> None:
+        content = INDEX_MD.read_text()
+        # The EVENT-SCHEMA entry was broadened to mention hook intent types now that
+        # FEAT-1459 added LLHookEvent / LLHookResult coverage to that reference doc.
+        event_schema_line = next(
+            (line for line in content.splitlines() if "EVENT-SCHEMA.md" in line),
+            None,
+        )
+        assert event_schema_line is not None, (
+            "docs/index.md must contain an EVENT-SCHEMA.md entry"
+        )
+        assert "LLHookEvent" in event_schema_line or "LLHookResult" in event_schema_line, (
+            "docs/index.md EVENT-SCHEMA.md description must mention LLHookEvent or "
+            "LLHookResult now that the reference doc covers hook intent types"
         )

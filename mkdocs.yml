@@ -80,6 +80,10 @@ nav:
     - API: reference/API.md
     - Issue Template: reference/ISSUE_TEMPLATE.md
     - Output Styling: reference/OUTPUT_STYLING.md
+  - Claude Code:
+    - Write a Hook: claude-code/write-a-hook.md
+    - Hooks Reference: claude-code/hooks-reference.md
+    - Automate Workflows with Hooks: claude-code/automate-workflows-with-hooks.md
   - Development:
     - Testing: development/TESTING.md
     - E2E Testing: development/E2E_TESTING.md

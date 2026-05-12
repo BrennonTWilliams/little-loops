@@ -151,6 +151,7 @@ class TestLLHookResult:
         assert result.feedback is None
         assert result.decision is None
         assert result.data == {}
+        assert result.stdout is None
 
     def test_creation_full(self) -> None:
         """LLHookResult constructs with all fields populated."""
@@ -159,11 +160,13 @@ class TestLLHookResult:
             feedback="duplicate issue ID",
             decision="deny",
             data={"existing_id": "FEAT-042"},
+            stdout="duplicate issue ID detected\n",
         )
         assert result.exit_code == 2
         assert result.feedback == "duplicate issue ID"
         assert result.decision == "deny"
         assert result.data == {"existing_id": "FEAT-042"}
+        assert result.stdout == "duplicate issue ID detected\n"
 
     def test_to_dict_minimal(self) -> None:
         """to_dict on a default result yields only exit_code (no None or empty noise)."""
@@ -171,13 +174,14 @@ class TestLLHookResult:
         assert d == {"exit_code": 0}
 
     def test_to_dict_skips_none(self) -> None:
-        """to_dict omits feedback/decision when None and data when empty."""
+        """to_dict omits feedback/decision/stdout when None and data when empty."""
         result = LLHookResult(exit_code=1)
         d = result.to_dict()
         assert d == {"exit_code": 1}
         assert "feedback" not in d
         assert "decision" not in d
         assert "data" not in d
+        assert "stdout" not in d
 
     def test_to_dict_full(self) -> None:
         """to_dict includes every populated field."""
@@ -186,12 +190,14 @@ class TestLLHookResult:
             feedback="blocked",
             decision="deny",
             data={"reason": "duplicate"},
+            stdout="blocked: duplicate id\n",
         )
         d = result.to_dict()
         assert d["exit_code"] == 2
         assert d["feedback"] == "blocked"
         assert d["decision"] == "deny"
         assert d["data"] == {"reason": "duplicate"}
+        assert d["stdout"] == "blocked: duplicate id\n"
 
     def test_to_dict_json_serializable(self) -> None:
         """to_dict output is JSON serializable."""
@@ -205,12 +211,14 @@ class TestLLHookResult:
             "feedback": "blocked",
             "decision": "deny",
             "data": {"reason": "duplicate"},
+            "stdout": "blocked: duplicate id\n",
         }
         result = LLHookResult.from_dict(raw)
         assert result.exit_code == 2
         assert result.feedback == "blocked"
         assert result.decision == "deny"
         assert result.data == {"reason": "duplicate"}
+        assert result.stdout == "blocked: duplicate id\n"
 
     def test_from_dict_missing_fields(self) -> None:
         """from_dict tolerates missing fields with defaults."""
@@ -219,6 +227,7 @@ class TestLLHookResult:
         assert result.feedback is None
         assert result.decision is None
         assert result.data == {}
+        assert result.stdout is None
 
     def test_roundtrip(self) -> None:
         """to_dict -> from_dict preserves all data."""
@@ -227,12 +236,14 @@ class TestLLHookResult:
             feedback="blocked",
             decision="deny",
             data={"reason": "duplicate", "id": "BUG-1"},
+            stdout="blocked: duplicate id\n",
         )
         restored = LLHookResult.from_dict(original.to_dict())
         assert restored.exit_code == original.exit_code
         assert restored.feedback == original.feedback
         assert restored.decision == original.decision
         assert restored.data == original.data
+        assert restored.stdout == original.stdout
 
     def test_roundtrip_minimal(self) -> None:
         """Roundtrip on a minimal result preserves None/empty defaults."""
@@ -242,6 +253,7 @@ class TestLLHookResult:
         assert restored.feedback is None
         assert restored.decision is None
         assert restored.data == {}
+        assert restored.stdout is None
 
 
 class TestHooksMainModule:

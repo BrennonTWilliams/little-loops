@@ -113,7 +113,7 @@ For each proposal, include actionable steps:
 ```
 1. Implement a hook intent handler via the LLHookIntentExtension Protocol
    (provided_hook_intents() returns name → Callable[[LLHookEvent], LLHookResult]).
-   Handlers live in host-agnostic core code under hooks/core/ (or in a plugin's
+   Handlers live in host-agnostic core code under scripts/little_loops/hooks/ (or in a plugin's
    extension package) and are wired into _HOOK_INTENT_REGISTRY by wire_extensions().
 2. Use the appropriate host adapter under hooks/adapters/<host>/ (e.g.
    claude-code/, opencode/) to translate the host's lifecycle event into a
