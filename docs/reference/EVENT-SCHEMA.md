@@ -34,6 +34,10 @@ event.timestamp # the "ts" key
 event.payload   # all remaining keys as a dict
 ```
 
+### Hook intents — sibling type
+
+`LLEvent` covers pub/sub bus events. **Hook intents** (PreCompact, SessionStart, PreToolUse, …) are request/response and use a sibling dataclass [`LLHookEvent`](../../scripts/little_loops/hooks/types.py), with handler responses modeled as [`LLHookResult`](../../scripts/little_loops/hooks/types.py). Adapters under `hooks/adapters/<host>/` translate between each host's native hook protocol and these host-agnostic types; see the [hook-intent abstraction layer](../../scripts/little_loops/hooks/__init__.py) for the dispatch entry point.
+
 ---
 
 ## Naming Conventions

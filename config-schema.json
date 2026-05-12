@@ -1094,6 +1094,18 @@
       "default": [],
       "description": "Extension module paths to load (format: 'module.path:ClassName'). Extensions receive structured events from the EventBus."
     },
+    "hooks": {
+      "type": "object",
+      "description": "Hook-intent abstraction layer configuration (FEAT-1116). Per-host adapters parse the host's native hook payload into LLHookEvent and invoke host-agnostic intent handlers under little_loops.hooks.",
+      "properties": {
+        "host": {
+          "type": "string",
+          "enum": ["claude-code", "opencode"],
+          "description": "Host agent identifier. Used by adapters to translate between the host's native hook protocol and the LLHookEvent/LLHookResult wire format."
+        }
+      },
+      "additionalProperties": false
+    },
     "events": {
       "type": "object",
       "description": "Event transport configuration. Transports are sinks attached to the EventBus and receive every emitted event.",

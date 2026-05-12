@@ -133,6 +133,27 @@ class TestConfigSchema:
         assert "stale_after_days" in lt_props
         assert lt_props["stale_after_days"]["type"] == "integer"
 
+    def test_hooks_in_schema(self) -> None:
+        """hooks block must be declared in config-schema.json with a host enum.
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing 'hooks' will be rejected unless the property is
+        declared. FEAT-1448 introduces this block as the foundation of the
+        hook-intent abstraction layer (FEAT-1116).
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        assert "hooks" in data["properties"], (
+            "hooks is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        hooks_block = data["properties"]["hooks"]
+        assert hooks_block["type"] == "object"
+        assert hooks_block.get("additionalProperties") is False
+        assert "host" in hooks_block["properties"]
+        host = hooks_block["properties"]["host"]
+        assert host["type"] == "string"
+        assert host["enum"] == ["claude-code", "opencode"]
+
     def test_events_in_schema(self) -> None:
         """events block must be declared in config-schema.json with a transports array.
 
