@@ -1622,12 +1622,12 @@ class TestSessionStartValidation:
 
 
 class TestPrecompactState:
-    """Test precompact-state.sh file operations."""
+    """Test precompact adapter (Python handler via Claude Code wrapper)."""
 
     @pytest.fixture
     def hook_script(self) -> Path:
-        """Path to precompact-state.sh."""
-        return Path(__file__).parent.parent.parent / "hooks/scripts/precompact-state.sh"
+        """Path to the Claude Code precompact adapter (FEAT-1455)."""
+        return Path(__file__).parent.parent.parent / "hooks/adapters/claude-code/precompact.sh"
 
     def test_atomic_write_with_missing_directory(self, hook_script: Path, tmp_path: Path):
         """Test that state is written even if thoughts directory doesn't exist."""

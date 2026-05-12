@@ -804,6 +804,7 @@ If `ll-loop stop` still reports "not running" (e.g. lock file is missing but sco
    chmod +x hooks/scripts/check-duplicate-issue-id-post.sh
    chmod +x hooks/scripts/user-prompt-check.sh
    chmod +x hooks/scripts/precompact-state.sh
+   chmod +x hooks/adapters/claude-code/precompact.sh
    chmod +x hooks/scripts/scratch-pad-redirect.sh
    ```
 
@@ -1002,10 +1003,10 @@ echo '{
   "prompt": "add authentication to the app"
 }' | bash hooks/scripts/user-prompt-check.sh
 
-# Test precompact-state.sh
+# Test precompact handler (Python dispatcher; adapter wraps this)
 echo '{
   "transcript_path": "/tmp/test.jsonl"
-}' | bash hooks/scripts/precompact-state.sh
+}' | python -m little_loops.hooks pre_compact
 ```
 
 ### Hook integration tests
@@ -1036,7 +1037,7 @@ python -m pytest scripts/tests/test_hooks_integration.py -v -s
    - context-monitor.sh: 3s timeout
    - check-duplicate-issue-id.sh: 3s timeout (PreToolUse lock)
    - check-duplicate-issue-id-post.sh: no lock (PostToolUse reactive deletion; overall hook timeout 5s)
-   - precompact-state.sh: 3s timeout
+   - little_loops.hooks.pre_compact: 3s lock timeout (Python handler invoked via hooks/adapters/claude-code/precompact.sh)
 3. Monitor lock files during operation:
    ```bash
    watch -n 0.1 'find .claude .issues -name "*.lock*" 2>/dev/null'

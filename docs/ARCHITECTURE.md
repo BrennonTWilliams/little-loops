@@ -82,11 +82,14 @@ little-loops/
 │   ├── prompts/
 │   │   ├── continuation-prompt-template.md  # Handoff prompt template
 │   │   └── optimize-prompt-hook.md          # Prompt optimization hook
+│   ├── adapters/            # Host-specific adapters → little_loops.hooks dispatcher
+│   │   └── claude-code/
+│   │       └── precompact.sh
 │   └── scripts/             # Hook scripts
 │       ├── check-duplicate-issue-id.sh
 │       ├── check-duplicate-issue-id-post.sh
 │       ├── context-monitor.sh
-│       ├── precompact-state.sh
+│       ├── precompact-state.sh  # Legacy shell handler; replaced by adapters/claude-code/precompact.sh
 │       ├── scratch-pad-redirect.sh
 │       ├── session-cleanup.sh
 │       ├── session-start.sh

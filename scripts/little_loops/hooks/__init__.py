@@ -7,9 +7,15 @@ Per-host adapters parse the host's native hook payload into an
 (e.g. ``little_loops.hooks.pre_compact``), and translate the returned
 :class:`LLHookResult` back into the host's expected response.
 
-This module currently exposes the foundational types and a CLI entry-point
-stub. Concrete intent handlers (``pre_compact``, ``session_start``, …) land
-in follow-up issues (FEAT-1449, FEAT-1450, …).
+``main_hooks`` is the CLI dispatcher invoked via ``python -m little_loops.hooks
+<intent>``. It reads JSON from stdin, builds an :class:`LLHookEvent`, dispatches
+to the named intent's ``handle`` function, prints any feedback to stderr, and
+exits with the handler's exit code. Today it routes:
+
+- ``pre_compact`` → :mod:`little_loops.hooks.pre_compact`
+
+Future intent handlers (``session_start``, …) will be wired by adding entries
+to the dispatch table in :func:`main_hooks`.
 
 Public exports:
     LLHookEvent: host-agnostic hook event payload
@@ -19,26 +25,64 @@ Public exports:
 
 from __future__ import annotations
 
+import json
+import os
 import sys
+from collections.abc import Callable
+from typing import Any
 
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 
 __all__ = ["LLHookEvent", "LLHookResult", "main_hooks"]
 
+_USAGE = "Usage: python -m little_loops.hooks <intent>\n\nAvailable intents: pre_compact"
+
+
+def _dispatch_table() -> dict[str, Callable[[LLHookEvent], LLHookResult]]:
+    # Imported lazily to avoid a top-level circular import surface and keep
+    # the module import cost minimal for callers that only need the types.
+    from little_loops.hooks import pre_compact
+
+    return {"pre_compact": pre_compact.handle}
+
 
 def main_hooks() -> int:
     """CLI entry-point for ``python -m little_loops.hooks <intent>``.
 
-    Stub for FEAT-1448. Concrete intent dispatch lands in FEAT-1449
-    (``pre_compact``) and FEAT-1450 (``session_start``). Today this prints
-    usage and exits ``0``.
+    Reads JSON from stdin, constructs an :class:`LLHookEvent` for the named
+    intent, invokes the handler, and translates the :class:`LLHookResult`
+    into the Claude Code shell-hook contract (exit code + stderr feedback).
     """
-    print(
-        "Usage: python -m little_loops.hooks <intent>\n"
-        "\n"
-        "No intents are wired yet. The hook-intent dispatch layer is a stub; "
-        "concrete handlers (pre_compact, session_start, …) land in follow-up "
-        "issues (FEAT-1449, FEAT-1450).",
-        file=sys.stderr,
+    if len(sys.argv) < 2:
+        print(_USAGE, file=sys.stderr)
+        return 0
+
+    intent = sys.argv[1]
+    handlers = _dispatch_table()
+    handler = handlers.get(intent)
+    if handler is None:
+        print(
+            f"Unknown intent: {intent!r}. Available: {', '.join(sorted(handlers))}",
+            file=sys.stderr,
+        )
+        return 1
+
+    raw_stdin = sys.stdin.read() if not sys.stdin.isatty() else ""
+    if not raw_stdin.strip():
+        return 0
+    try:
+        parsed = json.loads(raw_stdin)
+    except json.JSONDecodeError:
+        return 0
+    payload: dict[str, Any] = parsed if isinstance(parsed, dict) else {}
+
+    event = LLHookEvent(
+        host="claude-code",
+        intent=intent,
+        payload=payload,
+        cwd=os.getcwd(),
     )
-    return 0
+    result = handler(event)
+    if result.feedback:
+        print(result.feedback, file=sys.stderr)
+    return result.exit_code

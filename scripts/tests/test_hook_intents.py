@@ -245,10 +245,10 @@ class TestLLHookResult:
 
 
 class TestHooksMainModule:
-    """Smoke tests for the ``python -m little_loops.hooks`` dispatch stub."""
+    """Smoke tests for the ``python -m little_loops.hooks`` CLI dispatcher."""
 
     def test_module_dispatch_exit_zero(self) -> None:
-        """``python -m little_loops.hooks`` returns exit 0 (stub) and prints usage to stderr."""
+        """``python -m little_loops.hooks`` returns exit 0 and prints usage to stderr."""
         result = subprocess.run(
             [sys.executable, "-m", "little_loops.hooks"],
             capture_output=True,
@@ -257,3 +257,41 @@ class TestHooksMainModule:
         )
         assert result.returncode == 0
         assert "little_loops.hooks" in result.stderr
+
+    def test_dispatch_pre_compact_happy_path(self, tmp_path) -> None:
+        """``pre_compact`` intent reads stdin JSON, exits 2, and prints feedback to stderr."""
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "pre_compact"],
+            input=json.dumps({"transcript_path": "/tmp/t.jsonl"}),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 2
+        assert "Task state preserved" in result.stderr
+        assert (tmp_path / ".ll" / "ll-precompact-state.json").is_file()
+
+    def test_dispatch_unknown_intent(self) -> None:
+        """Unknown intent name exits non-zero with an error message on stderr."""
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "no_such_intent"],
+            input="{}",
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode != 0
+        assert "no_such_intent" in result.stderr or "Unknown intent" in result.stderr
+
+    def test_dispatch_pre_compact_empty_stdin(self, tmp_path) -> None:
+        """Empty stdin → returncode 0 noop (malformed-payload branch)."""
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "pre_compact"],
+            input="",
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0
