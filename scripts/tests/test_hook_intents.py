@@ -366,3 +366,33 @@ class TestHooksMainModule:
         rc = hooks_pkg.main_hooks()
         assert rc == 0
         assert captured[0].host == "claude-code"
+
+    def test_dispatch_table_merges_hook_intent_registry(self, monkeypatch) -> None:
+        """_dispatch_table() merges _HOOK_INTENT_REGISTRY with built-ins; built-ins win on collision.
+
+        Registry isolation: _HOOK_INTENT_REGISTRY is module-level mutable state, so
+        each test mutating it must reset via monkeypatch to prevent test order coupling.
+        """
+        from little_loops import hooks as hooks_pkg
+        from little_loops.hooks import _dispatch_table
+
+        def custom_handler(event: LLHookEvent) -> LLHookResult:
+            return LLHookResult(exit_code=0)
+
+        def shadow_handler(event: LLHookEvent) -> LLHookResult:
+            return LLHookResult(exit_code=99)
+
+        monkeypatch.setattr(
+            hooks_pkg,
+            "_HOOK_INTENT_REGISTRY",
+            {"my_intent": custom_handler, "session_start": shadow_handler},
+        )
+
+        table = _dispatch_table()
+        # Extension intent appears alongside built-ins.
+        assert "my_intent" in table
+        assert table["my_intent"] is custom_handler
+        assert "pre_compact" in table
+        assert "session_start" in table
+        # Built-in shadows extension on collision.
+        assert table["session_start"] is not shadow_handler

@@ -12,6 +12,7 @@ from little_loops.extension import (
     ExtensionLoader,
     InterceptorExtension,
     LLExtension,
+    LLHookIntentExtension,
     NoopLoggerExtension,
     wire_extensions,
 )
@@ -63,6 +64,7 @@ __all__ = [
     "ExtensionLoader",
     "InterceptorExtension",
     "LLExtension",
+    "LLHookIntentExtension",
     "NoopLoggerExtension",
     "wire_extensions",
     # testing

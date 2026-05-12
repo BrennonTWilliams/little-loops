@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib
 import json
 import logging
+from collections.abc import Callable
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from little_loops.fsm.persistence import PersistentExecutor
     from little_loops.fsm.runners import ActionRunner
     from little_loops.fsm.types import Evaluator
+    from little_loops.hooks.types import LLHookEvent, LLHookResult
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +98,17 @@ class EvaluatorProviderExtension(Protocol):
     def provided_evaluators(self) -> dict[str, Evaluator]:
         """Return a mapping of evaluator type name → Evaluator callable."""
         ...
+
+
+@runtime_checkable
+class LLHookIntentExtension(Protocol):
+    """Protocol for extensions that contribute hook intent handlers.
+
+    Detected via hasattr() in wire_extensions(). Returned handlers are
+    merged into the dispatch table consulted by little_loops.hooks.main_hooks().
+    """
+
+    def provided_hook_intents(self) -> dict[str, Callable[[LLHookEvent], LLHookResult]]: ...
 
 
 class NoopLoggerExtension:
@@ -252,6 +265,12 @@ def wire_extensions(
                 or hasattr(ext, "before_issue_close")
             ):
                 fsm_executor._interceptors.append(ext)
+
+    for ext in extensions:
+        if hasattr(ext, "provided_hook_intents"):
+            from little_loops.hooks import _register_hook_intents
+
+            _register_hook_intents(ext.provided_hook_intents())
 
     if extensions:
         logger.info("Wired %d extension(s) to EventBus", len(extensions))

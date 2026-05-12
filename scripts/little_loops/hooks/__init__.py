@@ -41,16 +41,33 @@ _USAGE = (
     "Usage: python -m little_loops.hooks <intent>\n\nAvailable intents: pre_compact, session_start"
 )
 
+_HOOK_INTENT_REGISTRY: dict[str, Callable[[LLHookEvent], LLHookResult]] = {}
+
+
+def _register_hook_intents(handlers: dict[str, Callable[[LLHookEvent], LLHookResult]]) -> None:
+    """Merge extension-provided hook intent handlers into the module registry.
+
+    Raises ValueError on duplicate intent names across extensions.
+    """
+    for name, handler in handlers.items():
+        if name in _HOOK_INTENT_REGISTRY:
+            raise ValueError(
+                f"Extension conflict: hook intent '{name}' already registered by another extension"
+            )
+        _HOOK_INTENT_REGISTRY[name] = handler
+
 
 def _dispatch_table() -> dict[str, Callable[[LLHookEvent], LLHookResult]]:
     # Imported lazily to avoid a top-level circular import surface and keep
     # the module import cost minimal for callers that only need the types.
     from little_loops.hooks import pre_compact, session_start
 
-    return {
+    built_ins: dict[str, Callable[[LLHookEvent], LLHookResult]] = {
         "pre_compact": pre_compact.handle,
         "session_start": session_start.handle,
     }
+    # Built-ins shadow extension-provided intents on collision.
+    return {**_HOOK_INTENT_REGISTRY, **built_ins}
 
 
 def main_hooks() -> int:

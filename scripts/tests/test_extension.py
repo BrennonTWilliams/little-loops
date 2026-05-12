@@ -444,6 +444,67 @@ class TestWireExtensions:
             with pytest.raises(ValueError, match="evaluator 'shared_eval' already registered"):
                 wire_extensions(bus, executor=executor_obj)
 
+    def test_wire_extensions_registers_hook_intents(self, monkeypatch) -> None:
+        """wire_extensions populates _HOOK_INTENT_REGISTRY for extensions exposing
+        provided_hook_intents().
+
+        Registry isolation: _HOOK_INTENT_REGISTRY is module-level mutable state, so
+        each test mutating it must reset via monkeypatch to prevent test order coupling.
+        """
+        from little_loops.hooks.types import LLHookEvent, LLHookResult
+
+        monkeypatch.setattr("little_loops.hooks._HOOK_INTENT_REGISTRY", {})
+
+        def _intent_handler(event: LLHookEvent) -> LLHookResult:
+            return LLHookResult(exit_code=0)
+
+        class HookIntentExt:
+            def provided_hook_intents(self) -> dict:
+                return {"my_intent": _intent_handler}
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[HookIntentExt()]):
+            extensions = wire_extensions(bus, config_paths=["fake:Extension"])
+
+        assert len(extensions) == 1
+
+        from little_loops.hooks import _HOOK_INTENT_REGISTRY
+
+        assert "my_intent" in _HOOK_INTENT_REGISTRY
+        assert _HOOK_INTENT_REGISTRY["my_intent"] is _intent_handler
+
+    def test_wire_extensions_conflict_detection_hook_intents(self, monkeypatch) -> None:
+        """Duplicate hook intent names across extensions raise ValueError.
+
+        Registry isolation: reset _HOOK_INTENT_REGISTRY before mutating.
+        """
+        from little_loops.hooks.types import LLHookEvent, LLHookResult
+
+        monkeypatch.setattr("little_loops.hooks._HOOK_INTENT_REGISTRY", {})
+
+        def _handler_a(event: LLHookEvent) -> LLHookResult:
+            return LLHookResult(exit_code=0)
+
+        def _handler_b(event: LLHookEvent) -> LLHookResult:
+            return LLHookResult(exit_code=1)
+
+        class ExtA:
+            def provided_hook_intents(self) -> dict:
+                return {"shared_intent": _handler_a}
+
+        class ExtB:
+            def provided_hook_intents(self) -> dict:
+                return {"shared_intent": _handler_b}
+
+        bus = EventBus()
+        with patch.object(ExtensionLoader, "load_all", return_value=[ExtA(), ExtB()]):
+            import pytest
+
+            with pytest.raises(
+                ValueError, match="hook intent 'shared_intent' already registered"
+            ):
+                wire_extensions(bus, config_paths=["fake:Extension"])
+
     def test_wire_extensions_no_executor_no_second_pass(self) -> None:
         """Without executor, extensions with provided_actions/evaluators are still loaded cleanly."""
         from unittest.mock import MagicMock
@@ -565,3 +626,26 @@ class TestNewProtocols:
         from little_loops import LLHookResult  # noqa: F401 — import is the test
 
         assert LLHookResult is not None
+
+    def test_smoke_import_ll_hook_intent_extension(self) -> None:
+        """Importing LLHookIntentExtension from public API succeeds (no circular import)."""
+        from little_loops import LLHookIntentExtension  # noqa: F401 — import is the test
+
+        assert LLHookIntentExtension is not None
+
+    def test_ll_hook_intent_extension_protocol_satisfied(self) -> None:
+        """A class with provided_hook_intents() satisfies LLHookIntentExtension."""
+        from little_loops.extension import LLHookIntentExtension
+        from little_loops.hooks.types import LLHookEvent, LLHookResult
+
+        class MyHookIntentProvider:
+            def provided_hook_intents(
+                self,
+            ) -> dict:
+                def _handler(event: LLHookEvent) -> LLHookResult:
+                    return LLHookResult(exit_code=0)
+
+                return {"my_intent": _handler}
+
+        provider = MyHookIntentProvider()
+        _: LLHookIntentExtension = provider  # type: ignore[assignment]
