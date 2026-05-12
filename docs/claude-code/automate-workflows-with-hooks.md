@@ -626,8 +626,26 @@ The `$-` variable contains shell flags, and `i` means interactive. Hooks run in 
 
 Toggle verbose mode with `Ctrl+O` to see hook output in the transcript, or run `claude --debug` for full execution details including which hooks matched and their exit codes.
 
+## Adapter flow for little-loops hooks
+
+little-loops ships a host-agnostic hook layer so you can author a hook once in Python and run it from Claude Code, OpenCode, or any other agent host that has an adapter. The host event flows through a thin adapter (a bash shim for Claude Code, a TypeScript plugin for OpenCode) into the Python dispatcher, the dispatcher routes to a handler, and the handler's `LLHookResult` flows back out:
+
+```mermaid
+flowchart LR
+    HOST[Host event<br/>Claude Code or OpenCode] --> ADAPTER[Adapter<br/>bash shim or TS plugin]
+    ADAPTER --> SUBPROC[python -m little_loops.hooks &lt;intent&gt;]
+    SUBPROC --> MAIN[main_hooks dispatch]
+    MAIN --> HANDLER[handle&#40;event&#41;]
+    HANDLER --> RESULT[LLHookResult]
+    RESULT --> ADAPTERBACK[Adapter]
+    ADAPTERBACK --> HOSTBACK[Host response]
+```
+
+See [Write a little-loops hook](write-a-hook.md) for the full authoring walkthrough: handler signature, registration via the `LLHookIntentExtension` Protocol, and the pure-function + subprocess testing patterns.
+
 ## Learn more
 
 * [Hooks reference](/en/hooks): full event schemas, JSON output format, async hooks, and MCP tool hooks
 * [Security considerations](/en/hooks#security-considerations): review before deploying hooks in shared or production environments
 * [Bash command validator example](https://github.com/anthropics/claude-code/blob/main/examples/hooks/bash_command_validator_example.py): complete reference implementation
+* [Write a little-loops hook](write-a-hook.md): author a host-agnostic hook intent in Python and run it from any agent host with an adapter

@@ -23,6 +23,8 @@ CLAUDE_MD = PROJECT_ROOT / ".claude" / "CLAUDE.md"
 API_DOC = PROJECT_ROOT / "docs" / "reference" / "API.md"
 ARCHITECTURE_DOC = PROJECT_ROOT / "docs" / "ARCHITECTURE.md"
 TROUBLESHOOTING_DOC = PROJECT_ROOT / "docs" / "development" / "TROUBLESHOOTING.md"
+WRITE_A_HOOK = PROJECT_ROOT / "docs" / "claude-code" / "write-a-hook.md"
+AUTOMATE_HOOKS = PROJECT_ROOT / "docs" / "claude-code" / "automate-workflows-with-hooks.md"
 
 
 class TestContributingWiring:
@@ -187,4 +189,60 @@ class TestTroubleshootingWiring:
         content = TROUBLESHOOTING_DOC.read_text()
         assert "hooks/scripts/precompact-state.sh" not in content, (
             "TROUBLESHOOTING.md must not retain the stale hooks/scripts/precompact-state.sh path"
+        )
+
+
+class TestWriteAHookWiring:
+    """docs/claude-code/write-a-hook.md must exist and reference the intent-model surface."""
+
+    def test_guide_file_exists(self) -> None:
+        assert WRITE_A_HOOK.exists(), (
+            "FEAT-1458 authoring guide must exist at docs/claude-code/write-a-hook.md"
+        )
+
+    def test_guide_mentions_llhookevent(self) -> None:
+        content = WRITE_A_HOOK.read_text()
+        assert "LLHookEvent" in content, (
+            "write-a-hook.md must document LLHookEvent as the handler input type"
+        )
+
+    def test_guide_mentions_llhookresult(self) -> None:
+        content = WRITE_A_HOOK.read_text()
+        assert "LLHookResult" in content, (
+            "write-a-hook.md must document LLHookResult as the handler return type"
+        )
+
+    def test_guide_mentions_llhookintentextension(self) -> None:
+        content = WRITE_A_HOOK.read_text()
+        assert "LLHookIntentExtension" in content, (
+            "write-a-hook.md must reference the LLHookIntentExtension Protocol"
+        )
+
+    def test_guide_mentions_provided_hook_intents(self) -> None:
+        content = WRITE_A_HOOK.read_text()
+        assert "provided_hook_intents" in content, (
+            "write-a-hook.md must describe the provided_hook_intents extension method"
+        )
+
+    def test_guide_cross_references_ll_create_extension(self) -> None:
+        content = WRITE_A_HOOK.read_text()
+        assert "ll-create-extension" in content, (
+            "write-a-hook.md must cross-reference the ll-create-extension scaffolding CLI"
+        )
+
+
+class TestAutomateHooksWiring:
+    """docs/claude-code/automate-workflows-with-hooks.md must include the little-loops adapter-flow diagram."""
+
+    def test_automate_hooks_has_adapter_diagram(self) -> None:
+        content = AUTOMATE_HOOKS.read_text()
+        assert "flowchart LR" in content, (
+            "automate-workflows-with-hooks.md must include a mermaid flowchart LR block "
+            "showing the host event → adapter → python dispatcher → handler → result flow"
+        )
+
+    def test_automate_hooks_links_to_write_a_hook(self) -> None:
+        content = AUTOMATE_HOOKS.read_text()
+        assert "write-a-hook.md" in content, (
+            "automate-workflows-with-hooks.md must cross-link to the authoring guide"
         )

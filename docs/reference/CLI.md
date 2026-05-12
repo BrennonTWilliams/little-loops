@@ -1388,6 +1388,8 @@ pip install -e .          # Install with entry point registration
 python -m pytest tests/   # Run starter tests
 ```
 
+> **See also:** [Write a little-loops hook](../claude-code/write-a-hook.md) — full authoring walkthrough for the `LLHookIntentExtension` Protocol, including the adapter flow and pure-function + subprocess testing patterns.
+
 ---
 
 ### ll-generate-schemas
@@ -1493,3 +1495,4 @@ ll-learning-tests --help
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — System design
 - [LOOPS_GUIDE.md](../guides/LOOPS_GUIDE.md) — FSM loop configuration guide
 - [API.md](API.md) — Python module API reference
+- [write-a-hook.md](../claude-code/write-a-hook.md) — hook authoring guide for `LLHookIntentExtension`
