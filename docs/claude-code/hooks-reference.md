@@ -12,6 +12,18 @@
 
 Hooks are user-defined shell commands or LLM prompts that execute automatically at specific points in Claude Code's lifecycle. Use this reference to look up event schemas, configuration options, JSON input/output formats, and advanced features like async hooks and MCP tool hooks. If you're setting up hooks for the first time, start with the [guide](/en/hooks-guide) instead.
 
+## Intent model & adapters (little-loops)
+
+This page documents Claude Code's native hook payload format. little-loops layers a host-agnostic **intent model** on top of it so a single Python handler can serve Claude Code, OpenCode, and any future host that ships an adapter.
+
+- **In:** `LLHookEvent` — the host event normalized to a wire format (`host`, `intent`, `payload`, `ts`, optional `session_id`/`cwd`).
+- **Out:** `LLHookResult` — the response (`exit_code`, `feedback`, `decision`, `data`, `stdout`).
+
+The adapter at `hooks/adapters/claude-code/<event>.sh` converts the Claude-native JSON below into `LLHookEvent`, pipes it to `python -m little_loops.hooks <intent>`, and converts the returned `LLHookResult` back into Claude's exit-code + stderr contract. Authoring a hook against the intent model means you write the handler once and get every host adapter for free.
+
+- Authoring walkthrough: [Write a little-loops hook](write-a-hook.md)
+- Wire-format reference: [EVENT-SCHEMA.md — Hook intents](../reference/EVENT-SCHEMA.md#hook-intents--sibling-type)
+
 ## Hook lifecycle
 
 Hooks fire at specific points during a Claude Code session. When an event fires and a matcher matches, Claude Code passes JSON context about the event to your hook handler. For command hooks, this arrives on stdin. Your handler can then inspect the input, take action, and optionally return a decision. Some events fire once per session, while others fire repeatedly inside the agentic loop:

@@ -9,7 +9,7 @@
 little-loops separates *what a hook does* from *which host invoked it*. A hook intent is a small Python function that takes an `LLHookEvent` and returns an `LLHookResult`. Per-host adapters (a bash shim for Claude Code, a TypeScript plugin for OpenCode) translate the host's native hook payload into that wire format, invoke the dispatcher, and translate the result back into whatever response shape the host expects. The handler itself never imports anything host-specific.
 
 <Tip>
-  This is the authoring walkthrough. For the wire-format field reference (`LLHookEvent` / `LLHookResult` dataclass fields, exit-code semantics, JSON keys), see [`scripts/little_loops/hooks/types.py`](../../scripts/little_loops/hooks/types.py). For the related Claude Code lifecycle and matcher reference, see [Automate workflows with hooks](automate-workflows-with-hooks.md).
+  This is the authoring walkthrough. For the wire-format field reference (`LLHookEvent` / `LLHookResult` field tables, exit-code semantics, JSON keys), see [EVENT-SCHEMA.md — Hook intents](../reference/EVENT-SCHEMA.md#hook-intents--sibling-type); the canonical dataclass definitions live in [`scripts/little_loops/hooks/types.py`](../../scripts/little_loops/hooks/types.py). For the related Claude Code lifecycle and matcher reference, see [Automate workflows with hooks](automate-workflows-with-hooks.md).
 </Tip>
 
 ## The intent model

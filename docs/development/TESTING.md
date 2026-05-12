@@ -788,6 +788,71 @@ def test_concurrent_updates(self, hook_script: Path, tmp_path: Path) -> None:
     assert len(results) == 10
 ```
 
+### Testing Hook Intents via the Dispatcher CLI
+
+The `hook_script` fixture above invokes a bash script in `hooks/scripts/`. For hook intents that have been ported to Python handlers under `little_loops.hooks.*` (and exposed through host adapters), the integration-test equivalent invokes the dispatcher CLI directly. This skips the per-host adapter shim and lets the same test exercise every adapter target by flipping `LL_HOOK_HOST`.
+
+Fast path — unit-test the handler directly (no subprocess):
+
+```python
+# scripts/tests/test_pre_compact.py pattern
+from little_loops.hooks import LLHookEvent
+from little_loops.hooks.pre_compact import handle
+
+def test_pre_compact_writes_state(tmp_path: Path) -> None:
+    event = LLHookEvent(host="claude-code", intent="pre_compact",
+                       payload={"transcript_path": str(tmp_path / "log.jsonl")})
+    result = handle(event)
+    assert result.exit_code == 2
+    assert result.feedback is not None
+```
+
+Integration path — subprocess fixture for the `python -m little_loops.hooks <intent>` CLI:
+
+```python
+import json, os, subprocess, sys
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture
+def run_hook_intent():
+    """Invoke a hook intent through the host-agnostic dispatcher.
+
+    Mirrors how `hooks/adapters/claude-code/<event>.sh` and
+    `hooks/adapters/opencode/index.ts` call into `little_loops.hooks`.
+    Flip the `host` argument to reproduce each adapter's `LL_HOOK_HOST`.
+    """
+
+    def _run(intent: str, payload: dict, host: str = "claude-code") -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", intent],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            env={**os.environ, "LL_HOOK_HOST": host},
+        )
+
+    return _run
+
+
+def test_pre_compact_blocks_with_feedback(run_hook_intent) -> None:
+    result = run_hook_intent("pre_compact", {"transcript_path": "/tmp/session.jsonl"})
+    assert result.returncode == 2          # exit_code=2 → block + surface feedback
+    assert result.stderr                   # feedback written to stderr by main_hooks
+
+
+def test_pre_compact_under_opencode_host(run_hook_intent) -> None:
+    """Same handler, OpenCode adapter's LL_HOOK_HOST identity."""
+    result = run_hook_intent("pre_compact",
+                             {"transcript_path": "/tmp/s.jsonl"},
+                             host="opencode")
+    assert result.returncode == 2
+```
+
+The fixture pattern lives in `scripts/tests/test_hooks_integration.py`; the unit-test pattern lives in `test_pre_compact.py` and `test_hook_session_start.py`.
+
 ---
 
 ## CI/CD and Coverage

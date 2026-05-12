@@ -36,7 +36,49 @@ event.payload   # all remaining keys as a dict
 
 ### Hook intents — sibling type
 
-`LLEvent` covers pub/sub bus events. **Hook intents** (PreCompact, SessionStart, PreToolUse, …) are request/response and use a sibling dataclass [`LLHookEvent`](../../scripts/little_loops/hooks/types.py), with handler responses modeled as [`LLHookResult`](../../scripts/little_loops/hooks/types.py). Adapters under `hooks/adapters/<host>/` translate between each host's native hook protocol and these host-agnostic types; see the [hook-intent abstraction layer](../../scripts/little_loops/hooks/__init__.py) for the dispatch entry point.
+`LLEvent` covers pub/sub bus events. **Hook intents** (PreCompact, SessionStart, PreToolUse, …) are *request/response* and use a sibling dataclass [`LLHookEvent`](../../scripts/little_loops/hooks/types.py), with handler responses modeled as [`LLHookResult`](../../scripts/little_loops/hooks/types.py). Adapters under `hooks/adapters/<host>/` translate between each host's native hook protocol and these host-agnostic types; the dispatcher lives in [`little_loops.hooks.main_hooks`](../../scripts/little_loops/hooks/__init__.py) and is invoked as `python -m little_loops.hooks <intent>`.
+
+#### `LLHookEvent` fields
+
+Source of truth: `scripts/little_loops/hooks/types.py`.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `host` | `str` | Host agent identifier (e.g. `"claude-code"`, `"opencode"`). Adapters set this; the CLI reads `LL_HOOK_HOST` (default `"claude-code"`). |
+| `intent` | `str` | Hook intent name matching the handler module (e.g. `pre_compact`, `session_start`). |
+| `ts` | `str` | ISO 8601 UTC timestamp. **Field name differs from wire key**: stored as `timestamp` on the dataclass, serialized as `ts` by `to_dict()`. `from_dict()` accepts either `ts` or `timestamp`. |
+| `payload` | `object` | Host-supplied event data. Schema is intent-specific (see per-intent notes below). |
+| `session_id` | `str` *(optional)* | Host session identifier. Omitted from the wire dict when `None`. |
+| `cwd` | `str` *(optional)* | Working directory the host was operating in. Omitted from the wire dict when `None`. |
+
+#### `LLHookResult` fields
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `exit_code` | `int` | Always emitted. `0` = pass; `2` = block and surface `feedback` to the model. Non-Claude hosts map this to their own permit/deny semantics. |
+| `feedback` | `str` *(optional)* | Human-readable message. Claude Code writes this to stderr when `exit_code == 2`. Omitted from the wire dict when `None`. |
+| `decision` | `str` *(optional)* | Permission decision for permission-checking intents (`allow` / `deny` / `ask`). Omitted from the wire dict when `None`. |
+| `data` | `object` | Additional structured data returned to the host. Omitted from the wire dict when empty. |
+| `stdout` | `str` *(optional)* | Raw payload written to the host's stdout (e.g. `SessionStart`'s merged config JSON). Omitted from the wire dict when `None`. |
+
+#### Wire-format example
+
+```json
+{
+  "host": "claude-code",
+  "intent": "pre_compact",
+  "ts": "2026-05-12T14:00:00Z",
+  "payload": {"transcript_path": "/tmp/session.jsonl"},
+  "cwd": "/Users/me/project"
+}
+```
+
+Round-trip note: `to_dict()` emits the timestamp under the key `ts`; `from_dict()` accepts both `ts` and `timestamp`. A dict produced by `to_dict()` round-trips cleanly through `from_dict()`.
+
+#### Per-intent payload notes
+
+- **`pre_compact`** — reads exactly one payload key, `transcript_path` (falls back to `""`). Writes `.ll/ll-precompact-state.json`. Returns `LLHookResult(exit_code=2, feedback=<line-budget-message>)` to surface a context-budget warning to the model.
+- **`session_start`** — reads no payload keys; operates via `Path.cwd()`. Returns `LLHookResult(exit_code=0, feedback=<stderr-lines>, stdout=<merged-config-json-or-None>)`.
 
 ---
 

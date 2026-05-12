@@ -34,6 +34,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.subprocess_utils` | Subprocess handling |
 | `little_loops.state` | State persistence |
 | `little_loops.events` | Structured events and EventBus dispatcher |
+| `little_loops.hooks` | Host-agnostic hook intent dispatcher and built-in handlers |
 | `little_loops.extension` | Extension protocol, loader, and reference implementation |
 | `little_loops.testing` | Offline test harness (LLTestBus) for extension development |
 | `little_loops.logger` | Logging utilities |
@@ -5579,6 +5580,113 @@ bus.register(my_callback)
 
 ---
 
+## little_loops.hooks
+
+Host-agnostic hook intent dispatcher. Adapters under `hooks/adapters/<host>/` translate each host's native hook payload into an `LLHookEvent`, pipe it to `python -m little_loops.hooks <intent>`, and translate the returned `LLHookResult` back to the host's response contract.
+
+```python
+from little_loops.hooks import LLHookEvent, LLHookResult, main_hooks
+```
+
+Public surface — `__all__ = ["LLHookEvent", "LLHookResult", "main_hooks"]`.
+
+### LLHookEvent
+
+The host-agnostic request payload delivered to a hook intent handler. Defined in `scripts/little_loops/hooks/types.py`.
+
+```python
+@dataclass
+class LLHookEvent:
+    host: str
+    intent: str = ""
+    timestamp: str = ""        # wire key: "ts"
+    payload: dict[str, Any] = field(default_factory=dict)
+    session_id: str | None = None
+    cwd: str | None = None
+```
+
+**Fields:**
+
+| Field | Type | Default | Wire key | Description |
+|---|---|---|---|---|
+| `host` | `str` | *(required)* | `host` | Host agent identifier (`"claude-code"`, `"opencode"`, …). Adapters set this; the CLI reads `LL_HOOK_HOST` (default `"claude-code"`). |
+| `intent` | `str` | `""` | `intent` | Hook intent name matching the handler module (`pre_compact`, `session_start`, …). |
+| `timestamp` | `str` | `""` | `ts` | ISO 8601 UTC. **Field name and wire key differ** — stored as `timestamp`, serialized as `ts`. |
+| `payload` | `dict[str, Any]` | `{}` | `payload` | Host-supplied event data. Schema is intent-specific. |
+| `session_id` | `str \| None` | `None` | `session_id` | Host session identifier. Omitted from the wire dict when `None`. |
+| `cwd` | `str \| None` | `None` | `cwd` | Working directory the host was operating in. Omitted from the wire dict when `None`. |
+
+**Behavior:**
+- `to_dict()` emits the timestamp under the key `ts`; `from_dict()` accepts either `ts` or `timestamp` via `data.get("ts", data.get("timestamp", ""))`. A dict from `to_dict()` round-trips cleanly through `from_dict()`.
+- `session_id` and `cwd` are omitted from the wire dict when `None`, so a `from_dict(to_dict(e)) == e` round-trip preserves the `None` sentinel.
+
+```python
+from little_loops.hooks import LLHookEvent
+
+event = LLHookEvent(
+    host="claude-code",
+    intent="pre_compact",
+    payload={"transcript_path": "/tmp/session.jsonl"},
+    cwd="/Users/me/project",
+)
+event.to_dict()
+# {"host": "claude-code", "intent": "pre_compact", "ts": "", "payload": {...}, "cwd": "..."}
+```
+
+### LLHookResult
+
+The host-agnostic response returned by a hook intent handler. Defined in `scripts/little_loops/hooks/types.py`.
+
+```python
+@dataclass
+class LLHookResult:
+    exit_code: int = 0
+    feedback: str | None = None
+    decision: str | None = None
+    data: dict[str, Any] = field(default_factory=dict)
+    stdout: str | None = None
+```
+
+**Fields:**
+
+| Field | Type | Default | Wire key | Description |
+|---|---|---|---|---|
+| `exit_code` | `int` | `0` | `exit_code` | Always emitted. `0` = pass; `2` = block and surface `feedback` to the model. Non-Claude hosts map this to their own permit/deny semantics. |
+| `feedback` | `str \| None` | `None` | `feedback` | Human-readable message. Claude Code writes this to stderr when `exit_code == 2`. Omitted from the wire dict when `None`. |
+| `decision` | `str \| None` | `None` | `decision` | Permission decision for permission-checking intents (`allow` / `deny` / `ask`). Omitted from the wire dict when `None`. |
+| `data` | `dict[str, Any]` | `{}` | `data` | Additional structured data returned to the host. Omitted from the wire dict when empty. |
+| `stdout` | `str \| None` | `None` | `stdout` | Raw payload written to the host's stdout (e.g. `session_start`'s merged config JSON). Omitted from the wire dict when `None`. |
+
+**Behavior:**
+- `main_hooks` writes `result.stdout` to stdout verbatim if non-`None`, prints `result.feedback` to stderr if truthy, and raises `SystemExit(result.exit_code)`.
+- Handlers should **not** `print()` directly — return bytes on `LLHookResult.stdout` instead so adapters can route them to the host's stdout contract.
+
+```python
+from little_loops.hooks import LLHookResult
+
+LLHookResult(exit_code=2, feedback="context budget exceeded; consider /compact")
+```
+
+### main_hooks
+
+CLI entry point. Invoked as `python -m little_loops.hooks <intent>`.
+
+```python
+def main_hooks(argv: list[str]) -> int: ...
+```
+
+**Behavior:**
+1. Reads stdin as JSON (skips when stdin is a TTY).
+2. Builds `LLHookEvent(host=os.environ.get("LL_HOOK_HOST", "claude-code"), intent=argv[1], payload=<parsed>, cwd=os.getcwd())`. Note: `timestamp` and `session_id` stay at dataclass defaults — the CLI does not populate them.
+3. Looks up the handler via `_dispatch_table()` — extension-contributed intents merged with built-ins, with built-ins shadowing extensions on collision.
+4. Calls the handler; writes `result.stdout` to stdout if non-`None`, prints `result.feedback` to stderr if truthy, and returns `result.exit_code` (the `__main__` shim raises `SystemExit(...)`).
+
+**Adapter integration:**
+- Claude Code adapters (`hooks/adapters/claude-code/precompact.sh`, `session-start.sh`) invoke `python -m little_loops.hooks <intent>` directly — `LL_HOOK_HOST` defaults to `"claude-code"`.
+- The OpenCode adapter (`hooks/adapters/opencode/index.ts`) sets `LL_HOOK_HOST=opencode` before invoking the same CLI.
+
+---
+
 ## little_loops.transport
 
 Transport abstraction for the EventBus. A `Transport` is an additive sink that receives every event emitted on the bus. The Protocol is intentionally minimal — `send(event)` for delivery and `close()` for cleanup — so new sinks can be added without modifying `EventBus` itself.
@@ -5948,6 +6056,54 @@ def wire_extensions(
 - **Load failures** — both `ExtensionLoader.from_config()` and `from_entry_points()` catch all exceptions per extension, log a `WARNING` with the full traceback, and continue. A single bad extension never prevents others from loading; `wire_extensions` returns a partial list of the extensions that did succeed.
 - **Runtime failures** — if an extension's `on_event` raises during `EventBus.emit()`, the exception is caught and logged at `WARNING` level. Other registered observers still receive the event.
 - **Duplicate key conflicts** — if two extensions provide the same action or evaluator key, `wire_extensions` raises `ValueError: "Extension conflict: action/evaluator '<key>' already registered by another extension"`.
+
+### LLHookIntentExtension
+
+Optional mixin Protocol that extensions implement to contribute hook intent handlers. Detected by `wire_extensions()` via `hasattr(ext, "provided_hook_intents")` (same duck-typing pattern as `ActionProviderExtension`, `EvaluatorProviderExtension`, and `InterceptorExtension`).
+
+```python
+@runtime_checkable
+class LLHookIntentExtension(Protocol):
+    def provided_hook_intents(self) -> dict[str, Callable[[LLHookEvent], LLHookResult]]: ...
+```
+
+**Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `provided_hook_intents() -> dict[str, Callable[[LLHookEvent], LLHookResult]]` | Return a mapping of intent name → handler. Handler signature must match `(LLHookEvent) -> LLHookResult`. Called once at wire time. |
+
+**Behavior:**
+- `wire_extensions()` calls `_register_hook_intents(ext.provided_hook_intents())` for each extension that implements the Protocol, merging the result into the module-level `_HOOK_INTENT_REGISTRY` in `little_loops.hooks`.
+- Duplicate intent names **across extensions** raise `ValueError` at wire time — first-loaded wins is not the policy; collisions are an error.
+- Built-in intents (`pre_compact`, `session_start`) shadow extension-registered intents on collision: `_dispatch_table()` returns `{**_HOOK_INTENT_REGISTRY, **built_ins}`, so a built-in always wins.
+- The same `little_loops.extensions` entry-point group used for `LLExtension` also discovers `LLHookIntentExtension` providers (per FEAT-1116 Decision 2 — single shared group; FEAT-1117 group-split is deferred). See [Configuration → `extensions`](CONFIGURATION.md#extensions).
+
+**Usage:**
+
+```python
+from little_loops.hooks import LLHookEvent, LLHookResult
+
+class MyHookIntents:
+    """Extension contributing a custom 'license_check' hook intent."""
+
+    def provided_hook_intents(self):
+        return {"license_check": self._license_check}
+
+    def _license_check(self, event: LLHookEvent) -> LLHookResult:
+        if event.payload.get("license") == "GPL":
+            return LLHookResult(exit_code=2, feedback="GPL files not allowed.")
+        return LLHookResult(exit_code=0)
+```
+
+Register via the same `extensions` config key or entry-point group as any other `LLExtension`:
+
+```toml
+[project.entry-points."little_loops.extensions"]
+my_hook_intents = "my_package:MyHookIntents"
+```
+
+After installation, `python -m little_loops.hooks license_check` dispatches to `MyHookIntents._license_check`.
 
 ### Configuration
 

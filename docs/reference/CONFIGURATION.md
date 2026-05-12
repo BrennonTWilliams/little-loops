@@ -751,6 +751,8 @@ my_ext = "my_package.ext:MyExtension"
 
 After installing the package, `ll` will discover and load it on every run alongside any config-listed extensions.
 
+The same `little_loops.extensions` entry-point group also dispatches `LLHookIntentExtension` providers — extensions that contribute hook intent handlers via `provided_hook_intents()`. A single package can implement both `LLExtension` (event observers) and `LLHookIntentExtension` (request/response hook handlers); `wire_extensions()` duck-types each interface independently. This single shared group is the resolved design from FEAT-1116 Decision 2 (FEAT-1117 group-split is deferred). See [API Reference → `LLHookIntentExtension`](API.md#llhookintentextension) for the Protocol shape.
+
 Extensions can also be auto-discovered via Python entry points — see [API Reference → Extension API](API.md#extension-api).
 
 > **Tip**: Use [`ll-create-extension`](CLI.md#ll-create-extension) to scaffold a new extension repo with a ready-to-run entry point, skeleton handler, and example test. Use [`LLTestBus`](API.md#lltestbus) to replay recorded events against your extension offline without starting a live loop.
