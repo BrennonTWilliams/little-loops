@@ -928,6 +928,99 @@ class TestBRConfig:
         assert config.resolve_variable("project.type_cmd") is None
 
 
+class TestResolveConfigPath:
+    """Tests for resolve_config_path (Python port of bash ll_resolve_config — FEAT-1454)."""
+
+    def test_prefers_ll_dir_config(self, tmp_path: Path) -> None:
+        """``.ll/ll-config.json`` is returned when present (preferred over root-level)."""
+        from little_loops.config.core import resolve_config_path
+
+        (tmp_path / ".ll").mkdir()
+        ll_dir_cfg = tmp_path / ".ll" / "ll-config.json"
+        ll_dir_cfg.write_text('{"a": 1}')
+        # Also write a root-level one to confirm the .ll/ dir wins.
+        (tmp_path / "ll-config.json").write_text('{"b": 2}')
+
+        assert resolve_config_path(tmp_path) == ll_dir_cfg
+
+    def test_falls_back_to_root_level(self, tmp_path: Path) -> None:
+        """When ``.ll/ll-config.json`` is absent, root-level ``ll-config.json`` is returned."""
+        from little_loops.config.core import resolve_config_path
+
+        root_cfg = tmp_path / "ll-config.json"
+        root_cfg.write_text('{"b": 2}')
+
+        assert resolve_config_path(tmp_path) == root_cfg
+
+    def test_returns_none_when_both_absent(self, tmp_path: Path) -> None:
+        """Neither candidate present → ``None``."""
+        from little_loops.config.core import resolve_config_path
+
+        assert resolve_config_path(tmp_path) is None
+
+    def test_pure_lookup_no_mkdir(self, tmp_path: Path) -> None:
+        """Lookup does NOT create ``.ll/`` (vs. bash version's ``mkdir -p .ll`` side effect)."""
+        from little_loops.config.core import resolve_config_path
+
+        resolve_config_path(tmp_path)
+        assert not (tmp_path / ".ll").exists()
+
+    def test_brconfig_picks_up_root_level_fallback(self, tmp_path: Path) -> None:
+        """``BRConfig._load_config`` now reads root-level ``ll-config.json`` via resolve_config_path."""
+        (tmp_path / "ll-config.json").write_text(
+            json.dumps({"project": {"name": "from-root", "src_dir": "lib/"}})
+        )
+        config = BRConfig(tmp_path)
+        assert config.project.name == "from-root"
+        assert config.project.src_dir == "lib/"
+
+
+class TestFeatureEnabledHelper:
+    """Tests for feature_enabled (Python port of bash ll_feature_enabled — FEAT-1454)."""
+
+    def test_truthy_dot_path_returns_true(self) -> None:
+        from little_loops.config.features import feature_enabled
+
+        assert feature_enabled({"context_monitor": {"enabled": True}}, "context_monitor.enabled")
+
+    def test_falsy_dot_path_returns_false(self) -> None:
+        from little_loops.config.features import feature_enabled
+
+        assert not feature_enabled(
+            {"context_monitor": {"enabled": False}}, "context_monitor.enabled"
+        )
+
+    def test_missing_top_level_key_returns_false(self) -> None:
+        from little_loops.config.features import feature_enabled
+
+        assert not feature_enabled({}, "sync.enabled")
+
+    def test_missing_nested_key_returns_false(self) -> None:
+        from little_loops.config.features import feature_enabled
+
+        assert not feature_enabled({"sync": {}}, "sync.enabled")
+
+    def test_non_dict_intermediate_returns_false(self) -> None:
+        """``feature_enabled`` doesn't traverse into non-dict values (jq returns null/false)."""
+        from little_loops.config.features import feature_enabled
+
+        assert not feature_enabled({"sync": "not a dict"}, "sync.enabled")
+
+    def test_truthy_non_bool_value(self) -> None:
+        """Non-empty strings / non-zero numbers coerce to True (parity with jq's // false)."""
+        from little_loops.config.features import feature_enabled
+
+        assert feature_enabled({"a": {"b": "yes"}}, "a.b")
+        assert feature_enabled({"a": {"b": 1}}, "a.b")
+
+    def test_falsy_non_bool_value(self) -> None:
+        from little_loops.config.features import feature_enabled
+
+        assert not feature_enabled({"a": {"b": 0}}, "a.b")
+        assert not feature_enabled({"a": {"b": ""}}, "a.b")
+        assert not feature_enabled({"a": {"b": None}}, "a.b")
+
+
 class TestBRConfigAliases:
     """Tests for backwards compatibility aliases."""
 

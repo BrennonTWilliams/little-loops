@@ -9,6 +9,31 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+
+def feature_enabled(config_data: dict[str, Any], dot_path: str) -> bool:
+    """Return whether the boolean flag at *dot_path* is enabled in *config_data*.
+
+    Python port of ``hooks/scripts/lib/common.sh:ll_feature_enabled``. Operates
+    on an already-parsed config dict (the bash version uses ``jq`` on the file).
+    Mirrors jq's ``// false`` default: missing keys, non-dict intermediates, or
+    non-truthy terminal values all yield ``False``.
+
+    Examples:
+        >>> feature_enabled({"context_monitor": {"enabled": True}}, "context_monitor.enabled")
+        True
+        >>> feature_enabled({"context_monitor": {"enabled": False}}, "context_monitor.enabled")
+        False
+        >>> feature_enabled({}, "sync.enabled")
+        False
+    """
+    value: Any = config_data
+    for part in dot_path.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return False
+        value = value[part]
+    return bool(value)
+
+
 # Required categories that must always exist (cannot be removed by user config)
 REQUIRED_CATEGORIES: dict[str, dict[str, str]] = {
     "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},

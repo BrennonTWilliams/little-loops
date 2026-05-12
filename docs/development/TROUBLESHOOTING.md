@@ -862,7 +862,9 @@ If `ll-loop stop` still reports "not running" (e.g. lock file is missing but sco
    rm .ll/ll-context-state.json
    rm .ll/ll-precompact-state.json
    ```
-3. Verify `atomic_write_json` is being used (check hook scripts source `lib/common.sh`)
+3. Verify `atomic_write_json` is being used:
+   - Bash hook scripts source it from `hooks/scripts/lib/common.sh`
+   - Python handlers import it from `little_loops.file_utils` (FEAT-1454 port)
 
 ### Lock files not cleaned up
 

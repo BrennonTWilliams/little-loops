@@ -2,17 +2,24 @@
 id: FEAT-1116
 type: FEAT
 priority: P3
-status: open
+status: done
+size: Very Large
 discovered_date: 2026-04-15
 discovered_by: capture-issue
-
-confidence_score: 95
-outcome_confidence: 60
-score_complexity: 10
+confidence_score: 100
+outcome_confidence: 71
+score_complexity: 13
 score_test_coverage: 18
 score_ambiguity: 22
-score_change_surface: 10
-relates_to: ['FEAT-959', 'FEAT-960', 'FEAT-961', 'FEAT-962', 'FEAT-957', 'FEAT-992', 'FEAT-1117']
+score_change_surface: 18
+relates_to:
+- FEAT-959
+- FEAT-960
+- FEAT-961
+- FEAT-962
+- FEAT-957
+- FEAT-992
+- FEAT-1117
 ---
 
 # FEAT-1116: Hook-Intent Abstraction Layer for Multi-Host Support
@@ -107,6 +114,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `hooks/scripts/check-duplicate-issue-id.sh` — sources `lib/common.sh`; calls `ll_resolve_config`, `acquire_lock`; affected if `lib/common.sh` is ported to Python
 - `hooks/scripts/context-monitor.sh` — sources `lib/common.sh`; calls `ll_resolve_config`, `ll_feature_enabled`, `atomic_write_json`, `acquire_lock`; affected if `lib/common.sh` is ported to Python
 - `hooks/scripts/issue-completion-log.sh` — sources `lib/common.sh`; affected if `lib/common.sh` is ported to Python
+- `hooks/scripts/check-duplicate-issue-id-post.sh` — sources `lib/common.sh`; affected if `lib/common.sh` is ported to Python [Agent 1 pass 2]
+- `hooks/scripts/session-cleanup.sh` — session lifecycle script; may be a migration candidate alongside `session-start.sh` [Agent 1 pass 2]
+- `hooks/scripts/scratch-pad-redirect.sh` — sources `lib/common.sh`; has existing test coverage at `test_hooks_integration.py:1803`; affected if `lib/common.sh` is ported to Python [Agent 1 pass 2]
+- `hooks/scripts/context-handoff-sentinel.sh` — handoff detection script; affected if `lib/common.sh` is ported to Python [Agent 1 pass 2]
+
+_Python equivalents of `lib/common.sh` already exist — reuse, don't duplicate (added by `/ll:wire-issue` pass 2):_
+- `scripts/little_loops/file_utils.py` — already contains `atomic_write_json` and file locking equivalents; Step 3 must audit and reuse this module rather than duplicating in `hooks/common.py`
+- `scripts/little_loops/config/core.py` — Python equivalent of `ll_resolve_config` shell function; Step 3 must reuse this
+- `scripts/little_loops/config/features.py` — Python equivalent of `ll_feature_enabled` shell function; Step 3 must reuse this
 
 ### Similar Patterns to Follow
 
@@ -138,6 +154,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `TestClaudeCodePrecompactAdapter` — same subprocess pattern as `TestPrecompactState`, fixture pointing to `hooks/adapters/claude-code/precompact.sh`
 - `TestClaudeCodeSessionStartAdapter` — same subprocess pattern as `TestSessionStartValidation`, fixture pointing to `hooks/adapters/claude-code/session-start.sh`
 
+_Additional test extension gaps (added by `/ll:wire-issue` pass 2):_
+- `scripts/tests/test_extension.py:TestNewProtocols` (lines 465–555) — covers every existing `@runtime_checkable` Protocol with a smoke-import + structural-compliance test pair; adding `LLHookIntentExtension` to `extension.py` requires two new methods: `test_smoke_import_ll_hook_intent_extension` (following line 469 pattern) and `test_ll_hook_intent_extension_protocol_satisfied` (following line 499 pattern)
+- `scripts/tests/test_extension.py:TestWireExtensions` — has `hasattr`-dispatch tests for `InterceptorExtension` (line 361), `ActionProviderExtension` (line 315), `EvaluatorProviderExtension` (line 338); adding `LLHookIntentExtension` detection to `wire_extensions()` requires a new method following the pattern of `test_wire_extensions_with_executor_populates_interceptors`
+
 ### Documentation
 
 - `docs/claude-code/hooks-reference.md` — needs a section on the intent model
@@ -152,6 +172,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/EVENT-SCHEMA.md` — describes the `LLEvent` wrapping convention that the intent layer reuses; cross-link the new `LLHookEvent` type once it exists
 - `docs/development/TESTING.md:774-781` — `hook_script: Path` fixture pattern documented; update to show both legacy shell and adapter fixture variants once adapters exist
 
+_Additional documentation coupling (added by `/ll:wire-issue` pass 2):_
+- `CONTRIBUTING.md` — "Authoring Extensions" > "2. Develop" section: three-Protocol list (`InterceptorExtension, ActionProviderExtension, EvaluatorProviderExtension`) must gain `LLHookIntentExtension` once it ships
+- `CONTRIBUTING.md` — "Event Schema Maintenance" section: describes only `LLEvent` type maintenance steps; `LLHookEvent` (sibling dataclass in `hooks/types.py`) needs analogous documentation added
+- `docs/reference/CLI.md` — `### ll-create-extension` "Generated file contents" code block has the same three-Protocol docstring; must gain `LLHookIntentExtension`
+- `docs/reference/CONFIGURATION.md:527` — `### scratch_pad` section names `hooks/scripts/scratch-pad-redirect.sh` by exact path; stale when `scratch-pad-redirect.sh` migrates to `hooks/adapters/claude-code/`
+- `.claude/CLAUDE.md` — "Key Directories" `hooks/` entry describes only `hooks/hooks.json`; will misrepresent structure once `hooks/adapters/` and `hooks/core/` are introduced; needs subdirectory breakdown
+- `skills/workflow-automation-proposer/SKILL.md` — Step 7 "For hooks" sketch instructs direct `hooks/hooks.json` edits and uses `hook_pre_tool`/`hook_post_tool`/`hook_stop` output fields; adapter model changes the authoring path, making these instructions stale
+- `skills/configure/areas.md` — "Area: hooks" Current Values display table hard-codes `session-start.sh` and `precompact-state.sh` as `[Plugin]` row script names; paths become stale when scripts move to `hooks/adapters/claude-code/`
+- `skills/audit-claude-config/SKILL.md:41` — audit scope listed as `hooks/hooks.json + hooks/prompts/*.md`; does not cover `hooks/adapters/` adapter scripts once they are introduced
+- `skills/init/SKILL.md` — Section "9.5. Hook Dependency Validation": warning messages name `session-start.sh` and `pyyaml` as shell-script dependencies; after migration `pyyaml` moves to the Python package and `jq` dependency may no longer apply
+
 ### Configuration
 
 - `.ll/ll-config.json` — may need a `hooks.host` field so adapters know which host they're running under; today the shell hooks detect Claude Code implicitly
@@ -161,6 +192,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/pyproject.toml:67-69` — defines `[project.entry-points."little_loops.extensions"]` (currently empty); if a separate `little_loops.hook_intents` entry-point group is introduced for intent handler discovery, a new `[project.entry-points."little_loops.hook_intents"]` section must be added here
 - `templates/extension/extension.py.tmpl` — imports `LLEvent` from `little_loops` and implements `on_event(self, event: LLEvent)`; if intent handlers use `LLHookEvent` instead, this template diverges and `ll-create-extension` would scaffold incorrect code for hook intent authors
 - `templates/extension/pyproject.toml.tmpl` — registers `little_loops.extensions` entry-point group; needs a flag or second code path if intent handlers use `little_loops.hook_intents`
+
+_Added by `/ll:refine-issue` 2026-05-11 — cross-reference for Scope Boundary note:_
+- **FEAT-917 extension manifest schema** — when FEAT-917 lands the `[tool.little-loops.extension]` block (acceptance criterion at `.issues/features/P5-FEAT-917-extension-registry-with-discovery-and-compatibility.md:74`, schema location specified at line 40), it must include an optional `hook_intents: [...]` list field alongside the existing `events: [...]` list. The manifest field is **declarative metadata only** (consumed by `ll extensions list/info` per FEAT-917 ACs); runtime discovery and dispatch still flow through `hasattr(extension, "on_hook_intent")` on the `little_loops.extensions` EP group per Decision 2. This is a forward-coupling: FEAT-1116 ships without it, but FEAT-917's schema PR must add the field or hook-intent-contributing extensions will be invisible in the registry.
 
 ## Design Decisions
 
@@ -222,6 +256,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 13. **Migrate `TestSharedConfigFunctions`** — when `lib/common.sh` is ported to Python (`common.py`), this test class (lines 1192-1316 in `test_hooks_integration.py`) bash-sources the shell file directly and will break entirely; replace with a Python-direct test class for `common.py`
 14. **Update adapter fixture paths in `test_hooks_integration.py`** — when `session-start.sh` and `precompact-state.sh` move to `hooks/adapters/claude-code/`, update `TestSessionStartValidation` and `TestPrecompactState` fixture paths (or add parallel `TestClaudeCodeSessionStartAdapter` / `TestClaudeCodePrecompactAdapter` classes and retire the legacy fixtures)
 15. **`templates/extension/` — no changes required** — per Decision 2, intent handlers use the same EP group and share `LLExtension` as a base. `extension.py.tmpl` continues to import `LLEvent` for the base `on_event` surface; authors who want to contribute hook intents add `LLHookIntentExtension` methods alongside. No scaffolding divergence. Skip unless FEAT-1117 reopens the split.
+16. **Audit Python equivalents before porting `lib/common.sh` (Step 3 prerequisite)** — before writing `hooks/common.py`, audit `scripts/little_loops/file_utils.py` (atomic write / file locking), `scripts/little_loops/config/core.py` (`ll_resolve_config` equivalent), and `scripts/little_loops/config/features.py` (`ll_feature_enabled` equivalent); reuse or thin-wrap these rather than duplicating functionality in `hooks/common.py` [Agent 1 pass 2]
+17. **Update skills and authoring docs after `LLHookIntentExtension` ships** — update the three-Protocol list in `CONTRIBUTING.md` > "Authoring Extensions" > "2. Develop", `docs/reference/CLI.md` > `### ll-create-extension` code block, and `scripts/little_loops/cli/create_extension.py:_render_extension()` docstring string (and `templates/extension/extension.py.tmpl` in tandem); update `skills/workflow-automation-proposer/SKILL.md` hook-authoring sketch; update `skills/configure/areas.md` hook display table; update `skills/init/SKILL.md` Section 9.5 warning messages; update `.claude/CLAUDE.md` `hooks/` directory entry [Agent 2 pass 2]
 
 ### Verification
 
@@ -271,7 +307,22 @@ The three architectural forks originally flagged have been decided and are now d
 - No `hooks/adapters/` directory ✓
 - Feature not yet implemented ✓
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-11_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Outcome Risk Factors
+- Wide breadth across 16+ modification sites increases coordination overhead; ~60% are mechanical doc/skills edits with low individual per-site risk, but the coordination surface is real
+- Step 3 (`lib/common.sh` port) may expand if the Python equivalents (`file_utils.py`, `config/core.py`, `config/features.py`) don't fully cover all shell primitives — Step 16 gates this with an explicit audit-first instruction, which mitigates but doesn't eliminate the risk
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-05-12T00:20:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cb0dc9a-fd6f-4945-97b0-ad6acec56482.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd0cfdeb-bae6-43cc-a604-91c21645bcad.jsonl`
+- `/ll:wire-issue` - 2026-05-12T00:12:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b910f28c-921a-49ba-9940-1801a1c2dc51.jsonl`
+- `/ll:refine-issue` - 2026-05-12T00:05:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19f0b5a0-a404-4213-8f73-af9cd921a5af.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
@@ -296,3 +347,20 @@ The three architectural forks originally flagged have been decided and are now d
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The extension manifest schema (`[tool.little-loops.extension]` block in `pyproject.toml`) should gain an optional `hook_intents` list field alongside the existing `events` list. This is required for FEAT-917 (Extension Registry) to surface hook intent contributions in `ll extensions list/info`. Runtime discovery still uses `hasattr()` on the `little_loops.extensions` entry-point group — the manifest field is declarative metadata only, not a dispatch table. Add this to the integration map and cross-reference FEAT-917's manifest schema acceptance criterion.
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-05-12
+- **Reason**: Issue too large for single session (score 11/11)
+
+### Decomposed Into
+
+- FEAT-1448: Hook-Intent Type Definitions and Foundation
+- FEAT-1449: PreCompact Intent — Python Core Handler and Claude Code Adapter
+- FEAT-1450: SessionStart Intent — Python Core Handler and Claude Code Adapter
+- FEAT-1451: OpenCode Adapter for Hook Intents
+- FEAT-1452: LLHookIntentExtension Protocol and Extension Registry Wiring
+- FEAT-1453: Hook-Intent Abstraction Layer — Documentation

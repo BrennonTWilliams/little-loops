@@ -1466,130 +1466,34 @@ class TestDuplicateIssueIdPost:
             os.chdir(original_dir)
 
 
-class TestSharedConfigFunctions:
-    """Test ll_resolve_config, ll_feature_enabled, ll_config_value from common.sh."""
+class TestSharedConfigFunctionsBashSmoke:
+    """Smoke check that bash callers can still source common.sh after the FEAT-1454 port.
 
-    @pytest.fixture
-    def common_sh(self) -> Path:
-        """Path to common.sh."""
-        return Path(__file__).parent.parent.parent / "hooks/scripts/lib/common.sh"
+    The Python-direct equivalents of ``ll_resolve_config`` / ``ll_feature_enabled``
+    now live in ``little_loops.config.core`` and ``little_loops.config.features``
+    and are exhaustively tested in ``test_config.py:TestResolveConfigPath`` and
+    ``TestFeatureEnabledHelper``. The exhaustive bash-source coverage was dropped
+    along with the ``_run_bash`` / ``source common.sh`` harness; we only verify the
+    bash primitives are still defined for the bash hook scripts not yet migrated.
+    """
 
-    def _run_bash(self, common_sh: Path, script: str, cwd: Path) -> subprocess.CompletedProcess:
-        """Run a bash snippet that sources common.sh."""
-        full_script = f'source "{common_sh}"\n{script}'
-        return subprocess.run(
-            ["bash", "-e", "-c", full_script],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=str(cwd),
-        )
-
-    def test_resolve_config_finds_ll_dir(self, common_sh: Path, tmp_path: Path):
-        """ll_resolve_config finds .ll/ll-config.json."""
-        config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
-        config_file = config_dir / "ll-config.json"
-        config_file.write_text('{"test": true}')
-
-        result = self._run_bash(common_sh, 'll_resolve_config; echo "$LL_CONFIG_FILE"', tmp_path)
-        assert result.returncode == 0
-        assert result.stdout.strip() == ".ll/ll-config.json"
-
-    def test_resolve_config_finds_root_fallback(self, common_sh: Path, tmp_path: Path):
-        """ll_resolve_config falls back to ll-config.json."""
-        config_file = tmp_path / "ll-config.json"
-        config_file.write_text('{"test": true}')
-
-        result = self._run_bash(common_sh, 'll_resolve_config; echo "$LL_CONFIG_FILE"', tmp_path)
-        assert result.returncode == 0
-        assert result.stdout.strip() == "ll-config.json"
-
-    def test_resolve_config_empty_when_missing(self, common_sh: Path, tmp_path: Path):
-        """ll_resolve_config sets empty string when no config found."""
-        result = self._run_bash(common_sh, 'll_resolve_config; echo "[$LL_CONFIG_FILE]"', tmp_path)
-        assert result.returncode == 0
-        assert result.stdout.strip() == "[]"
-
-    def test_feature_enabled_returns_true(self, common_sh: Path, tmp_path: Path):
-        """ll_feature_enabled returns 0 when feature is enabled."""
-        config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
-        (config_dir / "ll-config.json").write_text('{"context_monitor": {"enabled": true}}')
-
-        result = self._run_bash(
-            common_sh,
-            'set +e; ll_resolve_config; ll_feature_enabled "context_monitor.enabled"; echo $?',
-            tmp_path,
-        )
-        assert result.returncode == 0
-        assert result.stdout.strip() == "0"
-
-    def test_feature_enabled_returns_false(self, common_sh: Path, tmp_path: Path):
-        """ll_feature_enabled returns 1 when feature is disabled."""
-        config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
-        (config_dir / "ll-config.json").write_text('{"context_monitor": {"enabled": false}}')
-
-        result = self._run_bash(
-            common_sh,
-            'set +e; ll_resolve_config; ll_feature_enabled "context_monitor.enabled"; echo $?',
-            tmp_path,
-        )
-        assert result.returncode == 0
-        assert result.stdout.strip() == "1"
-
-    def test_feature_enabled_missing_key(self, common_sh: Path, tmp_path: Path):
-        """ll_feature_enabled returns 1 when key is missing."""
-        config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
-        (config_dir / "ll-config.json").write_text("{}")
-
-        result = self._run_bash(
-            common_sh,
-            'set +e; ll_resolve_config; ll_feature_enabled "sync.enabled"; echo $?',
-            tmp_path,
-        )
-        assert result.returncode == 0
-        assert result.stdout.strip() == "1"
-
-    def test_feature_enabled_no_config(self, common_sh: Path, tmp_path: Path):
-        """ll_feature_enabled returns 1 when no config file exists."""
-        result = self._run_bash(
-            common_sh,
-            'set +e; ll_resolve_config; ll_feature_enabled "sync.enabled"; echo $?',
-            tmp_path,
-        )
-        assert result.returncode == 0
-        assert result.stdout.strip() == "1"
-
-    def test_config_value_reads_string(self, common_sh: Path, tmp_path: Path):
-        """ll_config_value reads a string value."""
-        config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
-        (config_dir / "ll-config.json").write_text('{"prompt_optimization": {"mode": "thorough"}}')
-
-        result = self._run_bash(
-            common_sh,
-            'll_resolve_config; ll_config_value "prompt_optimization.mode" "quick"',
-            tmp_path,
-        )
-        assert result.returncode == 0
-        assert result.stdout.strip() == "thorough"
-
-    def test_config_value_uses_default(self, common_sh: Path, tmp_path: Path):
-        """ll_config_value returns default when key is missing."""
-        config_dir = tmp_path / ".ll"
-        config_dir.mkdir()
-        (config_dir / "ll-config.json").write_text("{}")
-
-        result = self._run_bash(
-            common_sh,
-            'll_resolve_config; ll_config_value "prompt_optimization.mode" "quick"',
-            tmp_path,
-        )
-        assert result.returncode == 0
-        assert result.stdout.strip() == "quick"
+    def test_common_sh_still_defines_bash_primitives(self) -> None:
+        common_sh = Path(__file__).parent.parent.parent / "hooks/scripts/lib/common.sh"
+        for fn in (
+            "acquire_lock",
+            "release_lock",
+            "atomic_write_json",
+            "ll_resolve_config",
+            "ll_feature_enabled",
+            "ll_config_value",
+        ):
+            result = subprocess.run(
+                ["bash", "-c", f'source "{common_sh}" && declare -f {fn} >/dev/null'],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            assert result.returncode == 0, f"bash function {fn!r} missing from common.sh"
 
 
 class TestSessionStartValidation:

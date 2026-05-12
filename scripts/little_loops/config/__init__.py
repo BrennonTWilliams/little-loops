@@ -30,6 +30,11 @@ from little_loops.config.cli import (
     RefineStatusConfig,
 )
 from little_loops.config.core import BRConfig, CLConfig, ProjectConfig
+
+# Note: `resolve_config_path` (config.core) and `feature_enabled` (config.features)
+# are intentionally NOT re-exported via __all__ — callers import them via direct
+# submodule paths (e.g. `from little_loops.config.core import resolve_config_path`).
+# This keeps the package-level surface focused on dataclass types and BRConfig.
 from little_loops.config.features import (
     DEFAULT_CATEGORIES,
     REQUIRED_CATEGORIES,

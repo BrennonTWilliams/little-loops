@@ -31,6 +31,31 @@ from little_loops.config.features import (
 from little_loops.parallel.types import ParallelConfig
 
 
+CONFIG_FILENAME = "ll-config.json"
+CONFIG_DIR = ".ll"
+
+
+def resolve_config_path(project_root: Path) -> Path | None:
+    """Return the path to ``ll-config.json`` for *project_root* if found.
+
+    Python port of ``hooks/scripts/lib/common.sh:ll_resolve_config``: prefers
+    ``<root>/.ll/ll-config.json``, then falls back to a root-level
+    ``<root>/ll-config.json``. Pure lookup — does not create directories or
+    mutate global state (the bash version's ``mkdir -p .ll`` side effect is
+    intentionally dropped; callers that need ``.ll/`` to exist must create
+    it themselves).
+
+    Returns ``None`` if neither candidate exists.
+    """
+    ll_dir_path = project_root / CONFIG_DIR / CONFIG_FILENAME
+    if ll_dir_path.is_file():
+        return ll_dir_path
+    root_level = project_root / CONFIG_FILENAME
+    if root_level.is_file():
+        return root_level
+    return None
+
+
 @dataclass
 class ProjectConfig:
     """Project-level configuration."""
@@ -74,8 +99,8 @@ class BRConfig:
         print(config.get_issue_dir("bugs"))  # Path(".issues/bugs")
     """
 
-    CONFIG_FILENAME = "ll-config.json"
-    CONFIG_DIR = ".ll"
+    CONFIG_FILENAME = CONFIG_FILENAME
+    CONFIG_DIR = CONFIG_DIR
 
     def __init__(self, project_root: Path) -> None:
         """Initialize configuration from project root.
@@ -88,9 +113,14 @@ class BRConfig:
         self._parse_config()
 
     def _load_config(self) -> dict[str, Any]:
-        """Load configuration from file."""
-        config_path = self.project_root / self.CONFIG_DIR / self.CONFIG_FILENAME
-        if config_path.exists():
+        """Load configuration from file.
+
+        Uses :func:`resolve_config_path` which checks ``.ll/ll-config.json``
+        first then falls back to a root-level ``ll-config.json`` (parity with
+        ``hooks/scripts/lib/common.sh:ll_resolve_config``).
+        """
+        config_path = resolve_config_path(self.project_root)
+        if config_path is not None:
             with open(config_path, encoding="utf-8") as f:
                 return cast(dict[str, Any], json.load(f))
         return {}
