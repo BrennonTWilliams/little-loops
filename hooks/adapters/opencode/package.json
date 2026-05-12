@@ -1,0 +1,14 @@
+{
+  "name": "@ll/opencode-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.ts",
+  "description": "OpenCode plugin adapter that delegates little-loops hook intents to the Python dispatcher (FEAT-1451).",
+  "dependencies": {
+    "@opencode-ai/plugin": "1.2.27"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}

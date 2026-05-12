@@ -805,8 +805,13 @@ If `ll-loop stop` still reports "not running" (e.g. lock file is missing but sco
    chmod +x hooks/scripts/user-prompt-check.sh
    chmod +x hooks/scripts/precompact-state.sh
    chmod +x hooks/adapters/claude-code/precompact.sh
+   chmod +x hooks/adapters/claude-code/session-start.sh
    chmod +x hooks/scripts/scratch-pad-redirect.sh
    ```
+
+   The OpenCode adapter at `hooks/adapters/opencode/index.ts` is a Bun-runtime
+   TypeScript plugin and does not need `chmod +x` — it is loaded by the
+   OpenCode plugin host rather than invoked as an executable file.
 
    Manually exercise `scratch-pad-redirect.sh` with `scratch_pad.enabled: true` in
    `.ll/ll-config.json`:
@@ -1007,6 +1012,12 @@ echo '{
 echo '{
   "transcript_path": "/tmp/test.jsonl"
 }' | python -m little_loops.hooks pre_compact
+
+# Same handler from the OpenCode adapter's perspective: set LL_HOOK_HOST to
+# reproduce the host identifier the OpenCode plugin injects.
+echo '{
+  "transcript_path": "/tmp/test.jsonl"
+}' | LL_HOOK_HOST=opencode python -m little_loops.hooks pre_compact
 ```
 
 ### Hook integration tests
@@ -1037,7 +1048,7 @@ python -m pytest scripts/tests/test_hooks_integration.py -v -s
    - context-monitor.sh: 3s timeout
    - check-duplicate-issue-id.sh: 3s timeout (PreToolUse lock)
    - check-duplicate-issue-id-post.sh: no lock (PostToolUse reactive deletion; overall hook timeout 5s)
-   - little_loops.hooks.pre_compact: 3s lock timeout (Python handler invoked via hooks/adapters/claude-code/precompact.sh)
+   - little_loops.hooks.pre_compact: 3s lock timeout (Python handler invoked via hooks/adapters/claude-code/precompact.sh or hooks/adapters/opencode/index.ts on the `session.compacted` event)
 3. Monitor lock files during operation:
    ```bash
    watch -n 0.1 'find .claude .issues -name "*.lock*" 2>/dev/null'

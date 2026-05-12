@@ -83,9 +83,14 @@ little-loops/
 │   │   ├── continuation-prompt-template.md  # Handoff prompt template
 │   │   └── optimize-prompt-hook.md          # Prompt optimization hook
 │   ├── adapters/            # Host-specific adapters → little_loops.hooks dispatcher
-│   │   └── claude-code/
-│   │       ├── precompact.sh
-│   │       └── session-start.sh
+│   │   ├── claude-code/
+│   │   │   ├── precompact.sh
+│   │   │   └── session-start.sh
+│   │   └── opencode/        # OpenCode TS plugin adapter (Bun runtime)
+│   │       ├── index.ts     # Plugin: session.created → session_start, session.compacted → pre_compact
+│   │       ├── package.json
+│   │       ├── tsconfig.json
+│   │       └── README.md
 │   └── scripts/             # Hook scripts
 │       ├── check-duplicate-issue-id.sh
 │       ├── check-duplicate-issue-id-post.sh

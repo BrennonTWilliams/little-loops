@@ -84,7 +84,7 @@ def main_hooks() -> int:
     payload: dict[str, Any] = parsed if isinstance(parsed, dict) else {}
 
     event = LLHookEvent(
-        host="claude-code",
+        host=os.environ.get("LL_HOOK_HOST", "claude-code"),
         intent=intent,
         payload=payload,
         cwd=os.getcwd(),
