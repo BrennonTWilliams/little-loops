@@ -865,7 +865,7 @@ Current Hook Configuration
   [Plugin]   PostToolUse       Bash           issue-completion-log.sh         5s       [exists/MISSING]
   [Plugin]   PostToolUse       Write          check-duplicate-issue-id-post.sh 5s      [exists/MISSING]
   [Plugin]   Stop              (no matcher)   session-cleanup.sh              15s      [exists/MISSING]
-  [Plugin]   PreCompact        *              precompact-state.sh             5s       [exists/MISSING]
+  [Plugin]   PreCompact        *              adapters/claude-code/precompact.sh       5s    [exists/MISSING]
   [Project]  ...               ...            ...                             ...      [exists/MISSING]
   [Local]    ...               ...            ...                             ...      [exists/MISSING]
 

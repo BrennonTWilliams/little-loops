@@ -111,10 +111,17 @@ For each proposal, include actionable steps:
 
 **For hooks:**
 ```
-1. Add entry to hooks/hooks.json
-2. Specify event type (PreToolUse, PostToolUse, Stop)
-3. Define matcher criteria
-4. Create prompt file if using prompt-based hook
+1. Implement a hook intent handler via the LLHookIntentExtension Protocol
+   (provided_hook_intents() returns name → Callable[[LLHookEvent], LLHookResult]).
+   Handlers live in host-agnostic core code under hooks/core/ (or in a plugin's
+   extension package) and are wired into _HOOK_INTENT_REGISTRY by wire_extensions().
+2. Use the appropriate host adapter under hooks/adapters/<host>/ (e.g.
+   claude-code/, opencode/) to translate the host's lifecycle event into a
+   LLHookEvent and dispatch through main_hooks(); do not add direct entries to
+   hooks/hooks.json for new intents.
+3. Specify the hook intent name (matches the host's event type, e.g.
+   PreToolUse, PostToolUse, Stop, PreCompact, SessionStart).
+4. Define any matcher criteria the adapter forwards from the host config.
 ```
 
 **For scripts:**

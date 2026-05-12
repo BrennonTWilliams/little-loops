@@ -36,7 +36,10 @@ Personal development preferences.
 commands/       # Slash commands (/ll:*)
 agents/         # Subagent definitions
 skills/         # Skill definitions (30 skills)
-hooks/          # Lifecycle hooks and prompts
+hooks/          # Lifecycle hooks (subdivided below)
+  core/         # Host-agnostic Python handlers (session_start, pre_compact, ...) invoked by main_hooks()
+  adapters/     # Host translation layer; one subdir per host (claude-code/, opencode/) that envelopes the host event into LLHookEvent
+  prompts/      # Prompt-text files referenced from hooks/hooks.json entries
 scripts/        # Python package (little_loops)
 templates/      # Project-type config templates
 .issues/        # Issue tracking (bugs/, features/, enhancements/, epics/)

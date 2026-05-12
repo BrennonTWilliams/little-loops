@@ -556,6 +556,8 @@ class MyExtension:
         print(f"{event.type} — {event.payload}")
 ```
 
+In addition to the base `LLExtension` shape, an extension class may implement any of the optional mixin Protocols exposed from `little_loops`: `InterceptorExtension`, `ActionProviderExtension`, `EvaluatorProviderExtension`, and `LLHookIntentExtension`. Each is detected via `hasattr()` at wire time, so you opt in simply by implementing the corresponding method. `LLHookIntentExtension.provided_hook_intents()` returns a mapping of hook-intent name to a `Callable[[LLHookEvent], LLHookResult]` handler; returned handlers are merged into the global hook-intent registry consumed by `little_loops.hooks`.
+
 **3. Test offline with LLTestBus**
 
 `LLTestBus` lets you replay recorded events against your extension without running a live loop:
@@ -617,6 +619,8 @@ When adding a new `LLEvent` type or changing payload fields:
    ```
 
 4. Commit the updated `.json` files in `docs/reference/schemas/` alongside the source change.
+
+**Note on `LLHookEvent` / `LLHookResult`:** these are a sibling request/response wire format used by `LLHookIntentExtension` handlers — not pub/sub events on the `EventBus`. They do **not** participate in the JSON Schema regeneration flow above. See [`docs/reference/EVENT-SCHEMA.md`](docs/reference/EVENT-SCHEMA.md) and `scripts/little_loops/hooks/types.py` for the type definitions.
 
 ## MCP Debugging
 

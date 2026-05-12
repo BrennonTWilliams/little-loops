@@ -351,7 +351,7 @@ Run the following checks via Bash:
    ```
    If not found:
    ```
-   Warning: 'jq' not found in PATH — hook scripts (context-monitor, session-start, etc.) will fail silently
+   Warning: 'jq' not found in PATH — Claude Code hook adapters (hooks/adapters/claude-code/*.sh, including session-start.sh and precompact.sh) will fail silently. Adapters parse the host JSON envelope with jq before invoking the Python handlers in little_loops.hooks; the LLHookIntentExtension dispatch path requires jq on the adapter side even though the handlers themselves are Python.
    Install: https://stedolan.github.io/jq/download/
    ```
 

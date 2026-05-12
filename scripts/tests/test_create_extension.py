@@ -112,6 +112,19 @@ class TestMainCreateExtensionApply:
         ext_content = next(v for k, v in files_arg.items() if k.name == "extension.py")
         assert "docs/reference/EVENT-SCHEMA.md" in ext_content
 
+    def test_extension_py_lists_hook_intent_protocol(self) -> None:
+        """Generated extension.py scaffold lists LLHookIntentExtension among optional mixin Protocols."""
+        with (
+            patch("sys.argv", ["ll-create-extension", "my-ext"]),
+            patch("little_loops.cli.create_extension._target_exists", return_value=False),
+            patch("little_loops.cli.create_extension._get_cwd", return_value=Path("/fake")),
+            patch("little_loops.cli.create_extension._write_scaffold") as mock_write,
+        ):
+            main_create_extension()
+        _, files_arg = mock_write.call_args[0]
+        ext_content = next(v for k, v in files_arg.items() if k.name == "extension.py")
+        assert "LLHookIntentExtension" in ext_content
+
     def test_pyproject_has_entry_point(self) -> None:
         """Generated pyproject.toml includes little_loops.extensions entry point."""
         with (

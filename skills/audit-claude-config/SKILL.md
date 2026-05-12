@@ -38,7 +38,7 @@ You are tasked with performing a comprehensive audit of CLAUDE.md files and Clau
 - **Agents**: `agents/*.md` - Sub-agent definitions
 - **Skills**: `skills/*.md` - Skill definitions
 - **Commands**: `commands/*.md` - Slash command definitions
-- **Hooks**: `hooks/hooks.json` + `hooks/prompts/*.md` - Lifecycle hooks
+- **Hooks**: `hooks/hooks.json` + `hooks/prompts/*.md` + `hooks/core/` + `hooks/adapters/` - Lifecycle hooks (Python handlers in `core/`, host adapters in `adapters/<host>/`, intent handlers contributed via `LLHookIntentExtension`)
 
 ### Settings Files (Hierarchy Order - highest precedence first)
 1. **Managed settings**: `/Library/Application Support/ClaudeCode/managed-settings.json` (macOS) or `/etc/claude-code/managed-settings.json` (Linux)

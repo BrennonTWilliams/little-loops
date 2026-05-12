@@ -1342,7 +1342,8 @@ class MyDashboardExt:
 
     Implement on_event to handle little-loops lifecycle events.
     Optional mixin Protocols (InterceptorExtension, ActionProviderExtension,
-    EvaluatorProviderExtension) are opt-in — implement their methods to activate.
+    EvaluatorProviderExtension, LLHookIntentExtension) are opt-in — implement
+    their methods to activate.
     """
 
     def on_event(self, event: LLEvent) -> None:

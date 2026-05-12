@@ -484,6 +484,7 @@ little-loops includes an extension architecture built on a structured event bus.
 | `InterceptorExtension` | `extension.py` | Protocol for plugins providing `before_route`/`after_route` hooks; stored in `FSMExecutor._interceptors` |
 | `ActionProviderExtension` | `extension.py` | Protocol for plugins providing custom `ActionRunner` instances; populated into `FSMExecutor._contributed_actions` |
 | `EvaluatorProviderExtension` | `extension.py` | Protocol for plugins providing custom evaluator callables; populated into `FSMExecutor._contributed_evaluators` |
+| `LLHookIntentExtension` | `extension.py` | Protocol for plugins contributing hook intent handlers (`provided_hook_intents()`); detected via `hasattr()` in `wire_extensions`, merged into `_HOOK_INTENT_REGISTRY` in `hooks/__init__.py` |
 | `ReferenceInterceptorExtension` | `extensions/reference_interceptor.py` | Passthrough reference implementation of `InterceptorExtension`; copy-paste starting point for custom interceptors |
 
 ### Event Emitters

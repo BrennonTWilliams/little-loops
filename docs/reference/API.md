@@ -5942,6 +5942,7 @@ def wire_extensions(
 - For each loaded extension, wraps `ext.on_event` to convert the raw event dict into an `LLEvent` (using `LLEvent.from_raw_event()`, which copies the dict to prevent mutation), then calls `bus.register(callback, filter=getattr(ext, "event_filter", None))` — forwarding any `event_filter` declared on the extension class.
 - The forwarded `event_filter` is matched against the event's `type` field using `fnmatch` glob patterns. `None` (the default) means the extension receives every event.
 - When `executor` is provided, a second pass populates `executor._contributed_actions`, `executor._contributed_evaluators`, and `executor._interceptors` from each extension that implements the corresponding protocols (`ActionProviderExtension`, `EvaluatorProviderExtension`, `InterceptorExtension`).
+- The same second pass also merges any `LLHookIntentExtension.provided_hook_intents()` mappings into the module-level `_HOOK_INTENT_REGISTRY` in `little_loops.hooks` (detected via `hasattr()`), making the contributed `name → Callable[[LLHookEvent], LLHookResult]` handlers available to `little_loops.hooks.main_hooks()` for dispatch by the host adapters under `hooks/adapters/<host>/`.
 
 **Error handling:**
 - **Load failures** — both `ExtensionLoader.from_config()` and `from_entry_points()` catch all exceptions per extension, log a `WARNING` with the full traceback, and continue. A single bad extension never prevents others from loading; `wire_extensions` returns a partial list of the extensions that did succeed.
