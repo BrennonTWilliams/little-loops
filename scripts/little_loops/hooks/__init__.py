@@ -14,8 +14,10 @@ exits with the handler's exit code. Today it routes:
 
 - ``pre_compact`` → :mod:`little_loops.hooks.pre_compact`
 
-Future intent handlers (``session_start``, …) will be wired by adding entries
-to the dispatch table in :func:`main_hooks`.
+- ``session_start`` → :mod:`little_loops.hooks.session_start`
+
+Future intent handlers will be wired by adding entries to the dispatch table
+in :func:`main_hooks`.
 
 Public exports:
     LLHookEvent: host-agnostic hook event payload
@@ -35,15 +37,20 @@ from little_loops.hooks.types import LLHookEvent, LLHookResult
 
 __all__ = ["LLHookEvent", "LLHookResult", "main_hooks"]
 
-_USAGE = "Usage: python -m little_loops.hooks <intent>\n\nAvailable intents: pre_compact"
+_USAGE = (
+    "Usage: python -m little_loops.hooks <intent>\n\nAvailable intents: pre_compact, session_start"
+)
 
 
 def _dispatch_table() -> dict[str, Callable[[LLHookEvent], LLHookResult]]:
     # Imported lazily to avoid a top-level circular import surface and keep
     # the module import cost minimal for callers that only need the types.
-    from little_loops.hooks import pre_compact
+    from little_loops.hooks import pre_compact, session_start
 
-    return {"pre_compact": pre_compact.handle}
+    return {
+        "pre_compact": pre_compact.handle,
+        "session_start": session_start.handle,
+    }
 
 
 def main_hooks() -> int:
@@ -83,6 +90,8 @@ def main_hooks() -> int:
         cwd=os.getcwd(),
     )
     result = handler(event)
+    if result.stdout is not None:
+        sys.stdout.write(result.stdout)
     if result.feedback:
         print(result.feedback, file=sys.stderr)
     return result.exit_code

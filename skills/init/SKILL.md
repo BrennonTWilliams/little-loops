@@ -355,22 +355,22 @@ Run the following checks via Bash:
    Install: https://stedolan.github.io/jq/download/
    ```
 
-2. **python3 available** (required by session-start.sh):
+2. **python3 available** (required by the SessionStart adapter and the `little_loops.hooks` Python handlers):
    ```bash
    which python3 2>/dev/null
    ```
    If not found:
    ```
-   Warning: 'python3' not found in PATH — session-start.sh will fail silently
+   Warning: 'python3' not found in PATH — SessionStart adapter will fail silently
    ```
 
-3. **pyyaml installed** (required by session-start.sh config merge):
+3. **pyyaml installed** (required by `little_loops.hooks.session_start` for `.ll/ll.local.md` frontmatter parsing):
    ```bash
    python3 -c "import yaml" 2>/dev/null
    ```
    If import fails:
    ```
-   Warning: 'pyyaml' not installed — session-start.sh will fail silently
+   Warning: 'pyyaml' not installed — SessionStart config merge will fail silently
    Install: pip install pyyaml
    ```
 

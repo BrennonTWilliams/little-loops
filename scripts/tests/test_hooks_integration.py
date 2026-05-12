@@ -1497,12 +1497,12 @@ class TestSharedConfigFunctionsBashSmoke:
 
 
 class TestSessionStartValidation:
-    """Test validate_enabled_features in session-start.sh."""
+    """Test feature-flag validation in the SessionStart Claude Code adapter (FEAT-1450)."""
 
     @pytest.fixture
     def hook_script(self) -> Path:
-        """Path to session-start.sh."""
-        return Path(__file__).parent.parent.parent / "hooks/scripts/session-start.sh"
+        """Path to the Claude Code session-start adapter."""
+        return Path(__file__).parent.parent.parent / "hooks/adapters/claude-code/session-start.sh"
 
     def test_warns_sync_without_github(self, hook_script: Path, tmp_path: Path):
         """Warns when sync.enabled is true but sync.github is empty."""
@@ -1517,6 +1517,7 @@ class TestSessionStartValidation:
 
             result = subprocess.run(
                 [str(hook_script)],
+                input="{}",
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -1539,6 +1540,7 @@ class TestSessionStartValidation:
 
             result = subprocess.run(
                 [str(hook_script)],
+                input="{}",
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -1581,6 +1583,7 @@ class TestSessionStartValidation:
 
             result = subprocess.run(
                 [str(hook_script)],
+                input="{}",
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -1611,6 +1614,7 @@ class TestSessionStartValidation:
 
             result = subprocess.run(
                 [str(hook_script)],
+                input="{}",
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -1964,7 +1968,6 @@ class TestContextHandoffSentinel:
 
             result = subprocess.run(
                 [str(hook_script)],
-                input="{}",
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -2003,7 +2006,6 @@ class TestContextHandoffSentinel:
 
             subprocess.run(
                 [str(hook_script)],
-                input="{}",
                 capture_output=True,
                 text=True,
                 timeout=10,

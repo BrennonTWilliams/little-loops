@@ -103,12 +103,17 @@ class LLHookResult:
         data: Additional structured data the handler wants returned to the
             host (e.g. stdout JSON for Claude Code's structured-response
             intents). Default empty dict.
+        stdout: Optional raw payload to be written to the host's stdout stream
+            (e.g. SessionStart's merged config JSON, which Claude Code ingests
+            as session context). ``None`` means "write nothing to stdout".
+            Adapters that don't model a stdout channel may ignore this field.
     """
 
     exit_code: int = 0
     feedback: str | None = None
     decision: str | None = None
     data: dict[str, Any] = field(default_factory=dict)
+    stdout: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a flat dict for JSON transport.
@@ -123,6 +128,8 @@ class LLHookResult:
             out["decision"] = self.decision
         if self.data:
             out["data"] = self.data
+        if self.stdout is not None:
+            out["stdout"] = self.stdout
         return out
 
     @classmethod
@@ -133,4 +140,5 @@ class LLHookResult:
             feedback=data.get("feedback"),
             decision=data.get("decision"),
             data=data.get("data", {}) or {},
+            stdout=data.get("stdout"),
         )

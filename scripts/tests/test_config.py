@@ -2043,3 +2043,69 @@ class TestBRConfigLearningTestsIntegration:
 
         config = BRConfig(temp_project_dir)
         assert config.learning_tests.stale_after_days == 7
+
+
+class TestDeepMerge:
+    """Tests for `little_loops.config.core.deep_merge` (config-overlay semantics)."""
+
+    def test_replaces_scalar(self) -> None:
+        """Override scalar replaces base scalar."""
+        from little_loops.config.core import deep_merge
+
+        result = deep_merge({"a": 1}, {"a": 2})
+        assert result == {"a": 2}
+
+    def test_adds_new_key(self) -> None:
+        """Override adds keys not in base."""
+        from little_loops.config.core import deep_merge
+
+        result = deep_merge({"a": 1}, {"b": 2})
+        assert result == {"a": 1, "b": 2}
+
+    def test_recurses_into_nested_dicts(self) -> None:
+        """Nested dicts merge recursively at every level."""
+        from little_loops.config.core import deep_merge
+
+        result = deep_merge(
+            {"outer": {"inner": {"x": 1, "y": 2}}},
+            {"outer": {"inner": {"y": 99, "z": 3}}},
+        )
+        assert result == {"outer": {"inner": {"x": 1, "y": 99, "z": 3}}}
+
+    def test_arrays_replace_not_append(self) -> None:
+        """Arrays in override replace base arrays — they do not append."""
+        from little_loops.config.core import deep_merge
+
+        result = deep_merge({"items": [1, 2, 3]}, {"items": [4]})
+        assert result == {"items": [4]}
+
+    def test_null_removes_key(self) -> None:
+        """Explicit `None` in override removes the key from the result."""
+        from little_loops.config.core import deep_merge
+
+        result = deep_merge({"a": 1, "b": 2}, {"a": None})
+        assert result == {"b": 2}
+
+    def test_null_on_missing_key_is_noop(self) -> None:
+        """`None` for a key not in base is a no-op (no KeyError)."""
+        from little_loops.config.core import deep_merge
+
+        result = deep_merge({"a": 1}, {"b": None})
+        assert result == {"a": 1}
+
+    def test_dict_replaces_scalar(self) -> None:
+        """Override dict replaces base scalar (no recursion when base is not a dict)."""
+        from little_loops.config.core import deep_merge
+
+        result = deep_merge({"a": 1}, {"a": {"x": 2}})
+        assert result == {"a": {"x": 2}}
+
+    def test_does_not_mutate_inputs(self) -> None:
+        """Merge returns a new dict; neither input is mutated."""
+        from little_loops.config.core import deep_merge
+
+        base = {"a": {"b": 1}}
+        override = {"a": {"c": 2}}
+        deep_merge(base, override)
+        assert base == {"a": {"b": 1}}
+        assert override == {"a": {"c": 2}}

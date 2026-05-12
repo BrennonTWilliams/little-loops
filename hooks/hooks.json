@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-start.sh",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/session-start.sh",
             "timeout": 5,
             "statusMessage": "Loading ll config..."
           }

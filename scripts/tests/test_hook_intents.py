@@ -272,6 +272,20 @@ class TestHooksMainModule:
         assert "Task state preserved" in result.stderr
         assert (tmp_path / ".ll" / "ll-precompact-state.json").is_file()
 
+    def test_dispatch_session_start_happy_path(self, tmp_path) -> None:
+        """``session_start`` intent runs the handler and exits 0 (no config in tmp dir)."""
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "session_start"],
+            input=json.dumps({}),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0
+        # No config in tmp_path → the "No config found" warning is emitted to stderr.
+        assert "No config found" in result.stderr
+
     def test_dispatch_unknown_intent(self) -> None:
         """Unknown intent name exits non-zero with an error message on stderr."""
         result = subprocess.run(

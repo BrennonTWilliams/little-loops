@@ -30,9 +30,38 @@ from little_loops.config.features import (
 )
 from little_loops.parallel.types import ParallelConfig
 
-
 CONFIG_FILENAME = "ll-config.json"
 CONFIG_DIR = ".ll"
+
+
+def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Deep-merge *override* into *base* for config-style overlays.
+
+    Python port of the inline bash version at ``hooks/scripts/session-start.sh:30-43``
+    used to apply ``.ll/ll.local.md`` frontmatter overrides on top of the base
+    ``ll-config.json``. Semantics:
+
+    - Nested dicts are merged recursively at every level.
+    - All other value types (strings, ints, bools, lists) **replace** the base
+      value — arrays do not append.
+    - An explicit ``None`` in *override* **removes** the key from the result.
+
+    Differs from ``little_loops.fsm.fragments._deep_merge`` only in the
+    null-removal semantic — fragments-merge passes ``None`` through as a value,
+    while config-merge treats it as a key-removal sentinel. The config variant
+    is required for ``ll.local.md`` to be able to unset base keys.
+
+    Returns a new dict; neither input is mutated.
+    """
+    result = dict(base)
+    for key, value in override.items():
+        if value is None:
+            result.pop(key, None)
+        elif isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
 
 
 def resolve_config_path(project_root: Path) -> Path | None:

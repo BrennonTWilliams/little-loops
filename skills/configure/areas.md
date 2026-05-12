@@ -858,7 +858,7 @@ Display a unified table of all hooks from both sources:
 Current Hook Configuration
 --------------------------
   Source     Event             Matcher        Script                          Timeout  Status
-  [Plugin]   SessionStart      *              session-start.sh                5s       [exists/MISSING]
+  [Plugin]   SessionStart      *              adapters/claude-code/session-start.sh   5s    [exists/MISSING]
   [Plugin]   UserPromptSubmit  (no matcher)   user-prompt-check.sh            3s       [exists/MISSING]
   [Plugin]   PreToolUse        Write|Edit     check-duplicate-issue-id.sh     5s       [exists/MISSING]
   [Plugin]   PostToolUse       *              context-monitor.sh              5s       [exists/MISSING]

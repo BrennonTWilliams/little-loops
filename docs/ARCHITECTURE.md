@@ -84,7 +84,8 @@ little-loops/
 │   │   └── optimize-prompt-hook.md          # Prompt optimization hook
 │   ├── adapters/            # Host-specific adapters → little_loops.hooks dispatcher
 │   │   └── claude-code/
-│   │       └── precompact.sh
+│   │       ├── precompact.sh
+│   │       └── session-start.sh
 │   └── scripts/             # Hook scripts
 │       ├── check-duplicate-issue-id.sh
 │       ├── check-duplicate-issue-id-post.sh
@@ -92,7 +93,7 @@ little-loops/
 │       ├── precompact-state.sh  # Legacy shell handler; replaced by adapters/claude-code/precompact.sh
 │       ├── scratch-pad-redirect.sh
 │       ├── session-cleanup.sh
-│       ├── session-start.sh
+│       ├── session-start.sh  # Legacy shell handler; replaced by adapters/claude-code/session-start.sh
 │       ├── user-prompt-check.sh
 │       └── lib/
 │           └── common.sh    # Shared shell functions
