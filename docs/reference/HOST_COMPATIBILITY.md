@@ -43,14 +43,18 @@ into `LLHookEvent` payloads.
 
 | Surface                  | Claude Code               | OpenCode                  | Codex CLI                 |
 | ------------------------ | ------------------------- | ------------------------- | ------------------------- |
-| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✗ — Codex reads `.codex/prompts/`[^cmds] |
-| Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✗ — no known mirror path[^cmds] |
+| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✗ — no separate slash-command surface; Skills API covers both[^cmds] |
+| Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✗ — `~/.codex/skills/<name>/SKILL.md` (stable); adaptation tracked by FEAT-1486[^cmds] |
 
-[^cmds]: Codex command/skill discovery is out of scope for FEAT-957
-    (the Codex hook adapter). File a separate issue if user demand for
-    Codex slash-commands surfaces — the mechanical work is either a
-    template-render of `.claude/commands/*.md` into `.codex/prompts/` or
-    a runtime adapter, both of which depend on Codex's command format.
+[^cmds]: Codex has no `.codex/prompts/` slash-command path (that reference in
+    prior footnotes was speculative — no such surface exists in the current
+    Codex CLI). The extensibility surface is the **Skills API**
+    (`~/.codex/skills/<name>/SKILL.md` + optional `agents/openai.yaml`);
+    it covers both "commands" and "skills" in one mechanism. Research
+    findings: `thoughts/research/codex-command-discovery.md` (FEAT-1483).
+    Adaptation work: FEAT-1486 (add `name:` field + `agents/openai.yaml`
+    to ll's `skills/*/SKILL.md`). The ✗ cells above will flip to ✓ when
+    FEAT-1486 lands.
 
 ## Orchestration CLI
 
@@ -137,5 +141,11 @@ all real logic lives in `scripts/little_loops/hooks/`.
 - **FEAT-957** — Codex CLI plugin compatibility (this matrix's Codex column).
 - **FEAT-1462** — Abstract host CLI invocation in orchestration layer
   (resolves the orchestration ✗ cells above).
+- **FEAT-1463** — Umbrella epic for deferred Codex interop gaps.
+- **FEAT-1483** — Research spike: Codex slash-command and skill discovery
+  (confirmed Skills API stable; see `thoughts/research/codex-command-discovery.md`).
+- **FEAT-1486** — Adapt `skills/*/SKILL.md` for Codex Skills API (resolves
+  the Skill discovery ✗ cell).
+- **FEAT-1487** — Update parity matrix and footnote for Codex slash-command gap.
 - **FEAT-992** — Raspberry Pi compatibility (deferred — will add a Pi
   column once the Pi plugin API research is done).

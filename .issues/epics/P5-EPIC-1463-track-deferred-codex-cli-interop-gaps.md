@@ -24,13 +24,15 @@ footnotes point at a real issue link instead of prose.
 
 In scope for this epic:
 
-- **Codex slash-command discovery** — Codex reads `.codex/prompts/`; ll
-  ships `.claude/commands/*.md`. No bridge today. Solutions: a
-  template-render step (build-time `.claude/commands/*.md` → `.codex/prompts/*.md`)
-  or a runtime adapter. Format research required.
-- **Codex skill discovery** — No known Codex mirror for `.claude/skills/*/SKILL.md`.
-  Research required: does Codex have a skill/agent registration surface
-  at all? If yes, mirror it; if no, document the gap as permanent.
+- **Codex slash-command discovery** — No separate `.codex/prompts/` surface
+  exists in Codex (that reference was speculative). The Codex Skills API
+  (`~/.codex/skills/`) covers both "commands" and "skills." No separate
+  slash-command bridge is needed; skill adaptation (FEAT-1486) is the
+  path to in-session discoverability.
+- **Codex skill discovery** — Codex Skills API is **confirmed stable**
+  (`~/.codex/skills/<name>/SKILL.md`). ll's existing `skills/*/SKILL.md`
+  needs `name:` + `agents/openai.yaml` additions to be installable.
+  Tracked by FEAT-1486. Research: `thoughts/research/codex-command-discovery.md`.
 - **Deferred Codex hook intents** — `post_compact` and `permission_request`
   are Codex-native events that ll currently ignores. Hot-path intents
   (`pre_tool_use`, `post_tool_use`) are deferred for latency reasons
@@ -89,11 +91,11 @@ FEAT-992).
 
 **In scope:**
 
-- Research Codex command format (`.codex/prompts/` file shape, frontmatter,
-  argument-passing convention).
-- Research Codex skill/agent registration surface (or confirm no equivalent
-  exists).
-- Decide on render-time vs. runtime adapter strategy for command bridging.
+- ~~Research Codex command format~~ — **done** (FEAT-1483): no `.codex/prompts/`
+  surface; Skills API (`~/.codex/skills/`) is the extensibility surface.
+- ~~Research Codex skill/agent registration surface~~ — **done** (FEAT-1483):
+  Skills API confirmed stable; see `thoughts/research/codex-command-discovery.md`.
+- Adapt ll `skills/*/SKILL.md` for the Codex Skills API (FEAT-1486).
 - Implement chosen strategy with a child FEAT issue per discovery surface.
 - Implement `post_compact` and `permission_request` adapter shims when
   a concrete consumer is identified.
@@ -113,12 +115,14 @@ FEAT-992).
 
 ## Children
 
-No child issues filed yet. Decompose lazily when demand arrives:
-
-- **(unfiled)** FEAT — Codex slash-command discovery via
-  `.claude/commands/*.md` → `.codex/prompts/` bridge.
-- **(unfiled)** FEAT — Codex skill discovery (or document permanent
-  gap if Codex has no equivalent surface).
+- **FEAT-1483** — Research spike: Codex slash-command and skill discovery
+  (completed — Codex Skills API confirmed stable; see
+  `thoughts/research/codex-command-discovery.md`).
+- **FEAT-1486** — Adapt ll `skills/*/SKILL.md` for Codex Skills API
+  (add `name:` + `agents/openai.yaml`; register via `codex plugin marketplace add`).
+- **FEAT-1487** — Update `HOST_COMPATIBILITY.md` `[^cmds]` footnote and
+  parity matrix to reflect Codex slash-command gap (no `.codex/prompts/`
+  surface; Skills API covers both use-cases).
 - **(unfiled)** ENH — Wire `post_compact` adapter intent (gated on
   finding a real consumer).
 - **(unfiled)** ENH — Wire `permission_request` adapter intent (gated

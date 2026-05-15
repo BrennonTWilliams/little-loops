@@ -160,5 +160,8 @@ if `bash` is not available on `PATH`.
   Bun plugin — different runtime, same dispatcher contract)
 - Tracking issue: FEAT-957
 - Out of scope (tracked separately): orchestration CLI abstraction
-  (FEAT-1462); slash-command and skill discovery for Codex; PostCompact /
-  UserPromptSubmit / hot-path intents
+  (FEAT-1462); slash-command and skill discovery for Codex — **Codex Skills
+  API is confirmed stable** (`~/.codex/skills/`); see
+  `thoughts/research/codex-command-discovery.md` (FEAT-1483) and FEAT-1486
+  (skill adaptation) / FEAT-1487 (parity matrix update); PostCompact /
+  hot-path intents

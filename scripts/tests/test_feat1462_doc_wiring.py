@@ -78,6 +78,13 @@ class TestHostCompatibilityWiring:
             "HOST_COMPATIBILITY.md must include a Pi column in the orchestration table"
         )
 
+    def test_codex_skills_path_present(self) -> None:
+        content = HOST_COMPAT.read_text()
+        assert "codex/skills" in content, (
+            "HOST_COMPATIBILITY.md must reference ~/.codex/skills/ after FEAT-1483 research "
+            "(replaces the now-invalid .codex/prompts/ reference)"
+        )
+
 
 class TestTroubleshootingWiring:
     """TROUBLESHOOTING.md must have a HostNotConfigured entry."""
