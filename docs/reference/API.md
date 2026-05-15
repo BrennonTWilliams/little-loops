@@ -32,7 +32,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.dependency_mapper` | Cross-issue dependency discovery and mapping (sub-package: `models`, `analysis`, `formatting`, `operations`) |
 | `little_loops.work_verification` | Verification helpers |
 | `little_loops.subprocess_utils` | Subprocess handling |
-| `little_loops.host_runner` | Host-agnostic CLI invocation layer (`HostRunner` Protocol + `ClaudeCodeRunner`) |
+| `little_loops.host_runner` | Host-agnostic CLI invocation layer (`HostRunner` Protocol + `ClaudeCodeRunner` + `CodexRunner`) |
 | `little_loops.state` | State persistence |
 | `little_loops.events` | Structured events and EventBus dispatcher |
 | `little_loops.hooks` | Host-agnostic hook intent dispatcher and built-in handlers |

@@ -251,6 +251,7 @@ little-loops/
         ├── work_verification.py # Verification helpers
         ├── text_utils.py        # Text processing utilities
         ├── subprocess_utils.py  # Subprocess handling
+        ├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner)
         ├── sprint.py            # Sprint definition and management
         ├── sync.py              # GitHub Issues sync
         ├── goals_parser.py      # Goals file parsing
