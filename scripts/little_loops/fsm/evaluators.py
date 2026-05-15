@@ -39,6 +39,7 @@ from little_loops.fsm.interpolation import (
     interpolate,
 )
 from little_loops.fsm.schema import DEFAULT_LLM_MODEL, EvaluateConfig
+from little_loops.host_runner import resolve_host
 
 
 @dataclass
@@ -605,23 +606,20 @@ def evaluate_llm_structured(
 
     user_prompt = f"{effective_prompt}\n\n<action_output>\n{truncated}\n</action_output>"
 
-    cmd = [
-        "claude",
-        "-p",
-        user_prompt,
-        "--output-format",
-        "json",
+    invocation = resolve_host().build_blocking_json(prompt=user_prompt, model=model)
+    # Builder drops json_schema (Protocol surface only) and omits the
+    # claude-CLI-specific --no-session-persistence flag; augment at call site.
+    args = list(invocation.args) + [
         "--json-schema",
         json.dumps(effective_schema),
-        "--model",
-        model,
-        "--dangerously-skip-permissions",
         "--no-session-persistence",
     ]
 
     t0 = time.monotonic()
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(
+            [invocation.binary, *args], capture_output=True, text=True, timeout=timeout
+        )
     except subprocess.TimeoutExpired:
         return EvaluationResult(
             verdict="error",

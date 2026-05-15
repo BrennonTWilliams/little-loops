@@ -744,7 +744,10 @@ states:
 ```python
 # little_loops/fsm/evaluators.py
 
-import anthropic
+import json
+import subprocess
+
+from little_loops.host_runner import resolve_host
 
 def evaluate_llm_structured(
     output: str,
@@ -754,43 +757,39 @@ def evaluate_llm_structured(
     uncertain_suffix: bool = False,
     model: str = DEFAULT_LLM_MODEL,  # Default from schema.py
     max_tokens: int = 256,
+    timeout: int = 1800,
 ) -> dict:
     """
-    Evaluate action output using LLM with structured output.
-    
+    Evaluate action output using an LLM with structured output.
+
     This is the ONLY place in the FSM system that uses LLM structured output.
+    Dispatches through ``host_runner.resolve_host()`` and shells out to the
+    resolved host CLI (e.g. ``claude``) — no Anthropic SDK dependency.
     """
-    client = anthropic.Anthropic()
-    
     default_prompt = "Evaluate whether this action succeeded based on its output."
     eval_prompt = prompt or default_prompt
-    
+
     # Truncate output to avoid context limits
     truncated = output[-4000:] if len(output) > 4000 else output
-    
-    response = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        messages=[{
-            "role": "user",
-            "content": f"{eval_prompt}\n\n<action_output>\n{truncated}\n</action_output>"
-        }],
-        tools=[{
-            "name": "evaluate",
-            "description": "Provide your evaluation of the action result",
-            "input_schema": schema
-        }],
-        tool_choice={"type": "tool", "name": "evaluate"}
+    user_prompt = f"{eval_prompt}\n\n<action_output>\n{truncated}\n</action_output>"
+
+    invocation = resolve_host().build_blocking_json(prompt=user_prompt, model=model)
+    args = list(invocation.args) + [
+        "--json-schema", json.dumps(schema),
+        "--no-session-persistence",
+    ]
+    proc = subprocess.run(
+        [invocation.binary, *args],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
     )
     
-    # Extract structured result
-    for block in response.content:
-        if block.type == "tool_use" and block.name == "evaluate":
-            llm_result = block.input
-            break
-    else:
-        raise EvaluationError("No evaluation in response")
-    
+    # Parse the CLI's JSON envelope; --json-schema returns the validated
+    # dict under "structured_output" on success.
+    envelope = json.loads(proc.stdout.strip())
+    llm_result = envelope.get("structured_output") or envelope.get("result") or envelope
+
     # Build result with confidence flag
     verdict = llm_result["verdict"]
     confidence = llm_result.get("confidence", 1.0)
@@ -1644,46 +1643,33 @@ class TestConvergenceEvaluator:
 
 ### 2. Mock Strategy for LLM Evaluation
 
-LLM structured output is used in only one place: `evaluate_llm_structured`. This makes mocking straightforward.
+LLM structured output is used in only one place: `evaluate_llm_structured`. Because the function shells out via `host_runner` rather than calling the Anthropic SDK, tests mock `subprocess.run` (and optionally `resolve_host`) — see `scripts/tests/test_fsm_evaluators.py::TestLLMStructuredEvaluator` for the canonical fixture pattern.
 
 ```python
-# tests/conftest.py
-
-@pytest.fixture
-def mock_llm_evaluator():
-    """Factory for LLM evaluation mocks."""
-    def _make_mock(verdict: str, confidence: float = 0.9, reason: str = ""):
-        return {
-            "verdict": verdict,
-            "details": {
-                "confidence": confidence,
-                "confident": confidence >= 0.7,
-                "reason": reason,
-                "raw": {"verdict": verdict, "confidence": confidence}
-            }
-        }
-    return _make_mock
-
-
 # tests/unit/test_llm_evaluator.py
 
 class TestLLMEvaluator:
-    def test_uncertain_suffix_applied(self, mock_anthropic):
+    def test_uncertain_suffix_applied(self):
         """Low confidence + uncertain_suffix=True → success_uncertain."""
-        mock_anthropic.return_value = {"verdict": "yes", "confidence": 0.5}
+        envelope = json.dumps({
+            "type": "result",
+            "subtype": "success",
+            "structured_output": {"verdict": "yes", "confidence": 0.5},
+        })
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=envelope, stderr="")
+            result = evaluate_llm_structured(
+                output="Fixed the bug",
+                schema=DEFAULT_SCHEMA,
+                min_confidence=0.7,
+                uncertain_suffix=True,
+            )
 
-        result = evaluate_llm_structured(
-            output="Fixed the bug",
-            schema=DEFAULT_SCHEMA,
-            min_confidence=0.7,
-            uncertain_suffix=True
-        )
-
-        assert result["verdict"] == "yes_uncertain"
-        assert result["details"]["confident"] is False
+        assert result.verdict == "yes_uncertain"
+        assert result.details["confident"] is False
 ```
 
-**Mock implementation**: Use `unittest.mock.patch` on the Anthropic client, or inject a client factory for dependency injection.
+**Mock implementation**: Patch `little_loops.fsm.evaluators.subprocess.run` to stage the CLI envelope; `resolve_host()` returns the default `ClaudeCodeRunner` when `claude` is on PATH and can be patched directly for hermetic tests.
 
 ### 3. Integration Tests for Executor
 

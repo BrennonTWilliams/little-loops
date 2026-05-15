@@ -13,6 +13,8 @@ import subprocess
 from dataclasses import dataclass
 from enum import Enum
 
+from little_loops.host_runner import resolve_host
+
 
 class HandoffBehavior(Enum):
     """Behavior when a handoff signal is detected.
@@ -111,9 +113,11 @@ class HandoffHandler:
             prompt_parts.append(f"\n\n{continuation}")
         prompt = "".join(prompt_parts)
 
-        cmd = ["claude", "-p", prompt]
+        invocation = resolve_host().build_detached(prompt=prompt)
+        # Legacy argv had no perm-skip; strip it for no-behavior-change refactor.
+        args = [a for a in invocation.args if a != "--dangerously-skip-permissions"]
         return subprocess.Popen(
-            cmd,
+            [invocation.binary, *args],
             text=True,
             start_new_session=True,
             stdout=subprocess.DEVNULL,

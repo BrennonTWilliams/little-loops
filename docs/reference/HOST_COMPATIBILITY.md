@@ -67,12 +67,11 @@ users get the hook adapter only — not the automation tools.
 | `ll-loop`                     | ✓           | ✗[^orch] | ✗[^orch]  |
 | FSM evaluators / handoff      | ✓           | ✗[^orch] | ✗[^orch]  |
 
-[^orch]: Tracked by **FEAT-1462** (abstract host CLI invocation in
-    orchestration layer). All six call sites
-    (`scripts/little_loops/subprocess_utils.py:261`,
-    `parallel/worker_pool.py:584`, `cli/action.py:142,149`,
-    `fsm/handoff_handler.py:114`, `fsm/evaluators.py:609`) need to be
-    replaced with a `host_runner` Protocol-based abstraction.
+[^orch]: All six call sites now route through
+    `scripts/little_loops/host_runner.py` (`HostRunner` Protocol +
+    `ClaudeCodeRunner`). Wiring a non-Claude host means registering a
+    new `HostRunner` implementation; the orchestration layer no longer
+    hard-codes the `claude` binary or its argv.
 
 ## Config probe path
 

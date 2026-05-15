@@ -178,7 +178,7 @@ git worktree list
 
 **Cause**: In a git worktree, `.git` is a file (not a directory) pointing to the real gitdir. Some tools and subprocesses fail to resolve this automatically.
 
-**Solution**: `run_claude_command` in `subprocess_utils.py` automatically detects worktrees and sets `GIT_DIR` / `GIT_WORK_TREE` environment variables before spawning Claude. If you are invoking shell commands manually inside a worktree, set them yourself:
+**Solution**: `ClaudeCodeRunner.build_streaming()` in `host_runner.py` automatically detects worktrees and sets `GIT_DIR` / `GIT_WORK_TREE` environment variables before spawning Claude (the legacy `run_claude_command` helper in `subprocess_utils.py` is retained as a public alias that now dispatches through `host_runner`). If you are invoking shell commands manually inside a worktree, set them yourself:
 ```bash
 export GIT_DIR=$(cat .git | sed 's/gitdir: //')
 export GIT_WORK_TREE=$(pwd)

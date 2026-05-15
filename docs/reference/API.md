@@ -32,6 +32,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.dependency_mapper` | Cross-issue dependency discovery and mapping (sub-package: `models`, `analysis`, `formatting`, `operations`) |
 | `little_loops.work_verification` | Verification helpers |
 | `little_loops.subprocess_utils` | Subprocess handling |
+| `little_loops.host_runner` | Host-agnostic CLI invocation layer (`HostRunner` Protocol + `ClaudeCodeRunner`) |
 | `little_loops.state` | State persistence |
 | `little_loops.events` | Structured events and EventBus dispatcher |
 | `little_loops.hooks` | Host-agnostic hook intent dispatcher and built-in handlers |
@@ -2034,7 +2035,7 @@ def run_claude_command(
 ) -> subprocess.CompletedProcess[str]
 ```
 
-Invoke Claude CLI command with output streaming.
+Host-agnostic CLI command invocation with output streaming (delegates to `host_runner.resolve_host().build_streaming()`; retained as a public alias for the pre-`host_runner` call surface).
 
 **Parameters:**
 - `command` - Command to pass to Claude CLI
@@ -4187,9 +4188,7 @@ def evaluate_llm_structured(
     timeout: int = 30,
 ) -> EvaluationResult
 ```
-Evaluate action output using LLM with structured output.
-
-**Note:** Requires `pip install little-loops[llm]` for anthropic package.
+Evaluate action output using an LLM with structured output. Dispatches through `host_runner.resolve_host().build_blocking_json()` and calls the resolved CLI as a subprocess (no Anthropic Python SDK dependency); requires a supported host CLI on PATH (e.g. `claude`).
 
 #### Dispatcher
 

@@ -957,10 +957,9 @@ class TestEvaluateDispatcherLLM:
         ctx = InterpolationContext(context={"readiness_threshold": "85", "outcome_threshold": "70"})
         evaluate(config, "test output", 0, ctx)
 
-        # Extract the prompt passed to the CLI subprocess (cmd = ["claude", "-p", prompt, ...])
         call_args = mock_run.call_args
         cli_cmd = call_args[0][0]
-        prompt_arg = cli_cmd[2]  # prompt is at index 2 after "claude -p"
+        prompt_arg = cli_cmd[cli_cmd.index("-p") + 1]
         assert "85" in prompt_arg
         assert "70" in prompt_arg
         assert "${context.readiness_threshold}" not in prompt_arg
