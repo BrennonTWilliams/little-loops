@@ -31,7 +31,6 @@ from little_loops.config import (
     LoopsConfig,
     LoopsGlyphsConfig,
     NextIssueConfig,
-    OrchestrationConfig,
     OTelEventsConfig,
     ParallelAutomationConfig,
     ProjectConfig,
@@ -117,50 +116,6 @@ class TestProjectConfig:
         assert config.format_cmd == "ruff format ."
         assert config.build_cmd is None
         assert config.run_cmd is None
-
-
-class TestOrchestrationConfig:
-    """Tests for OrchestrationConfig dataclass (FEAT-1467)."""
-
-    def test_from_dict_default(self) -> None:
-        """Missing key yields host_cli == 'auto'."""
-        config = OrchestrationConfig.from_dict({})
-        assert config.host_cli == "auto"
-
-    def test_from_dict_with_host_cli(self) -> None:
-        """Explicit host_cli value is preserved."""
-        config = OrchestrationConfig.from_dict({"host_cli": "claude-code"})
-        assert config.host_cli == "claude-code"
-
-    def test_brconfig_exposes_orchestration_property(self, tmp_path: Path) -> None:
-        """BRConfig.orchestration returns OrchestrationConfig with parsed value."""
-        ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
-        (ll_dir / "ll-config.json").write_text(
-            json.dumps({"orchestration": {"host_cli": "codex"}})
-        )
-        config = BRConfig(tmp_path)
-        assert isinstance(config.orchestration, OrchestrationConfig)
-        assert config.orchestration.host_cli == "codex"
-
-    def test_brconfig_default_when_key_absent(self, tmp_path: Path) -> None:
-        """BRConfig loads cleanly with no 'orchestration' key in raw config."""
-        ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
-        (ll_dir / "ll-config.json").write_text(json.dumps({}))
-        config = BRConfig(tmp_path)
-        assert config.orchestration.host_cli == "auto"
-
-    def test_to_dict_includes_orchestration(self, tmp_path: Path) -> None:
-        """BRConfig.to_dict() round-trips the orchestration block."""
-        ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
-        (ll_dir / "ll-config.json").write_text(
-            json.dumps({"orchestration": {"host_cli": "opencode"}})
-        )
-        config = BRConfig(tmp_path)
-        dumped = config.to_dict()
-        assert dumped["orchestration"] == {"host_cli": "opencode"}
 
 
 class TestIssuesConfig:
@@ -1084,56 +1039,10 @@ class TestResolveConfigPath:
 
         assert resolve_config_path(tmp_path) == ll_cfg
 
-    def test_pi_path_takes_precedence_when_host_pi(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """``LL_HOOK_HOST=pi`` puts ``.pi/ll-config.json`` ahead of ``.ll/`` and root-level (FEAT-1479)."""
-        from little_loops.config.core import resolve_config_path
-
-        monkeypatch.setenv("LL_HOOK_HOST", "pi")
-        monkeypatch.delenv("LL_STATE_DIR", raising=False)
-        (tmp_path / ".pi").mkdir()
-        pi_cfg = tmp_path / ".pi" / "ll-config.json"
-        pi_cfg.write_text('{"pi": true}')
-        (tmp_path / ".ll").mkdir()
-        (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
-        (tmp_path / "ll-config.json").write_text('{"root": true}')
-
-        assert resolve_config_path(tmp_path) == pi_cfg
-
-    def test_pi_path_takes_precedence_when_state_dir_pi(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """``LL_STATE_DIR=.pi`` is an alternate trigger for the pi probe order (FEAT-1479)."""
-        from little_loops.config.core import resolve_config_path
-
-        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
-        monkeypatch.setenv("LL_STATE_DIR", ".pi")
-        (tmp_path / ".pi").mkdir()
-        pi_cfg = tmp_path / ".pi" / "ll-config.json"
-        pi_cfg.write_text('{"pi": true}')
-        (tmp_path / ".ll").mkdir()
-        (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
-
-        assert resolve_config_path(tmp_path) == pi_cfg
-
-    def test_pi_host_falls_through_to_ll_dir_when_pi_absent(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Pi host with no ``.pi/ll-config.json`` falls back to ``.ll/`` then root-level."""
-        from little_loops.config.core import resolve_config_path
-
-        monkeypatch.setenv("LL_HOOK_HOST", "pi")
-        (tmp_path / ".ll").mkdir()
-        ll_cfg = tmp_path / ".ll" / "ll-config.json"
-        ll_cfg.write_text('{"ll": true}')
-
-        assert resolve_config_path(tmp_path) == ll_cfg
-
     def test_opencode_host_uses_default_order(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``LL_HOOK_HOST=opencode`` does not change probe order — only ``codex`` and ``pi`` do."""
+        """``LL_HOOK_HOST=opencode`` does not change probe order — only ``codex`` does (FEAT-957)."""
         from little_loops.config.core import resolve_config_path
 
         monkeypatch.setenv("LL_HOOK_HOST", "opencode")

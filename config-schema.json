@@ -1100,21 +1100,8 @@
       "properties": {
         "host": {
           "type": "string",
-          "enum": ["claude-code", "opencode", "codex", "pi"],
+          "enum": ["claude-code", "opencode", "codex"],
           "description": "Host agent identifier. Used by adapters to translate between the host's native hook protocol and the LLHookEvent/LLHookResult wire format."
-        }
-      },
-      "additionalProperties": false
-    },
-    "orchestration": {
-      "type": "object",
-      "description": "Orchestration-layer host CLI selection (FEAT-1464). Controls which HostRunner little_loops.host_runner.resolve_host() prefers when building host CLI invocations for ll-auto, ll-parallel, ll-sprint, and fsm.runners.",
-      "properties": {
-        "host_cli": {
-          "type": "string",
-          "enum": ["auto", "claude-code", "codex", "opencode", "pi"],
-          "default": "auto",
-          "description": "Host CLI selector. 'auto' (default) lets resolve_host() pick via LL_HOST_CLI/LL_HOOK_HOST env vars and binary probe; named hosts pin the runner explicitly."
         }
       },
       "additionalProperties": false

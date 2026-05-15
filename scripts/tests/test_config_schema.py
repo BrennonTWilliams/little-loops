@@ -152,29 +152,7 @@ class TestConfigSchema:
         assert "host" in hooks_block["properties"]
         host = hooks_block["properties"]["host"]
         assert host["type"] == "string"
-        assert host["enum"] == ["claude-code", "opencode", "codex", "pi"]
-
-    def test_orchestration_in_schema(self) -> None:
-        """orchestration block must be declared with a host_cli enum (FEAT-1467).
-
-        The top-level properties block has additionalProperties: false, so a
-        config containing 'orchestration' will be rejected unless declared.
-        Mirrors test_hooks_in_schema; host_cli extends the hooks.host enum
-        with 'auto' (default sentinel) and 'pi' (FEAT-992).
-        """
-        data = json.loads(CONFIG_SCHEMA.read_text())
-        assert "orchestration" in data["properties"], (
-            "orchestration is not declared in config-schema.json; configs using it "
-            "will be rejected by additionalProperties: false"
-        )
-        orch_block = data["properties"]["orchestration"]
-        assert orch_block["type"] == "object"
-        assert orch_block.get("additionalProperties") is False
-        assert "host_cli" in orch_block["properties"]
-        host_cli = orch_block["properties"]["host_cli"]
-        assert host_cli["type"] == "string"
-        assert host_cli["enum"] == ["auto", "claude-code", "codex", "opencode", "pi"]
-        assert host_cli["default"] == "auto"
+        assert host["enum"] == ["claude-code", "opencode", "codex"]
 
     def test_events_in_schema(self) -> None:
         """events block must be declared in config-schema.json with a transports array.

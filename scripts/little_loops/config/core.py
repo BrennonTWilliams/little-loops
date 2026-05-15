@@ -34,7 +34,6 @@ from little_loops.parallel.types import ParallelConfig
 CONFIG_FILENAME = "ll-config.json"
 CONFIG_DIR = ".ll"
 CODEX_CONFIG_DIR = ".codex"
-PI_CONFIG_DIR = ".pi"
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -77,17 +76,14 @@ def _config_candidates(project_root: Path, *, host: str | None, state_dir: str |
     When ``host == "codex"`` or ``state_dir == ".codex"`` (FEAT-957),
     ``.codex/ll-config.json`` is prepended so Codex CLI projects pick up
     their host-specific config before falling through to the default
-    candidates.  When ``host == "pi"`` or ``state_dir == ".pi"`` (FEAT-1479),
-    ``.pi/ll-config.json`` is prepended similarly.
+    candidates. Other host values pass through unchanged.
 
-    Hosts with a dedicated state dir (codex, pi) probe their dir first;
-    all others use the default order.
+    Future hosts (e.g. FEAT-992 Pi) add a new branch here rather than a
+    new code path elsewhere.
     """
     candidates: list[Path] = []
     if host == "codex" or state_dir == CODEX_CONFIG_DIR:
         candidates.append(project_root / CODEX_CONFIG_DIR / CONFIG_FILENAME)
-    elif host == "pi" or state_dir == PI_CONFIG_DIR:
-        candidates.append(project_root / PI_CONFIG_DIR / CONFIG_FILENAME)
     candidates.append(project_root / CONFIG_DIR / CONFIG_FILENAME)
     candidates.append(project_root / CONFIG_FILENAME)
     return candidates
@@ -115,26 +111,6 @@ def resolve_config_path(project_root: Path) -> Path | None:
         if candidate.is_file():
             return candidate
     return None
-
-
-@dataclass
-class OrchestrationConfig:
-    """Orchestration-layer configuration for host CLI selection.
-
-    ``host_cli`` selects which host runner :func:`little_loops.host_runner.resolve_host`
-    should prefer. ``"auto"`` (default) means the resolver falls through to its
-    env-var and binary-probe detection chain.
-
-    The enum values mirror the ``hooks.host`` enum in ``config-schema.json``
-    (line 1103) plus ``"auto"`` (the sentinel for env/probe resolution).
-    """
-
-    host_cli: str = "auto"
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> OrchestrationConfig:
-        """Create OrchestrationConfig from dictionary."""
-        return cls(host_cli=data.get("host_cli", "auto"))
 
 
 @dataclass
@@ -231,9 +207,6 @@ class BRConfig:
             self._raw_config.get("refine_status", {})
         )
         self._events = EventsConfig.from_dict(self._raw_config.get("events", {}))
-        self._orchestration = OrchestrationConfig.from_dict(
-            self._raw_config.get("orchestration", {})
-        )
 
     @property
     def project(self) -> ProjectConfig:
@@ -304,11 +277,6 @@ class BRConfig:
     def events(self) -> EventsConfig:
         """Get events configuration."""
         return self._events
-
-    @property
-    def orchestration(self) -> OrchestrationConfig:
-        """Get orchestration configuration (host CLI selection)."""
-        return self._orchestration
 
     @property
     def extensions(self) -> list[str]:
@@ -599,9 +567,6 @@ class BRConfig:
                     "batch_ms": self._events.webhook.batch_ms,
                     "headers": dict(self._events.webhook.headers),
                 },
-            },
-            "orchestration": {
-                "host_cli": self._orchestration.host_cli,
             },
             "sync": {
                 "enabled": self._sync.enabled,
