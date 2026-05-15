@@ -30,14 +30,15 @@ A user running Codex CLI can install little-loops and get all commands, skills, 
 
 ## Acceptance Criteria
 
-- All `/ll:*` slash commands work in a Codex CLI project without modification
-- All skills work in a Codex CLI project without modification
-- Session lifecycle hooks fire via a Codex CLI plugin (config loading, duplicate ID check, context monitoring, compact/cleanup)
-- Config resolves from `.codex/ll-config.json` when present, falls back to `.claude/ll-config.json`
-- `ll:init --codex` detects Codex CLI presence and offers to register the plugin
-- The config-directory resolution layer (extended in `config/core.py` and `lib/common.sh`) accepts an ordered candidate list (`.claude/`, `.codex/`, `.opencode/`, `.pi/`, …) so future plugin-compat issues (FEAT-992) patch data, not code
-- The Codex-event → ll-hook-intent mapping table is published in shared docs (e.g. `docs/reference/PLUGIN_COMPAT.md` or under `docs/`) — explicitly references the FEAT-1116 hook-intent contract — so FEAT-992 (Pi) and any future host reuse the same mapping rather than inventing parallel ones
-- Existing Claude Code and OpenCode behavior is unchanged (no regressions)
+- Session lifecycle hooks fire via `.codex/hooks.json` wiring (`session_start`, `pre_compact` intents) — verified by running Codex CLI in a fixture project and observing hook stderr/state mutations
+- Config resolution: `resolve_config_path()` probes `.codex/ll-config.json` before the existing `.ll/ll-config.json` and root-level `ll-config.json` candidates when `LL_HOOK_HOST=codex` or `LL_STATE_DIR=.codex` is set. Cross-host default order, when no host env var is set, remains `.ll/ → root-level` (unchanged). Note: there is no `.claude/ll-config.json` probe today and this issue does NOT add one.
+- `ll:init --codex` detects Codex CLI (binary `codex` on PATH OR `.codex/` directory present) and writes `.codex/hooks.json` from the adapter template; also prints a one-line warning that Codex will show a hook-trust dialog on next session start and that hooks remain inactive until trusted
+- `resolve_config_path()` in `scripts/little_loops/config/core.py` is refactored from a hardcoded 2-candidate probe into a function that accepts (or iterates) an ordered candidate list, so FEAT-992 (Pi) adds a path entry rather than a code branch. The legacy `hooks/scripts/lib/common.sh:ll_resolve_config` is NOT touched (FEAT-1116 superseded it).
+- The Codex event → ll hook-intent mapping table lives in `hooks/adapters/codex/README.md` and explicitly references the FEAT-1116 hook-intent contract (matching the OpenCode adapter's pattern). A top-level `docs/reference/PLUGIN_COMPAT.md` is NOT a deliverable of this issue; FEAT-992 reuses the per-adapter README pattern.
+- A **host parity matrix** is added to `docs/reference/HOST_COMPATIBILITY.md` (new file) enumerating, per host: hook intents wired, slash-command discovery path, skill discovery path, orchestration CLI binary, and feature parity status. Codex column is filled in by this issue; OpenCode and Claude Code columns are backfilled from current state.
+- Slash commands (`/ll:*`) and skills are **explicitly out of scope** for this issue — Codex reads `.codex/prompts/`, not `.claude/commands/`, and verification/symlink work is tracked separately (see Cross-Compat Scope Boundary note below). This issue does NOT claim commands/skills work in Codex; it only delivers the hook adapter layer.
+- The orchestration layer (`ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`) is **explicitly out of scope** — those tools hard-code the `claude` binary and remain Claude-Code-only until [[FEAT-1462]] ships. This issue does NOT claim ll automation works under Codex.
+- Existing Claude Code and OpenCode behavior is unchanged (no regressions): full test suite passes, `LL_HOOK_HOST` defaults to `claude-code`, and OpenCode adapter tests still skip-or-pass identically.
 
 ## Motivation
 
@@ -54,6 +55,20 @@ Follow the `hooks/adapters/<host>/` thin-stub pattern established by FEAT-1116 (
 **Do NOT create `codex-plugin/`** — the TypeScript plugin directory structure described in earlier versions of this issue is superseded.
 
 **CORRECTION — runtime** (added `/ll:refine-issue` 2026-05-14): Codex CLI is Rust-based and has **no TypeScript/Bun plugin SDK**. Entry points in `hooks/adapters/codex/` must be **Bash shell scripts**, not TypeScript files. Registration is via `.codex/hooks.json` written by `ll:init --codex` — not via a TypeScript plugin export. The reference pattern is `hooks/adapters/claude-code/` (Bash + hooks.json template), not `hooks/adapters/opencode/` (TypeScript/Bun plugin).
+
+### Policy Decisions (added 2026-05-15)
+
+**SessionStart matcher** — Use `"matcher": "startup"` on the SessionStart MatcherGroup. Rationale: ll's `session_start.handle()` performs config load and duplicate-ID emission keyed off a fresh session; firing on `resume` would re-emit identifiers for an already-running session, and firing on `clear` would re-run during in-session context resets. Restricting to `startup` matches the semantics ll's Claude Code adapter already relies on. Reconsider only if a future intent needs resume/clear-aware behavior.
+
+**PostCompact intent** — Defer. ll has no PostCompact handler today; the existing `pre_compact` intent does all compact-time cleanup *before* compaction. Wiring PostCompact would require a new intent + handler with no concrete consumer. Track as a follow-up issue if a future feature needs post-compact cleanup; do not add a no-op handler in this issue.
+
+**Other deferred events** (`PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`) — Out of scope. ll's Claude Code adapter consumes some of these (e.g. auto-prompt-optimizer on `UserPromptSubmit`); the parity gap is documented in `docs/reference/HOST_COMPATIBILITY.md` (new in this issue) rather than implemented here. Filing per-intent follow-up issues is the right path if user demand emerges.
+
+**Trust-model UX** — `ll:init --codex` MUST print, after writing `.codex/hooks.json`:
+> "Codex will show a hook-trust dialog on next session start. Choose 'Trust All' (or 'Review Hooks') — until you do, little-loops hooks will not fire."
+Rationale: untrusted hooks are silently skipped (`HookRunStatus::Untrusted`), which is the worst failure mode (no error, no effect). One warning line at install time prevents the support load.
+
+**Trust-hash churn** — `hooks/adapters/codex/README.md` MUST document that any edit to `session-start.sh` or `pre-compact.sh` (including ll plugin updates) flips Codex's trust status to `Modified` and prompts re-trust on next startup. To minimize churn, keep adapter scripts minimal (just env-set + exec) so version bumps don't routinely modify them; put any churning logic in the Python `little_loops.hooks` package instead, where it lives behind a stable subprocess interface.
 
 **New directory**: `hooks/adapters/codex/`
 ```
@@ -274,11 +289,12 @@ _Second wiring pass added by `/ll:wire-issue`:_
 > **Reference**: Study `hooks/adapters/opencode/` before starting — it is the canonical pattern for host adapter stubs.
 
 1. ~~**Research Codex CLI plugin API**~~ **DONE** — See "Research Findings — Codex CLI Plugin API" in Integration Map above. Key result: Codex uses shell-command hooks via `.codex/hooks.json` (no TypeScript SDK). Adapter is Bash scripts, not TypeScript. Event names: `SessionStart` → `session_start`, `PreCompact` → `pre_compact`.
-2. **Scaffold `hooks/adapters/codex/`** — create `session-start.sh` and `pre-compact.sh` Bash scripts (set `LL_HOOK_HOST=codex`, pipe stdin, call `python -m little_loops.hooks <intent>`); add `hooks.json` template; add `README.md` with event→intent mapping table and trust-model note. Mirror `hooks/adapters/claude-code/` (Bash), NOT `hooks/adapters/opencode/` (TypeScript).
-3. **Extend config fallback chain** — add `.codex/ll-config.json` candidate to `scripts/little_loops/config/core.py → resolve_config_path()` (refactor the hardcoded 2-candidate check into an ordered probe list); do NOT patch `hooks/scripts/lib/common.sh` or a non-existent `hooks/common.py`
-4. **Extend `ll:init`** — add `--codex` detection flag in `skills/init/SKILL.md`; detection signal: `which codex` binary or `.codex/` directory; write `.codex/hooks.json` from `hooks/adapters/codex/hooks.json` template
-5. **Tests** — use `tmp_path` directly (no named fixture needed, per codebase research); add `test_load_config_codex_path()` to `scripts/tests/test_config.py` modeled on `TestResolveConfigPath.test_falls_back_to_root_level`; add `scripts/tests/test_codex_adapter.py` with Bash subprocess tests (skip guard: `shutil.which("bash")`)
-6. **Docs and listing** — update `docs/ARCHITECTURE.md`; `hooks/adapters/codex/README.md` is the mapping-table document reused by FEAT-992 (no top-level `PLUGIN_COMPAT.md` needed unless explicitly desired)
+2. **Scaffold `hooks/adapters/codex/`** — create `session-start.sh` and `pre-compact.sh` Bash scripts (set `LL_HOOK_HOST=codex`, pipe stdin, call `python -m little_loops.hooks <intent>`); add `hooks.json` template **with `"matcher": "startup"` on SessionStart** (see Policy Decisions); add `README.md` with event→intent mapping table, trust-model note, and trust-hash-churn guidance. Mirror `hooks/adapters/claude-code/` (Bash), NOT `hooks/adapters/opencode/` (TypeScript). Keep scripts minimal — env-set + exec only — so plugin updates don't routinely flip Codex trust status to `Modified`.
+3. **Extend config fallback chain** — refactor `scripts/little_loops/config/core.py → resolve_config_path()` from a hardcoded 2-candidate check into an ordered probe list; add `.codex/ll-config.json` candidate (probed first when `LL_HOOK_HOST=codex` or `LL_STATE_DIR=.codex`, otherwise after `.ll/` and root-level — preserve the host-unset default). Do NOT patch `hooks/scripts/lib/common.sh` or a non-existent `hooks/common.py`. Do NOT redirect other state directories (`.loops/`, `.issues/`, etc.) — that is explicitly out of scope (see Cross-Compat Scope Boundaries).
+4. **Extend `ll:init`** — add `--codex` detection flag in `skills/init/SKILL.md`; detection signal: `which codex` binary OR `.codex/` directory; write `.codex/hooks.json` from `hooks/adapters/codex/hooks.json` template; **print the trust-dialog warning** (see Policy Decisions → Trust-model UX) as the last line of the init flow.
+5. **Tests** — use `tmp_path` directly (no named fixture needed); add `test_load_config_codex_path()` and `test_codex_path_takes_precedence_when_host_codex()` to `scripts/tests/test_config.py`; add `scripts/tests/test_codex_adapter.py` with Bash subprocess tests (skip guard: `shutil.which("bash")`); add `test_ll_hook_host_env_var_propagates_codex` to `scripts/tests/test_hook_intents.py`; update `test_config_schema.py::test_hooks_in_schema` enum assertion to include `"codex"`.
+6. **Docs and listing** — update `docs/ARCHITECTURE.md`, `docs/reference/API.md`, `docs/reference/EVENT-SCHEMA.md`, `docs/claude-code/write-a-hook.md`, `docs/development/TROUBLESHOOTING.md`, `docs/guides/GETTING_STARTED.md`, `docs/development/TESTING.md`, `docs/claude-code/automate-workflows-with-hooks.md`, `skills/workflow-automation-proposer/SKILL.md`, `skills/configure/areas.md`, and `.claude/CLAUDE.md` per the Wiring Phase notes below. `hooks/adapters/codex/README.md` is the canonical event→intent mapping document reused by FEAT-992 (no top-level `PLUGIN_COMPAT.md`).
+7. **Create `docs/reference/HOST_COMPATIBILITY.md`** (new file) — host parity matrix with columns for Claude Code, OpenCode, Codex; rows for each hook intent, slash-command discovery, skill discovery, orchestration CLI binary, config probe path, state dir. Mark cells with ✓ / ✗ / N/A and footnote-link to the issue covering each ✗ (e.g. FEAT-1462 for orchestration). Backfill Claude Code and OpenCode columns from current state.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -321,6 +337,15 @@ _None — FEAT-1116 (hook-intent abstraction) and FEAT-769 (OpenCode compatibili
 
 ## Verification Notes
 
+**Verdict**: READY — Verified 2026-05-15 (manual review)
+
+- Stale ACs rewritten: AC #4 (config path now matches `resolve_config_path()` reality), AC #6 (no longer references `lib/common.sh`), AC #7 (resolves PLUGIN_COMPAT.md vs per-adapter README tension — per-adapter README wins, `HOST_COMPATIBILITY.md` is the new shared deliverable).
+- Deferred policies decided: SessionStart matcher = `"startup"`; PostCompact = deferred (no consumer); trust-dialog warning required in `ll:init --codex`; trust-hash churn documented in adapter README.
+- Cross-compat scope explicitly bounded: orchestration → FEAT-1462; slash-command/skill discovery → out of scope; `LL_STATE_DIR` → config-probe only, not full state redirection.
+- Outstanding risk: `HOST_COMPATIBILITY.md` is a new doc deliverable adding a 24th touchpoint to an already wide change surface; consider splitting the matrix doc into a fast-follow if implementation churn becomes painful.
+
+### Prior verdicts
+
 **Verdict**: NEEDS_UPDATE — Verified 2026-05-14
 
 - **FEAT-1116 completed** (hook-intent abstraction shipped: `scripts/little_loops/hooks/` + `hooks/adapters/`). Removed from `blocked_by`.
@@ -349,6 +374,7 @@ _Updated by `/ll:confidence-check` on 2026-05-14 (post-wiring-pass re-run)_
 - ~~**Codex CLI plugin API is unresearched**~~ **RESOLVED** — API fully documented in Research Findings (web research 2026-05-14). Runtime is Rust/Bash; hooks.json format, stdin payloads, exit-code semantics, env vars, and trust model all verified against openai/codex source. Step 1 is complete; Step 2 (adapter scaffold) may begin.
 
 ## Session Log
+- manual-review - 2026-05-15T00:00:00 - Cross-compat readiness review; rewrote stale ACs (#4, #6, #7), decided SessionStart matcher / PostCompact / trust-UX / trust-hash policies, added Cross-Compat Scope Boundaries carving out orchestration (→ FEAT-1462), slash-command/skill discovery, and LL_STATE_DIR semantics; added `docs/reference/HOST_COMPATIBILITY.md` as new doc deliverable.
 - `/ll:confidence-check` - 2026-05-14T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c29411a8-f788-4af4-a6c1-f2ab8b0c6047.jsonl`
 - `/ll:wire-issue` - 2026-05-14T22:49:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5897d5a7-85bb-4129-b8c1-6df022abf343.jsonl`
 - `web-research` - 2026-05-14T00:00:00 - Verified hooks.json format, exit-code semantics, stdin payloads, env vars, trust model, and full 8-event list against openai/codex source; corrected `CODEX_THREAD_ID`/`CODEX_SANDBOX` claim (unconfirmed for user hooks); added `PermissionRequest` and `PostCompact` events; fixed `permission_mode` enum value; documented blocking via JSON `continue:false`, not non-zero exit; trust model hash key format and storage location
@@ -389,3 +415,15 @@ _Updated by `/ll:confidence-check` on 2026-05-14 (post-wiring-pass re-run)_
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The implementation MUST NOT extend `hooks/scripts/lib/common.sh:ll_resolve_config()` directly. FEAT-1116 will port that function to Python (`scripts/little_loops/hooks/common.py`). Add `.codex/` to the ordered candidate list in the new Python `common.py` module introduced by FEAT-1116 instead. Add this constraint to the "Files to Modify" list and implementation steps.
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-10): This issue implements a **Host Adapter** (Codex CLI integration), NOT an Extension in the FEAT-917 sense. Host adapters live under `hooks/adapters/codex/`, have no PyPI manifest, and are NOT discoverable via `ll extensions` commands. Do not reference FEAT-917's extension registry schema or `ll extensions` CLI from this issue's implementation. The canonical naming: "Extensions" = PyPI packages (`little-loops-ext-*`); "Host Adapters" = per-host wiring under `hooks/adapters/`.
+
+### Cross-Compat Scope Boundaries (added 2026-05-15)
+
+Three categories of cross-host work were considered for this issue and explicitly carved out:
+
+**Orchestration layer (carved out → [[FEAT-1462]])**: `ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`, FSM evaluators, and FSM handoff all spawn `claude -p` directly (call sites: `scripts/little_loops/subprocess_utils.py:261`, `parallel/worker_pool.py:584`, `cli/action.py:142,149`, `fsm/handoff_handler.py:114`, `fsm/evaluators.py:609`). This issue does NOT abstract the binary. Until FEAT-1462 ships, Codex users get hook wiring only — the automation tools remain Claude-Code-only. The `HOST_COMPATIBILITY.md` matrix added by this issue MUST mark this clearly in the Codex column.
+
+**Slash-command and skill discovery (carved out)**: Codex reads `.codex/prompts/` (markdown prompts), not `.claude/commands/*.md`. There is no evidence Codex picks up `.claude/skills/*/SKILL.md` either. This issue does NOT mirror or symlink command/skill content into `.codex/`. Track separately if/when user demand exists; current scope is hook-adapter parity, full stop. The `HOST_COMPATIBILITY.md` matrix MUST show command/skill cells as "not available" for Codex.
+
+**`LL_STATE_DIR` semantics (clarified, not extended)**: The FEAT-769 env var redirects `.ll/` state lookups. Within FEAT-957's scope, the only redirection added is the `.codex/ll-config.json` config-probe candidate. Other state directories (`.loops/`, `.issues/`, scratch pads under `.loops/tmp/scratch/`, FSM run dirs) remain under their existing paths regardless of `LL_STATE_DIR`. If a future issue needs full state redirection per host, file it explicitly — do NOT silently expand the env var's reach here. Document the exact set of files affected by `LL_STATE_DIR=.codex` in `hooks/adapters/codex/README.md`.
+
+**Hook surface parity matrix (in scope, doc deliverable)**: The new `docs/reference/HOST_COMPATIBILITY.md` matrix is the visible artifact users consult to know what's wired where. Columns: Claude Code, OpenCode, Codex. Rows: each hook intent, command discovery, skill discovery, orchestration CLI, config probe path, state dir. Cells: ✓ / ✗ / N/A with footnote links to the relevant issue (e.g. FEAT-1462 for the orchestration ✗).
