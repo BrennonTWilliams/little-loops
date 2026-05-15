@@ -80,6 +80,24 @@ class TestSessionStartConfigLoad:
         assert result.stdout is not None
         assert json.loads(result.stdout) == {"codex": True}
 
+    def test_falls_back_to_pi_dir_config(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When LL_HOOK_HOST=pi, ``.pi/ll-config.json`` is probed first (FEAT-1479)."""
+        monkeypatch.setenv("LL_HOOK_HOST", "pi")
+        (in_tmp / ".pi").mkdir()
+        (in_tmp / ".pi" / "ll-config.json").write_text(json.dumps({"pi": True}))
+        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({"ll": True}))
+
+        result = handle(
+            LLHookEvent(host="pi", intent="session_start", payload={})
+        )
+
+        assert result.exit_code == 0
+        assert result.stdout is not None
+        assert json.loads(result.stdout) == {"pi": True}
+
 
 class TestSessionStartContextStateCleanup:
     def test_removes_prior_session_state(self, in_tmp: Path) -> None:
