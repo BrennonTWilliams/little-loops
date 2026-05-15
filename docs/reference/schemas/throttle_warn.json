@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-throttle_warn.json",
+  "title": "Throttle Warn",
+  "description": "Emitted when a state's tool-call count reaches warn_max within a single state visit.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "count",
+    "warn_max",
+    "hard_max"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "state": {
+      "type": "string",
+      "description": "State name where throttle warning was triggered"
+    },
+    "count": {
+      "type": "integer",
+      "description": "Current tool-call count at time of emission"
+    },
+    "normal_max": {
+      "type": "integer",
+      "description": "Configured normal_max threshold for this state"
+    },
+    "warn_max": {
+      "type": "integer",
+      "description": "Configured warn_max threshold for this state"
+    },
+    "hard_max": {
+      "type": "integer",
+      "description": "Configured hard_max threshold for this state"
+    }
+  },
+  "additionalProperties": true
+}

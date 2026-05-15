@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-cycle_detected.json",
+  "title": "Cycle Detected",
+  "description": "Emitted when the same edge is traversed too many times, indicating a tight infinite loop.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "edge",
+    "from",
+    "to",
+    "count",
+    "max"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "edge": {
+      "type": "string",
+      "description": "Edge key (from_state->to_state) that triggered detection"
+    },
+    "from": {
+      "type": "string",
+      "description": "Source state of the cyclic edge"
+    },
+    "to": {
+      "type": "string",
+      "description": "Target state of the cyclic edge"
+    },
+    "count": {
+      "type": "integer",
+      "description": "Number of times this edge was traversed"
+    },
+    "max": {
+      "type": "integer",
+      "description": "Configured max_edge_revisits limit"
+    }
+  },
+  "additionalProperties": true
+}
