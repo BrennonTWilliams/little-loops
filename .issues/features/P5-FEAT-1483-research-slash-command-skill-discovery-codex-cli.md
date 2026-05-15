@@ -109,9 +109,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **Step 0 (before external research)**: Read `docs/reference/HOST_COMPATIBILITY.md` footnote `[^cmds]` and `EPIC-1463` — both already document that Codex reads `.codex/prompts/` and outline the two implementation paths; this narrows Step 1 to verifying the `.codex/prompts/` format and discovering any skill/agent surface
-- **Step 2 caveat**: `codex` binary is not installed on the dev host (per `thoughts/research/codex-headless-invocation.md`, last verified 2026-05-15); `codex --help` must be run on a machine with Codex installed or via the upstream source at `https://github.com/openai/codex`
+- **Step 2 caveat**: ~~`codex` binary is not installed on the dev host~~ — `codex` is now installed via npm (2026-05-15); `codex --help` and subcommand exploration can be run locally
 - **Step 3 refinement**: Check `~/.codex/config.toml` (user-level, not project-level) in addition to `.codex/config.toml` — the trust-hash mechanism documented in `hooks/adapters/codex/README.md` shows that user config lives at `~/.codex/config.toml`; look for a `[commands]` or `[plugins]` section
 - **Output artifact format**: Follow `thoughts/research/codex-headless-invocation.md` structure (`Status`, `Sources`, table, `Capability map`, `Gating recommendation`) when writing `thoughts/research/codex-command-discovery.md`
+- **Binary available**: `codex` installed via npm on dev host (2026-05-15) — all steps can be run locally; no need for GitHub-only research path
 - **Step 5 filing target**: File any follow-on FEATs as children of `EPIC-1463` (it already has the two `(unfiled)` slots: slash-command bridge + skill discovery)
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -147,4 +148,5 @@ codex, research, commands, skills
 - `/ll:refine-issue` - 2026-05-15T21:25:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c6fcfa4-b17c-4d21-8cbb-87bc6c248119.jsonl`
 - `/ll:wire-issue` - 2026-05-15T21:15:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cdf8b29b-c64d-4fd5-9d5c-9082345d0652.jsonl`
 - `/ll:refine-issue` - 2026-05-15T21:08:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d42dbf9b-cc4b-408b-9155-54a52d42f2f2.jsonl`
+- `manual update` - 2026-05-15 - codex installed via npm on dev host; binary blocker resolved, all research steps now runnable locally; `depends_on: FEAT-1481` added
 - `/ll:capture-issue` - 2026-05-15T20:37:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ac48eaf-913e-40cd-8b15-98d99f2901cc.jsonl`
