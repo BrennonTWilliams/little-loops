@@ -631,6 +631,30 @@ class TestNewProtocols:
 
         assert LLHookIntentExtension is not None
 
+    def test_smoke_import_host_runner(self) -> None:
+        """Importing HostRunner from public API succeeds (no circular import)."""
+        from little_loops import HostRunner  # noqa: F401 — import is the test
+
+        assert HostRunner is not None
+
+    def test_smoke_import_host_invocation(self) -> None:
+        """Importing HostInvocation from public API succeeds (no circular import)."""
+        from little_loops import HostInvocation  # noqa: F401 — import is the test
+
+        assert HostInvocation is not None
+
+    def test_smoke_import_host_not_configured(self) -> None:
+        """Importing HostNotConfigured from public API succeeds (no circular import)."""
+        from little_loops import HostNotConfigured  # noqa: F401 — import is the test
+
+        assert HostNotConfigured is not None
+
+    def test_smoke_import_capability_not_supported(self) -> None:
+        """Importing CapabilityNotSupported from public API succeeds (no circular import)."""
+        from little_loops import CapabilityNotSupported  # noqa: F401 — import is the test
+
+        assert CapabilityNotSupported is not None
+
     def test_ll_hook_intent_extension_protocol_satisfied(self) -> None:
         """A class with provided_hook_intents() satisfies LLHookIntentExtension."""
         from little_loops.extension import LLHookIntentExtension

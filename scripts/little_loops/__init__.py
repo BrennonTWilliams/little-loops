@@ -19,6 +19,12 @@ from little_loops.extension import (
 from little_loops.fsm import RouteContext, RouteDecision
 from little_loops.git_operations import check_git_status
 from little_loops.hooks.types import LLHookEvent, LLHookResult
+from little_loops.host_runner import (
+    CapabilityNotSupported,
+    HostInvocation,
+    HostNotConfigured,
+    HostRunner,
+)
 from little_loops.issue_lifecycle import (
     FailureType,
     classify_failure,
@@ -58,6 +64,11 @@ __all__ = [
     # hooks
     "LLHookEvent",
     "LLHookResult",
+    # host runner
+    "CapabilityNotSupported",
+    "HostInvocation",
+    "HostNotConfigured",
+    "HostRunner",
     # extensions
     "ActionProviderExtension",
     "EvaluatorProviderExtension",
