@@ -56,11 +56,11 @@ The filter is incomplete. While active type-based directories currently use `sta
 Add `"completed"` to both filter tuples:
 
 ```python
-# issue_parser.py:856
+# issue_parser.py — find_issues()
 if info.status in ("done", "cancelled", "deferred", "completed"):
     continue
 
-# cli/issues/skip.py:40
+# cli/issues/skip.py — skip command handler
 if issue_info.status in ("done", "cancelled", "deferred", "completed"):
     ...
 ```
@@ -74,8 +74,17 @@ if issue_info.status in ("done", "cancelled", "deferred", "completed"):
 ### Dependent Files (Callers/Importers)
 - Any caller of `find_issues()` benefits automatically (ll-auto, ll-sprint, ll-parallel, next-issue)
 
+### Similar Patterns
+- N/A
+
 ### Tests
 - `scripts/tests/` — add test fixture with `status: completed` and assert it's excluded from `find_issues()` results
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -90,6 +99,10 @@ if issue_info.status in ("done", "cancelled", "deferred", "completed"):
 - **Risk**: Low - additive filter, no behavior change for current issue files
 - **Breaking Change**: No
 
+## Related Key Documentation
+
+_No documents linked._
+
 ## Labels
 
 `bug`, `issue-parser`, `captured`
@@ -101,4 +114,5 @@ if issue_info.status in ("done", "cancelled", "deferred", "completed"):
 ---
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-15T22:31:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee7de6e9-997b-4bb6-a6ae-e81063eeaa11.jsonl`
 - `/ll:capture-issue` - 2026-05-15T22:28:07Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c83fb486-18e2-416c-9520-e73ea7fb0cda.jsonl`
