@@ -24,11 +24,9 @@
 
 A dev toolkit for long-horizon, eval-gated AI software development. Built as a Claude Code plugin.
 
-little-loops gives AI agents three things they're missing: **durability** (the run outlives the session), **consistency** (the toolbelt is the process), and **verification** (the eval is the spec). Together they remove the invisible ceiling that keeps agents doing small tasks well and shipping features poorly.
+little-loops gives AI agents three things they're missing: **durability** (the run outlives the session), **consistency** (the toolbelt is the process), and **verification** (the harness is the spec). Together they remove the invisible ceiling that keeps agents doing small tasks well and shipping features poorly.
 
-## The three claims
-
-### 1. The session ends. The run doesn't.
+## 1. The session ends. The run doesn't.
 
 The unit of work is the feature, the sprint, or the overnight optimization — not a single chat. Runs survive terminal close, context exhaustion, and laptop sleep. Parallel sprints fan out across isolated worktrees and complete independently of your terminal.
 
@@ -39,7 +37,7 @@ The unit of work is the feature, the sprint, or the overnight optimization — n
 
 *Ship features, not sessions.*
 
-### 2. The toolbelt is the process.
+## 2. The toolbelt is the process.
 
 Raw agents re-derive the same structural moves differently each run. The `ll-` CLI removes the improvisation surface: context gathering, issue lifecycle, sprint moves, and worktree setup all run as typed commands. Two runs of the same feature land in the same shape — by construction, not by prompting.
 
@@ -50,21 +48,21 @@ Raw agents re-derive the same structural moves differently each run. The `ll-` C
 
 *Same feature, same shape, every run.*
 
-### 3. The harness is the spec. And the harness writes itself.
+## 3. The harness is the spec. And the harness writes itself.
 
-Eval-driven development: TDD's analog for agent-built software. Define what "working" looks like first, then iterate until the harness passes. The eval grades, writes, and improves itself — removing the harness engineering tax that keeps most teams skipping evals entirely.
+Harness-driven development: TDD's analog for agent-built software. Define what "working" looks like first, then iterate until the harness passes. The harness grades, writes, and improves itself — removing the engineering tax that keeps most teams skipping evals entirely.
 
-**The eval grades:**
+**The harness grades:**
 - Six layered gate types — exit code, deterministic external state, full agentic user simulation, LLM-as-judge, diff size invariant, no-op detection
 - Cheapest gates run first. Failures route back to execution rather than advancing
 - Stall detection catches the "already done" no-op that silently burns through iteration budgets
 
-**The eval writes itself:**
+**The harness writes itself:**
 - `/ll:create-eval-from-issues` — turn an issue's acceptance criteria into a runnable harness in under a minute
-- `/ll:create-loop` — auto-derive the full evaluation pipeline from your project config
+- `/ll:create-loop` — auto-derive the full harness from your project config
 - Annotated templates and `ll-loop validate` — dry-run the FSM before paying for a real run
 
-**The eval improves itself:**
+**The harness improves itself:**
 - `harness-optimize` — hill-climbing on harness artifacts. One targeted edit per iteration, benchmark, accept on rising score, revert otherwise
 - APO loop category with five prompt-optimization strategies — point it at a prompt, converge to a target score
 - `/ll:audit-loop-run` — four-valued verdict (`met` / `phantom` / `partial` / `degraded`) catches failure modes humans miss
