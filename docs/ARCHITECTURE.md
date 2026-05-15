@@ -547,6 +547,40 @@ See [API Reference — Extension API](reference/API.md#extension-api) for full p
 
 ---
 
+## Host Runner Layer
+
+Sitting alongside the hook-intent layer is the `host_runner` abstraction
+(`scripts/little_loops/host_runner.py`). Where hook intents normalize
+*incoming* host events into the `LLHookEvent` envelope, the host runner
+normalizes *outgoing* CLI invocations: every shell-out to a host CLI
+(`claude`, `codex`, `opencode`, `pi`) is built through a `HostRunner`
+implementation rather than hard-coded argv. This makes the orchestration
+layer host-agnostic and keeps host-specific argv shape out of call sites
+like `ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`, FSM evaluators, and
+FSM handoff.
+
+| Component | Purpose |
+|-----------|---------|
+| `HostRunner` (Protocol) | Contract every runner satisfies — `detect()`, `build_oneshot()`, `build_streaming()`, `build_detached()` factories returning `HostInvocation` |
+| `HostInvocation` (frozen dataclass) | Value object holding `binary`, `args`, `env`, and `capabilities` — passed to `subprocess.Popen`/`run` |
+| `HostCapabilities` (frozen dataclass) | Capability flags (`streaming`, `permission_skip`, `agent_select`, `tool_allowlist`) describing what a host supports |
+| `ClaudeCodeRunner` | Production runner for the `claude` CLI |
+| `CodexRunner` | Stub for the `codex` CLI (FEAT-1465 tracks completion) |
+| `OpenCodeRunner` | Stub for the `opencode` CLI (FEAT-1472 stub state) |
+| `PiRunner` | Stub for the Raspberry Pi host (FEAT-992 research deferred) |
+| `resolve_host()` | Discovery entry point — honors `LL_HOST_CLI` / `orchestration.host_cli` overrides, then probes `PATH` for known host binaries |
+| `HostNotConfigured` | Raised when no runner can be resolved — error includes `LL_HOST_CLI` remediation hint |
+| `CapabilityNotSupported` | `UserWarning` subclass emitted when a caller requests a capability the active host lacks |
+
+New host-CLI call sites MUST go through `resolve_host()` rather than
+adding new `"claude"` literals. See
+[HOST_COMPATIBILITY.md](reference/HOST_COMPATIBILITY.md#orchestration-cli)
+for the per-host orchestration matrix and
+[API Reference — little_loops.host_runner](reference/API.md#little_loopshost_runner)
+for the full public surface.
+
+---
+
 ## Class Relationships
 
 ```mermaid

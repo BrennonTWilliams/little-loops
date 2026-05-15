@@ -287,6 +287,28 @@ git worktree prune
 2. For manual runs, add the flag explicitly
 3. Check Claude Code permissions in your IDE settings
 
+### HostNotConfigured
+
+**Symptom**: `HostNotConfigured: <host> orchestration not yet wired` (or `No host CLI detected on PATH`) when running `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-action`, `ll-loop`, or an FSM evaluator.
+
+**Cause**: `resolve_host()` in `scripts/little_loops/host_runner.py` could not find a runnable host. Either no supported host binary is on `PATH`, or `LL_HOST_CLI` / `LL_HOOK_HOST` explicitly selected a host (e.g., `opencode`, `pi`) whose runner is still a stub.
+
+**Solution**:
+1. Force Claude Code as the orchestration host:
+   ```bash
+   export LL_HOST_CLI=claude-code
+   ```
+   This is the safest fallback while non-Claude runners are still stubs.
+2. Confirm a supported host binary is installed and on `PATH`:
+   ```bash
+   which claude   # Claude Code
+   which codex    # Codex (also requires LL_HOST_CLI=codex — gated)
+   ```
+3. Alternatively, set `orchestration.host_cli` in `.ll/ll-config.json` (see [CONFIGURATION.md](../reference/CONFIGURATION.md)).
+4. Stub runners (`OpenCodeRunner`, `PiRunner`) raise `HostNotConfigured` on every `build_*` call by design — track FEAT-1472 / FEAT-992 for completion.
+
+See [HOST_COMPATIBILITY.md — Orchestration CLI](../reference/HOST_COMPATIBILITY.md#orchestration-cli) for the per-host matrix.
+
 ---
 
 ## State Management

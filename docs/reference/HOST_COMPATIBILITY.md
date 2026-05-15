@@ -55,23 +55,33 @@ into `LLHookEvent` payloads.
 ## Orchestration CLI
 
 The orchestration tools (`ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`,
-FSM evaluators, FSM handoff) currently shell out to a hard-coded `claude`
-binary. Until [FEAT-1462](../.issues/features/) lands, Codex and OpenCode
-users get the hook adapter only — not the automation tools.
+FSM evaluators, FSM handoff) route every host CLI invocation through
+`scripts/little_loops/host_runner.py`. The `HostRunner` Protocol is
+satisfied by four concrete runners — `ClaudeCodeRunner` (production),
+`CodexRunner` (wired, gated behind `LL_HOST_CLI=codex` until validated),
+`OpenCodeRunner` (stub), and `PiRunner` (stub) — so adding a new host is
+a matter of fleshing out the corresponding runner rather than touching
+call sites.
 
-| Tool                          | Claude Code | OpenCode | Codex CLI |
-| ----------------------------- | ----------- | -------- | --------- |
-| `ll-auto`                     | ✓           | ✗[^orch] | ✗[^orch]  |
-| `ll-parallel`                 | ✓           | ✗[^orch] | ✗[^orch]  |
-| `ll-action`                   | ✓           | ✗[^orch] | ✗[^orch]  |
-| `ll-loop`                     | ✓           | ✗[^orch] | ✗[^orch]  |
-| FSM evaluators / handoff      | ✓           | ✗[^orch] | ✗[^orch]  |
+| Tool                          | Claude Code | OpenCode      | Codex CLI    | Pi           |
+| ----------------------------- | ----------- | ------------- | ------------ | ------------ |
+| `ll-auto`                     | ✓           | stub[^orch]   | gated[^orch] | stub[^orch]  |
+| `ll-parallel`                 | ✓           | stub[^orch]   | gated[^orch] | stub[^orch]  |
+| `ll-action`                   | ✓           | stub[^orch]   | gated[^orch] | stub[^orch]  |
+| `ll-loop`                     | ✓           | stub[^orch]   | gated[^orch] | stub[^orch]  |
+| FSM evaluators / handoff      | ✓           | stub[^orch]   | gated[^orch] | stub[^orch]  |
 
 [^orch]: All six call sites now route through
     `scripts/little_loops/host_runner.py` (`HostRunner` Protocol +
-    `ClaudeCodeRunner`). Wiring a non-Claude host means registering a
-    new `HostRunner` implementation; the orchestration layer no longer
-    hard-codes the `claude` binary or its argv.
+    `ClaudeCodeRunner` + `CodexRunner` + `OpenCodeRunner` + `PiRunner`).
+    Wiring a non-Claude host means registering a new `HostRunner`
+    implementation; the orchestration layer no longer hard-codes the
+    `claude` binary or its argv. **stub** = runner is registered so
+    `LL_HOST_CLI=<host>` resolves, but every `build_*` raises
+    `HostNotConfigured` until the host-specific argv is implemented
+    (OpenCode: FEAT-1472 Option B; Pi: research deferred to FEAT-992).
+    **gated** = runner is fully implemented but deliberately omitted
+    from `_PROBE_ORDER`; opt in with `LL_HOST_CLI=codex` (FEAT-1465).
 
 ## Config probe path
 

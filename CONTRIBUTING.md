@@ -220,7 +220,7 @@ little-loops/
         ├── sync.py              # GitHub Issues sync
         ├── goals_parser.py      # Goals file parsing
         ├── subprocess_utils.py
-        ├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner)
+        ├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner + OpenCodeRunner + PiRunner)
         ├── text_utils.py        # Text processing utilities
         ├── logger.py
         ├── logo.py              # CLI logo display

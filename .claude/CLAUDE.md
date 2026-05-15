@@ -130,6 +130,20 @@ The `scripts/` directory contains Python CLI tools:
 
 Install: `pip install -e "./scripts[dev]"`
 
+## Host CLI Abstraction
+
+All host CLI invocations (`claude`, `codex`, `opencode`, `pi`) must go
+through `resolve_host()` in `scripts/little_loops/host_runner.py`. Never
+add new `"claude"` literals to automation code — call
+`resolve_host().build_streaming(...)` (or `build_blocking_json`,
+`build_detached`, `build_version_check`) and use
+`HostInvocation.binary` + `HostInvocation.args` instead. Set
+`LL_HOST_CLI=<host>` (or `orchestration.host_cli` in `.ll/ll-config.json`)
+to override host selection. See
+[docs/reference/API.md#little_loopshost_runner](../docs/reference/API.md#little_loopshost_runner)
+and
+[docs/reference/HOST_COMPATIBILITY.md#orchestration-cli](../docs/reference/HOST_COMPATIBILITY.md#orchestration-cli).
+
 ## Automation: Scratch Pad
 
 When running in automation contexts (ll-auto, ll-parallel, ll-sprint), use scratch pad files to keep large tool outputs out of conversation context:

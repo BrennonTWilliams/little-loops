@@ -2,11 +2,18 @@
 id: FEAT-1473
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: FEAT-1466
 depends_on: FEAT-1464
 discovered_date: 2026-05-15
+completed_at: 2026-05-15T16:17:24Z
 discovered_by: issue-size-review
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-1473: Host Runner Docs Sweep + Doc-Wiring Test
@@ -174,18 +181,121 @@ class TestClaudeMdWiring:
         assert "host_runner" in content or "LL_HOST_CLI" in content
 ```
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis on 2026-05-15:_
+
+**All line-number claims in this issue are VERIFIED against the current tree:**
+- `docs/ARCHITECTURE.md:254` — file-tree comment `├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner)` exists.
+- `docs/reference/API.md:5582–5688` — `## little_loops.hooks` section present with the exact structure described.
+- `docs/reference/API.md:35` — module-table row for `little_loops.host_runner` already exists; do not duplicate.
+- `docs/reference/HOST_COMPATIBILITY.md:55` — `## Orchestration CLI` heading; table starts at line 62; `[^orch]` footnote definition at line 70.
+- `docs/reference/HOST_COMPATIBILITY.md:132–133` — FEAT-992 Pi-deferral note present.
+- `.claude/CLAUDE.md:133` — `## Automation: Scratch Pad` heading present.
+- `CONTRIBUTING.md:223` — file-tree comment matches claim verbatim.
+
+**Actual `host_runner.py` `__all__` (scripts/little_loops/host_runner.py:32–43)** — the AC names only 4 of 10 exports:
+
+```python
+__all__ = [
+    "CapabilityNotSupported",
+    "ClaudeCodeRunner",
+    "CodexRunner",
+    "HostCapabilities",
+    "HostInvocation",
+    "HostNotConfigured",
+    "HostRunner",
+    "OpenCodeRunner",
+    "PiRunner",
+    "resolve_host",
+]
+```
+
+The API.md section should additionally document `HostRunner` (Protocol) and `HostCapabilities` (dataclass) to mirror the full public surface — the four concrete runner classes (`ClaudeCodeRunner`, `CodexRunner`, `OpenCodeRunner`, `PiRunner`) can be listed in a single "Concrete runners" subsection. Out-of-scope for AC but recommended for completeness; the AC's four-name minimum still holds.
+
+**Exact current `[^orch]` footnote text (docs/reference/HOST_COMPATIBILITY.md:70)** — needs editing in place, not rewriting:
+
+> All six call sites now route through `scripts/little_loops/host_runner.py` (`HostRunner` Protocol + `ClaudeCodeRunner`). Wiring a non-Claude host means registering a new `HostRunner` implementation; the orchestration layer no longer hard-codes the `claude` binary or its argv.
+
+Append `+ CodexRunner + OpenCodeRunner + PiRunner` to the parenthetical and leave the rest unchanged.
+
+**API.md `little_loops.hooks` formatting convention** — bold-headed sub-sections, not `####` headings:
+
+The hooks section uses `**Fields:**` and `**Behavior:**` bold labels under each `### Name` heading (not `#### Constructor` / `#### Methods` as `little_loops.events` and `little_loops.config` do). Follow the hooks style for `little_loops.host_runner` per AC. Section ordering within hooks is: input dataclass → output dataclass → entry-point function — the host_runner analogue is: `HostInvocation` → `HostCapabilities` → `HostRunner` (Protocol) → `resolve_host()` → exceptions (`HostNotConfigured`, `CapabilityNotSupported`).
+
+**Section separator convention** — bare `---` on its own line with blank lines above/below, between every `## little_loops.*` section (verified at API.md lines 63, 311, 549, 5580, 5688).
+
+**Test scaffold corrections** — the pattern file `scripts/tests/test_feat1459_doc_wiring.py` uses two conventions the scaffold in this issue omits:
+
+1. `from __future__ import annotations` at the top (after the module docstring) — add this for consistency with all 26 existing `test_*_doc_wiring.py` files.
+2. Module docstring naming the issue: `"""Tests for FEAT-1462: <description>. Verifies that <doc surfaces> cover <feature> per the acceptance criteria enumerated in FEAT-1462."""` — every existing doc-wiring test has this.
+3. Bind `content = SOME_PATH.read_text()` to a local variable before asserting, even for single-assertion tests — every existing test does this consistently.
+
+The scaffold's bare `assert "host_runner" in API_DOC.read_text()` style works but is inconsistent with the established pattern.
+
+**Existing doc-wiring tests for reference** (26 in `scripts/tests/`): closest structural matches are `test_feat1459_doc_wiring.py` (5 doc files, multiple `Test<Doc>Wiring` classes — exact pattern this issue targets) and `test_feat1457_doc_wiring.py` (similar multi-doc structure with negative assertions and existence checks).
+
 ## Files to Modify
 
-- `docs/ARCHITECTURE.md` — host_runner layering subsection
-- `docs/reference/API.md` — new `## little_loops.host_runner` section
-- `docs/reference/HOST_COMPATIBILITY.md` — Pi column, OpenCode stub update, expanded footnote
+- `docs/ARCHITECTURE.md` — host_runner layering subsection (line 254 has the file-tree comment; AC1 requires a NEW layering subsection elsewhere)
+- `docs/reference/API.md` — new `## little_loops.host_runner` section (insert between existing sections following separator convention; do NOT amend line 35 module-table row, which already exists)
+- `docs/reference/HOST_COMPATIBILITY.md` — Pi column added to table (lines 62–68), OpenCode stub update, footnote text at line 70 expanded in place
 - `docs/development/TROUBLESHOOTING.md` — `HostNotConfigured` entry
-- `.claude/CLAUDE.md` — host_runner note near "Automation: Scratch Pad"
-- `CONTRIBUTING.md` — file-tree comment at line ~223
+- `.claude/CLAUDE.md` — host_runner note near "Automation: Scratch Pad" (line 133)
+- `CONTRIBUTING.md` — file-tree comment at line 223
 
 ## New Files
 
 - `scripts/tests/test_feat1462_doc_wiring.py` — doc acceptance criteria enforcement
+
+## Integration Map
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+These files import `host_runner` symbols. FEAT-1473 changes are purely additive — these callers do not need modification, but are listed for implementer context:
+- `scripts/little_loops/__init__.py` — re-exports only 4 of 10 `host_runner` symbols (`CapabilityNotSupported`, `HostInvocation`, `HostNotConfigured`, `HostRunner`); the API.md `## little_loops.host_runner` section must document `host_runner.__all__` (10 symbols, lines 32–43 of `host_runner.py`), NOT `little_loops.__all__` [Agent 1 finding]
+- `scripts/little_loops/cli/action.py` — calls `resolve_host().detect()` in `cmd_capabilities()` [Agent 1 finding]
+- `scripts/little_loops/fsm/evaluators.py` — calls `resolve_host()` for FSM structured evaluation [Agent 1 finding]
+- `scripts/little_loops/fsm/handoff_handler.py` — calls `resolve_host().build_detached()` in `HandoffHandler.handle()` [Agent 1 finding]
+- `scripts/little_loops/parallel/worker_pool.py` — calls `resolve_host()` for worker process spawning [Agent 1 finding]
+- `docs/generalized-fsm-loop.md` — contains `from little_loops.host_runner import resolve_host` example; unaffected by doc changes [Agent 1 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**New test file (this issue):**
+- `scripts/tests/test_feat1462_doc_wiring.py` — created by this issue; follow `test_feat1459_doc_wiring.py` exactly: module docstring naming FEAT-1462, `from __future__ import annotations` immediately after docstring, `from pathlib import Path` as the only import, and `content = PATH.read_text()` bound to a local variable before every assertion (even single-assertion tests)
+
+**Existing tests to run after each doc change (verify no regressions):**
+- `scripts/tests/test_feat1457_doc_wiring.py` — asserts on CONTRIBUTING.md (`LLHookIntentExtension`, `LLHookEvent`), CLAUDE.md (`scripts/little_loops/hooks/`, `adapters/`), TROUBLESHOOTING.md paths — safe if changes are additive [Agent 3 finding]
+- `scripts/tests/test_feat1447_doc_wiring.py` — asserts on CONTRIBUTING.md (`30 skill definitions`) — safe if only line 223 is changed [Agent 3 finding]
+- `scripts/tests/test_feat1287_doc_wiring.py` — asserts on CLAUDE.md (`(30 skills)`, `ll-learning-tests`) [Agent 3 finding]
+- `scripts/tests/test_feat1407_doc_wiring.py` — asserts on CLAUDE.md (`EPIC`) [Agent 3 finding]
+- `scripts/tests/test_feat1459_doc_wiring.py` — asserts on TROUBLESHOOTING.md hook script paths, API.md hooks section [Agent 3 finding]
+- `scripts/tests/test_feat1172_doc_wiring.py` — asserts on API.md (`update_frontmatter`) [Agent 3 finding]
+- `scripts/tests/test_host_runner.py` — behavioral tests for all runner classes; not affected by docs-only changes but confirm green [Agent 1 finding]
+- `scripts/tests/test_extension.py` — smoke imports for `HostRunner`, `HostInvocation`, `HostNotConfigured`, `CapabilityNotSupported` from `little_loops` [Agent 1 finding]
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+No changes needed — already up to date:
+- `docs/reference/CONFIGURATION.md` — already fully documents `orchestration`, `LL_HOST_CLI`, `HostNotConfigured`, all four runner enum values (`claude-code`, `codex`, `opencode`, `pi`) [Agent 2 finding]
+- `config-schema.json` — already has `orchestration.host_cli` with enum `["auto", "claude-code", "codex", "opencode", "pi"]` and default `"auto"` [Agent 2 finding]
+
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+1. After each doc file update, run the overlapping doc-wiring regression suite: `python -m pytest scripts/tests/test_feat1457_doc_wiring.py scripts/tests/test_feat1447_doc_wiring.py scripts/tests/test_feat1287_doc_wiring.py scripts/tests/test_feat1407_doc_wiring.py scripts/tests/test_feat1459_doc_wiring.py scripts/tests/test_feat1172_doc_wiring.py -v`
+2. When writing `test_feat1462_doc_wiring.py`: source the `__all__` list from `host_runner.__all__` (10 symbols at `scripts/little_loops/host_runner.py:32–43`), not from `little_loops.__init__.__all__` (only 4 symbols)
+3. Final gate: `python -m pytest scripts/tests/test_feat1462_doc_wiring.py -v` passes with all assertions green
 
 ## Dependencies
 
@@ -193,5 +303,28 @@ class TestClaudeMdWiring:
 - **FEAT-1472** should land first (provides `OpenCodeRunner` and `PiRunner` so doc references are concrete), but can proceed in parallel
 - Can run in parallel with **FEAT-1472**
 
+## Resolution
+
+Implemented 2026-05-15. All acceptance criteria met:
+
+- `docs/ARCHITECTURE.md` — new `## Host Runner Layer` section added after Extension Architecture, alongside the hook-intent layer; documents the Protocol, value objects, exceptions, four concrete runners, and the `resolve_host()` discovery rule. File-tree comment at line 254 already in place.
+- `docs/reference/API.md` — new `## little_loops.host_runner` section inserted between `## little_loops.hooks` and `## little_loops.transport`, mirroring the hooks-section layout (bold `**Fields:**` / `**Behavior:**` labels, dedicated subsections per export). Module-overview row at line 35 expanded to list all four runners.
+- `docs/reference/HOST_COMPATIBILITY.md` — Pi column added to the orchestration table; OpenCode column updated to `stub`; Codex marked `gated`; `[^orch]` footnote expanded in place to name all four runners (`ClaudeCodeRunner`, `CodexRunner`, `OpenCodeRunner`, `PiRunner`) with the stub/gated semantics defined.
+- `docs/development/TROUBLESHOOTING.md` — `### HostNotConfigured` entry added at the end of the Claude CLI Issues section, covering both `LL_HOST_CLI=claude-code` fallback and the stub-runner case.
+- `.claude/CLAUDE.md` — new `## Host CLI Abstraction` section added before `## Automation: Scratch Pad`, directing contributors to route host-CLI calls through `resolve_host()` rather than adding new `"claude"` literals.
+- `CONTRIBUTING.md` — file-tree comment at line 223 appended `+ OpenCodeRunner + PiRunner`.
+- `scripts/tests/test_feat1462_doc_wiring.py` — 5 `Test<Doc>Wiring` classes, 12 assertions, following `test_feat1459_doc_wiring.py` invariants verbatim (`from __future__ import annotations`, `PROJECT_ROOT` constant, `content = PATH.read_text()` bound locally, substring-only assertions).
+
+**Verification:**
+- `python -m pytest scripts/tests/test_feat1462_doc_wiring.py -v` — 12 passed.
+- Overlapping regression suite (FEAT-1457/1447/1287/1407/1459/1172 doc-wiring tests) — 102 total passed.
+- Full `python -m pytest scripts/tests/` — 6575 passed; 5 pre-existing failures (README pillars, marketplace version sync — unrelated to this issue, also fail on `HEAD` pre-change).
+- `ruff check` + `mypy` on the new test file — clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-15T16:17:24Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74989793-8902-46f0-8ede-54024c676c0d.jsonl`
+- `/ll:ready-issue` - 2026-05-15T16:10:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/209f2886-399d-46b4-8ff2-ab8828434471.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c46e81e8-7919-42c6-9c3d-c06c3317134a.jsonl`
+- `/ll:wire-issue` - 2026-05-15T16:06:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc0dd184-e030-4410-a4ee-0cb7dce96a23.jsonl`
+- `/ll:refine-issue` - 2026-05-15T16:00:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9dd271a-e4aa-48c2-a86f-d0b6134ac1cb.jsonl`
 - `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3404bce4-b1e1-4c4a-bdaf-327d629a43da.jsonl`

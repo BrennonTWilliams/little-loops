@@ -32,7 +32,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.dependency_mapper` | Cross-issue dependency discovery and mapping (sub-package: `models`, `analysis`, `formatting`, `operations`) |
 | `little_loops.work_verification` | Verification helpers |
 | `little_loops.subprocess_utils` | Subprocess handling |
-| `little_loops.host_runner` | Host-agnostic CLI invocation layer (`HostRunner` Protocol + `ClaudeCodeRunner` + `CodexRunner`) |
+| `little_loops.host_runner` | Host-agnostic CLI invocation layer (`HostRunner` Protocol + `ClaudeCodeRunner` + `CodexRunner` + `OpenCodeRunner` + `PiRunner`) |
 | `little_loops.state` | State persistence |
 | `little_loops.events` | Structured events and EventBus dispatcher |
 | `little_loops.hooks` | Host-agnostic hook intent dispatcher and built-in handlers |
@@ -5684,6 +5684,151 @@ def main_hooks(argv: list[str]) -> int: ...
 - Claude Code adapters (`hooks/adapters/claude-code/precompact.sh`, `session-start.sh`) invoke `python -m little_loops.hooks <intent>` directly — `LL_HOOK_HOST` defaults to `"claude-code"`.
 - The OpenCode adapter (`hooks/adapters/opencode/index.ts`) sets `LL_HOOK_HOST=opencode` before invoking the same CLI.
 - The Codex CLI adapter (`hooks/adapters/codex/session-start.sh`, `pre-compact.sh`) sets `LL_HOOK_HOST=codex` before invoking the same CLI. The `hooks.json` template restricts `SessionStart` to `"matcher": "startup"` per FEAT-957's policy (avoids re-emitting identifiers on `resume`/`clear` and minimizes trust-hash churn).
+
+---
+
+## little_loops.host_runner
+
+Host-agnostic CLI invocation layer. Every shell-out to a host CLI (`claude`, `codex`, `opencode`, `pi`) is built through a `HostRunner` implementation, so the orchestration layer (`ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`, FSM evaluators, FSM handoff) never hard-codes host-specific argv.
+
+```python
+from little_loops.host_runner import (
+    CapabilityNotSupported,
+    HostCapabilities,
+    HostInvocation,
+    HostNotConfigured,
+    HostRunner,
+    resolve_host,
+)
+```
+
+Public surface — `__all__ = ["CapabilityNotSupported", "ClaudeCodeRunner", "CodexRunner", "HostCapabilities", "HostInvocation", "HostNotConfigured", "HostRunner", "OpenCodeRunner", "PiRunner", "resolve_host"]`.
+
+### HostInvocation
+
+Immutable value object describing how to invoke a host CLI. Returned by every `build_*` factory on `HostRunner`. Call sites pass `binary` + `args` to `subprocess.Popen`/`run` and merge `env` into the child process environment.
+
+```python
+@dataclass(frozen=True)
+class HostInvocation:
+    binary: str
+    args: list[str]
+    env: dict[str, str] = field(default_factory=dict)
+    capabilities: HostCapabilities = field(default_factory=HostCapabilities)
+```
+
+**Fields:**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `binary` | `str` | *(required)* | Name of the host binary (e.g., `"claude"`, `"codex"`, `"opencode"`, `"pi"`). |
+| `args` | `list[str]` | *(required)* | Positional + flag arguments to append after `binary`. Host-specific argv shape lives here. |
+| `env` | `dict[str, str]` | `{}` | Environment variables to merge into the child process. Notably includes `GIT_DIR` / `GIT_WORK_TREE` when working inside a worktree, and host-specific knobs like `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR`. |
+| `capabilities` | `HostCapabilities` | `HostCapabilities()` | Snapshot of the runner's capability flags, so callers can branch on what was actually wired without re-querying the runner. |
+
+**Behavior:**
+- `frozen=True` — mutating an invocation in flight would silently corrupt argv across the runner/caller boundary. This establishes the `frozen=True` convention for new value objects in `scripts/little_loops/`.
+
+### HostCapabilities
+
+Capability flags describing what a host runner supports. Each flag corresponds to a feature that may or may not be available on a given host; call sites that require a capability should check the relevant flag and either fall back gracefully or emit `CapabilityNotSupported`.
+
+```python
+@dataclass(frozen=True)
+class HostCapabilities:
+    streaming: bool = False
+    permission_skip: bool = False
+    agent_select: bool = False
+    tool_allowlist: bool = False
+```
+
+**Fields:**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `streaming` | `bool` | `False` | Host can produce turn-by-turn structured (JSON / NDJSON) events for long-running orchestration paths. |
+| `permission_skip` | `bool` | `False` | Host supports skipping interactive permission prompts (Claude `--dangerously-skip-permissions`, Codex `--dangerously-bypass-approvals-and-sandbox`). Required for headless automation. |
+| `agent_select` | `bool` | `False` | Host accepts a per-invocation agent / persona selector. |
+| `tool_allowlist` | `bool` | `False` | Host accepts an explicit tool allowlist on invocation. |
+
+### HostRunner
+
+Protocol every host runner satisfies. `@runtime_checkable`, so `isinstance(obj, HostRunner)` works for registry validation. Protocols are matched structurally — any class with the methods below satisfies `HostRunner` whether or not it subclasses the Protocol explicitly.
+
+```python
+@runtime_checkable
+class HostRunner(Protocol):
+    name: str
+
+    def detect(self) -> bool: ...
+    def build_streaming(self, *, prompt: str, working_dir: Path | None = None,
+                        resume: bool = False, agent: str | None = None,
+                        tools: list[str] | None = None) -> HostInvocation: ...
+    def build_blocking_json(self, *, prompt: str, model: str | None = None,
+                            json_schema: dict | None = None) -> HostInvocation: ...
+    def build_version_check(self) -> HostInvocation: ...
+    def build_detached(self, *, prompt: str) -> HostInvocation: ...
+```
+
+**Methods:**
+- `detect()` — return `True` if this host is available in the current environment (typically `shutil.which("<binary>") is not None`).
+- `build_streaming()` — argv that streams structured turn-by-turn events. Used by the long-running orchestration paths (`ll-auto`, `ll-parallel`, FSM runners).
+- `build_blocking_json()` — argv for a one-shot invocation returning a single JSON blob. Used by FSM structured evaluators.
+- `build_version_check()` — argv that prints the host's version and exits. Used by capability probes.
+- `build_detached()` — argv for fire-and-forget detached execution. Used by FSM handoff.
+
+**Concrete runners:**
+
+| Runner | Host | Status | Notes |
+|---|---|---|---|
+| `ClaudeCodeRunner` | `claude` CLI | ✓ production | Argv mirrors `subprocess_utils.run_claude_command`; snapshot test in `tests/test_host_runner.py::test_claude_runner_matches_legacy_args`. |
+| `CodexRunner` | `codex` CLI | ✓ wired (gated) | Translates the Claude-shaped Protocol surface to Codex `exec` headless mode. Gated behind explicit `LL_HOST_CLI=codex` (not in `_PROBE_ORDER`) until validated; see FEAT-1465. Emits `CapabilityNotSupported` for `agent` / `tools` parameters. |
+| `OpenCodeRunner` | `opencode` CLI | stub | Registered so `LL_HOST_CLI=opencode` resolves to a useful error rather than the generic "unknown host". All `build_*` methods raise `HostNotConfigured`. See FEAT-1472. |
+| `PiRunner` | `pi` CLI | stub | Present in `_PROBE_ORDER`, so hosts with `pi` on PATH resolve to this stub. All `build_*` methods raise `HostNotConfigured`. Pi orchestration is tracked under FEAT-992. |
+
+### resolve_host
+
+Discovery entry point. Returns a `HostRunner` instance ready to build invocations.
+
+```python
+def resolve_host(env: dict[str, str] | None = None) -> HostRunner: ...
+```
+
+**Behavior:**
+
+Detection order (first match wins):
+1. `LL_HOST_CLI` environment variable — explicit override.
+2. `LL_HOOK_HOST` environment variable — falls back to the hooks-layer host identifier so users with an existing hook config don't need a second knob.
+3. Binary probe: `claude` → `pi` (see `_PROBE_ORDER`; `codex` is intentionally omitted from the probe and is gated behind explicit `LL_HOST_CLI=codex`).
+4. Raise `HostNotConfigured` with a remediation hint.
+
+```python
+from little_loops.host_runner import resolve_host
+
+runner = resolve_host()
+invocation = runner.build_streaming(prompt="Hello, world")
+# subprocess.run([invocation.binary, *invocation.args], env={**os.environ, **invocation.env})
+```
+
+### HostNotConfigured
+
+Raised when no host runner can be resolved from env or binary probe. The error message includes a remediation hint pointing at the `LL_HOST_CLI` and `LL_HOOK_HOST` env vars and the `orchestration.host_cli` config key so users have a clear path to fix the failure.
+
+```python
+class HostNotConfigured(RuntimeError): ...
+```
+
+Also raised by stub runners (`OpenCodeRunner`, `PiRunner`) on any `build_*` call, so callers that explicitly select a non-wired host get a useful error rather than malformed argv.
+
+### CapabilityNotSupported
+
+Warning emitted when a caller requests a capability the active host lacks (e.g., requesting `agent=` against `CodexRunner`).
+
+```python
+class CapabilityNotSupported(UserWarning): ...
+```
+
+Subclasses `UserWarning` (not `Warning`) so test code can capture it via `pytest.warns` and production code can route it through `warnings.simplefilter("error", CapabilityNotSupported)` for strict contexts. Mirrors the precedent set by `config.core` which emits `DeprecationWarning` via `warnings.warn(..., stacklevel=2)`.
 
 ---
 
