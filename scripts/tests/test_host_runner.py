@@ -26,6 +26,8 @@ from little_loops.host_runner import (
     HostInvocation,
     HostNotConfigured,
     HostRunner,
+    OpenCodeRunner,
+    PiRunner,
     resolve_host,
 )
 
@@ -279,6 +281,115 @@ class TestCodexRunner:
         assert caps.permission_skip is True
         assert caps.agent_select is False
         assert caps.tool_allowlist is False
+
+
+class TestOpenCodeRunner:
+    """OpenCodeRunner is a stub: registered, resolvable via env, raises HostNotConfigured.
+
+    Per FEAT-1472 Option B: no external CLI research has been performed, so
+    every ``build_*`` method raises ``HostNotConfigured`` with a remediation
+    hint pointing at ``LL_HOST_CLI=claude-code``. The runner is gated from
+    auto-probe (no ``("opencode", "opencode")`` row in ``_PROBE_ORDER``).
+    """
+
+    def test_opencode_runner_registered(self) -> None:
+        from little_loops import host_runner as hr
+
+        assert "opencode" in hr._HOST_RUNNER_REGISTRY
+        assert hr._HOST_RUNNER_REGISTRY["opencode"] is OpenCodeRunner
+
+    def test_opencode_runner_gated_from_auto_probe(self) -> None:
+        """OpenCode is intentionally absent from _PROBE_ORDER per Option B."""
+        from little_loops import host_runner as hr
+
+        probe_hosts = {name for name, _binary in hr._PROBE_ORDER}
+        assert "opencode" not in probe_hosts
+
+    def test_resolve_host_picks_opencode_via_env(self, isolated_env: None) -> None:
+        runner = resolve_host(env={"LL_HOST_CLI": "opencode"})
+        assert isinstance(runner, OpenCodeRunner)
+        assert runner.name == "opencode"
+
+    def test_build_streaming_raises_host_not_configured(self) -> None:
+        runner = OpenCodeRunner()
+        with pytest.raises(HostNotConfigured, match="OpenCode"):
+            runner.build_streaming(prompt="hi")
+
+    def test_build_blocking_json_raises_host_not_configured(self) -> None:
+        runner = OpenCodeRunner()
+        with pytest.raises(HostNotConfigured, match="OpenCode"):
+            runner.build_blocking_json(prompt="hi")
+
+    def test_build_version_check_raises_host_not_configured(self) -> None:
+        runner = OpenCodeRunner()
+        with pytest.raises(HostNotConfigured, match="OpenCode"):
+            runner.build_version_check()
+
+    def test_build_detached_raises_host_not_configured(self) -> None:
+        runner = OpenCodeRunner()
+        with pytest.raises(HostNotConfigured, match="OpenCode"):
+            runner.build_detached(prompt="hi")
+
+    def test_satisfies_host_runner_protocol(self) -> None:
+        assert isinstance(OpenCodeRunner(), HostRunner)
+
+
+class TestPiRunner:
+    """PiRunner is a stub: registered, resolvable via env, raises HostNotConfigured.
+
+    Unlike OpenCodeRunner, ``("pi", "pi")`` is already in ``_PROBE_ORDER`` from
+    FEAT-1464. Registering ``PiRunner`` activates that probe edge: any host
+    with ``pi`` on PATH will resolve to ``PiRunner`` and raise
+    ``HostNotConfigured`` on the first ``build_*`` call (pointing at FEAT-992).
+    """
+
+    def test_pirunner_registered(self) -> None:
+        from little_loops import host_runner as hr
+
+        assert "pi" in hr._HOST_RUNNER_REGISTRY
+        assert hr._HOST_RUNNER_REGISTRY["pi"] is PiRunner
+
+    def test_resolve_host_picks_pi_via_env(self, isolated_env: None) -> None:
+        runner = resolve_host(env={"LL_HOST_CLI": "pi"})
+        assert isinstance(runner, PiRunner)
+        assert runner.name == "pi"
+
+    def test_pirunner_probe_returns_stub_not_raise(
+        self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """On a host with `pi` on PATH, the probe returns PiRunner and only
+        raises HostNotConfigured at the first ``build_*`` call."""
+        monkeypatch.setattr(
+            "little_loops.host_runner.shutil.which",
+            lambda binary: "/usr/local/bin/pi" if binary == "pi" else None,
+        )
+        runner = resolve_host(env={})
+        assert isinstance(runner, PiRunner)
+        with pytest.raises(HostNotConfigured, match="FEAT-992"):
+            runner.build_streaming(prompt="hi")
+
+    def test_build_streaming_raises_host_not_configured(self) -> None:
+        runner = PiRunner()
+        with pytest.raises(HostNotConfigured, match="FEAT-992"):
+            runner.build_streaming(prompt="hi")
+
+    def test_build_blocking_json_raises_host_not_configured(self) -> None:
+        runner = PiRunner()
+        with pytest.raises(HostNotConfigured, match="FEAT-992"):
+            runner.build_blocking_json(prompt="hi")
+
+    def test_build_version_check_raises_host_not_configured(self) -> None:
+        runner = PiRunner()
+        with pytest.raises(HostNotConfigured, match="FEAT-992"):
+            runner.build_version_check()
+
+    def test_build_detached_raises_host_not_configured(self) -> None:
+        runner = PiRunner()
+        with pytest.raises(HostNotConfigured, match="FEAT-992"):
+            runner.build_detached(prompt="hi")
+
+    def test_satisfies_host_runner_protocol(self) -> None:
+        assert isinstance(PiRunner(), HostRunner)
 
 
 class TestHostInvocation:

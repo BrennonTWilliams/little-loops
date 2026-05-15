@@ -37,6 +37,8 @@ __all__ = [
     "HostInvocation",
     "HostNotConfigured",
     "HostRunner",
+    "OpenCodeRunner",
+    "PiRunner",
     "resolve_host",
 ]
 
@@ -416,12 +418,128 @@ class CodexRunner:
         )
 
 
+class OpenCodeRunner:
+    """``HostRunner`` stub for the ``opencode`` CLI (FEAT-1472, Option B).
+
+    No external CLI research has been performed. Every ``build_*`` method
+    raises :class:`HostNotConfigured` pointing callers at
+    ``LL_HOST_CLI=claude-code``. Registration in ``_HOST_RUNNER_REGISTRY``
+    means an explicit ``LL_HOST_CLI=opencode`` resolves to a useful error
+    message rather than the generic "unknown host" error. The runner is
+    deliberately absent from ``_PROBE_ORDER`` so no auto-detection occurs.
+    """
+
+    name = "opencode"
+
+    capabilities = HostCapabilities()
+
+    def detect(self) -> bool:
+        return shutil.which("opencode") is not None
+
+    def build_streaming(
+        self,
+        *,
+        prompt: str,
+        working_dir: Path | None = None,
+        resume: bool = False,
+        agent: str | None = None,
+        tools: list[str] | None = None,
+    ) -> HostInvocation:
+        raise HostNotConfigured(
+            "OpenCode orchestration not yet wired — research OpenCode headless CLI. "
+            "Set LL_HOST_CLI=claude-code to use Claude Code instead."
+        )
+
+    def build_blocking_json(
+        self,
+        *,
+        prompt: str,
+        model: str | None = None,
+        json_schema: dict | None = None,
+    ) -> HostInvocation:
+        raise HostNotConfigured(
+            "OpenCode orchestration not yet wired — research OpenCode headless CLI. "
+            "Set LL_HOST_CLI=claude-code to use Claude Code instead."
+        )
+
+    def build_version_check(self) -> HostInvocation:
+        raise HostNotConfigured(
+            "OpenCode orchestration not yet wired — research OpenCode headless CLI. "
+            "Set LL_HOST_CLI=claude-code to use Claude Code instead."
+        )
+
+    def build_detached(self, *, prompt: str) -> HostInvocation:
+        raise HostNotConfigured(
+            "OpenCode orchestration not yet wired — research OpenCode headless CLI. "
+            "Set LL_HOST_CLI=claude-code to use Claude Code instead."
+        )
+
+
+class PiRunner:
+    """``HostRunner`` stub for the ``pi`` CLI (FEAT-1472).
+
+    Pi orchestration is tracked under FEAT-992; until that lands, all four
+    ``build_*`` methods raise :class:`HostNotConfigured`. Unlike
+    :class:`OpenCodeRunner`, ``("pi", "pi")`` is already present in
+    ``_PROBE_ORDER`` (added in FEAT-1464), so registering ``PiRunner`` now
+    activates that probe edge: hosts with ``pi`` on PATH will resolve to
+    this stub and raise on the first ``build_*`` call.
+    """
+
+    name = "pi"
+
+    capabilities = HostCapabilities()
+
+    def detect(self) -> bool:
+        return shutil.which("pi") is not None
+
+    def build_streaming(
+        self,
+        *,
+        prompt: str,
+        working_dir: Path | None = None,
+        resume: bool = False,
+        agent: str | None = None,
+        tools: list[str] | None = None,
+    ) -> HostInvocation:
+        raise HostNotConfigured(
+            "Pi orchestration not yet wired — see FEAT-992. "
+            "Set LL_HOST_CLI=claude-code to use Claude Code instead."
+        )
+
+    def build_blocking_json(
+        self,
+        *,
+        prompt: str,
+        model: str | None = None,
+        json_schema: dict | None = None,
+    ) -> HostInvocation:
+        raise HostNotConfigured(
+            "Pi orchestration not yet wired — see FEAT-992. "
+            "Set LL_HOST_CLI=claude-code to use Claude Code instead."
+        )
+
+    def build_version_check(self) -> HostInvocation:
+        raise HostNotConfigured(
+            "Pi orchestration not yet wired — see FEAT-992. "
+            "Set LL_HOST_CLI=claude-code to use Claude Code instead."
+        )
+
+    def build_detached(self, *, prompt: str) -> HostInvocation:
+        raise HostNotConfigured(
+            "Pi orchestration not yet wired — see FEAT-992. "
+            "Set LL_HOST_CLI=claude-code to use Claude Code instead."
+        )
+
+
 # Built-in host runners keyed by their ``name`` attribute. Extensions may
 # register additional runners but built-ins always win on collision —
 # mirrors ``hooks/__init__.py:_dispatch_table`` (built-ins shadow extensions).
 _HOST_RUNNER_REGISTRY: dict[str, type[HostRunner]] = {
     "claude-code": ClaudeCodeRunner,
     "codex": CodexRunner,
+    "opencode": OpenCodeRunner,
+    "pi": PiRunner,
 }
 
 # Order of probing when no explicit host is configured. Matches the binary

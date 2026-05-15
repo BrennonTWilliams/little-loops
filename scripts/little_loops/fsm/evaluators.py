@@ -629,7 +629,7 @@ def evaluate_llm_structured(
         return EvaluationResult(
             verdict="error",
             details={
-                "error": "claude CLI not found. Install from https://docs.anthropic.com/en/docs/claude-code",
+                "error": f"{invocation.binary} CLI not found. Install the active host CLI (see LL_HOST_CLI).",
                 "missing_dependency": True,
             },
         )
@@ -638,13 +638,13 @@ def evaluate_llm_structured(
     if proc.returncode != 0:
         return EvaluationResult(
             verdict="error",
-            details={"error": f"Claude CLI error: {proc.stderr.strip()}", "api_error": True},
+            details={"error": f"{invocation.binary} CLI error: {proc.stderr.strip()}", "api_error": True},
         )
 
     # Guard: empty stdout with exit 0 (API error not reflected in exit code)
     if not proc.stdout.strip():
         stderr_info = proc.stderr.strip()[:200] if proc.stderr else ""
-        error_msg = "Claude CLI returned empty output"
+        error_msg = f"{invocation.binary} CLI returned empty output"
         if stderr_info:
             error_msg += f" (stderr: {stderr_info})"
         return EvaluationResult(

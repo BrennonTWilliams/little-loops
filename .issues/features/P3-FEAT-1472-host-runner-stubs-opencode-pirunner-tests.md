@@ -2,10 +2,11 @@
 id: FEAT-1472
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: FEAT-1466
 depends_on: FEAT-1464
 discovered_date: 2026-05-15
+completed_at: 2026-05-15T15:55:33Z
 discovered_by: issue-size-review
 confidence_score: 100
 outcome_confidence: 97
@@ -163,7 +164,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **FEAT-1464** must land first (provides `host_runner.py` scaffold)
 - Can run in parallel with **FEAT-1473**
 
+## Resolution
+
+Implemented stub `OpenCodeRunner` and `PiRunner` in `scripts/little_loops/host_runner.py`, both raising `HostNotConfigured` from all four `build_*` methods with explicit remediation hints (OpenCode → "research OpenCode headless CLI"; Pi → "see FEAT-992"). Registered both in `_HOST_RUNNER_REGISTRY` and exported via `__all__`. Per Option B, neither runner is added to `_PROBE_ORDER` for OpenCode; `("pi", "pi")` was already present, so the existing probe edge now resolves to `PiRunner` and raises on first `build_*`.
+
+Generalized three hardcoded "claude CLI" / "Claude CLI" strings in `scripts/little_loops/fsm/evaluators.py` (lines 632, 641, 647) to interpolate `invocation.binary`, removing host-specific language from generic LLM evaluator errors. Updated `test_fsm_evaluators.py::test_cli_not_found` substring assertion to match the new format.
+
+Added `TestOpenCodeRunner` (8 tests) and `TestPiRunner` (8 tests including a probe-edge regression test) to `scripts/tests/test_host_runner.py`. Final grep sweep `grep -rn '"claude"' scripts/little_loops/` returns only the AC-allowlisted hits (ClaudeCodeRunner internals + `_PROBE_ORDER`).
+
+Verification: 180/180 host_runner + fsm_evaluators tests pass; ruff check clean; full suite shows 4 pre-existing unrelated failures (README pillar structure, marketplace version sync) confirmed via baseline stash check.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-15T15:55:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-05-15T15:50:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8deac8af-c5de-4807-817f-1b9912d1023b.jsonl`
 - `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/375f80ed-3900-4806-8b03-4306d0c74628.jsonl`
 - `/ll:wire-issue` - 2026-05-15T15:47:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1cd4a684-4816-432f-9db3-7807637be7d8.jsonl`
 - `/ll:refine-issue` - 2026-05-15T15:43:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/493efa0f-c223-4f2e-a5b0-f39c3316eb4e.jsonl`

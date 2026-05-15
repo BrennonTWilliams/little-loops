@@ -576,7 +576,7 @@ class TestLLMStructuredEvaluator:
             yield mock_run, mock_result
 
     def test_cli_not_found(self) -> None:
-        """Returns error when claude CLI not installed."""
+        """Returns error when host CLI not installed."""
         with patch(
             "little_loops.fsm.evaluators.subprocess.run",
             side_effect=FileNotFoundError("claude"),
@@ -584,7 +584,7 @@ class TestLLMStructuredEvaluator:
             result = evaluate_llm_structured("test output")
         assert result.verdict == "error"
         assert result.details.get("missing_dependency") is True
-        assert "claude CLI not found" in result.details["error"]
+        assert "CLI not found" in result.details["error"]
 
     def test_success_verdict(self, mock_cli) -> None:
         """LLM returns success verdict."""
