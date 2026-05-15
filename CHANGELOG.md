@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Hook-Intent Abstraction Layer** — Defines little-loops hooks in terms of host-agnostic *intents* (`PreCompact`, `SessionStart`) backed by `LLHookEvent`/`LLHookResult` dataclasses. Python handlers in `little_loops.hooks.*` replace per-host shell scripts; adapters under `hooks/adapters/<host>/` translate each host's native event into the wire format and back. (FEAT-1116)
+- **PreCompact and SessionStart Python Handlers** — Ported `precompact-state.sh` and the session-start injector to pure-Python core handlers, with a Claude Code bash shim adapter and an OpenCode TypeScript adapter (`hooks/adapters/opencode/index.ts`). (FEAT-1449, FEAT-1450, FEAT-1455)
+- **`LLHookIntentExtension` Protocol** — Third-party packages can contribute hook intent handlers via a `provided_hook_intents()` method; detected via `hasattr()` in `wire_extensions()` and merged into the global hook-intent registry. (FEAT-1452)
+- **OpenCode Adapter for Hook Intents** — OpenCode TypeScript plugin calls `python -m little_loops.hooks <intent>` via `Bun.spawn`, setting `LL_HOOK_HOST=opencode` so dispatched handlers can identify their caller. (FEAT-1451)
+- **"Write a Hook" Authoring Guide** — New `docs/claude-code/write-a-hook.md` covers the intent model, handler signature, `LLHookIntentExtension` registration, adapter flow, and pure-function + subprocess testing patterns. (FEAT-1458)
+- **`type: learning` FSM State** — Learning states prove external-API/SDK assumptions against the learning-tests registry before advancing. Iterates `targets` in order; missing or stale records trigger `/ll:explore-api`; refuted records or exhausted retries route to `on_blocked`. Exempt from `hard_max` enforcement. (FEAT-1283)
+- **`/ll:verify-issue-loop` Skill** — Generates a ready-to-run FSM verification loop YAML from a single issue's acceptance criteria. Each criterion becomes a dedicated `verify` state that fails fast if unmet. (FEAT-1310, FEAT-1446)
+- **`/ll:explore-api` Skill** — Explores an external API or SDK target and writes a `LearnTestRecord` to the learning-tests registry (`.ll/learning-tests/<slug>.md`). Used by `type: learning` FSM states. (FEAT-1287)
+- **`ll-learning-tests` CLI** — Query and manage learning-test registry records: `check`, `list`, `mark-stale`. Entry point at `scripts/little_loops/cli/learning_tests.py`. (FEAT-1286)
+- **Per-Edge Cycle Detection** — `max_edge_revisits` (default 100) terminates a loop immediately with `terminated_by="cycle_detected"` when any state→state edge fires more than the limit, preventing tight two-state oscillations from draining the entire `max_iterations` budget. Edge counts survive `--resume`. (dd2603625)
+- **Goals Discovery Fallback for `scan-product`** — When `.ll/ll-goals.md` is absent, `scan-product` synthesizes a temporary goals context from existing docs (README, roadmaps, vision files) instead of hard-stopping. (ENH-1442)
+- **Hook-Intent Reference Documentation** — Updated `docs/reference/API.md`, `EVENT-SCHEMA.md`, `CONFIGURATION.md`, and `ARCHITECTURE.md` with full field tables and dispatch contract for hook intents. (FEAT-1453, FEAT-1459)
+
 ### Planned
 
 - Windows compatibility testing

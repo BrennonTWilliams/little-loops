@@ -2,10 +2,10 @@
 id: FEAT-1315
 type: FEAT
 priority: P3
-status: open
+status: deferred
 discovered_date: 2026-05-01
 discovered_by: issue-size-review
-blocked_by: [FEAT-1156, FEAT-1116]
+blocked_by: [FEAT-1156]
 parent: FEAT-1263
 
 decision_needed: false
@@ -265,6 +265,7 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 - **Source-field decision still open** (`decision_needed: true`): choose one of the 3 documented options (inject-all / compact-only / all-except-clear) before writing test case 6; document the chosen behavior as a script header comment
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-11T21:32:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/521f9c4d-aa09-4ad1-88fe-93826dacaa4a.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-05T02:27:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d743dae1-3278-4abd-a763-b23632abd3cb.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
@@ -294,3 +295,21 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): `session-start-inject.sh` is an interim shell implementation. FEAT-1116 (Hook-Intent Abstraction Layer) will migrate SessionStart hooks from `hooks/scripts/` shell scripts to Python core handlers (`scripts/little_loops/hooks/session_start.py`) with thin per-host adapters. Implement `session-start-inject.sh` as specified here for the MVP, but scope it to be replaced by — or restructured as — the Python core handler + Claude Code adapter pattern once FEAT-1116's SessionStart migration scaffolding is in place. This matches the approach taken by FEAT-1156 (`precompact-handoff.sh`). When FEAT-1116 lands, open a follow-up to port the inject logic to `scripts/little_loops/hooks/pre_compact.py` (or the equivalent intent module for SessionStart) and replace `session-start-inject.sh` with a thin `hooks/adapters/claude-code/session-start-inject.sh` wrapper.
+
+## Verification Notes
+
+**Verdict**: DEFERRED (architecture supersession) — Verified 2026-05-14
+
+This issue and its sibling series are **superseded by the hook-intent abstraction (FEAT-1116, completed)** and the follow-on series FEAT-1448–1460 (mostly completed). The implementation contracts in this file target `hooks/scripts/*.sh` shell scripts which are no longer the canonical hook layer.
+
+Canonical pattern going forward:
+
+- Python intent handlers under `scripts/little_loops/hooks/<intent>.py`
+- Per-host adapters under `hooks/adapters/<host>/` (e.g., `claude-code/`, `opencode/`) that envelope host events into `LLHookEvent` and dispatch to `main_hooks()`
+- Prompt text files under `hooks/prompts/` referenced from `hooks/hooks.json`
+
+Parent epics are deferred: **FEAT-1113** (precompact auto-handoff) and **FEAT-1159** (session-event-capture + sessionstart-injection). The headless-mode rationale for FEAT-1113 explicitly notes the FSM signal path already provides automatic handoff.
+
+**To resurrect**: rewrite implementation steps to author a new intent handler + adapter wiring rather than a `hooks/scripts/*.sh` script. Re-validate line anchors in referenced docs (`docs/ARCHITECTURE.md`, `docs/reference/CONFIGURATION.md`, `docs/guides/SESSION_HANDOFF.md`) which have shifted since the recent hook-intent doc commits.
+
+Moving to `.issues/deferred/` mirroring parents FEAT-1113 / FEAT-1159.

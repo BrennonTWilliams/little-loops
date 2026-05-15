@@ -2,10 +2,10 @@
 id: FEAT-1156
 type: FEAT
 priority: P3
-status: open
+status: deferred
 discovered_date: 2026-04-18
 discovered_by: issue-size-review
-blocked_by: [FEAT-1112, FEAT-1116]
+blocked_by: [FEAT-1112]
 parent: FEAT-1113
 
 relates_to: ['ENH-152', 'ENH-495', 'FEAT-150', 'FEAT-1157', 'FEAT-1158']
@@ -102,6 +102,7 @@ FEAT-1112 (session store) is not yet implemented; gather state without it:
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-11T21:32:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/521f9c4d-aa09-4ad1-88fe-93826dacaa4a.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
@@ -123,3 +124,21 @@ FEAT-1112 (session store) is not yet implemented; gather state without it:
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The State Sources section specifies git diff/ll-issues/loops-JSON as the fallback approach — but does not acknowledge FEAT-1262's `.ll/ll-session-events.jsonl` as the richer primary source. If `.ll/ll-session-events.jsonl` is present and non-empty (i.e., FEAT-1262 has been shipping and running), prefer it as the primary source for the files-edited and decisions sections of the snapshot. Fall back to `git diff --name-only HEAD` and `ll-issues list` only when the JSONL is absent. FEAT-1264 (which formally integrates the event log) depends on this issue; this note ensures the fallback/primary distinction is documented in the implementation contract so FEAT-1264 doesn't need to re-explain the fallback semantics.
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-11): This issue implements `precompact-handoff.sh` as a full-logic shell script. FEAT-1116 (Hook-Intent Abstraction Layer) will migrate PreCompact hooks to Python core handlers with thin per-host shell adapters. Implement the shell script as specified here for the MVP, but treat it as temporary: once FEAT-1116's PreCompact migration scaffolding lands, port the snapshot logic to a Python intent handler (e.g., `scripts/little_loops/hooks/pre_compact_handoff.py`) and replace `precompact-handoff.sh` with a thin Claude Code adapter that delegates to the Python handler. Do not embed new business logic in the shell script beyond what is required for the initial implementation.
+
+## Verification Notes
+
+**Verdict**: DEFERRED (architecture supersession) — Verified 2026-05-14
+
+This issue and its sibling series are **superseded by the hook-intent abstraction (FEAT-1116, completed)** and the follow-on series FEAT-1448–1460 (mostly completed). The implementation contracts in this file target `hooks/scripts/*.sh` shell scripts which are no longer the canonical hook layer.
+
+Canonical pattern going forward:
+
+- Python intent handlers under `scripts/little_loops/hooks/<intent>.py`
+- Per-host adapters under `hooks/adapters/<host>/` (e.g., `claude-code/`, `opencode/`) that envelope host events into `LLHookEvent` and dispatch to `main_hooks()`
+- Prompt text files under `hooks/prompts/` referenced from `hooks/hooks.json`
+
+Parent epics are deferred: **FEAT-1113** (precompact auto-handoff) and **FEAT-1159** (session-event-capture + sessionstart-injection). The headless-mode rationale for FEAT-1113 explicitly notes the FSM signal path already provides automatic handoff.
+
+**To resurrect**: rewrite implementation steps to author a new intent handler + adapter wiring rather than a `hooks/scripts/*.sh` script. Re-validate line anchors in referenced docs (`docs/ARCHITECTURE.md`, `docs/reference/CONFIGURATION.md`, `docs/guides/SESSION_HANDOFF.md`) which have shifted since the recent hook-intent doc commits.
+
+Moving to `.issues/deferred/` mirroring parents FEAT-1113 / FEAT-1159.

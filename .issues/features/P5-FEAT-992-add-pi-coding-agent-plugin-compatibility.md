@@ -5,7 +5,7 @@ priority: P5
 status: open
 discovered_date: 2026-04-08
 discovered_by: capture-issue
-blocked_by: [FEAT-957, FEAT-1116]
+blocked_by: [FEAT-957]
 ---
 
 # FEAT-992: Add Pi Coding Agent Plugin Compatibility
@@ -102,11 +102,18 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Verification Notes
 
-**Verdict**: VALID — Speculative issue; no Pi Coding Agent plugin work has started. No `pi-plugin/` directory exists. Referenced FEAT-769/959/960/961 patterns remain in open state.
+**Verdict**: NEEDS_UPDATE — Verified 2026-05-14
 
-— Verified 2026-04-11
+- **FEAT-1116 completed** (hook-intent abstraction). Removed from `blocked_by`.
+- **FEAT-769 completed** (OpenCode adapter at `hooks/adapters/opencode/`).
+- Still blocked by **FEAT-957** (canonical pattern for non-Claude-Code host adapter).
+- Issue body remains TBD-heavy; should be re-refined once FEAT-957's `hooks/adapters/codex/` adapter ships and establishes the reusable template.
+
+### Prior verifications
+- 2026-04-11 — VALID; speculative with no Pi plugin work started.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-10T19:40:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`

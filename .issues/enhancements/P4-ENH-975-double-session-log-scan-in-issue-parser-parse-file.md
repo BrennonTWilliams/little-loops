@@ -119,11 +119,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Verification Notes
 
-**Verdict**: NEEDS_UPDATE — Verified 2026-04-26
+**Verdict**: VALID — Verified 2026-05-14 (line numbers refreshed)
 
-- `issue_parser.py:471-472` — `parse_session_log(content)` and `count_session_commands(content)` both called sequentially ✓ (line numbers shifted: 368-372 at scan commit → 454-455 prior → 471-472 now)
-- No `parse_session_log_full` function in `session_log.py` ✓
-- Feature not yet implemented
+- `issue_parser.py:551-552` — `parse_session_log(content)` and `count_session_commands(content)` both called sequentially (drift: 368-372 at scan → 454-455 → 471-472 → 551-552 now)
+- No `parse_session_log_full` function in `session_log.py`
+- Feature not yet implemented; corrected proposed solution from go-no-go still applies
 
 ## Go/No-Go Findings
 
@@ -143,6 +143,7 @@ _Added by `/ll:go-no-go` on 2026-04-24_ — **NO-GO (REFINE)**
 The redundancy is real and the fix is conceptually sound, but the proposed `parse_session_log_full` code contained two bugs: (1) iterating all regex section matches rather than using `matches[-1]`, and (2) using `.group()` instead of `.group(1)`. The iterate-all bug is tested behavior (`test_session_log.py:212-235`) and would produce silent regressions on files with multiple session log sections. The proposed solution in this issue has been corrected; it is now safe to implement.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-14T20:42:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:go-no-go` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95ce9f52-7f8a-47aa-b3b4-d4a9581c25ab.jsonl`

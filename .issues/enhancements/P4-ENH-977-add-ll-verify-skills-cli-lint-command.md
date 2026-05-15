@@ -89,12 +89,13 @@ Extend `scripts/little_loops/doc_counts.py` with a skill-size checker function a
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-11
+**Verdict**: VALID — Verified 2026-04-11; re-verified 2026-05-14
 
-- No `check_skill_sizes()` function in `scripts/little_loops/doc_counts.py` ✓
-- No `main_verify_skills()` in `scripts/little_loops/cli/docs.py` ✓
-- No `ll-verify-skills` entry point in `scripts/pyproject.toml` ✓
-- Blocked by ENH-494 (500-line convention not yet established) ✓
+- No `check_skill_sizes()` function in `scripts/little_loops/doc_counts.py`
+- No `main_verify_skills()` in `scripts/little_loops/cli/docs.py`
+- No `ll-verify-skills` entry point in `scripts/pyproject.toml`
+- Blocked by ENH-494 (500-line convention not yet established) and ENH-1038 (sequencing for `doc_counts.py` changes)
+- **Disambiguation (2026-05-14)**: A separate tool `ll-verify-skill-budget` already exists (cli/docs.py:107, pyproject.toml:59). It checks the *description token footprint* against the Claude Code listing budget — **not** SKILL.md line count. Do not conflate the two. `ll-verify-skills` (this issue) is a complementary line-count linter for the 500-line convention.
 
 ## Status
 
@@ -102,6 +103,8 @@ Extend `scripts/little_loops/doc_counts.py` with a skill-size checker function a
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-14T21:02:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75505ad4-6733-4424-b334-3143f412786b.jsonl`
+- `/ll:verify-issues` - 2026-05-14T20:42:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-10T19:45:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-09T21:28:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
@@ -128,3 +131,5 @@ Extend `scripts/little_loops/doc_counts.py` with a skill-size checker function a
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): After ENH-494 ships and extracts overflow content from `audit-claude-config`, `confidence-check`, `init`, and `manage-issue` SKILL.md files, re-verify that the 500-line threshold is still meaningful (i.e., the remaining SKILL.md files are not all trivially under 500 lines). Confirm the threshold before publishing `ll-verify-skills` — if ENH-494 brings all files well below 500 lines, the tool may need a lower threshold or per-file annotations to remain useful.
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-10): Once ENH-1394 ships, skills tagged `disable-model-invocation: true` in their frontmatter are intentionally excluded from the Claude Code listing budget and may legitimately exceed 500 lines (since they are never loaded into the prompt token budget). The `ll-verify-skills` lint tool MUST skip (or report in a separate informational category, not as a violation) any SKILL.md that has `disable-model-invocation: true`. Implement this exclusion rule at the same time as or after ENH-1394 lands. Related: ENH-1394, ENH-1398.
+
+**Sequencing confirmed** (added by `/ll:audit-issue-conflicts` 2026-05-14): ENH-1038 MUST land before this issue. Both touch `doc_counts.py` and `cli/docs.py` — ENH-1038 adds to `COUNT_TARGETS` while ENH-977 adds `check_skill_sizes()` + `main_verify_skills()`. Concurrent PRs in overlapping file regions cause near-certain merge conflicts. The `blocked_by: [ENH-1038]` in frontmatter enforces this order in sprint wave planning.

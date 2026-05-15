@@ -78,6 +78,7 @@ Context-mode (github.com/mksglu/context-mode) uses a per-project SQLite + FTS5 d
 - No `ll-session` CLI entry point in `scripts/pyproject.toml` ✓
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-26T19:43:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
@@ -99,6 +100,7 @@ Context-mode (github.com/mksglu/context-mode) uses a per-project SQLite + FTS5 d
 
 ## Blocks
 
+- FEAT-948
 - FEAT-1156
 - FEAT-1157
 - FEAT-1158

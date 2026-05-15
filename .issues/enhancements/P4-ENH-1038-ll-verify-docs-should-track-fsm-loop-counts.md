@@ -60,11 +60,15 @@ The README pattern to match would be `\d+\s+FSM loops?`. The `extract_count_from
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-11; re-verified 2026-05-03
+**Verdict**: VALID — Verified 2026-04-11; re-verified 2026-05-14
 
-- `doc_counts.py:19-23` — `COUNT_TARGETS` confirmed: only `commands`, `agents`, `skills` keys; no `loops` key ✓
-- Feature not yet implemented ✓
-- **Loop count updated** (2026-05-03): `scripts/little_loops/loops/` now contains **43** YAML files (up from 38 at discovery). The count drift problem this issue describes has continued to grow; README still not tracking loops via `ll-verify-docs`.
+- `doc_counts.py:19-23` — `COUNT_TARGETS` confirmed: only `commands`, `agents`, `skills` keys; no `loops` key
+- Feature not yet implemented
+- **Loop count (2026-05-14)**: `scripts/little_loops/loops/*.yaml` (top-level only) = **42** files. README claims 47 — drift of 5. Continues to grow without `ll-verify-docs` tracking.
+
+## Blocks
+
+- ENH-977
 
 ## Status
 
@@ -72,6 +76,7 @@ The README pattern to match would be `\d+\s+FSM loops?`. The `extract_count_from
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-14T20:42:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-04-26T19:43:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`

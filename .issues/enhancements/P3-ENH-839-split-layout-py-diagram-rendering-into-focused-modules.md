@@ -27,7 +27,7 @@ The layout functionality is organized into a `layout/` subpackage with three foc
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/layout.py`
-- **Line(s)**: 1-1635 (entire file)
+- **Line(s)**: 1-1645 (entire file)
 - **Module**: `little_loops.cli.loop.layout`
 
 ## Finding
@@ -111,16 +111,15 @@ Split into a `layout/` subpackage or three focused modules:
 
 ## Verification Notes
 
-**Verified**: 2026-04-23 | **Verdict**: NEEDS_UPDATE
+**Verified**: 2026-05-14 | **Verdict**: VALID (line counts refreshed)
 
-- ✅ File `scripts/little_loops/cli/loop/layout.py` exists at **1,635 lines** (was 1,630 — grew 5 lines)
-- ✅ 3 classes confirmed: `TopologyDetector`, `LayerAssigner`, `CrossingMinimizer`
-- ✅ `_render_fsm_diagram` present (previously noted at line 1434; line numbers may have shifted)
-- ⚠️ **Function count**: 27 top-level defs + 3 classes (grew from 19)
-- ⚠️ **Integration Map incomplete**: `_helpers.py` imports `_render_fsm_diagram` from `layout` — must be updated during split
-- No `layout/` subpackage created. Enhancement not yet applied.
+- File `scripts/little_loops/cli/loop/layout.py` exists at **1,645 lines** (was 1,635 on 2026-04-23)
+- 3 classes still present: `TopologyDetector`, `LayerAssigner`, `CrossingMinimizer`
+- Refactor plan still accurate; no `layout/` subpackage yet
+- Integration Map note re: `_helpers.py` import of `_render_fsm_diagram` still applies
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-14T20:42:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`

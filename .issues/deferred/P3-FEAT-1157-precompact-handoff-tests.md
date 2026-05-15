@@ -2,7 +2,7 @@
 id: FEAT-1157
 type: FEAT
 priority: P3
-status: open
+status: deferred
 discovered_date: 2026-04-18
 discovered_by: issue-size-review
 blocked_by: [FEAT-1112, FEAT-1156]
@@ -79,6 +79,25 @@ For each: read the test, understand the mtime assumption, confirm whether an aut
 - Docs: FEAT-1158
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+
+## Verification Notes
+
+**Verdict**: DEFERRED (architecture supersession) — Verified 2026-05-14
+
+This issue and its sibling series are **superseded by the hook-intent abstraction (FEAT-1116, completed)** and the follow-on series FEAT-1448–1460 (mostly completed). The implementation contracts in this file target `hooks/scripts/*.sh` shell scripts which are no longer the canonical hook layer.
+
+Canonical pattern going forward:
+
+- Python intent handlers under `scripts/little_loops/hooks/<intent>.py`
+- Per-host adapters under `hooks/adapters/<host>/` (e.g., `claude-code/`, `opencode/`) that envelope host events into `LLHookEvent` and dispatch to `main_hooks()`
+- Prompt text files under `hooks/prompts/` referenced from `hooks/hooks.json`
+
+Parent epics are deferred: **FEAT-1113** (precompact auto-handoff) and **FEAT-1159** (session-event-capture + sessionstart-injection). The headless-mode rationale for FEAT-1113 explicitly notes the FSM signal path already provides automatic handoff.
+
+**To resurrect**: rewrite implementation steps to author a new intent handler + adapter wiring rather than a `hooks/scripts/*.sh` script. Re-validate line anchors in referenced docs (`docs/ARCHITECTURE.md`, `docs/reference/CONFIGURATION.md`, `docs/guides/SESSION_HANDOFF.md`) which have shifted since the recent hook-intent doc commits.
+
+Moving to `.issues/deferred/` mirroring parents FEAT-1113 / FEAT-1159.

@@ -43,9 +43,7 @@ context-mode (github.com/mksglu/context-mode) demonstrates that this class of me
 
 ## Proposed Solution
 
-TBD - requires investigation. Two plausible approaches:
-1. Accumulate byte counters in a PostToolUse hook (shell script) writing to `.ll/ll-ctx-stats.json`, then read by a skill/command at query time.
-2. Extend FEAT-1112's SQLite store to include per-tool byte columns, queried by a new CLI command.
+Extend FEAT-1112's SQLite + FTS5 store to include per-tool byte columns, then query that store from a new `/ll:ctx-stats` command. Approach 1 (PostToolUse hook writing to `.ll/ll-ctx-stats.json`) is out of scope — it re-introduces the fragmentation FEAT-1112 was designed to eliminate.
 
 ## Integration Map
 ### Files to Modify
@@ -69,11 +67,13 @@ TBD - requires investigation. Two plausible approaches:
 - `.ll/ll-config.json` — may need `analytics.enabled` flag
 
 ## Implementation Steps
-1. Define the metrics schema (`ContextStats` dataclass or JSON shape)
-2. Implement PostToolUse hook accumulator (shell or Python) writing to `.ll/ll-ctx-stats.json`
-3. Implement query/format logic (new skill or extend `ll-loop info`)
-4. Wire into `/ll:ctx-stats` command
-5. Add tests for byte accumulation and formatting
+
+> **Prerequisite**: FEAT-1112 must land first (SQLite + FTS5 store).
+
+1. Define per-tool byte columns in FEAT-1112's SQLite schema (`bytes_in`, `bytes_out`, `cache_hit` per tool-call row)
+2. Implement query / aggregation logic that computes session totals, per-tool breakdown, cache hit rate, and estimated context reduction percentage
+3. Wire display logic into `/ll:ctx-stats` command or extend `ll-loop info` (`scripts/little_loops/cli/loop/info.py`)
+4. Add tests for schema extension, query logic, and formatted output
 
 ## Impact
 - **Priority**: P4 - Nice-to-have visibility feature; no current blocker
@@ -88,6 +88,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `analytics`, `context-window`, `hooks`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-14T21:18:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75505ad4-6733-4424-b334-3143f412786b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`

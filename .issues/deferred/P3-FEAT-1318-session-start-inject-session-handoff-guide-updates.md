@@ -2,7 +2,7 @@
 id: FEAT-1318
 type: FEAT
 priority: P3
-status: open
+status: deferred
 discovered_date: 2026-05-01
 discovered_by: issue-size-review
 blocked_by: [FEAT-1315]
@@ -196,6 +196,7 @@ _Updated by `/ll:confidence-check` on 2026-05-01_
 - **config-schema.json description ownership is unscoped.** `config-schema.json:493-496` `auto_detect_on_session_start` description contradicts the rewritten guide. The issue flags FEAT-1317 as the likely owner but treats this as a fallback for FEAT-1318. Coordinate with FEAT-1317 before closing to avoid the contradiction landing unfixed.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-14T20:42:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-10T19:43:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-10T14:28:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
@@ -224,3 +225,21 @@ _Updated by `/ll:confidence-check` on 2026-05-01_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue edits `docs/guides/SESSION_HANDOFF.md` in multiple locations. The same file is also modified by FEAT-1158 (precompact handoff docs). No ordering dependency exists between these two issues. If worked concurrently, coordinate to avoid git merge conflicts in `docs/guides/SESSION_HANDOFF.md`.
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-10): This issue **owns** the `skills/configure/areas.md` line 509 edit (continuation area `false` option description — update to note injection fires regardless of this flag). FEAT-1319 previously listed this same edit; it has been removed from FEAT-1319's scope to avoid a duplicate modification. When implementing, apply the line 509 change here (FEAT-1318) and do not re-apply it in FEAT-1319.
+
+## Verification Notes
+
+**Verdict**: DEFERRED (architecture supersession) — Verified 2026-05-14
+
+This issue and its sibling series are **superseded by the hook-intent abstraction (FEAT-1116, completed)** and the follow-on series FEAT-1448–1460 (mostly completed). The implementation contracts in this file target `hooks/scripts/*.sh` shell scripts which are no longer the canonical hook layer.
+
+Canonical pattern going forward:
+
+- Python intent handlers under `scripts/little_loops/hooks/<intent>.py`
+- Per-host adapters under `hooks/adapters/<host>/` (e.g., `claude-code/`, `opencode/`) that envelope host events into `LLHookEvent` and dispatch to `main_hooks()`
+- Prompt text files under `hooks/prompts/` referenced from `hooks/hooks.json`
+
+Parent epics are deferred: **FEAT-1113** (precompact auto-handoff) and **FEAT-1159** (session-event-capture + sessionstart-injection). The headless-mode rationale for FEAT-1113 explicitly notes the FSM signal path already provides automatic handoff.
+
+**To resurrect**: rewrite implementation steps to author a new intent handler + adapter wiring rather than a `hooks/scripts/*.sh` script. Re-validate line anchors in referenced docs (`docs/ARCHITECTURE.md`, `docs/reference/CONFIGURATION.md`, `docs/guides/SESSION_HANDOFF.md`) which have shifted since the recent hook-intent doc commits.
+
+Moving to `.issues/deferred/` mirroring parents FEAT-1113 / FEAT-1159.

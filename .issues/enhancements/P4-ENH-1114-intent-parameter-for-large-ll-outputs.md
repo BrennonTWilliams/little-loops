@@ -34,20 +34,21 @@ Context-mode (github.com/mksglu/context-mode) calls this "intent-driven filterin
 - When `--intent` is supplied and full output >200 lines:
   - Full result written to `.ll/scratch/<cmd>-<timestamp>.txt` (or indexed into session DB once FEAT-1112 lands)
   - Ranked subset returned to stdout with a footer: `# Full output: <path> (N lines)`
-- Ranking uses simple BM25 over the result lines (stdlib — no extra deps), or delegates to FTS5 once FEAT-1112 lands
+- Step 1: Wire `--intent` flag into affected CLIs as a no-op pass-through (full output returned, `--intent` value captured but not used)
+- Step 2: After FEAT-1112 ships, implement ranking directly against FTS5 — no interim BM25 layer
 - `--intent` without a threshold hit is a no-op
 
 ## Acceptance Criteria
 
 - `--intent` flag wired into at least 3 CLIs (`ll-history`, `ll-deps`, `ll-scan-codebase`)
-- Ranking module in `scripts/little_loops/ranking.py` with unit tests
-- Integration test: `ll-history --intent "rate limit" | wc -l` returns < `ll-history | wc -l`
+- No `ranking.py` / BM25 module — ranking is implemented exclusively against FEAT-1112's FTS5 store
+- Integration test: `ll-history --intent "rate limit" | wc -l` returns < `ll-history | wc -l` (only valid after FEAT-1112 lands)
 - CLAUDE.md / API reference updated
 
 ## References
 
 - Inspiration: context-mode intent-driven filtering
-- Natural upgrade once FEAT-1112 session SQLite+FTS5 store lands (switch ranking backend to FTS5)
+- Blocked by FEAT-1112: implement ranking only after FTS5 store ships (no interim BM25)
 - Pairs with ENH-1111 scratch-pad enforcement
 
 ## Verification Notes
@@ -59,6 +60,7 @@ Context-mode (github.com/mksglu/context-mode) calls this "intent-driven filterin
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-14T20:57:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75505ad4-6733-4424-b334-3143f412786b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:tradeoff-review-issues` - 2026-04-27T02:55:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d048a1c-d492-434e-87b2-d34bc1ea2f6c.jsonl`

@@ -2,10 +2,10 @@
 id: FEAT-1262
 type: FEAT
 priority: P3
-status: open
+status: deferred
 discovered_date: 2026-04-22
 discovered_by: issue-size-review
-blocked_by: [FEAT-1116, FEAT-1112]
+blocked_by: [FEAT-1112]
 parent: FEAT-1159
 
 relates_to: ['FEAT-1112', 'FEAT-1156', 'FEAT-1264']
@@ -125,6 +125,7 @@ FEAT-1116 risk: `session-capture.sh` is a PostToolUse shell script in the layer 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-11): This issue implements `session-capture.sh` as a full-logic PostToolUse shell hook. FEAT-1116 (Hook-Intent Abstraction Layer) will migrate PostToolUse hooks to Python core handlers with thin per-host shell adapters. Implement the shell script as specified here for the MVP, but treat it as temporary: once FEAT-1116's PostToolUse migration scaffolding lands, port the event-capture logic to a Python intent handler (e.g., `scripts/little_loops/hooks/post_tool_use_capture.py`) and replace `session-capture.sh` with a thin Claude Code adapter that delegates to the Python handler. Keep the shell script logic minimal — event parsing, JSONL append, and failure-safe exit — so the Python port is straightforward.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-11T21:32:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/521f9c4d-aa09-4ad1-88fe-93826dacaa4a.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
@@ -135,3 +136,21 @@ FEAT-1116 risk: `session-capture.sh` is a PostToolUse shell script in the layer 
 ## Blocks
 
 - FEAT-1264
+
+## Verification Notes
+
+**Verdict**: DEFERRED (architecture supersession) — Verified 2026-05-14
+
+This issue and its sibling series are **superseded by the hook-intent abstraction (FEAT-1116, completed)** and the follow-on series FEAT-1448–1460 (mostly completed). The implementation contracts in this file target `hooks/scripts/*.sh` shell scripts which are no longer the canonical hook layer.
+
+Canonical pattern going forward:
+
+- Python intent handlers under `scripts/little_loops/hooks/<intent>.py`
+- Per-host adapters under `hooks/adapters/<host>/` (e.g., `claude-code/`, `opencode/`) that envelope host events into `LLHookEvent` and dispatch to `main_hooks()`
+- Prompt text files under `hooks/prompts/` referenced from `hooks/hooks.json`
+
+Parent epics are deferred: **FEAT-1113** (precompact auto-handoff) and **FEAT-1159** (session-event-capture + sessionstart-injection). The headless-mode rationale for FEAT-1113 explicitly notes the FSM signal path already provides automatic handoff.
+
+**To resurrect**: rewrite implementation steps to author a new intent handler + adapter wiring rather than a `hooks/scripts/*.sh` script. Re-validate line anchors in referenced docs (`docs/ARCHITECTURE.md`, `docs/reference/CONFIGURATION.md`, `docs/guides/SESSION_HANDOFF.md`) which have shifted since the recent hook-intent doc commits.
+
+Moving to `.issues/deferred/` mirroring parents FEAT-1113 / FEAT-1159.
