@@ -2,7 +2,7 @@
 id: FEAT-957
 type: FEAT
 priority: P5
-status: open
+status: completed
 discovered_date: 2026-04-05
 discovered_by: capture-issue
 blocked_by: []
