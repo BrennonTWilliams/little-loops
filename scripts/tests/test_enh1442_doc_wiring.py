@@ -71,7 +71,7 @@ class TestSkillAnalysisMetadata:
 
     def test_goals_source_in_output_format(self) -> None:
         content = SKILL_FILE.read_text()
-        output_section = content[content.index("## Output Format"):]
+        output_section = content[content.index("## Output Format") :]
         assert "goals_source" in output_section, (
             "analysis_metadata in SKILL.md Output Format section must include 'goals_source' "
             "to reflect whether goals came from an explicit ll-goals.md or were auto-discovered"
@@ -79,7 +79,7 @@ class TestSkillAnalysisMetadata:
 
     def test_discovered_from_in_output_format(self) -> None:
         content = SKILL_FILE.read_text()
-        output_section = content[content.index("## Output Format"):]
+        output_section = content[content.index("## Output Format") :]
         assert "discovered_from" in output_section, (
             "analysis_metadata in SKILL.md Output Format section must include 'discovered_from' "
             "to list the files used when goals were auto-discovered (empty/omitted when explicit)"

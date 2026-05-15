@@ -33,7 +33,9 @@ class TestCommandsMdSoftened:
 
     def test_softened_language_present(self) -> None:
         content = COMMANDS_MD.read_text()
-        assert "if present; otherwise goals are discovered automatically from project docs" in content, (
+        assert (
+            "if present; otherwise goals are discovered automatically from project docs" in content
+        ), (
             "docs/reference/COMMANDS.md must contain 'if present; otherwise goals are discovered "
             "automatically from project docs' to reflect the discovery fallback"
         )

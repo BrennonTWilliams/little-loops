@@ -301,9 +301,7 @@ class TestIndexMdWiring:
             (line for line in content.splitlines() if "EVENT-SCHEMA.md" in line),
             None,
         )
-        assert event_schema_line is not None, (
-            "docs/index.md must contain an EVENT-SCHEMA.md entry"
-        )
+        assert event_schema_line is not None, "docs/index.md must contain an EVENT-SCHEMA.md entry"
         assert "LLHookEvent" in event_schema_line or "LLHookResult" in event_schema_line, (
             "docs/index.md EVENT-SCHEMA.md description must mention LLHookEvent or "
             "LLHookResult now that the reference doc covers hook intent types"

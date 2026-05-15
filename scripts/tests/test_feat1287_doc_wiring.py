@@ -73,9 +73,7 @@ class TestContributingWiring:
 
     def test_explore_api_in_skills_tree(self) -> None:
         content = CONTRIBUTING.read_text()
-        assert "explore-api/" in content, (
-            "CONTRIBUTING.md skills tree must include 'explore-api/'"
-        )
+        assert "explore-api/" in content, "CONTRIBUTING.md skills tree must include 'explore-api/'"
 
 
 class TestClaudeMdWiring:

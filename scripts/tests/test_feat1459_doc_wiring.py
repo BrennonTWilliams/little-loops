@@ -60,9 +60,7 @@ class TestEventSchemaWiring:
         assert "LLHookEvent" in content
         # Field-table rows: presence of representative fields confirms a table, not just prose
         for token in ("`host`", "`intent`", "`payload`", "`session_id`", "`cwd`"):
-            assert token in content, (
-                f"EVENT-SCHEMA.md LLHookEvent field table must include {token}"
-            )
+            assert token in content, f"EVENT-SCHEMA.md LLHookEvent field table must include {token}"
 
     def test_llhookresult_field_table_present(self) -> None:
         content = EVENT_SCHEMA.read_text()
@@ -186,7 +184,7 @@ class TestTestingDocAdapterFixture:
 
     def test_subprocess_run_with_python_module(self) -> None:
         content = TESTING_DOC.read_text()
-        assert "-m\", \"little_loops.hooks\"" in content or "-m', 'little_loops.hooks'" in content, (
+        assert '-m", "little_loops.hooks"' in content or "-m', 'little_loops.hooks'" in content, (
             "TESTING.md adapter-fixture variant must show subprocess.run with -m little_loops.hooks"
         )
 

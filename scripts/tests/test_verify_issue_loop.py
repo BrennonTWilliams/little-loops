@@ -206,9 +206,7 @@ class TestVerifyLoopValidation:
         loops.mkdir()
         return loops
 
-    def test_passes_fsm_validation(
-        self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_passes_fsm_validation(self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """3-criterion verify YAML passes FSM structural validation."""
         path = loops_dir / "verify-feat-919-add-json-schema-generation.yaml"
         path.write_text(VERIFY_YAML_3_CRITERIA)

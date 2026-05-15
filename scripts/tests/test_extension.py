@@ -500,9 +500,7 @@ class TestWireExtensions:
         with patch.object(ExtensionLoader, "load_all", return_value=[ExtA(), ExtB()]):
             import pytest
 
-            with pytest.raises(
-                ValueError, match="hook intent 'shared_intent' already registered"
-            ):
+            with pytest.raises(ValueError, match="hook intent 'shared_intent' already registered"):
                 wire_extensions(bus, config_paths=["fake:Extension"])
 
     def test_wire_extensions_no_executor_no_second_pass(self) -> None:

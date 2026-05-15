@@ -162,9 +162,9 @@ Exit codes:
             from little_loops.config import BRConfig
 
             threshold = (
-                BRConfig(base_dir)._raw_config.get("skill_budget", {}).get(
-                    "threshold_tokens", _DEFAULT_BUDGET_TOKENS
-                )
+                BRConfig(base_dir)
+                ._raw_config.get("skill_budget", {})
+                .get("threshold_tokens", _DEFAULT_BUDGET_TOKENS)
             )
         except Exception:
             threshold = _DEFAULT_BUDGET_TOKENS

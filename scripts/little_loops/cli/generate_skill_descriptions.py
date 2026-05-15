@@ -86,9 +86,7 @@ def _write_description_to_frontmatter(skill_md: Path, new_desc: str) -> None:
     skill_md.write_text("---" + new_fm_block + after)
 
 
-def _process_skills(
-    skills_dir: Path, apply: bool, quiet: bool
-) -> tuple[int, int, int]:
+def _process_skills(skills_dir: Path, apply: bool, quiet: bool) -> tuple[int, int, int]:
     """Process all skills; return (processed, skipped, errors)."""
     from little_loops.subprocess_utils import run_claude_command
 
@@ -122,7 +120,10 @@ def _process_skills(
 
         if result.returncode != 0:
             if not quiet:
-                print(f"  ERROR  {skill_name}: Claude returned exit {result.returncode}", file=sys.stderr)
+                print(
+                    f"  ERROR  {skill_name}: Claude returned exit {result.returncode}",
+                    file=sys.stderr,
+                )
             errors += 1
             continue
 

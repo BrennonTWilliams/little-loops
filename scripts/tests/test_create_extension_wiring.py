@@ -237,7 +237,10 @@ class TestEnh1395LlGenerateSkillDescriptionsWiring:
         assert "ll-generate-skill-descriptions" in CLI_REFERENCE.read_text()
 
     def test_configure_areas_lists_tool(self) -> None:
-        assert "ll-generate-skill-descriptions" in (PROJECT_ROOT / "skills" / "configure" / "areas.md").read_text()
+        assert (
+            "ll-generate-skill-descriptions"
+            in (PROJECT_ROOT / "skills" / "configure" / "areas.md").read_text()
+        )
 
     def test_contributing_md_has_new_skill_checklist(self) -> None:
         content = CONTRIBUTING_MD.read_text()

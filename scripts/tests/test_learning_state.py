@@ -269,9 +269,7 @@ class TestLearningStateMaxRetriesExhausted:
 class TestLearningStateMultipleTargets:
     """All targets must be proven before the state advances."""
 
-    def test_iterates_all_targets_in_order(
-        self, temp_project_dir: Path, monkeypatch: Any
-    ) -> None:
+    def test_iterates_all_targets_in_order(self, temp_project_dir: Path, monkeypatch: Any) -> None:
         monkeypatch.chdir(temp_project_dir)
         base = temp_project_dir / ".ll" / "learning-tests"
         base.mkdir(parents=True)
@@ -337,9 +335,7 @@ class TestLearningStateExemptFromThrottle:
         # only intercepts via injection; route to terminal regardless.
         # Patch _run_action to skip actual shell exec.
         with patch.object(FSMExecutor, "_run_action") as mock_run:
-            mock_run.return_value = ActionResult(
-                output="", stderr="", exit_code=0, duration_ms=1
-            )
+            mock_run.return_value = ActionResult(output="", stderr="", exit_code=0, duration_ms=1)
             executor = FSMExecutor(fsm, action_runner=runner)
             result = executor.run()
         assert result.final_state == "done"

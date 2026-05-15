@@ -396,17 +396,18 @@ class FSMExecutor:
 
                 # Per-edge revisit tracking for cycle detection.
                 edge_key = f"{self.current_state}->{resolved_next}"
-                self._edge_revisit_counts[edge_key] = (
-                    self._edge_revisit_counts.get(edge_key, 0) + 1
-                )
+                self._edge_revisit_counts[edge_key] = self._edge_revisit_counts.get(edge_key, 0) + 1
                 if self._edge_revisit_counts[edge_key] > self.fsm.max_edge_revisits:
-                    self._emit("cycle_detected", {
-                        "edge": edge_key,
-                        "from": self.current_state,
-                        "to": resolved_next,
-                        "count": self._edge_revisit_counts[edge_key],
-                        "max": self.fsm.max_edge_revisits,
-                    })
+                    self._emit(
+                        "cycle_detected",
+                        {
+                            "edge": edge_key,
+                            "from": self.current_state,
+                            "to": resolved_next,
+                            "count": self._edge_revisit_counts[edge_key],
+                            "max": self.fsm.max_edge_revisits,
+                        },
+                    )
                     return self._finish(
                         "cycle_detected",
                         error=f"Cycle detected: edge {edge_key} traversed "
@@ -545,9 +546,7 @@ class FSMExecutor:
             # max_iterations, timeout, signal — all are failure
             return interpolate(state.on_no, ctx) if state.on_no else None
 
-    def _execute_learning_state(
-        self, state: StateConfig, ctx: InterpolationContext
-    ) -> str | None:
+    def _execute_learning_state(self, state: StateConfig, ctx: InterpolationContext) -> str | None:
         """Execute a FEAT-1283 ``type: learning`` state.
 
         Iterates ``state.learning.targets`` in order. For each target:
