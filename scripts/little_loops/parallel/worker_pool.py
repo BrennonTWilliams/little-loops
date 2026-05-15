@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from little_loops.host_runner import resolve_host
 from little_loops.output_parsing import parse_ready_issue_output
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import ParallelConfig, WorkerResult, WorkerStage
@@ -572,21 +573,19 @@ class WorkerPool:
             Model name (e.g., "claude-sonnet-4-20250514") or None if unable to detect
         """
         try:
+            invocation = resolve_host().build_blocking_json(prompt="reply with just 'ok'")
+            # No-perm-skip preserved: this is a detection probe, not a real run.
+            args = [a for a in invocation.args if a != "--dangerously-skip-permissions"]
+
             # Set environment to keep Claude in the project working directory (BUG-007)
             # This ensures the first Claude CLI invocation in the worktree has the same
             # project root behavior as subsequent invocations via run_claude_command()
             env = os.environ.copy()
             env["CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR"] = "1"
+            env.update(invocation.env)
 
-            # Use a minimal prompt that requires an API call to get modelUsage
             result = subprocess.run(
-                [
-                    "claude",
-                    "-p",
-                    "reply with just 'ok'",
-                    "--output-format",
-                    "json",
-                ],
+                [invocation.binary, *args],
                 cwd=worktree_path,
                 capture_output=True,
                 text=True,

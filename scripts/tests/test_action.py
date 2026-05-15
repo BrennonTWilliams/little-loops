@@ -19,6 +19,33 @@ from little_loops.cli.action import (
     cmd_list,
     main_action,
 )
+from little_loops.host_runner import HostCapabilities, HostInvocation
+
+
+class FakeRunner:
+    """Test double for HostRunner; modeled on FakeCodex in test_host_runner.py."""
+
+    name = "claude-code"
+    capabilities = HostCapabilities()
+
+    def __init__(self, detect_returns: bool = True) -> None:
+        self._detect_returns = detect_returns
+
+    def detect(self) -> bool:
+        return self._detect_returns
+
+    def build_streaming(self, **_: object) -> HostInvocation:
+        return HostInvocation(binary="claude", args=[])
+
+    def build_blocking_json(self, **_: object) -> HostInvocation:
+        return HostInvocation(binary="claude", args=[])
+
+    def build_version_check(self) -> HostInvocation:
+        return HostInvocation(binary="claude", args=["--version"])
+
+    def build_detached(self, **_: object) -> HostInvocation:
+        return HostInvocation(binary="claude", args=[])
+
 
 # =============================================================================
 # Helpers
@@ -290,7 +317,9 @@ class TestCmdCapabilities:
         (tmp_path / "skills").mkdir()
 
         with (
-            patch("little_loops.cli.action.shutil.which", return_value="/usr/bin/claude"),
+            patch(
+                "little_loops.cli.action.resolve_host", return_value=FakeRunner(detect_returns=True)
+            ),
             patch("little_loops.cli.action.subprocess.run", return_value=mock_version),
             patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path),
         ):
@@ -309,7 +338,10 @@ class TestCmdCapabilities:
         (tmp_path / "skills").mkdir()
 
         with (
-            patch("little_loops.cli.action.shutil.which", return_value=None),
+            patch(
+                "little_loops.cli.action.resolve_host",
+                return_value=FakeRunner(detect_returns=False),
+            ),
             patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path),
         ):
             result = cmd_capabilities(args)
@@ -332,7 +364,9 @@ class TestCmdCapabilities:
         mock_version.stdout = "claude 1.0.3\n"
 
         with (
-            patch("little_loops.cli.action.shutil.which", return_value="/usr/bin/claude"),
+            patch(
+                "little_loops.cli.action.resolve_host", return_value=FakeRunner(detect_returns=True)
+            ),
             patch("little_loops.cli.action.subprocess.run", return_value=mock_version),
             patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path),
         ):
@@ -347,7 +381,9 @@ class TestCmdCapabilities:
         (tmp_path / "skills").mkdir()
 
         with (
-            patch("little_loops.cli.action.shutil.which", return_value="/usr/bin/claude"),
+            patch(
+                "little_loops.cli.action.resolve_host", return_value=FakeRunner(detect_returns=True)
+            ),
             patch(
                 "little_loops.cli.action.subprocess.run",
                 side_effect=subprocess.TimeoutExpired("claude", 10),
@@ -421,7 +457,9 @@ class TestMainAction:
 
         with (
             patch.object(sys, "argv", ["ll-action", "capabilities"]),
-            patch("little_loops.cli.action.shutil.which", return_value="/usr/bin/claude"),
+            patch(
+                "little_loops.cli.action.resolve_host", return_value=FakeRunner(detect_returns=True)
+            ),
             patch("little_loops.cli.action.subprocess.run", return_value=mock_version),
             patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path),
         ):

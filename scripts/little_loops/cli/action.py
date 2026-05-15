@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+
+from little_loops.host_runner import resolve_host
 
 __all__ = ["main_action"]
 
@@ -139,14 +140,15 @@ def cmd_invoke(args: argparse.Namespace) -> int:
 def cmd_capabilities(args: argparse.Namespace) -> int:
     from little_loops.cli.output import print_json
 
-    claude_path = shutil.which("claude")
-    available = claude_path is not None
+    runner = resolve_host()
+    available = runner.detect()
 
     version = ""
     if available:
         try:
+            invocation = runner.build_version_check()
             version_result = subprocess.run(
-                ["claude", "--version"],
+                [invocation.binary, *invocation.args],
                 capture_output=True,
                 text=True,
                 timeout=10,
