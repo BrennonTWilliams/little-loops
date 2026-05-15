@@ -32,15 +32,17 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ADAPTER_DIR = REPO_ROOT / "hooks" / "adapters" / "codex"
 SESSION_START = ADAPTER_DIR / "session-start.sh"
 PRE_COMPACT = ADAPTER_DIR / "pre-compact.sh"
+PROMPT_SUBMIT = ADAPTER_DIR / "prompt-submit.sh"
 
 
 class TestCodexAdapterIntegration:
     """End-to-end adapter tests via bash + the real Python dispatcher."""
 
     def test_adapter_files_exist(self) -> None:
-        """The adapter directory ships session-start.sh, pre-compact.sh, hooks.json, README.md."""
+        """The adapter directory ships session-start.sh, pre-compact.sh, prompt-submit.sh, hooks.json, README.md."""
         assert SESSION_START.is_file()
         assert PRE_COMPACT.is_file()
+        assert PROMPT_SUBMIT.is_file()
         assert (ADAPTER_DIR / "hooks.json").is_file()
         assert (ADAPTER_DIR / "README.md").is_file()
 
@@ -51,6 +53,9 @@ class TestCodexAdapterIntegration:
         )
         assert os.access(PRE_COMPACT, os.X_OK), (
             f"{PRE_COMPACT} is not executable; chmod +x required"
+        )
+        assert os.access(PROMPT_SUBMIT, os.X_OK), (
+            f"{PROMPT_SUBMIT} is not executable; chmod +x required"
         )
 
     def test_hooks_json_uses_matcher_startup(self) -> None:
@@ -173,3 +178,61 @@ class TestCodexAdapterIntegration:
             f"module. stderr={result.stderr!r}"
         )
         assert sentinel.read_text() == "codex"
+
+    def test_prompt_submit_sets_ll_hook_host_codex(self, tmp_path: Path) -> None:
+        """prompt-submit.sh sets LL_HOOK_HOST=codex in the Python subprocess.
+
+        Uses the same sentinel-file pattern as test_adapter_sets_ll_hook_host_codex
+        to isolate env-var propagation from real handler logic.
+        """
+        fake_pkg = tmp_path / "fake_pkg"
+        ll_dir = fake_pkg / "little_loops" / "hooks"
+        ll_dir.mkdir(parents=True)
+        (fake_pkg / "little_loops" / "__init__.py").write_text("")
+        (ll_dir / "__init__.py").write_text("")
+        sentinel = tmp_path / "sentinel.txt"
+        (ll_dir / "__main__.py").write_text(
+            textwrap.dedent(
+                f"""
+                import os, sys
+                with open({str(sentinel)!r}, "w") as f:
+                    f.write(os.environ.get("LL_HOOK_HOST", "<unset>"))
+                sys.exit(0)
+                """
+            ).strip()
+        )
+
+        env_passthrough = {"PYTHONPATH": str(fake_pkg)}
+        full_env = {**os.environ, **env_passthrough}
+        full_env.pop("LL_HOOK_HOST", None)
+
+        result = subprocess.run(
+            [BASH, str(PROMPT_SUBMIT)],
+            input='{"hook_event_name":"UserPromptSubmit","prompt":"test prompt"}',
+            capture_output=True,
+            text=True,
+            timeout=20,
+            cwd=str(tmp_path),
+            env=full_env,
+        )
+        assert result.returncode == 0, (
+            f"adapter exited {result.returncode}; stderr={result.stderr!r}"
+        )
+        assert sentinel.is_file(), (
+            f"sentinel not written; PYTHONPATH may not have routed to fake "
+            f"module. stderr={result.stderr!r}"
+        )
+        assert sentinel.read_text() == "codex"
+
+    def test_hooks_json_has_user_prompt_submit(self) -> None:
+        """hooks.json must include a UserPromptSubmit entry pointing to prompt-submit.sh."""
+        data = json.loads((ADAPTER_DIR / "hooks.json").read_text())
+        assert "UserPromptSubmit" in data["hooks"], (
+            "hooks.json is missing UserPromptSubmit key"
+        )
+        groups = data["hooks"]["UserPromptSubmit"]
+        assert len(groups) >= 1
+        commands = [h["command"] for h in groups[0]["hooks"] if h.get("type") == "command"]
+        assert any("prompt-submit.sh" in cmd for cmd in commands), (
+            f"expected prompt-submit.sh in UserPromptSubmit command; got {commands!r}"
+        )

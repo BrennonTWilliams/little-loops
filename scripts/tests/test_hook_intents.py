@@ -298,6 +298,24 @@ class TestHooksMainModule:
         # No config in tmp_path → the "No config found" warning is emitted to stderr.
         assert "No config found" in result.stderr
 
+    def test_dispatch_user_prompt_submit_happy_path(self, tmp_path) -> None:
+        """``user_prompt_submit`` intent runs the handler and exits 0.
+
+        With no config in tmp_path and a prompt in the payload, the handler
+        emits the no-config reminder on stdout and exits 0.
+        """
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "user_prompt_submit"],
+            input=json.dumps({"prompt": "fix the authentication bug in this project"}),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
+        # No config in tmp_path → the "No config found" reminder is emitted on stdout.
+        assert "No config found" in result.stdout
+
     def test_dispatch_unknown_intent(self) -> None:
         """Unknown intent name exits non-zero with an error message on stderr."""
         result = subprocess.run(

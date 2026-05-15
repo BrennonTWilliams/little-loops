@@ -22,7 +22,7 @@ into `LLHookEvent` payloads.
 | -------------------- | ----------- | ------------- | ------------- |
 | `session_start`      | ✓           | ✓             | ✓ (matcher=`startup`) |
 | `pre_compact`        | ✓           | ✓             | ✓             |
-| `user_prompt_submit` | ✓           | (deferred)    | (deferred)    |
+| `user_prompt_submit` | ✓           | (deferred)    | ✓             |
 | `pre_tool_use`       | ✓           | (deferred)[^hot] | (deferred)[^hot] |
 | `post_tool_use`      | ✓           | (deferred)[^hot] | (deferred)[^hot] |
 | `stop`               | ✓           | (deferred)    | (deferred)    |

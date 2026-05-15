@@ -33,7 +33,7 @@ Ensure `little_loops` is installed in the Python interpreter on `PATH`
 | `PostCompact`                  | —               | —                                              | Deferred — no concrete consumer in ll today; `pre_compact` performs all compact-time cleanup |
 | `PreToolUse`                   | —               | —                                              | Deferred (hot-path) |
 | `PostToolUse`                  | —               | —                                              | Deferred (hot-path) |
-| `UserPromptSubmit`             | —               | —                                              | Deferred — Claude Code uses this for auto-prompt-optimizer; track separately |
+| `UserPromptSubmit`             | `user_prompt_submit` | `python -m little_loops.hooks user_prompt_submit` | Implemented |
 | `PermissionRequest`            | —               | —                                              | Deferred — hook can return `allow`/`deny`; no current consumer |
 | `Stop`                         | —               | —                                              | Deferred |
 

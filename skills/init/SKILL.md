@@ -282,7 +282,7 @@ After the user confirms, check whether the configured tool commands are availabl
   [update] .claude/settings.local.json (add ll- CLI tool permissions)  # Only if user opts in
   [write]  .claude/CLAUDE.md (ll- CLI command documentation)        # Only if opted in + no existing file
   [update] .claude/CLAUDE.md (append ## little-loops CLI Commands)  # Only if opted in + existing file
-  [write]  .codex/hooks.json (Codex CLI hook adapter — SessionStart matcher=startup, PreCompact)  # Only if --codex enabled
+  [write]  .codex/hooks.json (Codex CLI hook adapter — SessionStart matcher=startup, PreCompact, UserPromptSubmit)  # Only if --codex enabled
 
 === END DRY RUN (no changes made) ===
 ```

@@ -94,6 +94,7 @@ little-loops/
 │   │   └── codex/           # Codex CLI bash adapter (Rust host, shell-command hooks)
 │   │       ├── session-start.sh  # SessionStart matcher=startup → session_start (sets LL_HOOK_HOST=codex)
 │   │       ├── pre-compact.sh    # PreCompact → pre_compact (sets LL_HOOK_HOST=codex)
+│   │       ├── prompt-submit.sh  # UserPromptSubmit → user_prompt_submit (sets LL_HOOK_HOST=codex)
 │   │       ├── hooks.json        # Template written to .codex/hooks.json by ll:init --codex
 │   │       └── README.md
 │   └── scripts/             # Hook scripts
