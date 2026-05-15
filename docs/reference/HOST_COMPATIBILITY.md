@@ -58,18 +58,18 @@ The orchestration tools (`ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`,
 FSM evaluators, FSM handoff) route every host CLI invocation through
 `scripts/little_loops/host_runner.py`. The `HostRunner` Protocol is
 satisfied by four concrete runners — `ClaudeCodeRunner` (production),
-`CodexRunner` (wired, gated behind `LL_HOST_CLI=codex` until validated),
+`CodexRunner` (wired, auto-detects when `codex` is on PATH),
 `OpenCodeRunner` (stub), and `PiRunner` (stub) — so adding a new host is
 a matter of fleshing out the corresponding runner rather than touching
 call sites.
 
 | Tool                          | Claude Code | OpenCode      | Codex CLI    | Pi           |
 | ----------------------------- | ----------- | ------------- | ------------ | ------------ |
-| `ll-auto`                     | ✓           | stub[^orch]   | gated[^orch] | stub[^orch]  |
-| `ll-parallel`                 | ✓           | stub[^orch]   | gated[^orch] | stub[^orch]  |
-| `ll-action`                   | ✓           | stub[^orch]   | gated[^orch] | stub[^orch]  |
-| `ll-loop`                     | ✓           | stub[^orch]   | gated[^orch] | stub[^orch]  |
-| FSM evaluators / handoff      | ✓           | stub[^orch]   | gated[^orch] | stub[^orch]  |
+| `ll-auto`                     | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
+| `ll-parallel`                 | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
+| `ll-action`                   | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
+| `ll-loop`                     | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
+| FSM evaluators / handoff      | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
 
 [^orch]: All six call sites now route through
     `scripts/little_loops/host_runner.py` (`HostRunner` Protocol +
@@ -80,8 +80,6 @@ call sites.
     `LL_HOST_CLI=<host>` resolves, but every `build_*` raises
     `HostNotConfigured` until the host-specific argv is implemented
     (OpenCode: FEAT-1472 Option B; Pi: research deferred to FEAT-992).
-    **gated** = runner is fully implemented but deliberately omitted
-    from `_PROBE_ORDER`; opt in with `LL_HOST_CLI=codex` (FEAT-1465).
 
 ## Config probe path
 

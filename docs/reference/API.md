@@ -5782,7 +5782,7 @@ class HostRunner(Protocol):
 | Runner | Host | Status | Notes |
 |---|---|---|---|
 | `ClaudeCodeRunner` | `claude` CLI | ✓ production | Argv mirrors `subprocess_utils.run_claude_command`; snapshot test in `tests/test_host_runner.py::test_claude_runner_matches_legacy_args`. |
-| `CodexRunner` | `codex` CLI | ✓ wired (gated) | Translates the Claude-shaped Protocol surface to Codex `exec` headless mode. Gated behind explicit `LL_HOST_CLI=codex` (not in `_PROBE_ORDER`) until validated; see FEAT-1465. Emits `CapabilityNotSupported` for `agent` / `tools` parameters. |
+| `CodexRunner` | `codex` CLI | ✓ production | Translates the Claude-shaped Protocol surface to Codex `exec` headless mode. Auto-detected when `codex` is on PATH (probe order: `claude → codex → pi`). Emits `CapabilityNotSupported` for `agent` / `tools` parameters. |
 | `OpenCodeRunner` | `opencode` CLI | stub | Registered so `LL_HOST_CLI=opencode` resolves to a useful error rather than the generic "unknown host". All `build_*` methods raise `HostNotConfigured`. See FEAT-1472. |
 | `PiRunner` | `pi` CLI | stub | Present in `_PROBE_ORDER`, so hosts with `pi` on PATH resolve to this stub. All `build_*` methods raise `HostNotConfigured`. Pi orchestration is tracked under FEAT-992. |
 
@@ -5799,7 +5799,7 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner: ...
 Detection order (first match wins):
 1. `LL_HOST_CLI` environment variable — explicit override.
 2. `LL_HOOK_HOST` environment variable — falls back to the hooks-layer host identifier so users with an existing hook config don't need a second knob.
-3. Binary probe: `claude` → `pi` (see `_PROBE_ORDER`; `codex` is intentionally omitted from the probe and is gated behind explicit `LL_HOST_CLI=codex`).
+3. Binary probe: `claude` → `codex` → `pi` (see `_PROBE_ORDER`).
 4. Raise `HostNotConfigured` with a remediation hint.
 
 ```python

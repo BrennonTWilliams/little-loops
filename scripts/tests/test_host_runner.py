@@ -175,15 +175,18 @@ class TestCodexRunner:
         assert "codex" in hr._HOST_RUNNER_REGISTRY
         assert hr._HOST_RUNNER_REGISTRY["codex"] is CodexRunner
 
-    def test_codex_runner_gated_from_auto_probe(self) -> None:
-        """Codex is intentionally absent from _PROBE_ORDER pending validation.
-
-        FEAT-1465 AC: gated behind LL_HOST_CLI=codex until manually tested.
-        """
-        from little_loops import host_runner as hr
-
-        probe_hosts = {name for name, _binary in hr._PROBE_ORDER}
-        assert "codex" not in probe_hosts
+    def test_codex_runner_probed_when_on_path(
+        self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """resolve_host() auto-detects CodexRunner when codex is on PATH and claude is absent."""
+        monkeypatch.setattr(
+            "little_loops.host_runner.shutil.which",
+            lambda binary: "/usr/local/bin/codex" if binary == "codex" else None,
+        )
+        runner = resolve_host(env={})
+        assert isinstance(runner, CodexRunner)
+        invocation = runner.build_streaming(prompt="hi")
+        assert invocation.binary == "codex"
 
     def test_resolve_host_picks_codex_via_env(self, isolated_env: None) -> None:
         """resolve_host(env={'LL_HOST_CLI': 'codex'}) returns a CodexRunner."""

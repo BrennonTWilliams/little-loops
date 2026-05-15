@@ -544,13 +544,9 @@ _HOST_RUNNER_REGISTRY: dict[str, type[HostRunner]] = {
 
 # Order of probing when no explicit host is configured. Matches the binary
 # names users typically have on PATH; extends as new runners land.
-#
-# Note: ``("codex", "codex")`` is intentionally commented out per FEAT-1465 —
-# CodexRunner is gated behind explicit ``LL_HOST_CLI=codex`` until validated in
-# production. Once verified, restore the probe row to enable auto-detection.
 _PROBE_ORDER: list[tuple[str, str]] = [
     ("claude-code", "claude"),
-    # ("codex", "codex"),  # FEAT-1465: gated behind LL_HOST_CLI until validated
+    ("codex", "codex"),
     ("pi", "pi"),
 ]
 

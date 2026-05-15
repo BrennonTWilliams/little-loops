@@ -302,7 +302,7 @@ git worktree prune
 2. Confirm a supported host binary is installed and on `PATH`:
    ```bash
    which claude   # Claude Code
-   which codex    # Codex (also requires LL_HOST_CLI=codex — gated)
+   which codex    # Codex
    ```
 3. Alternatively, set `orchestration.host_cli` in `.ll/ll-config.json` (see [CONFIGURATION.md](../reference/CONFIGURATION.md)).
 4. Stub runners (`OpenCodeRunner`, `PiRunner`) raise `HostNotConfigured` on every `build_*` call by design — track FEAT-1472 / FEAT-992 for completion.

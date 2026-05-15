@@ -565,7 +565,7 @@ FSM handoff.
 | `HostInvocation` (frozen dataclass) | Value object holding `binary`, `args`, `env`, and `capabilities` — passed to `subprocess.Popen`/`run` |
 | `HostCapabilities` (frozen dataclass) | Capability flags (`streaming`, `permission_skip`, `agent_select`, `tool_allowlist`) describing what a host supports |
 | `ClaudeCodeRunner` | Production runner for the `claude` CLI |
-| `CodexRunner` | Stub for the `codex` CLI (FEAT-1465 tracks completion) |
+| `CodexRunner` | Production runner for the `codex` CLI; auto-detected when `codex` is on PATH |
 | `OpenCodeRunner` | Stub for the `opencode` CLI (FEAT-1472 stub state) |
 | `PiRunner` | Stub for the Raspberry Pi host (FEAT-992 research deferred) |
 | `resolve_host()` | Discovery entry point — honors `LL_HOST_CLI` / `orchestration.host_cli` overrides, then probes `PATH` for known host binaries |
