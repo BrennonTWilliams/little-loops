@@ -1,0 +1,84 @@
+name: scan-and-implement
+category: issue-management
+description: |
+  Full pipeline: discover and triage new issues via issue-discovery-triage,
+  then refine and implement only the net-new issues that survived triage via
+  autodev. Snapshots issue IDs before and after discovery to scope autodev to
+  issues created in this run (already-completed or closed-by-triage issues are
+  excluded automatically since they won't appear in the post-snapshot diff).
+initial: snapshot_pre
+max_iterations: 5
+timeout: 36000
+on_handoff: spawn
+
+states:
+  snapshot_pre:
+    action: |
+      mkdir -p .loops/tmp
+      ll-issues list --json 2>/dev/null | python3 -c "
+      import json, sys
+      try:
+          issues = json.load(sys.stdin)
+          for i in sorted(i['id'] for i in issues):
+              print(i)
+      except Exception:
+          pass
+      " | sort > .loops/tmp/scan-and-implement-pre-ids.txt
+      COUNT=$(wc -l < .loops/tmp/scan-and-implement-pre-ids.txt | tr -d ' ')
+      echo "Baseline: $COUNT existing active issue(s)"
+    action_type: shell
+    next: discover
+
+  discover:
+    loop: issue-discovery-triage
+    on_success: diff_issues
+    on_failure: diff_issues
+    on_error: done
+
+  diff_issues:
+    # Diff active issue IDs against the pre-discovery baseline. Issues created
+    # during discovery but then closed by tradeoff-review won't appear here
+    # (they're in .issues/completed/, excluded from ll-issues list). So the
+    # diff naturally yields only issues that survived triage.
+    action: |
+      ll-issues list --json 2>/dev/null | python3 -c "
+      import json, sys
+      try:
+          issues = json.load(sys.stdin)
+          for i in sorted(i['id'] for i in issues):
+              print(i)
+      except Exception:
+          pass
+      " | sort > .loops/tmp/scan-and-implement-post-ids.txt
+
+      comm -13 .loops/tmp/scan-and-implement-pre-ids.txt \
+               .loops/tmp/scan-and-implement-post-ids.txt \
+               > .loops/tmp/scan-and-implement-new-ids.txt
+
+      NEW_IDS=$(grep -v '^[[:space:]]*$' .loops/tmp/scan-and-implement-new-ids.txt \
+                | paste -sd ',' -)
+      if [ -n "$NEW_IDS" ]; then
+        NEW_COUNT=$(echo "$NEW_IDS" | tr ',' '\n' | grep -c '[^[:space:]]')
+        echo "Discovered $NEW_COUNT net-new issue(s) to implement: $NEW_IDS"
+        printf '%s' "$NEW_IDS"
+        exit 0
+      else
+        echo "No net-new issues survived triage — nothing to implement."
+        exit 1
+      fi
+    action_type: shell
+    capture: input
+    on_yes: implement
+    on_no: done
+    on_error: done
+
+  implement:
+    loop: autodev
+    with:
+      input: "${captured.input.output}"
+    on_success: done
+    on_failure: done
+    on_error: done
+
+  done:
+    terminal: true
