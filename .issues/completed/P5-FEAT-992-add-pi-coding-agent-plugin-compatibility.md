@@ -136,11 +136,11 @@ export default function (pi: ExtensionAPI) {
 ### Tests
 - `scripts/tests/test_pi_adapter.py` (new) — mirror `test_codex_adapter.py` and `test_opencode_adapter.py`; skip if Node.js absent; verify `LL_HOOK_HOST=pi` propagation with sentinel-file pattern; verify `session_start`/`session_before_compact` dispatch
 - `scripts/tests/test_config.py:TestResolveConfigPath` — add Pi probe-order tests mirroring `test_codex_path_takes_precedence_when_host_codex` with `LL_HOOK_HOST=pi` and `.pi/ll-config.json`
-- `scripts/tests/test_config_schema.py:test_hooks_in_schema` — update exact-equality assertion to include `"pi"` in `hooks.host.enum`
+- `scripts/tests/test_config_schema.py:test_hooks_in_schema` (line 155) — exact-equality assertion is `assert host["enum"] == ["claude-code", "opencode", "codex"]`; update to include `"pi"`; note `test_orchestration_in_schema` (line 176) already has `"pi"` in `orchestration.host_cli` enum — only `hooks.host` needs updating
 - `scripts/tests/test_hook_intents.py:TestHooksMainModule` — add `test_ll_hook_host_env_var_propagates_pi` mirroring the codex variant
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_host_runner.py:TestPiRunner` — 4 existing tests use `pytest.raises(HostNotConfigured, match="FEAT-992")` for `build_streaming`, `build_blocking_json`, `build_version_check`, `build_detached`; all **will break** once build methods are implemented — update to argv-snapshot assertions following `TestCodexRunner` pattern [Agent 3 finding]
+- `scripts/tests/test_host_runner.py:TestPiRunner` — 8 tests total: 3 infrastructure tests (`test_pirunner_registered`, `test_resolve_host_picks_pi_via_env`, `test_satisfies_host_runner_protocol`) remain valid after implementation; 4 explicit stub tests use `pytest.raises(HostNotConfigured, match="FEAT-992")` for `build_streaming`, `build_blocking_json`, `build_version_check`, `build_detached`; all **will break** once build methods are implemented — update to argv-snapshot assertions following `TestCodexRunner` pattern [Agent 3 finding]
 - `scripts/tests/test_hook_session_start.py` — add Pi parallel of `test_falls_back_to_codex_dir_config`: set `LL_HOOK_HOST=pi`, create `.pi/ll-config.json`, assert it is loaded through the session-start handler [Agent 2 finding]
 
 _Wiring pass 2 added by `/ll:wire-issue`:_
@@ -251,6 +251,7 @@ _Added by `/ll:confidence-check` on 2026-05-15_
 - PiRunner `build_*` methods deferred pending Pi headless CLI flags — step 6 is out of scope for hook-compatibility acceptance criteria but needs follow-up after implementation
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-15T19:31:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37fa0a03-7c65-4cfd-ba73-fa74eac84781.jsonl`
 - `/ll:wire-issue` - 2026-05-15T19:27:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/25c8d618-48d9-413c-b4d1-bf120fb005aa.jsonl`
 - `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59179ce1-13d5-40c7-bdca-8b3c6117c43e.jsonl`
 - `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f40e61dc-0ba4-4eed-9f2d-a0c02e6abba1.jsonl`

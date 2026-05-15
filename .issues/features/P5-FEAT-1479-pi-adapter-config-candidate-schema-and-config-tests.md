@@ -2,8 +2,7 @@
 id: FEAT-1479
 type: FEAT
 priority: P5
-status: done
-completed_at: 2026-05-15T20:23:44Z
+status: open
 parent: FEAT-1477
 confidence_score: 100
 outcome_confidence: 97
