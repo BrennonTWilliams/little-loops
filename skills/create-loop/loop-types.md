@@ -60,6 +60,7 @@ When a check command is determined (from presets or custom input), use this tabl
 | `npx eslint` | exit_code | Well-behaved: 0=clean, 1=violations |
 | `cargo test` | exit_code | Well-behaved: 0=all pass |
 | `go test` | exit_code | Well-behaved: 0=all pass |
+| `/ll:go-no-go --check` | exit_code | GO/NO-GO gate: 0=GO, 1=NO-GO — requires `--check` flag; always pair with `--auto` in loops |
 
 **Detection Instructions:** (for the AI executing this wizard)
 
@@ -979,6 +980,51 @@ states:
     next: discover
   done:
     terminal: true
+
+---
+
+**Example: Gate-and-implement (go-no-go before each implementation)**
+
+> **Critical**: Always pass `--check --auto` to `/ll:go-no-go` in FSM loops. Without `--check`, the skill always exits 0 regardless of the verdict — the FSM will route every issue to GO even when the judge says NO-GO. `--auto` suppresses interactive prompts and write-back.
+
+```yaml
+name: "gate-and-implement"
+initial: discover
+max_iterations: 100
+states:
+  discover:
+    action: |
+      ll-issues list --json | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      if not issues:
+          sys.exit(1)
+      print(issues[0]['id'])
+      "
+    action_type: shell
+    capture: "current_item"
+    evaluate:
+      type: exit_code
+    on_yes: go_no_go
+    on_no: done
+  go_no_go:
+    action: "/ll:go-no-go ${captured.current_item.output} --check --auto"
+    action_type: slash_command
+    evaluate:
+      type: exit_code
+    on_yes: implement   # exit 0 = GO verdict
+    on_no: advance      # exit 1 = NO-GO verdict — skip without implementing
+  implement:
+    action: "/ll:manage-issue ${captured.current_item.output}"
+    action_type: slash_command
+    next: advance
+  advance:
+    action: "echo 'Item complete'"
+    action_type: shell
+    next: discover
+  done:
+    terminal: true
+```
 
 ---
 

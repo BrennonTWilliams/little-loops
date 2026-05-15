@@ -144,6 +144,7 @@ codex, research, commands, skills
 ---
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-15T21:25:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c6fcfa4-b17c-4d21-8cbb-87bc6c248119.jsonl`
 - `/ll:wire-issue` - 2026-05-15T21:15:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cdf8b29b-c64d-4fd5-9d5c-9082345d0652.jsonl`
 - `/ll:refine-issue` - 2026-05-15T21:08:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d42dbf9b-cc4b-408b-9155-54a52d42f2f2.jsonl`
 - `/ll:capture-issue` - 2026-05-15T20:37:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ac48eaf-913e-40cd-8b15-98d99f2901cc.jsonl`
