@@ -16,6 +16,8 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from little_loops.host_runner import resolve_host
+
 logger = logging.getLogger(__name__)
 
 # Callback type: (line: str, is_stderr: bool) -> None
@@ -257,37 +259,20 @@ def run_claude_command(
         subprocess.TimeoutExpired: If command exceeds timeout or idle timeout.
             When triggered by idle timeout, the output field is set to "idle_timeout".
     """
-    cmd_args = [
-        "claude",
-        "--dangerously-skip-permissions",
-        "--verbose",
-        "--output-format",
-        "stream-json",
-    ]
-    if resume_session:
-        cmd_args.append("--continue")
-    cmd_args += ["-p", command]
-    if agent:
-        cmd_args += ["--agent", agent]
-    if tools:
-        cmd_args += ["--tools", ",".join(tools)]
+    runner = resolve_host()
+    invocation = runner.build_streaming(
+        prompt=command,
+        working_dir=working_dir,
+        resume=resume_session,
+        agent=agent,
+        tools=tools,
+    )
+    cmd_args = [invocation.binary, *invocation.args]
 
-    # Set environment to keep Claude in the project working directory (BUG-007)
-    # This helps prevent file writes from leaking to the main repo in worktrees
     env = os.environ.copy()
-    env["CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR"] = "1"
-
-    if working_dir is not None:
-        git_path = Path(working_dir) / ".git"
-        if git_path.is_file():  # worktree: .git is a file, not a directory
-            gitdir_ref = git_path.read_text().strip()
-            if gitdir_ref.startswith("gitdir: "):
-                actual_gitdir = gitdir_ref[8:].strip()
-                # Resolve relative gitdir references to absolute paths
-                resolved = (Path(working_dir) / actual_gitdir).resolve()
-                env["GIT_DIR"] = str(resolved)
-                env["GIT_WORK_TREE"] = str(working_dir)
-                logger.debug("Worktree detected: GIT_DIR=%s", env["GIT_DIR"])
+    env.update(invocation.env)
+    if "GIT_DIR" in invocation.env:
+        logger.debug("Worktree detected: GIT_DIR=%s", invocation.env["GIT_DIR"])
 
     process = subprocess.Popen(
         cmd_args,

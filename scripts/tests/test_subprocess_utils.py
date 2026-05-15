@@ -13,6 +13,7 @@ Tests cover:
 from __future__ import annotations
 
 import io
+import os
 import subprocess
 import time
 from collections.abc import Generator
@@ -22,6 +23,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from little_loops.host_runner import ClaudeCodeRunner
 from little_loops.subprocess_utils import (
     CONTEXT_HANDOFF_PATTERN,
     CONTINUATION_PROMPT_PATH,
@@ -62,6 +64,17 @@ def mock_popen() -> Generator[MagicMock, None, None]:
 
     with patch("subprocess.Popen", return_value=mock_process) as mock:
         yield mock
+
+
+@pytest.fixture(autouse=True)
+def _patch_resolve_host() -> Generator[None, None, None]:
+    """Patch resolve_host so run_claude_command tests don't depend on PATH.
+
+    Uses a real ClaudeCodeRunner so build_streaming produces the same argv as
+    the legacy hardcoded list, keeping all existing argv snapshot assertions valid.
+    """
+    with patch("little_loops.subprocess_utils.resolve_host", return_value=ClaudeCodeRunner()):
+        yield
 
 
 def _patch_selector_cm(mock_selector: MagicMock) -> None:
@@ -1868,3 +1881,94 @@ class TestSentinelHelpers:
         write_sentinel(tmp_path, token_count=100_000, context_limit=200_000)
         read_sentinel(tmp_path)
         assert read_sentinel(tmp_path) is None
+
+
+# =============================================================================
+# TestRunClaudeCommandHostRunner
+# =============================================================================
+
+
+class TestRunClaudeCommandHostRunner:
+    """Tests for resolve_host() delegation in run_claude_command()."""
+
+    def test_delegates_to_resolve_host(self) -> None:
+        """run_claude_command calls resolve_host() and uses the returned HostInvocation."""
+        from little_loops.host_runner import HostInvocation
+
+        mock_invocation = HostInvocation(
+            binary="myhost",
+            args=["--dangerously-skip-permissions", "--verbose", "--output-format", "stream-json", "-p", "test"],
+            env={"CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1"},
+        )
+        mock_runner = Mock()
+        mock_runner.build_streaming.return_value = mock_invocation
+
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        captured_args: list[list[str]] = []
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_args.append(args)
+            return mock_process
+
+        with patch("little_loops.subprocess_utils.resolve_host", return_value=mock_runner):
+            with patch("subprocess.Popen", side_effect=capture_popen):
+                with patch("selectors.DefaultSelector") as mock_selector:
+                    _patch_selector_cm(mock_selector)
+                    mock_selector.return_value.get_map.return_value = {}
+                    run_claude_command("test")
+
+        mock_runner.build_streaming.assert_called_once_with(
+            prompt="test",
+            working_dir=None,
+            resume=False,
+            agent=None,
+            tools=None,
+        )
+        assert captured_args[0][0] == "myhost"
+
+    def test_invocation_env_overrides_os_environ(self) -> None:
+        """HostInvocation.env values win over conflicting os.environ keys."""
+        from little_loops.host_runner import HostInvocation
+
+        mock_invocation = HostInvocation(
+            binary="claude",
+            args=["-p", "test"],
+            env={"CONFLICT_KEY": "from_runner", "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1"},
+        )
+        mock_runner = Mock()
+        mock_runner.build_streaming.return_value = mock_invocation
+
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        captured_env: dict[str, str] = {}
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_env.update(kwargs.get("env", {}))
+            return mock_process
+
+        with patch("little_loops.subprocess_utils.resolve_host", return_value=mock_runner):
+            with patch("subprocess.Popen", side_effect=capture_popen):
+                with patch("selectors.DefaultSelector") as mock_selector:
+                    _patch_selector_cm(mock_selector)
+                    mock_selector.return_value.get_map.return_value = {}
+                    with patch.dict(os.environ, {"CONFLICT_KEY": "from_environ"}):
+                        run_claude_command("test")
+
+        assert captured_env["CONFLICT_KEY"] == "from_runner"
+
+    def test_host_not_configured_propagates(self) -> None:
+        """HostNotConfigured from resolve_host() propagates through run_claude_command()."""
+        from little_loops.host_runner import HostNotConfigured
+
+        with patch("little_loops.subprocess_utils.resolve_host", side_effect=HostNotConfigured("no host")):
+            with pytest.raises(HostNotConfigured):
+                run_claude_command("test")

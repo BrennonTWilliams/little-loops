@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import io
 import subprocess
+from collections.abc import Generator
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from little_loops.host_runner import ClaudeCodeRunner
 from little_loops.logger import Logger
 
 if TYPE_CHECKING:
@@ -21,6 +23,12 @@ if TYPE_CHECKING:
 
 class TestRunClaudeCommand:
     """Tests for run_claude_command in issue_manager.py."""
+
+    @pytest.fixture(autouse=True)
+    def _patch_resolve_host(self) -> Generator[None, None, None]:
+        """Patch resolve_host so tests don't depend on PATH for host detection."""
+        with patch("little_loops.subprocess_utils.resolve_host", return_value=ClaudeCodeRunner()):
+            yield
 
     @pytest.fixture
     def mock_logger(self) -> MagicMock:
