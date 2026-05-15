@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+
+- Windows compatibility testing
+- Performance benchmarks for large repositories
+
+## [1.101.0] - 2026-05-15
+
 ### Added
 
 - **Hook-Intent Abstraction Layer** — Defines little-loops hooks in terms of host-agnostic *intents* (`PreCompact`, `SessionStart`) backed by `LLHookEvent`/`LLHookResult` dataclasses. Python handlers in `little_loops.hooks.*` replace per-host shell scripts; adapters under `hooks/adapters/<host>/` translate each host's native event into the wire format and back. (FEAT-1116)
@@ -22,10 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Goals Discovery Fallback for `scan-product`** — When `.ll/ll-goals.md` is absent, `scan-product` synthesizes a temporary goals context from existing docs (README, roadmaps, vision files) instead of hard-stopping. (ENH-1442)
 - **Hook-Intent Reference Documentation** — Updated `docs/reference/API.md`, `EVENT-SCHEMA.md`, `CONFIGURATION.md`, and `ARCHITECTURE.md` with full field tables and dispatch contract for hook intents. (FEAT-1453, FEAT-1459)
 
-### Planned
+### Changed
 
-- Windows compatibility testing
-- Performance benchmarks for large repositories
+- **Progressive Throttling for FSM Loop Tool Calls** — FSM loops now apply exponential back-off when tool-call rates exceed configurable thresholds, preventing runaway tool use in tight loops. (ENH-1115)
+- **`autodev` Routes Dead-End Decisions Before Size-Review** — When a `decide` state fails, `autodev` now routes through triage before size-review, preventing incorrect decomposition of well-scoped issues whose bottleneck is an unresolved decision. (ENH-1415)
+- **New-Skill Classification Policy** — Added a skill classification decision tree to `CONTRIBUTING.md` and `ll-generate-skill-descriptions` CLI for managing the skill listing budget. (ENH-1395, ENH-1396)
+- **Product Analyzer Improvements** — Fixed output schema inconsistencies, removed double-deduplication between `product-analyzer` and `scan-product`, and wired product setup into `/ll:init`. (ENH-1401, ENH-1402, ENH-1403)
 
 ## [1.100.0] - 2026-05-10
 
@@ -146,7 +155,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.100.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.101.0...HEAD
+[1.101.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.100.0...v1.101.0
 [1.100.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.99.0...v1.100.0
 [1.99.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.98.0...v1.99.0
 [1.98.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.97.0...v1.98.0
