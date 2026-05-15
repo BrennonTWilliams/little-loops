@@ -28,7 +28,7 @@ Today's agents do small tasks well and ship features poorly. little-loops remove
 
 Stop babysitting chats. Start shipping features.
 
-## 1. Chat sessions are holding you back. Run asynchronous agents until done — build without limits.
+## 1. Chat sessions are holding you back. Run asynchronous agents until done — scale without limits.
 
 The unit of work is the feature, the sprint, or the overnight optimization — not a single chat. Runs survive terminal close, context exhaustion, and laptop sleep. Parallel sprints fan out across isolated worktrees and complete independently of your terminal.
 
@@ -39,7 +39,7 @@ The unit of work is the feature, the sprint, or the overnight optimization — n
 
 *Ship features, not sessions.*
 
-## 2. Stop improvising. The toolbelt is the process.
+## 2. Smart tools create smart processes.
 
 Raw agents re-derive the same structural moves differently each run. The `ll-` CLI removes the improvisation surface: context gathering, issue lifecycle, sprint moves, and worktree setup all run as typed commands. Two runs of the same feature land in the same shape — by construction, not by prompting.
 
@@ -50,7 +50,7 @@ Raw agents re-derive the same structural moves differently each run. The `ll-` C
 
 *Same feature, same shape, every run.*
 
-## 3. Skip the eval engineering tax. The harness is the spec — and it writes itself.
+## 3. Harness-driven development is awesome. And hard. Auto-generate autonomous harnesses and let your agents go anywhere.
 
 Harness-driven development is TDD's analog for agent-built software: define what "working" looks like first, then iterate until the harness passes. little-loops grades, writes, and improves the harness for you — removing the engineering tax that keeps most teams skipping evals entirely.
 
@@ -69,7 +69,7 @@ Harness-driven development is TDD's analog for agent-built software: define what
 - APO loop category with five prompt-optimization strategies — point it at a prompt, converge to a target score
 - `/ll:audit-loop-run` — four-valued verdict (`met` / `phantom` / `partial` / `degraded`) catches failure modes humans miss
 
-*Point at an issue. Get a harness.*
+*Point at context. Get a harness.*
 
 ---
 
