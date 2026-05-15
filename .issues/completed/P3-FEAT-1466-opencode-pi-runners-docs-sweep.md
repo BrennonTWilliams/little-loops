@@ -2,18 +2,19 @@
 id: FEAT-1466
 type: FEAT
 priority: P3
-status: open
+status: done
 parent: FEAT-1462
 depends_on: FEAT-1464
-decision_needed: false
+decision_needed: true
 discovered_date: 2026-05-15
 discovered_by: issue-size-review
 confidence_score: 85
-outcome_confidence: 60
+outcome_confidence: 68
 score_complexity: 14
 score_test_coverage: 18
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 18
+size: Very Large
 ---
 
 # FEAT-1466: OpenCodeRunner, PiRunner Stub, Docs Sweep, HOST_COMPATIBILITY.md Orchestration Row
@@ -308,17 +309,31 @@ _These touchpoints were identified by wiring analysis and must be included in th
 _Updated by `/ll:confidence-check` on 2026-05-15_
 
 **Readiness Score**: 85/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 60/100 → MODERATE
+**Outcome Confidence**: 68/100 → MODERATE
 
 ### Concerns
-- Unresolved Option A/B decision for OpenCodeRunner: the issue explicitly defers to `/ll:decide-issue FEAT-1466`; starting without resolution means guessing the core design path, invalidating AC1 and AC6
-- `subprocess_utils.py:261` hardcodes `"claude"` and FEAT-1469 (its migration) is still open and not listed as a dependency; the grep sweep AC will fail until FEAT-1469 lands
+- **FEAT-1469 blocks AC3**: `subprocess_utils.py:261` still contains `"claude"` hardcoded; FEAT-1469 is open and not in `depends_on`. Either add it to `depends_on`, or narrow AC3's grep scope to exclude `subprocess_utils.py` pending FEAT-1469.
+- **Step 16 evaluators.py judgment call**: "generalize `evaluate_llm_structured()`'s two hardcoded 'Claude CLI' strings to use `invocation.binary`, or mark as explicit follow-up" — decide before starting to avoid mid-implementation scope creep.
 
 ### Outcome Risk Factors
-- Open Option A vs Option B decision for `OpenCodeRunner` — the issue says "Run `/ll:decide-issue` to pick"; this is an open decision that should be resolved before implementing
-- Evaluators.py Step 16 has ambiguous scoping — "generalize both hardcoded 'Claude CLI' strings or explicitly mark as out-of-scope follow-up" is left as a judgment call during implementation
+- **Open decision — Step 16 error message generalization**: `evaluators.py:632,641` still contains `"claude CLI not found"` / `"Claude CLI error"` verbatim; the issue says "decide" but leaves the call to implementation time. Resolve before implementing to prevent scope expansion mid-PR.
+- **API.md section creation depth**: AC5 requires creating a new `## little_loops.host_runner` section (not just amending the row at line 35), mirroring `little_loops.hooks` section (~line 5582); non-trivial doc work that may require iteration.
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-05-15
+- **Reason**: Issue too large for single session (score: 11/11 — Very Large)
+
+### Decomposed Into
+- FEAT-1472: Host Runner Stubs — OpenCodeRunner + PiRunner + Tests
+- FEAT-1473: Host Runner Docs Sweep + Doc-Wiring Test
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3404bce4-b1e1-4c4a-bdaf-327d629a43da.jsonl`
+- `/ll:confidence-check` - 2026-05-15T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc13a20a-8690-49b7-beff-dc985d70eda3.jsonl`
 - `/ll:decide-issue` - 2026-05-15T15:31:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e037612b-df0c-43c2-951a-3109467668e6.jsonl`
 - `/ll:confidence-check` - 2026-05-15T15:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c07b83d1-d35c-4931-8888-e672f021a1d6.jsonl`
 - `/ll:refine-issue` - 2026-05-15T15:23:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/272ded09-b9af-467d-b5fa-d9a2242a69f0.jsonl`

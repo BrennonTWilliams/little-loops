@@ -22,11 +22,13 @@
 
 # little-loops
 
-A dev toolkit for long-horizon, eval-gated AI software development. Built as a Claude Code plugin.
+**The toolkit for long-horizon, eval-gated AI software development.** Built as a Claude Code plugin.
 
-little-loops gives AI agents three things they're missing: **durability** (the run outlives the session), **consistency** (the toolbelt is the process), and **verification** (the harness is the spec). Together they remove the invisible ceiling that keeps agents doing small tasks well and shipping features poorly.
+Today's agents do small tasks well and ship features poorly. little-loops removes that ceiling with three things they're missing: **durability** (the run outlives the session), **consistency** (the toolbelt is the process), and **verification** (the harness is the spec).
 
-## 1. The session ends. The run doesn't.
+Stop babysitting chats. Start shipping features.
+
+## 1. Chat sessions are holding you back. Run asynchronous agents until done — build without limits.
 
 The unit of work is the feature, the sprint, or the overnight optimization — not a single chat. Runs survive terminal close, context exhaustion, and laptop sleep. Parallel sprints fan out across isolated worktrees and complete independently of your terminal.
 
@@ -37,7 +39,7 @@ The unit of work is the feature, the sprint, or the overnight optimization — n
 
 *Ship features, not sessions.*
 
-## 2. The toolbelt is the process.
+## 2. Stop improvising. The toolbelt is the process.
 
 Raw agents re-derive the same structural moves differently each run. The `ll-` CLI removes the improvisation surface: context gathering, issue lifecycle, sprint moves, and worktree setup all run as typed commands. Two runs of the same feature land in the same shape — by construction, not by prompting.
 
@@ -48,9 +50,9 @@ Raw agents re-derive the same structural moves differently each run. The `ll-` C
 
 *Same feature, same shape, every run.*
 
-## 3. The harness is the spec. And the harness writes itself.
+## 3. Skip the eval engineering tax. The harness is the spec — and it writes itself.
 
-Harness-driven development: TDD's analog for agent-built software. Define what "working" looks like first, then iterate until the harness passes. The harness grades, writes, and improves itself — removing the engineering tax that keeps most teams skipping evals entirely.
+Harness-driven development is TDD's analog for agent-built software: define what "working" looks like first, then iterate until the harness passes. little-loops grades, writes, and improves the harness for you — removing the engineering tax that keeps most teams skipping evals entirely.
 
 **The harness grades:**
 - Six layered gate types — exit code, deterministic external state, full agentic user simulation, LLM-as-judge, diff size invariant, no-op detection
@@ -120,6 +122,8 @@ pip install little-loops
 
 ## First 60 seconds
 
+Four ways to feel the difference, top to bottom:
+
 ### Scan and triage a codebase
 
 ```bash
@@ -152,7 +156,7 @@ ll-loop run harness-optimize -b        # Score-gated hill climbing in the backgr
 
 ---
 
-## What's included
+## What's in the box
 
 - **28 slash commands** — issue discovery, refinement, planning, code quality, git, automation
 - **8 specialized agents** — codebase analysis, pattern finding, consistency checking, web research
