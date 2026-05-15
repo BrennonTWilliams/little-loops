@@ -1100,7 +1100,7 @@
       "properties": {
         "host": {
           "type": "string",
-          "enum": ["claude-code", "opencode"],
+          "enum": ["claude-code", "opencode", "codex"],
           "description": "Host agent identifier. Used by adapters to translate between the host's native hook protocol and the LLHookEvent/LLHookResult wire format."
         }
       },

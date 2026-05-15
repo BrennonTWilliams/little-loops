@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/codex/session-start.sh",
+            "timeout": 30,
+            "statusMessage": "Loading ll config..."
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/codex/pre-compact.sh",
+            "timeout": 60,
+            "statusMessage": "Preserving task state..."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -974,6 +974,87 @@ class TestResolveConfigPath:
         assert config.project.name == "from-root"
         assert config.project.src_dir == "lib/"
 
+    def test_codex_path_ignored_without_host_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``.codex/ll-config.json`` is NOT probed when no host env var is set (default order preserved)."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+        (tmp_path / ".codex").mkdir()
+        codex_cfg = tmp_path / ".codex" / "ll-config.json"
+        codex_cfg.write_text('{"codex": true}')
+        (tmp_path / ".ll").mkdir()
+        ll_cfg = tmp_path / ".ll" / "ll-config.json"
+        ll_cfg.write_text('{"ll": true}')
+
+        # `.ll/` wins because no LL_HOOK_HOST/LL_STATE_DIR is set.
+        assert resolve_config_path(tmp_path) == ll_cfg
+
+    def test_codex_path_takes_precedence_when_host_codex(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``LL_HOOK_HOST=codex`` puts ``.codex/ll-config.json`` ahead of ``.ll/`` and root-level (FEAT-957)."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.setenv("LL_HOOK_HOST", "codex")
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+        (tmp_path / ".codex").mkdir()
+        codex_cfg = tmp_path / ".codex" / "ll-config.json"
+        codex_cfg.write_text('{"codex": true}')
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
+        (tmp_path / "ll-config.json").write_text('{"root": true}')
+
+        assert resolve_config_path(tmp_path) == codex_cfg
+
+    def test_codex_path_takes_precedence_when_state_dir_codex(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``LL_STATE_DIR=.codex`` is an alternate trigger for the codex probe order (FEAT-957)."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        monkeypatch.setenv("LL_STATE_DIR", ".codex")
+        (tmp_path / ".codex").mkdir()
+        codex_cfg = tmp_path / ".codex" / "ll-config.json"
+        codex_cfg.write_text('{"codex": true}')
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
+
+        assert resolve_config_path(tmp_path) == codex_cfg
+
+    def test_codex_host_falls_through_to_ll_dir_when_codex_absent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Codex host with no ``.codex/ll-config.json`` falls back to ``.ll/`` then root-level."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.setenv("LL_HOOK_HOST", "codex")
+        # No .codex/ll-config.json exists.
+        (tmp_path / ".ll").mkdir()
+        ll_cfg = tmp_path / ".ll" / "ll-config.json"
+        ll_cfg.write_text('{"ll": true}')
+
+        assert resolve_config_path(tmp_path) == ll_cfg
+
+    def test_opencode_host_uses_default_order(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``LL_HOOK_HOST=opencode`` does not change probe order — only ``codex`` does (FEAT-957)."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.setenv("LL_HOOK_HOST", "opencode")
+        (tmp_path / ".codex").mkdir()
+        (tmp_path / ".codex" / "ll-config.json").write_text('{"codex": true}')
+        (tmp_path / ".ll").mkdir()
+        ll_cfg = tmp_path / ".ll" / "ll-config.json"
+        ll_cfg.write_text('{"ll": true}')
+
+        # `.ll/` still wins under opencode host — codex probe only triggers for codex.
+        assert resolve_config_path(tmp_path) == ll_cfg
+
 
 class TestFeatureEnabledHelper:
     """Tests for feature_enabled (Python port of bash ll_feature_enabled — FEAT-1454)."""

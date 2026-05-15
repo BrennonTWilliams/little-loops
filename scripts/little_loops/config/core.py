@@ -7,6 +7,7 @@ point that loads ll-config.json and exposes all domain configs via properties.
 from __future__ import annotations
 
 import json
+import os
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,6 +33,7 @@ from little_loops.parallel.types import ParallelConfig
 
 CONFIG_FILENAME = "ll-config.json"
 CONFIG_DIR = ".ll"
+CODEX_CONFIG_DIR = ".codex"
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -64,24 +66,50 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
     return result
 
 
+def _config_candidates(project_root: Path, *, host: str | None, state_dir: str | None) -> list[Path]:
+    """Return the ordered list of ``ll-config.json`` candidate paths to probe.
+
+    Default order (no host env vars set): ``.ll/ll-config.json`` then
+    root-level ``ll-config.json`` — preserves the historical behavior of
+    :func:`resolve_config_path` before host-aware probing was added.
+
+    When ``host == "codex"`` or ``state_dir == ".codex"`` (FEAT-957),
+    ``.codex/ll-config.json`` is prepended so Codex CLI projects pick up
+    their host-specific config before falling through to the default
+    candidates. Other host values pass through unchanged.
+
+    Future hosts (e.g. FEAT-992 Pi) add a new branch here rather than a
+    new code path elsewhere.
+    """
+    candidates: list[Path] = []
+    if host == "codex" or state_dir == CODEX_CONFIG_DIR:
+        candidates.append(project_root / CODEX_CONFIG_DIR / CONFIG_FILENAME)
+    candidates.append(project_root / CONFIG_DIR / CONFIG_FILENAME)
+    candidates.append(project_root / CONFIG_FILENAME)
+    return candidates
+
+
 def resolve_config_path(project_root: Path) -> Path | None:
     """Return the path to ``ll-config.json`` for *project_root* if found.
 
-    Python port of ``hooks/scripts/lib/common.sh:ll_resolve_config``: prefers
-    ``<root>/.ll/ll-config.json``, then falls back to a root-level
-    ``<root>/ll-config.json``. Pure lookup — does not create directories or
-    mutate global state (the bash version's ``mkdir -p .ll`` side effect is
-    intentionally dropped; callers that need ``.ll/`` to exist must create
-    it themselves).
+    Iterates an ordered candidate list (see :func:`_config_candidates`) and
+    returns the first existing file. The default order is
+    ``<root>/.ll/ll-config.json`` then ``<root>/ll-config.json`` (parity
+    with the legacy bash ``ll_resolve_config``); when ``LL_HOOK_HOST=codex``
+    or ``LL_STATE_DIR=.codex`` is set on the environment,
+    ``<root>/.codex/ll-config.json`` is probed first (FEAT-957).
 
-    Returns ``None`` if neither candidate exists.
+    Pure lookup — does not create directories or mutate global state (the
+    bash version's ``mkdir -p .ll`` side effect is intentionally dropped;
+    callers that need ``.ll/`` to exist must create it themselves).
+
+    Returns ``None`` if no candidate exists.
     """
-    ll_dir_path = project_root / CONFIG_DIR / CONFIG_FILENAME
-    if ll_dir_path.is_file():
-        return ll_dir_path
-    root_level = project_root / CONFIG_FILENAME
-    if root_level.is_file():
-        return root_level
+    host = os.environ.get("LL_HOOK_HOST")
+    state_dir = os.environ.get("LL_STATE_DIR")
+    for candidate in _config_candidates(project_root, host=host, state_dir=state_dir):
+        if candidate.is_file():
+            return candidate
     return None
 
 

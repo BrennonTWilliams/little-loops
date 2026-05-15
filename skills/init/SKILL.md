@@ -13,7 +13,7 @@ allowed-tools:
   - Bash(pip:*)
 arguments:
   - name: flags
-    description: Optional flags (--interactive, --yes, --force, --dry-run)
+    description: Optional flags (--interactive, --yes, --force, --dry-run, --codex)
     required: false
 ---
 
@@ -32,6 +32,7 @@ $ARGUMENTS
   - `--yes` - Accept all defaults without confirmation
   - `--force` - Overwrite existing configuration file
   - `--dry-run` - Preview generated configuration without writing files
+  - `--codex` - Also install the OpenAI Codex CLI hook adapter (writes `.codex/hooks.json` from the codex adapter template). Auto-enabled when `codex` is on PATH **or** a `.codex/` directory already exists in the project root. See Step 8.5.
 
 ## Process
 
@@ -43,11 +44,21 @@ INTERACTIVE=false
 YES=false
 FORCE=false
 DRY_RUN=false
+CODEX=false
 
 if [[ "$FLAGS" == *"--interactive"* ]]; then INTERACTIVE=true; fi
 if [[ "$FLAGS" == *"--yes"* ]]; then YES=true; fi
 if [[ "$FLAGS" == *"--force"* ]]; then FORCE=true; fi
 if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
+if [[ "$FLAGS" == *"--codex"* ]]; then CODEX=true; fi
+
+# Auto-detect Codex CLI when --codex was not explicitly passed:
+# either a `codex` binary on PATH or an existing `.codex/` directory.
+if [[ "$CODEX" == false ]]; then
+    if command -v codex >/dev/null 2>&1 || [ -d ".codex" ]; then
+        CODEX=true
+    fi
+fi
 
 # Validate: --interactive and --yes are mutually exclusive
 if [[ "$INTERACTIVE" == true ]] && [[ "$YES" == true ]]; then
@@ -68,6 +79,8 @@ fi
 | `--interactive --force` | Full wizard, allow overwriting existing config |
 | `--yes --force` | Accept defaults, overwrite existing config |
 | `--dry-run --force` | Preview what overwrite would produce |
+| `--codex` | Install the Codex CLI hook adapter (in addition to the default Claude Code wiring) |
+| `--codex --dry-run` | Preview the Codex hook adapter that would be written, without touching `.codex/` |
 | `--interactive --yes` | **Error** — mutually exclusive |
 
 ### 2. Check Existing Configuration
@@ -269,6 +282,7 @@ After the user confirms, check whether the configured tool commands are availabl
   [update] .claude/settings.local.json (add ll- CLI tool permissions)  # Only if user opts in
   [write]  .claude/CLAUDE.md (ll- CLI command documentation)        # Only if opted in + no existing file
   [update] .claude/CLAUDE.md (append ## little-loops CLI Commands)  # Only if opted in + existing file
+  [write]  .codex/hooks.json (Codex CLI hook adapter — SessionStart matcher=startup, PreCompact)  # Only if --codex enabled
 
 === END DRY RUN (no changes made) ===
 ```
@@ -313,6 +327,56 @@ Skip all Write, Edit, and Bash(mkdir) tool calls. Skip Steps 9, 10, 11, and 12 �
 
    Skip silently if `.ll/ll-goals.md` already exists (never overwrite).
    Track outcome: `GOALS_FILE_CREATED=true`
+
+### 8.5. Install Codex CLI Hook Adapter (Conditional)
+
+**Skip this step if** `$CODEX` is false.
+
+If `--codex` was passed (or auto-detected via `which codex` / `.codex/`
+directory), install the Codex CLI hook adapter:
+
+1. **Locate the adapter template**: read
+   `hooks/adapters/codex/hooks.json` from the little-loops plugin directory
+   (relative to `${CLAUDE_PLUGIN_ROOT}` if set, otherwise the plugin install
+   path resolved by the Read tool).
+
+2. **Substitute the plugin root**: replace the literal placeholder
+   `{{LL_PLUGIN_ROOT}}` in the template with the **absolute** path of the
+   installed little-loops plugin (the directory containing
+   `hooks/adapters/codex/`). Use an absolute path so that hooks fire
+   correctly regardless of the user's working directory at session start
+   and so that the Codex trust-hash for the command string remains stable
+   across invocations.
+
+3. **Write `.codex/hooks.json`**:
+   - **If `--dry-run` is set**: include the rendered JSON in the dry-run
+     preview block under a `--- Codex Adapter Preview (.codex/hooks.json) ---`
+     header and list `[write] .codex/hooks.json` in the actions block. Do
+     not create the directory or write the file.
+   - **Otherwise**:
+     - `mkdir -p .codex`
+     - If `.codex/hooks.json` already exists and `--force` was NOT passed:
+       skip with a warning: `Skipped: .codex/hooks.json already exists — use --force to overwrite`
+     - Otherwise: write the rendered JSON to `.codex/hooks.json`
+     - Track outcome: `CODEX_HOOKS_INSTALLED=true`
+
+4. **Print the trust-dialog warning** as the **last** line of the init
+   flow (after the completion summary in Step 12, but as a distinct
+   `[Codex]` line so it is not missed):
+
+   ```
+   [Codex] .codex/hooks.json written. Codex will show a hook-trust dialog
+   on next session start — choose "Trust All" (or "Review Hooks"). Until
+   you do, little-loops hooks will not fire (Codex silently skips
+   untrusted hooks).
+   ```
+
+   This warning is **required** by FEAT-957's trust-model UX policy:
+   untrusted hooks are silently skipped (`HookRunStatus::Untrusted`) with
+   no error and no stderr, which is the worst failure mode. The one-line
+   warning at install time prevents the support load.
+
+**Always proceed to Step 9 regardless of results.**
 
 ### 9. Update .gitignore
 
@@ -560,6 +624,7 @@ Updated: .gitignore (added state file exclusions)
 Updated: .claude/settings.local.json (added ll- CLI tool permissions)  # Only show if user opted in
 Created: .claude/CLAUDE.md (ll- CLI command documentation)             # Only show if CLAUDE_MD_CREATED=true
 Updated: .claude/CLAUDE.md (appended ## little-loops CLI Commands)     # Only show if CLAUDE_MD_UPDATED=true
+Created: .codex/hooks.json (Codex CLI hook adapter)                    # Only show if CODEX_HOOKS_INSTALLED=true
 
 Next steps:
   1. Review and customize: .ll/ll-config.json
@@ -608,6 +673,11 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 /ll:init --yes --force
 /ll:init --interactive --force
 /ll:init --dry-run --force
+
+# Install Codex CLI hook adapter alongside default config
+/ll:init --codex
+/ll:init --yes --codex
+/ll:init --codex --dry-run
 
 # Invalid: --interactive and --yes are mutually exclusive
 # /ll:init --interactive --yes  → Error

@@ -152,7 +152,7 @@ class TestConfigSchema:
         assert "host" in hooks_block["properties"]
         host = hooks_block["properties"]["host"]
         assert host["type"] == "string"
-        assert host["enum"] == ["claude-code", "opencode"]
+        assert host["enum"] == ["claude-code", "opencode", "codex"]
 
     def test_events_in_schema(self) -> None:
         """events block must be declared in config-schema.json with a transports array.

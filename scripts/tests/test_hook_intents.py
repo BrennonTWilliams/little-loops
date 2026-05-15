@@ -356,6 +356,36 @@ class TestHooksMainModule:
         assert event.intent == "session_start"
         assert os.path.realpath(event.cwd or "") == os.path.realpath(str(tmp_path))
 
+    def test_ll_hook_host_env_var_propagates_codex(self, monkeypatch, tmp_path) -> None:
+        """LL_HOOK_HOST=codex sets LLHookEvent.host on the dispatched event (FEAT-957).
+
+        Parallel of ``test_ll_hook_host_env_var_propagates`` to lock in the
+        codex value, since the Python dispatcher reads ``LL_HOOK_HOST`` and
+        the Codex adapter sets it to ``"codex"`` on the subprocess.
+        """
+        import io
+
+        from little_loops import hooks as hooks_pkg
+
+        captured: list[LLHookEvent] = []
+
+        def stub_handler(event: LLHookEvent) -> LLHookResult:
+            captured.append(event)
+            return LLHookResult(exit_code=0)
+
+        monkeypatch.setattr(hooks_pkg, "_dispatch_table", lambda: {"session_start": stub_handler})
+        monkeypatch.setenv("LL_HOOK_HOST", "codex")
+        monkeypatch.setattr(sys, "argv", ["little_loops.hooks", "session_start"])
+        monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
+
+        rc = hooks_pkg.main_hooks()
+        assert rc == 0
+        event = captured[0]
+        assert event.host == "codex"
+        assert event.intent == "session_start"
+
     def test_ll_hook_host_defaults_to_claude_code(self, monkeypatch, tmp_path) -> None:
         """Without LL_HOOK_HOST set, the host defaults to ``claude-code``."""
         import io
