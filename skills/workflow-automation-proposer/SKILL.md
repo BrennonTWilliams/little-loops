@@ -116,7 +116,7 @@ For each proposal, include actionable steps:
    Handlers live in host-agnostic core code under scripts/little_loops/hooks/ (or in a plugin's
    extension package) and are wired into _HOOK_INTENT_REGISTRY by wire_extensions().
 2. Use the appropriate host adapter under hooks/adapters/<host>/ (e.g.
-   claude-code/, opencode/) to translate the host's lifecycle event into a
+   claude-code/, opencode/, codex/) to translate the host's lifecycle event into a
    LLHookEvent and dispatch through main_hooks(); do not add direct entries to
    hooks/hooks.json for new intents.
 3. Specify the hook intent name (matches the host's event type, e.g.

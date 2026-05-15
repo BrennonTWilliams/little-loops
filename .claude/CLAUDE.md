@@ -37,7 +37,7 @@ commands/       # Slash commands (/ll:*)
 agents/         # Subagent definitions
 skills/         # Skill definitions (30 skills)
 hooks/          # Lifecycle hooks (subdivided below)
-  adapters/     # Host translation layer; one subdir per host (claude-code/, opencode/) that envelopes the host event into LLHookEvent
+  adapters/     # Host translation layer; one subdir per host (claude-code/, opencode/, codex/) that envelopes the host event into LLHookEvent
   prompts/      # Prompt-text files referenced from hooks/hooks.json entries
                 # Host-agnostic Python handlers live under scripts/little_loops/hooks/ (session_start, pre_compact, ...) and are invoked by main_hooks()
 scripts/        # Python package (little_loops)

@@ -873,6 +873,14 @@ Current Hook Configuration
   Status: exists = script path resolves  MISSING = script path not found (⚠ hook will fail)
 ```
 
+Note: the table above shows Claude Code's `hooks/hooks.json` wiring. Codex
+CLI users wire their hooks through the user-project's `.codex/hooks.json`
+(written by `/ll:init --codex`), which points at the bash adapter scripts
+under `hooks/adapters/codex/`. The display layer of `/ll:configure hooks
+show` does not currently introspect `.codex/hooks.json` — verify Codex
+hooks via `cat .codex/hooks.json` or by checking the Codex startup
+hook-trust dialog.
+
 Read `hooks/hooks.json` (plugin hooks, always present) for `[Plugin]` rows. Read `.claude/settings.json` and `.claude/settings.local.json` for `[Project]` and `[Local]` rows (may not exist — show "(none)" if absent or if `hooks` key is absent).
 
 For each hook entry, check whether the script path resolves by expanding `${CLAUDE_PLUGIN_ROOT}` or treating relative paths as relative to the project root.

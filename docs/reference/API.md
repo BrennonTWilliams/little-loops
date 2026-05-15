@@ -5609,7 +5609,7 @@ class LLHookEvent:
 
 | Field | Type | Default | Wire key | Description |
 |---|---|---|---|---|
-| `host` | `str` | *(required)* | `host` | Host agent identifier (`"claude-code"`, `"opencode"`, …). Adapters set this; the CLI reads `LL_HOOK_HOST` (default `"claude-code"`). |
+| `host` | `str` | *(required)* | `host` | Host agent identifier (`"claude-code"`, `"opencode"`, `"codex"`, …). Adapters set this; the CLI reads `LL_HOOK_HOST` (default `"claude-code"`). |
 | `intent` | `str` | `""` | `intent` | Hook intent name matching the handler module (`pre_compact`, `session_start`, …). |
 | `timestamp` | `str` | `""` | `ts` | ISO 8601 UTC. **Field name and wire key differ** — stored as `timestamp`, serialized as `ts`. |
 | `payload` | `dict[str, Any]` | `{}` | `payload` | Host-supplied event data. Schema is intent-specific. |
@@ -5684,6 +5684,7 @@ def main_hooks(argv: list[str]) -> int: ...
 **Adapter integration:**
 - Claude Code adapters (`hooks/adapters/claude-code/precompact.sh`, `session-start.sh`) invoke `python -m little_loops.hooks <intent>` directly — `LL_HOOK_HOST` defaults to `"claude-code"`.
 - The OpenCode adapter (`hooks/adapters/opencode/index.ts`) sets `LL_HOOK_HOST=opencode` before invoking the same CLI.
+- The Codex CLI adapter (`hooks/adapters/codex/session-start.sh`, `pre-compact.sh`) sets `LL_HOOK_HOST=codex` before invoking the same CLI. The `hooks.json` template restricts `SessionStart` to `"matcher": "startup"` per FEAT-957's policy (avoids re-emitting identifiers on `resume`/`clear` and minimizes trust-hash churn).
 
 ---
 

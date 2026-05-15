@@ -86,10 +86,15 @@ little-loops/
 │   │   ├── claude-code/
 │   │   │   ├── precompact.sh
 │   │   │   └── session-start.sh
-│   │   └── opencode/        # OpenCode TS plugin adapter (Bun runtime)
-│   │       ├── index.ts     # Plugin: session.created → session_start, session.compacted → pre_compact
-│   │       ├── package.json
-│   │       ├── tsconfig.json
+│   │   ├── opencode/        # OpenCode TS plugin adapter (Bun runtime)
+│   │   │   ├── index.ts     # Plugin: session.created → session_start, session.compacted → pre_compact
+│   │   │   ├── package.json
+│   │   │   ├── tsconfig.json
+│   │   │   └── README.md
+│   │   └── codex/           # Codex CLI bash adapter (Rust host, shell-command hooks)
+│   │       ├── session-start.sh  # SessionStart matcher=startup → session_start (sets LL_HOOK_HOST=codex)
+│   │       ├── pre-compact.sh    # PreCompact → pre_compact (sets LL_HOOK_HOST=codex)
+│   │       ├── hooks.json        # Template written to .codex/hooks.json by ll:init --codex
 │   │       └── README.md
 │   └── scripts/             # Hook scripts
 │       ├── check-duplicate-issue-id.sh

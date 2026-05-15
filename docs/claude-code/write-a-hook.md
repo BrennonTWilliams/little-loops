@@ -25,7 +25,7 @@ Defined in `scripts/little_loops/hooks/types.py`:
 
 | Field        | Type                | Notes                                                                            |
 | :----------- | :------------------ | :------------------------------------------------------------------------------- |
-| `host`       | `str`               | Host identifier — `"claude-code"`, `"opencode"`, etc. Set by the adapter.        |
+| `host`       | `str`               | Host identifier — `"claude-code"`, `"opencode"`, `"codex"`, etc. Set by the adapter. |
 | `intent`     | `str`               | Hook intent name (e.g. `"pre_compact"`, `"session_start"`).                      |
 | `timestamp`  | `str`               | ISO 8601 UTC; serialized to the wire key `"ts"`.                                 |
 | `payload`    | `dict[str, Any]`    | Host-supplied event data. Schema is intent-specific.                             |
@@ -175,7 +175,7 @@ flowchart LR
     ADAPTERBACK --> HOSTBACK[Host response]
 ```
 
-The two concrete adapters:
+The three concrete adapters:
 
 - **Claude Code** (`hooks/adapters/claude-code/*.sh`) — a one-line bash shim that reads stdin and pipes it through the Python dispatcher. Registered in `hooks/hooks.json` as `bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/<intent>.sh`. Does not set `LL_HOOK_HOST`, so the dispatcher defaults `LLHookEvent.host` to `"claude-code"`.
 
@@ -187,7 +187,16 @@ The two concrete adapters:
 
 - **OpenCode** (`hooks/adapters/opencode/index.ts`) — a `Bun.spawn(["python", "-m", "little_loops.hooks", intent], { cwd, env: { ...process.env, LL_HOOK_HOST: "opencode" } })` call that writes `JSON.stringify(payload)` to stdin and awaits stdout/stderr/exit. See [`hooks/adapters/opencode/README.md`](../../hooks/adapters/opencode/README.md) for the full subprocess contract, including the latency budget that gates hot-path intents.
 
-The dispatcher reads `LL_HOOK_HOST` from the environment to set `LLHookEvent.host`, defaulting to `"claude-code"` when the variable is unset (which is what the bash shim relies on).
+- **Codex CLI** (`hooks/adapters/codex/{session-start,pre-compact}.sh`) — a bash shim that exports `LL_HOOK_HOST=codex` before piping stdin into `python -m little_loops.hooks <intent>`. Registered by `/ll:init --codex` in the user project's `.codex/hooks.json` from the [`hooks.json`](../../hooks/adapters/codex/hooks.json) template. The SessionStart MatcherGroup uses `"matcher": "startup"` to avoid re-emitting identifiers on Codex's `resume`/`clear` session variants. See [`hooks/adapters/codex/README.md`](../../hooks/adapters/codex/README.md) for the trust-model and trust-hash-churn guidance.
+
+  ```bash
+  export LL_HOOK_HOST=codex
+  INPUT=$(cat)
+  echo "$INPUT" | python -m little_loops.hooks session_start
+  exit $?
+  ```
+
+The dispatcher reads `LL_HOOK_HOST` from the environment to set `LLHookEvent.host`, defaulting to `"claude-code"` when the variable is unset (which is what the Claude Code bash shim relies on).
 
 ## Testing pattern
 
@@ -304,7 +313,7 @@ You should see something like `45 Python files in /Users/you/my-hook-ext` on std
 
 - **Unknown intent → exit `1`.** If the dispatcher prints `Unknown intent: <name>. Available: ...`, your handler isn't in the dispatch table. Confirm the entry-point fence in `pyproject.toml` and re-run `pip install -e .`.
 - **Built-in shadowing.** Built-ins win on name collision (`_dispatch_table()` merge order). Avoid intent names that match those listed by `python -m little_loops.hooks unknown_intent_for_listing 2>&1`.
-- **`LL_HOOK_HOST` defaults.** The bash shim does not set this; the dispatcher defaults `LLHookEvent.host` to `"claude-code"`. The OpenCode TS adapter sets `LL_HOOK_HOST=opencode` explicitly. Don't rely on `event.host` to disambiguate hosts unless you've audited every adapter that calls your intent.
+- **`LL_HOOK_HOST` defaults.** The Claude Code bash shim does not set this; the dispatcher defaults `LLHookEvent.host` to `"claude-code"`. The OpenCode TS adapter sets `LL_HOOK_HOST=opencode` explicitly, and the Codex CLI bash shim sets `LL_HOOK_HOST=codex` explicitly. Don't rely on `event.host` to disambiguate hosts unless you've audited every adapter that calls your intent.
 - **No hot-path intents on OpenCode yet.** `tool.execute.before` / `tool.execute.after` are deferred until the OpenCode adapter's latency budget is measured. See `hooks/adapters/opencode/README.md` for the 200ms p95 / 400ms hard-limit decision rule.
 - **`stdout` writes are raw.** The dispatcher writes `result.stdout` verbatim to the host's stdout. For Claude Code's `SessionStart`, that's the merged config JSON consumed as session context. Don't `print()` inside your handler — return the bytes on `LLHookResult.stdout` instead.
 
@@ -313,5 +322,7 @@ You should see something like `45 Python files in /Users/you/my-hook-ext` on std
 - [`ll-create-extension`](../reference/CLI.md#ll-create-extension) — scaffold a new extension repo with entry-point wiring and a starter `LLTestBus` test.
 - [Automate workflows with hooks](automate-workflows-with-hooks.md) — Claude Code's hook lifecycle, matchers, and configuration scopes.
 - [`hooks/adapters/opencode/README.md`](../../hooks/adapters/opencode/README.md) — OpenCode adapter subprocess contract and event-to-intent mapping.
+- [`hooks/adapters/codex/README.md`](../../hooks/adapters/codex/README.md) — Codex CLI adapter subprocess contract, event-to-intent mapping, and trust-model note.
+- [`docs/reference/HOST_COMPATIBILITY.md`](../reference/HOST_COMPATIBILITY.md) — host parity matrix (which intents are wired where).
 - [`scripts/little_loops/hooks/types.py`](../../scripts/little_loops/hooks/types.py) — `LLHookEvent` / `LLHookResult` dataclasses (wire-format source of truth).
 - [`scripts/little_loops/extension.py`](../../scripts/little_loops/extension.py) — `LLHookIntentExtension` Protocol and the `wire_extensions()` discovery flow.

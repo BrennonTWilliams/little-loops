@@ -628,11 +628,11 @@ Toggle verbose mode with `Ctrl+O` to see hook output in the transcript, or run `
 
 ## Adapter flow for little-loops hooks
 
-little-loops ships a host-agnostic hook layer so you can author a hook once in Python and run it from Claude Code, OpenCode, or any other agent host that has an adapter. The host event flows through a thin adapter (a bash shim for Claude Code, a TypeScript plugin for OpenCode) into the Python dispatcher, the dispatcher routes to a handler, and the handler's `LLHookResult` flows back out:
+little-loops ships a host-agnostic hook layer so you can author a hook once in Python and run it from Claude Code, OpenCode, Codex CLI, or any other agent host that has an adapter. The host event flows through a thin adapter (a bash shim for Claude Code and Codex CLI, a TypeScript plugin for OpenCode) into the Python dispatcher, the dispatcher routes to a handler, and the handler's `LLHookResult` flows back out:
 
 ```mermaid
 flowchart LR
-    HOST[Host event<br/>Claude Code or OpenCode] --> ADAPTER[Adapter<br/>bash shim or TS plugin]
+    HOST[Host event<br/>Claude Code, OpenCode, or Codex] --> ADAPTER[Adapter<br/>bash shim or TS plugin]
     ADAPTER --> SUBPROC[python -m little_loops.hooks &lt;intent&gt;]
     SUBPROC --> MAIN[main_hooks dispatch]
     MAIN --> HANDLER[handle&#40;event&#41;]

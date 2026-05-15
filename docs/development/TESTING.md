@@ -820,9 +820,11 @@ import pytest
 def run_hook_intent():
     """Invoke a hook intent through the host-agnostic dispatcher.
 
-    Mirrors how `hooks/adapters/claude-code/<event>.sh` and
-    `hooks/adapters/opencode/index.ts` call into `little_loops.hooks`.
-    Flip the `host` argument to reproduce each adapter's `LL_HOOK_HOST`.
+    Mirrors how `hooks/adapters/claude-code/<event>.sh`,
+    `hooks/adapters/opencode/index.ts`, and
+    `hooks/adapters/codex/<event>.sh` call into `little_loops.hooks`.
+    Flip the `host` argument to reproduce each adapter's `LL_HOOK_HOST`
+    (e.g. `"claude-code"`, `"opencode"`, `"codex"`).
     """
 
     def _run(intent: str, payload: dict, host: str = "claude-code") -> subprocess.CompletedProcess:
