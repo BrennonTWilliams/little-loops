@@ -6222,7 +6222,7 @@ class LLHookIntentExtension(Protocol):
 **Behavior:**
 - `wire_extensions()` calls `_register_hook_intents(ext.provided_hook_intents())` for each extension that implements the Protocol, merging the result into the module-level `_HOOK_INTENT_REGISTRY` in `little_loops.hooks`.
 - Duplicate intent names **across extensions** raise `ValueError` at wire time — first-loaded wins is not the policy; collisions are an error.
-- Built-in intents (`pre_compact`, `session_start`) shadow extension-registered intents on collision: `_dispatch_table()` returns `{**_HOOK_INTENT_REGISTRY, **built_ins}`, so a built-in always wins.
+- Built-in intents (`pre_compact`, `session_start`, `user_prompt_submit`, `post_tool_use`, `pre_tool_use`) shadow extension-registered intents on collision: `_dispatch_table()` returns `{**_HOOK_INTENT_REGISTRY, **built_ins}`, so a built-in always wins.
 - The same `little_loops.extensions` entry-point group used for `LLExtension` also discovers `LLHookIntentExtension` providers (per FEAT-1116 Decision 2 — single shared group; FEAT-1117 group-split is deferred). See [Configuration → `extensions`](CONFIGURATION.md#extensions).
 
 **Usage:**

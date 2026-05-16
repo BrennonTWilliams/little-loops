@@ -36,6 +36,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/codex/post-tool-use.sh",
+            "timeout": 5,
+            "statusMessage": "Recording tool use..."
+          }
+        ]
+      }
     ]
   }
 }

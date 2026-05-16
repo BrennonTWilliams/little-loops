@@ -31,8 +31,8 @@ Ensure `little_loops` is installed in the Python interpreter on `PATH`
 | `SessionStart`                 | `session_start` | `python -m little_loops.hooks session_start`   | Implemented |
 | `PreCompact`                   | `pre_compact`   | `python -m little_loops.hooks pre_compact`     | Implemented |
 | `PostCompact`                  | —               | —                                              | Deferred — no concrete consumer in ll today; `pre_compact` performs all compact-time cleanup |
-| `PreToolUse`                   | —               | —                                              | Deferred (hot-path) |
-| `PostToolUse`                  | —               | —                                              | Deferred (hot-path) |
+| `PreToolUse`                   | `pre_tool_use` (opt-in) | `python -m little_loops.hooks pre_tool_use`   | Opt-in — handler registered; not wired in `hooks.json` by default (FEAT-1489) |
+| `PostToolUse`                  | `post_tool_use` | `python -m little_loops.hooks post_tool_use`   | Implemented (fire-and-forget via ≤5s timeout) |
 | `UserPromptSubmit`             | `user_prompt_submit` | `python -m little_loops.hooks user_prompt_submit` | Implemented |
 | `PermissionRequest`            | —               | —                                              | Deferred — hook can return `allow`/`deny`; no current consumer |
 | `Stop`                         | —               | —                                              | Deferred |
@@ -74,6 +74,53 @@ var, the dispatcher defaults to `host="claude-code"`.
 adapter surfaces stderr to the Codex console but does not treat exit codes
 `0` or `2` as failure.
 
+### Fire-and-Forget Pattern (`post-tool-use.sh`)
+
+`post-tool-use.sh` follows the same 4-line blocking shim shape as its
+siblings (`session-start.sh`, `pre-compact.sh`, `prompt-submit.sh`) — it
+does **not** background the Python invocation with `&` / `disown`. Instead,
+fire-and-forget semantics are achieved through:
+
+1. A no-op handler that returns in ≪200ms p95 (validated by
+   `scripts/tests/bench_opencode_adapter.py`).
+2. A short (≤5s) `timeout` in `hooks.json`, which is never reached in
+   practice given handler speed.
+
+This keeps the adapter shell-script layer uniform: every script is a
+blocking shim, every script is testable with the same sentinel-file
+pattern in `scripts/tests/test_codex_adapter.py`. The blocking-with-short-
+timeout approach was selected over `&`/`disown` because it avoids
+introducing a backgrounded subprocess pattern that has no other
+representative in the adapter layer.
+
+### Opt-in: `PreToolUse`
+
+`hooks.json` deliberately omits a `PreToolUse` entry. The Python handler
+(`pre_tool_use`) is registered with the dispatcher, and a `pre-tool-use.sh`
+shim *would* be a trivial sibling of `post-tool-use.sh` — but firing on
+every tool invocation by default would add ~10ms per tool call (measured
+cold-start p95) and would invalidate the Codex trust hash for every
+existing user. Users who want pre-tool-use observability opt in by
+adding the entry manually:
+
+```json
+"PreToolUse": [
+  {
+    "hooks": [
+      {
+        "type": "command",
+        "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/codex/pre-tool-use.sh",
+        "timeout": 5,
+        "statusMessage": "Checking tool call..."
+      }
+    ]
+  }
+]
+```
+
+Then create `pre-tool-use.sh` as a sibling shim invoking the
+`pre_tool_use` intent. After the edit, Codex will prompt for re-trust.
+
 > **Codex non-zero exit semantics**: Codex logs a non-zero hook exit as
 > `HookRunStatus::Failed` and continues the session. To deliberately abort
 > a session from a hook, exit `0` and return `{"continue": false,
@@ -103,6 +150,8 @@ For ll the keys are:
 ```
 file:<project>/.codex/hooks.json:session_start:0:0
 file:<project>/.codex/hooks.json:pre_compact:0:0
+file:<project>/.codex/hooks.json:user_prompt_submit:0:0
+file:<project>/.codex/hooks.json:post_tool_use:0:0
 ```
 
 The trusted hash lives in the **user-level** `~/.codex/config.toml`, not the
@@ -147,8 +196,9 @@ issue — do not silently expand `LL_STATE_DIR`'s reach here.
 
 The Python-side integration test at
 `scripts/tests/test_codex_adapter.py` exercises this adapter end-to-end via
-`bash hooks/adapters/codex/session-start.sh`. It is automatically skipped
-if `bash` is not available on `PATH`.
+`bash hooks/adapters/codex/session-start.sh` (and the sibling shims for
+`pre-compact`, `prompt-submit`, `post-tool-use`). It is automatically
+skipped if `bash` is not available on `PATH`.
 
 ## Related
 

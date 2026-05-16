@@ -316,6 +316,55 @@ class TestHooksMainModule:
         # No config in tmp_path → the "No config found" reminder is emitted on stdout.
         assert "No config found" in result.stdout
 
+    def test_dispatch_post_tool_use_happy_path(self, tmp_path) -> None:
+        """``post_tool_use`` intent runs the no-op handler and exits 0 (FEAT-1489).
+
+        Mirrors ``test_dispatch_session_start_happy_path``: the handler is a
+        no-op baseline returning ``LLHookResult(exit_code=0)`` so subprocess
+        invocation exits 0 with no stdout or stderr.
+        """
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "post_tool_use"],
+            input=json.dumps(
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "ls"},
+                    "tool_response": {"exit_code": 0},
+                }
+            ),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0, (
+            f"returncode={result.returncode}; stderr={result.stderr!r}"
+        )
+        # No-op handler — neither stdout nor stderr are written.
+        assert result.stdout == ""
+        assert result.stderr == ""
+
+    def test_dispatch_pre_tool_use_happy_path(self, tmp_path) -> None:
+        """``pre_tool_use`` intent runs the opt-in no-op handler and exits 0 (FEAT-1489).
+
+        The handler is registered for dispatch but not invoked by any default
+        host wiring — users opt in via host config. The CLI path is exercised
+        here to confirm the dispatcher table includes it.
+        """
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "pre_tool_use"],
+            input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}}),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0, (
+            f"returncode={result.returncode}; stderr={result.stderr!r}"
+        )
+        assert result.stdout == ""
+        assert result.stderr == ""
+
     def test_dispatch_unknown_intent(self) -> None:
         """Unknown intent name exits non-zero with an error message on stderr."""
         result = subprocess.run(

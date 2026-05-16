@@ -23,20 +23,31 @@ into `LLHookEvent` payloads.
 | `session_start`      | ✓           | ✓             | ✓ (matcher=`startup`) |
 | `pre_compact`        | ✓           | ✓             | ✓             |
 | `user_prompt_submit` | ✓           | (deferred)    | ✓             |
-| `pre_tool_use`       | ✓           | (deferred)[^hot] | (deferred)[^hot] |
-| `post_tool_use`      | ✓           | (deferred)[^hot] | (deferred)[^hot] |
+| `pre_tool_use`       | ✓           | (opt-in)[^hot]   | (opt-in)[^hot]   |
+| `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] |
 | `stop`               | ✓           | (deferred)    | (deferred)    |
 | `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] |
 | `permission_request` | N/A         | N/A           | (deferred)    |
 
 [^hot]: Hot-path intents (`pre_tool_use` / `post_tool_use`) fire on every
     tool invocation and require a latency budget. Research decision
-    (FEAT-1488, `thoughts/research/hot-path-hook-intents.md`): wire
-    `post_tool_use` as fire-and-forget (no blocking, zero user-visible
-    overhead); benchmark cold-start p95 before wiring `pre_tool_use` as
-    a blocking handler. A sidecar (`UnixSocketTransport` pattern) is
-    viable if p95 ≥ 400ms but is deferred until the benchmark confirms
-    it's needed. Implementation: FEAT-1489.
+    (FEAT-1488, `thoughts/research/hot-path-hook-intents.md`), executed
+    by FEAT-1489:
+    - `post_tool_use` is wired fire-and-forget on both hosts. OpenCode
+      invokes `spawnIntent` without `await`. Codex uses a 4-line blocking
+      shim with a 5s timeout; fire-and-forget is achieved through handler
+      speed (no-op p95 well below the timeout) rather than shell
+      backgrounding.
+    - `pre_tool_use` is opt-in: the Python handler is registered and the
+      adapter scripts are available, but the host event mappings
+      (`tool.execute.before` for OpenCode, `PreToolUse` for Codex) are
+      *not* enabled by default. Users opt in by editing host config —
+      see the adapter READMEs.
+    - Measured cold-start p95 (OpenCode adapter, 30 sequential
+      invocations on dev hardware): **≈10ms** for both `session_start`
+      and `pre_compact`, well below the 200ms target. The
+      `UnixSocketTransport` sidecar (viable if p95 ≥ 400ms) is not
+      required and remains deferred.
 
 [^postcompact]: Codex's `PostCompact` event has the same payload shape as
     `PreCompact`, but ll's existing `pre_compact` handler performs all

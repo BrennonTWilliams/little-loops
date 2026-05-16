@@ -9,12 +9,14 @@
  * LLHookEvent with host="opencode".
  *
  * MVP scope: session.created → session_start, session.compacted → pre_compact.
- * Hot-path events (tool.execute.before/after) are deferred per FEAT-1116
- * Decision 3 until latency is measured — see README.md.
+ * tool.execute.after → post_tool_use is wired as fire-and-forget (no `await`
+ * on spawnIntent) per FEAT-1489 — zero user-visible latency cost.
+ * tool.execute.before is still deferred (blocking pre-tool requires a
+ * cold-start budget that has not yet been measured; see README.md).
  */
 import type { Plugin } from "@opencode-ai/plugin";
 
-type Intent = "session_start" | "pre_compact";
+type Intent = "session_start" | "pre_compact" | "post_tool_use";
 
 interface SpawnResult {
   stdout: string;
@@ -67,6 +69,12 @@ const plugin: Plugin = async (ctx) => ({
     if (exitCode !== 0 && exitCode !== 2) {
       throw new Error(stderr || `pre_compact failed with exit ${exitCode}`);
     }
+  },
+  "tool.execute.after": async (input: unknown) => {
+    // Fire-and-forget: do NOT await the spawned Promise. Stderr / exit code
+    // are intentionally dropped — the handler is a no-op baseline today and
+    // any future consumer must tolerate observational-only semantics.
+    void spawnIntent("post_tool_use", input, ctx.cwd);
   },
 });
 

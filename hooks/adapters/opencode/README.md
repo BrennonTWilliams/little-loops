@@ -38,14 +38,31 @@ The adapter resolves `python` from the ambient `PATH`. Ensure
 | -------------------- | --------------- | ---------------------------------------------- |
 | `session.created`    | `session_start` | `python -m little_loops.hooks session_start`   |
 | `session.compacted`  | `pre_compact`   | `python -m little_loops.hooks pre_compact`     |
-| `tool.execute.before`| (deferred)      | —                                              |
-| `tool.execute.after` | (deferred)      | —                                              |
+| `tool.execute.before`| `pre_tool_use` (opt-in) | `python -m little_loops.hooks pre_tool_use` — handler is registered but the adapter does **not** wire `tool.execute.before` by default |
+| `tool.execute.after` | `post_tool_use` | `python -m little_loops.hooks post_tool_use` — invoked fire-and-forget (no `await` on the spawned Promise) |
 | `session.idle`       | (deferred)      | —                                              |
 | `tui.prompt.append`  | (deferred)      | —                                              |
 
-Hot-path events (`tool.execute.before/after`) are deferred per
-[FEAT-1116 Decision 3](../../../.issues/completed/P3-FEAT-1116-hook-intent-abstraction-layer.md)
-until end-to-end latency is measured (see below).
+`tool.execute.after` is wired fire-and-forget per FEAT-1489: `spawnIntent`
+is called without `await`, so the OpenCode tool path never blocks on the
+Python handler. Stderr and exit code are dropped — any future consumer must
+tolerate observational-only semantics.
+
+`tool.execute.before` is intentionally **not** wired by default. The
+Python handler (`pre_tool_use`) is available, and the cold-start budget
+(≈10ms p95, see below) makes a blocking pre-tool handler viable, but
+adding a synchronous wait to every tool invocation by default is opt-in.
+To opt in, add the following alongside the existing handlers in `index.ts`:
+
+```ts
+"tool.execute.before": async (input: unknown) => {
+  const { stderr, exitCode } = await spawnIntent("pre_tool_use", input, ctx.cwd);
+  if (stderr) console.error(stderr);
+  if (exitCode !== 0 && exitCode !== 2) {
+    throw new Error(stderr || `pre_tool_use failed with exit ${exitCode}`);
+  }
+},
+```
 
 ## Host Identification
 
@@ -68,29 +85,33 @@ the dispatcher defaults to `host="claude-code"`.
 adapter surfaces stderr to the OpenCode console but does not throw for
 exit codes `0` or `2`.
 
-## Latency Target (Pre-Hot-Path Gate)
-
-Before any future issue adds hot-path intents (`tool.execute.before/after`),
-this adapter must satisfy the latency budget below. The current MVP scope
-(`session_start`, `session.compacted`) is invoked at most once per session and
-is not latency-sensitive.
+## Latency Target
 
 - **Target:** end-to-end `Bun.spawn → python interpreter cold start → handler
-  → exit` ≤ **200 ms p95** on dev hardware. This is an initial target; refine
-  by measurement before promoting it to a hard limit.
-- **Method:** a benchmark script at
-  `scripts/tests/bench_opencode_adapter.py` (to be added by the hot-path
-  follow-up issue) times **100 sequential invocations** of each intent and
-  reports min / median / p95 / max in milliseconds. Run from the project
-  root with `bun install` already complete.
+  → exit` ≤ **200 ms p95** on dev hardware.
+- **Method:** the benchmark script at
+  `scripts/tests/bench_opencode_adapter.py` times sequential invocations of
+  each intent and reports min / median / p95 / max in milliseconds. Run from
+  the project root with `bun install` already complete.
 - **Decision rule:** if measured p95 exceeds the target by **2×** (i.e.
   ≥ 400 ms), a follow-up issue must propose a **persistent sidecar**
   (long-lived Python process the adapter talks to over IPC) **before**
-  hot-path intents are wired.
+  any new blocking hot-path intent is wired.
 
-Until the benchmark has been run and the p95 figure recorded here in this
-README, hot-path event handlers (`tool.execute.before` / `tool.execute.after`)
-**must not** be added to the plugin's handler map.
+### Measured (FEAT-1489, 2026-05-16)
+
+30 sequential invocations on dev hardware (macOS, Apple Silicon):
+
+| Intent          | min   | median | p95   | max   | n  |
+| --------------- | ----- | ------ | ----- | ----- | -- |
+| `session_start` | 7.9ms | 8.5ms  | 9.8ms | 61.2ms | 30 |
+| `pre_compact`   | 8.1ms | 8.5ms  | 9.3ms | 9.7ms | 30 |
+
+**Verdict:** p95 ≈ 10ms ≪ 200ms target. Cold-start is acceptable; the
+sidecar is not required. `post_tool_use` is wired fire-and-forget;
+`pre_tool_use` is registered for opt-in. Re-run the benchmark whenever
+the adapter shape, Bun version, or Python startup path changes
+materially.
 
 ## Smoke Test
 
