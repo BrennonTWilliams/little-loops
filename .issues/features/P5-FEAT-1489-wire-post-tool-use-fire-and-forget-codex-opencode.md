@@ -110,6 +110,28 @@ If p95 < 200ms:
 If p95 ≥ 400ms:
 - File new issue: implement `UnixSocketTransport`-based sidecar for `pre_tool_use`
 
+### Dependent Files (Callers/Importers)
+
+- `scripts/little_loops/hooks/__init__.py` — `_dispatch_table()` and `main_hooks()` call all handler modules; any caller of `main_hooks` indirectly depends on new handler
+- `hooks/adapters/codex/hooks.json` — trust-hash changes require user re-trust; document in PR
+
+### Similar Patterns
+
+- `scripts/little_loops/hooks/session_start.py` — handler module pattern to follow for `post_tool_use.py`
+- `hooks/adapters/codex/prompt-submit.sh` — adapter shell script pattern for `post-tool-use.sh`
+- `hooks/adapters/opencode/index.ts` existing intent handlers — `spawnIntent` pattern for `tool.execute.after`
+- `scripts/tests/test_hook_session_start.py` — test pattern for new `test_hook_post_tool_use.py`
+
+### Documentation
+
+- `docs/reference/HOST_COMPATIBILITY.md` — `post_tool_use` parity cells and `[^hot]` footnote
+- `hooks/adapters/opencode/README.md` — `## Latency Target` section for p95 benchmark result
+- `hooks/adapters/codex/hooks.json` — trust-hash re-trust note for PR description
+
+### Configuration
+
+- `hooks/adapters/codex/hooks.json` — adding `PostToolUse` matcher triggers trust-hash invalidation; users must re-trust
+
 ## Impact
 
 - **Priority**: P5 — no current consumer; unblocking future work
@@ -117,7 +139,17 @@ If p95 ≥ 400ms:
 - **Risk**: Low — additive only; `PostToolUse` matcher in `hooks.json` causes user re-trust prompt (trust-hash churn); document in PR
 - **Breaking Change**: No (hook trust prompt is not a breaking change, it's expected)
 
-## Related
+## Implementation Steps
+
+1. Create `post_tool_use.py` handler module following `session_start.py` pattern
+2. Register handler in `_dispatch_table()` and update `_USAGE` string in `hooks/__init__.py`
+3. Wire Codex adapter — fire-and-forget shell script + `PostToolUse` matcher in `hooks.json`
+4. Wire OpenCode adapter — `tool.execute.after` handler in `index.ts`, `spawnIntent` without awaiting exit
+5. Run benchmark script; record p95 in `hooks/adapters/opencode/README.md ## Latency Target`
+6. Decision gate: wire `pre_tool_use` opt-in (p95 < 200ms) OR file sidecar issue (p95 ≥ 400ms)
+7. Flip `post_tool_use` parity cells in `HOST_COMPATIBILITY.md`; update `[^hot]` footnote with measured p95
+
+## Related Key Documentation
 
 - Parent epic: EPIC-1463
 - Research spike: FEAT-1488 (`thoughts/research/hot-path-hook-intents.md`)
@@ -126,3 +158,11 @@ If p95 ≥ 400ms:
 ## Labels
 
 codex, opencode, host-compat, hooks
+
+## Status
+
+**Open** | Created: 2026-05-16 | Priority: P5
+
+
+## Session Log
+- `/ll:format-issue` - 2026-05-16T03:45:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0311cf7-493f-4a79-bc9d-67419d002020.jsonl`
