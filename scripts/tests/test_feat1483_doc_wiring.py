@@ -34,6 +34,35 @@ class TestHostCompatibilityCodexSkills:
             "HOST_COMPATIBILITY.md must reference FEAT-1483 in the tracking issues section"
         )
 
+    def test_slash_command_row_marked_supported(self) -> None:
+        """After FEAT-1493 lands, the Slash-command discovery row for Codex
+        must show ✓ (commands bridged via `ll-adapt-skills-for-codex`).
+        """
+        content = HOST_COMPAT.read_text()
+        slash_rows = [
+            line for line in content.splitlines() if line.startswith("| Slash-command discovery")
+        ]
+        assert slash_rows, (
+            "HOST_COMPATIBILITY.md is missing the 'Slash-command discovery' row"
+        )
+        row = slash_rows[0]
+        # The Codex (last) cell must contain ✓, not ✗
+        codex_cell = row.rsplit("|", 2)[1] if row.count("|") >= 4 else row
+        assert "✓" in codex_cell, (
+            "Slash-command discovery row's Codex column must be ✓ after FEAT-1493 "
+            f"(commands bridged). Got: {row!r}"
+        )
+        assert "✗" not in codex_cell, (
+            "Slash-command discovery row's Codex column still contains ✗; "
+            "FEAT-1493 should have flipped it to ✓"
+        )
+
+    def test_feat1493_tracking_reference(self) -> None:
+        content = HOST_COMPAT.read_text()
+        assert "FEAT-1493" in content, (
+            "HOST_COMPATIBILITY.md must reference FEAT-1493 once the commands bridge ships"
+        )
+
 
 class TestCodexCommandDiscoveryDoc:
     """thoughts/research/codex-command-discovery.md must exist with key content."""

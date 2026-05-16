@@ -1,0 +1,3 @@
+interface:
+  display_name: "Describe Pr"
+  short_description: "Generate comprehensive PR descriptions following repository templates"

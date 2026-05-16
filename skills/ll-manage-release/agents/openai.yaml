@@ -1,0 +1,3 @@
+interface:
+  display_name: "Manage Release"
+  short_description: "Manage releases - create git tags, generate changelogs, and manage GitHub releas"

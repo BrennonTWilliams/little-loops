@@ -212,6 +212,7 @@ skipped if `bash` is not available on `PATH`.
 - Out of scope (tracked separately): orchestration CLI abstraction
   (FEAT-1462); slash-command and skill discovery for Codex — **Codex Skills
   API is confirmed stable** (`~/.codex/skills/`); see
-  `thoughts/research/codex-command-discovery.md` (FEAT-1483) and FEAT-1486
-  (skill adaptation) / FEAT-1487 (parity matrix update); PostCompact /
-  hot-path intents
+  `thoughts/research/codex-command-discovery.md` (FEAT-1483), FEAT-1486
+  (skill adaptation), FEAT-1487 (parity matrix update), and FEAT-1493
+  (commands bridged to `skills/ll-<name>/` so `/ll:*` slash commands are
+  also Codex-discoverable); PostCompact / hot-path intents

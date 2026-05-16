@@ -1,0 +1,3 @@
+interface:
+  display_name: "Prioritize Issues"
+  short_description: "Analyze issues and prepend priority levels (P0-P5) to filenames"

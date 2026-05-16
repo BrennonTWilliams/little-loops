@@ -1,0 +1,3 @@
+interface:
+  display_name: "Tradeoff Review Issues"
+  short_description: "Evaluate active issues for utility vs complexity trade-offs and recommend which "

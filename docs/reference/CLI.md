@@ -1446,9 +1446,11 @@ ll-generate-skill-descriptions --quiet       # Suppress per-skill output
 
 ### ll-adapt-skills-for-codex
 
-Add Codex Skills API frontmatter to all `skills/*/SKILL.md` files and create the accompanying `agents/openai.yaml` metadata file per skill directory.
+Adapt ll's `skills/*/SKILL.md` files for the Codex Skills API **and** bridge every `commands/*.md` slash command into a Codex-discoverable `skills/ll-<name>/` entry.
 
-For each skill, inserts `name:` (the directory slug) and `metadata.short-description:` (first line of the existing `description:` field, ≤80 chars) into the SKILL.md frontmatter, and creates `agents/openai.yaml` with `display_name` and `short_description` under an `interface:` block. Uses targeted string manipulation — no YAML roundtrip — to preserve existing frontmatter formatting.
+**Skills adaptation (in-place).** For each `skills/<name>/SKILL.md`, inserts `name:` (the directory slug) and `metadata.short-description:` (first line of the existing `description:` field, ≤80 chars) into the SKILL.md frontmatter, and creates `agents/openai.yaml` with `display_name` and `short_description` under an `interface:` block. Uses targeted string manipulation — no YAML roundtrip — to preserve existing frontmatter formatting.
+
+**Commands bridge (synthesized).** For each `commands/<name>.md`, synthesizes a wrapper `skills/ll-<name>/SKILL.md` (with `name: ll-<name>`, the source command's `description:` copied verbatim, and a derived `metadata.short-description:`) plus a matching `agents/openai.yaml`. The `ll-` namespace prefix prevents collisions with skills sharing a base name (e.g. `commit`). Commands whose frontmatter declares `disable-model-invocation: true` are skipped, mirroring the skills-adapter contract. Multi-line descriptions are emitted as YAML block scalars so the synthesized frontmatter parses cleanly. Bridged `ll-<name>/` entries are committed in-repo and discovered by Codex via the same Skills API path as adapted real skills.
 
 Dry-run by default (previews proposed changes without modifying files).
 
@@ -1456,16 +1458,16 @@ Dry-run by default (previews proposed changes without modifying files).
 
 | Flag | Description |
 |------|-------------|
-| `--apply` | Write `name:` and `metadata.short-description:` to SKILL.md files and create `agents/openai.yaml` |
-| `--quiet` | Suppress per-skill output; only print final summary |
+| `--apply` | Write skill frontmatter updates and create bridged `skills/ll-<name>/` directories on disk |
+| `--quiet` | Suppress per-entry output; only print final summary |
 
-**Exit codes:** `0` = success (no errors), `1` = one or more skills failed or skills directory not found
+**Exit codes:** `0` = success (no errors), `1` = one or more entries failed or `skills/` directory not found
 
 **Examples:**
 ```bash
-ll-adapt-skills-for-codex            # Dry-run: preview proposed changes
-ll-adapt-skills-for-codex --apply    # Write name:, metadata:, agents/openai.yaml
-ll-adapt-skills-for-codex --quiet    # Suppress per-skill output
+ll-adapt-skills-for-codex            # Dry-run: preview proposed skill + command changes
+ll-adapt-skills-for-codex --apply    # Write frontmatter, bridge commands → skills/ll-<name>/
+ll-adapt-skills-for-codex --quiet    # Suppress per-entry output
 ```
 
 ---

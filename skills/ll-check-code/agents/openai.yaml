@@ -1,0 +1,3 @@
+interface:
+  display_name: "Check Code"
+  short_description: "Run code quality checks (lint, format, types, build)"

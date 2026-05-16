@@ -1,0 +1,3 @@
+interface:
+  display_name: "Normalize Issues"
+  short_description: "Find and fix issue filenames with missing or duplicate IDs across types (e.g., B"

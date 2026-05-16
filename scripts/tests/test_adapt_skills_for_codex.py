@@ -10,7 +10,9 @@ from little_loops.cli.adapt_skills_for_codex import (
     _extract_short_desc,
     _insert_fields,
     _make_openai_yaml,
+    _process_commands,
     _process_skills,
+    _synthesized_skill_md,
     _title_case,
     main_adapt_skills_for_codex,
 )
@@ -28,6 +30,20 @@ def _make_skill(
     skill_md = skill_dir / "SKILL.md"
     skill_md.write_text(f"---\ndescription: {description}\n{extra_frontmatter}---\n\n{body}")
     return skill_md
+
+
+def _make_command(
+    tmp_path: Path,
+    name: str,
+    description: str = "Use when user asks for stuff.",
+    extra_frontmatter: str = "",
+    body: str = "# My Command\n\nDoes stuff.",
+) -> Path:
+    commands_dir = tmp_path / "commands"
+    commands_dir.mkdir(parents=True, exist_ok=True)
+    cmd_md = commands_dir / f"{name}.md"
+    cmd_md.write_text(f"---\ndescription: {description}\n{extra_frontmatter}---\n\n{body}")
+    return cmd_md
 
 
 def _make_skill_block_scalar(tmp_path: Path, name: str) -> Path:
@@ -408,5 +424,287 @@ class TestRealSkillsIntegrationGuard:
             openai_yaml = skill_md.parent / "agents" / "openai.yaml"
             assert openai_yaml.exists(), (
                 f"skills/{skill_name}/agents/openai.yaml missing. "
+                "Run: ll-adapt-skills-for-codex --apply"
+            )
+
+
+# =============================================================================
+# _synthesized_skill_md
+# =============================================================================
+
+
+class TestSynthesizedSkillMd:
+    def test_contains_namespaced_name(self) -> None:
+        result = _synthesized_skill_md("check-code", "Run code quality checks.")
+        assert "name: ll-check-code\n" in result
+
+    def test_contains_description_verbatim(self) -> None:
+        desc = "Run code quality checks (lint, format, types, build)"
+        result = _synthesized_skill_md("check-code", desc)
+        assert f"description: {desc}\n" in result
+
+    def test_contains_metadata_short_description(self) -> None:
+        result = _synthesized_skill_md("check-code", "Run code quality checks.")
+        assert "metadata:\n  short-description: Run code quality checks.\n" in result
+
+    def test_short_description_truncated_to_80(self) -> None:
+        long_desc = "A" * 200
+        result = _synthesized_skill_md("foo", long_desc)
+        # extract the short-description line
+        for line in result.splitlines():
+            if line.strip().startswith("short-description:"):
+                short = line.split("short-description:", 1)[1].strip()
+                assert len(short) == 80
+                break
+        else:
+            raise AssertionError("short-description line missing")
+
+    def test_body_references_source_command(self) -> None:
+        result = _synthesized_skill_md("check-code", "Run code quality checks.")
+        assert "commands/check-code.md" in result
+
+
+# =============================================================================
+# _process_commands
+# =============================================================================
+
+
+class TestProcessCommands:
+    def test_dry_run_does_not_write_files(self, tmp_path: Path) -> None:
+        _make_command(tmp_path, "check-code")
+        (tmp_path / "skills").mkdir()
+
+        adapted, skipped, errors = _process_commands(
+            tmp_path / "commands", tmp_path / "skills", apply=False, quiet=True
+        )
+
+        assert adapted == 1
+        assert skipped == 0
+        assert errors == 0
+        assert not (tmp_path / "skills" / "ll-check-code").exists()
+
+    def test_apply_writes_namespaced_skill_md(self, tmp_path: Path) -> None:
+        _make_command(tmp_path, "check-code", description="Run quality checks.")
+        (tmp_path / "skills").mkdir()
+
+        _process_commands(
+            tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True
+        )
+
+        out_md = tmp_path / "skills" / "ll-check-code" / "SKILL.md"
+        assert out_md.exists()
+        content = out_md.read_text()
+        assert "name: ll-check-code" in content
+        assert "description: Run quality checks." in content
+        assert "short-description: Run quality checks." in content
+
+    def test_apply_writes_namespaced_openai_yaml(self, tmp_path: Path) -> None:
+        _make_command(tmp_path, "check-code", description="Run quality checks.")
+        (tmp_path / "skills").mkdir()
+
+        _process_commands(
+            tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True
+        )
+
+        openai_yaml = tmp_path / "skills" / "ll-check-code" / "agents" / "openai.yaml"
+        assert openai_yaml.exists()
+        content = openai_yaml.read_text()
+        assert 'display_name: "Check Code"' in content
+        assert 'short_description: "Run quality checks."' in content
+
+    def test_namespace_prefix_avoids_collision(self, tmp_path: Path) -> None:
+        # A skill and a command share a base name "commit"; the command must
+        # be installed under ll-commit to avoid colliding with skills/commit/.
+        _make_command(tmp_path, "commit", description="Create git commit.")
+        skill_dir = tmp_path / "skills" / "commit"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: commit\ndescription: Existing skill.\n---\n# Skill\n"
+        )
+
+        _process_commands(
+            tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True
+        )
+
+        # Original skill untouched
+        assert (tmp_path / "skills" / "commit" / "SKILL.md").read_text().startswith(
+            "---\nname: commit\n"
+        )
+        # Command installed at ll-commit
+        assert (tmp_path / "skills" / "ll-commit" / "SKILL.md").exists()
+
+    def test_name_derived_from_stem_not_dir(self, tmp_path: Path) -> None:
+        _make_command(tmp_path, "scan-codebase", description="Scan it.")
+        (tmp_path / "skills").mkdir()
+
+        _process_commands(
+            tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True
+        )
+
+        content = (tmp_path / "skills" / "ll-scan-codebase" / "SKILL.md").read_text()
+        assert "name: ll-scan-codebase" in content
+
+    def test_skips_already_adapted_command(self, tmp_path: Path) -> None:
+        _make_command(tmp_path, "check-code", description="Run quality checks.")
+        out_dir = tmp_path / "skills" / "ll-check-code"
+        out_dir.mkdir(parents=True)
+        (out_dir / "SKILL.md").write_text(
+            "---\nname: ll-check-code\ndescription: existing\n---\n# Body\n"
+        )
+        (out_dir / "agents").mkdir()
+        (out_dir / "agents" / "openai.yaml").write_text(
+            "interface:\n  display_name: x\n"
+        )
+
+        adapted, skipped, errors = _process_commands(
+            tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True
+        )
+
+        assert adapted == 0
+        assert skipped == 1
+        assert errors == 0
+
+    def test_skips_disable_model_invocation_command(self, tmp_path: Path) -> None:
+        _make_command(
+            tmp_path,
+            "internal-cmd",
+            description="Internal only.",
+            extra_frontmatter="disable-model-invocation: true\n",
+        )
+        (tmp_path / "skills").mkdir()
+
+        adapted, skipped, errors = _process_commands(
+            tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True
+        )
+
+        assert adapted == 0
+        assert skipped == 1
+        assert errors == 0
+        assert not (tmp_path / "skills" / "ll-internal-cmd").exists()
+
+    def test_skips_command_without_description(self, tmp_path: Path) -> None:
+        commands_dir = tmp_path / "commands"
+        commands_dir.mkdir()
+        (commands_dir / "no-desc.md").write_text(
+            "---\nargument-hint: '[x]'\n---\n# Body\n"
+        )
+        (tmp_path / "skills").mkdir()
+
+        adapted, skipped, errors = _process_commands(
+            tmp_path / "commands", tmp_path / "skills", apply=False, quiet=True
+        )
+        assert adapted == 0
+        assert skipped == 1
+        assert errors == 0
+
+    def test_missing_commands_dir_is_noop(self, tmp_path: Path) -> None:
+        (tmp_path / "skills").mkdir()
+        adapted, skipped, errors = _process_commands(
+            tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True
+        )
+        assert (adapted, skipped, errors) == (0, 0, 0)
+
+    def test_multiple_commands_all_bridged(self, tmp_path: Path) -> None:
+        for n in ["check-code", "scan-codebase", "commit"]:
+            _make_command(tmp_path, n, description=f"Do {n}.")
+        (tmp_path / "skills").mkdir()
+
+        adapted, _, errors = _process_commands(
+            tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True
+        )
+        assert adapted == 3
+        assert errors == 0
+        for n in ["check-code", "scan-codebase", "commit"]:
+            assert (tmp_path / "skills" / f"ll-{n}" / "SKILL.md").exists()
+
+
+# =============================================================================
+# Integration guard: real commands/*.md (post-apply validation)
+# =============================================================================
+
+
+class TestRealCommandsIntegrationGuard:
+    """After ll-adapt-skills-for-codex --apply, every commands/*.md must be bridged
+    to a skills/ll-<stem>/ entry with valid Codex frontmatter (unless the command
+    carries disable-model-invocation: true).
+    """
+
+    def _repo_root(self) -> Path:
+        return Path(__file__).parent.parent.parent
+
+    def _read_frontmatter(self, md_path: Path) -> dict | None:
+        import re
+
+        import yaml
+
+        text = md_path.read_text()
+        if not text.startswith("---"):
+            return None
+        m = re.search(r"\n---\s*\n", text[3:])
+        if not m:
+            return None
+        try:
+            fm = yaml.safe_load(text[3 : 3 + m.start()]) or {}
+        except Exception:
+            return None
+        return fm if isinstance(fm, dict) else None
+
+    def test_every_command_has_bridged_skill(self) -> None:
+        repo = self._repo_root()
+        commands_dir = repo / "commands"
+        skills_dir = repo / "skills"
+        if not commands_dir.exists() or not skills_dir.exists():
+            return
+
+        for cmd_md in sorted(commands_dir.glob("*.md")):
+            stem = cmd_md.stem
+            fm = self._read_frontmatter(cmd_md)
+            if fm is None:
+                continue
+            if fm.get("disable-model-invocation"):
+                continue
+            description = fm.get("description") or ""
+            if not isinstance(description, str) or not description.strip():
+                continue
+
+            bridged = skills_dir / f"ll-{stem}" / "SKILL.md"
+            assert bridged.exists(), (
+                f"skills/ll-{stem}/SKILL.md missing for commands/{stem}.md. "
+                "Run: ll-adapt-skills-for-codex --apply"
+            )
+
+    def test_every_bridged_skill_has_required_frontmatter(self) -> None:
+        repo = self._repo_root()
+        skills_dir = repo / "skills"
+        if not skills_dir.exists():
+            return
+
+        for skill_md in sorted(skills_dir.glob("ll-*/SKILL.md")):
+            stem = skill_md.parent.name.removeprefix("ll-")
+            fm = self._read_frontmatter(skill_md)
+            assert fm is not None, f"skills/ll-{stem}/SKILL.md frontmatter unparseable"
+            assert fm.get("name") == f"ll-{stem}", (
+                f"skills/ll-{stem}/SKILL.md name field is "
+                f"{fm.get('name')!r}, expected 'll-{stem}'"
+            )
+            metadata = fm.get("metadata") or {}
+            assert isinstance(metadata, dict)
+            short_desc = metadata.get("short-description", "")
+            assert short_desc, (
+                f"skills/ll-{stem}/SKILL.md missing metadata.short-description. "
+                "Run: ll-adapt-skills-for-codex --apply"
+            )
+            assert len(short_desc) <= 80
+
+    def test_every_bridged_skill_has_openai_yaml(self) -> None:
+        repo = self._repo_root()
+        skills_dir = repo / "skills"
+        if not skills_dir.exists():
+            return
+
+        for skill_md in sorted(skills_dir.glob("ll-*/SKILL.md")):
+            openai_yaml = skill_md.parent / "agents" / "openai.yaml"
+            assert openai_yaml.exists(), (
+                f"{skill_md.parent.name}/agents/openai.yaml missing. "
                 "Run: ll-adapt-skills-for-codex --apply"
             )

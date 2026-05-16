@@ -1,0 +1,3 @@
+interface:
+  display_name: "Audit Architecture"
+  short_description: "Analyze codebase architecture for patterns, organization, and improvements"

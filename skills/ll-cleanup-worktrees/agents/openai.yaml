@@ -1,0 +1,3 @@
+interface:
+  display_name: "Cleanup Worktrees"
+  short_description: "Clean orphaned git worktrees from interrupted ll-parallel runs"

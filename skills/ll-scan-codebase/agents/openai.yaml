@@ -1,0 +1,3 @@
+interface:
+  display_name: "Scan Codebase"
+  short_description: "Scan codebase to identify bugs, enhancements, and features, then create issue fi"

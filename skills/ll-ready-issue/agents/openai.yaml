@@ -1,0 +1,3 @@
+interface:
+  display_name: "Ready Issue"
+  short_description: "Analyze and validate an issue file for accuracy, utility, and completeness, then"

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Align Issues"
+  short_description: "Validate active issues against key documents for relevance and alignment"

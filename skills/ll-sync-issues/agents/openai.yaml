@@ -1,0 +1,3 @@
+interface:
+  display_name: "Sync Issues"
+  short_description: "Sync local issues with GitHub Issues (push/pull/status)."

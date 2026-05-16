@@ -1,0 +1,3 @@
+interface:
+  display_name: "Toggle Autoprompt"
+  short_description: "Toggle automatic prompt optimization settings"

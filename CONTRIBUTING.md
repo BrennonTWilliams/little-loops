@@ -472,6 +472,10 @@ When adding flag support to commands or skills, follow these conventions:
 
 Only add flags that meaningfully change command behavior. Flags are optional — commands must work unchanged without them.
 
+### After Creating a New Command
+
+Run `ll-adapt-skills-for-codex --apply` to bridge the new command into `skills/ll-<command-name>/` so Codex CLI users can discover it via the Skills API. Skipping this step will fail CI (`test_every_command_has_bridged_skill`). Commands tagged `disable-model-invocation: true` are exempt. This mirrors the New Skill Checklist step below — the same tool now handles both surfaces.
+
 ## Adding Agents
 
 Agents are defined as Markdown files in `agents/`:

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Find Dead Code"
+  short_description: "Analyze codebase for deprecated, unused, or dead code that can be safely removed"

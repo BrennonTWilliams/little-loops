@@ -1,0 +1,3 @@
+interface:
+  display_name: "Open Pr"
+  short_description: "Open a pull request for the current branch."

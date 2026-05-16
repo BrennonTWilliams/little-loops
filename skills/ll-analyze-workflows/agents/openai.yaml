@@ -1,0 +1,3 @@
+interface:
+  display_name: "Analyze Workflows"
+  short_description: "Analyze user message history to identify patterns, workflows, and automation opp"

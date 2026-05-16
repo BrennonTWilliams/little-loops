@@ -58,7 +58,7 @@ into `LLHookEvent` payloads.
 
 | Surface                  | Claude Code               | OpenCode                  | Codex CLI                 |
 | ------------------------ | ------------------------- | ------------------------- | ------------------------- |
-| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✗ — no separate slash-command surface; Skills API covers both[^cmds] |
+| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✓ — `commands/*.md` bridged to `skills/ll-<name>/SKILL.md` by `ll-adapt-skills-for-codex` (FEAT-1493)[^cmds] |
 | Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✓ — `~/.codex/skills/<name>/SKILL.md`; all ll skills adapted by `ll-adapt-skills-for-codex` (FEAT-1486)[^cmds] |
 
 [^cmds]: Codex has no `.codex/prompts/` slash-command path (that reference in
@@ -68,7 +68,10 @@ into `LLHookEvent` payloads.
     it covers both "commands" and "skills" in one mechanism. Research
     findings: `thoughts/research/codex-command-discovery.md` (FEAT-1483).
     Adaptation work: FEAT-1486 (add `name:` field + `agents/openai.yaml`
-    to ll's `skills/*/SKILL.md`; landed — all ll skills are now adapted).
+    to ll's `skills/*/SKILL.md`; landed) and FEAT-1493 (bridge
+    `commands/*.md` to `skills/ll-<name>/` entries so `/ll:*` slash
+    commands are discoverable from Codex; landed — every active command
+    is now exposed).
 
     **`disable-model-invocation` flag scope:** `ll-adapt-skills-for-codex`
     does **not** read `disable-model-invocation: true`; all 16 SKILL.md files

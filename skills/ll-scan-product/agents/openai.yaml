@@ -1,0 +1,3 @@
+interface:
+  display_name: "Scan Product"
+  short_description: "Scan codebase for product-focused issues based on goals document"

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Review Sprint"
+  short_description: "AI-guided sprint health check that analyzes a sprint's current state and suggest"

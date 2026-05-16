@@ -1,0 +1,3 @@
+interface:
+  display_name: "Help"
+  short_description: "List all available little-loops commands with descriptions"
