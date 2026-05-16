@@ -523,7 +523,9 @@ Before adding a new skill, answer:
 2. **Should the LLM route to this skill from natural language?**
    If yes → keep default (no flag). Keep the `description` field ≤ 100 characters. No bullet lists in descriptions.
 
-3. **Before release:** run `ll-verify-skill-budget` to check the total description token footprint. Exits 1 if over the 2000-token budget — shorten descriptions or tag more skills with `disable-model-invocation: true`. Then run `/doctor` and verify "0 skill descriptions dropped".
+3. **After creating a new skill:** run `ll-adapt-skills-for-codex --apply` to generate `agents/openai.yaml` alongside the `SKILL.md`. Skipping this step will fail CI (`test_all_real_skills_have_openai_yaml`). Skills tagged `disable-model-invocation: true` are exempt.
+
+4. **Before release:** run `ll-verify-skill-budget` to check the total description token footprint. Exits 1 if over the 2000-token budget — shorten descriptions or tag more skills with `disable-model-invocation: true`. Then run `/doctor` and verify "0 skill descriptions dropped".
 
 > **Optional utility:** `ll-generate-skill-descriptions` auto-generates minimal (≤100 char) descriptions from SKILL.md content using Claude (dry-run by default; use `--apply` to write back). Useful before a release to batch-refresh descriptions for LLM-discoverable skills.
 

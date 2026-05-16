@@ -1,0 +1,3 @@
+interface:
+  display_name: "Manage Issue"
+  short_description: "Use when asked to implement an issue end-to-end or start implementing FEAT-NNN"

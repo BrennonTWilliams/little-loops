@@ -383,3 +383,30 @@ class TestRealSkillsIntegrationGuard:
                 f"skills/{skill_name}/SKILL.md: metadata.short-description is "
                 f"{len(short_desc)} chars (max 80): {short_desc!r}"
             )
+
+    def test_all_real_skills_have_openai_yaml(self) -> None:
+        skills_dir = Path(__file__).parent.parent.parent / "skills"
+        if not skills_dir.exists():
+            return
+        for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
+            skill_name = skill_md.parent.name
+            text = skill_md.read_text()
+            import re
+
+            fm_end = re.search(r"\n---\s*\n", text[3:])
+            if not fm_end:
+                continue
+            fm_raw = text[3 : 3 + fm_end.start()]
+            try:
+                import yaml
+
+                fm = yaml.safe_load(fm_raw) or {}
+            except Exception:
+                continue
+            if fm.get("disable-model-invocation"):
+                continue
+            openai_yaml = skill_md.parent / "agents" / "openai.yaml"
+            assert openai_yaml.exists(), (
+                f"skills/{skill_name}/agents/openai.yaml missing. "
+                "Run: ll-adapt-skills-for-codex --apply"
+            )
