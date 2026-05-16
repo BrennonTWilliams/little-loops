@@ -309,79 +309,50 @@ class TestCmdInvokeJsonMode:
 
 
 class TestCmdCapabilities:
-    def test_returns_available_when_claude_found(
-        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    def test_emits_full_capability_report(
+        self, capsys: pytest.CaptureFixture
     ) -> None:
         args = _make_namespace(output="json")
 
         mock_version = MagicMock()
         mock_version.stdout = "claude 1.0.3\n"
 
-        (tmp_path / "skills").mkdir()
-
         with (
             patch(
                 "little_loops.cli.action.resolve_host", return_value=FakeRunner(detect_returns=True)
             ),
             patch("little_loops.cli.action.subprocess.run", return_value=mock_version),
-            patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path),
         ):
             result = cmd_capabilities(args)
 
         assert result == 0
         output = json.loads(capsys.readouterr().out)
-        assert output["available"] is True
+        assert output["host"] == "fake"
+        assert output["binary"] == "fake"
         assert output["version"] == "claude 1.0.3"
-        assert isinstance(output["supported_skills"], list)
+        assert isinstance(output["capabilities"], list)
+        assert isinstance(output["hooks"], list)
 
-    def test_returns_unavailable_when_claude_not_found(
-        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    def test_version_empty_when_host_unavailable(
+        self, capsys: pytest.CaptureFixture
     ) -> None:
         args = _make_namespace(output="json")
-        (tmp_path / "skills").mkdir()
 
         with (
             patch(
                 "little_loops.cli.action.resolve_host",
                 return_value=FakeRunner(detect_returns=False),
             ),
-            patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path),
         ):
             result = cmd_capabilities(args)
 
         assert result == 0
         output = json.loads(capsys.readouterr().out)
-        assert output["available"] is False
+        assert output["host"] == "fake"
+        assert output["version"] == ""
 
-    def test_includes_skill_names_in_supported_skills(
-        self, capsys: pytest.CaptureFixture, tmp_path: Path
-    ) -> None:
+    def test_version_empty_on_timeout(self, capsys: pytest.CaptureFixture) -> None:
         args = _make_namespace(output="json")
-        skills_dir = tmp_path / "skills"
-        for name in ["refine-issue", "confidence-check"]:
-            d = skills_dir / name
-            d.mkdir(parents=True)
-            (d / "SKILL.md").write_text(f"---\ndescription: {name} desc\n---\n")
-
-        mock_version = MagicMock()
-        mock_version.stdout = "claude 1.0.3\n"
-
-        with (
-            patch(
-                "little_loops.cli.action.resolve_host", return_value=FakeRunner(detect_returns=True)
-            ),
-            patch("little_loops.cli.action.subprocess.run", return_value=mock_version),
-            patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path),
-        ):
-            cmd_capabilities(args)
-
-        output = json.loads(capsys.readouterr().out)
-        assert "refine-issue" in output["supported_skills"]
-        assert "confidence-check" in output["supported_skills"]
-
-    def test_handles_version_timeout(self, capsys: pytest.CaptureFixture, tmp_path: Path) -> None:
-        args = _make_namespace(output="json")
-        (tmp_path / "skills").mkdir()
 
         with (
             patch(
@@ -391,13 +362,12 @@ class TestCmdCapabilities:
                 "little_loops.cli.action.subprocess.run",
                 side_effect=subprocess.TimeoutExpired("claude", 10),
             ),
-            patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path),
         ):
             result = cmd_capabilities(args)
 
         assert result == 0
         output = json.loads(capsys.readouterr().out)
-        assert output["available"] is False
+        assert output["version"] == ""
 
 
 # =============================================================================
@@ -452,9 +422,7 @@ class TestMainAction:
 
         assert result == 0
 
-    def test_capabilities_subcommand_dispatch(self, tmp_path: Path) -> None:
-        (tmp_path / "skills").mkdir()
-
+    def test_capabilities_subcommand_dispatch(self) -> None:
         mock_version = MagicMock()
         mock_version.stdout = "claude 1.0.3\n"
 
@@ -464,7 +432,6 @@ class TestMainAction:
                 "little_loops.cli.action.resolve_host", return_value=FakeRunner(detect_returns=True)
             ),
             patch("little_loops.cli.action.subprocess.run", return_value=mock_version),
-            patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path),
         ):
             result = main_action()
 

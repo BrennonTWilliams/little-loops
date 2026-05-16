@@ -5782,7 +5782,7 @@ class HostRunner(Protocol):
 - `build_blocking_json()` — argv for a one-shot invocation returning a single JSON blob. Used by FSM structured evaluators.
 - `build_version_check()` — argv that prints the host's version and exits. Used by capability probes.
 - `build_detached()` — argv for fire-and-forget detached execution. Used by FSM handoff.
-- `describe_capabilities()` — probe the host and return a `CapabilityReport` describing which features are supported. Used by `ll-doctor`.
+- `describe_capabilities()` — probe the host and return a `CapabilityReport` describing which features are supported. Used by `ll-doctor` and `ll-action`.
 
 **Concrete runners:**
 
@@ -5835,7 +5835,7 @@ class HookEntry:
 
 ### CapabilityReport
 
-Aggregated result of `describe_capabilities()`. Produced by every `HostRunner` implementation and consumed by `ll-doctor`.
+Aggregated result of `describe_capabilities()`. Produced by every `HostRunner` implementation and consumed by `ll-doctor` and `ll-action capabilities`.
 
 ```python
 @dataclass(frozen=True)

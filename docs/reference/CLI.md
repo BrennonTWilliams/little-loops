@@ -62,10 +62,24 @@ Invokes a skill and streams output as newline-delimited JSON (NDJSON) events by 
 
 #### `capabilities`
 
-Probes Claude availability and returns supported skill names. Does not invoke Claude.
+Returns the full `CapabilityReport` for the configured host. Does not invoke Claude.
 
 ```json
-{"available":true,"version":"1.0.3","supported_skills":["refine-issue","confidence-check",...]}
+{
+  "host": "claude-code",
+  "binary": "claude",
+  "version": "1.0.3",
+  "capabilities": [
+    {"name": "streaming", "status": "full", "note": ""},
+    {"name": "permission_skip", "status": "full", "note": ""},
+    {"name": "agent_select", "status": "full", "note": ""},
+    {"name": "tool_allowlist", "status": "full", "note": ""},
+    {"name": "json_schema", "status": "unsupported", "note": "..."}
+  ],
+  "hooks": [
+    {"name": "session_start", "status": "installed", "note": ""}
+  ]
+}
 ```
 
 #### `list`

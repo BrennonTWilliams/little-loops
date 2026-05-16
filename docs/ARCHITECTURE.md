@@ -572,7 +572,7 @@ FSM handoff.
 | `resolve_host()` | Discovery entry point — honors `LL_HOST_CLI` / `orchestration.host_cli` overrides, then probes `PATH` for known host binaries |
 | `HostNotConfigured` | Raised when no runner can be resolved — error includes `LL_HOST_CLI` remediation hint |
 | `CapabilityNotSupported` | `UserWarning` subclass emitted when a caller requests a capability the active host lacks |
-| `CapabilityReport` (frozen dataclass) | Structured preflight report returned by `describe_capabilities()` — holds `host`, `binary`, `version`, `capabilities`, and `hooks` |
+| `CapabilityReport` (frozen dataclass) | Structured preflight report returned by `describe_capabilities()` — holds `host`, `binary`, `version`, `capabilities`, and `hooks`; consumed by `ll-doctor` and `ll-action` |
 | `CapabilityEntry` (frozen dataclass) | One capability's name and `"full"` / `"partial"` / `"unsupported"` status |
 | `HookEntry` (frozen dataclass) | One hook's name and `"installed"` / `"registered"` / `"deferred"` / `"absent"` status |
 | `apply_host_cli_from_config()` | Reads `orchestration.host_cli` from `BRConfig` and exports it as `LL_HOST_CLI` before `resolve_host()` runs |

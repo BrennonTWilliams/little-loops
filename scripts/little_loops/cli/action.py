@@ -141,8 +141,9 @@ def cmd_capabilities(args: argparse.Namespace) -> int:
     from little_loops.cli.output import print_json
 
     runner = resolve_host()
-    available = runner.detect()
+    report = runner.describe_capabilities()
 
+    available = runner.detect()
     version = ""
     if available:
         try:
@@ -157,14 +158,19 @@ def cmd_capabilities(args: argparse.Namespace) -> int:
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             available = False
 
-    skills = _load_skills()
-    supported_skills = [s["name"] for s in skills]
-
     print_json(
         {
-            "available": available,
+            "host": report.host,
+            "binary": report.binary,
             "version": version,
-            "supported_skills": supported_skills,
+            "capabilities": [
+                {"name": c.name, "status": c.status, "note": c.note}
+                for c in report.capabilities
+            ],
+            "hooks": [
+                {"name": h.name, "status": h.status, "note": h.note}
+                for h in report.hooks
+            ],
         }
     )
     return 0
@@ -228,8 +234,8 @@ Examples:
     # capabilities subcommand
     cap_parser = subparsers.add_parser(
         "capabilities",
-        help="Check Claude availability and list supported skills",
-        description="Probe claude availability and return supported skill names as JSON",
+        help="Emit full CapabilityReport as JSON (host, binary, version, capabilities, hooks)",
+        description="Call describe_capabilities() and serialize the full CapabilityReport to JSON",
     )
     cap_parser.add_argument(
         "--output",
