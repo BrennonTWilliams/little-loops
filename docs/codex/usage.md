@@ -90,10 +90,6 @@ Only basic sandbox modes pass through to Codex. Fine-grained tool allowlist flag
 
 `CodexRunner` only supports NDJSON-encoded tool schemas. Inline dict-format `json_schema` values are not supported and will cause the tool invocation to be skipped.
 
-### `ll-doctor check`
-
-The `ll-doctor check` capability preflight command is in progress (FEAT-1496, via FEAT-1523 / FEAT-1503 / FEAT-1504). Once available, it will probe the active host binary and return a `CapabilityReport` showing which features are supported. Run `ll-doctor --help` to check the current state.
-
 ### Hook intents without consumers
 
 `stop`, `post_compact`, and `permission_request` events fire in Codex but have no little-loops consumer today. These hooks are intentionally absent from `.codex/hooks.json`.

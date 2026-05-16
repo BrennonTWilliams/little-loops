@@ -5865,7 +5865,7 @@ Protocol method implemented by every `HostRunner`. Returns a `CapabilityReport` 
 def describe_capabilities(self) -> CapabilityReport: ...
 ```
 
-Used by `ll-doctor check` to generate human-readable and JSON diagnostic output. Each runner reports only the capabilities it can probe; stubs (`OpenCodeRunner`, `PiRunner`) return `"unsupported"` for all entries.
+Used by `ll-doctor` (and `ll-doctor --json`) to generate human-readable and JSON diagnostic output. Each runner reports only the capabilities it can probe; stubs (`OpenCodeRunner`, `PiRunner`) return `"unsupported"` for all entries.
 
 ### apply_host_cli_from_config
 

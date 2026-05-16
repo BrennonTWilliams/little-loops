@@ -109,17 +109,10 @@ ll-action list
 
 Probes the active host CLI and reports which little-loops features are supported. Produces a `CapabilityReport` with one `CapabilityEntry` per capability (streaming, permission skip, agent selection, tool allowlist) and one `HookEntry` per registered hook event.
 
-**Subcommands:**
+**Flags:**
+- `-j`, `--json` — emit the `CapabilityReport` as JSON instead of the human-readable table.
 
-#### `check`
-
-Run all capability probes and print a human-readable report.
-
-```bash
-ll-doctor check
-```
-
-**Exit codes:** `0` = all capabilities full, `1` = one or more capabilities partial or unsupported
+**Exit codes:** `0` = all capabilities supported, `1` = one or more capabilities unsupported.
 
 **Example output:**
 ```
@@ -139,8 +132,8 @@ Hooks:
 
 **Examples:**
 ```bash
-ll-doctor check
-ll-doctor check --json
+ll-doctor
+ll-doctor --json
 ```
 
 ---

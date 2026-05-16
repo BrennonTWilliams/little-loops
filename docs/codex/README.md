@@ -38,7 +38,8 @@ After running `ll-adapt-skills-for-codex --apply` once, all `ll` skills and comm
 - **`stop` / `post_compact` / `permission_request`**: Codex fires these events, but little-loops has no current consumer for them. Hooks for these intents are not wired in `.codex/hooks.json` by default.
 - **`--agent` (persona selection)**: `CodexRunner` emits `CapabilityNotSupported` and silently drops the flag. See [Usage → Current Limitations](usage.md#current-limitations).
 - **`--tools` (sandbox modes)**: Partially supported; only basic sandbox modes pass through.
-- **`ll-doctor check`**: The capability preflight command is coming soon (FEAT-1496). Run `ll-doctor --help` to check the current state.
+
+Run `ll-doctor` (or `ll-doctor --json`) to see exactly which capabilities and hook intents are wired for your active host.
 
 ---
 

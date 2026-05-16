@@ -164,10 +164,11 @@ all real logic lives in `scripts/little_loops/hooks/`.
 To verify which little-loops features your active host CLI supports, run:
 
 ```bash
-ll-doctor check
+ll-doctor          # human-readable ✓/○/✗ table
+ll-doctor --json   # machine-readable CapabilityReport
 ```
 
-`ll-doctor` probes the host binary and returns a `CapabilityReport` with one entry per capability (streaming, permission skip, agent selection, tool allowlist) and per registered hook event. See [`docs/reference/CLI.md#ll-doctor`](CLI.md#ll-doctor) for full usage and [`docs/reference/API.md#capabilityreport`](API.md#capabilityreport) for the data model.
+`ll-doctor` probes the active host binary and prints a `CapabilityReport` with one entry per capability (streaming, permission skip, agent selection, tool allowlist) and per registered hook event. Exits non-zero if any capability is unsupported. See [`docs/reference/API.md#capabilityreport`](API.md#capabilityreport) for the data model.
 
 ## User onboarding
 
