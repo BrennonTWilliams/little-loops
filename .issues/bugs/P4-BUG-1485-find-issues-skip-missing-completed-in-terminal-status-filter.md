@@ -2,11 +2,18 @@
 id: BUG-1485
 type: BUG
 priority: P4
-status: open
-title: "find_issues and skip.py missing `completed` in terminal status filter"
-captured_at: "2026-05-15T22:28:07Z"
-discovered_date: "2026-05-15"
+status: done
+title: find_issues and skip.py missing `completed` in terminal status filter
+captured_at: '2026-05-15T22:28:07Z'
+completed_at: 2026-05-16T06:41:54Z
+discovered_date: '2026-05-15'
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1485: `find_issues` and `skip.py` missing `completed` in terminal status filter
@@ -42,8 +49,8 @@ The filter is incomplete. While active type-based directories currently use `sta
 ## Root Cause
 
 - **File**: `scripts/little_loops/issue_parser.py`
-- **Anchor**: `find_issues()` at line 856
-- **Cause**: `"completed"` was not included when the terminal status filter was written. The same omission is present in `scripts/little_loops/cli/issues/skip.py` at line 40.
+- **Anchor**: `find_issues()`, filter site at line 870 (the function header / docstring begin around line 856)
+- **Cause**: `"completed"` was not included when the terminal status filter was written. The same omission is present in `scripts/little_loops/cli/issues/skip.py:40` inside `cmd_skip()`. A third site, `scripts/little_loops/cli/issues/search.py:138`, has the *inverse* omission (includes `"completed"` but omits `"deferred"`), confirming the tuples drifted because they were copied independently rather than centralized.
 
 ## Steps to Reproduce
 
@@ -68,29 +75,42 @@ if issue_info.status in ("done", "cancelled", "deferred", "completed"):
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/issue_parser.py` — line 856, `find_issues()`
-- `scripts/little_loops/cli/issues/skip.py` — line 40
+- `scripts/little_loops/issue_parser.py:870` — `find_issues()` terminal-status tuple (note: the actual line is 870 in current source; issue header references 856, which is the docstring; the filter site is line 870)
+- `scripts/little_loops/cli/issues/skip.py:40` — `cmd_skip()` terminal-status guard
 
 ### Dependent Files (Callers/Importers)
-- Any caller of `find_issues()` benefits automatically (ll-auto, ll-sprint, ll-parallel, next-issue)
+- Any caller of `find_issues()` benefits automatically: `ll-auto`, `ll-sprint`, `ll-parallel`, `ll-issues next-issue`
 
 ### Similar Patterns
-- N/A
+- `scripts/little_loops/cli/issues/search.py:138` — **related but distinct inconsistency**: uses `("done", "cancelled", "completed")` and omits `"deferred"` (the inverse of this bug). Out of scope for this fix, but flagged for follow-up — the codebase has three terminal-status sites with three different tuples, and a future enhancement (see [[P2-ENH-1425-decouple-status-dependency-tools]]) should consolidate them onto a shared constant.
+- `.issues/enhancements/P2-ENH-1418-decouple-status-discovery-lifecycle-history.md:183` — open ENH that documents the "canonical inline filter" pattern with the same `("done", "cancelled", "deferred")` tuple. If this bug is fixed first, ENH-1418's canonical-pattern example should be updated to include `"completed"` so future implementers don't re-introduce the omission.
 
 ### Tests
-- `scripts/tests/` — add test fixture with `status: completed` and assert it's excluded from `find_issues()` results
+- `scripts/tests/test_issue_parser.py:1056` — `test_find_issues_skips_status_done` is the direct template for a new `test_find_issues_skips_status_completed`
+- `scripts/tests/test_issue_parser.py:1081` — `test_find_issues_skips_status_deferred` is a second template showing the same pattern for another terminal status
+- `scripts/tests/test_issues_cli.py:3328` — `test_skip_done_issue_returns_error` is the template for a new `test_skip_completed_issue_returns_error`
 
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.issues/enhancements/P2-ENH-1418-decouple-status-discovery-lifecycle-history.md:183` — contains a "canonical inline filter" example `("done", "cancelled", "deferred")` that will become stale once this fix is applied; update to include `"completed"` so future implementers don't re-introduce the omission [Agent 2 finding]
 
 ### Configuration
 - N/A
 
 ## Implementation Steps
 
-1. Edit `issue_parser.py:856` — add `"completed"` to the tuple
-2. Edit `skip.py:40` — add `"completed"` to the tuple
-3. Add a test asserting `status: completed` issues are excluded from `find_issues()` output
+1. Edit `scripts/little_loops/issue_parser.py:870` — change `("done", "cancelled", "deferred")` to `("done", "cancelled", "deferred", "completed")` inside `find_issues()`.
+2. Edit `scripts/little_loops/cli/issues/skip.py:40` — apply the same change inside `cmd_skip()`.
+3. Add `test_find_issues_skips_status_completed` in `scripts/tests/test_issue_parser.py` next to line 1056, modeled directly on `test_find_issues_skips_status_done` — same fixture shape, just `status: completed` in the frontmatter.
+4. Add `test_skip_completed_issue_returns_error` in `scripts/tests/test_issues_cli.py` next to line 3328, modeled on `test_skip_done_issue_returns_error`.
+5. Verify: `python -m pytest scripts/tests/test_issue_parser.py scripts/tests/test_issues_cli.py -v`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `.issues/enhancements/P2-ENH-1418-decouple-status-discovery-lifecycle-history.md` at the "canonical inline filter" example near line 183 — change the tuple from `("done", "cancelled", "deferred")` to `("done", "cancelled", "deferred", "completed")` so the documented pattern stays in sync with the fix
 
 ## Impact
 
@@ -109,10 +129,19 @@ _No documents linked._
 
 ## Status
 
-**Open** | Created: 2026-05-15 | Priority: P4
+**Done** | Created: 2026-05-15 | Completed: 2026-05-16 | Priority: P4
+
+## Resolution
+
+Added `"completed"` to the terminal-status filter tuples in `find_issues()` (`issue_parser.py:870`) and `cmd_skip()` (`cli/issues/skip.py:40`). Updated ENH-1418's canonical-pattern documentation to match. Added regression tests `test_find_issues_skips_status_completed` and `test_skip_completed_issue_returns_error`. Full `test_issue_parser.py` + `test_issues_cli.py` suites pass (300 tests); ruff clean.
 
 ---
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-16T06:41:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010190c-509e-453e-bb85-c00575d1e590.jsonl`
+- `/ll:ready-issue` - 2026-05-16T06:40:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/047c7021-1a76-4abe-89a6-612cac74a6af.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ad5d116-4ca4-4f05-b0f8-90970d1a318e.jsonl`
+- `/ll:wire-issue` - 2026-05-16T06:38:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0fa462fb-8f12-4e50-afe0-f85814c87465.jsonl`
+- `/ll:refine-issue` - 2026-05-16T06:32:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87e1a073-7fe2-4ff0-abef-79768331f556.jsonl`
 - `/ll:format-issue` - 2026-05-15T22:31:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee7de6e9-997b-4bb6-a6ae-e81063eeaa11.jsonl`
 - `/ll:capture-issue` - 2026-05-15T22:28:07Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c83fb486-18e2-416c-9520-e73ea7fb0cda.jsonl`

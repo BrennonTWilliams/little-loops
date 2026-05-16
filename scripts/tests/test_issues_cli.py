@@ -3354,6 +3354,35 @@ class TestIssuesSkip:
         captured = capsys.readouterr()
         assert "done" in captured.err.lower()
 
+    def test_skip_completed_issue_returns_error(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """skip rejects issues with status: completed frontmatter (BUG-1485)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        bugs_dir = issues_dir / "bugs"
+        (bugs_dir / "P2-BUG-098-completed-issue.md").write_text(
+            "---\nstatus: completed\n---\n# BUG-098: Completed issue\n\n## Summary\nAlready resolved."
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "skip", "BUG-098", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "completed" in captured.err.lower()
+
 
 # =============================================================================
 # Clusters

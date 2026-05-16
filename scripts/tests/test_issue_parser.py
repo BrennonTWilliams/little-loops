@@ -1078,6 +1078,31 @@ class TestFindIssues:
         assert "BUG-101" in issue_ids
         assert len(issues) == 1
 
+    def test_find_issues_skips_status_completed(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Issues with ``status: completed`` in frontmatter are skipped (BUG-1485)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        (bugs_dir / "P0-BUG-300-completed.md").write_text(
+            "---\nstatus: completed\n---\n\n# BUG-300: Completed Test\n\nContent."
+        )
+        (bugs_dir / "P1-BUG-301-active.md").write_text(
+            "---\nstatus: open\n---\n\n# BUG-301: Active\n\nContent."
+        )
+
+        issues = find_issues(config, category="bugs")
+
+        issue_ids = [i.issue_id for i in issues]
+        assert "BUG-300" not in issue_ids
+        assert "BUG-301" in issue_ids
+        assert len(issues) == 1
+
     def test_find_issues_skips_status_deferred(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:

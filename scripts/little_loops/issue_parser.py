@@ -867,7 +867,7 @@ def find_issues(
         for issue_file in issue_dir.glob("*.md"):
             info = parser.parse_file(issue_file)
             # Status-based filter: skip done/cancelled/deferred regardless of dir
-            if info.status in ("done", "cancelled", "deferred"):
+            if info.status in ("done", "cancelled", "deferred", "completed"):
                 continue
             # Apply skip filter
             if info.issue_id in skip_ids:

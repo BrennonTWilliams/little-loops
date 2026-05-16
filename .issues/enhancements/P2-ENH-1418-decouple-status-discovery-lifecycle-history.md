@@ -180,7 +180,7 @@ _Added by `/ll:refine-issue` — based on analysis of ENH-1423 and ENH-1424 sibl
   - Inline filter (use for `find_issues()` and `_get_all_issue_files()`):
     ```python
     fm = parse_frontmatter(issue_file.read_text(encoding="utf-8"))
-    if fm.get("status", "open") in ("done", "cancelled", "deferred"):
+    if fm.get("status", "open") in ("done", "cancelled", "deferred", "completed"):
         continue
     ```
     See `scripts/little_loops/sync.py:_get_local_issues()` and `scripts/little_loops/cli/sprint/run.py:_cmd_sprint_run()` (lines 173–190).
