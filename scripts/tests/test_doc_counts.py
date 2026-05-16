@@ -4,7 +4,9 @@ from pathlib import Path
 
 from little_loops.doc_counts import (
     CountResult,
+    SkillBudgetResult,
     VerificationResult,
+    check_skill_budget,
     count_files,
     extract_count_from_line,
     fix_counts,
@@ -457,3 +459,47 @@ class TestVerifyDocumentation:
 
         assert result.all_match is True
         assert result.total_checked == 1
+
+
+class TestCheckSkillBudget:
+    """Tests for check_skill_budget function."""
+
+    def _make_skill(self, skills_dir: Path, name: str, description: str, disable_model_invocation: bool = False) -> None:
+        skill_dir = skills_dir / name
+        skill_dir.mkdir()
+        flag_line = "disable-model-invocation: true\n" if disable_model_invocation else ""
+        (skill_dir / "SKILL.md").write_text(
+            f"---\n{flag_line}description: {description}\n---\n# {name}\n"
+        )
+
+    def test_skips_disable_model_invocation_skills(self, tmp_path: Path) -> None:
+        """Skills with disable-model-invocation: true are excluded from the budget count."""
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        self._make_skill(skills_dir, "normal-skill", "A normal skill description")
+        self._make_skill(skills_dir, "gated-skill", "A gated skill that should be skipped", disable_model_invocation=True)
+
+        result: SkillBudgetResult = check_skill_budget(base_dir=tmp_path)
+
+        included_descs = [d for _, d, _ in result.skill_breakdown]
+        assert "A normal skill description" in included_descs
+        assert "A gated skill that should be skipped" not in included_descs
+
+    def test_counts_tokens_for_enabled_skills(self, tmp_path: Path) -> None:
+        """Token count is based only on enabled skills."""
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        description = "x" * 40  # 40 chars = 10 tokens
+        self._make_skill(skills_dir, "skill-a", description)
+        self._make_skill(skills_dir, "skill-b", "should not count", disable_model_invocation=True)
+
+        result = check_skill_budget(base_dir=tmp_path)
+
+        assert result.total_tokens == 10
+        assert len(result.skill_breakdown) == 1
+
+    def test_empty_skills_dir(self, tmp_path: Path) -> None:
+        """Returns zero budget with no skills directory."""
+        result = check_skill_budget(base_dir=tmp_path)
+        assert result.total_tokens == 0
+        assert result.under_budget is True

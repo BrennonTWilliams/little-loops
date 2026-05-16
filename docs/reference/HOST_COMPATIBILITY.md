@@ -68,8 +68,13 @@ into `LLHookEvent` payloads.
     it covers both "commands" and "skills" in one mechanism. Research
     findings: `thoughts/research/codex-command-discovery.md` (FEAT-1483).
     Adaptation work: FEAT-1486 (add `name:` field + `agents/openai.yaml`
-    to ll's `skills/*/SKILL.md`). The ✗ cells above will flip to ✓ when
-    FEAT-1486 lands.
+    to ll's `skills/*/SKILL.md`; landed — all ll skills are now adapted).
+
+    **`disable-model-invocation` flag scope:** `ll-adapt-skills-for-codex`
+    does **not** read `disable-model-invocation: true`; all 16 SKILL.md files
+    carrying that flag are exposed in Codex. The flag governs two other tools
+    only: `ll-generate-skill-descriptions` (skips for token-budget compliance)
+    and Claude Code's auto-invocation gate. See ENH-1497.
 
 ## Orchestration CLI
 
