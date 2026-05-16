@@ -767,6 +767,41 @@ class TestRefineToReadyIssueSubLoop:
             f"check_refine_limit.on_no should be 'breakdown_issue', got {state.get('on_no')!r}"
         )
 
+    def test_check_missing_artifacts_state_exists(self, data: dict) -> None:
+        """check_missing_artifacts state must exist to gate size-review on wiring gaps (BUG-1490)."""
+        assert "check_missing_artifacts" in data["states"], (
+            "State 'check_missing_artifacts' not found in refine-to-ready-issue.yaml — "
+            "required to prevent size-review running on issues with missing_artifacts=true"
+        )
+
+    def test_check_missing_artifacts_uses_shell_exit_fragment(self, data: dict) -> None:
+        """check_missing_artifacts must use shell_exit fragment to route on exit code."""
+        state = data["states"].get("check_missing_artifacts", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"check_missing_artifacts.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_check_missing_artifacts_on_yes_routes_to_done(self, data: dict) -> None:
+        """check_missing_artifacts.on_yes (missing_artifacts=true) must exit via done so the outer loop owns wire repair."""
+        state = data["states"].get("check_missing_artifacts", {})
+        assert state.get("on_yes") == "done", (
+            f"check_missing_artifacts.on_yes should be 'done', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_missing_artifacts_on_no_routes_to_breakdown_issue(self, data: dict) -> None:
+        """check_missing_artifacts.on_no must route to breakdown_issue (no artifact gap → scope too large)."""
+        state = data["states"].get("check_missing_artifacts", {})
+        assert state.get("on_no") == "breakdown_issue", (
+            f"check_missing_artifacts.on_no should be 'breakdown_issue', got {state.get('on_no')!r}"
+        )
+
+    def test_check_decision_needed_on_no_routes_to_check_missing_artifacts(self, data: dict) -> None:
+        """check_decision_needed.on_no must route to check_missing_artifacts, not breakdown_issue (BUG-1490)."""
+        state = data["states"].get("check_decision_needed", {})
+        assert state.get("on_no") == "check_missing_artifacts", (
+            f"check_decision_needed.on_no should be 'check_missing_artifacts', got {state.get('on_no')!r}"
+        )
+
 
 class TestHarnessCapture:
     """Tests that harness YAML files wire execute output to check_semantic via capture/source."""

@@ -261,8 +261,19 @@ states:
     # Gate before size-review: if decision_needed=true the low outcome score is driven
     # by unresolved option ambiguity (0/25 ambiguity), not by scope being too large.
     # Exit via done so autodev's check_decision_after_refine can route to run_decide.
-    # on_no falls through to breakdown_issue (scope genuinely too large).
+    # on_no falls through to check_missing_artifacts before breakdown_issue.
     action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
+    fragment: shell_exit
+    on_yes: done
+    on_no: check_missing_artifacts
+    on_error: check_missing_artifacts
+
+  check_missing_artifacts:
+    # Gate before size-review: if missing_artifacts=true the low outcome score is
+    # caused by absent files/unwired components, not scope. Exit via done so the
+    # outer loop's triage_outcome_failure → check_missing_artifacts → run_wire path
+    # can handle the repair. Mirrors check_decision_needed above and autodev.yaml:419.
+    action: "ll-issues check-flag ${captured.issue_id.output} missing_artifacts"
     fragment: shell_exit
     on_yes: done
     on_no: breakdown_issue
