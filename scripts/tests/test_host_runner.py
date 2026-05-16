@@ -13,8 +13,10 @@ FEAT-1467 introduces the host CLI abstraction layer. These tests cover:
 from __future__ import annotations
 
 import dataclasses
+import json
 import warnings
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -248,20 +250,54 @@ class TestCodexRunner:
         # Prompt is positional, last.
         assert invocation.args[-1] == "hi"
 
-    def test_build_blocking_json_emits_warning_for_json_schema(self) -> None:
-        """Codex --output-schema requires a file path; inline dict is unsupported.
-
-        Verifies CapabilityNotSupported is emitted and no TypeError is raised.
-        """
+    def test_build_blocking_json_json_schema_writes_temp_file(self) -> None:
+        """ENH-1530: json_schema is serialized to a temp file, not warned and dropped."""
         runner = CodexRunner()
-        with pytest.warns(CapabilityNotSupported, match="schema"):
-            invocation = runner.build_blocking_json(
-                prompt="hi",
-                json_schema={"type": "object"},
-            )
-        # Must still produce a valid invocation despite the warning.
-        assert invocation.binary == "codex"
-        assert invocation.args[-1] == "hi"
+        schema = {"type": "object", "properties": {"x": {"type": "integer"}}}
+        invocation = runner.build_blocking_json(prompt="hi", json_schema=schema)
+
+        assert "--output-schema" in invocation.args
+        schema_path_str = invocation.args[invocation.args.index("--output-schema") + 1]
+        schema_path = Path(schema_path_str)
+        assert schema_path.exists(), "temp schema file must be written before subprocess runs"
+        assert json.loads(schema_path.read_text()) == schema
+        schema_path.unlink(missing_ok=True)
+
+    def test_build_blocking_json_json_schema_returns_cleanup_paths(self) -> None:
+        """ENH-1530: cleanup_paths contains the temp schema file path."""
+        runner = CodexRunner()
+        invocation = runner.build_blocking_json(prompt="hi", json_schema={"type": "object"})
+
+        assert len(invocation.cleanup_paths) == 1
+        schema_path = invocation.cleanup_paths[0]
+        assert str(schema_path).endswith(".json")
+        assert "ll-schema-" in str(schema_path)
+        schema_path.unlink(missing_ok=True)
+
+    def test_build_blocking_json_json_schema_no_warning(self) -> None:
+        """ENH-1530: no CapabilityNotSupported warning is emitted when json_schema is wired."""
+        import warnings as _warnings
+
+        runner = CodexRunner()
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("error", CapabilityNotSupported)
+            invocation = runner.build_blocking_json(prompt="hi", json_schema={"type": "object"})
+        for p in invocation.cleanup_paths:
+            p.unlink(missing_ok=True)
+
+    def test_build_blocking_json_no_schema_cleanup_paths_empty(self) -> None:
+        """ENH-1530: cleanup_paths is empty tuple when no json_schema is passed."""
+        runner = CodexRunner()
+        invocation = runner.build_blocking_json(prompt="hi")
+        assert invocation.cleanup_paths == ()
+
+    def test_build_blocking_json_prompt_still_last_with_schema(self) -> None:
+        """ENH-1530: prompt remains the last positional arg even when schema is wired."""
+        runner = CodexRunner()
+        invocation = runner.build_blocking_json(prompt="test prompt", json_schema={"type": "object"})
+        assert invocation.args[-1] == "test prompt"
+        for p in invocation.cleanup_paths:
+            p.unlink(missing_ok=True)
 
     def test_build_version_check(self) -> None:
         runner = CodexRunner()
@@ -416,6 +452,11 @@ class TestHostInvocation:
         invocation = HostInvocation(binary="claude", args=[])
         assert invocation.env == {}
         assert isinstance(invocation.capabilities, HostCapabilities)
+        assert invocation.cleanup_paths == ()
+
+    def test_cleanup_paths_defaults_to_empty_tuple(self) -> None:
+        invocation = HostInvocation(binary="x", args=[])
+        assert invocation.cleanup_paths == ()
 
 
 class TestCapabilityWarning:

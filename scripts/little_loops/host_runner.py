@@ -23,7 +23,9 @@ Public exports:
 
 from __future__ import annotations
 
+import json
 import shutil
+import tempfile
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -101,6 +103,7 @@ class HostInvocation:
     args: list[str]
     env: dict[str, str] = field(default_factory=dict)
     capabilities: HostCapabilities = field(default_factory=HostCapabilities)
+    cleanup_paths: tuple[Path, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -452,16 +455,6 @@ class CodexRunner:
         model: str | None = None,
         json_schema: dict | None = None,
     ) -> HostInvocation:
-        if json_schema is not None:
-            warnings.warn(
-                "codex host accepts --output-schema as a file path, not an "
-                "inline schema dict; the 'json_schema' parameter will be "
-                "ignored. Callers requiring schema enforcement must write "
-                "the schema to a file and pass --output-schema explicitly.",
-                CapabilityNotSupported,
-                stacklevel=2,
-            )
-
         args: list[str] = [
             "exec",
             "--dangerously-bypass-approvals-and-sandbox",
@@ -470,12 +463,24 @@ class CodexRunner:
         ]
         if model:
             args += ["--model", model]
+
+        cleanup: tuple[Path, ...] = ()
+        if json_schema is not None:
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=".json", prefix="ll-schema-", mode="w"
+            ) as f:
+                json.dump(json_schema, f)
+                schema_file = Path(f.name)
+            args += ["--output-schema", str(schema_file)]
+            cleanup = (schema_file,)
+
         args.append(prompt)
         return HostInvocation(
             binary="codex",
             args=args,
             env={},
             capabilities=self.capabilities,
+            cleanup_paths=cleanup,
         )
 
     def build_version_check(self) -> HostInvocation:
@@ -521,12 +526,13 @@ class CodexRunner:
                     "unsupported",
                     "codex uses sandbox modes for tool access; --tools parameter is ignored",
                 ),
-                # json_schema: partial — --output-schema requires a file path, not inline dict
-                # warning at build_blocking_json lines 372-380
+                # json_schema: partial — --output-schema requires a file path; ENH-1530 bridges
+                # via temp file written in build_blocking_json, path returned in cleanup_paths
                 CapabilityEntry(
                     "json_schema",
                     "partial",
-                    "codex --output-schema requires a file path; inline schema dict is ignored",
+                    "codex --output-schema requires a file path; schema is written to a "
+                    "temp file and path returned in HostInvocation.cleanup_paths for caller cleanup",
                 ),
             ],
         )

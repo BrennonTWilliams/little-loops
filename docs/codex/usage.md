@@ -90,7 +90,16 @@ Only basic sandbox modes pass through to Codex. Fine-grained tool allowlist flag
 
 ### `json_schema` inline dict (tool schemas)
 
-`CodexRunner` only supports NDJSON-encoded tool schemas. Inline dict-format `json_schema` values are not supported and will cause the tool invocation to be skipped.
+`CodexRunner.build_blocking_json` supports `json_schema` via a file-mediated bridge (ENH-1530): the schema dict is serialized to a temp file and `--output-schema <path>` is appended to the Codex invocation args. The temp file path is returned in `HostInvocation.cleanup_paths`; callers must unlink it after the subprocess completes:
+
+```python
+inv = runner.build_blocking_json(prompt=..., json_schema=my_schema)
+result = subprocess.run([inv.binary, *inv.args], ...)
+for p in inv.cleanup_paths:
+    p.unlink(missing_ok=True)
+```
+
+This support is marked `"partial"` in `describe_capabilities` because the schema is file-mediated rather than passed inline. Direct ll-orchestration call sites (`evaluators.py`, `worker_pool.py`) do not pass `json_schema`, so `cleanup_paths` is always `()` in those paths.
 
 ### Hook intents without consumers
 

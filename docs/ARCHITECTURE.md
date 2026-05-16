@@ -563,7 +563,7 @@ FSM handoff.
 | Component | Purpose |
 |-----------|---------|
 | `HostRunner` (Protocol) | Contract every runner satisfies — `detect()`, `build_oneshot()`, `build_streaming()`, `build_detached()` factories returning `HostInvocation`; `describe_capabilities()` returning `CapabilityReport` |
-| `HostInvocation` (frozen dataclass) | Value object holding `binary`, `args`, `env`, and `capabilities` — passed to `subprocess.Popen`/`run` |
+| `HostInvocation` (frozen dataclass) | Value object holding `binary`, `args`, `env`, `capabilities`, and `cleanup_paths` — passed to `subprocess.Popen`/`run`; callers must unlink `cleanup_paths` after the subprocess completes |
 | `HostCapabilities` (frozen dataclass) | Capability flags (`streaming`, `permission_skip`, `agent_select`, `tool_allowlist`) describing what a host supports |
 | `ClaudeCodeRunner` | Production runner for the `claude` CLI |
 | `CodexRunner` | Production runner for the `codex` CLI; auto-detected when `codex` is on PATH |

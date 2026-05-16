@@ -5720,6 +5720,7 @@ class HostInvocation:
     args: list[str]
     env: dict[str, str] = field(default_factory=dict)
     capabilities: HostCapabilities = field(default_factory=HostCapabilities)
+    cleanup_paths: tuple[Path, ...] = field(default_factory=tuple)
 ```
 
 **Fields:**
@@ -5730,6 +5731,7 @@ class HostInvocation:
 | `args` | `list[str]` | *(required)* | Positional + flag arguments to append after `binary`. Host-specific argv shape lives here. |
 | `env` | `dict[str, str]` | `{}` | Environment variables to merge into the child process. Notably includes `GIT_DIR` / `GIT_WORK_TREE` when working inside a worktree, and host-specific knobs like `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR`. |
 | `capabilities` | `HostCapabilities` | `HostCapabilities()` | Snapshot of the runner's capability flags, so callers can branch on what was actually wired without re-querying the runner. |
+| `cleanup_paths` | `tuple[Path, ...]` | `()` | Temp files created during invocation building that the caller must unlink after the subprocess completes. Currently populated by `CodexRunner.build_blocking_json` when `json_schema` is supplied — the schema dict is written to a temp file and `--output-schema <path>` is appended to `args`. Call `p.unlink(missing_ok=True)` for each path in this tuple after `subprocess.run`. |
 
 **Behavior:**
 - `frozen=True` — mutating an invocation in flight would silently corrupt argv across the runner/caller boundary. This establishes the `frozen=True` convention for new value objects in `scripts/little_loops/`.

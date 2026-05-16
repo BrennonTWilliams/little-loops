@@ -89,6 +89,9 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 | Permission skip  | ✓           | ✗        | ✗                                  |
 | Agent selection  | ✓           | ✗        | ✓ (partial — model-spawned)[^agent] |
 | Tool allowlist   | ✓           | ✗        | ✗                                  |
+| `json_schema`    | ✗           | ✗        | partial (file-mediated)[^schema]   |
+
+[^schema]: `CodexRunner.build_blocking_json` serializes the schema dict to a temp file and passes `--output-schema <path>` to Codex (ENH-1530). The temp file path is returned in `HostInvocation.cleanup_paths`; callers must call `p.unlink(missing_ok=True)` for each path after the subprocess completes. `ClaudeCodeRunner` has no schema flag and silently drops `json_schema`.
 
 [^agent]: Codex agent selection works via `.codex/agents/*.toml` files generated
     by `ll-adapt-agents-for-codex --apply` (FEAT-1527). Interactive Codex TUI
