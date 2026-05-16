@@ -169,6 +169,16 @@ ll-doctor check
 
 `ll-doctor` probes the host binary and returns a `CapabilityReport` with one entry per capability (streaming, permission skip, agent selection, tool allowlist) and per registered hook event. See [`docs/reference/CLI.md#ll-doctor`](CLI.md#ll-doctor) for full usage and [`docs/reference/API.md#capabilityreport`](API.md#capabilityreport) for the data model.
 
+## User onboarding
+
+For a user-facing walkthrough of Codex CLI setup and usage, see:
+
+- [`docs/codex/README.md`](../codex/README.md) — what works, what is deferred, quick orientation
+- [`docs/codex/getting-started.md`](../codex/getting-started.md) — install, trust prompt, config file, skill discovery
+- [`docs/codex/usage.md`](../codex/usage.md) — orchestration CLIs, skill invocation, current limitations
+
+This matrix is the authoritative parity reference; the Codex docs above are the user-facing onboarding entry point.
+
 ## Tracking issues
 
 - **FEAT-957** — Codex CLI plugin compatibility (this matrix's Codex column).

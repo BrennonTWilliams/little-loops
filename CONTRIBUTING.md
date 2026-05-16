@@ -176,6 +176,7 @@ little-loops/
 │   │   ├── LCM-Integration-Brainstorm.md  # LCM integration roadmap
 │   │   └── LCM-Lossless-Context-Management.md  # LCM research
 │   ├── claude-code/                     # Claude Code documentation
+│   ├── codex/                           # Codex CLI documentation
 │   └── demo/                            # Demo materials
 └── scripts/              # Python CLI tools
     ├── pyproject.toml    # Package configuration

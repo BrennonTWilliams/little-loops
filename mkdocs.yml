@@ -84,6 +84,10 @@ nav:
     - Write a Hook: claude-code/write-a-hook.md
     - Hooks Reference: claude-code/hooks-reference.md
     - Automate Workflows with Hooks: claude-code/automate-workflows-with-hooks.md
+  - Codex CLI:
+    - Overview: codex/README.md
+    - Getting Started: codex/getting-started.md
+    - Usage: codex/usage.md
   - Development:
     - Testing: development/TESTING.md
     - E2E Testing: development/E2E_TESTING.md

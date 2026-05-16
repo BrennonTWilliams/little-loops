@@ -16,6 +16,14 @@ New to little-loops? Start here:
 
 Documentation for using little-loops in your projects.
 
+### Codex CLI
+
+- [Codex CLI Overview](codex/README.md) - What works, what is deferred, and where to start
+- [Getting Started with Codex](codex/getting-started.md) - Install, trust prompt, skill discovery, first-run verification
+- [Codex Usage](codex/usage.md) - Orchestration CLIs, skill invocation, opt-in pre_tool_use, current limitations
+
+### Reference
+
 - [Configuration Reference](reference/CONFIGURATION.md) - Full config options, variable substitution, and command overrides
 - [Command Reference](reference/COMMANDS.md) - Complete reference for all slash commands with usage examples
 - [CLI Reference](reference/CLI.md) - All `ll-` CLI tools with flags and examples
