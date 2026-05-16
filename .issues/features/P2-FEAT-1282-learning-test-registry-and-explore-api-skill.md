@@ -244,6 +244,7 @@ def mark_stale(target_slug: str) -> None: ...
 `enhancement`, `autonomy`, `learning-tests`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-16T21:36:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1da9d61-83f1-4718-91ec-4ed0e57454c9.jsonl`
 - `/ll:wire-issue` - 2026-04-25T18:49:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cab145e-64ca-41f6-9cfa-67c06772edcb.jsonl`
 - `/ll:refine-issue` - 2026-04-25T18:42:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3448382b-328e-4cb4-aaea-f22958449e93.jsonl`
 - `/ll:confidence-check` - 2026-04-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/408be939-366d-4ada-a014-a49f41e9c0e9.jsonl`

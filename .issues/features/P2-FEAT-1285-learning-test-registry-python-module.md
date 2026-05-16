@@ -1,6 +1,7 @@
 ---
 id: FEAT-1285
 type: FEAT
+status: done
 priority: P2
 captured_at: "2026-04-25T00:00:00Z"
 completed_at: "2026-04-25T19:36:39Z"
@@ -269,6 +270,7 @@ _Added by `/ll:confidence-check` on 2026-04-25_
 - **Wide implementation breadth**: 14 files across 4+ subsystems (new module, config wiring, tests, docs). All changes are additive, but the span means you need to hold more context simultaneously — plan for methodical pass-by-pass execution rather than a single sweep.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-16T21:36:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa7e100f-d3a0-49c9-8f55-7899f39e9a53.jsonl`
 - `/ll:manage-issue` - 2026-04-25T19:36:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7f436c4-e846-47c8-8784-9e30750c1037.jsonl`
 - `/ll:ready-issue` - 2026-04-25T19:26:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4976a136-d8c0-4a43-bd93-2067c8e0ea33.jsonl`
 - `/ll:decide-issue` - 2026-04-25T19:23:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e01f4663-cf90-46a5-9bf2-707bcff9ccec.jsonl`

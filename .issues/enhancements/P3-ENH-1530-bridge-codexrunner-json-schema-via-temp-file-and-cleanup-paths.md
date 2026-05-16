@@ -135,6 +135,13 @@ for p in inv.cleanup_paths:
 5. Add/update tests in `test_host_runner.py`
 6. Update API and HOST_COMPATIBILITY docs
 
+## Scope Boundaries
+
+- **In scope**: `CodexRunner.build_blocking_json` temp-file bridge, `HostInvocation.cleanup_paths` field, `describe_capabilities` note update for `json_schema`
+- **Out of scope**: `ClaudeCodeRunner` changes — it already silently drops `json_schema`; `cleanup_paths` defaults to `()` via the new field default
+- **Out of scope**: Automatic temp-file cleanup — callers own the lifecycle via `cleanup_paths` (by design, consistent with how subprocess results are managed)
+- **Out of scope**: Other build methods (`build_streaming`, `build_detached`) — `json_schema` is only meaningful for blocking JSON calls
+
 ## Impact
 
 - **Priority**: P3 - Makes `"partial"` label honest and enables real schema enforcement on Codex
@@ -155,4 +162,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-05-16 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-16T21:32:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2328f3b-20de-411f-87c0-2b4355026da6.jsonl`
 - `/ll:capture-issue` - 2026-05-16T21:30:27Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d524271d-ad54-4d19-976b-1c1d9e8d5463.jsonl`
