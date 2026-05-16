@@ -9,6 +9,7 @@ score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 10
+status: done
 ---
 
 # BUG-1307: `/ll:confidence-check` Phase 4 LLM Edit unreliably persists scores to frontmatter, causing `check_readiness` to fail and route ready issues to size-review

@@ -2,10 +2,11 @@
 id: ENH-843
 type: ENH
 priority: P4
-status: Open
+status: done
 title: "docs/guides: cosmetic and consistency improvements (post-audit remaining items)"
 created: 2026-03-20
 testable: false
+completed_at: 2026-03-20T00:00:00Z
 ---
 
 ## Summary

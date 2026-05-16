@@ -2,12 +2,13 @@
 id: ENH-1301
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-04-27
 discovered_by: manual
 confidence_score: 100
 outcome_confidence: 100
 size: Small
+completed_at: 2026-04-27T00:00:00Z
 ---
 
 # ENH-1301: Improve `issue-size-review` with scope completeness and ordering checks

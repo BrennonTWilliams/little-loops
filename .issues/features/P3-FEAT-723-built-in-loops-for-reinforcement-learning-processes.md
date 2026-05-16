@@ -2,11 +2,12 @@
 id: FEAT-723
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 96
 outcome_confidence: 71
+completed_at: 2026-03-15T00:00:00Z
 ---
 
 # FEAT-723: Built-in Loops for Reinforcement Learning Processes

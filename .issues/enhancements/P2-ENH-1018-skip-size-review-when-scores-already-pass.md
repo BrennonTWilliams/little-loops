@@ -3,6 +3,8 @@ discovered_date: 2026-04-09
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-04-10T00:00:00Z
 ---
 
 # ENH-1018: Skip size-review when scores already pass thresholds in recursive-refine

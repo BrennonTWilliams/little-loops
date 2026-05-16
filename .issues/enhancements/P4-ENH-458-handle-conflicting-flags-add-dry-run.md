@@ -3,8 +3,9 @@ type: ENH
 id: ENH-458
 title: Handle conflicting flags (--interactive --yes) and add --dry-run
 priority: P4
-status: completed
+status: done
 created: 2026-02-22
+completed_at: 2026-02-23T00:00:00Z
 ---
 
 # Handle conflicting flags (--interactive --yes) and add --dry-run

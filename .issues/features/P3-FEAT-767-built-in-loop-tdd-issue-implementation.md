@@ -2,13 +2,14 @@
 id: FEAT-767
 type: FEAT
 priority: P3
-status: superseded
+status: done
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 90
 resolution: Superseded by the existing TDD feature flag in manage-issue, which already drives the red-green-refactor cycle without a dedicated built-in loop.
 resolution_date: 2026-03-16
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # FEAT-767: Built-in Loop for TDD Issue Implementation

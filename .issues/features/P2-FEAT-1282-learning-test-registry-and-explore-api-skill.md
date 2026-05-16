@@ -12,6 +12,7 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
 size: Very Large
+completed_at: 2026-04-25T00:00:00Z
 ---
 
 # FEAT-1282: Learning Test Registry and ll:explore-api Skill
@@ -45,7 +46,7 @@ The "slop code crisis" described in our architecture notes is directly caused by
 ---
 target: "Anthropic SDK streaming"
 date: "2026-04-25"
-status: proven  # proven | refuted | stale
+status: done
 assertions:
   - claim: "streaming events are dicts with a `type` key"
     result: pass

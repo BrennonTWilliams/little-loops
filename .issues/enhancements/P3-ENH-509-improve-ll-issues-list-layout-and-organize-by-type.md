@@ -3,6 +3,8 @@ discovered_date: 2026-02-26
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 86
+status: done
+completed_at: 2026-02-26T00:00:00Z
 ---
 
 # ENH-509: Improve ll-issues list layout and organize by type

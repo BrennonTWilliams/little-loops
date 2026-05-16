@@ -4,6 +4,8 @@ discovered_by: audit-architecture
 focus_area: integration
 confidence_score: 100
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-25T00:00:00Z
 ---
 
 # BUG-887: `cli` section placed outside `properties` in config-schema.json — never validated

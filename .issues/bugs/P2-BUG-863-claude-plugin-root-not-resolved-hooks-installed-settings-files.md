@@ -1,11 +1,12 @@
 ---
 id: BUG-863
 priority: P2
-status: completed
+status: done
 discovered_date: 2026-03-23
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 79
+completed_at: 2026-04-12T00:00:00Z
 ---
 
 # BUG-863: `${CLAUDE_PLUGIN_ROOT}` Not Resolved in Hooks Installed to Settings Files
@@ -273,4 +274,4 @@ To verify hooks are active after init: `/ll:configure hooks show`
 
 #### Related Completed Issue
 
-`P4-BUG-864-init-asks-about-hook-loading-method-for-plugin-users.md` — companion issue from the same period; may have relevant context about how init handles the plugin-already-loaded case.
+`P4-BUG-1515-init-asks-about-hook-loading-method-for-plugin-users.md` — companion issue from the same period; may have relevant context about how init handles the plugin-already-loaded case.

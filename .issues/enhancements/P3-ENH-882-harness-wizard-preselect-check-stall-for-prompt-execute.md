@@ -2,11 +2,12 @@
 id: ENH-882
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-24
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 82
+completed_at: 2026-03-24T00:00:00Z
 ---
 
 # ENH-882: Harness wizard should pre-select `check_stall` when `execute` uses `action_type: prompt`

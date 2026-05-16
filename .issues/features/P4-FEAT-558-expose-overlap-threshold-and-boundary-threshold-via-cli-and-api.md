@@ -5,6 +5,8 @@ discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-06T00:00:00Z
 ---
 
 # FEAT-558: Expose `overlap_threshold` and `boundary_threshold` via CLI flags and `analyze_workflows()` API

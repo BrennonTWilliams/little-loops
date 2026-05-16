@@ -5,6 +5,8 @@ discovered_date: 2026-03-19T21:54:42Z
 discovered_by: scan-codebase
 confidence_score: 95
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-21T00:00:00Z
 ---
 
 # FEAT-833: `ll-issues sequence` missing `--type` filter

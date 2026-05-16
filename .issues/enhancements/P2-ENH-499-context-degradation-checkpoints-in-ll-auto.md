@@ -4,6 +4,8 @@ discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
 confidence_score: 60
 outcome_confidence: 66
+status: done
+completed_at: 2026-02-24T00:00:00Z
 ---
 
 # ENH-499: Context Degradation Checkpoints Between Issues in ll-auto

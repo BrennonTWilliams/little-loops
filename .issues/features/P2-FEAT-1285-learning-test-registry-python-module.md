@@ -37,7 +37,7 @@ Decomposed from FEAT-1282: Learning Test Registry and ll:explore-api Skill
 ---
 target: "Anthropic SDK streaming"
 date: "2026-04-25"
-status: proven  # proven | refuted | stale
+status: done
 assertions:
   - claim: "streaming events are dicts with a `type` key"
     result: pass

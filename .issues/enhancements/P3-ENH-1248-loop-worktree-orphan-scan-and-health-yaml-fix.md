@@ -13,6 +13,8 @@ score_test_coverage: 18
 score_ambiguity: 10
 score_change_surface: 18
 parent: ENH-1197
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1248: ll-loop Worktree Orphan Scan Coverage + worktree-health.yaml Fix

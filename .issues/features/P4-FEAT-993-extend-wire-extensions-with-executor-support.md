@@ -3,6 +3,8 @@ discovered_date: 2026-04-08
 discovered_by: issue-size-review
 confidence_score: 90
 outcome_confidence: 85
+status: done
+completed_at: 2026-04-08T00:00:00Z
 ---
 
 # FEAT-993: Extend `wire_extensions()` with Executor Support

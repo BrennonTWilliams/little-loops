@@ -3,6 +3,8 @@ discovered_commit: 7d374d6
 discovered_branch: main
 discovered_date: 2026-01-31T00:00:00Z
 discovered_by: security-audit
+status: done
+completed_at: 2026-01-31T00:00:00Z
 ---
 
 # ENH-190: Hooks System Audit and Robustness Improvements

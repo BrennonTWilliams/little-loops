@@ -3,6 +3,8 @@ discovered_date: 2026-03-31
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 78
+status: done
+completed_at: 2026-04-01T00:00:00Z
 ---
 
 # ENH-904: Make FSM Box Diagram Glyph Mappings Configurable

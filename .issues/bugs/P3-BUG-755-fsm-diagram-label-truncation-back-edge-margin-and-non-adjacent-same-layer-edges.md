@@ -2,11 +2,12 @@
 id: BUG-755
 priority: P3
 type: BUG
-status: completed
+status: done
 title: "FSM diagram label truncation: back-edge margin and non-adjacent same-layer edges"
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 completed_date: 2026-03-15
+completed_at: 2026-03-15T00:00:00Z
 ---
 
 # BUG-755: FSM diagram label truncation: back-edge margin and non-adjacent same-layer edges

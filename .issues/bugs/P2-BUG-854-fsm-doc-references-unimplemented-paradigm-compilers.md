@@ -2,10 +2,11 @@
 id: BUG-854
 type: BUG
 priority: P2
-status: completed
+status: done
 title: "generalized-fsm-loop.md documents unimplemented paradigm compilation (compilers.py, ll-loop compile)"
 created: 2026-03-21
 testable: false
+completed_at: 2026-03-21T00:00:00Z
 ---
 
 ## Summary

@@ -3,6 +3,8 @@ discovered_date: 2026-04-13
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 86
+status: done
+completed_at: 2026-04-13T00:00:00Z
 ---
 
 # BUG-1096: recursive-refine does not move decomposed parents to completed

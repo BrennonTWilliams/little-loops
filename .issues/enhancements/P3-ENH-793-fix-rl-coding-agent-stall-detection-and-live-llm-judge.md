@@ -3,8 +3,9 @@ id: ENH-793
 type: ENH
 priority: P3
 title: "Fix stall detection and live LLM judge in rl-coding-agent"
-status: completed
+status: done
 completed_date: 2026-03-17
+completed_at: 2026-03-17T00:00:00Z
 ---
 
 ## Summary

@@ -5,6 +5,8 @@ confidence_score: 95
 outcome_confidence: 75
 
 parent: FEAT-988
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-990: FSMExecutor Hook Dispatch — Tests and Code Wiring

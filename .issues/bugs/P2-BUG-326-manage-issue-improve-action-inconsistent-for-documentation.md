@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-10
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # BUG-326: manage_issue improve action inconsistent for documentation issues

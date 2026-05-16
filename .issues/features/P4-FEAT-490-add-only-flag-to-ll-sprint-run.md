@@ -5,6 +5,8 @@ discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-06T00:00:00Z
 ---
 
 # FEAT-490: Add `--only` flag to `ll-sprint run`

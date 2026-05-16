@@ -2,11 +2,12 @@
 id: ENH-944
 type: ENH
 priority: P3
-status: backlog
+status: done
 discovered_date: 2026-04-03
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 72
+completed_at: 2026-04-03T00:00:00Z
 ---
 
 # ENH-944: Loop history saved to per-run timestamped folder

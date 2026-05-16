@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-14
 discovered_by: capture-issue
+status: done
+completed_at: 2026-04-23T00:00:00Z
 ---
 
 # ENH-1106: refine-issue should suggest wire-issue as next action

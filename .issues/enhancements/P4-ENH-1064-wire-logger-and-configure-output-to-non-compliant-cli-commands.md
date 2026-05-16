@@ -5,6 +5,8 @@ discovered_date: 2026-04-12T19:32:44Z
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 85
+status: done
+completed_at: 2026-04-12T00:00:00Z
 ---
 
 # ENH-1064: Wire Logger and configure_output to non-compliant CLI commands

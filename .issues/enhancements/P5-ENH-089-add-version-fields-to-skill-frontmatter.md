@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-17T00:00:00Z
+---
 # ENH-089: Add Version Fields to Skill SKILL.md Frontmatter
 
 ## Status

@@ -9,6 +9,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # BUG-1352: `ll-loop status` ignores `.lock` file PID, reports `null`

@@ -3,12 +3,13 @@ id: ENH-562
 type: ENH
 priority: P3
 title: "Add dual confidence thresholds (readiness + outcome) to config"
-status: completed
+status: done
 created: 2026-03-03
 completed: 2026-03-03
 confidence_score: 95
 outcome_confidence: 90
 related_issues: []
+completed_at: 2026-03-03T00:00:00Z
 ---
 
 # ENH-562: Add dual confidence thresholds (readiness + outcome) to config

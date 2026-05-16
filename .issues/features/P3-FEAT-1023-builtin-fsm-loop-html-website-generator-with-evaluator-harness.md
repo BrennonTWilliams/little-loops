@@ -2,11 +2,12 @@
 id: FEAT-1023
 priority: P3
 type: FEAT
-status: open
+status: done
 discovered_date: 2026-04-10
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+completed_at: 2026-04-11T00:00:00Z
 ---
 
 # FEAT-1023: Add Built-In FSM Loop: HTML Website Generator with Generator-Evaluator Harness

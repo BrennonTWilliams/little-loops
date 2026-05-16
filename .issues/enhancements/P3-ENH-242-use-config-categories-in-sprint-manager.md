@@ -6,6 +6,8 @@ discovered_by: scan_codebase
 resolution: wont-fix
 closed_date: 2026-02-05
 closing_note: "YAGNI — no one uses custom categories. This only matters if someone adds custom issue categories beyond BUG/FEAT/ENH. The project's own config uses standard categories and there's no evidence anyone has ever used custom categories. Fix when someone actually needs it."
+status: done
+completed_at: 2026-02-05T00:00:00Z
 ---
 
 # ENH-242: Use config categories in sprint manager instead of hardcoded list

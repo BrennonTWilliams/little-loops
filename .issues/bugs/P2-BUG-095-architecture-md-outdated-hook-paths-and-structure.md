@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-01-20T00:00:00Z
 discovered_by: audit_docs
 doc_file: docs/ARCHITECTURE.md
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # BUG-095: ARCHITECTURE.md outdated hook paths and module structure

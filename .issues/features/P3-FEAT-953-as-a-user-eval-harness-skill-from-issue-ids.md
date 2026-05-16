@@ -3,11 +3,12 @@ id: FEAT-953
 type: FEAT
 title: "as-a-user eval harness skill from issue IDs"
 priority: P3
-status: open
+status: done
 discovered_date: 2026-04-04
 discovered_by: capture-issue
 confidence_score: 96
 outcome_confidence: 71
+completed_at: 2026-04-05T00:00:00Z
 ---
 
 # FEAT-953: as-a-user eval harness skill from issue IDs
@@ -22,7 +23,7 @@ There is no automated way to go from an issue file to a user-perspective eval ha
 
 ## Expected Behavior
 
-Running `/ll:create-eval-from-issues FEAT-919 ENH-950` should:
+Running `/ll:create-eval-from-issues FEAT-1516 ENH-950` should:
 1. Read each named issue file and extract relevant context (title, expected behavior, use case, acceptance criteria)
 2. Synthesize a natural-language **execute prompt** describing how a user would exercise the feature (drawn from Expected Behavior / Use Case sections)
 3. Synthesize `llm_structured` **evaluation criteria** describing what a successful user experience looks like (drawn from Acceptance Criteria / Use Case outcome)
@@ -62,7 +63,7 @@ This also enables the "issue-to-harness-to-loop" path: capture issues → genera
 
 ## Acceptance Criteria
 
-- [ ] Running `/ll:create-eval-from-issues FEAT-919` resolves the issue file and writes `.loops/eval-harness-feat-919.yaml`
+- [ ] Running `/ll:create-eval-from-issues FEAT-1516` resolves the issue file and writes `.loops/eval-harness-feat-1516.yaml`
 - [ ] The generated harness `execute` state contains a synthesized natural-language prompt describing how to exercise the feature as a user (drawn from Expected Behavior / Use Case)
 - [ ] The generated harness `check_skill` state contains synthesized `llm_structured` criteria describing what a good user experience looks like (drawn from Acceptance Criteria / Use Case outcome)
 - [ ] Single issue → Variant A harness (`initial: execute`); 2+ issues → Variant B harness with `discover` state iterating over issue IDs
@@ -74,7 +75,7 @@ This also enables the "issue-to-harness-to-loop" path: capture issues → genera
 
 ### Skill: `/ll:create-eval-from-issues`
 
-**Arguments**: one or more issue IDs (e.g., `FEAT-919`, `ENH-950`)
+**Arguments**: one or more issue IDs (e.g., `FEAT-1516`, `ENH-950`)
 **Output**: `.loops/eval-harness-<slug>.yaml`
 
 **Steps:**
@@ -103,10 +104,10 @@ This also enables the "issue-to-harness-to-loop" path: capture issues → genera
 
 ### Example output (single issue — web app context)
 
-*Given FEAT-919: "Add JSON schema generation to the schema builder"*
+*Given FEAT-1516: "Add JSON schema generation to the schema builder"*
 
 ```yaml
-name: "eval-harness-feat-919"
+name: "eval-harness-feat-1516"
 initial: execute
 max_iterations: 5
 states:
@@ -122,14 +123,14 @@ states:
 
   check_skill:
     action: >
-      Evaluate the JSON schema generation experience from FEAT-919 from a
+      Evaluate the JSON schema generation experience from FEAT-1516 from a
       real user's perspective.
     action_type: prompt
     timeout: 180
     evaluate:
       type: llm_structured
       prompt: >
-        Did the JSON schema generation feature (FEAT-919) deliver a satisfying
+        Did the JSON schema generation feature (FEAT-1516) deliver a satisfying
         user experience? Assess all of the following:
         (1) The schema builder accepted a sample input without errors
         (2) A valid, readable JSON schema was returned
@@ -247,8 +248,8 @@ _Added by `/ll:refine-issue` — third research pass:_
     action: |
       python3 -c "
       import sys
-      ids = ['FEAT-919', 'ENH-950']
-      pf = '/tmp/eval-harness-feat-919-enh-950-processed.txt'
+      ids = ['FEAT-1516', 'ENH-950']
+      pf = '/tmp/eval-harness-feat-1516-enh-950-processed.txt'
       try: processed = open(pf).read().split()
       except FileNotFoundError: processed = []
       remaining = [i for i in ids if i not in processed]
@@ -262,7 +263,7 @@ _Added by `/ll:refine-issue` — third research pass:_
     on_error: done
   advance:
     action: |
-      echo "${captured.current_item.output}" >> /tmp/eval-harness-feat-919-enh-950-processed.txt
+      echo "${captured.current_item.output}" >> /tmp/eval-harness-feat-1516-enh-950-processed.txt
     action_type: shell
     next: discover
   ```
@@ -281,7 +282,7 @@ _Added by `/ll:refine-issue` — third research pass:_
 
 **Slug generation — inline shell pattern for skill body**
 - `scripts/little_loops/issue_parser.py:99-110` — canonical `slugify()`: strips non-word chars, collapses hyphens/whitespace to `-`, lowercases. Not directly callable from SKILL.md shell body.
-- Inline shell equivalent for harness filename: `echo "${ISSUE_IDS[*]}" | tr '[:upper:]' '[:lower:]' | tr ' ' '-'` → e.g., `feat-919-enh-950`. Filename: `eval-harness-feat-919-enh-950.yaml`.
+- Inline shell equivalent for harness filename: `echo "${ISSUE_IDS[*]}" | tr '[:upper:]' '[:lower:]' | tr ' ' '-'` → e.g., `feat-1516-enh-950`. Filename: `eval-harness-feat-1516-enh-950.yaml`.
 
 **`$ARGUMENTS` multi-ID array collection — no existing precedent; use array-append pattern**
 - Existing skills using `for token in $ARGUMENTS` (`confidence-check/SKILL.md:29-76`, `issue-size-review/SKILL.md:37-65`) overwrite a single `ISSUE_ID` variable — designed for one ID only.
@@ -296,7 +297,7 @@ _Added by `/ll:refine-issue` — third research pass:_
   done
   ```
   After parsing: `${#ISSUE_IDS[@]}` = count; `${ISSUE_IDS[@]}` = all IDs; `${ISSUE_IDS[0]}` = first.
-- FEAT-958's `_substitute_arguments()` will do `" ".join(args)` — so `ll-auto` passing `["FEAT-919", "ENH-950"]` produces `"FEAT-919 ENH-950"` as the `$ARGUMENTS` string, correctly iterated by the loop.
+- FEAT-958's `_substitute_arguments()` will do `" ".join(args)` — so `ll-auto` passing `["FEAT-1516", "ENH-950"]` produces `"FEAT-1516 ENH-950"` as the `$ARGUMENTS` string, correctly iterated by the loop.
 
 ## Implementation Steps
 
@@ -346,10 +347,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ```bash
 # Single issue → Variant A single-shot harness
-/ll:create-eval-from-issues FEAT-919
+/ll:create-eval-from-issues FEAT-1516
 
 # Multiple issues → Variant B multi-item harness
-/ll:create-eval-from-issues FEAT-919 ENH-950
+/ll:create-eval-from-issues FEAT-1516 ENH-950
 
 # Completed issue (regression: verify experience still works)
 /ll:create-eval-from-issues BUG-347
@@ -392,7 +393,7 @@ Output file written to: `.loops/eval-harness-<slug>.yaml`
 - `docs/ARCHITECTURE.md` — added to skill directory listing
 
 ### Acceptance Criteria Verification
-- [x] Running `/ll:create-eval-from-issues FEAT-919` resolves the issue file and writes `.loops/eval-harness-feat-919.yaml`
+- [x] Running `/ll:create-eval-from-issues FEAT-1516` resolves the issue file and writes `.loops/eval-harness-feat-1516.yaml`
 - [x] The generated harness `execute` state contains a synthesized natural-language prompt (from Expected Behavior / Use Case)
 - [x] The generated harness `check_skill` state contains synthesized `llm_structured` criteria (from Acceptance Criteria / Use Case outcome)
 - [x] Single issue → Variant A (`initial: execute`); 2+ issues → Variant B with `discover` state iterating over issue IDs

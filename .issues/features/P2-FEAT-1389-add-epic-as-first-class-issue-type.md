@@ -2,7 +2,7 @@
 id: FEAT-1389
 type: FEAT
 priority: P2
-status: open
+status: done
 captured_at: '2026-05-09T20:26:09Z'
 discovered_date: '2026-05-09'
 discovered_by: capture-issue
@@ -19,6 +19,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 0
 size: Very Large
+completed_at: 2026-05-09T00:00:00Z
 ---
 
 # FEAT-1389: Add EPIC as a First-Class Issue Type

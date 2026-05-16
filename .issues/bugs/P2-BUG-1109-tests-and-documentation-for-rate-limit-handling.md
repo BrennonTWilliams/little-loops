@@ -3,6 +3,8 @@ parent: BUG-1105
 priority: P2
 type: BUG
 size: Medium
+status: done
+completed_at: 2026-04-14T00:00:00Z
 ---
 
 # BUG-1109: Tests and Documentation for Rate Limit Handling

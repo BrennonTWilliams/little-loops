@@ -2,11 +2,12 @@
 id: BUG-845
 title: "ll-issues list --priority flag does not accept comma-separated values"
 priority: P3
-status: open
+status: done
 discovered_date: 2026-03-20
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+completed_at: 2026-03-20T00:00:00Z
 ---
 
 # BUG-845: ll-issues list --priority flag does not accept comma-separated values

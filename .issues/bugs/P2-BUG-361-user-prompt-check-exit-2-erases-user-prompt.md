@@ -2,6 +2,8 @@
 discovered_date: 2026-02-12
 discovered_by: hooks-reference-audit
 supersedes: P4-BUG-361 (dead code finding was a symptom, not the root cause)
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # BUG-361: user-prompt-check.sh exit 2 erases user prompt instead of enhancing it

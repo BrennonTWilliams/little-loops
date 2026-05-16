@@ -2,7 +2,7 @@
 id: ENH-1390
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-05-09T20:26:09Z'
 discovered_date: '2026-05-09'
 discovered_by: capture-issue
@@ -19,6 +19,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 0
 size: Very Large
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1390: Decouple Issue Status from Directory Structure
@@ -100,7 +101,7 @@ Extension to issue frontmatter `status:` field vocabulary:
 
 ```yaml
 # Extended status enum (new values: in_progress, blocked, done, cancelled)
-status: open | in_progress | blocked | deferred | done | cancelled
+status: done
 ```
 
 `ll-issues list` CLI argument:

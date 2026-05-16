@@ -5,6 +5,8 @@ discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
 confidence_score: 90
 outcome_confidence: 85
+status: done
+completed_at: 2026-03-06T00:00:00Z
 ---
 
 # FEAT-488: Add `--idle-timeout` CLI flag to ll-auto and ll-parallel

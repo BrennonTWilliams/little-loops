@@ -3,7 +3,7 @@ id: BUG-1276
 type: BUG
 priority: P3
 title: "blocked_by comma-separated string parsed as single unknown ID"
-status: backlog
+status: done
 captured_at: "2026-04-24T21:09:29Z"
 completed_at: "2026-04-24T22:26:53Z"
 discovered_date: "2026-04-24"

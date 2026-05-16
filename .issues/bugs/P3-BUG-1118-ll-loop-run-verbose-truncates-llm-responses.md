@@ -7,6 +7,8 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+status: done
+completed_at: 2026-04-16T00:00:00Z
 ---
 
 # BUG-1118: ll-loop run --verbose truncates LLM responses

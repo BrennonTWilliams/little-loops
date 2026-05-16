@@ -1,11 +1,12 @@
 ---
 id: ENH-893
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-26
 discovered_by: capture-issue
 confidence_score: 90
 outcome_confidence: 86
+completed_at: 2026-03-26T00:00:00Z
 ---
 
 # ENH-893: Refactor `refine-to-ready-issue` loop to use configured confidence thresholds

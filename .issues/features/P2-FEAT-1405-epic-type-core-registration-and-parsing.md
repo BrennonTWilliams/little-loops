@@ -2,7 +2,7 @@
 id: FEAT-1405
 type: FEAT
 priority: P2
-status: open
+status: done
 
 captured_at: '2026-05-09T00:00:00Z'
 completed_at: '2026-05-09T22:51:58Z'

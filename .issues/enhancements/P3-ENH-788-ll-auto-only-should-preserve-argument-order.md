@@ -2,12 +2,13 @@
 id: ENH-788
 type: ENH
 priority: P3
-status: active
+status: done
 discovered_date: 2026-03-16
 discovered_by: capture-issue
 title: "ll-auto --only should preserve argument order"
 confidence_score: 100
 outcome_confidence: 86
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # ENH-788: ll-auto --only should preserve argument order

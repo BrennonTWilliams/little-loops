@@ -8,6 +8,8 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 22
 score_change_surface: 18
+status: done
+completed_at: 2026-04-18T00:00:00Z
 ---
 
 # ENH-1168: FSM executor wrap run_action in execute_state with on_error routing

@@ -2,11 +2,12 @@
 id: ENH-735
 type: ENH
 priority: P4
-status: completed
+status: done
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-03-13T00:00:00Z
 ---
 
 # ENH-735: Add `--delay` flag to `ll-loop run` for inter-iteration pause

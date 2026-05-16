@@ -3,9 +3,10 @@ type: ENH
 id: ENH-453
 title: Offer to create issue directories during init instead of as next step
 priority: P3
-status: completed
+status: done
 created: 2026-02-22
 confidence_score: 90
+completed_at: 2026-02-23T00:00:00Z
 ---
 
 # Offer to create issue directories during init instead of as next step

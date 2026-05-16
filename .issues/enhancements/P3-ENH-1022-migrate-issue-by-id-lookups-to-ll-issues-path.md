@@ -2,11 +2,12 @@
 id: ENH-1022
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-04-10
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 70
+completed_at: 2026-04-10T00:00:00Z
 ---
 
 # ENH-1022: Migrate Issue-by-ID Lookups to `ll-issues path`

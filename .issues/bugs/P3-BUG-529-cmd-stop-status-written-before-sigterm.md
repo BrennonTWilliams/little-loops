@@ -5,6 +5,8 @@ discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
 confidence_score: 95
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # BUG-529: `cmd_stop` Writes "interrupted" Status Before SIGTERM — State Can Diverge from Reality

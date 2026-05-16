@@ -3,6 +3,8 @@ discovered_date: 2026-03-04
 discovered_by: capture-issue
 confidence_score: 94
 outcome_confidence: 79
+status: done
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # BUG-579: `_cleanup_orphaned_worktrees()` Ignores Worker Pool's `_active_worktrees` Guard

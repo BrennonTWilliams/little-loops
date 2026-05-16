@@ -3,6 +3,8 @@ discovered_date: 2026-04-07
 discovered_by: issue-size-review
 confidence_score: 80
 outcome_confidence: 53
+status: done
+completed_at: 2026-04-08T00:00:00Z
 ---
 
 # FEAT-985: wire_extensions() Upgrade, before_issue_close Hook, Reference Extension, and Tests

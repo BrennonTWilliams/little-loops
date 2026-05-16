@@ -3,9 +3,10 @@ id: ENH-757
 type: ENH
 priority: P3
 title: "sprint-build-and-validate loop hardcodes confidence thresholds"
-status: open
+status: done
 discovered_date: 2026-03-15
 discovered_by: capture-issue
+completed_at: 2026-03-15T00:00:00Z
 ---
 
 # ENH-757: sprint-build-and-validate loop hardcodes confidence thresholds

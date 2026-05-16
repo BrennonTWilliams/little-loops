@@ -7,6 +7,8 @@ discovered_date: 2026-03-24
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-24T00:00:00Z
 ---
 
 # ENH-878: Add loop-name header bar above top-level FSM diagram when --show-diagrams is used

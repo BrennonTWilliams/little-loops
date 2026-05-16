@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-12
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # BUG-403: Dependency graph renders empty isolated nodes when no edges exist

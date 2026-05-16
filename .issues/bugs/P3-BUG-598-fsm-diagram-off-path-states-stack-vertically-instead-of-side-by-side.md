@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-03-05T00:00:00Z
+---
 # BUG-598: FSM diagram off-path states stack vertically instead of side-by-side
 
 ## Summary

@@ -5,6 +5,8 @@ discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-03T00:00:00Z
 ---
 
 # BUG-525: TOCTOU Race Condition in `LockManager.acquire` — Two Loops Can Acquire Same Scope

@@ -2,7 +2,7 @@
 id: BUG-1385
 type: BUG
 priority: P1
-status: completed
+status: done
 title: --resume fails in print mode during Option E context-handoff continuation
 confidence_score: 100
 outcome_confidence: 93

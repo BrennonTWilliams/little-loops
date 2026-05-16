@@ -5,6 +5,8 @@ discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
 confidence_score: 94
 outcome_confidence: 95
+status: done
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # FEAT-555: `EntityCluster.span` and `inferred_workflow` declared but never populated

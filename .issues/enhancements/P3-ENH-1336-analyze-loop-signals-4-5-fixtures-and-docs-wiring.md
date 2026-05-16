@@ -11,6 +11,8 @@ score_ambiguity: 18
 score_change_surface: 25
 size: Very Large
 parent: ENH-1327
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1336: Add Effectiveness Signals 4-5, Fixtures, and Documentation Wiring to `/ll:analyze-loop`

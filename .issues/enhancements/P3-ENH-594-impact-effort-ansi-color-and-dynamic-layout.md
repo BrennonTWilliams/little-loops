@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-05T00:00:00Z
 discovered_by: manual
+status: done
+completed_at: 2026-03-05T00:00:00Z
 ---
 
 # ENH-594: Color, Dynamic Layout, and Summary Count for `ll-issues impact-effort`

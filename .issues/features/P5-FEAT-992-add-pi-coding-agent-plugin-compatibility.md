@@ -16,6 +16,7 @@ score_change_surface: 18
 decision_needed: false
 missing_artifacts: true
 size: Very Large
+completed_at: 2026-05-15T00:00:00Z
 ---
 
 # FEAT-992: Add Pi Coding Agent Plugin Compatibility

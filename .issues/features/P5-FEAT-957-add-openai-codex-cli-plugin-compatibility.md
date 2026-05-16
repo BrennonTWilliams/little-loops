@@ -2,7 +2,7 @@
 id: FEAT-957
 type: FEAT
 priority: P5
-status: completed
+status: done
 discovered_date: 2026-04-05
 discovered_by: capture-issue
 blocked_by: []
@@ -12,6 +12,7 @@ score_complexity: 9
 score_test_coverage: 18
 score_ambiguity: 10
 score_change_surface: 25
+completed_at: 2026-05-15T00:00:00Z
 ---
 
 # FEAT-957: Add OpenAI Codex CLI Plugin Compatibility

@@ -3,6 +3,8 @@ discovered_date: 2026-03-23
 discovered_by: /ll:capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-23T00:00:00Z
 ---
 
 # ENH-860: Add `ll-issues next-action` subcommand

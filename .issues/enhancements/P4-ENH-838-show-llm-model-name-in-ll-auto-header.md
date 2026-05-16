@@ -3,6 +3,8 @@ discovered_date: 2026-03-20T00:00:00Z
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 90
+status: done
+completed_at: 2026-03-20T00:00:00Z
 ---
 
 # ENH-838: Show LLM model name in ll-auto header via stream-json init event

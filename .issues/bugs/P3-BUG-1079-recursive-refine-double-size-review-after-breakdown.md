@@ -3,6 +3,8 @@ discovered_date: 2026-04-12
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 86
+status: done
+completed_at: 2026-04-12T00:00:00Z
 ---
 
 # BUG-1079: recursive-refine runs issue-size-review twice when breakdown_issue fires

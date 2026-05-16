@@ -10,6 +10,7 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
 completed_at: 2026-04-21T22:43:52Z
+status: done
 ---
 
 # FEAT-1240: Tests and documentation for decide-issue

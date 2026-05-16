@@ -2,7 +2,7 @@
 id: ENH-1139
 type: ENH
 priority: P2
-status: completed
+status: done
 discovered_date: 2026-04-17
 parent: ENH-1138
 
@@ -15,6 +15,7 @@ score_ambiguity: 25
 score_change_surface: 25
 testable: false
 relates_to: ['ENH-1138', 'ENH-1134']
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1139: 429 Resilience — API.md Reference Updates for Circuit Breaker

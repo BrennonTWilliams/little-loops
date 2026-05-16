@@ -2,12 +2,13 @@
 id: FEAT-1010
 type: FEAT
 priority: P2
-status: active
+status: done
 title: "Add `agent:` and `tools:` state-level fields to ll-loop FSM"
 discovered_date: 2026-04-09
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 78
+completed_at: 2026-04-09T00:00:00Z
 ---
 
 # FEAT-1010: Add `agent:` and `tools:` state-level fields to ll-loop FSM

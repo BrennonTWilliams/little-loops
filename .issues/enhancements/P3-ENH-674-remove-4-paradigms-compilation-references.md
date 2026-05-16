@@ -3,6 +3,8 @@ discovered_date: 2026-03-11
 discovered_by: capture-issue
 confidence_score: 96
 outcome_confidence: 61
+status: done
+completed_at: 2026-03-11T00:00:00Z
 ---
 
 # ENH-674: Remove deprecated 4 Paradigms compilation from codebase

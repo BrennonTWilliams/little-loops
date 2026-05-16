@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-19
 discovered_by: capture-issue
+status: done
+completed_at: 2026-02-19T00:00:00Z
 ---
 
 # ENH-443: Enhance `ll-loop show` output with a proper FSM graph diagram

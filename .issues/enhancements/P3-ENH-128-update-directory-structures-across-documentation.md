@@ -3,6 +3,8 @@ discovered_commit: 46b2118b5a8ca70c3eb93c69ab9f9ab14f64ddb5
 discovered_branch: main
 discovered_date: 2026-01-23T00:00:00Z
 discovered_by: audit_docs
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-128: Update directory structures across documentation

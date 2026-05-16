@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-13T00:00:00Z
+---
 # Tool Evaluator Defaults Table is Documentation-Only Guidance
 
 ## Type

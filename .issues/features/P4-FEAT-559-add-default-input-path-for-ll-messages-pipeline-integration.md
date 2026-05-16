@@ -5,6 +5,8 @@ discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
 confidence_score: 95
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-21T00:00:00Z
 ---
 
 # FEAT-559: Add default `--input` path for `ll-messages` pipeline integration

@@ -6,6 +6,8 @@ testable: false
 confidence_score: 78
 outcome_confidence: 68
 parent: FEAT-1072
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-1078: Parallel State Wiring, Display, and Docs

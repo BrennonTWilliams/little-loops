@@ -5,6 +5,8 @@ discovered_date: 2026-03-06T04:46:40Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-06T00:00:00Z
 ---
 
 # BUG-600: `cmd_resume` does not register signal handlers — Ctrl-C skips graceful shutdown

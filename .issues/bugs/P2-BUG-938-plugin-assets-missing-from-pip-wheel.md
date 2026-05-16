@@ -2,13 +2,14 @@
 id: BUG-938
 type: BUG
 priority: P2
-status: invalid
+status: done
 discovered_date: 2026-04-03
 discovered_by: capture-issue
 closed_date: 2026-04-03
 closed_by: manual
 confidence_score: 95
 outcome_confidence: 90
+completed_at: 2026-04-03T00:00:00Z
 ---
 
 # BUG-938: Plugin assets missing from pip wheel (skills/, commands/, agents/, hooks/, .claude-plugin/)

@@ -2,10 +2,11 @@
 id: BUG-809
 type: BUG
 priority: P2
-status: completed
+status: done
 discovered_date: 2026-03-18
 discovered_by: capture-issue
 completed_date: 2026-03-18
+completed_at: 2026-03-18T00:00:00Z
 ---
 
 # BUG-809: context-monitor.sh default context_limit_estimate (150K) is 6–7x too low for current models

@@ -1,6 +1,8 @@
 ---
 discovered_date: 2025-01-15
 discovered_by: manual_review
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-074: Make capture_issue duplicate detection thresholds configurable

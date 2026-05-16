@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-04-12
 discovered_by: capture-issue
+status: deferred
 ---
 
 # ENH-1065: Extract rubrics for analyze-loop and review-loop skills

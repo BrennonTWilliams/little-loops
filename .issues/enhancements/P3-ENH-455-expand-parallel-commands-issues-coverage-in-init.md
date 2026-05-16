@@ -3,8 +3,9 @@ type: ENH
 id: ENH-455
 title: Expand parallel, commands, and issues coverage in init wizard
 priority: P3
-status: completed
+status: done
 created: 2026-02-22
+completed_at: 2026-02-23T00:00:00Z
 ---
 
 # Expand parallel, commands, and issues coverage in init wizard

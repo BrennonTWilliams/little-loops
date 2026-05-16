@@ -5,6 +5,8 @@ discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
 confidence_score: 98
 outcome_confidence: 71
+status: done
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # ENH-692: "Contents dict or read" guard pattern duplicated 10+ times across issue_history

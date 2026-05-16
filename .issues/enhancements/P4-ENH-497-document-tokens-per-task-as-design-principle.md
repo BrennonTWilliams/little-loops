@@ -4,6 +4,8 @@ discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
 confidence_score: 88
 outcome_confidence: 100
+status: done
+completed_at: 2026-04-02T00:00:00Z
 ---
 
 # ENH-497: Document Tokens-per-Task as ll-auto/ll-parallel Design Principle

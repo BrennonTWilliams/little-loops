@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-01-22
 discovered_by: capture_issue
+status: done
+completed_at: 2026-01-22T00:00:00Z
 ---
 
 # BUG-103: ll_create_sprint uses wrong issue filename pattern

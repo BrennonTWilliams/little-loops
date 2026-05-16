@@ -5,6 +5,8 @@ discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
 confidence_score: 98
 outcome_confidence: 79
+status: done
+completed_at: 2026-02-25T00:00:00Z
 ---
 
 # ENH-481: Replace hardcoded category lists with config throughout codebase

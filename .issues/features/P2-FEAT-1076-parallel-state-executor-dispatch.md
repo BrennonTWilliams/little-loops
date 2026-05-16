@@ -10,6 +10,7 @@ score_ambiguity: 22
 score_change_surface: 18
 size: Very Large
 parent: FEAT-1072
+status: deferred
 ---
 
 # FEAT-1076: Parallel State Executor Dispatch

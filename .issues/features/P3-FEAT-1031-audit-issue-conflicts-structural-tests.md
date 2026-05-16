@@ -6,6 +6,8 @@ outcome_confidence: 100
 
 blocked_by: FEAT-1028
 parent: FEAT-1029
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-1031: audit-issue-conflicts — Structural Tests

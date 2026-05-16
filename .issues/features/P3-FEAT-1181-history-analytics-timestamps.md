@@ -2,7 +2,7 @@
 id: FEAT-1181
 type: FEAT
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-04-18
 completed_at: 2026-04-18T22:34:16Z
 discovered_by: issue-size-review

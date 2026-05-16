@@ -6,6 +6,8 @@ discovered_by: audit-architecture
 focus_area: integration
 confidence_score: 93
 outcome_confidence: 76
+status: done
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # ENH-682: Break circular import: dependency_mapper <-> cli.deps

@@ -5,6 +5,8 @@ discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-22T00:00:00Z
 ---
 
 # ENH-699: Redundant scatter score denominator guard in `detect_cross_cutting_smells`

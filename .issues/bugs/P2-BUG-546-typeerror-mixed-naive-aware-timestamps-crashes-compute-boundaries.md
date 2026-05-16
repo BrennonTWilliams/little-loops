@@ -5,6 +5,8 @@ discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
 confidence_score: 98
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # BUG-546: `TypeError` on mixed naive/aware timestamps crashes `_compute_boundaries`

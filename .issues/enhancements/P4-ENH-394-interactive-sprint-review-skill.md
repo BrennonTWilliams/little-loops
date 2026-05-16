@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-12
 discovered_by: manual
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-394: Add `/ll:review-sprint` skill for AI-guided sprint health checks

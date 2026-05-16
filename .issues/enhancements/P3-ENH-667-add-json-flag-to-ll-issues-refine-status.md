@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-10
 discovered_by: capture-issue
+status: done
+completed_at: 2026-03-10T00:00:00Z
 ---
 
 # ENH-667: Add `--json` flag to `ll-issues refine-status`

@@ -9,6 +9,8 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 22
 score_change_surface: 22
+status: done
+completed_at: 2026-04-14T00:00:00Z
 ---
 
 # BUG-1107: FSM Executor 429 Detection, Retry, and Persistence

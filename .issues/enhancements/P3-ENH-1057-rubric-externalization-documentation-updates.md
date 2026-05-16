@@ -3,6 +3,7 @@ discovered_date: 2026-04-12
 discovered_by: issue-size-review
 confidence_score: 85
 outcome_confidence: 82
+status: deferred
 ---
 
 # ENH-1057: Documentation updates for rubric externalization system

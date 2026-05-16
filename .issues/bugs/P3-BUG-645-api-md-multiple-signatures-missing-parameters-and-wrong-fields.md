@@ -2,9 +2,10 @@
 id: BUG-645
 type: BUG
 priority: P3
-status: active
+status: done
 title: "API.md multiple API signatures missing parameters and wrong field documentation"
 created: 2026-03-07
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # BUG-645: API.md multiple API signatures missing parameters and wrong field documentation

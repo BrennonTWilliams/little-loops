@@ -2,12 +2,13 @@
 id: BUG-881
 type: BUG
 priority: P3
-status: open
+status: done
 discovered_date: 2026-03-24
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 85
 testable: false
+completed_at: 2026-03-24T00:00:00Z
 ---
 
 # BUG-881: `AUTOMATIC_HARNESSING_GUIDE` incorrectly describes how `check_semantic` accesses prior output

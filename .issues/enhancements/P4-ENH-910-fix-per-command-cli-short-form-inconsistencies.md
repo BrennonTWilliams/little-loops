@@ -2,13 +2,14 @@
 id: ENH-910
 type: ENH
 priority: P4
-status: completed
+status: done
 title: "Fix per-command CLI short form inconsistencies"
 discovered_date: 2026-04-01
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 78
 completed_date: 2026-04-01
+completed_at: 2026-04-01T00:00:00Z
 ---
 
 # ENH-910: Fix per-command CLI short form inconsistencies

@@ -2,6 +2,8 @@
 discovered_date: 2026-04-08
 discovered_by: manual
 completed_date: 2026-04-08
+status: done
+completed_at: 2026-04-08T00:00:00Z
 ---
 
 # ENH-997: Replace implement_issue prompt with ll-auto shell action

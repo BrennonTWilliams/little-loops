@@ -2,6 +2,8 @@
 discovered_date: 2026-03-08
 discovered_by: manual-observation
 completed_date: 2026-03-08
+status: done
+completed_at: 2026-03-08T00:00:00Z
 ---
 
 # BUG-655: Off-Path State Highlighting Missing in FSM Diagram

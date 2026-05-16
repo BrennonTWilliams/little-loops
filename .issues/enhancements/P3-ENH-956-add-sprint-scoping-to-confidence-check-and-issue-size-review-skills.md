@@ -3,6 +3,8 @@ discovered_date: 2026-04-05
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 71
+status: done
+completed_at: 2026-04-05T00:00:00Z
 ---
 
 # ENH-956: Add Sprint Scoping to confidence-check and issue-size-review Skills

@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-22
 discovered_by: capture-issue
+status: done
+completed_at: 2026-02-22T00:00:00Z
 ---
 
 # ENH-447: Add confidence-score blocking gate to manage-issue

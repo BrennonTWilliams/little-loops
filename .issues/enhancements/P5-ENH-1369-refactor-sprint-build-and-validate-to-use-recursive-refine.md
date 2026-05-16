@@ -2,11 +2,12 @@
 id: ENH-1369
 type: ENH
 priority: P5
-status: completed
+status: done
 discovered_date: 2026-05-05
 discovered_by: manual
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-05-05T00:00:00Z
 ---
 
 # ENH-1369: Refactor `sprint-build-and-validate` to use `recursive-refine` for issue refinement

@@ -3,6 +3,8 @@ discovered_date: 2026-04-07
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 78
+status: done
+completed_at: 2026-04-08T00:00:00Z
 ---
 
 # BUG-989: ll-loop --show-diagrams --clear produces ghost diagram fragments in scrollback

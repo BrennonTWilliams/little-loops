@@ -2,6 +2,7 @@
 discovered_date: "2026-04-18"
 discovered_by: parallel-fsm-review
 depends_on: [FEAT-1075, FEAT-1076, FEAT-1174]
+status: deferred
 ---
 
 # ENH-1175: Parallel Worker Retry and Side-Effect Cleanup Contract

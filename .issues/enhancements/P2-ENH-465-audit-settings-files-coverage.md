@@ -2,6 +2,8 @@
 discovered_date: 2026-02-22
 discovered_by: conversation-analysis
 confidence_score: 95
+status: done
+completed_at: 2026-02-23T00:00:00Z
 ---
 
 # ENH-465: Audit settings files across all scopes (user, managed, project)

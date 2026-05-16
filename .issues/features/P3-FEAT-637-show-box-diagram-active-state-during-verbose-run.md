@@ -3,6 +3,8 @@ discovered_date: 2026-03-07T00:00:00Z
 discovered_by: capture-issue
 confidence_score: 90
 outcome_confidence: 79
+status: done
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # FEAT-637: Show FSM Box Diagram with Active State Highlighted During `ll-loop run --verbose`

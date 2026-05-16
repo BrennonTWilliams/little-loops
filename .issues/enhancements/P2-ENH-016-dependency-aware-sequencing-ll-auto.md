@@ -2,6 +2,8 @@
 discovered_commit: 8279174
 discovered_branch: main
 discovered_date: 2026-01-12T00:00:00Z
+status: done
+completed_at: 2026-01-29T00:00:00Z
 ---
 
 # ENH-016: Dependency-Aware Sequencing in ll-auto

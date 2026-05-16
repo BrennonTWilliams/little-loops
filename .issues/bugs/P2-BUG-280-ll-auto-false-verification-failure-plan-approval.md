@@ -3,6 +3,8 @@ discovered_commit: b57c0542e0f94e62f0f00d59ef27afc70a580d82
 discovered_date: 2026-02-08
 discovered_source: blender-agents-ll-auto-debug.log
 discovered_external_repo: <external-repo>
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # BUG-280: ll-auto falsely reports verification failure when manage_issue creates plan awaiting approval

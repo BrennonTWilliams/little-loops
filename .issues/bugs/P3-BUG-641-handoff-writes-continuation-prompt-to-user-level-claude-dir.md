@@ -1,12 +1,13 @@
 ---
 id: BUG-641
 priority: P3
-status: completed
+status: done
 type: bug
 discovered_date: 2026-03-08
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 78
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # BUG-641: handoff writes continuation prompt to user-level ~/.claude instead of project-level .claude

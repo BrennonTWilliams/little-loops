@@ -10,6 +10,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 20
 score_change_surface: 18
+status: done
 ---
 
 # BUG-1386: run_with_continuation false failure after Option J fresh session

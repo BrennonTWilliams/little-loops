@@ -2,11 +2,12 @@
 id: BUG-583
 type: BUG
 priority: P2
-status: resolved
+status: done
 discovered_date: 2026-03-05
 discovered_by: capture-issue
 confidence_score: 90
 outcome_confidence: 79
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # BUG-583: ll-loop Stuck — evaluate "Empty result field" + fix State Timeout

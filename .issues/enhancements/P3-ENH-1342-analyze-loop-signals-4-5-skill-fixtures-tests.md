@@ -11,6 +11,7 @@ score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-05-03T05:14:52Z
 parent: ENH-1336
+status: done
 ---
 
 # ENH-1342: Implement Signals 4-5 in `/ll:analyze-loop` SKILL.md, Fixtures, and Synthesis Tests

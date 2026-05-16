@@ -10,6 +10,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 22
 score_change_surface: 25
+status: done
 ---
 
 # BUG-1281: Queued loops race on lock release — losers exit instead of retrying

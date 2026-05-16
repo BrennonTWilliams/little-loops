@@ -2,7 +2,7 @@
 id: FEAT-1003
 type: FEAT
 priority: P4
-status: backlog
+status: done
 title: Write test suite for ll-logs CLI tool
 discovered_date: 2026-04-08
 discovered_by: issue-size-review
@@ -13,6 +13,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 blocked_by: [FEAT-1002]
+completed_at: 2026-04-23T00:00:00Z
 ---
 
 # FEAT-1003: Write test suite for ll-logs CLI tool

@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-08T00:00:00Z
 discovered_by: capture-issue
+status: done
+completed_at: 2026-03-08T00:00:00Z
 ---
 
 # ENH-650: `worktree_copy_files` schema default lags behind code — schema missing `.claude/settings.local.json`

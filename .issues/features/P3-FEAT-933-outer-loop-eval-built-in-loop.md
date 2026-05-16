@@ -3,6 +3,8 @@ discovered_date: 2026-04-03
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 93
+status: done
+completed_at: 2026-04-04T00:00:00Z
 ---
 
 # FEAT-933: Add outer-loop-eval Built-in Loop for Loop Observation and Improvement

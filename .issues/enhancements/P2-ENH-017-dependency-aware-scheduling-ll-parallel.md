@@ -2,6 +2,8 @@
 discovered_commit: 8279174
 discovered_branch: main
 discovered_date: 2026-01-12T00:00:00Z
+status: done
+completed_at: 2026-01-18T00:00:00Z
 ---
 
 # ENH-017: Dependency-Aware Scheduling in ll-parallel

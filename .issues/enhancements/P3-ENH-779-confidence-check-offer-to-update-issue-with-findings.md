@@ -1,11 +1,12 @@
 ---
 id: ENH-779
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-16
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 78
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # ENH-779: confidence-check offer to update issue with findings

@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-08T00:00:00Z
 discovered_by: capture-issue
+status: done
+completed_at: 2026-03-08T00:00:00Z
 ---
 
 # BUG-649: `default_max_workers` defaults to `4` in schema but `2` in code

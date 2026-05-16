@@ -2,6 +2,7 @@
 discovered_date: "2026-04-18"
 discovered_by: capture-issue
 depends_on: [FEAT-1074]
+status: deferred
 ---
 
 # ENH-1166: `review-loop` V-Series Check Table Missing Parallel Mutual-Exclusion Entries

@@ -13,6 +13,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # BUG-1256: implement_current treats ll-auto decision-gate skip as success

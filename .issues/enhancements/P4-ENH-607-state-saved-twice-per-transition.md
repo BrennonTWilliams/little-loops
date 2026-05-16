@@ -5,6 +5,8 @@ discovered_date: 2026-03-06T04:46:40Z
 discovered_by: scan-codebase
 confidence_score: 97
 outcome_confidence: 90
+status: done
+completed_at: 2026-03-06T00:00:00Z
 ---
 
 # ENH-607: `PersistentExecutor` writes state file twice per state transition

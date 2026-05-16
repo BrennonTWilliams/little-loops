@@ -5,6 +5,8 @@ discovered_date: 2026-03-13T00:00:00Z
 discovered_by: manual-audit
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-13T00:00:00Z
 ---
 
 # BUG-734: FSM loop audit — 10 bugs fixed across 9 built-in loops

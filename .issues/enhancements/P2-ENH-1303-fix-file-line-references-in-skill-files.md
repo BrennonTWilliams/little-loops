@@ -12,6 +12,7 @@ score_ambiguity: 18
 score_change_surface: 25
 completed_at: 2026-04-27T18:26:29Z
 parent: ENH-1299
+status: done
 ---
 
 # ENH-1303: Fix `file:line` references in skill source files

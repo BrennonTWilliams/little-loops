@@ -2,11 +2,12 @@
 id: ENH-748
 priority: P3
 type: ENH
-status: completed
+status: done
 discovered_date: 2026-03-14
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 85
+completed_at: 2026-03-15T00:00:00Z
 ---
 
 # ENH-748: Add `--handoff-threshold` CLI Override to ll-auto, ll-parallel, ll-sprint

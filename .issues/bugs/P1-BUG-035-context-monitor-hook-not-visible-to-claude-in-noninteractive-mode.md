@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-14T00:00:00Z
+---
 # BUG-035: Context Monitor Hook Output Not Visible to Claude in Non-Interactive Mode
 
 ## Status: Closed - Already Fixed

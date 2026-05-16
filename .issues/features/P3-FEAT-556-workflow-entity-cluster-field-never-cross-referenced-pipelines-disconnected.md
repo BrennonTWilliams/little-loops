@@ -5,6 +5,8 @@ discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
 confidence_score: 95
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # FEAT-556: `Workflow.entity_cluster` / `semantic_cluster` never cross-referenced — entity and workflow pipelines are fully disconnected

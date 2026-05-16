@@ -6,6 +6,8 @@ discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 83
+status: done
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # FEAT-733: Loop Run History Archiving in `.loops/.history/`

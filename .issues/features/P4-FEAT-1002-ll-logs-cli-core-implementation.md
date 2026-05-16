@@ -2,7 +2,7 @@
 id: FEAT-1002
 type: FEAT
 priority: P4
-status: backlog
+status: done
 title: Implement ll-logs CLI core tool (logs.py + entry point)
 discovered_date: 2026-04-08
 discovered_by: issue-size-review
@@ -13,6 +13,7 @@ score_test_coverage: 10
 score_ambiguity: 18
 score_change_surface: 25
 size: Very Large
+completed_at: 2026-04-23T00:00:00Z
 ---
 
 # FEAT-1002: Implement ll-logs CLI core tool (logs.py + entry point)

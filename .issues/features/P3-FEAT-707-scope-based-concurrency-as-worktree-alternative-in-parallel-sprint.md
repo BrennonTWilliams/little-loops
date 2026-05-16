@@ -4,6 +4,7 @@ discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 74
 blocked_by: [ENH-470]
+status: deferred
 ---
 
 # FEAT-707: Scope-Based Concurrency as Worktree Alternative in ll-parallel/ll-sprint

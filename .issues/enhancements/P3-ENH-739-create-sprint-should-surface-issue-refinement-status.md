@@ -2,11 +2,12 @@
 id: ENH-739
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 78
+completed_at: 2026-03-13T00:00:00Z
 ---
 
 # ENH-739: create-sprint Should Surface Issue Refinement Status

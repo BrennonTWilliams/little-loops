@@ -2,7 +2,7 @@
 id: ENH-1142
 type: ENH
 priority: P2
-status: completed
+status: done
 completed_date: 2026-04-17
 discovered_date: 2026-04-17
 parent: ENH-1140
@@ -16,6 +16,7 @@ score_ambiguity: 25
 score_change_surface: 25
 testable: false
 relates_to: ['ENH-1138', 'ENH-1134', 'ENH-1141']
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1142: 429 Resilience — Circuit Breaker Core Prose Doc Updates

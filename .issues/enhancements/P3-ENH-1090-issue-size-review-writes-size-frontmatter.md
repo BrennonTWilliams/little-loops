@@ -8,6 +8,8 @@ discovered_by: issue-size-review
 confidence_score: 100
 outcome_confidence: 71
 parent: ENH-1089
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1090: issue-size-review skill writes `size` frontmatter after assessment

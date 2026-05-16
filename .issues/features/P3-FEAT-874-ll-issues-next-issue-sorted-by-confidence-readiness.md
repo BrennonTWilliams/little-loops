@@ -3,11 +3,12 @@ id: FEAT-874
 title: "ll-issues next-issue command sorted by confidence and readiness"
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-03-24
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-03-24T00:00:00Z
 ---
 
 # FEAT-874: ll-issues next-issue command sorted by confidence and readiness

@@ -5,6 +5,8 @@ source_loop: issue-refinement
 source_state: format_issues
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-17T00:00:00Z
 ---
 
 # BUG-773: prompt states missing timeout and on_error in issue-refinement loop
@@ -154,9 +156,9 @@ refine_issues:
 - `default_timeout: 3600` is already present at `loops/issue-refinement.yaml:112` — timeout sub-issue is resolved; no per-state timeouts are needed
 - `default_timeout` already supported in `scripts/little_loops/fsm/schema.py:407` and `executor.py:640,644`
 - Claim "`refine_issues` already has `timeout: 600`" was false — no per-state timeout exists on any of the three states; all rely on the loop-level `default_timeout: 3600`
-- Removed "Preferred fix (depends on ENH-776)" and "Interim fix" sections from Proposed Solution — `default_timeout` is already implemented
-- Simplified Implementation Steps (removed timeout-related step, removed ENH-776 deferral)
-- Simplified Acceptance Criteria (removed "Once ENH-776 lands" section)
+- Removed "Preferred fix (depends on ENH-1509)" and "Interim fix" sections from Proposed Solution — `default_timeout` is already implemented
+- Simplified Implementation Steps (removed timeout-related step, removed ENH-1509 deferral)
+- Simplified Acceptance Criteria (removed "Once ENH-1509 lands" section)
 
 **Verified 2026-03-16 (second pass)** — Verdict: VALID
 

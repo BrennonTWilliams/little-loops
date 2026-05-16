@@ -3,6 +3,8 @@ discovered_date: 2026-04-04
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-04-04T00:00:00Z
 ---
 
 # FEAT-951: `wire-issue` skill — post-refinement integration wiring pass

@@ -11,6 +11,7 @@ score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-05-03T20:53:16Z
 parent: ENH-1355
+status: done
 ---
 
 # ENH-1356: Multi-Instance Loop — Core Implementation + Tests

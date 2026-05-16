@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-04-23T03:41:44Z
+status: done
 ---
 
 # ENH-1268: Docs and Real-Run Validation for analyze-loop Semantic Synthesis

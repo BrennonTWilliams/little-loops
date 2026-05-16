@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-05T00:00:00Z
+---
 # ENH-004: Improve orchestrator.py Test Coverage
 
 ## Summary

@@ -2,9 +2,10 @@
 id: BUG-643
 type: BUG
 priority: P2
-status: active
+status: done
 title: "API.md issue_history section documents wrong data class schemas and nonexistent functions"
 created: 2026-03-07
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # BUG-643: API.md issue_history section documents wrong data class schemas and nonexistent functions

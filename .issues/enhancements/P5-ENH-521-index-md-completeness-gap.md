@@ -4,6 +4,8 @@ id: ENH-521
 priority: P5
 effort: low
 risk: low
+status: done
+completed_at: 2026-03-02T00:00:00Z
 ---
 
 # INDEX.md completeness gap — unlisted documentation files

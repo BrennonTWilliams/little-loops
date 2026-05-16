@@ -3,6 +3,8 @@ discovered_date: 2026-03-07
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 79
+status: done
+completed_at: 2026-03-21T00:00:00Z
 ---
 
 # FEAT-638: PostToolUse Hook to Auto-Link Session Logs on Issue Completion

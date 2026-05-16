@@ -2,7 +2,7 @@
 id: ENH-1412
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-10T00:49:33Z'
 completed_at: '2026-05-10T14:49:06Z'
 discovered_date: '2026-05-10'

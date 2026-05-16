@@ -5,6 +5,8 @@ discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
 confidence_score: 92
 outcome_confidence: 88
+status: done
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # ENH-540: `_find_reachable_states` BFS Uses `list.pop(0)` — O(n²) vs O(n) with `deque`

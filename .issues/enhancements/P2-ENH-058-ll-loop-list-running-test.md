@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-15T00:00:00Z
+---
 # P2-ENH-058: Add Integration Test for `list --running`
 
 ## Summary

@@ -2,12 +2,13 @@
 id: ENH-907
 type: ENH
 priority: P2
-status: active
+status: done
 title: "Add short forms to shared CLI arguments in cli_args.py"
 discovered_date: 2026-04-01
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 97
+completed_at: 2026-04-01T00:00:00Z
 ---
 
 # ENH-907: Add short forms to shared CLI arguments in cli_args.py

@@ -6,6 +6,8 @@ discovered_by: audit-architecture
 focus_area: large-files
 confidence_score: 100
 outcome_confidence: 71
+status: done
+completed_at: 2026-03-22T00:00:00Z
 ---
 
 # ENH-840: Split workflow_sequence_analyzer.py into package

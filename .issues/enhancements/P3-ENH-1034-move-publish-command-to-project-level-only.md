@@ -3,6 +3,8 @@ discovered_date: 2026-04-11
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 86
+status: done
+completed_at: 2026-04-11T00:00:00Z
 ---
 
 # ENH-1034: Move publish command to project-level only

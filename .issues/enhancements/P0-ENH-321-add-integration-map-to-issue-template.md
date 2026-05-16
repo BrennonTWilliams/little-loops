@@ -5,6 +5,8 @@ completed_date: 2026-02-10
 implementation_session: 2026-02-10
 
 parent: ENH-320
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-321: Add Integration Map Section to Issue Template

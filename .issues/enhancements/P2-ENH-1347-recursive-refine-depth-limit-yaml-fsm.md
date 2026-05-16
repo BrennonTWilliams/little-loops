@@ -12,6 +12,7 @@ score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-05-03T16:51:28Z
 parent: ENH-1344
+status: done
 ---
 
 # ENH-1347: YAML FSM Depth Tracking for `recursive-refine` Depth Limit

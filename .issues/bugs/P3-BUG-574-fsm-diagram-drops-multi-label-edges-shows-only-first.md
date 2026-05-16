@@ -5,6 +5,8 @@ discovered_date: 2026-03-04T00:00:00Z
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # BUG-574: FSM diagram drops multi-label edges — only first label rendered

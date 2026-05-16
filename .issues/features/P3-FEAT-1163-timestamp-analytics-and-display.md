@@ -2,7 +2,7 @@
 id: FEAT-1163
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-04-18
 discovered_by: capture-issue
 parent: FEAT-1155
@@ -13,6 +13,7 @@ score_test_coverage: 25
 score_ambiguity: 22
 score_change_surface: 10
 size: Very Large
+completed_at: 2026-04-18T00:00:00Z
 ---
 
 # FEAT-1163: Read `captured_at`/`completed_at` Timestamps in Analytics and Display

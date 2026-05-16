@@ -5,6 +5,8 @@ discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
 confidence_score: 96
 outcome_confidence: 79
+status: done
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # FEAT-633: No `--context KEY=VALUE` CLI override for runtime FSM context variables in `run`/`resume`

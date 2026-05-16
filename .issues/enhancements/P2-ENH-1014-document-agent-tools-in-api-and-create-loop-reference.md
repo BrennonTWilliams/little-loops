@@ -2,13 +2,14 @@
 id: ENH-1014
 type: ENH
 priority: P2
-status: active
+status: done
 title: "Document `agent:` and `tools:` in API.md and create-loop wizard reference"
 discovered_date: 2026-04-09
 discovered_by: issue-size-review
 confidence_score: 90
 outcome_confidence: 78
 testable: false
+completed_at: 2026-04-09T00:00:00Z
 ---
 
 # ENH-1014: Document `agent:` and `tools:` in API.md and create-loop wizard reference

@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-01-23
 discovered_by: manual
+status: done
+completed_at: 2026-01-23T00:00:00Z
 ---
 
 # FEAT-111: Issue History Summary Command

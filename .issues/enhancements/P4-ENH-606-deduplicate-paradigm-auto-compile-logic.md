@@ -5,6 +5,8 @@ discovered_date: 2026-03-06T04:46:40Z
 discovered_by: scan-codebase
 confidence_score: 95
 outcome_confidence: 88
+status: done
+completed_at: 2026-03-11T00:00:00Z
 ---
 
 # ENH-606: Deduplicate paradigm auto-compile logic across 4 call sites

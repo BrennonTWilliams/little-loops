@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-11
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-334: Replace mermaid dependency graphs with text diagrams in CLI

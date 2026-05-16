@@ -2,12 +2,13 @@
 id: ENH-861
 type: ENH
 priority: P3
-status: completed
+status: done
 title: "Update review-loop and create-loop skills to prefer ll- CLI commands"
 discovered_date: "2026-03-23"
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+completed_at: 2026-03-23T00:00:00Z
 ---
 
 # ENH-861: Update review-loop and create-loop skills to prefer ll- CLI commands

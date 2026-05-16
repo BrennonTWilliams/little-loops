@@ -3,8 +3,9 @@ type: ENH
 id: ENH-460
 title: Optional command validation during init (check if tools exist in PATH)
 priority: P4
-status: completed
+status: done
 created: 2026-02-22
+completed_at: 2026-02-23T00:00:00Z
 ---
 
 # Optional command validation during init (check if tools exist in PATH)

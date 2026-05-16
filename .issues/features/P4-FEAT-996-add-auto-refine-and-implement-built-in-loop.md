@@ -3,9 +3,10 @@ id: FEAT-996
 type: FEAT
 priority: P4
 title: "Add auto-refine-and-implement built-in loop"
-status: completed
+status: done
 discovered_date: 2026-04-08
 discovered_by: capture-issue
+completed_at: 2026-04-08T00:00:00Z
 ---
 
 # FEAT-996: Add auto-refine-and-implement built-in loop

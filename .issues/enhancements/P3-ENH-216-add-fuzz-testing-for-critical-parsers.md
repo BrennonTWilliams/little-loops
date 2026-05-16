@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-01T00:00:00Z
+---
 # P3-ENH-216: Add fuzz testing for critical parsers
 
 ## Summary

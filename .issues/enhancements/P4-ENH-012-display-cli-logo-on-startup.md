@@ -3,6 +3,8 @@ discovered_commit: null
 discovered_branch: main
 discovered_date: 2026-01-09T00:00:00Z
 discovered_by: manual
+status: done
+completed_at: 2026-01-09T00:00:00Z
 ---
 
 # ENH-012: Display CLI Logo on Startup

@@ -9,6 +9,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # ENH-1242: Improve issue-size-review decomposition to use "independently shippable" principle

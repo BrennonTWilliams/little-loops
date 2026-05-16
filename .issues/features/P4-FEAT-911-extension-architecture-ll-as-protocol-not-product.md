@@ -3,6 +3,8 @@ discovered_date: 2026-04-01
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 54
+status: done
+completed_at: 2026-04-02T00:00:00Z
 ---
 
 # FEAT-911: Extension Architecture — little-loops as a Protocol, not a Product

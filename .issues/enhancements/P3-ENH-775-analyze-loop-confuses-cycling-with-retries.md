@@ -5,6 +5,8 @@ source_loop: issue-refinement
 source_state: check_commit
 confidence_score: 100
 outcome_confidence: 75
+status: done
+completed_at: 2026-03-17T00:00:00Z
 ---
 
 # ENH-775: analyze-loop conflates intentional state cycling with stuck retries

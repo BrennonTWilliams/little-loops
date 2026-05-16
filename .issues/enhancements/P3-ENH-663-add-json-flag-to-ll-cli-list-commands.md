@@ -3,6 +3,8 @@ discovered_date: 2026-03-09
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-09T00:00:00Z
 ---
 
 # ENH-663: Add `--json` flag to `ll-` CLI list commands

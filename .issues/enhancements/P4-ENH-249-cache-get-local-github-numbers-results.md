@@ -3,6 +3,8 @@ discovered_commit: a8f4144ebd05e95833281bd95506da984ba5d118
 discovered_branch: main
 discovered_date: 2026-02-06T03:41:30Z
 discovered_by: scan_codebase
+status: done
+completed_at: 2026-02-05T00:00:00Z
 ---
 
 # ENH-249: Cache _get_local_github_numbers results

@@ -3,6 +3,8 @@ discovered_date: 2026-03-26
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-26T00:00:00Z
 ---
 
 # BUG-891: ll-loop --background Fails: Missing __main__.py in cli.loop Package

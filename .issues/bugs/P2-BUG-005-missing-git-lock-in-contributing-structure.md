@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-01-06T00:00:00Z
 discovered_by: audit_docs
 doc_file: CONTRIBUTING.md
+status: done
+completed_at: 2026-01-06T00:00:00Z
 ---
 
 # BUG-005: Missing files in documentation structure diagrams

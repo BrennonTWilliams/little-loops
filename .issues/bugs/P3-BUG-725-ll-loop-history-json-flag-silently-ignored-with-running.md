@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-13
 discovered_by: capture-issue
+status: done
+completed_at: 2026-03-13T00:00:00Z
 ---
 
 # BUG-725: `ll-loop history` lacks `--json` flag; `ll-loop list --running --json` silently ignores `--json`

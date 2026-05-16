@@ -1,5 +1,7 @@
 ---
 discovered_date: 2026-01-15T12:00:00Z
+status: done
+completed_at: 2026-01-15T00:00:00Z
 ---
 
 # ENH-052: Conversation-Aware Handoff

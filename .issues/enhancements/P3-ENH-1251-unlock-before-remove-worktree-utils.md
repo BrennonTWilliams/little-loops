@@ -14,6 +14,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 parent: ENH-1247
+status: done
 ---
 
 # ENH-1251: Unlock Before Remove in worktree_utils.cleanup_worktree

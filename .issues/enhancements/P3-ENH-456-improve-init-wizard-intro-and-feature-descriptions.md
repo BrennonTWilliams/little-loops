@@ -3,8 +3,9 @@ type: ENH
 id: ENH-456
 title: Add intro context and improve feature descriptions in init wizard
 priority: P3
-status: open
+status: done
 created: 2026-02-22
+completed_at: 2026-02-23T00:00:00Z
 ---
 
 # Add intro context and improve feature descriptions in init wizard

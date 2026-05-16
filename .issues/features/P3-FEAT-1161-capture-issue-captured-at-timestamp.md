@@ -2,7 +2,7 @@
 id: FEAT-1161
 type: FEAT
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-04-18
 discovered_by: capture-issue
 parent: FEAT-1155
@@ -12,6 +12,7 @@ score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+completed_at: 2026-04-18T00:00:00Z
 ---
 
 # FEAT-1161: Add `captured_at` Timestamp in capture-issue Skill

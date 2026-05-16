@@ -3,6 +3,8 @@ discovered_date: 2026-03-04
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 64
+status: done
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # ENH-576: Align bug/enh section JSON files with format-issue templates.md v2.0 definitions

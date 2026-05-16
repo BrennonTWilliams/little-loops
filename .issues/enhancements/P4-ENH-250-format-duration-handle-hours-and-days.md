@@ -6,6 +6,8 @@ discovered_by: scan_codebase
 resolution: wont-fix
 closed_date: 2026-02-05
 closing_note: "Cosmetic polish with minimal user impact. The function works — it just shows '185.3 minutes' instead of '3h 5m'. This is a minor readability improvement for a log message that appears once at the end of a long run. Not worth tracking as a standalone issue."
+status: done
+completed_at: 2026-02-05T00:00:00Z
 ---
 
 # ENH-250: format_duration handle hours and days

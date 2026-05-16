@@ -5,6 +5,8 @@ discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # FEAT-634: No paradigm compiler generates `on_partial` routing despite executor and evaluator supporting it

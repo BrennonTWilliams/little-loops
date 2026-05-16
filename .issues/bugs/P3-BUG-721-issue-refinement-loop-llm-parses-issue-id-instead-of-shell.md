@@ -4,6 +4,8 @@ discovered_by: audit
 confidence_score: 100
 outcome_confidence: 100
 completed_date: 2026-03-13
+status: done
+completed_at: 2026-03-13T00:00:00Z
 ---
 
 # BUG-721: issue-refinement loop asks LLM to parse issue ID instead of using shell

@@ -3,6 +3,8 @@ discovered_date: 2026-02-24
 discovered_by: capture-issue
 confidence_score: 93
 outcome_confidence: 64
+status: done
+completed_at: 2026-03-02T00:00:00Z
 ---
 
 # ENH-492: Split issue-sections.json into per-type files

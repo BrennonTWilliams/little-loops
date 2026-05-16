@@ -3,6 +3,8 @@ discovered_date: 2026-03-23
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 85
+status: done
+completed_at: 2026-03-23T00:00:00Z
 ---
 
 # BUG-870: issue-completion-log.sh shell vars injected into Python string literals

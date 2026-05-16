@@ -3,6 +3,8 @@ discovered_date: 2026-03-15
 discovered_by: analyze-loop
 source_loop: sprint-build-and-validate
 source_state: route_validation
+status: done
+completed_at: 2026-03-15T00:00:00Z
 ---
 
 # BUG-761: route_validation blocked verdict causes loop failure (no on_blocked handler)

@@ -2,7 +2,7 @@
 id: BUG-1375
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: 2026-05-06 20:59:54+00:00
 completed_at: 2026-05-06T21:43:04Z
 discovered_date: 2026-05-06

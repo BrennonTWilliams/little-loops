@@ -3,6 +3,8 @@ discovered_date: "2026-02-18"
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 63
+status: done
+completed_at: 2026-02-25T00:00:00Z
 ---
 
 # FEAT-440: TDD Mode for Issue Implementation

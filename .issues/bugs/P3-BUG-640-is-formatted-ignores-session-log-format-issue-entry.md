@@ -3,7 +3,8 @@ id: BUG-640
 type: BUG
 priority: P3
 title: "is_formatted ignores /ll:format-issue session log entry"
-status: completed
+status: done
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 ## Summary

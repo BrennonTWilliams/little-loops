@@ -3,7 +3,7 @@ id: ENH-1305
 type: ENH
 priority: P2
 title: "wire-issue: harden Phase 4 subagent prompts against infinite loops"
-status: backlog
+status: done
 captured_at: "2026-04-27T16:55:56Z"
 completed_at: "2026-04-27T19:02:43Z"
 discovered_date: "2026-04-27"

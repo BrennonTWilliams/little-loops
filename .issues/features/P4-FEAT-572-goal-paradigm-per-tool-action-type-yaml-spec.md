@@ -3,6 +3,8 @@ discovered_date: 2026-03-04
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # FEAT-572: Add per-tool `action_type` support to `goal` paradigm YAML spec

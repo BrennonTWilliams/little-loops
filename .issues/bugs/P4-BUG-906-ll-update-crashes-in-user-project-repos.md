@@ -3,6 +3,8 @@ discovered_date: 2026-04-01T00:00:00Z
 discovered_by: user-report
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-04-01T00:00:00Z
 ---
 
 # BUG-906: `/ll:update` crashes in user project repos with FileNotFoundError

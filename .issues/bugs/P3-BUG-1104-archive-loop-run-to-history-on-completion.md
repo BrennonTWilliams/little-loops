@@ -7,6 +7,8 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+status: done
+completed_at: 2026-04-13T00:00:00Z
 ---
 
 # BUG-1104: Archive loop run to history on completion

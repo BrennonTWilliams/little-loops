@@ -5,6 +5,8 @@ discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
 closed_date: 2026-03-14
 closed_reason: wont-do
+status: done
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # FEAT-704: Add `--search` text filter to `ll-issues list`

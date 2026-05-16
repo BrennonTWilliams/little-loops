@@ -2,7 +2,7 @@
 id: ENH-1111
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-04-15
 discovered_by: capture-issue
 
@@ -14,6 +14,7 @@ score_ambiguity: 22
 score_change_surface: 18
 size: Very Large
 relates_to: ['FEAT-1116']
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1111: Scratch-Pad Enforcement via PreToolUse Hook

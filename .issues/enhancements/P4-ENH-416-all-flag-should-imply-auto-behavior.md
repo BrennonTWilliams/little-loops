@@ -2,6 +2,8 @@
 discovered_date: 2026-02-13
 discovered_by: capture_issue
 confidence_score: 97
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-416: --all flag should implicitly enable --auto behavior

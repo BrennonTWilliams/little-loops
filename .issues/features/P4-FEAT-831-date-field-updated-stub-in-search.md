@@ -5,6 +5,8 @@ discovered_date: 2026-03-19T21:54:42Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-20T00:00:00Z
 ---
 
 # FEAT-831: `--date-field=updated` stub in `ll-issues search`

@@ -2,11 +2,12 @@
 id: ENH-666
 type: ENH
 priority: P3
-status: closed
+status: done
 closed_date: 2026-03-10
 closed_reason: superseded by FEAT-670
 discovered_date: 2026-03-10
 discovered_by: capture-issue
+completed_at: 2026-03-10T00:00:00Z
 ---
 
 # ENH-666: FSM Box Diagram Generator Should Prefer Vertical Layout

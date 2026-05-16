@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-09
 discovered_by: capture-issue
+status: done
+completed_at: 2026-03-09T00:00:00Z
 ---
 
 # FEAT-660: New `/ll:review-loop` Slash Command

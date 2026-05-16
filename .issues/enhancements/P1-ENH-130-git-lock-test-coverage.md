@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-23T00:00:00Z
+---
 # P1-ENH-130: Add comprehensive tests for git_lock module
 
 ## Summary

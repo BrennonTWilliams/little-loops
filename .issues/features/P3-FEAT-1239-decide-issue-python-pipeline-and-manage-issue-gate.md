@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-04-21T22:22:45Z
+status: done
 ---
 
 # FEAT-1239: Wire decide-issue into Python pipeline and manage-issue gate

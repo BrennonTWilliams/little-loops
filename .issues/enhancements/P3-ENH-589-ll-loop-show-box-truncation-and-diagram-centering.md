@@ -3,6 +3,8 @@ discovered_date: 2026-03-05
 discovered_by: user
 confidence_score: 98
 completed_date: 2026-03-05
+status: done
+completed_at: 2026-03-05T00:00:00Z
 ---
 
 # ENH-589: Fix `ll-loop show` box truncation and add diagram centering

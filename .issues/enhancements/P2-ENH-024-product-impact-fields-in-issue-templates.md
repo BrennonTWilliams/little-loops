@@ -2,6 +2,8 @@
 discovered_commit: b20aa691700cd09e7071bc829c943e3a83876abf
 discovered_branch: main
 discovered_date: 2026-01-06T20:47:28Z
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-024: Product Impact Fields in Issue Templates

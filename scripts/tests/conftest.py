@@ -111,6 +111,7 @@ def sample_config() -> dict[str, Any]:
             "default_timeout": 3600,
             "default_max_workers": 4,
         },
+        "orchestration": {},
     }
 
 

@@ -7,6 +7,8 @@ discovered_date: 2026-03-20
 discovered_by: capture-issue
 confidence_score: 88
 outcome_confidence: 97
+status: done
+completed_at: 2026-03-20T00:00:00Z
 ---
 
 # ENH-846: Show sub-loop FSM diagram alongside parent during sub-loop execution

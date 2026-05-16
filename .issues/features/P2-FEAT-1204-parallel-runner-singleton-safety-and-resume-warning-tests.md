@@ -10,6 +10,8 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
 parent: FEAT-1199
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-1204: TestParallelRunnerSingletonSafety + items_hash Resume-Warning Test

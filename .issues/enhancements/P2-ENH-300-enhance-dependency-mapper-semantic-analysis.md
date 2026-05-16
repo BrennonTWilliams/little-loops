@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-09
 discovered_by: user_feedback
+status: done
+completed_at: 2026-02-09T00:00:00Z
 ---
 
 # ENH-300: Enhance Dependency Mapper with Semantic Conflict Analysis

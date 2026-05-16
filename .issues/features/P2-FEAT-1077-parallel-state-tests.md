@@ -10,6 +10,8 @@ score_ambiguity: 25
 score_change_surface: 25
 size: Very Large
 parent: FEAT-1072
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-1077: Parallel State Tests

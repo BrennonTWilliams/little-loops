@@ -2,6 +2,8 @@
 discovered_commit: 8279174
 discovered_branch: main
 discovered_date: 2026-01-12T12:00:00Z
+status: done
+completed_at: 2026-02-12T00:00:00Z
 ---
 
 # ENH-031: Response Context Capture

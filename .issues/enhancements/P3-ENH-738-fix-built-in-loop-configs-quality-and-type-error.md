@@ -2,11 +2,12 @@
 id: ENH-738
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-13
 discovered_by: manual
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-03-13T00:00:00Z
 ---
 
 # ENH-738: Fix two built-in loop configs — quality gate and type-error-fix

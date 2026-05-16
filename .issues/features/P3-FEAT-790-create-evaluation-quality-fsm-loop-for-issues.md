@@ -2,11 +2,12 @@
 id: FEAT-790
 type: FEAT
 priority: P3
-status: active
+status: done
 discovered_date: 2026-03-16
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 88
+completed_at: 2026-03-17T00:00:00Z
 ---
 
 # FEAT-790: Create evaluation-quality FSM Loop for Issues

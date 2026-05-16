@@ -5,6 +5,8 @@ discovered_date: 2026-03-24T00:00:00Z
 discovered_by: capture-issue
 confidence_score: 80
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-24T00:00:00Z
 ---
 
 # ENH-879: Elevate check_skill prominence in wizard — distinguish phases by observability, not cost

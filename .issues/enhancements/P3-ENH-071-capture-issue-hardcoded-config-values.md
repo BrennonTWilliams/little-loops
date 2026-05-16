@@ -1,6 +1,8 @@
 ---
 discovered_date: 2025-01-15
 discovered_by: manual_review
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-071: capture_issue uses hardcoded values instead of config references

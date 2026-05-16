@@ -3,6 +3,8 @@ discovered_date: 2026-02-24
 discovered_by: capture-issue
 confidence_score: 80
 outcome_confidence: 75
+status: done
+completed_at: 2026-03-01T00:00:00Z
 ---
 
 # ENH-504: Format Highest-Priority Issue When No Args Provided

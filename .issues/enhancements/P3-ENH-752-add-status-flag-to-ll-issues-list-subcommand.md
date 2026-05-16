@@ -2,12 +2,13 @@
 id: ENH-752
 type: ENH
 priority: P3
-status: active
+status: done
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 title: "Add --status flag to ll-issues list subcommand"
 confidence_score: 90
 outcome_confidence: 86
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # ENH-752: Add --status flag to ll-issues list subcommand

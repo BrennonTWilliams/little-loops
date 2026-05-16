@@ -9,6 +9,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # ENH-1320: Fix issue-size-review wiring split heuristic for TDD projects

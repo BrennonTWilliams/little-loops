@@ -2,11 +2,12 @@
 id: FEAT-722
 priority: P3
 type: FEAT
-status: completed
+status: done
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 92
+completed_at: 2026-03-15T00:00:00Z
 ---
 
 # FEAT-722: Built-in Loops for Automatic Prompt Optimization (APO) Techniques

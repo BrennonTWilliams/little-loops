@@ -2,11 +2,12 @@
 id: BUG-759
 type: BUG
 priority: P3
-status: active
+status: done
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 100
+completed_at: 2026-03-23T00:00:00Z
 ---
 
 # BUG-759: FSM Diagram Shifts Horizontally When State Is Highlighted

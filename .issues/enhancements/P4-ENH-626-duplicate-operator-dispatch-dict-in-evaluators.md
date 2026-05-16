@@ -5,6 +5,8 @@ discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # ENH-626: Identical operator dispatch dict defined twice in `evaluate_output_numeric` and `_compare_values`

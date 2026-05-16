@@ -1,12 +1,13 @@
 ---
 id: ENH-584
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-04
 resolved_date: 2026-03-04
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 71
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # ENH-584: Make CLI Color Output Configurable

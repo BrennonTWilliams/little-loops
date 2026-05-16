@@ -6,6 +6,8 @@ discovered_date: 2026-03-24
 discovered_by: /ll:capture-issue
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-24T00:00:00Z
 ---
 
 # FEAT-873: ll-issues refine-status ISSUE-ID single-issue filter

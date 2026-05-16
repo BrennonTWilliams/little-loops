@@ -3,6 +3,8 @@ discovered_date: 2026-03-10T00:00:00Z
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 71
+status: done
+completed_at: 2026-03-10T00:00:00Z
 ---
 
 # ENH-671: Eliminate paradigms as a runtime concept

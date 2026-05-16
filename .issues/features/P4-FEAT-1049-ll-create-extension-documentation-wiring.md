@@ -4,6 +4,8 @@ discovered_by: issue-size-review
 confidence_score: 100
 outcome_confidence: 68
 testable: false
+status: done
+completed_at: 2026-04-11T00:00:00Z
 ---
 
 # FEAT-1049: ll-create-extension Documentation Wiring

@@ -2,6 +2,7 @@
 discovered_date: "2026-04-20"
 discovered_by: parallel-family-review
 depends_on: [FEAT-1174]
+status: deferred
 ---
 
 # ENH-1192: Handle Mid-Checkpoint-Write Failures in Per-Worker Checkpointing

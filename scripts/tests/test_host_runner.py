@@ -19,7 +19,9 @@ from collections.abc import Iterator
 import pytest
 
 from little_loops.host_runner import (
+    CapabilityEntry,
     CapabilityNotSupported,
+    CapabilityReport,
     ClaudeCodeRunner,
     CodexRunner,
     HostCapabilities,
@@ -28,6 +30,7 @@ from little_loops.host_runner import (
     HostRunner,
     OpenCodeRunner,
     PiRunner,
+    apply_host_cli_from_config,
     resolve_host,
 )
 
@@ -428,3 +431,157 @@ class TestCapabilityWarning:
 
     def test_capability_not_supported_is_user_warning(self) -> None:
         assert issubclass(CapabilityNotSupported, UserWarning)
+
+
+class TestCapabilityReport:
+    """Frozen-dataclass convention and round-trip construction for capability types."""
+
+    def test_capability_entry_is_frozen(self) -> None:
+        entry = CapabilityEntry(name="streaming", status="full")
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            entry.name = "changed"  # type: ignore[misc]
+
+    def test_capability_report_is_frozen(self) -> None:
+        report = CapabilityReport(host="claude-code", binary="claude", version="")
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            report.host = "changed"  # type: ignore[misc]
+
+    def test_capability_report_defaults(self) -> None:
+        report = CapabilityReport(host="h", binary="b", version="1.0")
+        assert report.capabilities == []
+        assert report.hooks == []
+
+    def test_capability_report_round_trip(self) -> None:
+        entries = [
+            CapabilityEntry("streaming", "full"),
+            CapabilityEntry("agent_select", "unsupported", "not supported"),
+        ]
+        report = CapabilityReport(host="codex", binary="codex", version="0.9", capabilities=entries)
+        assert report.host == "codex"
+        assert len(report.capabilities) == 2
+        assert report.capabilities[0].status == "full"
+        assert report.capabilities[1].note == "not supported"
+
+
+class TestDescribeCapabilities:
+    """Each runner must return a CapabilityReport from describe_capabilities()."""
+
+    def test_claude_code_runner_returns_capability_report(self) -> None:
+        report = ClaudeCodeRunner().describe_capabilities()
+        assert isinstance(report, CapabilityReport)
+        assert report.host == "claude-code"
+        assert report.binary == "claude"
+        names = {e.name for e in report.capabilities}
+        assert "streaming" in names
+        assert "agent_select" in names
+
+    def test_claude_code_runner_all_core_capabilities_full(self) -> None:
+        report = ClaudeCodeRunner().describe_capabilities()
+        by_name = {e.name: e for e in report.capabilities}
+        assert by_name["streaming"].status == "full"
+        assert by_name["permission_skip"].status == "full"
+        assert by_name["agent_select"].status == "full"
+        assert by_name["tool_allowlist"].status == "full"
+
+    def test_codex_runner_returns_capability_report(self) -> None:
+        report = CodexRunner().describe_capabilities()
+        assert isinstance(report, CapabilityReport)
+        assert report.host == "codex"
+        assert report.binary == "codex"
+
+    def test_codex_runner_agent_select_unsupported(self) -> None:
+        report = CodexRunner().describe_capabilities()
+        by_name = {e.name: e for e in report.capabilities}
+        assert by_name["agent_select"].status == "unsupported"
+        assert by_name["tool_allowlist"].status == "unsupported"
+        assert by_name["json_schema"].status == "partial"
+
+    def test_opencode_runner_returns_capability_report(self) -> None:
+        report = OpenCodeRunner().describe_capabilities()
+        assert isinstance(report, CapabilityReport)
+        assert report.host == "opencode"
+        assert len(report.capabilities) >= 1
+        assert report.capabilities[0].status == "unsupported"
+        assert "HostNotConfigured" in report.capabilities[0].note
+
+    def test_pi_runner_returns_capability_report(self) -> None:
+        report = PiRunner().describe_capabilities()
+        assert isinstance(report, CapabilityReport)
+        assert report.host == "pi"
+        assert len(report.capabilities) >= 1
+        assert report.capabilities[0].status == "unsupported"
+        assert "FEAT-992" in report.capabilities[0].note
+
+    def test_codex_warnings_consistent_with_describe_capabilities(self) -> None:
+        """Every CapabilityNotSupported warning from CodexRunner maps to an unsupported entry.
+
+        Uses pytest.warns() matching the established pattern in this test module.
+        """
+        runner = CodexRunner()
+        with pytest.warns(CapabilityNotSupported):
+            runner.build_streaming(prompt="hi", agent="general-purpose")
+
+        report = runner.describe_capabilities()
+        unsupported = {e.name for e in report.capabilities if e.status == "unsupported"}
+        assert "agent_select" in unsupported
+
+        with pytest.warns(CapabilityNotSupported):
+            runner.build_streaming(prompt="hi", tools=["Read"])
+
+        assert "tool_allowlist" in unsupported
+
+
+class TestApplyHostCliFromConfig:
+    """apply_host_cli_from_config exports orchestration.host_cli as LL_HOST_CLI."""
+
+    def test_sets_env_var_from_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("LL_HOST_CLI", raising=False)
+
+        class FakeOrch:
+            host_cli = "codex"
+
+        class FakeConfig:
+            orchestration = FakeOrch()
+
+        apply_host_cli_from_config(FakeConfig())
+        import os
+
+        assert os.environ.get("LL_HOST_CLI") == "codex"
+        monkeypatch.delenv("LL_HOST_CLI", raising=False)
+
+    def test_does_not_override_existing_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+
+        class FakeOrch:
+            host_cli = "codex"
+
+        class FakeConfig:
+            orchestration = FakeOrch()
+
+        apply_host_cli_from_config(FakeConfig())
+        import os
+
+        assert os.environ["LL_HOST_CLI"] == "claude-code"
+
+    def test_no_op_when_host_cli_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("LL_HOST_CLI", raising=False)
+
+        class FakeOrch:
+            host_cli = None
+
+        class FakeConfig:
+            orchestration = FakeOrch()
+
+        apply_host_cli_from_config(FakeConfig())
+        import os
+
+        assert os.environ.get("LL_HOST_CLI") is None
+
+    def test_no_op_when_config_lacks_orchestration(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("LL_HOST_CLI", raising=False)
+        apply_host_cli_from_config(object())
+        import os
+
+        assert os.environ.get("LL_HOST_CLI") is None

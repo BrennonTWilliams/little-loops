@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-01T00:00:00Z
+---
 # P0-ENH-206: Improve cli.py test coverage from 29% to 80%+
 
 ## Summary

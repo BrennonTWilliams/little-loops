@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-05T00:00:00Z
+---
 # BUG-003: Invalid FEAT-* IDs Generated in Issue Queue
 
 ## Summary

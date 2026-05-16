@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-02-10
 discovered_by: audit_architecture
 focus_area: patterns
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # FEAT-411: Add abstract base classes for CLI commands

@@ -12,6 +12,7 @@ score_ambiguity: 25
 score_change_surface: 18
 size: Large
 parent: FEAT-1325
+status: done
 ---
 
 # FEAT-1330: `/ll:assess-loop` Skill — Documentation & Wiring

@@ -3,6 +3,8 @@ discovered_date: 2026-03-04
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 68
+status: done
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # BUG-578: `session-cleanup.sh` Stop Hook Destroys Active Parallel Worktrees

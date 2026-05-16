@@ -2,7 +2,7 @@
 id: FEAT-1273
 type: FEAT
 priority: P4
-status: backlog
+status: done
 title: "ll-logs: extract subcommand core (--project, --all, --cmd)"
 discovered_date: 2026-04-23
 discovered_by: issue-size-review

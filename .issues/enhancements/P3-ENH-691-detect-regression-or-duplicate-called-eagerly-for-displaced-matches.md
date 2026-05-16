@@ -5,6 +5,8 @@ discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # ENH-691: `detect_regression_or_duplicate` called eagerly for displaced matches

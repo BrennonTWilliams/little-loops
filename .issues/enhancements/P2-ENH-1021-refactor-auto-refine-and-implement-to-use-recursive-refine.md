@@ -3,6 +3,8 @@ discovered_date: 2026-04-10
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 93
+status: done
+completed_at: 2026-04-10T00:00:00Z
 ---
 
 # ENH-1021: Refactor auto-refine-and-implement to use recursive-refine

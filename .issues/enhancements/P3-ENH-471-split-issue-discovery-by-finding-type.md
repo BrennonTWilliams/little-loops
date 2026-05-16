@@ -6,6 +6,8 @@ discovered_by: audit-architecture
 focus_area: large-files
 confidence_score: 95
 outcome_confidence: 86
+status: done
+completed_at: 2026-02-25T00:00:00Z
 ---
 
 # ENH-471: Split issue_discovery.py by finding type

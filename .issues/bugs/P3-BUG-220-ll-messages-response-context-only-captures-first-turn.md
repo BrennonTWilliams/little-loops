@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-02
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-02T00:00:00Z
 ---
 
 # BUG-220: ll-messages --include-response-context only captures first assistant turn

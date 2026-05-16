@@ -2,11 +2,12 @@
 id: BUG-857
 type: BUG
 priority: P3
-status: active
+status: done
 discovered_date: 2026-03-21
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-03-21T00:00:00Z
 ---
 
 # BUG-857: --clear Flag Fires Screen Clear for Sub-Loop state_enter Events

@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-01-20T00:00:00Z
 discovered_by: audit_docs
 doc_file: commands/analyze-workflows.md
+status: done
+completed_at: 2026-01-28T00:00:00Z
 ---
 
 # ENH-094: Document /ll:analyze-workflows command in README and COMMANDS.md

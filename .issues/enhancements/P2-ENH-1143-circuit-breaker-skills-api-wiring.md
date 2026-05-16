@@ -2,7 +2,7 @@
 id: ENH-1143
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-04-17
 parent: ENH-1140
 
@@ -14,6 +14,7 @@ score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
 relates_to: ['ENH-1138', 'ENH-1134', 'ENH-1141', 'ENH-1142']
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1143: 429 Resilience — Circuit Breaker Skills & API.md Wiring Updates

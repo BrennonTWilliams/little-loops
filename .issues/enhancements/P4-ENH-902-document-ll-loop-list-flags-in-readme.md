@@ -5,6 +5,8 @@ discovered_date: 2026-03-31
 discovered_by: audit-docs
 doc_file: README.md
 testable: false
+status: done
+completed_at: 2026-03-31T00:00:00Z
 ---
 
 # ENH-902: Document `ll-loop list` flags in README

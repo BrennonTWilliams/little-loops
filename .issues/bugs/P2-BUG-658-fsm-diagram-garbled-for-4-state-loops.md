@@ -3,9 +3,10 @@ type: BUG
 id: BUG-658
 title: FSM box diagram garbled for 4-state loops
 priority: P2
-status: open
+status: done
 discovered_date: 2026-03-08
 discovered_by: capture-issue
+completed_at: 2026-03-09T00:00:00Z
 ---
 
 # BUG-658: FSM box diagram garbled for 4-state loops

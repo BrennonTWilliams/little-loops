@@ -2,11 +2,12 @@
 id: ENH-732
 priority: P4
 type: ENH
-status: completed
+status: done
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 96
 outcome_confidence: 86
+completed_at: 2026-03-18T00:00:00Z
 ---
 
 # ENH-732: Replace FSM State Box Badges with Unicode Compositions

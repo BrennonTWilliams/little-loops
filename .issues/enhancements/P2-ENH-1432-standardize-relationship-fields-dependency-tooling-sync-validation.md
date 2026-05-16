@@ -13,6 +13,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
 size: Very Large
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1432: Standardize Relationship Fields — Dependency Tooling, Sync & Validation

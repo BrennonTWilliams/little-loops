@@ -13,6 +13,7 @@ score_complexity: 13
 score_test_coverage: 10
 score_ambiguity: 18
 score_change_surface: 18
+completed_at: 2026-05-15T00:00:00Z
 ---
 
 # FEAT-1453: Hook-Intent Abstraction Layer — Documentation

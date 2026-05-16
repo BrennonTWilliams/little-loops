@@ -3,6 +3,8 @@ discovered_commit: 71616c711e2fe9f5f1ececcf1c64552bca9d82ec
 discovered_branch: main
 discovered_date: 2026-02-15T02:29:53Z
 discovered_by: scan-codebase
+status: done
+completed_at: 2026-02-14T00:00:00Z
 ---
 
 # BUG-425: process.returncode None masked as success

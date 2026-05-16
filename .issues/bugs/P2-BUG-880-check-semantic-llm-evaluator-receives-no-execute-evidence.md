@@ -2,11 +2,12 @@
 id: BUG-880
 type: BUG
 priority: P2
-status: completed
+status: done
 discovered_date: 2026-03-24
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+completed_at: 2026-03-24T00:00:00Z
 ---
 
 # BUG-880: Wizard-generated `check_semantic` provides no evidence to LLM evaluator

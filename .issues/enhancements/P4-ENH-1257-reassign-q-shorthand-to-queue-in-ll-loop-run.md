@@ -2,7 +2,7 @@
 id: ENH-1257
 type: ENH
 priority: P4
-status: backlog
+status: done
 title: "Reassign -q shorthand to --queue in ll-loop run"
 captured_at: "2026-04-22T18:42:46Z"
 completed_at: "2026-04-22T18:53:41Z"

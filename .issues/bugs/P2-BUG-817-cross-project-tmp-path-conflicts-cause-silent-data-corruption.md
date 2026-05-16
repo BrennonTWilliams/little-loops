@@ -2,11 +2,12 @@
 id: BUG-817
 type: BUG
 priority: P2
-status: completed
+status: done
 discovered_date: 2026-03-19
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 78
+completed_at: 2026-03-19T00:00:00Z
 ---
 
 # BUG-817: Cross-project /tmp path conflicts cause silent data corruption

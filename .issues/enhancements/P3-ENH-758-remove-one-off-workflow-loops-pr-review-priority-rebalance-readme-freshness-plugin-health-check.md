@@ -2,11 +2,12 @@
 id: ENH-758
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-15
 discovered_by: manual
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-03-15T00:00:00Z
 ---
 
 # ENH-758: Remove one-off workflow loops that don't belong in the loop catalog

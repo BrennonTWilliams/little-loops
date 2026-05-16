@@ -2,7 +2,7 @@
 id: ENH-1132
 type: ENH
 priority: P2
-status: completed
+status: done
 discovered_date: 2026-04-16
 parent: ENH-1131
 
@@ -13,6 +13,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 relates_to: ['ENH-1131', 'ENH-1133', 'ENH-1134', 'ENH-1135', 'BUG-1107', 'BUG-1108', 'BUG-1109']
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1132: 429 Resilience — Schema, Config & Fragment Foundation

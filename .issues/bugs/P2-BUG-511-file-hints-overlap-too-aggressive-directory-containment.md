@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-02-26
 discovered_by: manual-audit
 focus_area: dependency-mapping
+status: done
+completed_at: 2026-02-26T00:00:00Z
 ---
 
 # BUG-511: FileHints overlap detection too aggressive — directory containment and lack of thresholds

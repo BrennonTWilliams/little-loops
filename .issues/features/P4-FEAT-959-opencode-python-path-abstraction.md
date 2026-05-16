@@ -2,7 +2,7 @@
 id: FEAT-959
 type: FEAT
 priority: P4
-status: open
+status: done
 discovered_date: 2026-04-05
 discovered_by: issue-size-review
 
@@ -10,6 +10,7 @@ blocked_by: [FEAT-1116]
 confidence_score: 90
 outcome_confidence: 72
 parent: FEAT-769
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-959: OpenCode Python Path Abstraction

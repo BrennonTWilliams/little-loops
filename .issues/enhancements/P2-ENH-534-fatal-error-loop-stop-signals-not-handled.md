@@ -3,6 +3,8 @@ discovered_commit: 47c81c895baaac1acac69d105ed75ff1ec82ed2c
 discovered_branch: main
 discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
+status: done
+completed_at: 2026-03-03T00:00:00Z
 ---
 
 # ENH-534: `FATAL_ERROR` and `LOOP_STOP` Signals Detected But Silently Dropped

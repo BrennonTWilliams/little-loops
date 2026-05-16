@@ -2,13 +2,14 @@
 id: ENH-1012
 type: ENH
 priority: P2
-status: active
+status: done
 title: "Document `agent:` and `tools:` state fields in FSM loop guides"
 discovered_date: 2026-04-09
 discovered_by: issue-size-review
 confidence_score: 95
 outcome_confidence: 86
 testable: false
+completed_at: 2026-04-09T00:00:00Z
 ---
 
 # ENH-1012: Document `agent:` and `tools:` state fields in FSM loop guides

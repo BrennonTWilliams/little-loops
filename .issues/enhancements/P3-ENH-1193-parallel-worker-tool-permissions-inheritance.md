@@ -2,6 +2,7 @@
 discovered_date: "2026-04-20"
 discovered_by: parallel-family-review
 depends_on: [FEAT-1075, FEAT-1076]
+status: deferred
 ---
 
 # ENH-1193: Document and Test Tool-Permission Inheritance for Parallel Workers

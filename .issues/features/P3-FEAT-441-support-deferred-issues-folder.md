@@ -3,6 +3,8 @@ discovered_date: 2026-02-18
 discovered_by: capture-issue
 confidence_score: 85
 outcome_confidence: 56
+status: done
+completed_at: 2026-02-25T00:00:00Z
 ---
 
 # FEAT-441: Support Deferred Issues Folder

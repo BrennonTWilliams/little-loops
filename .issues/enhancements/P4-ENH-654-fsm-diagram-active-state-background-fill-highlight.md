@@ -2,7 +2,7 @@
 id: ENH-654
 type: ENH
 priority: P4
-status: active
+status: deferred
 discovered_date: 2026-03-08
 discovered_by: capture-issue
 confidence_score: 85

@@ -2,7 +2,7 @@
 id: FEAT-1274
 type: FEAT
 priority: P4
-status: completed
+status: done
 title: "ll-logs: generate logs/index.md after extraction"
 discovered_date: 2026-04-23
 discovered_by: issue-size-review

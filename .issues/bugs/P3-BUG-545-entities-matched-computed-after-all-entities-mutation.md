@@ -5,6 +5,8 @@ discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # BUG-545: `entities_matched` computed after `all_entities` is mutated — always shows full entity set

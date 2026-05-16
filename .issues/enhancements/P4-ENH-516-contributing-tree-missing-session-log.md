@@ -3,6 +3,8 @@ type: ENH
 priority: P4
 effort: low
 risk: low
+status: done
+completed_at: 2026-03-01T00:00:00Z
 ---
 
 # Add session_log.py to CONTRIBUTING.md project structure tree

@@ -2,7 +2,7 @@
 id: ENH-1419
 type: ENH
 priority: P2
-status: open
+status: done
 
 decision_needed: false
 confidence_score: 100
@@ -13,6 +13,7 @@ score_ambiguity: 25
 score_change_surface: 0
 size: Very Large
 parent: ENH-1390
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1419: Decouple Issue Status — CLI, Sync, Sprint Runner, and Parallel Discovery

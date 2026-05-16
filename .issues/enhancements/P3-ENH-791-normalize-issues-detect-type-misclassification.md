@@ -3,11 +3,12 @@ id: ENH-791
 title: "normalize-issues: detect and fix type misclassifications"
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-17
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 68
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # ENH-791: normalize-issues: detect and fix type misclassifications

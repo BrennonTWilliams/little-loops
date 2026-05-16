@@ -5,6 +5,8 @@ discovered_date: 2026-03-19T21:54:42Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-21T00:00:00Z
 ---
 
 # ENH-827: `_extract_messages_with_context` O(n²) inner scan

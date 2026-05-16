@@ -6,6 +6,8 @@ outcome_confidence: 70
 
 blocked_by: FEAT-1028
 parent: FEAT-1027
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-1029: audit-issue-conflicts — Wiring, Docs, and Tests

@@ -6,6 +6,8 @@ discovered_by: scan_codebase
 resolution: wont-fix
 closed_date: 2026-02-05
 closing_note: "Irrelevant for the target platform. little-loops is a Claude Code plugin running on macOS/Linux where Python 3.11+ defaults to UTF-8. Windows is not a supported platform, so this fix solves a problem that can't occur in practice."
+status: done
+completed_at: 2026-02-05T00:00:00Z
 ---
 
 # BUG-238: Missing encoding="utf-8" in sprint.py file operations

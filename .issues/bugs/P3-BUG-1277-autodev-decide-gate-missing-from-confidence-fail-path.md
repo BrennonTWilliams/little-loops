@@ -2,7 +2,7 @@
 id: BUG-1277
 type: BUG
 priority: P3
-status: open
+status: done
 discovered_date: 2026-04-24
 discovered_by: capture-issue
 captured_at: "2026-04-24T21:18:45Z"

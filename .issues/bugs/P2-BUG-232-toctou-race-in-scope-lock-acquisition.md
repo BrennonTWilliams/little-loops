@@ -6,6 +6,8 @@ discovered_by: scan_codebase
 resolution: wont-fix
 closed_date: 2026-02-05
 closing_note: "Theoretical edge case with existing mitigations. The race window is microseconds, fcntl.flock() provides file-level atomicity, and stale locks from dead processes are auto-cleaned. Adding a global lock introduces complexity for a near-impossible scenario with no evidence of occurring in practice."
+status: done
+completed_at: 2026-02-05T00:00:00Z
 ---
 
 # BUG-232: TOCTOU race condition in scope lock acquisition

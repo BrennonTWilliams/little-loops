@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-01T00:00:00Z
+---
 # P1-FEAT-210: Add end-to-end CLI workflow tests
 
 ## Summary

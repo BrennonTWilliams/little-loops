@@ -2,11 +2,12 @@
 id: FEAT-837
 priority: P3
 type: FEAT
-status: completed
+status: done
 discovered_date: 2026-03-20
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 93
+completed_at: 2026-03-20T00:00:00Z
 ---
 
 # FEAT-837: ll-loop run sub-loop state shows full sub-state output

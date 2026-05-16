@@ -2,11 +2,12 @@
 id: FEAT-766
 type: FEAT
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-03-15T00:00:00Z
 ---
 
 # FEAT-766: APO Loop — TextGrad (Text Gradient Descent)

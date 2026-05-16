@@ -2,7 +2,7 @@
 id: FEAT-1162
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-04-18
 discovered_by: capture-issue
 parent: FEAT-1155
@@ -81,7 +81,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 New frontmatter field:
 
 ```yaml
-completed_at: "2026-05-01T09:15:44Z"  # set when moved to completed/
+completed_at: 2026-04-18T00:00:00Z
 ```
 
 ## Acceptance Criteria

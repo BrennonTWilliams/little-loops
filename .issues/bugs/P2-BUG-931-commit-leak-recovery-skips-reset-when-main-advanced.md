@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-02
 discovered_by: capture-issue
+status: done
+completed_at: 2026-04-03T00:00:00Z
 ---
 
 # BUG-931: Commit Leak Recovery Skips Main Reset When Main Has Advanced

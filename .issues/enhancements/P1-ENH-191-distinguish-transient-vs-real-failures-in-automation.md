@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-01-31
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-191: Distinguish transient vs real failures in automation tools

@@ -14,6 +14,7 @@ score_change_surface: 18
 captured_at: 2026-04-27T00:00:00Z
 completed_at: 2026-04-27T20:54:41Z
 parent: ENH-1298
+status: done
 ---
 
 # ENH-1300: Build anchor resolver module, backlog sweeper, and regression lint (`ll-issues anchor-sweep`)

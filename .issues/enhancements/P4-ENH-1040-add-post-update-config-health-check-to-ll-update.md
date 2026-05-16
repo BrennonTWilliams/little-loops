@@ -2,11 +2,12 @@
 id: ENH-1040
 type: ENH
 priority: P4
-status: backlog
+status: done
 discovered_date: 2026-04-11
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 72
+completed_at: 2026-04-11T00:00:00Z
 ---
 
 # ENH-1040: Add post-update config health check to ll:update

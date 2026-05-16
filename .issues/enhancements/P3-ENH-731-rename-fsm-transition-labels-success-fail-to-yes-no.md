@@ -3,11 +3,12 @@ id: ENH-731
 type: ENH
 priority: P3
 title: Rename FSM transition labels from success/fail to yes/no
-status: completed
+status: done
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 43
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # ENH-731: Rename FSM transition labels from success/fail to yes/no

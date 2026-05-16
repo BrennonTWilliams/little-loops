@@ -2,6 +2,8 @@
 discovered_date: 2026-01-18
 discovered_by: capture_issue
 source_log: ~/.claude/debug/be36bcaa-ffd3-47cd-a3c1-f732df22cc69.txt
+status: done
+completed_at: 2026-02-12T00:00:00Z
 ---
 
 # BUG-092: Missing marketplace.json causes plugin loading error

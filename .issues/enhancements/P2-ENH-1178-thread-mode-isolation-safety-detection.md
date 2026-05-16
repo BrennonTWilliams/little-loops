@@ -2,6 +2,7 @@
 discovered_date: "2026-04-18"
 discovered_by: parallel-fsm-review
 depends_on: [FEAT-1074, FEAT-1075, FEAT-1084]
+status: deferred
 ---
 
 # ENH-1178: Thread-Mode Isolation Safety Detection and Authoring Guidance

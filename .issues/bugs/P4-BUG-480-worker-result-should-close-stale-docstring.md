@@ -5,6 +5,8 @@ discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-02-24T00:00:00Z
 ---
 
 # BUG-480: `WorkerResult.should_close` docstring says "not implemented" but it is

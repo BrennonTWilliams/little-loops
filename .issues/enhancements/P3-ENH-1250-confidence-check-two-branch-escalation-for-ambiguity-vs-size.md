@@ -9,6 +9,7 @@ score_complexity: 25
 score_test_coverage: 0
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # ENH-1250: confidence-check two-branch escalation for ambiguity vs size

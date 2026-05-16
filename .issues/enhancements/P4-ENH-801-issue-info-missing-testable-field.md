@@ -3,6 +3,8 @@ discovered_date: 2026-03-17T00:00:00Z
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-17T00:00:00Z
 ---
 
 # ENH-801: IssueInfo dataclass missing `testable` field

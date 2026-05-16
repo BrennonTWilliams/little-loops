@@ -19,7 +19,7 @@ from little_loops.cli.action import (
     cmd_list,
     main_action,
 )
-from little_loops.host_runner import HostCapabilities, HostInvocation
+from little_loops.host_runner import CapabilityReport, HostCapabilities, HostInvocation
 
 
 class FakeRunner:
@@ -45,6 +45,9 @@ class FakeRunner:
 
     def build_detached(self, **_: object) -> HostInvocation:
         return HostInvocation(binary="claude", args=[])
+
+    def describe_capabilities(self) -> CapabilityReport:
+        return CapabilityReport(host="fake", binary="fake", version="0.0")
 
 
 # =============================================================================

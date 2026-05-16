@@ -11,6 +11,7 @@ score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-05-03T05:31:31Z
 parent: ENH-1336
+status: done
 ---
 
 # ENH-1343: Documentation Wiring for All 5 Signals in `/ll:analyze-loop` (COMMANDS.md, Tests, README)

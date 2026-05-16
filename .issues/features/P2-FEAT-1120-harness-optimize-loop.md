@@ -10,6 +10,7 @@ score_test_coverage: 18
 score_ambiguity: 22
 score_change_surface: 25
 completed_at: 2026-04-24T20:46:21Z
+status: done
 ---
 
 # FEAT-1120: Harness-Optimize Loop (Score-Gated Hill-Climbing on Skills/Commands/CLAUDE.md)

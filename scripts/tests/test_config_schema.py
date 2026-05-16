@@ -240,3 +240,24 @@ class TestConfigSchema:
             )
             assert issue_props[field]["type"] == "array"
             assert issue_props[field]["items"] == {"type": "string"}
+
+    def test_orchestration_host_cli_in_schema(self) -> None:
+        """orchestration.host_cli must be declared as a string enum in config-schema.json.
+
+        Follows the test_hooks_in_schema pattern: structural JSON-key assertions only,
+        no jsonschema runtime validation.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        assert "orchestration" in data["properties"], (
+            "orchestration key is not declared in config-schema.json"
+        )
+        orch = data["properties"]["orchestration"]
+        assert orch["type"] == "object"
+        assert "host_cli" in orch["properties"], (
+            "orchestration.host_cli is not declared in config-schema.json"
+        )
+        host_cli = orch["properties"]["host_cli"]
+        assert host_cli["type"] == "string"
+        assert "enum" in host_cli
+        assert "claude-code" in host_cli["enum"]
+        assert "codex" in host_cli["enum"]

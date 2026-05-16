@@ -12,6 +12,7 @@ score_change_surface: 25
 testable: false
 completed_at: 2026-05-03T17:05:44Z
 parent: ENH-1337
+status: done
 ---
 
 # ENH-1345: Document `max_depth` Parameter for `recursive-refine`

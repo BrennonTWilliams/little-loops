@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-02
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-12T00:00:00Z
 ---
 
 # FEAT-221: Extend ll-messages to optionally include CLI command history

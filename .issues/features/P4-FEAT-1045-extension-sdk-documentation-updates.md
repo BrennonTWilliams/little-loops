@@ -4,6 +4,8 @@ discovered_by: issue-size-review
 confidence_score: 98
 outcome_confidence: 70
 testable: false
+status: done
+completed_at: 2026-04-12T00:00:00Z
 ---
 
 # FEAT-1045: Extension SDK Documentation Updates

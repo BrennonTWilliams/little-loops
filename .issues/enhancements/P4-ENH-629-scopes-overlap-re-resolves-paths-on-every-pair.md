@@ -5,6 +5,8 @@ discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
 confidence_score: 98
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-09T00:00:00Z
 ---
 
 # ENH-629: `_scopes_overlap` re-resolves `Path.resolve()` (filesystem stat) on every path pair

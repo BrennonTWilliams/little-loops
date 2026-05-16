@@ -2,7 +2,7 @@
 id: ENH-1147
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-04-17
 parent: ENH-1145
 
@@ -14,6 +14,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 relates_to: ['ENH-1144', 'ENH-1145', 'ENH-1148', 'ENH-1149']
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1147: 429 Resilience — Heartbeat Tests: Schema Updates

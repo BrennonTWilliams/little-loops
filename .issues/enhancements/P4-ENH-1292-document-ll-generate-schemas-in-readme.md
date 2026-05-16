@@ -6,6 +6,7 @@ completed_at: 2026-04-26T15:46:44Z
 discovered_by: audit-docs
 doc_file: README.md
 testable: false
+status: done
 ---
 
 # ENH-1292: Document ll-generate-schemas in README

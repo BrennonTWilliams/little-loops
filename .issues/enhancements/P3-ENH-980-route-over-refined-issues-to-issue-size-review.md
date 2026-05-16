@@ -2,11 +2,12 @@
 id: ENH-980
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-04-06
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+completed_at: 2026-04-06T00:00:00Z
 ---
 
 # ENH-980: Route over-refined issues to issue-size-review instead of failing

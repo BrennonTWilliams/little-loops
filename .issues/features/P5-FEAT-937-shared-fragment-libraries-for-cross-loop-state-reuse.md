@@ -2,12 +2,13 @@
 id: FEAT-937
 type: FEAT
 priority: P5
-status: open
+status: done
 discovered_date: 2026-04-03
 discovered_by: capture-issue
 testable: true
 confidence_score: 100
 outcome_confidence: 68
+completed_at: 2026-04-04T00:00:00Z
 ---
 
 # FEAT-937: Shared Fragment Libraries for Cross-Loop State Reuse

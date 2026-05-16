@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-15T00:00:00Z
+---
 # ENH-054: Add Tests for Missing ll-loop Subcommands
 
 ## Summary

@@ -5,6 +5,8 @@ discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-23T00:00:00Z
 ---
 
 # ENH-485: Rate-limit state file writes in orchestrator main loop

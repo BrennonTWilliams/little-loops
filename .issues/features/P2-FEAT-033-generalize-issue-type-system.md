@@ -2,6 +2,8 @@
 discovered_commit: a558610
 discovered_branch: main
 discovered_date: 2026-01-12T00:00:00Z
+status: done
+completed_at: 2026-01-19T00:00:00Z
 ---
 
 # FEAT-033: Generalize Issue Type System Configuration

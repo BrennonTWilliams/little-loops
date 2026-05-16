@@ -2,11 +2,12 @@
 id: FEAT-812
 type: FEAT
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-18
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+completed_at: 2026-03-19T00:00:00Z
 ---
 
 # FEAT-812: Auto-detect model from JSONL to select context limit

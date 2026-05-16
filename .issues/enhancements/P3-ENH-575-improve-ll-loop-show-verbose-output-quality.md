@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-04T00:00:00Z
 discovered_by: capture-issue
+status: done
+completed_at: 2026-03-06T00:00:00Z
 ---
 
 # ENH-575: Improve `ll-loop show --verbose` Output Quality, Clarity, and Structure

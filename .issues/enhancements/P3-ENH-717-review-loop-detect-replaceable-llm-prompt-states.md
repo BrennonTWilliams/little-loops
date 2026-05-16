@@ -2,11 +2,12 @@
 id: ENH-717
 type: ENH
 priority: P3
-status: backlog
+status: done
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 78
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # ENH-717: Review-loop should detect LLM prompt states replaceable with programmatic logic

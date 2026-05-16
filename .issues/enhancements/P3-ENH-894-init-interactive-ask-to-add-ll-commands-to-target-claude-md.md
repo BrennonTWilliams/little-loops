@@ -3,11 +3,12 @@ type: ENH
 id: ENH-894
 title: Ask to add ll- CLI commands to target project CLAUDE.md during init --interactive
 priority: P3
-status: open
+status: done
 created: 2026-03-26
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 85
+completed_at: 2026-03-26T00:00:00Z
 ---
 
 # ENH-894: Ask to add ll- CLI commands to target project CLAUDE.md during init --interactive

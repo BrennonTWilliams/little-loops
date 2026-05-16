@@ -2,11 +2,12 @@
 id: FEAT-769
 type: FEAT
 priority: P4
-status: open
+status: done
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 82
 outcome_confidence: 36
+completed_at: 2026-04-05T00:00:00Z
 ---
 
 # FEAT-769: Add OpenCode Plugin Compatibility

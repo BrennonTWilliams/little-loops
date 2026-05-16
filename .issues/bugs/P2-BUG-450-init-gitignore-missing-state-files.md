@@ -3,8 +3,9 @@ type: BUG
 id: BUG-450
 title: Init .gitignore update missing context-state and sync-state files
 priority: P2
-status: open
+status: done
 created: 2026-02-22
+completed_at: 2026-02-22T00:00:00Z
 ---
 
 # Init .gitignore update missing context-state and sync-state files

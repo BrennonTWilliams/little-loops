@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-08
 discovered_by: manual-review
+status: done
+completed_at: 2026-02-14T00:00:00Z
 ---
 
 # ENH-276: Add flag conventions to commands

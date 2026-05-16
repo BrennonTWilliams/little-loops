@@ -4,6 +4,8 @@ discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
 confidence_score: 80
 outcome_confidence: 71
+status: done
+completed_at: 2026-02-26T00:00:00Z
 ---
 
 # ENH-501: Forward-Message Pattern for ll-parallel Result Fidelity

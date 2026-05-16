@@ -2,7 +2,7 @@
 id: ENH-1130
 type: ENH
 priority: P3
-status: open
+status: done
 parent: ENH-1111
 size: Small
 confidence_score: 95

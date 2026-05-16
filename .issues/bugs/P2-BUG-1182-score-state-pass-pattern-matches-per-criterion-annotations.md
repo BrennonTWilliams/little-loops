@@ -12,6 +12,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # BUG-1182: Score-state `PASS` pattern matches per-criterion annotations in loop evaluators

@@ -2,7 +2,7 @@
 id: FEAT-1006
 type: FEAT
 priority: P4
-status: backlog
+status: done
 title: Skills and commands wiring for ll-logs
 discovered_date: 2026-04-08
 discovered_by: issue-size-review

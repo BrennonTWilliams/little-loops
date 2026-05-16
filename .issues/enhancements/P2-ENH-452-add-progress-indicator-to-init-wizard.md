@@ -3,8 +3,9 @@ type: ENH
 id: ENH-452
 title: Add progress indicator to init wizard rounds
 priority: P2
-status: completed
+status: done
 created: 2026-02-22
+completed_at: 2026-02-22T00:00:00Z
 ---
 
 # Add progress indicator to init wizard rounds

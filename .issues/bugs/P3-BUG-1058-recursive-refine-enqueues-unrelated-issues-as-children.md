@@ -4,6 +4,8 @@ discovered_date: 2026-04-12
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 85
+status: done
+completed_at: 2026-04-12T00:00:00Z
 ---
 
 # BUG-1058: recursive-refine enqueues unrelated issues as children via naive list diff

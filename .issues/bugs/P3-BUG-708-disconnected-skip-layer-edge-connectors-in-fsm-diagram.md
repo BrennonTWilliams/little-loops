@@ -3,6 +3,8 @@ discovered_date: 2026-03-12
 discovered_by: manual
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-12T00:00:00Z
 ---
 
 # BUG-708: Disconnected 90-degree skip-layer edge connectors in FSM diagram

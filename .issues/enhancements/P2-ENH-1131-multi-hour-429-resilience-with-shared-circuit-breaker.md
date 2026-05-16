@@ -2,7 +2,7 @@
 id: ENH-1131
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-04-16
 discovered_by: capture-issue
 
@@ -14,6 +14,7 @@ score_ambiguity: 18
 score_change_surface: 0
 size: Very Large
 relates_to: ['BUG-1107', 'BUG-1108', 'BUG-1109', 'ENH-1115']
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1131: Multi-Hour 429 Resilience with Shared Circuit Breaker and Wall-Clock Budget

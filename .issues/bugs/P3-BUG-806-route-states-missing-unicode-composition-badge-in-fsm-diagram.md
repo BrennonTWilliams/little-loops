@@ -3,6 +3,8 @@ discovered_date: 2026-03-18
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-18T00:00:00Z
 ---
 
 # BUG-806: Route states missing unicode composition badge in FSM diagram

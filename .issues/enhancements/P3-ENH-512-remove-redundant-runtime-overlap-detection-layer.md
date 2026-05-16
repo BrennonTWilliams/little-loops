@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-02-26
 discovered_by: manual-audit
 focus_area: dependency-mapping
+status: done
+completed_at: 2026-02-26T00:00:00Z
 ---
 
 # ENH-512: Remove redundant runtime overlap detection layer in ParallelOrchestrator

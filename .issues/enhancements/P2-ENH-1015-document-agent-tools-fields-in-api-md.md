@@ -2,7 +2,7 @@
 id: ENH-1015
 type: ENH
 priority: P2
-status: active
+status: done
 title: "Document `agent:` and `tools:` fields in docs/reference/API.md"
 discovered_date: 2026-04-09
 discovered_by: issue-size-review
@@ -11,6 +11,7 @@ confidence_score: 95
 outcome_confidence: 85
 testable: false
 parent: ENH-1014
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1015: Document `agent:` and `tools:` fields in docs/reference/API.md

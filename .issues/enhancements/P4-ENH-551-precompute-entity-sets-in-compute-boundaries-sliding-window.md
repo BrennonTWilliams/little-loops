@@ -5,6 +5,8 @@ discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
 confidence_score: 90
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-23T00:00:00Z
 ---
 
 # ENH-551: Pre-compute entity sets in `_compute_boundaries` to avoid re-extracting per sliding-window pair

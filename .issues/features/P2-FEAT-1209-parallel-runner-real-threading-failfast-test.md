@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 parent: FEAT-1206
+status: deferred
 ---
 
 # FEAT-1209: TestParallelRunnerRealThreading — Fail Fast Cancellation Test

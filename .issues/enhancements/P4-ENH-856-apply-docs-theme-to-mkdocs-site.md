@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-21T00:00:00Z
 discovered_by: manual
+status: done
+completed_at: 2026-03-21T00:00:00Z
 ---
 
 # ENH-856: Apply docs-theme color/styling to MkDocs site

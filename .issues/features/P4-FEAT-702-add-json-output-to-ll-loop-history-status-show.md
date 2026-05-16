@@ -3,6 +3,8 @@ discovered_commit: 3e9beeaf2bbe8608104beb89fbc7e2e2259310d8
 discovered_branch: main
 discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
+status: done
+completed_at: 2026-03-15T00:00:00Z
 ---
 
 # FEAT-702: Add `--json` output to `ll-loop history`, `status`, and `show`

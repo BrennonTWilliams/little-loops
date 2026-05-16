@@ -3,6 +3,8 @@ discovered_date: 2026-03-08T00:00:00Z
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-08T00:00:00Z
 ---
 
 # BUG-657: `ll-loop history` `--tail` Counts Suppressed `action_output` Events, Hiding Earlier Iterations

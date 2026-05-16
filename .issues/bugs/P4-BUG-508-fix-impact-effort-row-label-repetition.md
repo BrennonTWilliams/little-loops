@@ -2,6 +2,8 @@
 discovered_date: 2026-02-25
 discovered_by: manual
 focus_area: cli
+status: done
+completed_at: 2026-02-25T00:00:00Z
 ---
 
 # BUG-508: Fix ll-issues impact-effort matrix row label repetition

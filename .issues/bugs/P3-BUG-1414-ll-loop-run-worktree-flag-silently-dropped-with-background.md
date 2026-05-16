@@ -40,7 +40,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Worktree branch mechanics** (lines 288–331): calls `setup_worktree()` from `scripts/little_loops/worktree_utils.py`, registers `cleanup_worktree()` via `atexit`, sets `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1`, then `os.chdir(_worktree_path)`. Nothing in this sequence requires a live terminal — it works fine inside a detached `Popen` child. Forwarding `--worktree` is structurally safe.
 - **Direct precedents for this exact bug-class** (single-line fix to `run_background()` argv forwarding):
   - `P4-BUG-621-run-background-drops-verbose-flag.md` — fixed by adding `if getattr(args, "verbose", False): cmd.append("--verbose")`.
-  - `P2-BUG-1308-ll-loop-background-mode-drops-positional-input-arg.md` — fixed by appending the positional input value before `--foreground-internal`.
+  - `P2-BUG-1521-ll-loop-background-mode-drops-positional-input-arg.md` — fixed by appending the positional input value before `--foreground-internal`.
 
 ## Expected Behavior
 
@@ -161,7 +161,7 @@ Decided by `/ll:decide-issue` on 2026-05-16.
 | Option B | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
 
 **Key evidence**:
-- **Option A**: Five existing `getattr(args, "flag", False): cmd.append("--flag")` precedents in `_helpers.py:283–313`; two prior bugs (BUG-621, BUG-1308) fixed by the same pattern; PID file capture verified safe pre-chdir. Gap: no e2e test for combined background+worktree child path.
+- **Option A**: Five existing `getattr(args, "flag", False): cmd.append("--flag")` precedents in `_helpers.py:283–313`; two prior bugs (BUG-621, BUG-1521) fixed by the same pattern; PID file capture verified safe pre-chdir. Gap: no e2e test for combined background+worktree child path.
 - **Option B**: `raise SystemExit(str)` used at `run.py:149,159` in the exact same function; `pytest.raises(SystemExit)` test pattern at `test_cli_loop_lifecycle.py:870–874`; no unknowns.
 
 ## Related
@@ -173,7 +173,7 @@ Decided by `/ll:decide-issue` on 2026-05-16.
 - `scripts/little_loops/worktree_utils.py` — `setup_worktree()`, `cleanup_worktree()`
 - `scripts/tests/test_cli_loop_background.py` — `TestRunBackground` (per-flag forwarding tests)
 - `scripts/tests/test_cli_loop_worktree.py` — `TestCmdRunWorktree` (worktree tests, `_make_args()` fixture at line 562)
-- Precedents: completed `BUG-621` (verbose flag drop), `BUG-1308` (positional input drop) — both single-line fixes to the same forwarding block.
+- Precedents: completed `BUG-621` (verbose flag drop), `BUG-1521` (positional input drop) — both single-line fixes to the same forwarding block.
 
 ---
 

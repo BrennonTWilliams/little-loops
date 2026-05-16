@@ -2,11 +2,12 @@
 id: ENH-936
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-04-03
 discovered_by: capture-issue
 confidence_score: 97
 outcome_confidence: 71
+completed_at: 2026-04-03T00:00:00Z
 ---
 
 # ENH-936: Add Categories and Labels to FSM Loop Schema

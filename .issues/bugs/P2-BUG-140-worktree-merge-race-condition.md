@@ -3,6 +3,8 @@ discovered_commit: 841d8e8
 discovered_date: 2026-01-24
 discovered_source: argobots-ll-parallel-debug.log
 discovered_external_repo: <external-repo>
+status: done
+completed_at: 2026-02-12T00:00:00Z
 ---
 
 # BUG-140: Race condition between worktree creation and merge operations

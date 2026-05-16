@@ -3,8 +3,9 @@ type: BUG
 id: BUG-449
 title: Init wizard Round 5 can exceed AskUserQuestion 4-question limit
 priority: P1
-status: resolved
+status: done
 created: 2026-02-22
+completed_at: 2026-02-22T00:00:00Z
 ---
 
 # Init wizard Round 5 can exceed AskUserQuestion 4-question limit

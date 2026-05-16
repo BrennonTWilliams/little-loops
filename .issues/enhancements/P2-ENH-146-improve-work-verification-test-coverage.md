@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-28T00:00:00Z
+---
 # ENH-002: Improve work_verification.py Test Coverage
 
 ## Summary

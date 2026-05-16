@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-13
 discovered_by: audit
+status: done
+completed_at: 2026-03-13T00:00:00Z
 ---
 
 # BUG-720: `issue-refinement` loop has three logic defects — counter reset, LLM-managed iteration, and LLM ceiling-acceptance

@@ -3,6 +3,8 @@ discovered_date: 2026-04-08
 discovered_by: issue-size-review
 confidence_score: 100
 outcome_confidence: 78
+status: done
+completed_at: 2026-04-08T00:00:00Z
 ---
 
 # FEAT-995: Reference Interceptor Extension and Docs Update

@@ -10,6 +10,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # BUG-1353: `ll-loop stop` refuses to act on `interrupted` loops with a live lock-file PID

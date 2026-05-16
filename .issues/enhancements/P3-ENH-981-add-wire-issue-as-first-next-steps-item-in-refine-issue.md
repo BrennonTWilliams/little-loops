@@ -3,6 +3,8 @@ id: ENH-981
 discovered_date: 2026-04-07
 discovered_by: capture-issue
 testable: false
+status: done
+completed_at: 2026-04-07T00:00:00Z
 ---
 
 # ENH-981: Add /ll:wire-issue as first Next Steps item in refine-issue

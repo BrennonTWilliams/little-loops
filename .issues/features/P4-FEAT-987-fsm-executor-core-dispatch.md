@@ -5,6 +5,8 @@ confidence_score: 100
 outcome_confidence: 86
 
 parent: FEAT-984
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-987: FSMExecutor Core Hook Dispatch (Attributes + Action/Evaluator/Interceptor Dispatch)

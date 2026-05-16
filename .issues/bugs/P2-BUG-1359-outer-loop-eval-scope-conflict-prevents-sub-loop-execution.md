@@ -3,7 +3,8 @@ id: BUG-1359
 title: outer-loop-eval scope conflict prevents sub-loop execution on every invocation
 priority: P2
 type: BUG
-status: completed
+status: done
+completed_at: 2026-05-03T00:00:00Z
 ---
 
 ## Problem

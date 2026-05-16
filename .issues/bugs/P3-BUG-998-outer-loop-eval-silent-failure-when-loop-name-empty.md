@@ -3,6 +3,8 @@ discovered_date: "2026-04-08"
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 93
+status: done
+completed_at: 2026-04-08T00:00:00Z
 ---
 
 # BUG-998: outer-loop-eval silently proceeds and hallucinates report when loop_name is empty

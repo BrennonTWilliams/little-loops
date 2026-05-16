@@ -2,7 +2,7 @@
 id: FEAT-1170
 type: FEAT
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-04-18
 discovered_by: issue-size-review
 parent: FEAT-1162
@@ -14,6 +14,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+completed_at: 2026-04-18T00:00:00Z
 ---
 
 # FEAT-1170: Inject `completed_at` in Sequential Lifecycle Paths

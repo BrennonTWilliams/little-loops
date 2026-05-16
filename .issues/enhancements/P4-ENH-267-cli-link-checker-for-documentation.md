@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-02-06T22:30:00Z
 discovered_by: audit_docs
 doc_file: docs/
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-267: CLI Link Checker for Documentation

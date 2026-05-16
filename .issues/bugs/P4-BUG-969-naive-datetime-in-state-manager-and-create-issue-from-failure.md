@@ -3,6 +3,8 @@ discovered_commit: 96d74cda12b892bac305b81a527c66021302df6a
 discovered_branch: main
 discovered_date: 2026-04-06T15:57:51Z
 discovered_by: scan-codebase
+status: done
+completed_at: 2026-04-06T00:00:00Z
 ---
 
 # BUG-969: Naive (non-UTC) datetime in `StateManager` and `create_issue_from_failure`

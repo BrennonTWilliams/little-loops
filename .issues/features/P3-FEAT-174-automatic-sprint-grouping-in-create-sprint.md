@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-01-28
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # FEAT-174: Automatic sprint grouping in create_sprint command

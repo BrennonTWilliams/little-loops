@@ -2,9 +2,10 @@
 id: ENH-582
 type: ENH
 priority: P4
-status: completed
+status: done
 discovered_date: 2026-03-04
 discovered_by: capture-issue
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # ENH-582: Improve CLI Output Polish with Stdlib Utilities

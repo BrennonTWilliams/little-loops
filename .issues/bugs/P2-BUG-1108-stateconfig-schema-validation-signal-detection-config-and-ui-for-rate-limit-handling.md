@@ -9,6 +9,8 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
+status: done
+completed_at: 2026-04-14T00:00:00Z
 ---
 
 # BUG-1108: StateConfig Schema, Validation, Signal Detection, Config, and UI for Rate Limit Handling

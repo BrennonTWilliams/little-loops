@@ -13,6 +13,7 @@ score_test_coverage: 25
 score_ambiguity: 20
 score_change_surface: 18
 decision_needed: false
+status: done
 ---
 
 # ENH-1328: `outer-loop-eval` Should Delegate to `/ll:analyze-loop` and `/ll:assess-loop`

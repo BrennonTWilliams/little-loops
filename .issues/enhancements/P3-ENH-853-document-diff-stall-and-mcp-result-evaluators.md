@@ -2,12 +2,13 @@
 id: ENH-853
 type: ENH
 priority: P3
-status: open
+status: done
 title: "Document diff_stall and mcp_result evaluators in generalized-fsm-loop.md"
 created: 2026-03-21
 confidence_score: 100
 outcome_confidence: 93
 testable: false
+completed_at: 2026-03-21T00:00:00Z
 ---
 
 ## Summary

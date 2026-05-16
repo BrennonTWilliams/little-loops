@@ -5,6 +5,8 @@ discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
 confidence_score: 92
 outcome_confidence: 88
+status: done
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # ENH-539: Duplicate `operators` Dict in `evaluators.py` — Should Be Module-Level Constant

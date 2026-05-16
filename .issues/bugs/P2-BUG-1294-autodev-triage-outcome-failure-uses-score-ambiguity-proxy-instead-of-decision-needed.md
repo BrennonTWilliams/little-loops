@@ -3,7 +3,7 @@ id: "1294"
 type: BUG
 priority: P2
 title: "autodev triage_outcome_failure uses score_ambiguity proxy instead of decision_needed flag"
-status: open
+status: done
 captured_at: "2026-04-26T20:35:25Z"
 completed_at: "2026-04-26T20:49:02Z"
 discovered_date: "2026-04-26"

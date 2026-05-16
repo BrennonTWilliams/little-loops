@@ -3,6 +3,8 @@ discovered_date: 2026-03-04
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # ENH-561: Add column key section to `ll-issues refine-status` output

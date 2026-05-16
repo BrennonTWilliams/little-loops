@@ -2,6 +2,7 @@
 discovered_date: "2026-04-18"
 discovered_by: parallel-fsm-review
 depends_on: [FEAT-1075, FEAT-1076]
+status: deferred
 ---
 
 # FEAT-1174: Per-Worker Checkpointing and Resume for Parallel States

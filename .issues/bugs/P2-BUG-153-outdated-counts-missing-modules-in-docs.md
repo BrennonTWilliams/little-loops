@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-01-13T00:00:00Z
 discovered_by: audit_docs
 doc_file: README.md, docs/ARCHITECTURE.md, CONTRIBUTING.md
+status: done
+completed_at: 2026-01-28T00:00:00Z
 ---
 
 # BUG-020: Outdated agent count and missing Python modules in documentation

@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-13
 discovered_by: capture-issue
+status: done
+completed_at: 2026-02-14T00:00:00Z
 ---
 
 # ENH-410: Improve Test Coverage for Under-tested Modules

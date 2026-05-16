@@ -9,6 +9,8 @@ score_ambiguity: 25
 score_change_surface: 10
 missing_artifacts: true
 size: Very Large
+status: done
+completed_at: 2026-05-02T00:00:00Z
 ---
 
 # FEAT-918: Transport Protocol Foundation and JsonlTransport

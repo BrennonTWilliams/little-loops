@@ -12,6 +12,7 @@ score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-05-02T20:22:36Z
 parent: FEAT-1325
+status: done
 ---
 
 # FEAT-1329: `/ll:assess-loop` Skill — Core Implementation

@@ -2,7 +2,7 @@
 id: ENH-1376
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: 2026-05-06 20:59:54+00:00
 completed_at: 2026-05-06T23:25:04Z
 discovered_date: 2026-05-06

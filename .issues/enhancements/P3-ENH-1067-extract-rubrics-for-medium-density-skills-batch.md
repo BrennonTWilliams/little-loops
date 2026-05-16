@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-04-12
 discovered_by: capture-issue
+status: deferred
 ---
 
 # ENH-1067: Extract rubrics for audit-docs, audit-issue-conflicts, cleanup-loops, and map-dependencies

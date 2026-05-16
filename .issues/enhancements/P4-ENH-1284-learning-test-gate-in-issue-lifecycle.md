@@ -8,6 +8,7 @@ discovered_by: capture-issue
 depends_on: [ENH-1282]
 deferred: true
 deferred_reason: "Lower leverage than ENH-1283; depends on registry maturity. Revisit after ENH-1282 ships."
+status: deferred
 ---
 
 # ENH-1284: Learning Test Gate in Issue Lifecycle (Deferred)

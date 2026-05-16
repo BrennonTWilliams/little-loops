@@ -3,7 +3,7 @@ id: ENH-1243
 type: ENH
 priority: P3
 title: "Add decide-issue conditional gate to autodev loop"
-status: backlog
+status: done
 captured_at: "2026-04-21T23:34:57Z"
 completed_at: "2026-04-22T18:37:15Z"
 discovered_date: "2026-04-21"

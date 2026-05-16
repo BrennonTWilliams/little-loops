@@ -11,6 +11,7 @@ score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-05-10T14:35:03Z
 parent: FEAT-1409
+status: done
 ---
 
 # FEAT-1411: EPIC Type — Regex-Based Callers, Anchor Sweep, and Tests

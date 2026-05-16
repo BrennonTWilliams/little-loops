@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-16T00:00:00Z
+---
 # BUG-078: Hooks Portability and Matcher Issues
 
 ## Summary

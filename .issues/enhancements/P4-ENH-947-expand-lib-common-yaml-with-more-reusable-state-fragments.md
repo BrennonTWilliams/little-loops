@@ -2,11 +2,12 @@
 id: ENH-947
 type: ENH
 priority: P4
-status: completed
+status: done
 discovered_date: 2026-04-04
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+completed_at: 2026-04-04T00:00:00Z
 ---
 
 # ENH-947: Expand lib/common.yaml with More Reusable State Fragments

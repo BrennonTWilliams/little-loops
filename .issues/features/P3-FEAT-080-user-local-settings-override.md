@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-01-16T00:00:00Z
 discovered_by: manual
+status: done
+completed_at: 2026-01-29T00:00:00Z
 ---
 
 # FEAT-080: User-local settings override via ll.local.md

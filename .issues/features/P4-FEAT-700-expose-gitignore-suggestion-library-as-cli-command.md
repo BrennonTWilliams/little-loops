@@ -5,6 +5,8 @@ discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # FEAT-700: Expose gitignore suggestion library as CLI command

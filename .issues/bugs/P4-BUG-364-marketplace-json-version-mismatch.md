@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-12
 discovered_by: plugin-audit
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # BUG-364: marketplace.json version stuck at 1.6.0 while plugin.json is 1.9.0

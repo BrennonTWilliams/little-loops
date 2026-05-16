@@ -10,6 +10,8 @@ score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 18
 size: Very Large
+status: done
+completed_at: 2026-04-21T00:00:00Z
 ---
 
 # FEAT-1119: Benchmark Adapter Fragment (`lib/benchmark.yaml`)

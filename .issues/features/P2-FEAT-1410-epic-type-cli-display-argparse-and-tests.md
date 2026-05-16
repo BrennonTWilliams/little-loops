@@ -11,6 +11,7 @@ score_ambiguity: 18
 score_change_surface: 18
 completed_at: 2026-05-10T00:00:42Z
 parent: FEAT-1409
+status: done
 ---
 
 # FEAT-1410: EPIC Type — CLI Display, Argparse Choices, and Tests

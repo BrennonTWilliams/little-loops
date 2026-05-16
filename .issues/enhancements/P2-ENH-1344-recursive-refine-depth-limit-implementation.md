@@ -11,6 +11,8 @@ score_ambiguity: 25
 score_change_surface: 18
 size: Very Large
 parent: ENH-1337
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1344: Implement Per-Subtree Depth Limit in `recursive-refine`

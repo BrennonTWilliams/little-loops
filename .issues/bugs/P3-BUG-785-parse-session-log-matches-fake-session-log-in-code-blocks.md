@@ -4,6 +4,8 @@ discovered_by: /ll:capture-issue
 source_loop: issue-refinement
 confidence_score: 100
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # BUG-785: `parse_session_log` matches fake `## Session Log` headings inside fenced code blocks

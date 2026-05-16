@@ -10,6 +10,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # BUG-1260: `ll-issues clusters` renders DAG as misleading linear chain

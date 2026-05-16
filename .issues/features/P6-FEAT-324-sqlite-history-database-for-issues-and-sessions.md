@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-10
 discovered_by: capture-issue
+status: done
+completed_at: 2026-02-14T00:00:00Z
 ---
 
 # FEAT-324: SQLite History Database for Completed Issues and Sessions

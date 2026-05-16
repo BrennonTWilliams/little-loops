@@ -20,6 +20,7 @@ relates_to:
 - FEAT-957
 - FEAT-992
 - FEAT-1117
+completed_at: 2026-05-11T00:00:00Z
 ---
 
 # FEAT-1116: Hook-Intent Abstraction Layer for Multi-Host Support

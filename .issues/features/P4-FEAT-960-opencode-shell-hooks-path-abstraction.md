@@ -2,12 +2,13 @@
 id: FEAT-960
 type: FEAT
 priority: P4
-status: open
+status: done
 discovered_date: 2026-04-05
 discovered_by: issue-size-review
 
 blocked_by: [FEAT-959, FEAT-1116]
 parent: FEAT-769
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-960: OpenCode Shell Hooks Path Abstraction

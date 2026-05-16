@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-13T00:00:00Z
+---
 # BUG-085: Command Files Use Underscores Instead of Kebab-Case
 
 ## Status

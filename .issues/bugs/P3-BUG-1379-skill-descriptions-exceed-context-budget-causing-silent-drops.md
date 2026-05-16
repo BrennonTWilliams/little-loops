@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-05-07
 discovered_by: user
+status: done
+completed_at: 2026-05-07T00:00:00Z
 ---
 
 # BUG-1379: Skill descriptions exceed Claude Code context budget, causing 38 silent drops

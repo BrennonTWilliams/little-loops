@@ -2,11 +2,12 @@
 id: FEAT-729
 priority: P3
 type: FEAT
-status: active
+status: done
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 71
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # FEAT-729: Dedicated mcp_tool Action Type for FSM Loops
@@ -295,7 +296,7 @@ Implemented `action_type: mcp_tool` for FSM loops via the near-term shell wrappe
 
 - **Date**: 2026-03-14
 - **Verdict**: VALID
-- `schema.py` and `fsm-loop-schema.json` were modified (FEAT-725 added `input_key` to `FSMLoop`/JSON schema) — no impact on FEAT-729.
+- `schema.py` and `fsm-loop-schema.json` were modified (FEAT-1507 added `input_key` to `FSMLoop`/JSON schema) — no impact on FEAT-729.
 - `StateConfig.action_type` still `Literal["prompt", "slash_command", "shell"]` — no `"mcp_tool"` (schema.py:208).
 - No `params` field on `StateConfig`.
 - `EvaluateConfig.type` still excludes `"mcp_result"` (schema.py:56–64; fsm-loop-schema.json:158–165).

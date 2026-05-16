@@ -3,6 +3,8 @@ discovered_date: 2026-03-04
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # ENH-577: Detect issue formatting from template config instead of session log

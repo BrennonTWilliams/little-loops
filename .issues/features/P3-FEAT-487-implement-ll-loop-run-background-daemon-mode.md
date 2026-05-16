@@ -5,6 +5,8 @@ discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
 confidence_score: 98
 outcome_confidence: 71
+status: done
+completed_at: 2026-02-27T00:00:00Z
 ---
 
 # FEAT-487: Implement `ll-loop run --background` daemon mode

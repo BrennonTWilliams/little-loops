@@ -2,12 +2,13 @@
 id: ENH-587
 priority: P4
 type: ENH
-status: open
+status: done
 title: "Make ll-issues refine-status table columns configurable via ll-config.json"
 discovered_date: 2026-03-05
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 86
+completed_at: 2026-03-05T00:00:00Z
 ---
 
 # ENH-587: Make ll-issues refine-status table columns configurable via ll-config.json

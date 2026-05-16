@@ -3,6 +3,8 @@ discovered_date: "2026-03-12"
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # ENH-709: Remove Product Analysis and Auto-Timeout Questions from Init Interactive

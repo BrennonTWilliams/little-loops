@@ -11,6 +11,7 @@ score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-05-03T19:56:24Z
 parent: ENH-1351
+status: done
 ---
 
 # ENH-1354: Multi-Instance Loop — instance_id Generation and File Path Scoping

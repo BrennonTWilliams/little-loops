@@ -2,7 +2,8 @@
 id: ENH-1295
 type: ENH
 priority: P3
-status: completed
+status: done
+completed_at: 2026-04-26T00:00:00Z
 ---
 
 # ENH-1295: Enforce slash_command action_type for skill invocations in loops

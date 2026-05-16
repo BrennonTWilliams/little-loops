@@ -3,6 +3,8 @@ discovered_date: 2026-04-12T17:20:00Z
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-04-12T00:00:00Z
 ---
 
 # ENH-1059: Surface dependency_mapping thresholds in ll-sprint show output

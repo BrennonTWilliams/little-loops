@@ -12,6 +12,7 @@ score_change_surface: 18
 testable: false
 completed_at: 2026-05-03T21:16:09Z
 parent: ENH-1355
+status: done
 ---
 
 # ENH-1357: Multi-Instance Loop — Docs & Skills Updates

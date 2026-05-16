@@ -2,11 +2,12 @@
 id: BUG-842
 type: BUG
 priority: P2
-status: completed
+status: done
 discovered_date: 2026-03-20
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 78
+completed_at: 2026-03-20T00:00:00Z
 ---
 
 # BUG-842: ll-sprint and ll-parallel hardcode git remote name "origin"

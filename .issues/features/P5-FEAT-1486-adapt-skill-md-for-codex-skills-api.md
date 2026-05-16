@@ -2,7 +2,7 @@
 id: FEAT-1486
 type: FEAT
 priority: P5
-status: closed
+status: done
 captured_at: '2026-05-15T23:00:00Z'
 discovered_date: 2026-05-15
 discovered_by: manage-issue
@@ -15,6 +15,7 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
 missing_artifacts: false
+completed_at: 2026-05-15T00:00:00Z
 ---
 
 # FEAT-1486: Adapt ll Skills for Codex Skills API

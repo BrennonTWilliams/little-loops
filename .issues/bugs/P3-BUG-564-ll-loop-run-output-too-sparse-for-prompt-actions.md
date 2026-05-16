@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-03-04T00:00:00Z
+---
 # BUG-564: ll-loop run output too sparse for prompt actions
 
 ## Summary

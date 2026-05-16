@@ -14,6 +14,7 @@ score_test_coverage: 18
 score_ambiguity: 22
 score_change_surface: 18
 size: Very Large
+completed_at: 2026-05-11T00:00:00Z
 ---
 
 # FEAT-1449: PreCompact Intent — Python Core Handler and Claude Code Adapter

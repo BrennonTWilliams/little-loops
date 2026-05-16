@@ -3,11 +3,12 @@ id: ENH-747
 title: "Fix session log parsing gap: commands use append-log CLI"
 type: ENH
 priority: P2
-status: completed
+status: done
 discovered_date: 2026-03-14
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 85
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # ENH-747: Fix session log parsing gap: commands use append-log CLI

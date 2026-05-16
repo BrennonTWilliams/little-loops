@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-13T00:00:00Z
+---
 # BUG-002: ll-auto Does Not Validate ready_issue Target Matches Intended File
 
 ## Summary

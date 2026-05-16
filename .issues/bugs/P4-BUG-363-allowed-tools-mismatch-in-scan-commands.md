@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-12
 discovered_by: audit_claude_config
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # BUG-363: allowed-tools mismatch in scan_codebase and scan_product commands

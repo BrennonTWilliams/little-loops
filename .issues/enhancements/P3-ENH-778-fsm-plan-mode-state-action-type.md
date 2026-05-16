@@ -3,11 +3,12 @@ id: ENH-778
 title: "Add plan_call Action Type for FSM States"
 type: ENH
 priority: P3
-status: wont_do
+status: done
 discovered_date: 2026-03-16
 discovered_by: capture-issue
 confidence_score: 90
 outcome_confidence: 48
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # ENH-778: Add `plan_call` Action Type for FSM States

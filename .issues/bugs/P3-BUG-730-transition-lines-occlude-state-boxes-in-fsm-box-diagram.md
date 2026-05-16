@@ -2,12 +2,13 @@
 id: BUG-730
 title: Transition lines occlude state boxes in FSM box diagram
 priority: P3
-status: completed
+status: done
 type: BUG
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+completed_at: 2026-03-13T00:00:00Z
 ---
 
 # BUG-730: Transition lines occlude state boxes in FSM box diagram

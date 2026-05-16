@@ -2,11 +2,12 @@
 id: FEAT-1009
 type: FEAT
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-04-09
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+completed_at: 2026-04-10T00:00:00Z
 ---
 
 # FEAT-1009: ll-issues path sub-command to resolve issue ID to file path

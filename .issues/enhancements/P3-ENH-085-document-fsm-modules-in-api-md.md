@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-01-17T00:00:00Z
 discovered_by: audit_docs
 doc_file: docs/API.md
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-085: Document FSM modules in docs/API.md

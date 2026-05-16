@@ -14,6 +14,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 parent: ENH-1247
+status: done
 ---
 
 # ENH-1253: Unlock Before Remove in orchestrator._cleanup_orphaned_worktrees

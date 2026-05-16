@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-13T00:00:00Z
+---
 # FEAT-045: FSM Executor Core
 
 ## Summary

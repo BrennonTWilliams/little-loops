@@ -5,6 +5,8 @@ discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
 confidence_score: 98
 outcome_confidence: 90
+status: done
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # BUG-620: `output_numeric` evaluator raises unguarded `ValueError` for string targets

@@ -2,6 +2,8 @@
 discovered_date: 2026-03-17T00:00:00Z
 discovered_by: capture-issue
 testable: false
+status: done
+completed_at: 2026-03-18T00:00:00Z
 ---
 
 # ENH-795: Fix documentation issues in AUTOMATIC_HARNESSING_GUIDE.md

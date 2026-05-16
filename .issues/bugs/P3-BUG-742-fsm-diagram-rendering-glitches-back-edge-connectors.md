@@ -2,11 +2,12 @@
 id: BUG-742
 type: BUG
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-14
 discovered_by: manual
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # BUG-742: FSM diagram rendering glitches — back-edge connectors corrupt boxes and produce disconnected junctions

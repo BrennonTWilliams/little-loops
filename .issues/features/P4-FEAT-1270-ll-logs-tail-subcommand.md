@@ -2,7 +2,7 @@
 id: FEAT-1270
 type: FEAT
 priority: P4
-status: backlog
+status: done
 title: "ll-logs: tail subcommand for live loop session streaming"
 discovered_date: 2026-04-23
 discovered_by: issue-size-review

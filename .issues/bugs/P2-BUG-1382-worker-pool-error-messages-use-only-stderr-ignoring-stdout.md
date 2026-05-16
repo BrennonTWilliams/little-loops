@@ -2,7 +2,7 @@
 id: BUG-1382
 type: BUG
 priority: P2
-status: active
+status: done
 captured_at: '2026-05-09T01:55:56Z'
 completed_at: '2026-05-09T17:27:03Z'
 discovered_date: '2026-05-09'

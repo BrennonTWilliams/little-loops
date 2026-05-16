@@ -2,12 +2,13 @@
 id: FEAT-808
 priority: P3
 type: FEAT
-status: completed
+status: done
 title: "go-no-go skill for adversarial issue implementation assessment"
 discovered_date: "2026-03-19"
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 90
+completed_at: 2026-03-19T00:00:00Z
 ---
 
 # FEAT-808: go-no-go skill for adversarial issue implementation assessment

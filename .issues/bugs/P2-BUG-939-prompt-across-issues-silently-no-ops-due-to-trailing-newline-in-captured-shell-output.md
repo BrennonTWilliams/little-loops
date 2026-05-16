@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-03
 discovered_by: capture-issue
+status: done
+completed_at: 2026-04-03T00:00:00Z
 ---
 
 # BUG-939: `prompt-across-issues` silently no-ops on every issue due to trailing newline in captured shell output

@@ -3,6 +3,8 @@ discovered_date: 2026-04-10
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 68
+status: done
+completed_at: 2026-04-10T00:00:00Z
 ---
 
 # ENH-1024: Wire ll-gitignore into permissions and help docs

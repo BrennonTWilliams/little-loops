@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-09
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-10T00:00:00Z
 ---
 
 # BUG-307: Sprint state marks all wave issues as completed even when some fail

@@ -3,6 +3,8 @@ discovered_commit: 45967476d8f33ab60834266502dbdba439822661
 discovered_branch: main
 discovered_date: 2026-03-04T20:10:46Z
 discovered_by: capture-issue
+status: done
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # ENH-573: Improve `ll-loop show --verbose` Output Quality and Layout

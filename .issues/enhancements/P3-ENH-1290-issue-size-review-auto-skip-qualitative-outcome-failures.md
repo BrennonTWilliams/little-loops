@@ -9,6 +9,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
+status: done
 ---
 
 # ENH-1290: `issue-size-review --auto` should skip decomposition for qualitative outcome failures

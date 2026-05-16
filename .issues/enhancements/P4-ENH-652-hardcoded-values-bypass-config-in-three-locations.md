@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-08T00:00:00Z
 discovered_by: capture-issue
+status: done
+completed_at: 2026-03-08T00:00:00Z
 ---
 
 # ENH-652: Three locations hardcode values that should be read from config

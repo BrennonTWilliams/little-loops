@@ -5,6 +5,8 @@ discovered_date: 2026-04-06T15:57:51Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-04-06T00:00:00Z
 ---
 
 # BUG-968: `_is_lifecycle_file_move` substring check matches unrelated paths

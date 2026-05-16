@@ -20,6 +20,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 parent: ENH-1248
+status: done
 ---
 
 # ENH-1255: Orphan Scan Extension for ll-loop Worktrees (Decision-Gated)

@@ -2,13 +2,14 @@
 id: ENH-1046
 type: ENH
 priority: P4
-status: backlog
+status: done
 discovered_date: 2026-04-11
 discovered_by: issue-size-review
 
 confidence_score: 100
 outcome_confidence: 100
 parent: ENH-1040
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1046: Fix `extensions` key placement in `config-schema.json`

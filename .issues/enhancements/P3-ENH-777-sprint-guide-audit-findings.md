@@ -3,7 +3,8 @@ id: ENH-777
 type: ENH
 priority: P3
 title: "SPRINT_GUIDE audit: accuracy and completeness findings"
-status: active
+status: done
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 ## Summary

@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-17T00:00:00Z
+---
 # ENH-087: Consolidate Hook Scripts in scripts/ Subdirectory
 
 ## Summary

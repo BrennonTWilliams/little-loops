@@ -3,6 +3,8 @@ type: ENH
 priority: P4
 effort: low
 risk: low
+status: done
+completed_at: 2026-02-27T00:00:00Z
 ---
 
 # Add text_utils module to API Reference

@@ -3,6 +3,8 @@ discovered_date: "2026-04-12"
 discovered_by: capture-issue
 confidence_score: 96
 outcome_confidence: 61
+status: done
+completed_at: 2026-04-12T00:00:00Z
 ---
 
 # FEAT-1072: Add `parallel:` State Type to FSM for Concurrent Sub-Loop Fan-Out

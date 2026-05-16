@@ -1,11 +1,12 @@
 ---
 id: BUG-664
 priority: P3
-status: active
+status: done
 discovered_date: 2026-03-09
 discovered_by: capture-issue
 confidence_score: 96
 outcome_confidence: 93
+completed_at: 2026-03-09T00:00:00Z
 ---
 
 # BUG-664: FSM Diagram Off-Path Arrows and Back-Edges Broken

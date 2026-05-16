@@ -3,9 +3,10 @@ type: ENH
 id: ENH-454
 title: Renumber init wizard rounds to eliminate Round 6.5
 priority: P3
-status: completed
+status: done
 created: 2026-02-22
 confidence_score: 95
+completed_at: 2026-02-23T00:00:00Z
 ---
 
 # Renumber init wizard rounds to eliminate Round 6.5

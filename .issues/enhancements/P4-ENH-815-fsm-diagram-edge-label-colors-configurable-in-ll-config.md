@@ -3,11 +3,12 @@ id: ENH-815
 type: ENH
 priority: P4
 title: "FSM diagram edge label colors configurable in ll-config.json"
-status: active
+status: done
 discovered_date: "2026-03-19"
 discovered_by: capture-issue
 confidence_score: 96
 outcome_confidence: 82
+completed_at: 2026-03-19T00:00:00Z
 ---
 
 # ENH-815: FSM diagram edge label colors configurable in ll-config.json

@@ -3,6 +3,8 @@ discovered_date: 2026-03-12
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 71
+status: done
+completed_at: 2026-03-23T00:00:00Z
 ---
 
 # FEAT-706: Hook management tooling for target projects

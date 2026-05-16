@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-02-24
 discovered_by: audit-architecture
 focus_area: organization
+status: done
+completed_at: 2026-02-24T00:00:00Z
 ---
 
 # ENH-472: Add __all__ to cli/loop/__init__.py

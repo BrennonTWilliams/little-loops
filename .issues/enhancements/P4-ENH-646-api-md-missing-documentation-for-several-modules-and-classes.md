@@ -2,9 +2,10 @@
 id: ENH-646
 type: ENH
 priority: P4
-status: completed
+status: done
 title: "API.md missing documentation sections for work_verification, session_log, FSM submodules, and other public APIs"
 created: 2026-03-07
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # ENH-646: API.md missing documentation sections for several modules and public APIs

@@ -9,6 +9,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # BUG-1408: implement_issue state hangs when issue already completed

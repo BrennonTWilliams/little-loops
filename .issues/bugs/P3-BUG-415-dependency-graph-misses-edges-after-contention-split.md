@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-13
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # BUG-415: Dependency graph misses edges after contention wave splitting

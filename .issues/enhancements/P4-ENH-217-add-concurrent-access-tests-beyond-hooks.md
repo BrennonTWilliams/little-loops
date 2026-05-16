@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-01T00:00:00Z
+---
 # P4-ENH-217: Add concurrent access tests beyond hooks
 
 ## Summary

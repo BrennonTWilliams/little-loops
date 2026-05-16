@@ -5,6 +5,8 @@ discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
 confidence_score: 88
 outcome_confidence: 70
+status: done
+completed_at: 2026-03-17T00:00:00Z
 ---
 
 # ENH-693: `parse_frontmatter` silently drops YAML lists and colon-containing values

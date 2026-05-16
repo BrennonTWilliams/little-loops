@@ -3,7 +3,7 @@ id: ENH-1275
 title: Document ll-logs CLI tool in README and CLI reference
 type: ENH
 priority: P3
-status: open
+status: done
 testable: false
 discovered_commit: cd924da7
 discovered_branch: main

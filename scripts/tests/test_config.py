@@ -31,6 +31,7 @@ from little_loops.config import (
     LoopsConfig,
     LoopsGlyphsConfig,
     NextIssueConfig,
+    OrchestrationConfig,
     OTelEventsConfig,
     ParallelAutomationConfig,
     ProjectConfig,
@@ -2190,3 +2191,51 @@ class TestDeepMerge:
         deep_merge(base, override)
         assert base == {"a": {"b": 1}}
         assert override == {"a": {"c": 2}}
+
+
+class TestOrchestrationConfig:
+    """Tests for OrchestrationConfig dataclass."""
+
+    def test_from_dict_with_defaults(self) -> None:
+        config = OrchestrationConfig.from_dict({})
+        assert config.host_cli is None
+
+    def test_from_dict_with_host_cli(self) -> None:
+        config = OrchestrationConfig.from_dict({"host_cli": "codex"})
+        assert config.host_cli == "codex"
+
+    def test_from_dict_with_claude_code(self) -> None:
+        config = OrchestrationConfig.from_dict({"host_cli": "claude-code"})
+        assert config.host_cli == "claude-code"
+
+
+class TestBRConfigOrchestration:
+    """Extend TestBRConfig with orchestration property coverage."""
+
+    def test_orchestration_property_from_file(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """BRConfig.orchestration returns OrchestrationConfig from file."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert isinstance(config.orchestration, OrchestrationConfig)
+        assert config.orchestration.host_cli is None
+
+    def test_orchestration_host_cli_from_file(self, temp_project_dir: Path) -> None:
+        """BRConfig.orchestration.host_cli is read from ll-config.json."""
+        cfg = {"orchestration": {"host_cli": "codex"}}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(cfg))
+
+        config = BRConfig(temp_project_dir)
+        assert config.orchestration.host_cli == "codex"
+
+    def test_orchestration_defaults_when_key_absent(self, temp_project_dir: Path) -> None:
+        """BRConfig.orchestration returns defaults when orchestration key is absent."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text("{}")
+
+        config = BRConfig(temp_project_dir)
+        assert config.orchestration.host_cli is None

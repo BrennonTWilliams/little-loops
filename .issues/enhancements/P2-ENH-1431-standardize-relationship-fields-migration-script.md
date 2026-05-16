@@ -13,6 +13,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 10
 size: Very Large
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1431: Standardize Relationship Fields — Migration Script

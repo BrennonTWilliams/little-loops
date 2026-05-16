@@ -2,6 +2,7 @@
 captured_at: "2026-05-01T17:31:53Z"
 discovered_date: "2026-05-01"
 discovered_by: capture-issue
+status: deferred
 ---
 
 # FEAT-1309: Loop-from-history passive sequence notifications

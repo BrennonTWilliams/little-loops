@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-01-25T23:06:34Z
 discovered_by: audit_docs
 doc_file: README.md
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # BUG-143: README Commands table missing configure and create_sprint

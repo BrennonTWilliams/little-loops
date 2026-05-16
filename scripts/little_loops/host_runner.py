@@ -27,18 +27,22 @@ import shutil
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 __all__ = [
+    "CapabilityEntry",
     "CapabilityNotSupported",
+    "CapabilityReport",
     "ClaudeCodeRunner",
     "CodexRunner",
+    "HookEntry",
     "HostCapabilities",
     "HostInvocation",
     "HostNotConfigured",
     "HostRunner",
     "OpenCodeRunner",
     "PiRunner",
+    "apply_host_cli_from_config",
     "resolve_host",
 ]
 
@@ -99,6 +103,47 @@ class HostInvocation:
     capabilities: HostCapabilities = field(default_factory=HostCapabilities)
 
 
+@dataclass(frozen=True)
+class CapabilityEntry:
+    """A single host capability with its support status.
+
+    ``status`` is one of ``"full"``, ``"partial"``, or ``"unsupported"``.
+    ``note`` carries an optional human-readable explanation (e.g. workaround).
+    """
+
+    name: str
+    status: Literal["full", "partial", "unsupported"]
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class HookEntry:
+    """A single hook's installation status for a given host.
+
+    ``status`` is one of ``"installed"``, ``"registered"``, ``"deferred"``, or ``"absent"``.
+    """
+
+    name: str
+    status: Literal["installed", "registered", "deferred", "absent"]
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class CapabilityReport:
+    """Full capability and hook report for one host runner.
+
+    Returned by :meth:`HostRunner.describe_capabilities`. Consumers (e.g. the
+    ``ll-doctor`` CLI) iterate ``capabilities`` and ``hooks`` to produce a
+    tabular preflight report.
+    """
+
+    host: str
+    binary: str
+    version: str
+    capabilities: list[CapabilityEntry] = field(default_factory=list)
+    hooks: list[HookEntry] = field(default_factory=list)
+
+
 @runtime_checkable
 class HostRunner(Protocol):
     """Protocol for host-specific CLI invocation builders.
@@ -152,6 +197,10 @@ class HostRunner(Protocol):
 
     def build_detached(self, *, prompt: str) -> HostInvocation:
         """Build an invocation suitable for fire-and-forget detached execution."""
+        ...
+
+    def describe_capabilities(self) -> CapabilityReport:
+        """Return a structured capability and hook report for this host."""
         ...
 
 
@@ -264,6 +313,25 @@ class ClaudeCodeRunner:
             args=args,
             env={},
             capabilities=self.capabilities,
+        )
+
+    def describe_capabilities(self) -> CapabilityReport:
+        return CapabilityReport(
+            host=self.name,
+            binary="claude",
+            version="",
+            capabilities=[
+                CapabilityEntry("streaming", "full"),
+                CapabilityEntry("permission_skip", "full"),
+                CapabilityEntry("agent_select", "full"),
+                CapabilityEntry("tool_allowlist", "full"),
+                # build_blocking_json silently drops json_schema (no Codex-style warning)
+                CapabilityEntry(
+                    "json_schema",
+                    "unsupported",
+                    "claude CLI does not accept an inline schema flag; parameter is silently dropped",
+                ),
+            ],
         )
 
 
@@ -417,6 +485,36 @@ class CodexRunner:
             capabilities=self.capabilities,
         )
 
+    def describe_capabilities(self) -> CapabilityReport:
+        return CapabilityReport(
+            host=self.name,
+            binary="codex",
+            version="",
+            capabilities=[
+                CapabilityEntry("streaming", "full"),
+                CapabilityEntry("permission_skip", "full"),
+                # agent_select=False (lines 303-304); warning at build_streaming lines 319-325
+                CapabilityEntry(
+                    "agent_select",
+                    "unsupported",
+                    "codex has no per-agent selection; --agent parameter is ignored",
+                ),
+                # tool_allowlist=False (line 304); warning at build_streaming lines 326-333
+                CapabilityEntry(
+                    "tool_allowlist",
+                    "unsupported",
+                    "codex uses sandbox modes for tool access; --tools parameter is ignored",
+                ),
+                # json_schema: partial — --output-schema requires a file path, not inline dict
+                # warning at build_blocking_json lines 372-380
+                CapabilityEntry(
+                    "json_schema",
+                    "partial",
+                    "codex --output-schema requires a file path; inline schema dict is ignored",
+                ),
+            ],
+        )
+
 
 class OpenCodeRunner:
     """``HostRunner`` stub for the ``opencode`` CLI (FEAT-1472, Option B).
@@ -474,6 +572,20 @@ class OpenCodeRunner:
             "Set LL_HOST_CLI=claude-code to use Claude Code instead."
         )
 
+    def describe_capabilities(self) -> CapabilityReport:
+        return CapabilityReport(
+            host=self.name,
+            binary="opencode",
+            version="",
+            capabilities=[
+                CapabilityEntry(
+                    "host",
+                    "unsupported",
+                    "binary not configured (HostNotConfigured) — opencode orchestration not yet wired",
+                )
+            ],
+        )
+
 
 class PiRunner:
     """``HostRunner`` stub for the ``pi`` CLI (FEAT-1472).
@@ -529,6 +641,20 @@ class PiRunner:
         raise HostNotConfigured(
             "Pi orchestration not yet wired — see FEAT-992. "
             "Set LL_HOST_CLI=claude-code to use Claude Code instead."
+        )
+
+    def describe_capabilities(self) -> CapabilityReport:
+        return CapabilityReport(
+            host=self.name,
+            binary="pi",
+            version="",
+            capabilities=[
+                CapabilityEntry(
+                    "host",
+                    "unsupported",
+                    "binary not configured (HostNotConfigured) — see FEAT-992",
+                )
+            ],
         )
 
 
@@ -604,3 +730,31 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner:
             return runner_cls()
 
     raise HostNotConfigured(f"No host CLI detected on PATH. {_remediation_hint()}")
+
+
+def apply_host_cli_from_config(config: object) -> None:
+    """Export ``orchestration.host_cli`` from *config* as ``LL_HOST_CLI``.
+
+    Reads ``config.orchestration.host_cli`` (a :class:`~little_loops.config.OrchestrationConfig`
+    attribute) and sets ``LL_HOST_CLI`` in the process environment so that a
+    subsequent call to :func:`resolve_host` picks up the config-driven value.
+
+    The env var takes precedence if already set — callers that set ``LL_HOST_CLI``
+    explicitly in their environment are not overridden. This matches the
+    documented resolution order (env var > config key > binary probe).
+
+    Args:
+        config: A :class:`~little_loops.config.BRConfig` instance (typed as
+            ``object`` to avoid a circular import; the attribute access pattern
+            is ``config.orchestration.host_cli``).
+    """
+    import os
+
+    if os.environ.get("LL_HOST_CLI"):
+        return  # explicit env override takes precedence
+    try:
+        host_cli: str | None = config.orchestration.host_cli  # type: ignore[attr-defined]
+    except AttributeError:
+        return  # config object doesn't support orchestration (e.g. tests)
+    if host_cli:
+        os.environ["LL_HOST_CLI"] = host_cli

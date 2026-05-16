@@ -3,6 +3,8 @@ discovered_date: 2026-02-19
 discovered_by: user-report
 follows: ENH-444
 confidence_score: 100
+status: done
+completed_at: 2026-02-19T00:00:00Z
 ---
 
 # BUG-445: FSM diagram renders non-main-path edges as plain text instead of 2D routed lines

@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 completed_at: 2026-04-23T16:12:30Z
+status: done
 ---
 
 # FEAT-1244: Benchmark Fragment — Core FSM Fragment & Scorer Registration

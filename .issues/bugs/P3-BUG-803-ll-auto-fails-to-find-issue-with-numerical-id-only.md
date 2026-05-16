@@ -2,12 +2,13 @@
 id: BUG-803
 title: "ll-auto fails to find issue with numerical ID only"
 priority: P3
-status: completed
+status: done
 type: BUG
 discovered_date: 2026-03-18
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 79
+completed_at: 2026-03-18T00:00:00Z
 ---
 
 # BUG-803: ll-auto fails to find issue with numerical ID only

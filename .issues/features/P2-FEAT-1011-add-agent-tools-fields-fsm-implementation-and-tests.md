@@ -2,12 +2,13 @@
 id: FEAT-1011
 type: FEAT
 priority: P2
-status: active
+status: done
 title: "Add `agent:` and `tools:` FSM state fields — implementation and tests"
 discovered_date: 2026-04-09
 discovered_by: issue-size-review
 confidence_score: 100
 outcome_confidence: 90
+completed_at: 2026-04-10T00:00:00Z
 ---
 
 # FEAT-1011: Add `agent:` and `tools:` FSM state fields — implementation and tests

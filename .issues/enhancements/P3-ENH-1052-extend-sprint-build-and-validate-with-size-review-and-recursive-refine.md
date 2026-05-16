@@ -3,6 +3,8 @@ discovered_date: 2026-04-12
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 79
+status: done
+completed_at: 2026-04-12T00:00:00Z
 ---
 
 # ENH-1052: Extend sprint-build-and-validate with size-review and recursive-refine

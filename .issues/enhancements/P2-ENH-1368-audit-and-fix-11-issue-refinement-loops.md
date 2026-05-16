@@ -2,12 +2,13 @@
 id: ENH-1368
 type: ENH
 priority: P2
-status: completed
+status: done
 discovered_date: 2026-05-05
 discovered_by: manual
 testable: true
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-05-05T00:00:00Z
 ---
 
 # ENH-1368: Audit and Fix 11 Issue-Refinement Built-in Loops

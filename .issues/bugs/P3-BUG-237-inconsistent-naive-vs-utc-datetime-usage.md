@@ -6,6 +6,8 @@ discovered_by: scan_codebase
 resolution: wont-fix
 closed_date: 2026-02-05
 closing_note: "No actual bug found. Naive and aware datetimes are never compared in practice — naive datetimes are used in display-only contexts (logger timestamps, filenames) or serialized to ISO strings that are never compared with UTC strings. Fixing this is pure hygiene with no practical impact."
+status: done
+completed_at: 2026-02-05T00:00:00Z
 ---
 
 # BUG-237: Inconsistent naive vs UTC-aware datetime usage

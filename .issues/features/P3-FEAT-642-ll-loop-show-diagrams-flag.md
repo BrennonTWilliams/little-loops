@@ -5,6 +5,8 @@ discovered_date: 2026-03-08T00:52:40Z
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # FEAT-642: Add `--show-diagrams` Flag to `ll-loop` for FSM Box Diagram Display

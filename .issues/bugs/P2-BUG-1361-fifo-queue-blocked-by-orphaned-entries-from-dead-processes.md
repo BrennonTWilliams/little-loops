@@ -2,6 +2,8 @@
 captured_at: "2026-05-04T18:08:58Z"
 discovered_date: 2026-05-04
 discovered_by: capture-issue
+status: done
+completed_at: 2026-05-04T00:00:00Z
 ---
 
 # BUG-1361: FIFO queue blocked by orphaned entries from dead processes — _is_earliest_waiter never checks PID liveness

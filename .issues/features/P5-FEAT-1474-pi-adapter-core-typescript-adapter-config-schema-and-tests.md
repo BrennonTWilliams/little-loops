@@ -12,6 +12,7 @@ score_complexity: 9
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+completed_at: 2026-05-15T00:00:00Z
 ---
 
 # FEAT-1474: Pi Adapter Core — TypeScript Adapter, Config Candidate, Schema, and Tests

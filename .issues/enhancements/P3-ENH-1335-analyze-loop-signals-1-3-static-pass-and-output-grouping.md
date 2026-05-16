@@ -11,6 +11,7 @@ score_ambiguity: 18
 score_change_surface: 25
 completed_at: 2026-05-03T04:57:18Z
 parent: ENH-1327
+status: done
 ---
 
 # ENH-1335: Add Effectiveness Signals 1-3 + Static Pass + Output Grouping to `/ll:analyze-loop`

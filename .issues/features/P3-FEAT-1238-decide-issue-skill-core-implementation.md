@@ -11,6 +11,7 @@ score_test_coverage: 10
 score_ambiguity: 22
 score_change_surface: 25
 completed_at: 2026-04-21T21:58:24Z
+status: done
 ---
 
 # FEAT-1238: Create /ll:decide-issue skill — core implementation

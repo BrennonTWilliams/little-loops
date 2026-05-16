@@ -14,6 +14,8 @@ score_test_coverage: 18
 score_ambiguity: 23
 score_change_surface: 18
 size: Very Large
+status: done
+completed_at: 2026-05-02T00:00:00Z
 ---
 
 # ENH-1326: `/ll:analyze-loop` Should Resolve `from:`, Fragments, and Sub-loops Before Judging

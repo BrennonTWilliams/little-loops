@@ -1,11 +1,12 @@
 ---
 id: BUG-567
 priority: P2
-status: active
+status: done
 discovered_date: 2026-03-04
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 71
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # BUG-567: `on_partial` transition silently dropped — not in schema or executor

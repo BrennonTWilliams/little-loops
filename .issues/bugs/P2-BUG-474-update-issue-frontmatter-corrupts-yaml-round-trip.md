@@ -3,6 +3,8 @@ discovered_commit: 95d4139206f3659159b727db57578ffb2930085b
 discovered_branch: main
 discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
+status: done
+completed_at: 2026-02-24T00:00:00Z
 ---
 
 # BUG-474: `_update_issue_frontmatter` corrupts YAML frontmatter on round-trip

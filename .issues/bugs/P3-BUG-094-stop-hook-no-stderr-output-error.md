@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-01-19
 discovered_by: capture_issue
+status: done
+completed_at: 2026-01-19T00:00:00Z
 ---
 
 # BUG-094: Stop hook reports "No stderr output" error

@@ -2,11 +2,12 @@
 id: ENH-746
 type: ENH
 priority: P3
-status: active
+status: done
 discovered_date: 2026-03-14
 discovered_by: capture-issue
 confidence_score: 96
 outcome_confidence: 79
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # ENH-746: Sprint Planner Serializes Issues That `ll-deps` Marks Parallel-Safe

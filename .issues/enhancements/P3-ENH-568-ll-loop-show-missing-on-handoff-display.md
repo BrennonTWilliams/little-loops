@@ -1,11 +1,12 @@
 ---
 id: ENH-568
 priority: P3
-status: active
+status: done
 discovered_date: 2026-03-04
 discovered_by: capture-issue
 confidence_score: null
 outcome_confidence: null
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # ENH-568: `ll-loop show` missing `on_handoff` display

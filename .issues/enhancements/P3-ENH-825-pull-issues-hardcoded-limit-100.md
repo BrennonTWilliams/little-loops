@@ -5,6 +5,8 @@ discovered_date: 2026-03-19T21:54:42Z
 discovered_by: scan-codebase
 confidence_score: 98
 outcome_confidence: 86
+status: done
+completed_at: 2026-04-02T00:00:00Z
 ---
 
 # ENH-825: `pull_issues` hardcoded limit of 100 GitHub issues

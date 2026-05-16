@@ -2,7 +2,7 @@
 id: FEAT-1155
 type: FEAT
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-04-18
 discovered_by: capture-issue
 confidence_score: 98
@@ -87,7 +87,7 @@ New frontmatter fields:
 
 ```yaml
 captured_at: "2026-04-18T14:32:07Z"   # set by capture-issue
-completed_at: "2026-05-01T09:15:44Z"  # set when moved to completed/
+completed_at: 2026-04-18T00:00:00Z
 ```
 
 Format: ISO 8601 UTC (`datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")` in Python, or `date -u +"%Y-%m-%dT%H:%M:%SZ"` in shell).

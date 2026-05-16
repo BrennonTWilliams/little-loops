@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-01-21
 discovered_by: capture_issue
+status: done
+completed_at: 2026-01-21T00:00:00Z
 ---
 
 # ENH-101: Add Advanced Setup Rounds to Init Wizard

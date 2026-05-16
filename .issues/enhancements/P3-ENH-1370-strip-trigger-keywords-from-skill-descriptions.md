@@ -4,6 +4,8 @@ discovered_by: session-observation
 confidence_score: 100
 outcome_confidence: 95
 blocked_by: []
+status: done
+completed_at: 2026-05-05T00:00:00Z
 ---
 
 # ENH-1370: Strip Redundant Trigger Keywords from Skill Descriptions

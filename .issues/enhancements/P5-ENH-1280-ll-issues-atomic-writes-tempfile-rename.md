@@ -10,6 +10,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 size: Very Large
+status: done
 ---
 
 # ENH-1280: `ll-issues` Atomic Writes via `tempfile` + `os.rename()`

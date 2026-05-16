@@ -6,6 +6,8 @@ discovered_date: 2026-04-12
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 64
+status: done
+completed_at: 2026-04-12T00:00:00Z
 ---
 
 # ENH-1089: issue-size-review writes size frontmatter, show in refine-status

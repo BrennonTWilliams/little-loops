@@ -14,6 +14,7 @@ score_ambiguity: 18
 score_change_surface: 25
 completed_at: 2026-04-22T19:33:53Z
 parent: ENH-1247
+status: done
 ---
 
 # ENH-1252: Unlock Before Remove in merge_coordinator._cleanup_worktree

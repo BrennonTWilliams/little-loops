@@ -2,9 +2,10 @@
 id: ENH-676
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-11
 discovered_by: capture-issue
+completed_at: 2026-03-12T00:00:00Z
 ---
 
 # ENH-676: Reduce column widths in ll-issues refine-status table

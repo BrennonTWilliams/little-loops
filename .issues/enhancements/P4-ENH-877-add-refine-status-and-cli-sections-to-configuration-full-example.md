@@ -1,5 +1,7 @@
 ---
 testable: false
+status: done
+completed_at: 2026-03-24T00:00:00Z
 ---
 # ENH: Add `refine_status` and `cli` sections to Full Configuration Example
 

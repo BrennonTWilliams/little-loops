@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-03-05T00:00:00Z
+---
 # BUG: ISSUE_TEMPLATE.md section count claim is internally inconsistent
 
 ## Summary

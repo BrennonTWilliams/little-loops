@@ -2,11 +2,12 @@
 id: ENH-613
 type: ENH
 priority: P3
-status: active
+status: done
 discovered_date: 2026-03-05
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 75
+completed_at: 2026-03-08T00:00:00Z
 ---
 
 # ENH-613: Remove Unnecessary Interactive Questions from /ll:init and Use Defaults

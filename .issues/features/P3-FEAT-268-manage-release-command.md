@@ -4,6 +4,8 @@ discovered_by: capture_issue
 github_issue: null
 github_url: null
 last_synced: null
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # FEAT-268: Add /ll:manage-release Command for Release Management

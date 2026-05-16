@@ -11,6 +11,7 @@ score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-05-02T21:48:36Z
 parent: ENH-1326
+status: done
 ---
 
 # ENH-1333: `ll-loop show --resolved`: CLI Flag and Sub-loop Expansion with Tests

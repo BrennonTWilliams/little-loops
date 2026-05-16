@@ -3,11 +3,12 @@ id: ENH-771
 title: "Add --limit argument to ll-issues list"
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 93
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # ENH-771: Add --limit argument to ll-issues list

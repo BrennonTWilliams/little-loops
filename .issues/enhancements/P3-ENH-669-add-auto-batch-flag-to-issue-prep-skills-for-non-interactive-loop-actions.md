@@ -2,11 +2,12 @@
 id: ENH-669
 type: ENH
 priority: P3
-status: active
+status: done
 discovered_date: 2026-03-11
 discovered_by: capture-issue
 confidence_score: 90
 outcome_confidence: 78
+completed_at: 2026-03-12T00:00:00Z
 ---
 
 # ENH-669: Add `--auto`/`--batch` flag to issue prep skills for non-interactive loop actions

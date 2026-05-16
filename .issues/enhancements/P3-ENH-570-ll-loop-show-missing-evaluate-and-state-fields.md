@@ -1,11 +1,12 @@
 ---
 id: ENH-570
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-04
 discovered_by: capture-issue
 confidence_score: 96
 outcome_confidence: 97
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # ENH-570: `ll-loop show` missing evaluate prompt and state-level fields

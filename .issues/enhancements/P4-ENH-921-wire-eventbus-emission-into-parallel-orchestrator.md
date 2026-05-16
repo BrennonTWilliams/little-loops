@@ -3,6 +3,8 @@ discovered_date: 2026-04-02
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 86
+status: done
+completed_at: 2026-04-02T00:00:00Z
 ---
 
 # ENH-921: Wire EventBus Emission into Parallel Orchestrator

@@ -6,6 +6,8 @@ discovered_by: audit-architecture
 focus_area: large-files
 confidence_score: 98
 outcome_confidence: 71
+status: done
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # ENH-684: Split config.py (1,012 lines) into config subpackage

@@ -2,11 +2,12 @@
 id: FEAT-1000
 type: FEAT
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-04-08
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 86
+completed_at: 2026-04-08T00:00:00Z
 ---
 
 # FEAT-1000: Recursive Refine Built-In Loop

@@ -2,12 +2,13 @@
 id: FEAT-1001
 type: FEAT
 priority: P4
-status: backlog
+status: done
 title: Add log discovery and extraction for ll-loop and ll-commands
 discovered_date: 2026-04-08
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 71
+completed_at: 2026-04-08T00:00:00Z
 ---
 
 # FEAT-1001: Add log discovery and extraction for ll-loop and ll-commands

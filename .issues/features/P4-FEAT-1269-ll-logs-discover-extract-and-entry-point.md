@@ -2,7 +2,7 @@
 id: FEAT-1269
 type: FEAT
 priority: P4
-status: backlog
+status: done
 title: "ll-logs: discover + extract subcommands and entry-point registration"
 discovered_date: 2026-04-23
 discovered_by: issue-size-review
@@ -14,6 +14,7 @@ score_test_coverage: 10
 score_ambiguity: 18
 score_change_surface: 0
 size: Very Large
+completed_at: 2026-04-23T00:00:00Z
 ---
 
 # FEAT-1269: ll-logs: discover + extract subcommands and entry-point registration

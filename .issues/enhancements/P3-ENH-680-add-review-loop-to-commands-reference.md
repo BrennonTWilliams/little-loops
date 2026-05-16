@@ -5,6 +5,8 @@ priority: P3
 effort: Low
 impact: Low
 risk: Low
+status: done
+completed_at: 2026-03-12T00:00:00Z
 ---
 
 ## Summary

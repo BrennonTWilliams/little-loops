@@ -3,6 +3,8 @@ discovered_date: 2026-03-05
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-05T00:00:00Z
 ---
 
 # BUG-599: issue-refinement loop stuck in infinite cycle due to fmt/priority bugs

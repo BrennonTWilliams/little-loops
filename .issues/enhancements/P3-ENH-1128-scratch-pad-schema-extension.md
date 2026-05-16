@@ -2,7 +2,7 @@
 id: ENH-1128
 type: ENH
 priority: P3
-status: completed
+status: done
 parent: ENH-1111
 size: Small
 confidence_score: 100
@@ -11,6 +11,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+completed_at: 2026-04-16T00:00:00Z
 ---
 
 # ENH-1128: Extend config-schema.json with scratch_pad Properties

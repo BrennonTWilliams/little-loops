@@ -14,6 +14,7 @@ score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-04-22T20:27:41Z
 parent: ENH-1248
+status: done
 ---
 
 # ENH-1254: worktree-health.yaml Grep Fix + cmd_run(worktree=True) Integration Test

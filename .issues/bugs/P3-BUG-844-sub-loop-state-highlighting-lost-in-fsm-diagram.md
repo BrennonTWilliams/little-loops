@@ -5,6 +5,8 @@ priority: P3
 title: Sub-loop state highlighting lost in FSM diagram
 discovered_date: 2026-03-20
 discovered_by: capture-issue
+status: done
+completed_at: 2026-03-20T00:00:00Z
 ---
 
 # BUG-844: Sub-loop state highlighting lost in FSM diagram

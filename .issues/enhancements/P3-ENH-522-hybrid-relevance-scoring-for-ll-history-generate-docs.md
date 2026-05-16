@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-03-03T00:00:00Z
+---
 # ENH-522: Add Hybrid Relevance Scoring to ll-history generate-docs
 
 ---

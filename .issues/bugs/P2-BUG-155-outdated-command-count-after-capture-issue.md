@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-01-16T00:00:00Z
 discovered_by: audit_docs
 doc_file: README.md
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # BUG-052: Outdated command count (20→21) after capture_issue addition

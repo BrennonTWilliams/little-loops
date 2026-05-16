@@ -6,6 +6,8 @@ discovered_by: audit-architecture
 focus_area: integration
 confidence_score: 91
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # ENH-683: Break circular import: cli.loop._helpers <-> cli.loop.info

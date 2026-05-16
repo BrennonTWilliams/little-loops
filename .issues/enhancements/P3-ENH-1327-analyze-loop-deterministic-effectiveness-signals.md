@@ -13,6 +13,8 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
 decision_needed: false
+status: done
+completed_at: 2026-05-02T00:00:00Z
 ---
 
 # ENH-1327: Add Deterministic Effectiveness Signals to `/ll:analyze-loop`

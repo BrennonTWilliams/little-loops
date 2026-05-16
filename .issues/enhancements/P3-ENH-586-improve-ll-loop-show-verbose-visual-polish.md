@@ -3,6 +3,8 @@ discovered_date: 2026-03-05
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 79
+status: done
+completed_at: 2026-03-05T00:00:00Z
 ---
 
 # ENH-586: Improve visual polish of `ll-loop show --verbose` output

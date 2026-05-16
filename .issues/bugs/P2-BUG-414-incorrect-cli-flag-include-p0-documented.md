@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-02-10T15:30:00-08:00
 discovered_by: audit_docs
 doc_file: README.md
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # BUG-414: Incorrect CLI flag `--include-p0` documented in README

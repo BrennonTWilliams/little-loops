@@ -3,6 +3,8 @@ discovered_date: "2026-03-13"
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # ENH-715: Visual polish for ll-loop list output styling

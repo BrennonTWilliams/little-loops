@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-28T00:00:00Z
+---
 # ENH-003: Improve issue_lifecycle.py Test Coverage
 
 ## Summary

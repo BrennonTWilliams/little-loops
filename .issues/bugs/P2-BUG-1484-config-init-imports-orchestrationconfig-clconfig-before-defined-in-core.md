@@ -2,7 +2,7 @@
 id: BUG-1484
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-05-15T20:48:07Z'
 discovered_date: 2026-05-15
 discovered_by: capture-issue
@@ -14,6 +14,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+completed_at: 2026-05-15T00:00:00Z
 ---
 
 # BUG-1484: `config/__init__.py` Imports `OrchestrationConfig` and `CLConfig` Before They Exist in `core.py`

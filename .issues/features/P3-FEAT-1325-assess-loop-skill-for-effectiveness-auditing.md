@@ -13,6 +13,8 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
 size: Very Large
+status: done
+completed_at: 2026-05-02T00:00:00Z
 ---
 
 # FEAT-1325: `/ll:assess-loop` Skill for Loop Effectiveness Auditing

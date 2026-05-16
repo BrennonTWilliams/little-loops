@@ -3,6 +3,8 @@ discovered_date: 2026-03-05T00:00:00Z
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 79
+status: done
+completed_at: 2026-03-05T00:00:00Z
 ---
 
 # BUG-592: `ll-loop stop` Only Marks State "interrupted" Without Killing Running Processes

@@ -11,6 +11,7 @@ score_change_surface: 25
 decision_needed: true
 size: Very Large
 status: done
+completed_at: 2026-05-11T00:00:00Z
 ---
 
 # FEAT-1310: verify-issue-loop skill (FSM loop generator from issue acceptance criteria)

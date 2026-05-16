@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-01-23
 discovered_by: planning
+status: done
+completed_at: 2026-01-23T00:00:00Z
 ---
 
 # ENH-118: Cross-Cutting Concern Smell Detection

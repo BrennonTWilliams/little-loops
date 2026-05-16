@@ -3,6 +3,8 @@ discovered_date: 2026-03-06
 discovered_by: capture-issue
 confidence_score: 80
 outcome_confidence: 72
+status: done
+completed_at: 2026-03-06T00:00:00Z
 ---
 
 # BUG-616: `ready-issue` returns `CORRECTED` instead of `BLOCKED` when open blockers exist

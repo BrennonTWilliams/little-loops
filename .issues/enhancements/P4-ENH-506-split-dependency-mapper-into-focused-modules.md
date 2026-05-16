@@ -6,6 +6,8 @@ discovered_by: audit-architecture
 focus_area: large-files
 confidence_score: 98
 outcome_confidence: 79
+status: done
+completed_at: 2026-03-03T00:00:00Z
 ---
 
 # ENH-506: Split `dependency_mapper.py` into focused modules

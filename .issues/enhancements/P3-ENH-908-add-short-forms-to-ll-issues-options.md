@@ -2,12 +2,13 @@
 id: ENH-908
 type: ENH
 priority: P3
-status: active
+status: done
 title: "Add short forms to ll-issues command options"
 discovered_date: 2026-04-01
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 86
+completed_at: 2026-04-01T00:00:00Z
 ---
 
 # ENH-908: Add short forms to ll-issues command options

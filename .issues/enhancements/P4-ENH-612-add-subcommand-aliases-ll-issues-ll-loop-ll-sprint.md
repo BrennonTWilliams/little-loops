@@ -2,12 +2,13 @@
 id: ENH-612
 type: ENH
 priority: P4
-status: active
+status: done
 title: "Add subcommand aliases to ll-issues, ll-loop, and ll-sprint"
 discovered_date: 2026-03-05
 discovered_by: capture-issue
 confidence_score: 91
 outcome_confidence: 88
+completed_at: 2026-03-06T00:00:00Z
 ---
 
 # ENH-612: Add subcommand aliases to ll-issues, ll-loop, and ll-sprint

@@ -9,6 +9,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
 completed_at: 2026-05-02T16:40:58Z
+status: done
 ---
 
 # FEAT-1323: Transport CLI Wiring Pass and Documentation

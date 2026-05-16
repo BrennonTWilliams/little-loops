@@ -13,6 +13,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
 size: Very Large
+completed_at: 2026-05-15T00:00:00Z
 ---
 
 # FEAT-1464: Scaffold host_runner.py + ClaudeCodeRunner + Call Site Migrations + Config Wiring

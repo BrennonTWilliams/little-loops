@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-15T00:00:00Z
+---
 # ENH-055: Add Tests for ll-loop Execution and Display Functions
 
 ## Summary

@@ -2,11 +2,12 @@
 id: FEAT-749
 priority: P2
 type: FEAT
-status: active
+status: done
 discovered_date: 2026-03-14
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 79
+completed_at: 2026-03-15T00:00:00Z
 ---
 
 # FEAT-749: Add ll- CLI Commands to Allowed Tools in settings.json via Init

@@ -2,12 +2,13 @@
 id: FEAT-1063
 type: FEAT
 priority: P4
-status: completed
+status: done
 discovered_date: 2026-04-12
 discovered_by: conversation
 testable: true
 confidence_score: 95
 outcome_confidence: 90
+completed_at: 2026-04-12T00:00:00Z
 ---
 
 # FEAT-1063: Sprint-Scoped Refine-and-Implement FSM Loop

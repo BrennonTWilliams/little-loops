@@ -8,6 +8,8 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 size: Very Large
+status: done
+completed_at: 2026-04-14T00:00:00Z
 ---
 
 # BUG-1105: FSM Loops Silently Skip All Work on 429 Rate Limit Failures

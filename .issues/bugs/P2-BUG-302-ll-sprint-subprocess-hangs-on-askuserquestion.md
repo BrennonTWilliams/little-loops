@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-09
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-09T00:00:00Z
 ---
 
 # BUG-302: ll-sprint subprocess hangs if Claude calls AskUserQuestion in -p mode

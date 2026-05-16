@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-04-29T00:00:00Z
+---
 # BUG-1306: Issue ID Collapses to Priority Digit When Type Token Omitted From Filename
 
 ## Summary

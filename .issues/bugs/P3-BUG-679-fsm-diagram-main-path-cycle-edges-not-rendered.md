@@ -4,6 +4,8 @@ discovered_by: capture-issue
 confidence_score: 100
 resolved: true
 resolved_date: 2026-03-12
+status: done
+completed_at: 2026-03-12T00:00:00Z
 ---
 
 # BUG-679: FSM diagram main-path cycle edges not rendered

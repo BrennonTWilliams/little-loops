@@ -9,6 +9,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # BUG-1230: autodev skips implementation when size review declines decomposition

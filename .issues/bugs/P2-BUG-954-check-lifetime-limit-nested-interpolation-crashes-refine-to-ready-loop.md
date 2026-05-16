@@ -4,6 +4,8 @@ discovered_date: 2026-04-05
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-04-05T00:00:00Z
 ---
 
 # BUG-954: Nested `${}` in `check_lifetime_limit` causes `InterpolationError` crashing `refine-to-ready-issue` loop

@@ -2,11 +2,12 @@
 id: ENH-804
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-18
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 93
+completed_at: 2026-03-18T00:00:00Z
 ---
 
 # ENH-804: Add --priority filter to ll-auto and ll-parallel

@@ -10,6 +10,7 @@ score_ambiguity: 18
 score_change_surface: 10
 size: Very Large
 parent: FEAT-1072
+status: deferred
 ---
 
 # FEAT-1074: Parallel State Schema and Validation

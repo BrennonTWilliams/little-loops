@@ -2,9 +2,10 @@
 id: BUG-811
 type: BUG
 priority: P3
-status: Closed - Already Fixed
+status: done
 discovered_date: 2026-03-18
 discovered_by: capture-issue
+completed_at: 2026-03-19T00:00:00Z
 ---
 
 # BUG-811: handoff asks for approval to overwrite ll-continue-prompt.md

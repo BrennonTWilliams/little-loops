@@ -6,6 +6,8 @@ discovered_by: audit-architecture
 focus_area: large-files
 confidence_score: 100
 outcome_confidence: 78
+status: done
+completed_at: 2026-02-24T00:00:00Z
 ---
 
 # ENH-469: Split cli/sprint.py into subcommand modules

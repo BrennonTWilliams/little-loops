@@ -3,6 +3,8 @@ discovered_date: 2026-03-05
 discovered_by: manual-audit
 confidence_score: 95
 outcome_confidence: 95
+status: done
+completed_at: 2026-03-05T00:00:00Z
 ---
 
 # ENH-591: Fix Output Styling Consistency in `ll-issues` CLI

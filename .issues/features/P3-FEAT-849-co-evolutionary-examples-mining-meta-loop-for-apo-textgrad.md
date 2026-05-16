@@ -6,6 +6,8 @@ discovered_date: 2026-03-20
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 79
+status: done
+completed_at: 2026-03-21T00:00:00Z
 ---
 
 # FEAT-849: Co-evolutionary Examples Mining Meta-Loop for apo-textgrad

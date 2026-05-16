@@ -2,6 +2,8 @@
 discovered_date: 2026-01-24
 discovered_by: capture_issue
 discovered_source: argobots-ll-parallel-debug.log
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-143: Detect and handle overlapping file modifications in parallel processing

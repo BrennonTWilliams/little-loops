@@ -2,9 +2,10 @@
 id: BUG-1258
 type: BUG
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-04-22
 discovered_by: manual
+completed_at: 2026-04-22T00:00:00Z
 ---
 
 # BUG-1258: `parse_frontmatter` silently drops inline YAML arrays, producing spurious "unknown issue" warnings in `ll-issues clusters`

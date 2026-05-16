@@ -13,6 +13,7 @@ score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-05-03T16:23:45Z
 parent: ENH-1344
+status: done
 ---
 
 # ENH-1346: Config Schema + Python Config Layer for `recursive-refine` Depth Limit

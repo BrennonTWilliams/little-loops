@@ -11,6 +11,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-04-23T03:24:36Z
+status: done
 ---
 
 # ENH-1267: Test Coverage for analyze-loop Step 3b Semantic Synthesis

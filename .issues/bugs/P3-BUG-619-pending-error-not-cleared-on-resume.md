@@ -5,6 +5,8 @@ discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # BUG-619: `_pending_error` not cleared on resume, asymmetric with `_pending_handoff`

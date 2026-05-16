@@ -3,6 +3,8 @@ discovered_date: 2026-02-10
 discovered_by: plan_mode
 completed_date: 2026-02-10
 implementation_session: 2026-02-10
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-320: Optimize Issue Template (v2.0)

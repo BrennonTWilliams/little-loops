@@ -3,6 +3,8 @@ discovered_date: 2026-03-20
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-20T00:00:00Z
 ---
 
 # BUG-836: `ll-issues list` warns on YAML block sequence frontmatter

@@ -4,6 +4,8 @@ discovered_by: /ll:capture-issue
 source_loop: issue-refinement
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # BUG-786: issue-refinement loop `evaluate` conflates `formatted=False` and `has_verify=False` into one route

@@ -3,6 +3,8 @@ discovered_date: 2026-03-09
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-09T00:00:00Z
 ---
 
 # ENH-662: review-loop FSM Logic Analysis and Evaluation

@@ -4,6 +4,8 @@ discovered_date: 2026-03-24
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 61
+status: done
+completed_at: 2026-03-24T00:00:00Z
 ---
 
 # BUG-876: Display Timing Bug When Running in External Project

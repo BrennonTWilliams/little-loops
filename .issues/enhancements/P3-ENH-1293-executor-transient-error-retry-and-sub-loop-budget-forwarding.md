@@ -2,7 +2,7 @@
 id: ENH-1293
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: "2026-04-26T15:55:17Z"
 completed_at: 2026-04-26T16:23:48Z
 discovered_date: 2026-04-26

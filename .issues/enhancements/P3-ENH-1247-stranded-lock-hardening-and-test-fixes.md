@@ -12,6 +12,8 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 parent: ENH-1197
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1247: Stranded Lock File Hardening + Breaking Test Updates

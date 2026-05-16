@@ -3,6 +3,8 @@ discovered_date: 2026-04-01
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-04-01T00:00:00Z
 ---
 
 # BUG-912: `refine-to-ready-issue` loop missing `/ll:verify-issues` step causes infinite NEEDS_VERIFY cycle

@@ -2,6 +2,8 @@
 discovered_date: 2026-01-29
 discovered_by: capture_issue
 source: docs/CLI-TOOLS-AUDIT.md
+status: done
+completed_at: 2026-01-29T00:00:00Z
 ---
 
 # ENH-185: Add error handling wrapper to ll-sprint

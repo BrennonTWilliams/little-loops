@@ -7,6 +7,8 @@ discovered_date: 2026-04-12
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 28
+status: done
+completed_at: 2026-04-26T00:00:00Z
 ---
 
 # ENH-1092: Rename /ll:configure Skill to /ll:settings

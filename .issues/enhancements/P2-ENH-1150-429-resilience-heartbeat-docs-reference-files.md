@@ -2,7 +2,7 @@
 id: ENH-1150
 type: ENH
 priority: P2
-status: completed
+status: done
 discovered_date: 2026-04-17
 parent: ENH-1146
 
@@ -14,6 +14,7 @@ score_ambiguity: 22
 score_change_surface: 25
 testable: false
 relates_to: ['ENH-1144', 'ENH-1147', 'ENH-1151']
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1150: 429 Resilience — Heartbeat Docs (Reference Files)

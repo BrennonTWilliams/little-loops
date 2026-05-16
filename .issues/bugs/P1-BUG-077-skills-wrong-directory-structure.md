@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-16T00:00:00Z
+---
 # P1-BUG-077: Skills Use Wrong Directory Structure
 
 ## Summary

@@ -3,9 +3,10 @@ type: ENH
 id: ENH-451
 title: Add sprints, loops, and automation sections to init interactive wizard
 priority: P2
-status: completed
+status: done
 created: 2026-02-22
 resolved: 2026-02-22
+completed_at: 2026-02-22T00:00:00Z
 ---
 
 # Add sprints, loops, and automation sections to init interactive wizard

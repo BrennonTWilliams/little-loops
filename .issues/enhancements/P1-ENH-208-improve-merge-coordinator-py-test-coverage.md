@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-01T00:00:00Z
+---
 # P1-ENH-208: Improve merge_coordinator.py test coverage from 66% to 80%+
 
 ## Summary

@@ -1175,6 +1175,18 @@
         }
       },
       "additionalProperties": false
+    },
+    "orchestration": {
+      "type": "object",
+      "description": "Orchestration settings, primarily host CLI selection. Values here are read by apply_host_cli_from_config() before resolve_host() runs.",
+      "properties": {
+        "host_cli": {
+          "type": "string",
+          "enum": ["claude-code", "codex", "opencode", "pi"],
+          "description": "Override the host CLI used by orchestration scripts. Mirrors the LL_HOST_CLI environment variable; env var takes precedence if both are set."
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

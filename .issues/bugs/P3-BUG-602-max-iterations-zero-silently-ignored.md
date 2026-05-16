@@ -5,6 +5,8 @@ discovered_date: 2026-03-06T04:46:40Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 79
+status: done
+completed_at: 2026-03-06T00:00:00Z
 ---
 
 # BUG-602: `--max-iterations 0` silently ignored due to falsy check at 3 sites

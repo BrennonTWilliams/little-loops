@@ -3,6 +3,8 @@ discovered_commit: 91d23ad
 discovered_branch: main
 discovered_date: 2026-01-16T00:00:00Z
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # FEAT-075: Document Category Tracking and Issue Alignment

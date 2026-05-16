@@ -2,7 +2,7 @@
 id: ENH-1138
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-04-17
 parent: ENH-1134
 
@@ -14,6 +14,7 @@ score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
 relates_to: ['ENH-1134', 'ENH-1136', 'ENH-1137']
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1138: 429 Resilience — Documentation Updates for Circuit Breaker

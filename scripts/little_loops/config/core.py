@@ -29,6 +29,7 @@ from little_loops.config.features import (
     SprintsConfig,
     SyncConfig,
 )
+from little_loops.config.orchestration import OrchestrationConfig
 from little_loops.parallel.types import ParallelConfig
 
 CONFIG_FILENAME = "ll-config.json"
@@ -209,6 +210,9 @@ class BRConfig:
             self._raw_config.get("refine_status", {})
         )
         self._events = EventsConfig.from_dict(self._raw_config.get("events", {}))
+        self._orchestration = OrchestrationConfig.from_dict(
+            self._raw_config.get("orchestration", {})
+        )
 
     @property
     def project(self) -> ProjectConfig:
@@ -279,6 +283,11 @@ class BRConfig:
     def events(self) -> EventsConfig:
         """Get events configuration."""
         return self._events
+
+    @property
+    def orchestration(self) -> OrchestrationConfig:
+        """Get orchestration configuration."""
+        return self._orchestration
 
     @property
     def extensions(self) -> list[str]:

@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-02-26
 discovered_by: audit-architecture
 focus_area: integration
+status: done
+completed_at: 2026-03-01T00:00:00Z
 ---
 
 # ENH-510: Extract `output_parsing` from `parallel/` to shared location

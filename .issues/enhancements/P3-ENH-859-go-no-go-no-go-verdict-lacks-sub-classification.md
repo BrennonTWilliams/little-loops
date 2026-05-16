@@ -2,11 +2,12 @@
 id: ENH-859
 type: ENH
 priority: P3
-status: active
+status: done
 discovered_date: 2026-03-22
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 75
+completed_at: 2026-03-22T00:00:00Z
 ---
 
 # ENH-859: go-no-go NO-GO Verdict Lacks Sub-Classification

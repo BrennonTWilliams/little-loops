@@ -2,6 +2,8 @@
 discovered_date: 2026-04-05
 discovered_by: capture-issue
 testable: false
+status: done
+completed_at: 2026-04-06T00:00:00Z
 ---
 
 # ENH-963: Document Recommended Usage of issue-size-review

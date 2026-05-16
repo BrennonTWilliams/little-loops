@@ -2,12 +2,13 @@
 id: FEAT-1042
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-04-11
 discovered_by: capture-issue
 testable: true
 confidence_score: 100
 outcome_confidence: 85
+completed_at: 2026-04-11T00:00:00Z
 ---
 
 # FEAT-1042: Add description field to FSM shared state fragments

@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-01T00:00:00Z
+---
 # _state_to_dict Helper Function Has Repetitive Conditional Logic
 
 ## Type

@@ -2,11 +2,12 @@
 id: ENH-814
 type: ENH
 priority: P4
-status: backlog
+status: done
 discovered_date: 2026-03-19
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-03-19T00:00:00Z
 ---
 
 # ENH-814: Bold FSM state box titles in diagram

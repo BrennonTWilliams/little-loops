@@ -1,11 +1,12 @@
 ---
 id: ENH-816
 priority: P3
-status: backlog
+status: done
 discovered_date: 2026-03-19
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 85
+completed_at: 2026-03-19T00:00:00Z
 ---
 
 # ENH-816: Analyze-loop with name arg should only analyze most recent execution

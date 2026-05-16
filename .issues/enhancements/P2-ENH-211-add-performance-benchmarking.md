@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-05T00:00:00Z
+---
 # P2-ENH-211: Add performance benchmarking
 
 ## Summary

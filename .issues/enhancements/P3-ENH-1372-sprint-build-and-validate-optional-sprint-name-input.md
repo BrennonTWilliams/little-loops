@@ -14,6 +14,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+status: done
 ---
 
 # ENH-1372: sprint-build-and-validate: add optional sprint_name input to reuse existing sprint

@@ -3,6 +3,8 @@ discovered_date: 2026-03-12
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 78
+status: done
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 # ENH-705: Init should validate hook script dependencies and version alignment

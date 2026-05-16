@@ -2,12 +2,13 @@
 id: FEAT-503
 type: FEAT
 priority: P3
-status: open
+status: done
 title: "ll-history generate-docs: architecture documentation synthesis from issue history"
 discovered_date: 2026-02-24
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 86
+completed_at: 2026-03-02T00:00:00Z
 ---
 
 # FEAT-503: ll-history generate-docs: architecture documentation synthesis from issue history

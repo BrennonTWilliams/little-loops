@@ -2,10 +2,11 @@
 id: BUG-566
 type: BUG
 priority: P3
-status: completed
+status: done
 title: ll-loop run output truncated for shell command actions
 created: 2026-03-04
 completed: 2026-03-04
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # BUG-566: ll-loop run output truncated for shell command actions

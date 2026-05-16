@@ -3,6 +3,8 @@ discovered_date: 2026-03-05
 discovered_by: manual-audit
 confidence_score: 95
 outcome_confidence: 95
+status: done
+completed_at: 2026-03-05T00:00:00Z
 ---
 
 # ENH-590: Audit and Fix `issue-refinement` Loop Configuration

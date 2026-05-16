@@ -3,6 +3,8 @@ discovered_date: 2026-04-12
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 43
+status: done
+completed_at: 2026-04-12T00:00:00Z
 ---
 
 # ENH-1053: Externalize scoring rubrics in audit/review skills into project-tailorable artifacts

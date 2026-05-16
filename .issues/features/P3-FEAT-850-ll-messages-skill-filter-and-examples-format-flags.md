@@ -3,6 +3,8 @@ discovered_date: 2026-03-20
 discovered_by: capture-issue
 confidence_score: 90
 outcome_confidence: 78
+status: done
+completed_at: 2026-03-20T00:00:00Z
 ---
 
 # FEAT-850: Add `--skill` filter and `--examples-format` flags to `ll-messages`

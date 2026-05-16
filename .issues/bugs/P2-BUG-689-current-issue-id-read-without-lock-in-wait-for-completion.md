@@ -5,6 +5,8 @@ discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-13T00:00:00Z
 ---
 
 # BUG-689: `_current_issue_id` read without lock in `MergeCoordinator.wait_for_completion`

@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-13
 discovered_by: manual
+status: done
+completed_at: 2026-03-13T00:00:00Z
 ---
 
 # BUG-710: FSM diagram renderer produces disconnected box-drawing junction characters

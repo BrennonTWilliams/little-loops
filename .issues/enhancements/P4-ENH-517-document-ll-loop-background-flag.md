@@ -4,6 +4,8 @@ id: ENH-517
 priority: P4
 effort: low
 risk: low
+status: done
+completed_at: 2026-03-01T00:00:00Z
 ---
 
 # Document `--background` flag for `ll-loop run` in README

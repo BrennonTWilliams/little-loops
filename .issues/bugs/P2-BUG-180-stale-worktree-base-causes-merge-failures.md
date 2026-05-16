@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-01-28
 discovered_by: capture_issue
+status: done
+completed_at: 2026-01-28T00:00:00Z
 ---
 
 # BUG-180: Stale worktree base commits cause merge failures in ll-sprint

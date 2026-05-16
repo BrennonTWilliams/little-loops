@@ -2,11 +2,12 @@
 id: FEAT-764
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+completed_at: 2026-03-15T00:00:00Z
 ---
 
 # FEAT-764: APO Loop — OPRO (Optimization by PROmpting)

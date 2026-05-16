@@ -6,6 +6,8 @@ title: "Add MkDocs Material docs site with Cloudflare Pages"
 discovered_date: 2026-03-20
 discovered_by: capture-issue
 testable: false
+status: done
+completed_at: 2026-03-20T00:00:00Z
 ---
 
 # FEAT-852: Add MkDocs Material docs site with Cloudflare Pages

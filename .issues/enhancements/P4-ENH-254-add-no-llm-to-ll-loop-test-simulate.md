@@ -6,6 +6,8 @@ discovered_by: scan_codebase
 resolution: wont-fix
 closed_date: 2026-02-05
 closing_note: "test and simulate subcommands don't invoke LLM calls — cmd_test() and cmd_simulate() never call an LLM. A --no-llm flag would be a no-op that misleads users."
+status: done
+completed_at: 2026-02-05T00:00:00Z
 ---
 
 # ENH-254: Add --no-llm override to ll-loop test and simulate

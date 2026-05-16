@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-12T00:00:00Z
 discovered_by: audit_claude_config
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-356: Document orphan command and CLI tools in CLAUDE.md

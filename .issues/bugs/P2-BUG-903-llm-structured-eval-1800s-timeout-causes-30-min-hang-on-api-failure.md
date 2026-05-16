@@ -3,6 +3,8 @@ discovered_date: 2026-03-31
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-31T00:00:00Z
 ---
 
 # BUG-903: `llm_structured` evaluator 1800s timeout causes 30-min hang when API is unavailable

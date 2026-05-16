@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-04-12
 discovered_by: capture-issue
+status: deferred
 ---
 
 # ENH-1069: Extract rubrics for wire-issue and create-eval-from-issues

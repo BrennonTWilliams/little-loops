@@ -11,6 +11,7 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
 completed_at: 2026-05-02T15:59:58Z
+status: done
 ---
 
 # FEAT-1322: Transport Foundation — Core Module and EventBus Refactor

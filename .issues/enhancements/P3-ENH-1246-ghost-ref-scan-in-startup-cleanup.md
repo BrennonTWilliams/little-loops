@@ -14,6 +14,7 @@ score_change_surface: 25
 captured_at: 2026-04-22T00:00:00Z
 completed_at: 2026-04-22T18:49:46Z
 parent: ENH-1197
+status: done
 ---
 
 # ENH-1246: Extend Startup Scan to Detect Ghost Git Worktree Refs

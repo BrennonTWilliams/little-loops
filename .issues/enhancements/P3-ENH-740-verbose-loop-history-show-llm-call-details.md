@@ -2,11 +2,12 @@
 id: ENH-740
 priority: P3
 type: ENH
-status: completed
+status: done
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 93
 outcome_confidence: 86
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # ENH-740: Verbose loop history should show full LLM call details

@@ -12,6 +12,7 @@ score_ambiguity: 25
 score_change_surface: 10
 size: Very Large
 parent: ENH-1419
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1422: Decouple Issue Status — ll-issues CLI (list/show/count/search)

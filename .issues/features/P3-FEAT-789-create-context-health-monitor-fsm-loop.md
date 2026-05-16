@@ -2,11 +2,12 @@
 id: FEAT-789
 type: FEAT
 priority: P3
-status: active
+status: done
 discovered_date: 2026-03-16
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 85
+completed_at: 2026-03-20T00:00:00Z
 ---
 
 # FEAT-789: Create context-health-monitor FSM Loop

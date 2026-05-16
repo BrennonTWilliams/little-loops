@@ -5,6 +5,8 @@ discovered_date: 2026-04-26
 discovered_by: session-review
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-04-26T00:00:00Z
 ---
 
 # BUG-1296: autodev `run_decide` bypasses score gate when reached from score-failing paths

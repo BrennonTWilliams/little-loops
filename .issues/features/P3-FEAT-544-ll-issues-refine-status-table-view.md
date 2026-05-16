@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-03T00:00:00Z
 discovered_by: capture-issue
+status: done
+completed_at: 2026-03-03T00:00:00Z
 ---
 
 # FEAT-544: `ll-issues` Refinement Status Table View

@@ -3,6 +3,8 @@ discovered_date: 2026-04-02
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 78
+status: done
+completed_at: 2026-04-02T00:00:00Z
 ---
 
 # FEAT-927: Wire ExtensionLoader to Live EventBus in CLI Entry Points

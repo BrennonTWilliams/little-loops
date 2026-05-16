@@ -5,6 +5,8 @@ discovered_date: 2026-04-06T15:57:51Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-04-06T00:00:00Z
 ---
 
 # BUG-965: Circuit breaker `_consecutive_failures` not incremented on exception path in `_process_merge`

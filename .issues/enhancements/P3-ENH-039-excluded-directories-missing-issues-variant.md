@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-13T00:00:00Z
+---
 # ENH-039: EXCLUDED_DIRECTORIES missing `issues/` variant
 
 ## Summary

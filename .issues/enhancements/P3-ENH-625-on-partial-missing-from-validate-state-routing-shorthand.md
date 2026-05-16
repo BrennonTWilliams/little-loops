@@ -5,6 +5,8 @@ discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # ENH-625: `on_partial` missing from `_validate_state_routing` shorthand check — valid routing rejected

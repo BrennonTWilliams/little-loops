@@ -2,11 +2,12 @@
 id: ENH-741
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-14
 discovered_by: manual
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # ENH-741: Extend `plugin-health-check` into a convergence FSM loop

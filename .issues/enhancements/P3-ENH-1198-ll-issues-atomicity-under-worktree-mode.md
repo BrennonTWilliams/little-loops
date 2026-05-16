@@ -2,6 +2,8 @@
 discovered_date: "2026-04-20"
 discovered_by: parallel-family-review
 depends_on: [FEAT-1075]
+status: done
+completed_at: 2026-04-24T00:00:00Z
 ---
 
 # ENH-1198: `ll-issues` Mutation Atomicity Under Parallel Worktree Mode

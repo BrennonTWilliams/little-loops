@@ -2,7 +2,7 @@
 id: FEAT-1272
 type: FEAT
 priority: P4
-status: backlog
+status: done
 title: "ll-logs: extract subcommand and logs/index.md generation"
 discovered_date: 2026-04-23
 discovered_by: issue-size-review
@@ -16,6 +16,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
 parent: FEAT-1269
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-1272: ll-logs: extract subcommand and logs/index.md generation

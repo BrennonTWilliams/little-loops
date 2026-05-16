@@ -4,6 +4,8 @@ discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
 confidence_score: 100
 outcome_confidence: 71
+status: done
+completed_at: 2026-04-01T00:00:00Z
 ---
 
 # ENH-493: Rewrite Skill Descriptions as Trigger Documents

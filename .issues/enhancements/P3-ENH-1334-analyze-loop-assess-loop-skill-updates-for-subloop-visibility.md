@@ -12,6 +12,7 @@ score_ambiguity: 25
 score_change_surface: 18
 completed_at: 2026-05-02T22:11:40Z
 parent: ENH-1326
+status: done
 ---
 
 # ENH-1334: `analyze-loop` and `assess-loop` Skill Updates for Sub-loop Visibility

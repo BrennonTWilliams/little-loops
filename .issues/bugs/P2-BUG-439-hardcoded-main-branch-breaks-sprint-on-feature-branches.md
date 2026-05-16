@@ -2,6 +2,8 @@
 discovered_date: 2026-02-15
 discovered_by: capture-issue
 confidence_score: 100
+status: done
+completed_at: 2026-02-15T00:00:00Z
 ---
 
 # BUG-439: Hardcoded main branch references break ll-sprint/ll-parallel on feature branches

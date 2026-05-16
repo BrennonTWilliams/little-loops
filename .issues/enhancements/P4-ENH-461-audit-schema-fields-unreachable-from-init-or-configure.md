@@ -3,8 +3,9 @@ type: ENH
 id: ENH-461
 title: Audit config-schema.json for fields unreachable from init or configure
 priority: P4
-status: completed
+status: done
 created: 2026-02-22
+completed_at: 2026-02-24T00:00:00Z
 ---
 
 # Audit config-schema.json for fields unreachable from init or configure

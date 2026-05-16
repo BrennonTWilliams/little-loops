@@ -5,6 +5,8 @@ discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
 confidence_score: 100
 outcome_confidence: 85
+status: done
+completed_at: 2026-03-13T00:00:00Z
 ---
 
 # BUG-690: Too-narrow except clause in `IssueManager.__init__` `gather_all_issue_ids` call

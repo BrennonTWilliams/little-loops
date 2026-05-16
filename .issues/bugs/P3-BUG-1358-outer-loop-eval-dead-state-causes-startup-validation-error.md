@@ -4,6 +4,8 @@ type: BUG
 priority: P3
 decision_needed: false
 confidence_score: 99
+status: done
+completed_at: 2026-05-03T00:00:00Z
 ---
 
 # BUG-1358: outer-loop-eval dead state causes startup context-variable validation error

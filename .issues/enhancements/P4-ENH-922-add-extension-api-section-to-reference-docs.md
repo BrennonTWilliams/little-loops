@@ -4,6 +4,8 @@ discovered_by: capture-issue
 testable: false
 confidence_score: 100
 outcome_confidence: 85
+status: done
+completed_at: 2026-04-02T00:00:00Z
 ---
 
 # ENH-922: Add Extension API Section to Reference Documentation

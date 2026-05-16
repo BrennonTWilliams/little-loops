@@ -2,11 +2,12 @@
 id: ENH-1020
 type: ENH
 priority: P3
-status: backlog
+status: done
 discovered_date: 2026-04-10
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 64
+completed_at: 2026-04-10T00:00:00Z
 ---
 
 # ENH-1020: Fix /ll:update to properly update little-loops in consumer projects

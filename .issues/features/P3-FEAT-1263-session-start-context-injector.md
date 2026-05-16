@@ -2,7 +2,7 @@
 id: FEAT-1263
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-04-22
 discovered_by: issue-size-review
 blocked_by: [FEAT-1156, FEAT-1116]
@@ -16,6 +16,7 @@ score_ambiguity: 18
 score_change_surface: 18
 size: Very Large
 relates_to: ['FEAT-1156', 'FEAT-1264', 'FEAT-1262']
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-1263: SessionStart Context Injector (`session-start-inject.sh`)

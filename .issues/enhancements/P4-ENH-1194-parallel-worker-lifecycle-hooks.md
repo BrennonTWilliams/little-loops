@@ -2,6 +2,7 @@
 discovered_date: "2026-04-20"
 discovered_by: parallel-family-review
 depends_on: [FEAT-1075]
+status: deferred
 ---
 
 # ENH-1194: Worker Lifecycle Hooks for Parallel States (before_worker / after_worker / on_worker_error)

@@ -2,7 +2,7 @@
 id: FEAT-1316
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-05-01
 discovered_by: issue-size-review
 blocked_by: [FEAT-1315]
@@ -17,6 +17,7 @@ score_change_surface: 25
 missing_artifacts: true
 size: Very Large
 relates_to: ['FEAT-1315']
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-1316: SessionStart Inject — Documentation Updates

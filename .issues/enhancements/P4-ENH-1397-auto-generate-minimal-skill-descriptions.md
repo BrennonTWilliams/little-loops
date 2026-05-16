@@ -2,6 +2,8 @@
 captured_at: "2026-05-09T20:48:12Z"
 discovered_date: 2026-05-09
 discovered_by: capture-issue
+status: done
+completed_at: 2026-05-09T00:00:00Z
 ---
 
 # ENH-1397: Auto-Generate Minimal Skill Descriptions from SKILL.md Content

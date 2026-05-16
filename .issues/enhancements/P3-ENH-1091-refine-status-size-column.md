@@ -9,6 +9,8 @@ confidence_score: 100
 outcome_confidence: 70
 size: Very Large
 parent: ENH-1089
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1091: ll-issues refine-status shows Size column

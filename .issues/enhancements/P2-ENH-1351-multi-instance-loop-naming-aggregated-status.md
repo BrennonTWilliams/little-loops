@@ -2,7 +2,7 @@
 id: ENH-1351
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-05-03T17:41:57Z'
 discovered_date: '2026-05-03'
 discovered_by: capture-issue
@@ -14,6 +14,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
 size: Very Large
+completed_at: 2026-05-03T00:00:00Z
 ---
 
 # ENH-1351: Multi-Instance Loop Naming with Aggregated Status

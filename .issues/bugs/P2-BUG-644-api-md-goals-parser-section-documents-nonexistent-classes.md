@@ -2,9 +2,10 @@
 id: BUG-644
 type: BUG
 priority: P2
-status: completed
+status: done
 title: "API.md goals_parser section documents nonexistent classes PersonaGoals and PriorityGoals"
 created: 2026-03-07
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # BUG-644: API.md goals_parser section documents nonexistent classes PersonaGoals and PriorityGoals

@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-09
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-10T00:00:00Z
 ---
 
 # ENH-304: Clarify manage_issue automation-mode instructions to forbid AskUserQuestion

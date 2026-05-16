@@ -2,6 +2,7 @@
 discovered_date: "2026-04-20"
 discovered_by: parallel-family-review
 depends_on: [FEAT-1075, FEAT-1076]
+status: deferred
 ---
 
 # FEAT-1189: Parallel Worker Shared-Context Mutation Contract

@@ -3,6 +3,8 @@ discovered_date: 2026-03-04
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # ENH-563: `compile_goal` silently runs multiline tool text via bash instead of Claude prompt

@@ -3,6 +3,8 @@ discovered_date: 2026-04-14
 discovered_by: user-request
 confidence_score: 100
 outcome_confidence: 95
+status: done
+completed_at: 2026-04-14T00:00:00Z
 ---
 
 # ENH-1110: Remove `/ll:format-issue` step from recursive-refine sub-loop

@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-01-23T23:00:00Z
 discovered_by: audit_docs
 doc_file: .claude/CLAUDE.md
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # BUG-109: CLAUDE.md missing CLI tools documentation

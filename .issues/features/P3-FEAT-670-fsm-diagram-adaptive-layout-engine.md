@@ -2,11 +2,12 @@
 id: FEAT-670
 type: FEAT
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-10
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 79
+completed_at: 2026-03-11T00:00:00Z
 ---
 
 # FEAT-670: FSM Diagram Adaptive Layout Engine

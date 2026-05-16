@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-13T00:00:00Z
+---
 # Missing `on_handoff` Feature Documentation in /ll:create-loop
 
 ## Type

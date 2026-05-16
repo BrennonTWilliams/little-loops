@@ -5,6 +5,8 @@ source_loop: general-task
 source_state: check_done
 confidence_score: 98
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-17T00:00:00Z
 ---
 
 # BUG-794: check_done LLM evaluator JSON parse failure in general-task loop

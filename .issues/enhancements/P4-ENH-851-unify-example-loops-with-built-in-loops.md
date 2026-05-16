@@ -2,11 +2,12 @@
 id: ENH-851
 type: ENH
 priority: P4
-status: completed
+status: done
 discovered_date: 2026-03-20
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+completed_at: 2026-03-20T00:00:00Z
 ---
 
 # ENH-851: Unify Example Loops with Built-in Loops

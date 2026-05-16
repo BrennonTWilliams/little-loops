@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-12
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-379: Rename refine_issue to format_issue for honest naming

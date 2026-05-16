@@ -9,6 +9,7 @@ score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # FEAT-1229: ll-action Thin CLI Wrapper for Slash-Command Invocation

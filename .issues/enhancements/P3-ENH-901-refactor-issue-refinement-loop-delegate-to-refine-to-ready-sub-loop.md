@@ -3,6 +3,8 @@ discovered_date: 2026-03-31
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-31T00:00:00Z
 ---
 
 # ENH-901: Refactor issue-refinement loop to delegate to refine-to-ready-issue sub-loop

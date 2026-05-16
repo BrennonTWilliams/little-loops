@@ -4,6 +4,8 @@ discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
 confidence_score: 78
 outcome_confidence: 90
+status: done
+completed_at: 2026-03-03T00:00:00Z
 ---
 
 # ENH-502: Skill Design Traceability Documents (WHY.md per Skill)

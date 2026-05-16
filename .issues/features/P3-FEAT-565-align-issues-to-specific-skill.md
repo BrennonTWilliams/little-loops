@@ -5,6 +5,8 @@ discovered_date: 2026-03-04T17:00:33Z
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 75
+status: done
+completed_at: 2026-03-21T00:00:00Z
 ---
 
 # FEAT-565: Add skill-based alignment option to `align-issues`

@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-12
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # BUG-367: audit_claude_config references wrong/missing config file locations

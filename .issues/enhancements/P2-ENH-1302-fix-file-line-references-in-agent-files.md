@@ -11,6 +11,8 @@ score_test_coverage: 0
 score_ambiguity: 25
 score_change_surface: 10
 parent: ENH-1299
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1302: Fix `file:line` references in agent source files

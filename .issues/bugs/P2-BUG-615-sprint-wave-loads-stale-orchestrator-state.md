@@ -3,6 +3,8 @@ discovered_date: 2026-03-06
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-03-06T00:00:00Z
 ---
 
 # BUG-615: Sprint Wave Loads Stale Orchestrator State on Fresh Run

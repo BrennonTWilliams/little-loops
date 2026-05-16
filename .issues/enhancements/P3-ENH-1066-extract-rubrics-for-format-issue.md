@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-04-12
 discovered_by: capture-issue
+status: deferred
 ---
 
 # ENH-1066: Extract rubrics for format-issue skill

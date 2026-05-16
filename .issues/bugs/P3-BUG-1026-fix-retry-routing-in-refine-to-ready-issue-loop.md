@@ -3,11 +3,12 @@ id: BUG-1026
 type: bug
 priority: P3
 title: "fix retry routing in refine-to-ready-issue loop"
-status: open
+status: done
 discovered_date: 2026-04-10
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+completed_at: 2026-04-10T00:00:00Z
 ---
 
 # BUG-1026: Fix retry routing in refine-to-ready-issue loop

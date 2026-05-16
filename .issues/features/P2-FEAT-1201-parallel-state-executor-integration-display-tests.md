@@ -10,6 +10,8 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
 parent: FEAT-1077
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-1201: Parallel State Executor, Integration, and Display Tests

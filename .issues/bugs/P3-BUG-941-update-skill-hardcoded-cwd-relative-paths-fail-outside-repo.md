@@ -2,11 +2,12 @@
 id: BUG-941
 type: BUG
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-04-03
 discovered_by: manual
 confidence_score: 95
 outcome_confidence: 90
+completed_at: 2026-04-03T00:00:00Z
 ---
 
 # BUG-941: `/ll:update` fails outside the little-loops repo root (hardcoded CWD-relative paths)

@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 parent: FEAT-1080
+status: done
 ---
 
 # FEAT-1227: Parallel State Core API Exports and Config Wiring

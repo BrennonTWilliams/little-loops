@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-12
 discovered_by: hooks-reference-audit
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-370: session-start.sh truncates config at 50 lines without local overrides

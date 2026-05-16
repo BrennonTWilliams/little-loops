@@ -2,11 +2,12 @@
 id: ENH-896
 type: ENH
 priority: P2
-status: completed
+status: done
 discovered_date: 2026-03-26
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 53
+completed_at: 2026-03-31T00:00:00Z
 ---
 
 # ENH-896: Migrate ll Runtime Files from `.claude/` to `.ll/` Directory

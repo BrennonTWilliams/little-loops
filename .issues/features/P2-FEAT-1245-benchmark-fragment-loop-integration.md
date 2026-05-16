@@ -10,6 +10,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-04-24T19:07:02Z
+status: done
 ---
 
 # FEAT-1245: Benchmark Fragment — Loop Integration

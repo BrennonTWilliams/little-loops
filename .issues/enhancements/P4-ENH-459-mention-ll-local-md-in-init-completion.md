@@ -3,7 +3,7 @@ type: ENH
 id: ENH-459
 title: Mention ll.local.md during init completion message
 priority: P4
-status: open
+status: deferred
 created: 2026-02-22
 confidence_score: 90
 outcome_confidence: 88

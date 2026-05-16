@@ -4,6 +4,8 @@ discovered_by: audit-architecture
 focus_area: integration
 confidence_score: 98
 outcome_confidence: 79
+status: done
+completed_at: 2026-03-25T00:00:00Z
 ---
 
 # ENH-889: `ConfidenceGateConfig.threshold` is a legacy field inconsistent with schema and `to_dict()`

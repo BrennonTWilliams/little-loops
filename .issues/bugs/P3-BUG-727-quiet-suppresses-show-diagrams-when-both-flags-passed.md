@@ -2,9 +2,10 @@
 id: BUG-727
 priority: P3
 type: BUG
-status: completed
+status: done
 discovered_date: 2026-03-13
 discovered_by: capture-issue
+completed_at: 2026-03-13T00:00:00Z
 ---
 
 # BUG-727: `--quiet` suppresses `--show-diagrams` when both flags passed

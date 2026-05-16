@@ -2,12 +2,13 @@
 id: ENH-1371
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-05-05
 discovered_by: audit
 testable: true
 confidence_score: 95
 outcome_confidence: 90
+completed_at: 2026-05-05T00:00:00Z
 ---
 
 # ENH-1371: Add decision_needed Gate Before Size-Review in recursive-refine

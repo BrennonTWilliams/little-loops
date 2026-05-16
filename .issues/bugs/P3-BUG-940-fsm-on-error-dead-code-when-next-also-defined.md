@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-04-03
 discovered_by: capture-issue
+status: done
+completed_at: 2026-04-03T00:00:00Z
 ---
 
 # BUG-940: FSM `on_error` is dead code when `next` is also defined on the same state

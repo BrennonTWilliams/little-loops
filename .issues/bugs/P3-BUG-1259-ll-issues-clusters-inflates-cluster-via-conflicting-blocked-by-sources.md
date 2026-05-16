@@ -2,6 +2,8 @@
 captured_at: "2026-04-22T21:44:08Z"
 discovered_date: 2026-04-22
 discovered_by: capture-issue
+status: done
+completed_at: 2026-04-22T00:00:00Z
 ---
 
 # BUG-1259: `ll-issues clusters` inflates cluster via conflicting blocked-by sources

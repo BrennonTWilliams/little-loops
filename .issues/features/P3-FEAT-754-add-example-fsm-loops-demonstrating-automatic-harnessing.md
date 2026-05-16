@@ -2,11 +2,12 @@
 id: FEAT-754
 priority: P3
 type: FEAT
-status: completed
+status: done
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 97
+completed_at: 2026-03-19T00:00:00Z
 ---
 
 # FEAT-754: Add Example FSM Loops Demonstrating Automatic Harnessing

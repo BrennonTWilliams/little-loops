@@ -6,6 +6,8 @@ outcome_confidence: 85
 
 blocks: FEAT-1029
 parent: FEAT-1027
+status: done
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # FEAT-1028: audit-issue-conflicts — Core Skill Implementation

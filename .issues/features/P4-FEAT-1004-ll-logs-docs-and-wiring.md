@@ -2,13 +2,14 @@
 id: FEAT-1004
 type: FEAT
 priority: P4
-status: backlog
+status: done
 title: Documentation and wiring updates for ll-logs
 discovered_date: 2026-04-08
 discovered_by: issue-size-review
 confidence_score: 88
 outcome_confidence: 63
 testable: false
+completed_at: 2026-04-08T00:00:00Z
 ---
 
 # FEAT-1004: Documentation and wiring updates for ll-logs

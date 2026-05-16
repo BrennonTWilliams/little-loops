@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-01T00:00:00Z
+---
 # P2-ENH-214: Add dedicated testing documentation
 
 ## Summary

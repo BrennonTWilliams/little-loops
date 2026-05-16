@@ -5,6 +5,8 @@ discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
 confidence_score: 93
 outcome_confidence: 95
+status: done
+completed_at: 2026-03-07T00:00:00Z
 ---
 
 # BUG-622: `output_numeric` silently defaults missing `target` to `0.0` when validation bypassed

@@ -2,11 +2,12 @@
 id: FEAT-892
 type: FEAT
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-26
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 78
+completed_at: 2026-03-26T00:00:00Z
 ---
 
 # FEAT-892: /ll:update Slash Command for Plugin and Package Updates

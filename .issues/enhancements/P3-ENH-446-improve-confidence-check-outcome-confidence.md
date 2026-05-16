@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-22
 discovered_by: capture-issue
+status: done
+completed_at: 2026-02-23T00:00:00Z
 ---
 
 # ENH-446: Improve confidence-check to estimate outcome confidence

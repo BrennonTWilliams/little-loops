@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-01-24
 discovered_by: audit
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-137: Make config reading explicit in create_sprint command

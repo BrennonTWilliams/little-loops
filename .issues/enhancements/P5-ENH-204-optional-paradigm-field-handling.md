@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-13T00:00:00Z
+---
 # Paradigm Field is Optional in Schema but Assumed in Command
 
 ## Type

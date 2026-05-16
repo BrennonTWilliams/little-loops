@@ -3,9 +3,10 @@ id: ENH-945
 title: "ll-loop run --worktree flag for isolated branch execution"
 type: ENH
 priority: P3
-status: backlog
+status: done
 discovered_date: 2026-04-03
 discovered_by: capture-issue
+completed_at: 2026-04-03T00:00:00Z
 ---
 
 # ENH-945: ll-loop run --worktree flag for isolated branch execution

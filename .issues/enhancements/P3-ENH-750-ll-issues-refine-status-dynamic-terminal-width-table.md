@@ -3,12 +3,13 @@ id: ENH-750
 title: "ll-issues refine-status: dynamic terminal width table rendering"
 priority: P3
 type: ENH
-status: backlog
+status: done
 discovered_date: "2026-03-15"
 discovered_by: capture-issue
 labels: [cli, ux, table-rendering]
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-03-15T00:00:00Z
 ---
 
 # ENH-750: ll-issues refine-status: dynamic terminal width table rendering

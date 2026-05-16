@@ -3,8 +3,9 @@ type: ENH
 id: ENH-457
 title: Reconcile templates/*.json with presets.md as single source of truth
 priority: P3
-status: open
+status: done
 created: 2026-02-22
+completed_at: 2026-02-23T00:00:00Z
 ---
 
 # Reconcile templates/*.json with presets.md as single source of truth

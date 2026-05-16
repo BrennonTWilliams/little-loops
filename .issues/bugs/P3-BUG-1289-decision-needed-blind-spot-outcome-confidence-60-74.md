@@ -10,6 +10,7 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 22
 score_change_surface: 25
+status: done
 ---
 
 # BUG-1289: `decision_needed` blind spot for outcome_confidence 60–74

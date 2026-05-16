@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-11
 discovered_by: capture_issue
+status: done
+completed_at: 2026-02-11T00:00:00Z
 ---
 
 # ENH-330: Context Monitor Should Track Claude Output and User Message Tokens

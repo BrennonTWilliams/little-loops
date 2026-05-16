@@ -3,13 +3,15 @@ discovered_date: 2026-04-02
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 71
+status: done
+completed_at: 2026-04-11T00:00:00Z
 ---
 
 # FEAT-916: Extension SDK with Scaffolding Command and Test Harness
 
 ## Summary
 
-Provide developer experience tooling for extension authors: an `ll-create-extension` command that scaffolds a new extension repo with correct `pyproject.toml` entry points, a skeleton `on_event` handler, and a test harness (`LLTestBus`) that replays recorded `.events.jsonl` files through extensions for offline testing. The skeleton references `docs/reference/EVENT-SCHEMA.md` for event type documentation. JSON Schema generation is tracked separately in FEAT-919.
+Provide developer experience tooling for extension authors: an `ll-create-extension` command that scaffolds a new extension repo with correct `pyproject.toml` entry points, a skeleton `on_event` handler, and a test harness (`LLTestBus`) that replays recorded `.events.jsonl` files through extensions for offline testing. The skeleton references `docs/reference/EVENT-SCHEMA.md` for event type documentation. JSON Schema generation is tracked separately in FEAT-1516.
 
 ## Context
 

@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-04
 discovered_by: capture-issue
+status: done
+completed_at: 2026-03-04T00:00:00Z
 ---
 
 # BUG-580: Parallel Worker File Leaks to Main Repo — Regression of BUG-007

@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-01-22T17:00:00Z
 discovered_by: audit_docs
 doc_file: docs/API.md
+status: done
+completed_at: 2026-02-13T00:00:00Z
 ---
 
 # ENH-109: Add workflow_sequence_analyzer to API.md

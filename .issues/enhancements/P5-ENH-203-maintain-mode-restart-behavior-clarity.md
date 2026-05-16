@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-02-01T00:00:00Z
+---
 # Maintain Mode Restart Behavior Could Be Better Documented
 
 ## Type

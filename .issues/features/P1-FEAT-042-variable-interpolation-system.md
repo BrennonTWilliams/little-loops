@@ -1,3 +1,7 @@
+---
+status: done
+completed_at: 2026-01-14T00:00:00Z
+---
 # FEAT-042: Variable Interpolation System
 
 ## Summary

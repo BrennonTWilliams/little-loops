@@ -2,10 +2,11 @@
 id: ENH-776
 type: ENH
 priority: P3
-status: active
+status: done
 title: Document on_blocked routing shorthand in LOOPS_GUIDE
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 ## Summary

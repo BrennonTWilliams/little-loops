@@ -3,6 +3,8 @@ discovered_date: 2026-05-04T00:00:00Z
 discovered_by: autodev-debug-analysis
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-05-04T00:00:00Z
 ---
 
 # BUG-1366: `refine-to-ready-issue` routes `decision_needed` issues to size-review instead of exiting cleanly

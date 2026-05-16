@@ -1,12 +1,13 @@
 ---
 id: BUG-895
 title: "GETTING_STARTED.md lists stale status values inconsistent with ISSUE_MANAGEMENT_GUIDE"
-status: completed
+status: done
 priority: P3
 blocked_by: []
 testable: false
 confidence_score: 100
 outcome_confidence: 75
+completed_at: 2026-03-26T00:00:00Z
 ---
 
 ## Summary

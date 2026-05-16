@@ -2,6 +2,7 @@
 discovered_date: "2026-04-16"
 discovered_by: capture-issue
 source: ~/.claude/plans/review-this-open-source-cosmic-galaxy.md
+status: deferred
 ---
 
 # ENH-1122: Frozen-Boundary Convention (`<!-- ll:mutable -->` / `<!-- ll:frozen -->` Markers)

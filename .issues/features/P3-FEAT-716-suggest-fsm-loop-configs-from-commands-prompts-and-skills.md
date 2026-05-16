@@ -3,6 +3,8 @@ discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 96
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-14T00:00:00Z
 ---
 
 # FEAT-716: Suggest FSM loop configs from commands, prompts, and skills

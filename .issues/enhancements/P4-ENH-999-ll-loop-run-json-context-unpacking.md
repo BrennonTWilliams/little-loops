@@ -3,6 +3,8 @@ discovered_date: "2026-04-08"
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 93
+status: done
+completed_at: 2026-04-08T00:00:00Z
 ---
 
 # ENH-999: ll-loop run should auto-unpack JSON input into named context variables

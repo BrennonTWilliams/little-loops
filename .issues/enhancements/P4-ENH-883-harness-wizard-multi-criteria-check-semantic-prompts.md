@@ -2,11 +2,12 @@
 id: ENH-883
 type: ENH
 priority: P4
-status: completed
+status: done
 discovered_date: 2026-03-24
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 78
+completed_at: 2026-03-24T00:00:00Z
 ---
 
 # ENH-883: Harness wizard should generate multi-criteria `check_semantic` evaluation prompts

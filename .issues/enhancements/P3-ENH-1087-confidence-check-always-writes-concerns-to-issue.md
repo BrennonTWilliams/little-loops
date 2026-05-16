@@ -1,11 +1,12 @@
 ---
 id: ENH-1087
 priority: P3
-status: open
+status: done
 discovered_date: 2026-04-12
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 85
+completed_at: 2026-04-12T00:00:00Z
 ---
 
 # ENH-1087: confidence-check always writes concerns to issue without prompting
