@@ -660,3 +660,22 @@ class TestCmdRunWorktree:
             f"Worktree path name {worktree_path.name!r} must match "
             r"^\d{8}-\d{6}-test-loop$"
         )
+
+    def test_worktree_and_background_rejected(self, tmp_path: Path) -> None:
+        """cmd_run rejects --worktree + --background with SystemExit (BUG-1414)."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args(background=True, worktree=True)
+        logger = Logger(use_color=False)
+
+        with patch("little_loops.config.BRConfig") as mock_cfg:
+            mock_cfg.return_value.cli.colors.fsm_edge_labels.to_dict.return_value = {}
+            mock_cfg.return_value.cli.colors.fsm_active_state = None
+            mock_cfg.return_value.loops.glyphs.to_dict.return_value = {}
+
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_run("test-loop", args, loops_dir, logger)
+
+        assert "--worktree and --background cannot be combined" in str(exc_info.value)

@@ -196,6 +196,8 @@ def cmd_run(
 
     # Background mode: spawn detached process and return
     if getattr(args, "background", False):
+        if getattr(args, "worktree", False):
+            raise SystemExit("--worktree and --background cannot be combined")
         return run_background(loop_name, args, loops_dir)
 
     # Register PID file for all foreground runs so cmd_stop can send SIGTERM (BUG-639).

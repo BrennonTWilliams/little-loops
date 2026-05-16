@@ -1487,7 +1487,8 @@ ll-loop history fix-types
 
 | Flag | Description |
 |------|-------------|
-| `--background` | Run as daemon |
+| `--background` | Run as daemon (mutually exclusive with `--worktree`) |
+| `--worktree` | Run in an isolated git worktree (mutually exclusive with `--background`) |
 | `--dry-run` | Show execution plan |
 | `--queue` | Wait for conflicting loops |
 | `--max-iterations N` | Override limit |
