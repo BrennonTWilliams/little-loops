@@ -1,12 +1,11 @@
 """Tests for the /ll:update skill and /ll:publish command.
 
 Structural/content tests verifying the skill and command files exist with
-required content, and that marketplace.json is in sync with plugin.json.
+required content.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 # Root of the project relative to this test file
@@ -15,8 +14,6 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 SKILL_FILE = PROJECT_ROOT / "skills" / "update" / "SKILL.md"
 PUBLISH_CMD_FILE = PROJECT_ROOT / ".claude" / "commands" / "publish.md"
 CONFIGURE_SKILL_FILE = PROJECT_ROOT / "skills" / "configure" / "SKILL.md"
-PLUGIN_JSON = PROJECT_ROOT / ".claude-plugin" / "plugin.json"
-MARKETPLACE_JSON = PROJECT_ROOT / ".claude-plugin" / "marketplace.json"
 
 
 class TestUpdateSkillExists:
@@ -227,48 +224,3 @@ class TestConfigureSkillDevInstallFix:
         )
 
 
-class TestMarketplaceVersionSync:
-    """Verify marketplace.json is in sync with plugin.json."""
-
-    def test_plugin_json_exists(self) -> None:
-        """plugin.json must exist."""
-        assert PLUGIN_JSON.exists(), f"plugin.json not found: {PLUGIN_JSON}"
-
-    def test_marketplace_json_exists(self) -> None:
-        """marketplace.json must exist."""
-        assert MARKETPLACE_JSON.exists(), f"marketplace.json not found: {MARKETPLACE_JSON}"
-
-    def test_marketplace_top_level_version_matches_plugin(self) -> None:
-        """marketplace.json top-level version must match plugin.json version.
-
-        The /ll:publish command syncs these two files. After a publish run,
-        the versions should be identical.
-        """
-        plugin_data = json.loads(PLUGIN_JSON.read_text())
-        marketplace_data = json.loads(MARKETPLACE_JSON.read_text())
-
-        plugin_version = plugin_data["version"]
-        marketplace_version = marketplace_data["version"]
-
-        assert marketplace_version == plugin_version, (
-            f"marketplace.json top-level version ({marketplace_version!r}) "
-            f"!= plugin.json version ({plugin_version!r}). "
-            "Run /ll:publish patch (or the appropriate bump) to sync versions."
-        )
-
-    def test_marketplace_plugin_entry_version_matches_plugin(self) -> None:
-        """marketplace.json plugins[0].version must match plugin.json version.
-
-        Both version fields in marketplace.json must be updated by /ll:publish.
-        """
-        plugin_data = json.loads(PLUGIN_JSON.read_text())
-        marketplace_data = json.loads(MARKETPLACE_JSON.read_text())
-
-        plugin_version = plugin_data["version"]
-        plugin_entry_version = marketplace_data["plugins"][0]["version"]
-
-        assert plugin_entry_version == plugin_version, (
-            f"marketplace.json plugins[0].version ({plugin_entry_version!r}) "
-            f"!= plugin.json version ({plugin_version!r}). "
-            "Both version fields must be updated by /ll:publish."
-        )

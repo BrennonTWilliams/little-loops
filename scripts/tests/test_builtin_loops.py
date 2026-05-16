@@ -102,6 +102,7 @@ class TestBuiltinLoopFiles:
             "outer-loop-eval",
             "auto-refine-and-implement",
             "autodev",
+            "scan-and-implement",
             "recursive-refine",
             "html-website-generator",
             "sprint-refine-and-implement",

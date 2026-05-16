@@ -45,18 +45,21 @@ class TestReadmePillarStructure:
 
     def test_pillar_durability_present(self) -> None:
         content = README.read_text()
-        assert "The session ends. The run doesn't." in content, (
-            "README.md must contain the durability pillar heading."
+        assert "Run asynchronous agents until done" in content, (
+            "README.md must contain the durability pillar heading "
+            "(\"Run asynchronous agents until done\")."
         )
 
     def test_pillar_consistency_present(self) -> None:
         content = README.read_text()
-        assert "The toolbelt is the process." in content, (
-            "README.md must contain the consistency pillar heading."
+        assert "Smart tools create smart processes." in content, (
+            "README.md must contain the consistency pillar heading "
+            "(\"Smart tools create smart processes.\")."
         )
 
     def test_pillar_verification_present(self) -> None:
         content = README.read_text()
-        assert "The harness is the spec." in content, (
-            "README.md must contain the verification pillar heading."
+        assert "Harness-driven development" in content, (
+            "README.md must contain the verification pillar heading "
+            "(\"Harness-driven development\")."
         )
