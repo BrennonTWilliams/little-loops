@@ -1,4 +1,5 @@
 ---
+name: review-loop
 description: Use when asked to review loop config quality, validate loop YAML, or audit a loop definition.
 disable-model-invocation: true
 allowed-tools:
@@ -6,6 +7,8 @@ allowed-tools:
   - Read
   - Write
   - AskUserQuestion
+metadata:
+  short-description: Use when asked to review loop config quality, validate loop YAML, or audit a loo
 ---
 
 # Review Loop

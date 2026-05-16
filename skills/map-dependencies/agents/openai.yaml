@@ -1,0 +1,3 @@
+interface:
+  display_name: "Map Dependencies"
+  short_description: "Use when asked to find dependencies between issues or prepare a dependency-aware"

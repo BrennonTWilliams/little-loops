@@ -496,11 +496,14 @@ The `SKILL.md` file uses YAML frontmatter for metadata, followed by the skill in
 
 ```markdown
 ---
+name: my-skill
 description: |
   Use when the user asks to [trigger conditions], [more conditions], or asks "[example phrase]."
   [Optional brief context about what the skill does].
 
   Trigger keywords: "keyword1", "keyword2", "keyword3"
+metadata:
+  short-description: Use when the user asks to [trigger conditions]. (≤80 chars, Codex TUI)
 ---
 
 # Skill Name

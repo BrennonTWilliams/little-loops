@@ -1,0 +1,3 @@
+interface:
+  display_name: "Issue Size Review"
+  short_description: "Use when asked to evaluate issue size, decompose large issues, or audit backlog "

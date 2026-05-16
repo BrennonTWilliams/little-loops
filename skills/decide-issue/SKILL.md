@@ -1,4 +1,5 @@
 ---
+name: decide-issue
 description: Use when asked to select the winning implementation option for an issue with decision_needed.
 model: sonnet
 allowed-tools:
@@ -12,6 +13,8 @@ allowed-tools:
   - Bash(git:*)
   - Bash(ll-issues:*)
   - Agent
+metadata:
+  short-description: Use when asked to select the winning implementation option for an issue with dec
 ---
 
 # Decide Issue

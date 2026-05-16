@@ -48,7 +48,7 @@ into `LLHookEvent` payloads.
 | Surface                  | Claude Code               | OpenCode                  | Codex CLI                 |
 | ------------------------ | ------------------------- | ------------------------- | ------------------------- |
 | Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✗ — no separate slash-command surface; Skills API covers both[^cmds] |
-| Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✗ — `~/.codex/skills/<name>/SKILL.md` (stable); adaptation tracked by FEAT-1486[^cmds] |
+| Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✓ — `~/.codex/skills/<name>/SKILL.md`; all ll skills adapted by `ll-adapt-skills-for-codex` (FEAT-1486)[^cmds] |
 
 [^cmds]: Codex has no `.codex/prompts/` slash-command path (that reference in
     prior footnotes was speculative — no such surface exists in the current

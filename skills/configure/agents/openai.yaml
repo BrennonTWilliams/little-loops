@@ -1,0 +1,3 @@
+interface:
+  display_name: "Configure"
+  short_description: "Use when asked to configure little-loops, change settings, or update ll-config.j"

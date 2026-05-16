@@ -1,0 +1,3 @@
+interface:
+  display_name: "Create Eval From Issues"
+  short_description: "Use when asked to generate an FSM eval harness YAML from one or more issue IDs."

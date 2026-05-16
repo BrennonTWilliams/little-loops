@@ -1,4 +1,5 @@
 ---
+name: audit-loop-run
 description: Use when asked to assess loop effectiveness, audit goal achievement, or detect phantom success.
 disable-model-invocation: true
 argument-hint: "[loop-name] [--tail N] [--no-rubric-audit] [--skip-issue-creation] [--auto]"
@@ -26,6 +27,8 @@ arguments:
   - name: auto
     description: Non-interactive mode; suppress all AskUserQuestion calls and default to no for issue creation (implies --skip-issue-creation). Also activates when --dangerously-skip-permissions is in effect.
     required: false
+metadata:
+  short-description: Use when asked to assess loop effectiveness, audit goal achievement, or detect p
 ---
 
 # Assess Loop

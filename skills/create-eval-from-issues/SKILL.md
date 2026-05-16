@@ -1,4 +1,5 @@
 ---
+name: create-eval-from-issues
 description: Use when asked to generate an FSM eval harness YAML from one or more issue IDs.
 argument-hint: "<issue-id> [issue-id...]"
 allowed-tools:
@@ -9,6 +10,8 @@ arguments:
   - name: issue_ids
     description: One or more issue IDs (e.g., FEAT-919, ENH-950, BUG-347). Accepts open or completed issues.
     required: true
+metadata:
+  short-description: Use when asked to generate an FSM eval harness YAML from one or more issue IDs.
 ---
 
 # Create Eval From Issues

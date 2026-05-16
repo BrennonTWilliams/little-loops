@@ -1,4 +1,5 @@
 ---
+name: configure
 description: Use when asked to configure little-loops, change settings, or update ll-config.json.
 argument-hint: "[area]"
 allowed-tools:
@@ -15,6 +16,8 @@ arguments:
   - name: flags
     description: Optional flags (--list, --show, --reset)
     required: false
+metadata:
+  short-description: Use when asked to configure little-loops, change settings, or update ll-config.j
 ---
 
 # Configure

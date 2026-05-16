@@ -295,3 +295,16 @@ decision_needed: true
 
         assert "decision_needed: false" in result
         assert result.count("decision_needed") == 1
+
+    def test_nested_dict_value_round_trips(self) -> None:
+        """Nested dict values (e.g. metadata.short-description) are written correctly."""
+        content = "---\nname: my-skill\ndescription: Use when stuff.\n---\n# Body\n"
+        from typing import Any
+
+        updates: dict[str, Any] = {"metadata": {"short-description": "Use when stuff."}}
+        result = update_frontmatter(content, updates)
+
+        assert "metadata:" in result
+        assert "short-description: Use when stuff." in result
+        assert "name: my-skill" in result
+        assert "# Body" in result

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Audit Claude Config"
+  short_description: "Use when asked to audit Claude Code config, validate plugin settings, or diagnos"

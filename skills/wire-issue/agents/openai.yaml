@@ -1,0 +1,3 @@
+interface:
+  display_name: "Wire Issue"
+  short_description: "Use when a refined issue is missing integration points or wiring in the implemen"

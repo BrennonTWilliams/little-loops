@@ -1,4 +1,5 @@
 ---
+name: explore-api
 description: Use when exploring an external API/library and recording proof to the Learning Test Registry.
 argument-hint: "<target> [--assume <claim>]..."
 allowed-tools:
@@ -14,6 +15,8 @@ arguments:
   - name: assume
     description: Pre-seed a claim as assumed-true without running a proof. Repeatable (--assume "<claim>" --assume "<claim>").
     required: false
+metadata:
+  short-description: Use when exploring an external API/library and recording proof to the Learning T
 ---
 
 # Explore API

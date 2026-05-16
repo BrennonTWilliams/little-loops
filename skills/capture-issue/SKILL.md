@@ -1,4 +1,5 @@
 ---
+name: capture-issue
 description: Use when asked to capture or create an issue from conversation or natural language.
 argument-hint: "[description]"
 allowed-tools:
@@ -14,6 +15,8 @@ arguments:
   - name: flags
     description: Optional flags (--quick for minimal template)
     required: false
+metadata:
+  short-description: Use when asked to capture or create an issue from conversation or natural langua
 ---
 
 # Capture Issue

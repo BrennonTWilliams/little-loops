@@ -140,11 +140,12 @@ HostCapabilities(
 
 Per the FEAT-1483 acceptance criteria:
 
-- File **FEAT-1486** as child of EPIC-1463: adapt `skills/*/SKILL.md` for Codex
-  (add `name:` + `agents/openai.yaml`; register via `codex plugin marketplace add`).
-- File **FEAT-1487** as child of EPIC-1463: document the `.codex/prompts/` gap,
+- **FEAT-1486** — COMPLETED: all `skills/*/SKILL.md` files now have `name:` and
+  `metadata.short-description:` frontmatter; each skill directory has
+  `agents/openai.yaml`. Run via `ll-adapt-skills-for-codex --apply`. The
+  `HOST_COMPATIBILITY.md` Codex "Skill discovery" cell has been updated to `✓`.
+- **FEAT-1487** as child of EPIC-1463: document the `.codex/prompts/` gap,
   update `HOST_COMPATIBILITY.md` parity matrix, and revise the `[^cmds]` footnote.
 - The `HOST_COMPATIBILITY.md` Codex "Slash-command discovery" cell remains `✗`
   until FEAT-1487 resolves (Codex has no separate slash-command surface; skills
-  cover both use cases). Codex "Skill discovery" cell remains `✗` until FEAT-1486
-  is complete.
+  cover both use cases).

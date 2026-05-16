@@ -1,0 +1,3 @@
+interface:
+  display_name: "Decide Issue"
+  short_description: "Use when asked to select the winning implementation option for an issue with dec"

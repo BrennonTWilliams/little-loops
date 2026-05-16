@@ -1444,6 +1444,32 @@ ll-generate-skill-descriptions --quiet       # Suppress per-skill output
 
 ---
 
+### ll-adapt-skills-for-codex
+
+Add Codex Skills API frontmatter to all `skills/*/SKILL.md` files and create the accompanying `agents/openai.yaml` metadata file per skill directory.
+
+For each skill, inserts `name:` (the directory slug) and `metadata.short-description:` (first line of the existing `description:` field, ≤80 chars) into the SKILL.md frontmatter, and creates `agents/openai.yaml` with `display_name` and `short_description` under an `interface:` block. Uses targeted string manipulation — no YAML roundtrip — to preserve existing frontmatter formatting.
+
+Dry-run by default (previews proposed changes without modifying files).
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--apply` | Write `name:` and `metadata.short-description:` to SKILL.md files and create `agents/openai.yaml` |
+| `--quiet` | Suppress per-skill output; only print final summary |
+
+**Exit codes:** `0` = success (no errors), `1` = one or more skills failed or skills directory not found
+
+**Examples:**
+```bash
+ll-adapt-skills-for-codex            # Dry-run: preview proposed changes
+ll-adapt-skills-for-codex --apply    # Write name:, metadata:, agents/openai.yaml
+ll-adapt-skills-for-codex --quiet    # Suppress per-skill output
+```
+
+---
+
 ### mcp-call
 
 Thin CLI wrapper for direct MCP tool invocation via JSON-RPC. Reads `.mcp.json` from the current directory, spawns the MCP server subprocess, performs the JSON-RPC initialize handshake, calls `tools/call`, and writes the MCP response envelope to stdout.

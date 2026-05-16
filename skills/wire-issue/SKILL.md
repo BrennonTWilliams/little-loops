@@ -1,4 +1,5 @@
 ---
+name: wire-issue
 description: Use when a refined issue is missing integration points or wiring in the implementation plan.
 model: sonnet
 allowed-tools:
@@ -12,6 +13,8 @@ allowed-tools:
   - Bash(git:*)
   - Bash(ll-issues:*)
   - Agent
+metadata:
+  short-description: Use when a refined issue is missing integration points or wiring in the implemen
 ---
 
 # Wire Issue

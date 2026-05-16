@@ -1,4 +1,5 @@
 ---
+name: issue-size-review
 description: Use when asked to evaluate issue size, decompose large issues, or audit backlog complexity.
 disable-model-invocation: true
 model: sonnet
@@ -7,6 +8,8 @@ allowed-tools:
   - Glob
   - Edit
   - Bash(ll-issues:*, git:*)
+metadata:
+  short-description: Use when asked to evaluate issue size, decompose large issues, or audit backlog 
 ---
 
 # Issue Size Review Skill

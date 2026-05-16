@@ -1,0 +1,3 @@
+interface:
+  display_name: "Format Issue"
+  short_description: "Use when asked to format an issue or fix its template structure."

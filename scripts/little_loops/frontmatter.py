@@ -107,7 +107,7 @@ def strip_frontmatter(content: str) -> str:
     return content[3 + end_match.end() :]
 
 
-def update_frontmatter(content: str, updates: dict[str, str | int]) -> str:
+def update_frontmatter(content: str, updates: dict[str, Any]) -> str:
     """Update or add frontmatter fields in content.
 
     Merges ``updates`` into an existing ``---`` delimited YAML frontmatter
@@ -117,7 +117,7 @@ def update_frontmatter(content: str, updates: dict[str, str | int]) -> str:
 
     Args:
         content: Full file content, possibly with existing frontmatter
-        updates: Fields to add/update in frontmatter
+        updates: Fields to add/update in frontmatter; values may be nested dicts
 
     Returns:
         Content with updated frontmatter block

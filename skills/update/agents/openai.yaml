@@ -1,0 +1,3 @@
+interface:
+  display_name: "Update"
+  short_description: "Use when asked to update little-loops, the plugin, or the pip package."

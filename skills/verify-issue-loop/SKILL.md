@@ -1,4 +1,5 @@
 ---
+name: verify-issue-loop
 description: Use when asked to generate an FSM verification loop YAML from a single issue's acceptance criteria.
 argument-hint: "<issue-id>"
 allowed-tools:
@@ -9,6 +10,8 @@ arguments:
   - name: issue_id
     description: A single issue ID (e.g., FEAT-919, ENH-950, BUG-347). Accepts open or completed issues.
     required: true
+metadata:
+  short-description: Use when asked to generate an FSM verification loop YAML from a single issue's a
 ---
 
 # Verify Issue Loop

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Review Loop"
+  short_description: "Use when asked to review loop config quality, validate loop YAML, or audit a loo"

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Confidence Check"
+  short_description: "Use when asked for a pre-implementation confidence check or whether an issue is "

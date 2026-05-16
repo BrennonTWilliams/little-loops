@@ -1,4 +1,5 @@
 ---
+name: format-issue
 description: Use when asked to format an issue or fix its template structure.
 argument-hint: "[issue-id]"
 allowed-tools:
@@ -13,6 +14,8 @@ arguments:
   - name: flags
     description: "Optional flags: --auto (non-interactive), --all (all active issues), --dry-run (preview)"
     required: false
+metadata:
+  short-description: Use when asked to format an issue or fix its template structure.
 ---
 
 # Format Issue

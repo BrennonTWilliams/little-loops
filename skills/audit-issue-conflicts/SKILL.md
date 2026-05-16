@@ -1,4 +1,5 @@
 ---
+name: audit-issue-conflicts
 description: Use when asked to detect conflicting requirements or incompatible decisions across open issues.
 disable-model-invocation: true
 argument-hint: "[--auto] [--dry-run]"
@@ -15,6 +16,8 @@ arguments:
   - name: flags
     description: "Optional flags: --auto (apply all recommendations without prompting), --dry-run (report only, no changes)"
     required: false
+metadata:
+  short-description: Use when asked to detect conflicting requirements or incompatible decisions acro
 ---
 
 # Audit Issue Conflicts

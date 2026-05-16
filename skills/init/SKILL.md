@@ -1,4 +1,5 @@
 ---
+name: init
 description: Use when asked to initialize little-loops, set up ll for a project, or bootstrap config.
 argument-hint: "[flags]"
 allowed-tools:
@@ -15,6 +16,8 @@ arguments:
   - name: flags
     description: Optional flags (--interactive, --yes, --force, --dry-run, --codex)
     required: false
+metadata:
+  short-description: Use when asked to initialize little-loops, set up ll for a project, or bootstrap
 ---
 
 # Initialize Configuration

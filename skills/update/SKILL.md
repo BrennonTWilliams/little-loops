@@ -1,4 +1,5 @@
 ---
+name: update
 description: Use when asked to update little-loops, the plugin, or the pip package.
 disable-model-invocation: true
 argument-hint: "[flags]"
@@ -11,6 +12,8 @@ arguments:
   - name: flags
     description: "Optional flags: --plugin, --package, --all, --dry-run"
     required: false
+metadata:
+  short-description: Use when asked to update little-loops, the plugin, or the pip package.
 ---
 
 # Update little-loops

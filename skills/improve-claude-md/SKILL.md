@@ -1,4 +1,5 @@
 ---
+name: improve-claude-md
 description: Use when asked to improve or rewrite CLAUDE.md or increase LLM instruction adherence.
 disable-model-invocation: true
 argument-hint: "[--dry-run] [--file path]"
@@ -11,6 +12,8 @@ arguments:
   - name: flags
     description: "Optional flags: --dry-run (preview without writing), --file <path> (target file)"
     required: false
+metadata:
+  short-description: Use when asked to improve or rewrite CLAUDE.md or increase LLM instruction adher
 ---
 
 # Improve CLAUDE.md

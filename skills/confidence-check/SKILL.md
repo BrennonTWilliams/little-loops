@@ -1,4 +1,5 @@
 ---
+name: confidence-check
 description: Use when asked for a pre-implementation confidence check or whether an issue is ready to implement.
 model: sonnet
 allowed-tools:
@@ -8,6 +9,8 @@ allowed-tools:
   - Edit
   - Bash(find:*)
   - Bash(git:*)
+metadata:
+  short-description: Use when asked for a pre-implementation confidence check or whether an issue is 
 ---
 
 # Confidence Check Skill

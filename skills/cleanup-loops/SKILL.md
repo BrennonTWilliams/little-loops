@@ -1,4 +1,5 @@
 ---
+name: cleanup-loops
 description: Use when asked to clean up stuck loops, kill dead loop processes, or troubleshoot loop state.
 disable-model-invocation: true
 argument-hint: "[--dry-run] [--threshold N]"
@@ -13,6 +14,8 @@ arguments:
   - name: threshold
     description: Minutes before a "running" loop's updated_at is considered stale (default 15)
     required: false
+metadata:
+  short-description: Use when asked to clean up stuck loops, kill dead loop processes, or troubleshoo
 ---
 
 # Cleanup Loops

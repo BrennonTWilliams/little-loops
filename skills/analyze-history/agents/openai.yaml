@@ -1,0 +1,3 @@
+interface:
+  display_name: "Analyze History"
+  short_description: "Use when asked about project health, velocity, bug trends, or whether we're maki"

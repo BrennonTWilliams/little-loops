@@ -1,4 +1,5 @@
 ---
+name: audit-claude-config
 description: Use when asked to audit Claude Code config, validate plugin settings, or diagnose plugin issues.
 disable-model-invocation: true
 argument-hint: "[scope]"
@@ -15,6 +16,8 @@ arguments:
   - name: flags
     description: "Optional flags: --non-interactive (no prompts), --fix (auto-apply safe fixes)"
     required: false
+metadata:
+  short-description: Use when asked to audit Claude Code config, validate plugin settings, or diagnos
 ---
 
 # Audit Claude Configuration

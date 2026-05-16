@@ -1,4 +1,5 @@
 ---
+name: debug-loop-run
 description: Use when asked to analyze loop execution history, investigate loop failures, or find loop issues.
 disable-model-invocation: true
 argument-hint: "[loop-name] [--tail N] [--skip-issue-creation] [--auto]"
@@ -23,6 +24,8 @@ arguments:
   - name: auto
     description: Non-interactive mode; suppress all AskUserQuestion calls and default to no for issue creation (implies --skip-issue-creation). Also activates when --dangerously-skip-permissions is in effect.
     required: false
+metadata:
+  short-description: Use when asked to analyze loop execution history, investigate loop failures, or 
 ---
 
 # Analyze Loop

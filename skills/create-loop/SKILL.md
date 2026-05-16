@@ -1,7 +1,10 @@
 ---
+name: create-loop
 description: Use when asked to create an automation loop or automate a recurring task with an FSM.
 allowed-tools:
   - Bash(mkdir:*, test:*, ll-loop:*)
+metadata:
+  short-description: Use when asked to create an automation loop or automate a recurring task with an
 ---
 
 # Create Loop

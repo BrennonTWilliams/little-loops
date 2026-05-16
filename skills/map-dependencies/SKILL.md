@@ -1,4 +1,5 @@
 ---
+name: map-dependencies
 description: Use when asked to find dependencies between issues or prepare a dependency-aware sprint plan.
 disable-model-invocation: true
 model: sonnet
@@ -7,6 +8,8 @@ allowed-tools:
   - Glob
   - Grep
   - Bash(ll-deps:*, git:*)
+metadata:
+  short-description: Use when asked to find dependencies between issues or prepare a dependency-aware
 ---
 
 # Map Dependencies Skill

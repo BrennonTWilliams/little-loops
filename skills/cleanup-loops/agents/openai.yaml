@@ -1,0 +1,3 @@
+interface:
+  display_name: "Cleanup Loops"
+  short_description: "Use when asked to clean up stuck loops, kill dead loop processes, or troubleshoo"

@@ -1,4 +1,5 @@
 ---
+name: go-no-go
 description: Use when asked for an adversarial go/no-go review or whether an issue is worth implementing.
 model: sonnet
 allowed-tools:
@@ -12,6 +13,8 @@ allowed-tools:
   - Agent
   - Edit
   - AskUserQuestion
+metadata:
+  short-description: Use when asked for an adversarial go/no-go review or whether an issue is worth i
 ---
 
 # Go/No-Go — Adversarial Issue Assessment

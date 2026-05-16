@@ -1,4 +1,5 @@
 ---
+name: audit-docs
 description: Use when asked to audit documentation accuracy, coverage, or find documentation gaps.
 disable-model-invocation: true
 argument-hint: "[scope]"
@@ -16,6 +17,8 @@ arguments:
   - name: fix
     description: Auto-apply fixable corrections without prompting
     required: false
+metadata:
+  short-description: Use when asked to audit documentation accuracy, coverage, or find documentation 
 ---
 
 # Audit Docs

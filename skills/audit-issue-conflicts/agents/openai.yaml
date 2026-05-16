@@ -1,0 +1,3 @@
+interface:
+  display_name: "Audit Issue Conflicts"
+  short_description: "Use when asked to detect conflicting requirements or incompatible decisions acro"

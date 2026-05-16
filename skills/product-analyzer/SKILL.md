@@ -1,4 +1,5 @@
 ---
+name: product-analyzer
 description: Use when asked to analyze product goals, check feature gaps, or evaluate business value. Returns raw YAML findings. For full scan with issue file creation, use `/ll:scan-product`.
 argument-hint: "[focus-area]"
 arguments:
@@ -11,6 +12,8 @@ allowed-tools:
   - Glob
   - Grep
   - Bash(date:*)
+metadata:
+  short-description: Use when asked to analyze product goals, check feature gaps, or evaluate busines
 ---
 
 # Product Analyzer Skill

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Verify Issue Loop"
+  short_description: "Use when asked to generate an FSM verification loop YAML from a single issue's a"

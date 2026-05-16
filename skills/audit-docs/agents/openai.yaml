@@ -1,0 +1,3 @@
+interface:
+  display_name: "Audit Docs"
+  short_description: "Use when asked to audit documentation accuracy, coverage, or find documentation "

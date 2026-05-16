@@ -127,6 +127,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-create-extension` - Scaffold a new extension repo with entry-point, skeleton handler, and LLTestBus example
 - `ll-generate-schemas` - Regenerate JSON Schema files for all `LLEvent` types into `docs/reference/schemas/` (maintainer tool)
 - `ll-generate-skill-descriptions` - Auto-generate ≤100-char skill descriptions via Claude CLI; skips `disable-model-invocation: true` skills (release utility)
+- `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter (`name:`, `metadata.short-description:`, `agents/openai.yaml`) to all `skills/*/SKILL.md` files
 
 Install: `pip install -e "./scripts[dev]"`
 

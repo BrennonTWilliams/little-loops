@@ -1,4 +1,5 @@
 ---
+name: rename-loop
 description: Rename a loop and update all references in YAMLs, tests, and docs.
 disable-model-invocation: true
 
@@ -22,6 +23,8 @@ arguments:
   - name: flags
     description: "--dry-run to preview all changes without applying; --yes to skip confirmation prompt"
     required: false
+metadata:
+  short-description: Rename a loop and update all references in YAMLs, tests, and docs.
 ---
 
 # Rename Loop

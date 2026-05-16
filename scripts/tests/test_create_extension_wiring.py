@@ -54,8 +54,8 @@ class TestConfigureAreasWiring:
 
     def test_count_updated_to_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 20" in content, (
-            "skills/configure/areas.md must show 'Authorize all 20' ll- CLI tools"
+        assert "Authorize all 21" in content, (
+            "skills/configure/areas.md must show 'Authorize all 21' ll- CLI tools"
         )
 
     def test_ll_create_extension_in_enumeration(self) -> None:
@@ -76,7 +76,7 @@ class TestFeat1045DocUpdates:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "22 typed CLI tools" in content, "README.md must say '22 typed CLI tools'"
+        assert "23 typed CLI tools" in content, "README.md must say '23 typed CLI tools'"
 
     def test_claude_md_lists_ll_create_extension(self) -> None:
         content = CLAUDE_MD.read_text()
@@ -189,12 +189,12 @@ class TestFeat1229LlActionWiring:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "22 typed CLI tools" in content, "README.md must say '22 typed CLI tools'"
+        assert "23 typed CLI tools" in content, "README.md must say '23 typed CLI tools'"
 
     def test_configure_areas_count_is_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 20" in content, (
-            "skills/configure/areas.md must show 'Authorize all 20' ll- CLI tools"
+        assert "Authorize all 21" in content, (
+            "skills/configure/areas.md must show 'Authorize all 21' ll- CLI tools"
         )
 
     def test_configure_areas_lists_ll_action(self) -> None:
@@ -269,3 +269,29 @@ class TestEnh1435LlMigrateRelationshipsWiring:
     def test_cli_reference_has_ll_migrate_relationships_section(self) -> None:
         content = CLI_REFERENCE.read_text()
         assert "ll-migrate-relationships" in content
+
+
+CONTRIBUTING_MD = PROJECT_ROOT / "CONTRIBUTING.md"
+
+
+class TestFeat1486LlAdaptSkillsWiring:
+    """FEAT-1486: ll-adapt-skills-for-codex must be registered in all doc files."""
+
+    def test_help_md_lists_tool(self) -> None:
+        assert "ll-adapt-skills-for-codex" in HELP_MD.read_text()
+
+    def test_claude_md_lists_tool(self) -> None:
+        assert "ll-adapt-skills-for-codex" in CLAUDE_MD.read_text()
+
+    def test_cli_reference_has_section(self) -> None:
+        assert "ll-adapt-skills-for-codex" in CLI_REFERENCE.read_text()
+
+    def test_configure_areas_lists_tool(self) -> None:
+        assert (
+            "ll-adapt-skills-for-codex"
+            in (PROJECT_ROOT / "skills" / "configure" / "areas.md").read_text()
+        )
+
+    def test_contributing_md_has_name_field_in_skill_template(self) -> None:
+        content = CONTRIBUTING_MD.read_text()
+        assert "name:" in content
