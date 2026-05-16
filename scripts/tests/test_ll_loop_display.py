@@ -1709,10 +1709,10 @@ class TestDisplayProgressEvents:
         assert long_reason not in out
         assert ("r" * 300) + "..." in out
 
-    def test_nonverbose_shell_output_shows_preview(
+    def test_nonverbose_shell_output_shows_streamed_lines(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """In non-verbose mode, shell output_preview is shown (action_output events are suppressed)."""
+        """In non-verbose mode, action_output lines are still streamed (no longer suppressed)."""
         events = [
             {"event": "action_output", "line": "streamed line"},
             {
@@ -1726,13 +1726,13 @@ class TestDisplayProgressEvents:
         executor = MockExecutor(events)
         run_foreground(executor, self._make_fsm(), self._make_args(verbose=False))
         out = capsys.readouterr().out
-        assert "preview line" in out
-        assert "streamed line" not in out
+        assert "streamed line" in out
+        assert "← response" not in out
 
-    def test_nonverbose_prompt_output_shows_head_preview(
+    def test_nonverbose_prompt_output_no_preview(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """In non-verbose mode, prompt action_complete shows a head preview of the response."""
+        """In non-verbose mode, action_complete does not show a post-hoc preview (output already streamed)."""
         events = [
             {
                 "event": "action_complete",
@@ -1745,8 +1745,9 @@ class TestDisplayProgressEvents:
         executor = MockExecutor(events)
         run_foreground(executor, self._make_fsm(), self._make_args(verbose=False))
         out = capsys.readouterr().out
-        assert "Line 1" in out
-        assert "← response" in out
+        assert "Line 1" not in out
+        assert "← response" not in out
+        assert "5.0s" in out
 
     def test_verbose_prompt_output_not_shown_at_action_complete(
         self, capsys: pytest.CaptureFixture[str]

@@ -472,7 +472,7 @@ def run_foreground(
                     print(f"{indent} -> {colorize(action_display, '2')}", flush=True)
 
         elif event_type == "action_output":
-            if not quiet and verbose:
+            if not quiet:
                 line = event.get("line", "")
                 if line.strip():
                     print(f"{indent}       {line}", flush=True)
@@ -481,8 +481,6 @@ def run_foreground(
             if not quiet:
                 duration_ms = event.get("duration_ms", 0)
                 exit_code = event.get("exit_code", 0)
-                output_preview = event.get("output_preview")
-                is_prompt = event.get("is_prompt", False)
                 duration_sec = duration_ms / 1000
                 if duration_sec < 60:
                     duration_str = f"{duration_sec:.1f}s"
@@ -496,30 +494,6 @@ def run_foreground(
                 elif exit_code != 0:
                     parts.append(colorize(f"exit: {exit_code}", "38;5;208"))
                 print("  ".join(parts), flush=True)
-                # In verbose mode, output was already shown via action_output events — skip preview.
-                # In non-verbose mode, show a head preview for prompt states and a tail preview
-                # for shell states so users get signal on what the action produced.
-                if output_preview and not verbose:
-                    lines = [ln for ln in output_preview.splitlines() if ln.strip()]
-                    if is_prompt:
-                        # Head preview for LLM responses — the meaningful content is usually upfront
-                        show_lines = lines[:8] if lines else []
-                        if lines:
-                            print(
-                                f"{indent}       {colorize(f'← response ({len(lines)} lines):', '2')}",
-                                flush=True,
-                            )
-                    else:
-                        # Tail preview for shell commands — the summary is usually at the end
-                        show_lines = lines[-8:] if lines else []
-                    for line in show_lines:
-                        display = line[:max_line] + "..." if len(line) > max_line else line
-                        print(f"{indent}       {display}", flush=True)
-                    if is_prompt and len(lines) > 8:
-                        print(
-                            f"{indent}       {colorize(f'... ({len(lines) - 8} more lines)', '2')}",
-                            flush=True,
-                        )
 
         elif event_type == "evaluate":
             if not quiet:

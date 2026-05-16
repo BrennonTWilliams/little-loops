@@ -129,7 +129,7 @@ Examples:
         "--verbose",
         "-v",
         action="store_true",
-        help="Stream all action output live; default shows a short response preview",
+        help="Show full prompt at action start (default: first 5 lines)",
     )
     run_parser.add_argument(
         "--show-diagrams",
