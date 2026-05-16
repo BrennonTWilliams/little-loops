@@ -1,15 +1,22 @@
 ---
 id: ENH-1529
-title: "Expose sandbox_mode parameter on CodexRunner build methods"
+title: Expose sandbox_mode parameter on CodexRunner build methods
 priority: P4
 type: ENH
 status: open
-captured_at: "2026-05-16T21:26:07Z"
-discovered_date: "2026-05-16"
+captured_at: '2026-05-16T21:26:07Z'
+discovered_date: '2026-05-16'
 discovered_by: capture-issue
+decision_needed: false
 relates_to:
-  - FEAT-1465
-  - FEAT-1462
+- FEAT-1465
+- FEAT-1462
+confidence_score: 95
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-1529: Expose sandbox_mode parameter on CodexRunner build methods
@@ -72,18 +79,65 @@ the intent ("restrict file writes") in the abstraction layer rather than bypassi
 ### Dependent Files (Callers/Importers)
 - `ll-auto`, `ll-parallel`, `ll-sprint` — all use default path (`sandbox_mode=None`); no caller changes required unless constrained execution is desired
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/subprocess_utils.py` — `run_claude_command()` calls `build_streaming`; no change needed (default `None` path) [Agent 1 finding]
+- `scripts/little_loops/fsm/evaluators.py` — `evaluate_llm_structured()` calls `build_blocking_json`; no change needed (default `None` path) [Agent 1 finding]
+- `scripts/little_loops/fsm/handoff_handler.py` — `HandoffHandler._spawn_continuation()` calls `build_streaming` and `build_detached`; no change needed (default `None` path) [Agent 1 finding]
+- `scripts/little_loops/parallel/worker_pool.py` — `WorkerPool` calls `build_streaming`; no change needed (default `None` path) [Agent 1 finding]
+
 ### Similar Patterns
 - `ClaudeRunner` / other runner subclasses in `host_runner.py` — verify no equivalent sandboxing plumbing needed
 
 ### Tests
-- `scripts/tests/test_host_runner.py` — new parametrized tests for each `sandbox_mode` value (`None`, `"off"`, `"read-only"`, `"write-to-cwd"`, `"network"`) and the invalid-value `ValueError` path
+- `scripts/tests/test_host_runner.py` — new parametrized tests for each `sandbox_mode` value (`None`, `"off"`, `"read-only"`, `"workspace-write"`, `"danger-full-access"`) and the invalid-value `ValueError` path; cover all three build methods
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_host_runner.py::TestCodexRunner::test_build_streaming_emits_warning_for_tools` — update `match="tool"` to also assert on new `sandbox_mode=` hint text in the warning; won't break but should validate the new suggestion [Agent 3 finding]
+- `scripts/tests/test_host_runner.py::TestDescribeCapabilities` — add test for new `sandbox_mode` `CapabilityEntry` with `status="full"`, following the `by_name = {e.name: e for e in report.capabilities}` pattern in `test_codex_runner_agent_select_unsupported` [Agent 3 finding]
+- `scripts/tests/test_enh1495_doc_wiring.py` — asserts `"CapabilityNotSupported"` and `"Current Limitations"` in `docs/codex/usage.md`; must still pass after updating the `--tools` section [Agent 2 finding]
+- `scripts/tests/test_feat1462_doc_wiring.py` — asserts `describe_capabilities` is documented in `docs/reference/API.md`; must still pass after updating the Protocol signatures section [Agent 1 finding]
 
 ### Documentation
 - `docs/reference/HOST_COMPATIBILITY.md` — update `tool_allowlist` row in Codex capability table
 - `thoughts/research/codex-headless-invocation.md` — flag translation source of truth; verify accuracy after change
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — update `HostRunner` Protocol code block with `sandbox_mode` parameter on `build_streaming`, `build_blocking_json`, `build_detached`; update CodexRunner table row description to reflect partial tool-constraint support [Agent 2 finding]
+- `docs/codex/usage.md` — update `### --tools (tool allowlist / sandbox modes)` section; replace "limitation is total" framing with description of `sandbox_mode=` as the recommended mechanism for constrained execution [Agent 2 finding]
+
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Exact flag locations (`host_runner.py`):**
+- `build_streaming` — line 390; flag at line 422 inside `args += [...]` block (easy to replace with `_sandbox_args()` call)
+- `build_blocking_json` — line 448; flag at line 467 inside a **list literal** (lines 465–470); the entire literal must be refactored into dynamic assembly before threading `sandbox_mode`
+- `build_detached` — line 489; flag at line 492 inside a **list literal** (lines 490–495) that also includes `prompt` as its last element; same refactoring needed
+- `build_version_check` — line 481; no sandbox flag (no change required, confirmed)
+- `describe_capabilities` — line 503; `tool_allowlist` entry at line 520; no `sandbox_mode` capability entry today
+
+**Tools warning (actual location):** lines 409–416 in `build_streaming`. Issue Motivation section references `host_runner.py:364–370` — those lines are in the class docstring. The actual `CapabilityNotSupported` warning for `tools` is at **line 409**. Current message: `"tool access is controlled via --sandbox mode."` — the update should also reference the Python `sandbox_mode=` parameter.
+
+**Snapshot test impact:** `test_codex_runner_flag_translation` (`test_host_runner.py:198`) asserts the exact `[binary, *args]` list. The default `sandbox_mode=None` case must continue to emit `--dangerously-bypass-approvals-and-sandbox`, so this existing test must still pass unchanged. New parametrized tests should cover each explicit mode value.
+
+**`build_blocking_json` / `build_detached` refactoring pattern:** These two methods use single list literals; `build_streaming` already uses a dynamic pattern (`args: list[str] = ["exec"]` then `args += [...]`). Apply the same dynamic construction pattern before inserting `_sandbox_args()`.
+
+**CRITICAL — Sandbox enum value mismatch:** The Proposed Solution names `"write-to-cwd"` and `"network"` as `sandbox_mode` values, but `thoughts/research/codex-headless-invocation.md:54–60` shows the actual Codex `--sandbox` enum is: `read-only`, `workspace-write`, `danger-full-access`. There is no `write-to-cwd` or `network` value. The implementer must use the real CLI enum names:
+- `"read-only"` → `--sandbox read-only` ✓ (matches issue)
+- `"workspace-write"` → `--sandbox workspace-write` (issue says `write-to-cwd` — wrong)
+- `"danger-full-access"` → `--sandbox danger-full-access` (issue says `network` — wrong; note this is semantically equivalent to `--dangerously-bypass-approvals-and-sandbox`)
+- Update `_sandbox_args()` and the `ValueError` message to use these three correct values.
+
+**`describe_capabilities` pattern:** The established pattern for adding a new `CapabilityEntry` (from `test_host_runner.py:TestDescribeCapabilities`): `by_name = {e.name: e for e in report.capabilities}` then assert `by_name["<name>"].status == "full" | "partial" | "unsupported"`. A new `sandbox_mode` capability entry should use `"full"` status with a note listing the three valid mode values.
+
+**Test patterns to follow** (`test_host_runner.py`):
+- Snapshot test: `assert [invocation.binary, *invocation.args] == [...]` (line 203)
+- Warning test: `with pytest.warns(CapabilityNotSupported, match="<substring>"):` (line 229)
+- Parametrize: `@pytest.mark.parametrize(("mode", "expected_flag"), [("read-only", "--sandbox"), ...])` following `test_fsm_evaluators.py:49` style
+- `ValueError` test: `with pytest.raises(ValueError, match="<substring>"):` following project convention
 
 ## Implementation Steps
 
@@ -93,6 +147,14 @@ the intent ("restrict file writes") in the abstraction layer rather than bypassi
 3. Update the `CapabilityNotSupported` warning message for `tools`
 4. Update `describe_capabilities` note for `tool_allowlist`
 5. Write tests; run `python -m pytest scripts/tests/test_host_runner.py`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `docs/reference/API.md` — add `sandbox_mode` parameter to `HostRunner` Protocol signature display; update CodexRunner table row description
+7. Update `docs/codex/usage.md` — revise `### --tools (tool allowlist / sandbox modes)` section to describe `sandbox_mode=` as the recommended mechanism for constrained Codex execution
+8. Run `python -m pytest scripts/tests/test_enh1495_doc_wiring.py scripts/tests/test_feat1462_doc_wiring.py` to verify doc-wiring tests still pass after doc updates
 
 ## API/Interface
 
@@ -153,5 +215,8 @@ def _sandbox_args(sandbox_mode: str | None) -> list[str]: ...
 ---
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-16T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b12ed97-216f-4ef4-a15b-b3a885a9ca71.jsonl`
+- `/ll:wire-issue` - 2026-05-16T22:08:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f37cba0-e05a-4523-b0f7-0e74784e29ae.jsonl`
+- `/ll:refine-issue` - 2026-05-16T21:42:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/201cbae4-355e-4f65-a0aa-66b54b7cd3ee.jsonl`
 - `/ll:format-issue` - 2026-05-16T21:31:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93cfb225-d34e-47d5-a384-898aac6f69b3.jsonl`
 - `/ll:capture-issue` - 2026-05-16T21:26:07Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c91b1bb-8b36-420d-bb06-e3e6a03f08a4.jsonl`
