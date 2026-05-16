@@ -66,7 +66,9 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
     return result
 
 
-def _config_candidates(project_root: Path, *, host: str | None, state_dir: str | None) -> list[Path]:
+def _config_candidates(
+    project_root: Path, *, host: str | None, state_dir: str | None
+) -> list[Path]:
     """Return the ordered list of ``ll-config.json`` candidate paths to probe.
 
     Default order (no host env vars set): ``.ll/ll-config.json`` then

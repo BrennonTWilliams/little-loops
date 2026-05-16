@@ -59,9 +59,9 @@ class TestCodexCommandDiscoveryDoc:
         content = RESEARCH_DOC.read_text()
         # The doc should mention .codex/prompts/ only to note it doesn't exist
         if ".codex/prompts" in content:
-            assert "no" in content.lower() or "not" in content.lower() or "does not" in content.lower(), (
-                "codex-command-discovery.md must clarify that .codex/prompts/ does not exist"
-            )
+            assert (
+                "no" in content.lower() or "not" in content.lower() or "does not" in content.lower()
+            ), "codex-command-discovery.md must clarify that .codex/prompts/ does not exist"
 
 
 class TestCodexReadmeOutOfScopeUpdated:

@@ -72,9 +72,7 @@ class TestSessionStartConfigLoad:
         (in_tmp / ".ll").mkdir()
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({"ll": True}))
 
-        result = handle(
-            LLHookEvent(host="codex", intent="session_start", payload={})
-        )
+        result = handle(LLHookEvent(host="codex", intent="session_start", payload={}))
 
         assert result.exit_code == 0
         assert result.stdout is not None

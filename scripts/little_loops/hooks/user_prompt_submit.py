@@ -30,9 +30,7 @@ _NO_CONFIG_MSG = (
 
 # Navigate from this file up to the plugin root, then into hooks/prompts/.
 # Path: scripts/little_loops/hooks/user_prompt_submit.py → parents[3] = repo root.
-_PROMPT_FILE = (
-    Path(__file__).resolve().parents[3] / "hooks" / "prompts" / "optimize-prompt-hook.md"
-)
+_PROMPT_FILE = Path(__file__).resolve().parents[3] / "hooks" / "prompts" / "optimize-prompt-hook.md"
 
 _MIN_PROMPT_LENGTH = 10
 

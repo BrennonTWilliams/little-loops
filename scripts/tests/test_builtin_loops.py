@@ -796,7 +796,9 @@ class TestRefineToReadyIssueSubLoop:
             f"check_missing_artifacts.on_no should be 'breakdown_issue', got {state.get('on_no')!r}"
         )
 
-    def test_check_decision_needed_on_no_routes_to_check_missing_artifacts(self, data: dict) -> None:
+    def test_check_decision_needed_on_no_routes_to_check_missing_artifacts(
+        self, data: dict
+    ) -> None:
         """check_decision_needed.on_no must route to check_missing_artifacts, not breakdown_issue (BUG-1490)."""
         state = data["states"].get("check_decision_needed", {})
         assert state.get("on_no") == "check_missing_artifacts", (
@@ -1876,9 +1878,7 @@ class TestAutodevLoop:
             f"rerun_confidence_after_wire.action_type should be 'slash_command', got {state.get('action_type')!r}"
         )
 
-    def test_rerun_confidence_after_wire_action_contains_confidence_check(
-        self, data: dict
-    ) -> None:
+    def test_rerun_confidence_after_wire_action_contains_confidence_check(self, data: dict) -> None:
         """rerun_confidence_after_wire action must invoke /ll:confidence-check."""
         state = data["states"].get("rerun_confidence_after_wire", {})
         action = state.get("action", "")
@@ -1886,9 +1886,7 @@ class TestAutodevLoop:
             f"rerun_confidence_after_wire.action should contain '/ll:confidence-check', got {action!r}"
         )
 
-    def test_rerun_confidence_after_wire_next_routes_to_enqueue_or_skip(
-        self, data: dict
-    ) -> None:
+    def test_rerun_confidence_after_wire_next_routes_to_enqueue_or_skip(self, data: dict) -> None:
         """rerun_confidence_after_wire.next must route to enqueue_or_skip."""
         state = data["states"].get("rerun_confidence_after_wire", {})
         assert state.get("next") == "enqueue_or_skip", (

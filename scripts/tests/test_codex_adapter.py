@@ -232,9 +232,7 @@ class TestCodexAdapterIntegration:
     def test_hooks_json_has_user_prompt_submit(self) -> None:
         """hooks.json must include a UserPromptSubmit entry pointing to prompt-submit.sh."""
         data = json.loads((ADAPTER_DIR / "hooks.json").read_text())
-        assert "UserPromptSubmit" in data["hooks"], (
-            "hooks.json is missing UserPromptSubmit key"
-        )
+        assert "UserPromptSubmit" in data["hooks"], "hooks.json is missing UserPromptSubmit key"
         groups = data["hooks"]["UserPromptSubmit"]
         assert len(groups) >= 1
         commands = [h["command"] for h in groups[0]["hooks"] if h.get("type") == "command"]
@@ -245,9 +243,7 @@ class TestCodexAdapterIntegration:
     def test_hooks_json_has_post_tool_use(self) -> None:
         """hooks.json must include a PostToolUse entry pointing to post-tool-use.sh (FEAT-1489)."""
         data = json.loads((ADAPTER_DIR / "hooks.json").read_text())
-        assert "PostToolUse" in data["hooks"], (
-            "hooks.json is missing PostToolUse key"
-        )
+        assert "PostToolUse" in data["hooks"], "hooks.json is missing PostToolUse key"
         groups = data["hooks"]["PostToolUse"]
         assert len(groups) >= 1
         commands = [h["command"] for h in groups[0]["hooks"] if h.get("type") == "command"]

@@ -2290,9 +2290,7 @@ class TestIssueInfoImplementationOrderRisk:
         features_dir = tmp_path / ".issues" / "enhancements"
         features_dir.mkdir(parents=True)
         issue_file = features_dir / "P3-ENH-1492-order-risk.md"
-        issue_file.write_text(
-            "---\nimplementation_order_risk: true\n---\n# ENH-1492: Order risk\n"
-        )
+        issue_file.write_text("---\nimplementation_order_risk: true\n---\n# ENH-1492: Order risk\n")
 
         config = BRConfig(tmp_path)
         parser = IssueParser(config)

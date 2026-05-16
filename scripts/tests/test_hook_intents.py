@@ -337,9 +337,7 @@ class TestHooksMainModule:
             timeout=10,
             cwd=str(tmp_path),
         )
-        assert result.returncode == 0, (
-            f"returncode={result.returncode}; stderr={result.stderr!r}"
-        )
+        assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
         # No-op handler — neither stdout nor stderr are written.
         assert result.stdout == ""
         assert result.stderr == ""
@@ -359,9 +357,7 @@ class TestHooksMainModule:
             timeout=10,
             cwd=str(tmp_path),
         )
-        assert result.returncode == 0, (
-            f"returncode={result.returncode}; stderr={result.stderr!r}"
-        )
+        assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
         assert result.stdout == ""
         assert result.stderr == ""
 

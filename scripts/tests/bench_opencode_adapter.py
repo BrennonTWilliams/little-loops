@@ -29,7 +29,6 @@ import sys
 import time
 from pathlib import Path
 
-
 _ADAPTER_DIR = Path(__file__).parent.parent.parent / "hooks" / "adapters" / "opencode"
 _DEFAULT_ITERATIONS = 100
 _DECISION_TARGET_MS = 200
@@ -70,8 +69,10 @@ def _run_one(intent: str, payload: dict, cwd: Path) -> float:
     elapsed_ms = (time.perf_counter() - start) * 1000
     if proc.returncode not in (0, 2):
         # exit 2 is the pre_compact "block + feedback" success path
-        print(f"  warn: intent={intent} exit={proc.returncode} stderr={proc.stderr[:200]!r}",
-              file=sys.stderr)
+        print(
+            f"  warn: intent={intent} exit={proc.returncode} stderr={proc.stderr[:200]!r}",
+            file=sys.stderr,
+        )
     return elapsed_ms
 
 
@@ -129,16 +130,22 @@ def _print_decision(results: dict[str, dict[str, float]]) -> None:
         print("DECISION: no data collected — cannot evaluate latency gate")
         return
     if worst_p95 <= _DECISION_TARGET_MS:
-        print(f"DECISION: p95={worst_p95:.0f}ms ≤ {_DECISION_TARGET_MS}ms target — "
-              f"cold-start is acceptable; opt-in-only approach viable for pre_tool_use")
+        print(
+            f"DECISION: p95={worst_p95:.0f}ms ≤ {_DECISION_TARGET_MS}ms target — "
+            f"cold-start is acceptable; opt-in-only approach viable for pre_tool_use"
+        )
     elif worst_p95 >= _DECISION_THRESHOLD_MS:
-        print(f"DECISION: p95={worst_p95:.0f}ms ≥ {_DECISION_THRESHOLD_MS}ms threshold — "
-              f"sidecar required before wiring pre_tool_use / post_tool_use (FEAT-1488 rule)")
+        print(
+            f"DECISION: p95={worst_p95:.0f}ms ≥ {_DECISION_THRESHOLD_MS}ms threshold — "
+            f"sidecar required before wiring pre_tool_use / post_tool_use (FEAT-1488 rule)"
+        )
     else:
-        print(f"DECISION: p95={worst_p95:.0f}ms — between target ({_DECISION_TARGET_MS}ms) "
-              f"and threshold ({_DECISION_THRESHOLD_MS}ms); opt-in-only viable with "
-              f"documented latency cost (~{worst_p95:.0f}ms per tool call)")
-    print(f"  Record this p95 in hooks/adapters/opencode/README.md ## Latency Target")
+        print(
+            f"DECISION: p95={worst_p95:.0f}ms — between target ({_DECISION_TARGET_MS}ms) "
+            f"and threshold ({_DECISION_THRESHOLD_MS}ms); opt-in-only viable with "
+            f"documented latency cost (~{worst_p95:.0f}ms per tool call)"
+        )
+    print("  Record this p95 in hooks/adapters/opencode/README.md ## Latency Target")
 
 
 def main() -> int:
@@ -164,8 +171,7 @@ def main() -> int:
 
     if not (_ADAPTER_DIR / "node_modules").exists():
         print(
-            f"SKIP: bun install not complete in {_ADAPTER_DIR}. "
-            "Run `bun install` there first.",
+            f"SKIP: bun install not complete in {_ADAPTER_DIR}. Run `bun install` there first.",
             file=sys.stderr,
         )
         return 0

@@ -222,5 +222,3 @@ class TestConfigureSkillDevInstallFix:
             "pip install -e './scripts' uses a relative path that breaks when run outside "
             "the little-loops repo — use the absolute path from 'pip show little-loops' instead"
         )
-
-

@@ -1897,7 +1897,14 @@ class TestRunClaudeCommandHostRunner:
 
         mock_invocation = HostInvocation(
             binary="myhost",
-            args=["--dangerously-skip-permissions", "--verbose", "--output-format", "stream-json", "-p", "test"],
+            args=[
+                "--dangerously-skip-permissions",
+                "--verbose",
+                "--output-format",
+                "stream-json",
+                "-p",
+                "test",
+            ],
             env={"CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1"},
         )
         mock_runner = Mock()
@@ -1969,6 +1976,8 @@ class TestRunClaudeCommandHostRunner:
         """HostNotConfigured from resolve_host() propagates through run_claude_command()."""
         from little_loops.host_runner import HostNotConfigured
 
-        with patch("little_loops.subprocess_utils.resolve_host", side_effect=HostNotConfigured("no host")):
+        with patch(
+            "little_loops.subprocess_utils.resolve_host", side_effect=HostNotConfigured("no host")
+        ):
             with pytest.raises(HostNotConfigured):
                 run_claude_command("test")

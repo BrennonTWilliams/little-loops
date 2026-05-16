@@ -47,19 +47,18 @@ class TestReadmePillarStructure:
         content = README.read_text()
         assert "Run asynchronous agents until done" in content, (
             "README.md must contain the durability pillar heading "
-            "(\"Run asynchronous agents until done\")."
+            '("Run asynchronous agents until done").'
         )
 
     def test_pillar_consistency_present(self) -> None:
         content = README.read_text()
         assert "Smart tools create smart processes." in content, (
             "README.md must contain the consistency pillar heading "
-            "(\"Smart tools create smart processes.\")."
+            '("Smart tools create smart processes.").'
         )
 
     def test_pillar_verification_present(self) -> None:
         content = README.read_text()
         assert "Harness-driven development" in content, (
-            "README.md must contain the verification pillar heading "
-            "(\"Harness-driven development\")."
+            'README.md must contain the verification pillar heading ("Harness-driven development").'
         )

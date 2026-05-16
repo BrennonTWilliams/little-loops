@@ -638,7 +638,10 @@ def evaluate_llm_structured(
     if proc.returncode != 0:
         return EvaluationResult(
             verdict="error",
-            details={"error": f"{invocation.binary} CLI error: {proc.stderr.strip()}", "api_error": True},
+            details={
+                "error": f"{invocation.binary} CLI error: {proc.stderr.strip()}",
+                "api_error": True,
+            },
         )
 
     # Guard: empty stdout with exit 0 (API error not reflected in exit code)

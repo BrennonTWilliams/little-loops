@@ -36,7 +36,7 @@ def _make_skill_block_scalar(tmp_path: Path, name: str) -> Path:
     skill_md = skill_dir / "SKILL.md"
     skill_md.write_text(
         "---\ndescription: |\n  Use when asked to do something.\n  More context here.\n\n"
-        "  Trigger keywords: \"foo\", \"bar\"\n---\n\n# My Skill\n"
+        '  Trigger keywords: "foo", "bar"\n---\n\n# My Skill\n'
     )
     return skill_md
 
@@ -52,7 +52,9 @@ class TestExtractShortDesc:
         assert _extract_short_desc(text) == "Use when user asks for stuff."
 
     def test_block_scalar_returns_first_line(self) -> None:
-        text = "---\ndescription: |\n  Use when asked to do something.\n  More context.\n---\n# Body"
+        text = (
+            "---\ndescription: |\n  Use when asked to do something.\n  More context.\n---\n# Body"
+        )
         result = _extract_short_desc(text)
         assert result == "Use when asked to do something."
 

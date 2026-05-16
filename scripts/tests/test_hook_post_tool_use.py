@@ -65,9 +65,7 @@ class TestPreToolUseBaseline:
     """Pre-tool-use handler is registered for opt-in dispatch (FEAT-1489)."""
 
     def test_empty_payload_returns_pass(self) -> None:
-        result = pre_handle(
-            LLHookEvent(host="codex", intent="pre_tool_use", payload={})
-        )
+        result = pre_handle(LLHookEvent(host="codex", intent="pre_tool_use", payload={}))
         assert result.exit_code == 0
         assert result.feedback is None
         assert result.stdout is None

@@ -603,6 +603,4 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner:
         if runner_cls is not None:
             return runner_cls()
 
-    raise HostNotConfigured(
-        f"No host CLI detected on PATH. {_remediation_hint()}"
-    )
+    raise HostNotConfigured(f"No host CLI detected on PATH. {_remediation_hint()}")

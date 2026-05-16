@@ -24,9 +24,7 @@ class TestApiMdWiring:
 
     def test_host_runner_module_listed(self) -> None:
         content = API_DOC.read_text()
-        assert "host_runner" in content, (
-            "API.md must reference the little_loops.host_runner module"
-        )
+        assert "host_runner" in content, "API.md must reference the little_loops.host_runner module"
 
     def test_resolve_host_documented(self) -> None:
         content = API_DOC.read_text()
@@ -36,9 +34,7 @@ class TestApiMdWiring:
 
     def test_host_invocation_documented(self) -> None:
         content = API_DOC.read_text()
-        assert "HostInvocation" in content, (
-            "API.md must document the HostInvocation dataclass"
-        )
+        assert "HostInvocation" in content, "API.md must document the HostInvocation dataclass"
 
     def test_host_not_configured_documented(self) -> None:
         content = API_DOC.read_text()

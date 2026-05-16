@@ -89,9 +89,7 @@ class TestResolveHost:
         # The probe order must consult ``claude`` first.
         assert seen[0] == "claude"
 
-    def test_raises_when_no_host(
-        self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_raises_when_no_host(self, isolated_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
         """HostNotConfigured is raised with a remediation hint when nothing resolves."""
         monkeypatch.setattr(
             "little_loops.host_runner.shutil.which",
