@@ -70,6 +70,12 @@ class TestCodexReadmeContent:
             "docs/codex/README.md must mention deferred hook intents"
         )
 
+    def test_mentions_agents_tool(self) -> None:
+        content = CODEX_README.read_text()
+        assert "ll-adapt-agents-for-codex" in content, (
+            "docs/codex/README.md must mention ll-adapt-agents-for-codex"
+        )
+
 
 class TestCodexGettingStartedContent:
     """docs/codex/getting-started.md must cover install, trust, config, and skill discovery."""
@@ -102,6 +108,12 @@ class TestCodexGettingStartedContent:
         content = CODEX_GETTING_STARTED.read_text()
         assert "ll-adapt-skills-for-codex" in content, (
             "docs/codex/getting-started.md must document ll-adapt-skills-for-codex --apply"
+        )
+
+    def test_mentions_agents_tool(self) -> None:
+        content = CODEX_GETTING_STARTED.read_text()
+        assert "ll-adapt-agents-for-codex" in content, (
+            "docs/codex/getting-started.md must document ll-adapt-agents-for-codex --apply"
         )
 
     def test_mentions_codex_hooks_json(self) -> None:

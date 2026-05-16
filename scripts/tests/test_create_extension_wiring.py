@@ -297,6 +297,11 @@ class TestFeat1486LlAdaptSkillsWiring:
         assert "name:" in content
 
 
+CODEX_README = PROJECT_ROOT / "docs" / "codex" / "README.md"
+CODEX_GETTING_STARTED = PROJECT_ROOT / "docs" / "codex" / "getting-started.md"
+CODEX_USAGE = PROJECT_ROOT / "docs" / "codex" / "usage.md"
+
+
 class TestFeat1526LlAdaptAgentsWiring:
     """FEAT-1526: ll-adapt-agents-for-codex must be registered in all doc files."""
 
@@ -318,3 +323,31 @@ class TestFeat1526LlAdaptAgentsWiring:
     def test_contributing_md_has_adapter_note(self) -> None:
         content = CONTRIBUTING_MD.read_text()
         assert "ll-adapt-agents-for-codex" in content
+
+    def test_codex_readme_lists_tool(self) -> None:
+        assert "ll-adapt-agents-for-codex" in CODEX_README.read_text(), (
+            "docs/codex/README.md must mention ll-adapt-agents-for-codex"
+        )
+
+    def test_codex_getting_started_lists_tool(self) -> None:
+        assert "ll-adapt-agents-for-codex" in CODEX_GETTING_STARTED.read_text(), (
+            "docs/codex/getting-started.md must mention ll-adapt-agents-for-codex --apply"
+        )
+
+    def test_codex_usage_lists_tool(self) -> None:
+        assert "ll-adapt-agents-for-codex" in CODEX_USAGE.read_text(), (
+            "docs/codex/usage.md must mention ll-adapt-agents-for-codex --apply"
+        )
+
+    def test_init_skill_has_permission(self) -> None:
+        assert '"Bash(ll-adapt-agents-for-codex:*)"' in INIT_SKILL.read_text(), (
+            'skills/init/SKILL.md must include "Bash(ll-adapt-agents-for-codex:*)" in the permissions block'
+        )
+
+    def test_init_skill_has_boilerplate_entries(self) -> None:
+        content = INIT_SKILL.read_text()
+        count = content.count("ll-adapt-agents-for-codex")
+        assert count >= 3, (
+            f"skills/init/SKILL.md must mention ll-adapt-agents-for-codex at least 3 times "
+            f"(permissions + 2 CLAUDE.md boilerplate blocks); found {count}"
+        )

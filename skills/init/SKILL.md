@@ -517,6 +517,8 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
      "Bash(ll-learning-tests:*)",
      "Bash(ll-logs:*)",
      "Bash(ll-doctor:*)",
+     "Bash(ll-adapt-skills-for-codex:*)",
+     "Bash(ll-adapt-agents-for-codex:*)",
      "Write(.ll/ll-continue-prompt.md)"
      ```
    - Create `.claude/` directory first if needed
@@ -581,6 +583,8 @@ If user opted in:
    - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale)
    - `ll-logs` - Discover and extract ll-relevant log entries from Claude project logs
    - `ll-doctor` - Check host CLI capability support for little-loops features
+   - `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter to skills and bridge commands for Codex discovery
+   - `ll-adapt-agents-for-codex` - Generate `.codex/agents/*.toml` from `agents/*.md` for Codex agent-select support
 
    Install: `pip install -e "./scripts[dev]"`
    ```
@@ -611,6 +615,8 @@ If user opted in:
    - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale)
    - `ll-logs` - Discover and extract ll-relevant log entries from Claude project logs
    - `ll-doctor` - Check host CLI capability support for little-loops features
+   - `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter to skills and bridge commands for Codex discovery
+   - `ll-adapt-agents-for-codex` - Generate `.codex/agents/*.toml` from `agents/*.md` for Codex agent-select support
 
    Install: `pip install -e "./scripts[dev]"`
    ```
