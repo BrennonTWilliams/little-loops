@@ -488,6 +488,8 @@ Agents are defined as Markdown files in `agents/`:
 [System prompt and instructions for the agent]
 ```
 
+After creating a new agent, run `ll-adapt-agents-for-codex --apply` to generate a `.codex/agents/<name>.toml` file so Codex CLI users can select the agent via `--agent <name>`.
+
 ## Adding Skills
 
 Skills are defined as directories in `skills/`, each containing a `SKILL.md` file:

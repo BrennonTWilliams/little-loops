@@ -485,6 +485,8 @@ class IssueParser:
             implementation_order_risk_value = implementation_order_risk_raw
 
         status = frontmatter.get("status", "open")
+        if status == "open" and frontmatter.get("completed_at"):
+            status = "done"
 
         parent = frontmatter.get("parent")
         if parent is None and (alias_val := frontmatter.get("parent_issue")):

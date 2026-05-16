@@ -95,6 +95,14 @@ After this step, typing `/ll:` in the Codex TUI will show the full list of avail
 
 Re-run this command after upgrading little-loops to pick up any new skills or commands.
 
+To also enable ll subagent personas in the Codex TUI, run the companion command:
+
+```bash
+ll-adapt-agents-for-codex --apply
+```
+
+This writes `.codex/agents/*.toml` files so you can select ll agents via `--agent <name>` in Codex (e.g., `--agent codebase-analyzer`). Re-run after adding new agents to `agents/`.
+
 ---
 
 ## First-run verification

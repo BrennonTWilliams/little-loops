@@ -80,7 +80,9 @@ After saving, start a new Codex session. Codex will prompt you to re-trust the m
 
 ### `--agent` (persona selection)
 
-`CodexRunner` does not support the `--agent` flag. When an orchestration tool or skill requests a persona (e.g., `--agent coding`), the flag is silently dropped and `CapabilityNotSupported` is emitted to the log. The session proceeds with Codex's default model configuration.
+`CodexRunner` does not support the `--agent` flag in ll-orchestrated sessions (`ll-auto`, `ll-parallel`, `ll-loop`). When an orchestration tool or skill requests a persona (e.g., `--agent coding`), the flag is silently dropped and `CapabilityNotSupported` is emitted to the log. The session proceeds with Codex's default model configuration.
+
+**Mitigation for interactive sessions:** Run `ll-adapt-agents-for-codex --apply` once to generate `.codex/agents/*.toml` files from ll's `agents/*.md` definitions. After this step, the Codex TUI can select ll subagents via `--agent <name>` (e.g., `--agent codebase-analyzer`). Re-run after adding new agents to `agents/`.
 
 ### `--tools` (tool allowlist / sandbox modes)
 

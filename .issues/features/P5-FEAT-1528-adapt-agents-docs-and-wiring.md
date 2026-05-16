@@ -2,7 +2,7 @@
 id: FEAT-1528
 type: FEAT
 priority: P5
-status: open
+status: closed
 parent: FEAT-1526
 ---
 

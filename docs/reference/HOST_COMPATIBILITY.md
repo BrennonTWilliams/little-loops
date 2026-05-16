@@ -79,6 +79,25 @@ into `LLHookEvent` payloads.
     only: `ll-generate-skill-descriptions` (skips for token-budget compliance)
     and Claude Code's auto-invocation gate. See ENH-1497.
 
+## Runner Capabilities
+
+Runtime capabilities reported by `ll-doctor` for each host runner.
+
+| Capability       | Claude Code | OpenCode | Codex CLI                          |
+| ---------------- | ----------- | -------- | ---------------------------------- |
+| Streaming        | ✓           | ✓        | ✓                                  |
+| Permission skip  | ✓           | ✗        | ✗                                  |
+| Agent selection  | ✓           | ✗        | ✓ (partial — model-spawned)[^agent] |
+| Tool allowlist   | ✓           | ✗        | ✗                                  |
+
+[^agent]: Codex agent selection works via `.codex/agents/*.toml` files generated
+    by `ll-adapt-agents-for-codex --apply` (FEAT-1527). Interactive Codex TUI
+    sessions can use `--agent <name>` (e.g., `--agent codebase-analyzer`) once
+    those TOML files are present. However, ll's orchestration layer (`ll-auto`,
+    `ll-parallel`, `ll-loop`) cannot pass `--agent` programmatically —
+    `CodexRunner` emits `CapabilityNotSupported` and drops the flag. Re-run
+    `ll-adapt-agents-for-codex --apply` after adding new agents.
+
 ## Orchestration CLI
 
 The orchestration tools (`ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`,

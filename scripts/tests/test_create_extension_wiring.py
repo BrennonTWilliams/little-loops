@@ -54,8 +54,8 @@ class TestConfigureAreasWiring:
 
     def test_count_updated_to_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 22" in content, (
-            "skills/configure/areas.md must show 'Authorize all 22' ll- CLI tools"
+        assert "Authorize all 23" in content, (
+            "skills/configure/areas.md must show 'Authorize all 23' ll- CLI tools"
         )
 
     def test_ll_create_extension_in_enumeration(self) -> None:
@@ -76,7 +76,7 @@ class TestFeat1045DocUpdates:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "24 typed CLI tools" in content, "README.md must say '24 typed CLI tools'"
+        assert "25 typed CLI tools" in content, "README.md must say '25 typed CLI tools'"
 
     def test_claude_md_lists_ll_create_extension(self) -> None:
         content = CLAUDE_MD.read_text()
@@ -189,12 +189,12 @@ class TestFeat1229LlActionWiring:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "24 typed CLI tools" in content, "README.md must say '24 typed CLI tools'"
+        assert "25 typed CLI tools" in content, "README.md must say '25 typed CLI tools'"
 
     def test_configure_areas_count_is_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 22" in content, (
-            "skills/configure/areas.md must show 'Authorize all 22' ll- CLI tools"
+        assert "Authorize all 23" in content, (
+            "skills/configure/areas.md must show 'Authorize all 23' ll- CLI tools"
         )
 
     def test_configure_areas_lists_ll_action(self) -> None:
@@ -295,3 +295,26 @@ class TestFeat1486LlAdaptSkillsWiring:
     def test_contributing_md_has_name_field_in_skill_template(self) -> None:
         content = CONTRIBUTING_MD.read_text()
         assert "name:" in content
+
+
+class TestFeat1526LlAdaptAgentsWiring:
+    """FEAT-1526: ll-adapt-agents-for-codex must be registered in all doc files."""
+
+    def test_help_md_lists_tool(self) -> None:
+        assert "ll-adapt-agents-for-codex" in HELP_MD.read_text()
+
+    def test_claude_md_lists_tool(self) -> None:
+        assert "ll-adapt-agents-for-codex" in CLAUDE_MD.read_text()
+
+    def test_cli_reference_has_section(self) -> None:
+        assert "ll-adapt-agents-for-codex" in CLI_REFERENCE.read_text()
+
+    def test_configure_areas_lists_tool(self) -> None:
+        assert (
+            "ll-adapt-agents-for-codex"
+            in (PROJECT_ROOT / "skills" / "configure" / "areas.md").read_text()
+        )
+
+    def test_contributing_md_has_adapter_note(self) -> None:
+        content = CONTRIBUTING_MD.read_text()
+        assert "ll-adapt-agents-for-codex" in content

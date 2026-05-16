@@ -46,8 +46,8 @@ class TestConfigureAreasWiring:
 
     def test_authorize_all_count_is_22(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 22" in content, (
-            "skills/configure/areas.md authorize-all count must be 22 (includes ll-doctor)"
+        assert "Authorize all 23" in content, (
+            "skills/configure/areas.md authorize-all count must be 23 (includes ll-adapt-agents-for-codex)"
         )
 
 
