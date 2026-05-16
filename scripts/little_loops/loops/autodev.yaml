@@ -251,9 +251,21 @@ states:
 
   run_refine:
     # Run /ll:refine-issue to fill in missing codebase context when wiring alone
-    # is insufficient. on_error falls through to enqueue_or_skip safely.
+    # is insufficient. on_error falls through to rerun_confidence_after_wire safely.
     fragment: with_rate_limit_handling
     action: "/ll:refine-issue ${captured.input.output} --auto"
+    action_type: slash_command
+    next: rerun_confidence_after_wire
+    on_error: rerun_confidence_after_wire
+    on_rate_limit_exhausted: done
+
+  rerun_confidence_after_wire:
+    # After run_wire → run_refine repairs a wiring gap, frontmatter scores still hold
+    # pre-repair values. Re-run confidence-check so enqueue_or_skip /
+    # recheck_after_size_review evaluate fresh scores — mirrors
+    # rerun_confidence_after_decide (BUG-1491).
+    fragment: with_rate_limit_handling
+    action: "/ll:confidence-check ${captured.input.output}"
     action_type: slash_command
     next: enqueue_or_skip
     on_error: enqueue_or_skip
