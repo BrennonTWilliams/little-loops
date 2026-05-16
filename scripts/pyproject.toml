@@ -72,6 +72,7 @@ ll-generate-schemas = "little_loops.cli:main_generate_schemas"
 ll-generate-skill-descriptions = "little_loops.cli:main_generate_skill_descriptions"
 ll-adapt-skills-for-codex = "little_loops.cli:main_adapt_skills_for_codex"
 ll-learning-tests = "little_loops.cli:main_learning_tests"
+ll-adapt-agents-for-codex = "little_loops.cli:main_adapt_agents_for_codex"
 mcp-call = "little_loops.mcp_call:main"
 
 [project.entry-points."little_loops.extensions"]

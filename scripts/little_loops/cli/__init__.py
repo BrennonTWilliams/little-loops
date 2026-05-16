@@ -2,6 +2,7 @@
 
 Provides command-line interfaces for automated issue management:
 - ll-action: Invoke ll skills as one-shot commands with JSON-structured output
+- ll-adapt-agents-for-codex: Add Codex subagent TOML files to .codex/agents/
 - ll-adapt-skills-for-codex: Add Codex Skills API frontmatter to ll skill SKILL.md files
 - ll-auto: Process all backlog issues sequentially in priority order
 - ll-parallel: Process issues concurrently using isolated git worktrees
@@ -28,6 +29,7 @@ Provides command-line interfaces for automated issue management:
 """
 
 from little_loops.cli.action import main_action
+from little_loops.cli.adapt_agents_for_codex import main_adapt_agents_for_codex
 from little_loops.cli.adapt_skills_for_codex import main_adapt_skills_for_codex
 from little_loops.cli.auto import main_auto
 from little_loops.cli.create_extension import main_create_extension
@@ -57,6 +59,7 @@ from little_loops.cli.sync import main_sync
 
 __all__ = [
     "main_action",
+    "main_adapt_agents_for_codex",
     "main_adapt_skills_for_codex",
     "main_auto",
     "main_check_links",

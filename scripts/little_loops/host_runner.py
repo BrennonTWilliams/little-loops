@@ -359,8 +359,8 @@ class CodexRunner:
       conversation rather than selected by the caller at invocation. The
       ``agent`` parameter is therefore dropped with a
       :class:`CapabilityNotSupported` warning; to get persona behavior under
-      Codex, ship native ``.codex/agents/*.toml`` files (e.g. via a future
-      ``ll-adapt-agents-for-codex``, mirroring ``ll-adapt-skills-for-codex``).
+      Codex, ship native ``.codex/agents/*.toml`` files via
+      ``ll-adapt-agents-for-codex`` (mirrors ``ll-adapt-skills-for-codex``).
     - Tool allowlist (``--tools``) has no Codex equivalent — Codex routes
       tool access through sandbox modes, and ``--profile`` is for auth, not
       persona. Emits :class:`CapabilityNotSupported` when requested. The
