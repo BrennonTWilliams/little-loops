@@ -3,9 +3,10 @@ captured_at: "2026-05-03T00:00:00Z"
 completed_at: "2026-05-03T00:00:00Z"
 discovered_date: 2026-05-03
 discovered_by: user-report
+status: done
 ---
 
-# BUG-1308: `ll-loop run --background` drops the positional `input` argument, causing "Missing required context variable" on spawn
+# BUG-1521: `ll-loop run --background` drops the positional `input` argument, causing "Missing required context variable" on spawn
 
 ## Summary
 

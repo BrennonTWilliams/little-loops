@@ -2,10 +2,11 @@
 captured_at: 2026-04-22T00:00:00Z
 discovered_date: 2026-04-22
 discovered_by: user-report
-status: completed
+status: done
+completed_at: 2026-04-22T00:00:00Z
 ---
 
-# BUG-1257: issue_parser ignores frontmatter blocked_by/blocks fields
+# BUG-1520: issue_parser ignores frontmatter blocked_by/blocks fields
 
 ## Summary
 

@@ -2,14 +2,15 @@
 id: ENH-1051
 type: ENH
 priority: P5
-status: completed
+status: done
 discovered_date: 2026-04-11
 discovered_by: manual
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-04-11T00:00:00Z
 ---
 
-# ENH-1051: Refactor `sprint-build-and-validate` loop to linear quality-check + execution flow
+# ENH-1518: Refactor `sprint-build-and-validate` loop to linear quality-check + execution flow
 
 ## Summary
 

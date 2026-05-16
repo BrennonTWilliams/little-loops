@@ -3,9 +3,11 @@ discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 100
 outcome_confidence: 82
+status: done
+completed_at: 2026-03-14T00:00:00Z
 ---
 
-# FEAT-725: ll-loop run positional string input argument
+# FEAT-1507: ll-loop run positional string input argument
 
 ## Summary
 

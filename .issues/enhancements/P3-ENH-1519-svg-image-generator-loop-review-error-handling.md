@@ -2,14 +2,15 @@
 id: ENH-1100
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-04-13
 discovered_by: manual
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-04-13T00:00:00Z
 ---
 
-# ENH-1100: svg-image-generator loop review — add error routing and failure terminal
+# ENH-1519: svg-image-generator loop review — add error routing and failure terminal
 
 ## Summary
 

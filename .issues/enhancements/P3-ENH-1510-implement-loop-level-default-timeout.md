@@ -2,19 +2,20 @@
 id: ENH-777
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-16
 discovered_by: manual
 completed_date: 2026-03-16
 confidence_score: 100
 outcome_confidence: 100
+completed_at: 2026-03-16T00:00:00Z
 ---
 
-# ENH-777: Implement loop-level `default_timeout` for FSM executor
+# ENH-1510: Implement loop-level `default_timeout` for FSM executor
 
 ## Summary
 
-Implemented a `default_timeout` field on `FSMLoop` that serves as the per-state action timeout fallback, eliminating the hardcoded 120s executor default and the need to annotate every prompt state individually. Updated `issue-refinement.yaml` to use `default_timeout: 3600` with a `timeout: 86400` total cap, updated BUG-773's proposed fix, created the ENH-776 tracking issue, and added tests covering the full fallback chain.
+Implemented a `default_timeout` field on `FSMLoop` that serves as the per-state action timeout fallback, eliminating the hardcoded 120s executor default and the need to annotate every prompt state individually. Updated `issue-refinement.yaml` to use `default_timeout: 3600` with a `timeout: 86400` total cap, updated BUG-773's proposed fix, created the ENH-1509 tracking issue, and added tests covering the full fallback chain.
 
 ## Problem
 
@@ -41,11 +42,11 @@ Implemented a `default_timeout` field on `FSMLoop` that serves as the per-state 
 - Added `default_timeout` to the Optional Loop-Level Settings YAML schema reference
 - Expanded the Timeouts section from two to three levels: state `timeout:` → loop `default_timeout:` → hardcoded fallback (3600s prompt / 30s MCP)
 
-### `.issues/enhancements/P3-ENH-776-add-loop-level-default-timeout.md`
+### `.issues/enhancements/P3-ENH-1509-add-loop-level-default-timeout.md`
 - Created tracking issue for the schema/executor changes with full acceptance criteria
 
 ### `.issues/bugs/P2-BUG-773-…`
-- Revised Proposed Fix section: split into "immediate (no dependency)" (`on_error: check_commit`) and "once ENH-776 lands" (`default_timeout: 3600`)
+- Revised Proposed Fix section: split into "immediate (no dependency)" (`on_error: check_commit`) and "once ENH-1509 lands" (`default_timeout: 3600`)
 - Revised Acceptance Criteria to match the two-phase fix
 - Added `schema.py` and `executor.py` as dependency files
 

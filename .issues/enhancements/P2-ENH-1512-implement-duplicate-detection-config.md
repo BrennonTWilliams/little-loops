@@ -3,6 +3,8 @@ discovered_date: 2026-03-22T00:00:00Z
 discovered_by: audit-docs
 confidence_score: 95
 outcome_confidence: 86
+status: done
+completed_at: 2026-03-23T00:00:00Z
 ---
 
 # ENH: Implement `duplicate_detection` config for `IssuesConfig`

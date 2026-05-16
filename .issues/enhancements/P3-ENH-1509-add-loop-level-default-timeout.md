@@ -1,8 +1,8 @@
 ---
-id: ENH-776
+id: ENH-1509
 type: ENH
 priority: P3
-status: active
+status: done
 title: Add `default_timeout` to FSMLoop schema
 discovered_date: 2026-03-16
 discovered_by: plan
@@ -12,6 +12,7 @@ labels:
   - schema
 confidence_score: 100
 outcome_confidence: 93
+completed_at: 2026-03-16T00:00:00Z
 ---
 
 ## Summary

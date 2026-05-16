@@ -3,9 +3,11 @@ discovered_date: 2026-04-04
 discovered_by: split-from-FEAT-916
 confidence_score: 100
 outcome_confidence: 86
+status: done
+completed_at: 2026-04-04T00:00:00Z
 ---
 
-# FEAT-919: JSON Schema Generation for Event Types
+# FEAT-1516: JSON Schema Generation for Event Types
 
 ## Summary
 

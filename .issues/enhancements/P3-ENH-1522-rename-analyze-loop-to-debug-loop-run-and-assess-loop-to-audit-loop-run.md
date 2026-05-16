@@ -4,9 +4,10 @@ type: ENH
 priority: P3
 decision_needed: false
 completed_at: 2026-05-06T00:00:00Z
+status: done
 ---
 
-# ENH-1378: Rename `analyze-loop` → `debug-loop-run` and `assess-loop` → `audit-loop-run`
+# ENH-1522: Rename `analyze-loop` → `debug-loop-run` and `assess-loop` → `audit-loop-run`
 
 ## Summary
 

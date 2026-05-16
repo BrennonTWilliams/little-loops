@@ -3,9 +3,11 @@ discovered_date: 2026-03-23T00:00:00Z
 discovered_by: user-report
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-23T00:00:00Z
 ---
 
-# BUG-864: `/ll:init` asks about hook loading method even for plugin users
+# BUG-1515: `/ll:init` asks about hook loading method even for plugin users
 
 ## Summary
 

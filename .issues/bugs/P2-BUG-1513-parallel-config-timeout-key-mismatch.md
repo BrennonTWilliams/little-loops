@@ -3,6 +3,8 @@ discovered_date: 2026-03-22T00:00:00Z
 discovered_by: audit-docs
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-23T00:00:00Z
 ---
 
 # BUG: Parallel config `timeout_per_issue` key silently ignored

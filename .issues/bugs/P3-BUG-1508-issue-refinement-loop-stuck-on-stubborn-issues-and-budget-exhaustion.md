@@ -5,9 +5,11 @@ resolved_date: 2026-03-13
 resolved_by: manual
 confidence_score: 100
 outcome_confidence: 100
+status: done
+completed_at: 2026-03-13T00:00:00Z
 ---
 
-# BUG-735: `issue-refinement` loop exhausts iteration budget on stubborn issues
+# BUG-1508: `issue-refinement` loop exhausts iteration budget on stubborn issues
 
 ## Summary
 

@@ -1,9 +1,11 @@
 ---
 discovered_date: 2026-03-20
 discovered_by: user_report
+status: done
+completed_at: 2026-03-20T00:00:00Z
 ---
 
-# BUG-849: go-no-go agents fail with "Not logged in" due to worktree isolation
+# BUG-1514: go-no-go agents fail with "Not logged in" due to worktree isolation
 
 ## Summary
 
