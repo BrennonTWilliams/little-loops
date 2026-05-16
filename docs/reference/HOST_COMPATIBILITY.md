@@ -30,9 +30,13 @@ into `LLHookEvent` payloads.
 | `permission_request` | N/A         | N/A           | (deferred)    |
 
 [^hot]: Hot-path intents (`pre_tool_use` / `post_tool_use`) fire on every
-    tool invocation and require a latency budget. The OpenCode adapter
-    defers these until a sidecar approach is benchmarked; the Codex
-    adapter inherits the same constraint.
+    tool invocation and require a latency budget. Research decision
+    (FEAT-1488, `thoughts/research/hot-path-hook-intents.md`): wire
+    `post_tool_use` as fire-and-forget (no blocking, zero user-visible
+    overhead); benchmark cold-start p95 before wiring `pre_tool_use` as
+    a blocking handler. A sidecar (`UnixSocketTransport` pattern) is
+    viable if p95 ≥ 400ms but is deferred until the benchmark confirms
+    it's needed. Implementation: FEAT-1489.
 
 [^postcompact]: Codex's `PostCompact` event has the same payload shape as
     `PreCompact`, but ll's existing `pre_compact` handler performs all
@@ -149,3 +153,9 @@ all real logic lives in `scripts/little_loops/hooks/`.
 - **FEAT-1487** — Update parity matrix and footnote for Codex slash-command gap.
 - **FEAT-992** — Raspberry Pi compatibility (deferred — will add a Pi
   column once the Pi plugin API research is done).
+- **FEAT-1488** — Research spike: sidecar/IPC for hot-path intents on
+  non-Claude-Code hosts (completed — decision: opt-in-only + fire-and-forget
+  `post_tool_use`; sidecar deferred until benchmark; see
+  `thoughts/research/hot-path-hook-intents.md`).
+- **FEAT-1489** — Wire `post_tool_use` for Codex and OpenCode (fire-and-forget);
+  create benchmark script; wire `pre_tool_use` if benchmark clears 200ms threshold.

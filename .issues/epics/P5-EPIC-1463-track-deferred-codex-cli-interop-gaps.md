@@ -108,10 +108,12 @@ FEAT-992).
 
 - Orchestration CLI host abstraction (FEAT-1462).
 - Pi compatibility (FEAT-992).
-- Hot-path hook intents (`pre_tool_use` / `post_tool_use`) — these
-  remain deferred until the latency/sidecar question is answered for
-  *all* non-Claude-Code hosts simultaneously. Not a Codex-specific
-  problem.
+- ~~Hot-path hook intents (`pre_tool_use` / `post_tool_use`) — deferred until
+  the latency/sidecar question is answered.~~ **Decision reached (FEAT-1488)**:
+  wire `post_tool_use` as fire-and-forget immediately (FEAT-1489); benchmark
+  first (`scripts/tests/bench_opencode_adapter.py`) then wire `pre_tool_use`
+  opt-in-only if p95 < 200ms, or implement sidecar if p95 ≥ 400ms.
+  See `thoughts/research/hot-path-hook-intents.md`.
 
 ## Children
 
@@ -123,6 +125,11 @@ FEAT-992).
 - **FEAT-1487** — Update `HOST_COMPATIBILITY.md` `[^cmds]` footnote and
   parity matrix to reflect Codex slash-command gap (no `.codex/prompts/`
   surface; Skills API covers both use-cases).
+- **FEAT-1488** — Research spike: sidecar/IPC for hot-path intents (completed —
+  decision: opt-in-only + fire-and-forget `post_tool_use`; sidecar deferred;
+  see `thoughts/research/hot-path-hook-intents.md`).
+- **FEAT-1489** — Wire `post_tool_use` fire-and-forget for Codex and OpenCode;
+  create benchmark script; wire `pre_tool_use` based on benchmark results.
 - **(unfiled)** ENH — Wire `post_compact` adapter intent (gated on
   finding a real consumer).
 - **(unfiled)** ENH — Wire `permission_request` adapter intent (gated
