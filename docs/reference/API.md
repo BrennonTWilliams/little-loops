@@ -5694,16 +5694,20 @@ Host-agnostic CLI invocation layer. Every shell-out to a host CLI (`claude`, `co
 
 ```python
 from little_loops.host_runner import (
+    CapabilityEntry,
     CapabilityNotSupported,
+    CapabilityReport,
     HostCapabilities,
     HostInvocation,
     HostNotConfigured,
     HostRunner,
+    HookEntry,
+    apply_host_cli_from_config,
     resolve_host,
 )
 ```
 
-Public surface — `__all__ = ["CapabilityNotSupported", "ClaudeCodeRunner", "CodexRunner", "HostCapabilities", "HostInvocation", "HostNotConfigured", "HostRunner", "OpenCodeRunner", "PiRunner", "resolve_host"]`.
+Public surface — `__all__ = ["CapabilityEntry", "CapabilityNotSupported", "CapabilityReport", "ClaudeCodeRunner", "CodexRunner", "HostCapabilities", "HostInvocation", "HostNotConfigured", "HostRunner", "HookEntry", "OpenCodeRunner", "PiRunner", "apply_host_cli_from_config", "resolve_host"]`.
 
 ### HostInvocation
 
@@ -5769,6 +5773,7 @@ class HostRunner(Protocol):
                             json_schema: dict | None = None) -> HostInvocation: ...
     def build_version_check(self) -> HostInvocation: ...
     def build_detached(self, *, prompt: str) -> HostInvocation: ...
+    def describe_capabilities(self) -> CapabilityReport: ...
 ```
 
 **Methods:**
@@ -5777,6 +5782,7 @@ class HostRunner(Protocol):
 - `build_blocking_json()` — argv for a one-shot invocation returning a single JSON blob. Used by FSM structured evaluators.
 - `build_version_check()` — argv that prints the host's version and exits. Used by capability probes.
 - `build_detached()` — argv for fire-and-forget detached execution. Used by FSM handoff.
+- `describe_capabilities()` — probe the host and return a `CapabilityReport` describing which features are supported. Used by `ll-doctor`.
 
 **Concrete runners:**
 
@@ -5786,6 +5792,88 @@ class HostRunner(Protocol):
 | `CodexRunner` | `codex` CLI | ✓ production | Translates the Claude-shaped Protocol surface to Codex `exec` headless mode. Auto-detected when `codex` is on PATH (probe order: `claude → codex → pi`). Emits `CapabilityNotSupported` for `agent` / `tools` parameters. |
 | `OpenCodeRunner` | `opencode` CLI | stub | Registered so `LL_HOST_CLI=opencode` resolves to a useful error rather than the generic "unknown host". All `build_*` methods raise `HostNotConfigured`. See FEAT-1472. |
 | `PiRunner` | `pi` CLI | stub | Present in `_PROBE_ORDER`, so hosts with `pi` on PATH resolve to this stub. All `build_*` methods raise `HostNotConfigured`. Pi orchestration is tracked under FEAT-992. |
+
+### CapabilityEntry
+
+Immutable value object describing the support status of a single host capability.
+
+```python
+@dataclass(frozen=True)
+class CapabilityEntry:
+    name: str
+    status: Literal["full", "partial", "unsupported"]
+    note: str = ""
+```
+
+**Fields:**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `name` | `str` | *(required)* | Capability identifier (e.g., `"streaming"`, `"permission_skip"`). |
+| `status` | `Literal["full", "partial", "unsupported"]` | *(required)* | Support level on the active host. |
+| `note` | `str` | `""` | Optional human-readable clarification (e.g., `"flag accepted but not validated"`). |
+
+### HookEntry
+
+Immutable value object describing the installation status of a single hook event.
+
+```python
+@dataclass(frozen=True)
+class HookEntry:
+    name: str
+    status: Literal["installed", "registered", "deferred", "absent"]
+    note: str = ""
+```
+
+**Fields:**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `name` | `str` | *(required)* | Hook event name (e.g., `"pre_tool_use"`, `"post_tool_use"`). |
+| `status` | `Literal["installed", "registered", "deferred", "absent"]` | *(required)* | Whether the hook is active on this host. |
+| `note` | `str` | `""` | Optional clarification. |
+
+### CapabilityReport
+
+Aggregated result of `describe_capabilities()`. Produced by every `HostRunner` implementation and consumed by `ll-doctor`.
+
+```python
+@dataclass(frozen=True)
+class CapabilityReport:
+    host: str
+    binary: str
+    version: str
+    capabilities: list[CapabilityEntry]
+    hooks: list[HookEntry]
+```
+
+**Fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `host` | `str` | Runner name (e.g., `"claude"`, `"codex"`). |
+| `binary` | `str` | Resolved binary path (e.g., `"/usr/local/bin/claude"`). |
+| `version` | `str` | Version string reported by the host, or `"unknown"` if detection fails. |
+| `capabilities` | `list[CapabilityEntry]` | One entry per capability probe. |
+| `hooks` | `list[HookEntry]` | One entry per registered hook event. |
+
+### describe_capabilities
+
+Protocol method implemented by every `HostRunner`. Returns a `CapabilityReport` without invoking the host for a real task — capability probes are fast, read-only checks.
+
+```python
+def describe_capabilities(self) -> CapabilityReport: ...
+```
+
+Used by `ll-doctor check` to generate human-readable and JSON diagnostic output. Each runner reports only the capabilities it can probe; stubs (`OpenCodeRunner`, `PiRunner`) return `"unsupported"` for all entries.
+
+### apply_host_cli_from_config
+
+Apply the `orchestration.host_cli` config key (or `LL_HOST_CLI` env var) to the runner selection before the binary probe runs. Typically called once at startup by orchestration entry points.
+
+```python
+def apply_host_cli_from_config(config: dict) -> None: ...
+```
 
 ### resolve_host
 

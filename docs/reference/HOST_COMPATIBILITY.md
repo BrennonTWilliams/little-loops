@@ -159,6 +159,16 @@ without invoking the adapter.
 Each adapter is a thin transport (`spawn → set env → pipe stdin → exit`);
 all real logic lives in `scripts/little_loops/hooks/`.
 
+## Runnable Capability Check
+
+To verify which little-loops features your active host CLI supports, run:
+
+```bash
+ll-doctor check
+```
+
+`ll-doctor` probes the host binary and returns a `CapabilityReport` with one entry per capability (streaming, permission skip, agent selection, tool allowlist) and per registered hook event. See [`docs/reference/CLI.md#ll-doctor`](CLI.md#ll-doctor) for full usage and [`docs/reference/API.md#capabilityreport`](API.md#capabilityreport) for the data model.
+
 ## Tracking issues
 
 - **FEAT-957** — Codex CLI plugin compatibility (this matrix's Codex column).

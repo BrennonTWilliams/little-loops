@@ -259,6 +259,7 @@ ll-create-extension Scaffold a new little-loops extension project
 ll-generate-schemas Regenerate JSON Schema files for all LLEvent types (maintainer tool)
 ll-generate-skill-descriptions Auto-generate ≤100-char skill descriptions via Claude CLI (release utility)
 ll-adapt-skills-for-codex Add Codex Skills API frontmatter to all skills AND bridge commands/*.md into skills/ll-<name>/
+ll-doctor         Check host CLI capability support for little-loops features
 ll-learning-tests Query and manage the learning test registry (check/list/mark-stale)
 ll-logs           Discover and extract ll-relevant log entries from Claude project logs
 

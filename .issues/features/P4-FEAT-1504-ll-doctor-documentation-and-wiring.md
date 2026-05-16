@@ -2,8 +2,9 @@
 id: FEAT-1504
 type: FEAT
 priority: P4
-status: open
+status: done
 captured_at: '2026-05-16T15:07:07Z'
+completed_at: '2026-05-16T17:27:51Z'
 discovered_date: 2026-05-16
 discovered_by: issue-size-review
 parent: FEAT-1496
@@ -14,6 +15,12 @@ labels:
 - preflight
 - docs
 size: Small
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-1504: ll-doctor — documentation and wiring touchpoints
@@ -99,29 +106,56 @@ No new abstractions or refactors; this issue is intentionally a single mechanica
 4. Update `skills/configure/areas.md` — increment `"Authorize all N"` and add `ll-doctor` to the enumeration.
 5. Update `skills/init/SKILL.md` — add `"Bash(ll-doctor:*)"` to the permissions block.
 6. Add `### ll-doctor` section to `docs/reference/CLI.md` (follow the `### ll-action` model for formatting).
-7. Update `docs/reference/API.md` `## little_loops.host_runner` section — add `CapabilityReport`, `CapabilityEntry`, `HookEntry`, `describe_capabilities()` to the symbol table.
-8. Update `docs/ARCHITECTURE.md` `## Host CLI Abstraction` symbol table — add new dataclasses.
+7. Update `docs/reference/API.md` `## little_loops.host_runner` section — add `CapabilityReport`, `CapabilityEntry`, `HookEntry`, `describe_capabilities()`, `apply_host_cli_from_config()` to the symbol table; update the stale `__all__` listing (line 5706) and the `HostRunner` Protocol listing (lines 5759–5772) to include `describe_capabilities()`.
+8. ~~Update `docs/ARCHITECTURE.md`~~ — **skip**: `CapabilityReport`, `CapabilityEntry`, `HookEntry` are already documented in the `## Host Runner Layer` component table (line 551). No change needed.
 9. Update `.claude/CLAUDE.md` CLI Tools section — add `ll-doctor` line.
 10. Update `docs/reference/HOST_COMPATIBILITY.md` — add a cross-reference paragraph pointing users to `ll-doctor` for a runnable capability check.
-11. Update `scripts/tests/test_create_extension_wiring.py` — fix count assertions.
-12. Verify or extend `scripts/tests/test_feat1462_doc_wiring.py` — ensure `TestApiMdWiring` asserts the presence of `CapabilityReport` and `describe_capabilities` in `API.md` and `ARCHITECTURE.md`.
-13. Run: `python -m pytest scripts/tests/test_create_extension_wiring.py scripts/tests/test_feat1462_doc_wiring.py -v && ruff check scripts/`
+11. Update `scripts/tests/test_create_extension_wiring.py` — fix 4 count assertions: lines 57, 79, 192, 196 (`"Authorize all 21"` → `"Authorize all 22"` and `"23 typed CLI tools"` → `"24 typed CLI tools"`).
+11a. Update `scripts/tests/test_ll_logs_wiring.py` — fix `TestConfigureAreasWiring.test_authorize_all_count_is_17` (line 45): `"Authorize all 21"` → `"Authorize all 22"`.
+12. Extend `scripts/tests/test_feat1462_doc_wiring.py` `TestApiMdWiring` — add 4 new test methods: `test_capability_report_documented`, `test_capability_entry_documented`, `test_hook_entry_documented`, `test_describe_capabilities_documented` (see Integration Map for exact code).
+13. Create `scripts/tests/test_feat1504_doc_wiring.py` — new wiring test file asserting `ll-doctor` appears in `commands/help.md`, `docs/reference/CLI.md`, `.claude/CLAUDE.md`, `skills/configure/areas.md`, `skills/init/SKILL.md`, `docs/reference/HOST_COMPATIBILITY.md`. Follow pattern from `test_ll_logs_wiring.py` (no fixtures, `Path.read_text()` per method).
+14. Run: `python -m pytest scripts/tests/test_create_extension_wiring.py scripts/tests/test_feat1462_doc_wiring.py scripts/tests/test_ll_logs_wiring.py scripts/tests/test_feat1504_doc_wiring.py -v && ruff check scripts/`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+1. Update `docs/reference/API.md` import code block (lines 5695–5703) — add `CapabilityEntry`, `CapabilityReport`, `HookEntry`, `apply_host_cli_from_config` to the `from little_loops.host_runner import (...)` example alongside the `__all__` edit in step 7
+2. Create `scripts/tests/test_feat1504_doc_wiring.py` — new wiring test following the established 28-file convention; model after `test_ll_logs_wiring.py`; cover `ll-doctor` string in all 6 updated docs/skill/command files
 
 ## Files to Modify
 
-- `README.md` — CLI tool count strings
-- `commands/help.md` — `ll-doctor` entry
-- `skills/configure/areas.md` — "Authorize all N" count
-- `skills/init/SKILL.md` — permissions block
-- `docs/reference/CLI.md` — new `### ll-doctor` section
-- `docs/reference/API.md` — symbol table additions
-- `docs/ARCHITECTURE.md` — symbol table additions
+- `README.md` — CLI tool count strings (lines 46, 164)
+- `commands/help.md` — `ll-doctor` entry in CLI TOOLS block (lines 239–264)
+- `skills/configure/areas.md` — "Authorize all N" count (line 823)
+- `skills/init/SKILL.md` — permissions block (lines 502–519) + CLAUDE.md append template (lines 564–583) + CLAUDE.md create template (lines 601–613)
+- `docs/reference/CLI.md` — new `### ll-doctor` section (add after line 89, model after `### ll-action` at lines 33–89)
+- `docs/reference/API.md` — symbol table + `__all__` + `HostRunner` Protocol listing in `## little_loops.host_runner` (lines 5691–5834)
+- ~~`docs/ARCHITECTURE.md`~~ — **already up to date**; `CapabilityReport`, `CapabilityEntry`, `HookEntry` already documented in `## Host Runner Layer` component table (line 551). No edit needed.
 - `.claude/CLAUDE.md` — CLI Tools section
 - `docs/reference/HOST_COMPATIBILITY.md` — cross-link
-- `scripts/tests/test_create_extension_wiring.py` — count assertions
-- `scripts/tests/test_feat1462_doc_wiring.py` — symbol coverage
+- `scripts/tests/test_create_extension_wiring.py` — 4 count assertions at lines 57, 79, 192, 196
+- `scripts/tests/test_feat1462_doc_wiring.py` — add 4 new test methods to `TestApiMdWiring`
+- `scripts/tests/test_ll_logs_wiring.py` — **additional file not in original scope**: `TestConfigureAreasWiring.test_authorize_all_count_is_17` (line 45) also asserts `"Authorize all 21"` and must be updated to `"Authorize all 22"`
+- `scripts/tests/test_feat1504_doc_wiring.py` — **new file** (does not exist yet): create wiring test for ll-doctor coverage across updated docs [Agent 3 finding]
 
 ## Integration Map
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/__init__.py` — already re-exports `CapabilityEntry`, `CapabilityReport`, `HookEntry`, `apply_host_cli_from_config` in `__all__`; no edit needed for FEAT-1504 scope (confirmed complete)
+- `scripts/little_loops/host_runner.py` — already has correct `__all__`; no edit needed (confirmed complete)
+- `scripts/little_loops/cli/__init__.py` — will need `main_doctor` import and `__all__` addition when `doctor.py` is created; **owned by FEAT-1503/FEAT-1524**, not this issue
+- `scripts/pyproject.toml` — will need `ll-doctor = "little_loops.cli:main_doctor"` in `[project.scripts]`; **owned by FEAT-1503/FEAT-1524**, not this issue
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_feat1504_doc_wiring.py` — **new test file needed** following the established 28-file `test_feat<NNNN>_doc_wiring.py` convention; should assert `ll-doctor` appears in `commands/help.md`, `docs/reference/CLI.md`, `.claude/CLAUDE.md`, `skills/configure/areas.md`, `skills/init/SKILL.md`, `docs/reference/HOST_COMPATIBILITY.md`. Pattern to follow: `test_ll_logs_wiring.py` (CLI tool with help.md + init + configure wiring). Add to the test run in step 13.
+- `scripts/tests/test_host_runner.py` — existing coverage for `CapabilityReport`, `CapabilityEntry`, `describe_capabilities` in `TestCapabilityReport` and `TestDescribeCapabilities`; no changes needed
+- `scripts/tests/test_action.py` — existing coverage for `CapabilityReport` via `cmd_capabilities()`; no changes needed
+- Note: `HookEntry` has zero direct unit-test coverage (only `report.hooks == []` in `TestCapabilityReport.test_capability_report_defaults`); FEAT-1504's wiring test only needs the doc assertion, not a new unit test
 
 Anchor references from parent issue (Agent 2 findings):
 - `README.md:46` — `"23 typed CLI tools"` (verify before editing)
@@ -131,6 +165,65 @@ Anchor references from parent issue (Agent 2 findings):
 - `skills/init/SKILL.md` — bash permissions block
 - `scripts/tests/test_create_extension_wiring.py` — `TestFeat1229LlActionWiring.test_configure_areas_count_is_17` asserts count strings
 - `scripts/tests/test_feat1462_doc_wiring.py` — `TestApiMdWiring`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Verified current strings (confirmed exact values):**
+- `README.md:46` — exact string: `"23 typed CLI tools"` → target: `"24 typed CLI tools"`
+- `README.md:164` — exact string: `"24 CLI tools"` → target: `"25 CLI tools"` (note: the two README counts are already inconsistent with each other — both need incrementing)
+- `skills/configure/areas.md:823` — exact string: `"Authorize all 21 ll- CLI tools and handoff write: ll-action, ll-issues, ll-auto, ll-parallel, ll-sprint, ll-loop, ll-workflows, ll-messages, ll-history, ll-deps, ll-sync, ll-verify-docs, ll-check-links, ll-gitignore, ll-migrate, ll-migrate-relationships, ll-create-extension, ll-learning-tests, ll-logs, ll-generate-skill-descriptions, ll-adapt-skills-for-codex, Write(.ll/ll-continue-prompt.md)"` → change count to 22, add `ll-doctor` after `ll-adapt-skills-for-codex`
+
+**`skills/init/SKILL.md` — three locations to update (not just the permissions block):**
+- Lines 502–519: `Bash(ll-*:*)` permissions block (17 entries) — add `"Bash(ll-doctor:*)"`
+- Lines 564–583: Step 11 "append" variant of the CLAUDE.md template — add `ll-doctor` bullet
+- Lines 601–613: Step 11 "create" variant of the CLAUDE.md template — add `ll-doctor` bullet
+
+**`docs/ARCHITECTURE.md` is already up to date — skip it:**
+- The `## Host Runner Layer` component table (line 551) already documents `CapabilityReport`, `CapabilityEntry`, `HookEntry`, and explicitly names `ll-doctor` as the consumer. No edits needed.
+
+**Third test file requiring a count bump (not in original issue):**
+- `scripts/tests/test_ll_logs_wiring.py:45` — `TestConfigureAreasWiring.test_authorize_all_count_is_17` asserts `"Authorize all 21"` → change to `"Authorize all 22"`
+
+**All exact assertion strings to change in `test_create_extension_wiring.py`:**
+- Line 57 (`test_count_updated_to_17`): `assert "Authorize all 21"` → `"Authorize all 22"`
+- Line 79 (`test_readme_tool_count_is_20`): `assert "23 typed CLI tools"` → `"24 typed CLI tools"`
+- Line 192 (`test_readme_tool_count_is_20`): `assert "23 typed CLI tools"` → `"24 typed CLI tools"`
+- Line 196 (`test_configure_areas_count_is_17`): `assert "Authorize all 21"` → `"Authorize all 22"`
+
+**New test methods to add to `TestApiMdWiring` in `test_feat1462_doc_wiring.py`:**
+```python
+def test_capability_report_documented(self) -> None:
+    assert "CapabilityReport" in content
+
+def test_capability_entry_documented(self) -> None:
+    assert "CapabilityEntry" in content
+
+def test_hook_entry_documented(self) -> None:
+    assert "HookEntry" in content
+
+def test_describe_capabilities_documented(self) -> None:
+    assert "describe_capabilities" in content
+```
+
+**`docs/reference/API.md` import code block (lines 5695–5703) — not explicitly called out in original scope:**
+- The `from little_loops.host_runner import (...)` code example lists only: `CapabilityNotSupported`, `HostCapabilities`, `HostInvocation`, `HostNotConfigured`, `HostRunner`, `resolve_host`. It is missing `CapabilityEntry`, `CapabilityReport`, `HookEntry`, `apply_host_cli_from_config`. Update this block alongside the `__all__` line (step 7) to keep the usage example consistent with the symbol table additions. [Agent 2 finding]
+
+**`docs/reference/CLI.md` — model section location:**
+- `### ll-action` spans lines 33–89 under `## Skill Invocation`; has subcommands `#### invoke`, `#### capabilities`, `#### list`
+- Add `### ll-doctor` in a new `## Diagnostics` section (or append after `## Skill Invocation`) — does not belong under `## Issue Processing` (that's for `ll-auto`, `ll-parallel`, etc.)
+
+**`docs/reference/API.md` — two locations to update in `## little_loops.host_runner` (lines 5691–5834):**
+- `__all__` listing at line 5706 is stale — missing `CapabilityEntry`, `CapabilityReport`, `HookEntry`, `apply_host_cli_from_config`
+- `HostRunner` Protocol listing at lines 5759–5772 omits `describe_capabilities()` — add it
+- Add symbol table entries for `CapabilityReport`, `CapabilityEntry`, `HookEntry`, `describe_capabilities()`, `apply_host_cli_from_config()`
+
+**Data model signatures (from `host_runner.py` lines 106–144, all already implemented):**
+- `CapabilityEntry(name: str, status: Literal["full","partial","unsupported"], note: str = "")` — frozen dataclass (line 106)
+- `HookEntry(name: str, status: Literal["installed","registered","deferred","absent"], note: str = "")` — frozen dataclass (line 119)
+- `CapabilityReport(host: str, binary: str, version: str, capabilities: list[CapabilityEntry], hooks: list[HookEntry])` — frozen dataclass (line 130)
+- `describe_capabilities() -> CapabilityReport` — Protocol method (line 202), implemented in all four runners
 
 ## Impact
 
@@ -149,6 +242,10 @@ Anchor references from parent issue (Agent 2 findings):
 - Parent: FEAT-1496 (host-capability preflight); siblings: FEAT-1523, FEAT-1503.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-16T17:23:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a9680c6-2120-4081-a81e-5791f4995480.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2518977a-4e9e-4286-8dc8-8e511a668f16.jsonl`
+- `/ll:wire-issue` - 2026-05-16T17:19:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7fba1b70-3600-48bf-8074-93d926bd2132.jsonl`
+- `/ll:refine-issue` - 2026-05-16T17:13:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f2a8206-a627-4684-bd7e-f021a0e6de2e.jsonl`
 - `/ll:format-issue` - 2026-05-16T15:15:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9fd0d0fa-5b4e-41d5-9893-56163f3cc33e.jsonl`
 - `/ll:issue-size-review` - 2026-05-16T15:07:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b57cdb22-126d-4dc6-b12f-a5213e07e705.jsonl`
 

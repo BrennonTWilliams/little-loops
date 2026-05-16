@@ -54,8 +54,8 @@ class TestConfigureAreasWiring:
 
     def test_count_updated_to_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 21" in content, (
-            "skills/configure/areas.md must show 'Authorize all 21' ll- CLI tools"
+        assert "Authorize all 22" in content, (
+            "skills/configure/areas.md must show 'Authorize all 22' ll- CLI tools"
         )
 
     def test_ll_create_extension_in_enumeration(self) -> None:
@@ -76,7 +76,7 @@ class TestFeat1045DocUpdates:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "23 typed CLI tools" in content, "README.md must say '23 typed CLI tools'"
+        assert "24 typed CLI tools" in content, "README.md must say '24 typed CLI tools'"
 
     def test_claude_md_lists_ll_create_extension(self) -> None:
         content = CLAUDE_MD.read_text()
@@ -189,12 +189,12 @@ class TestFeat1229LlActionWiring:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "23 typed CLI tools" in content, "README.md must say '23 typed CLI tools'"
+        assert "24 typed CLI tools" in content, "README.md must say '24 typed CLI tools'"
 
     def test_configure_areas_count_is_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 21" in content, (
-            "skills/configure/areas.md must show 'Authorize all 21' ll- CLI tools"
+        assert "Authorize all 22" in content, (
+            "skills/configure/areas.md must show 'Authorize all 22' ll- CLI tools"
         )
 
     def test_configure_areas_lists_ll_action(self) -> None:

@@ -48,6 +48,30 @@ class TestApiMdWiring:
             "API.md must document the CapabilityNotSupported warning"
         )
 
+    def test_capability_report_documented(self) -> None:
+        content = API_DOC.read_text()
+        assert "CapabilityReport" in content, (
+            "API.md must document the CapabilityReport dataclass"
+        )
+
+    def test_capability_entry_documented(self) -> None:
+        content = API_DOC.read_text()
+        assert "CapabilityEntry" in content, (
+            "API.md must document the CapabilityEntry dataclass"
+        )
+
+    def test_hook_entry_documented(self) -> None:
+        content = API_DOC.read_text()
+        assert "HookEntry" in content, (
+            "API.md must document the HookEntry dataclass"
+        )
+
+    def test_describe_capabilities_documented(self) -> None:
+        content = API_DOC.read_text()
+        assert "describe_capabilities" in content, (
+            "API.md must document the describe_capabilities() Protocol method"
+        )
+
 
 class TestArchitectureMdWiring:
     """ARCHITECTURE.md must include host_runner in the layering diagram."""

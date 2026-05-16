@@ -516,6 +516,7 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
      "Bash(ll-create-extension:*)",
      "Bash(ll-learning-tests:*)",
      "Bash(ll-logs:*)",
+     "Bash(ll-doctor:*)",
      "Write(.ll/ll-continue-prompt.md)"
      ```
    - Create `.claude/` directory first if needed
@@ -579,6 +580,7 @@ If user opted in:
    - `ll-generate-schemas` - Regenerate JSON Schema files for all LLEvent types (maintainer tool)
    - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale)
    - `ll-logs` - Discover and extract ll-relevant log entries from Claude project logs
+   - `ll-doctor` - Check host CLI capability support for little-loops features
 
    Install: `pip install -e "./scripts[dev]"`
    ```
@@ -608,6 +610,7 @@ If user opted in:
    - `ll-generate-schemas` - Regenerate JSON Schema files for all LLEvent types (maintainer tool)
    - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale)
    - `ll-logs` - Discover and extract ll-relevant log entries from Claude project logs
+   - `ll-doctor` - Check host CLI capability support for little-loops features
 
    Install: `pip install -e "./scripts[dev]"`
    ```

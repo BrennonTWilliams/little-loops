@@ -89,6 +89,48 @@ ll-action list
 
 ---
 
+## Diagnostics
+
+### ll-doctor
+
+Probes the active host CLI and reports which little-loops features are supported. Produces a `CapabilityReport` with one `CapabilityEntry` per capability (streaming, permission skip, agent selection, tool allowlist) and one `HookEntry` per registered hook event.
+
+**Subcommands:**
+
+#### `check`
+
+Run all capability probes and print a human-readable report.
+
+```bash
+ll-doctor check
+```
+
+**Exit codes:** `0` = all capabilities full, `1` = one or more capabilities partial or unsupported
+
+**Example output:**
+```
+Host:    claude  (1.2.3)
+Binary:  /usr/local/bin/claude
+
+Capabilities:
+  streaming          full
+  permission_skip    full
+  agent_select       full
+  tool_allowlist     partial  (flag accepted but not validated)
+
+Hooks:
+  pre_tool_use       installed
+  post_tool_use      registered
+```
+
+**Examples:**
+```bash
+ll-doctor check
+ll-doctor check --json
+```
+
+---
+
 ## Issue Processing
 
 ### ll-auto
