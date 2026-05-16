@@ -217,7 +217,8 @@ class TestCodexRunner:
         assert "--continue" not in invocation.args
 
     def test_build_streaming_emits_warning_for_agent(self) -> None:
-        """Per AC: --agent has no Codex equivalent and must surface a warning."""
+        """Per AC: Codex has no CLI-flag agent selection (subagents are model-spawned);
+        passing `agent=` must surface a warning."""
         runner = CodexRunner()
         with pytest.warns(CapabilityNotSupported, match="agent"):
             runner.build_streaming(prompt="hi", agent="general-purpose")

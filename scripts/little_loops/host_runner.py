@@ -352,13 +352,25 @@ class CodexRunner:
     - Codex has no single-blob JSON mode; ``--json`` always streams NDJSON
       events. ``build_blocking_json`` uses ``--json`` and callers must consume
       the final event.
-    - Agent selection (``--agent``) and tool allowlist (``--tools``) have no
-      Codex equivalent — Codex routes tool access through sandbox modes and
-      uses ``--profile`` for auth, not persona. Both emit
-      :class:`CapabilityNotSupported` when requested. This deliberately
-      diverges from :class:`ClaudeCodeRunner.build_blocking_json` which
-      silently drops ``json_schema``; FEAT-1465 AC requires the warning be
-      emitted here so callers can degrade explicitly.
+    - Agent selection (``--agent``) has no CLI-flag equivalent in Codex.
+      Codex *does* support custom subagents
+      (`developers.openai.com/codex/subagents`_) defined in
+      ``.codex/agents/*.toml``, but they are spawned by the model during a
+      conversation rather than selected by the caller at invocation. The
+      ``agent`` parameter is therefore dropped with a
+      :class:`CapabilityNotSupported` warning; to get persona behavior under
+      Codex, ship native ``.codex/agents/*.toml`` files (e.g. via a future
+      ``ll-adapt-agents-for-codex``, mirroring ``ll-adapt-skills-for-codex``).
+    - Tool allowlist (``--tools``) has no Codex equivalent — Codex routes
+      tool access through sandbox modes, and ``--profile`` is for auth, not
+      persona. Emits :class:`CapabilityNotSupported` when requested. The
+      warnings here deliberately diverge from
+      :class:`ClaudeCodeRunner.build_blocking_json` which silently drops
+      ``json_schema``; FEAT-1465 AC requires the warning be emitted here so
+      callers can degrade explicitly.
+
+    .. _developers.openai.com/codex/subagents:
+       https://developers.openai.com/codex/subagents
     - Resume restructures the subcommand to ``codex exec resume --last`` per
       Codex CLI reference, rather than appending a ``--continue`` flag.
     """
@@ -386,8 +398,11 @@ class CodexRunner:
     ) -> HostInvocation:
         if agent is not None:
             warnings.warn(
-                "codex host does not support per-agent selection; "
-                "the 'agent' parameter will be ignored.",
+                "codex has no CLI-flag agent selection. Codex subagents "
+                "(.codex/agents/*.toml) exist but are spawned by the model "
+                "during a conversation, not selected at invocation. The "
+                "'agent' parameter will be ignored; ship native Codex agent "
+                "files for persona behavior under this host.",
                 CapabilityNotSupported,
                 stacklevel=2,
             )
@@ -497,7 +512,8 @@ class CodexRunner:
                 CapabilityEntry(
                     "agent_select",
                     "unsupported",
-                    "codex has no per-agent selection; --agent parameter is ignored",
+                    "codex subagents (.codex/agents/*.toml) exist but are spawned "
+                    "by the model, not selected via CLI flag; --agent is ignored",
                 ),
                 # tool_allowlist=False (line 304); warning at build_streaming lines 326-333
                 CapabilityEntry(
