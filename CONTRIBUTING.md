@@ -187,6 +187,7 @@ little-loops/
         │   ├── generate_skill_descriptions.py  # ll-generate-skill-descriptions release utility
         │   ├── auto.py
         │   ├── create_extension.py  # ll-create-extension scaffold CLI
+        │   ├── doctor.py
         │   ├── docs.py
         │   ├── deps.py
         │   ├── history.py

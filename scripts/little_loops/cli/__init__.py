@@ -24,6 +24,7 @@ Provides command-line interfaces for automated issue management:
 - ll-generate-schemas: Generate JSON Schema files for all LLEvent types (internal: dev tooling)
 - ll-generate-skill-descriptions: Auto-generate ≤100-char skill descriptions via Claude CLI
 - ll-learning-tests: Query and manage the learning test registry
+- ll-doctor: Check host CLI capability support for little-loops features
 """
 
 from little_loops.cli.action import main_action
@@ -32,6 +33,7 @@ from little_loops.cli.auto import main_auto
 from little_loops.cli.create_extension import main_create_extension
 from little_loops.cli.deps import main_deps
 from little_loops.cli.docs import main_check_links, main_verify_docs, main_verify_skill_budget
+from little_loops.cli.doctor import main_doctor
 from little_loops.cli.generate_skill_descriptions import main_generate_skill_descriptions
 from little_loops.cli.gitignore import main_gitignore
 from little_loops.cli.history import main_history
@@ -60,6 +62,7 @@ __all__ = [
     "main_check_links",
     "main_create_extension",
     "main_deps",
+    "main_doctor",
     "main_generate_schemas",  # internal: dev tooling
     "main_generate_skill_descriptions",
     "main_gitignore",
