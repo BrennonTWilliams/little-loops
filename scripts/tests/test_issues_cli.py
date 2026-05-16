@@ -2100,6 +2100,36 @@ class TestIssuesCLIShow:
         data = json.loads(captured.out)
         assert data.get("missing_artifacts") == "true"
 
+    def test_show_json_includes_implementation_order_risk(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show --json output includes implementation_order_risk key with lowercase string value."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P3-FEAT-505-order-risk.md").write_text(
+            "---\nimplementation_order_risk: true\n---\n# FEAT-505: Implementation order risk issue\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "show", "--json", "FEAT-505", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data.get("implementation_order_risk") == "true"
+
     def test_show_displays_captured_at(
         self,
         temp_project_dir: Path,

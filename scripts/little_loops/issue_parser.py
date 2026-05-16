@@ -267,6 +267,7 @@ class IssueInfo:
     testable: bool | None = None
     decision_needed: bool | None = None
     missing_artifacts: bool | None = None
+    implementation_order_risk: bool | None = None
     session_commands: list[str] = field(default_factory=list)
     session_command_counts: dict[str, int] = field(default_factory=dict)
     labels: list[str] = field(default_factory=list)
@@ -311,6 +312,7 @@ class IssueInfo:
             "testable": self.testable,
             "decision_needed": self.decision_needed,
             "missing_artifacts": self.missing_artifacts,
+            "implementation_order_risk": self.implementation_order_risk,
             "session_commands": self.session_commands,
             "session_command_counts": self.session_command_counts,
             "labels": self.labels,
@@ -348,6 +350,7 @@ class IssueInfo:
             testable=data.get("testable"),
             decision_needed=data.get("decision_needed"),
             missing_artifacts=data.get("missing_artifacts"),
+            implementation_order_risk=data.get("implementation_order_risk"),
             session_commands=data.get("session_commands", []),
             session_command_counts=data.get("session_command_counts", {}),
             labels=data.get("labels", []),
@@ -471,6 +474,16 @@ class IssueParser:
         else:
             missing_artifacts_value = missing_artifacts_raw
 
+        implementation_order_risk_raw = frontmatter.get("implementation_order_risk")
+        if isinstance(implementation_order_risk_raw, str):
+            implementation_order_risk_value: bool | None = (
+                implementation_order_risk_raw.lower() == "true"
+                if implementation_order_risk_raw.lower() in ("true", "false")
+                else None
+            )
+        else:
+            implementation_order_risk_value = implementation_order_risk_raw
+
         status = frontmatter.get("status", "open")
 
         parent = frontmatter.get("parent")
@@ -578,6 +591,7 @@ class IssueParser:
             testable=testable_value,
             decision_needed=decision_needed_value,
             missing_artifacts=missing_artifacts_value,
+            implementation_order_risk=implementation_order_risk_value,
             session_commands=session_commands,
             session_command_counts=session_command_counts,
             labels=labels,

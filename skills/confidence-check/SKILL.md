@@ -549,11 +549,39 @@ After Phase 4.5 writes Outcome Risk Factors, scan the generated risk-factor cont
 
 If any signal phrase is found in the Outcome Risk Factors content written by Phase 4.5:
 
+**Co-Deliverable Suppression**: Before setting the flag, read the issue body for a `### Files to Create` subsection under `## Integration Map`. If the file name mentioned in the risk factor appears in that section, the absent file is a co-deliverable of this issue (it will be created as part of delivering the feature) — do NOT set `missing_artifacts: true`. Instead, proceed to Phase 4.9 to capture the implementation-order concern.
+
+If the absent file is NOT listed in `### Files to Create` (i.e., it is a genuine pre-condition that must exist before implementation can start):
+
 1. Use the Edit tool to update `missing_artifacts: true` in the issue frontmatter `---` block (same inline `---` block replacement pattern as Phase 4)
 2. **Idempotency**: skip the write if `missing_artifacts` is already `true`
 3. Log to terminal output: `✓ missing_artifacts set to true — absent file or unwired component detected in Outcome Risk Factors`
 
 If no signal phrase is found, leave `missing_artifacts` unchanged.
+
+### Phase 4.9: Implementation-Order Risk Flag
+
+**Skip this phase if**: `CHECK_MODE` is true (no writes in check mode).
+
+After Phase 4.5 writes Outcome Risk Factors, scan the generated risk-factor content for signal phrases that indicate implementation ordering advice — a recommendation to create tests or scripts before running the main feature — rather than a true pre-condition wiring gap. This phase also fires when Phase 4.7's co-deliverable suppression blocked a `missing_artifacts` write.
+
+This phase only has effect when Phase 4.5 produced Outcome Risk Factors (i.e., `HAS_FINDINGS` is true and `outcome_confidence < config.commands.confidence_gate.outcome_threshold`); if Phase 4.5 was skipped, no signal phrases will be present.
+
+**Signal phrases** (any match triggers the flag):
+- "implement tests first"
+- "write tests before"
+- "test-first"
+- "co-deliverable"
+- "tests are co-deliverables"
+- "implement first so"
+
+If any signal phrase is found in the Outcome Risk Factors content written by Phase 4.5:
+
+1. Use the Edit tool to update `implementation_order_risk: true` in the issue frontmatter `---` block (same inline `---` block replacement pattern as Phase 4)
+2. **Idempotency**: skip the write if `implementation_order_risk` is already `true`
+3. Log to terminal output: `✓ implementation_order_risk set to true — implementation ordering advice detected in Outcome Risk Factors`
+
+If no signal phrase is found, leave `implementation_order_risk` unchanged.
 
 ### Phase 4.8: Large-File-Surface Suppression
 

@@ -2170,6 +2170,139 @@ class TestIssueInfoMissingArtifacts:
         assert info.missing_artifacts is None
 
 
+class TestIssueInfoImplementationOrderRisk:
+    """Tests for IssueInfo.implementation_order_risk field (ENH-1492)."""
+
+    def test_implementation_order_risk_default_none(self) -> None:
+        """implementation_order_risk defaults to None when not provided."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="ENH",
+            priority="P3",
+            issue_id="ENH-1492",
+            title="Test",
+        )
+        assert info.implementation_order_risk is None
+
+    def test_implementation_order_risk_false(self) -> None:
+        """implementation_order_risk can be set to False."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="ENH",
+            priority="P3",
+            issue_id="ENH-1492",
+            title="Test",
+            implementation_order_risk=False,
+        )
+        assert info.implementation_order_risk is False
+
+    def test_implementation_order_risk_true(self) -> None:
+        """implementation_order_risk can be set to True."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="ENH",
+            priority="P3",
+            issue_id="ENH-1492",
+            title="Test",
+            implementation_order_risk=True,
+        )
+        assert info.implementation_order_risk is True
+
+    def test_implementation_order_risk_in_to_dict(self) -> None:
+        """to_dict() includes implementation_order_risk."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="ENH",
+            priority="P3",
+            issue_id="ENH-1492",
+            title="Test",
+            implementation_order_risk=True,
+        )
+        data = info.to_dict()
+        assert data["implementation_order_risk"] is True
+
+    def test_implementation_order_risk_from_dict_missing(self) -> None:
+        """from_dict() yields None when key is absent."""
+        data = {
+            "path": "test.md",
+            "issue_type": "ENH",
+            "priority": "P3",
+            "issue_id": "ENH-1492",
+            "title": "Test",
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.implementation_order_risk is None
+
+    def test_implementation_order_risk_from_dict_false(self) -> None:
+        """from_dict() round-trips False."""
+        data = {
+            "path": "test.md",
+            "issue_type": "ENH",
+            "priority": "P3",
+            "issue_id": "ENH-1492",
+            "title": "Test",
+            "implementation_order_risk": False,
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.implementation_order_risk is False
+
+    def test_parse_file_implementation_order_risk_true(self, tmp_path: Path) -> None:
+        """Integration: parse_file yields implementation_order_risk=True from frontmatter."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        features_dir = tmp_path / ".issues" / "enhancements"
+        features_dir.mkdir(parents=True)
+        issue_file = features_dir / "P3-ENH-1492-order-risk.md"
+        issue_file.write_text(
+            "---\nimplementation_order_risk: true\n---\n# ENH-1492: Order risk\n"
+        )
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.implementation_order_risk is True
+
+    def test_parse_file_implementation_order_risk_absent(self, tmp_path: Path) -> None:
+        """Integration: parse_file yields implementation_order_risk=None when frontmatter key absent."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        features_dir = tmp_path / ".issues" / "enhancements"
+        features_dir.mkdir(parents=True)
+        issue_file = features_dir / "P3-ENH-1493-normal.md"
+        issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# ENH-1493: Normal\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.implementation_order_risk is None
+
+
 class TestIssueInfoSize:
     """Tests for IssueInfo.size field."""
 

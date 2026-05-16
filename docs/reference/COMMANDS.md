@@ -254,6 +254,10 @@ Pre-implementation confidence check that validates readiness and estimates outco
 
 **`decision_needed` write-back**: After writing Outcome Risk Factors, the skill scans the generated content for signal phrases ("open decision", "unresolved decision", "resolve before implementing", "decision point"). If any are found, it sets `decision_needed: true` in the issue frontmatter (idempotent; skipped in `--check` mode). This ensures the autodev loop's decision gate fires automatically for issues where `confidence-check` identified an unresolved blocking decision.
 
+**`missing_artifacts` write-back** (Phase 4.7): After writing Outcome Risk Factors, the skill scans for signal phrases indicating absent files or unwired components ("not yet created", "does not exist", "needs wiring", "missing artifact", "absent", "unwired component"). Before setting the flag, it checks the issue's `### Files to Create` section — if the absent file is listed there, it is a co-deliverable of this issue and the flag is suppressed. Only genuine pre-condition gaps (files that must exist before implementation starts) set `missing_artifacts: true`. Idempotent; skipped in `--check` mode.
+
+**`implementation_order_risk` write-back** (Phase 4.9): After writing Outcome Risk Factors, the skill scans for signal phrases indicating implementation ordering advice rather than a true wiring gap ("co-deliverable", "implement tests first", "write tests before", "test-first", "tests are co-deliverables", "implement first so"). If any are found, it sets `implementation_order_risk: true` in the issue frontmatter. This flag captures ordering concerns that should NOT trigger the `run_wire` repair path in autodev — they belong in the Implementation Steps body text. Idempotent; skipped in `--check` mode.
+
 ### `/ll:issue-workflow`
 Quick reference for the little-loops issue management workflow. Displays the issue lifecycle diagram and command order.
 

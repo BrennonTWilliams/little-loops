@@ -170,6 +170,56 @@ class TestMissingArtifactsFlagWriteBack:
             "Phase 4.7 must not use AskUserQuestion — flag write-back is unconditional"
         )
 
+    def test_co_deliverable_suppression_documented(self) -> None:
+        text = self._phase_text()
+        assert "Files to Create" in text or "co-deliverable" in text.lower(), (
+            "Phase 4.7 must document the co-deliverable suppression check before setting the flag"
+        )
+
+
+class TestImplementationOrderRiskFlagWriteBack:
+    """Phase 4.9 must document setting implementation_order_risk: true when ordering advice found (ENH-1492)."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("### Phase 4.9: Implementation-Order Risk Flag")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_phase_4_9_heading_exists(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "Phase 4.9: Implementation-Order Risk Flag" in content, (
+            "SKILL.md must contain a 'Phase 4.9: Implementation-Order Risk Flag' section"
+        )
+
+    def test_implementation_order_risk_true_in_phase_4_9(self) -> None:
+        assert "implementation_order_risk: true" in self._phase_text(), (
+            "Phase 4.9 must document setting implementation_order_risk: true in frontmatter"
+        )
+
+    def test_signal_phrases_documented(self) -> None:
+        text = self._phase_text()
+        assert "co-deliverable" in text or "implement tests first" in text, (
+            "Phase 4.9 must document the signal phrases that trigger the flag"
+        )
+
+    def test_idempotency_guard_present(self) -> None:
+        text = self._phase_text()
+        assert "Idempotency" in text or "idempotent" in text.lower(), (
+            "Phase 4.9 must document the idempotency guard (skip if already true)"
+        )
+
+    def test_check_mode_guard_in_phase_4_9(self) -> None:
+        assert "CHECK_MODE" in self._phase_text(), (
+            "Phase 4.9 must include the CHECK_MODE skip guard (no writes in check mode)"
+        )
+
+    def test_no_ask_user_question_in_phase_4_9(self) -> None:
+        assert "AskUserQuestion" not in self._phase_text(), (
+            "Phase 4.9 must not use AskUserQuestion — flag write-back is unconditional"
+        )
+
 
 class TestPhase45OutcomeThreshold:
     """Phase 4.5 must use configurable outcome_threshold, not hardcoded 60 (BUG-1289)."""
