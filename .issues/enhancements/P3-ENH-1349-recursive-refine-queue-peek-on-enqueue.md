@@ -2,15 +2,11 @@
 id: ENH-1349
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-05-03
 discovered_by: capture-issue
 captured_at: '2026-05-03T16:43:25Z'
 completed_at: '2026-05-03T21:45:54Z'
-
-- ENH-1348
-- ENH-1350
-- ENH-1341
 confidence_score: 100
 outcome_confidence: 86
 score_complexity: 25

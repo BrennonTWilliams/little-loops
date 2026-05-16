@@ -2,12 +2,9 @@
 id: ENH-1337
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-05-02
 discovered_by: research-synthesis
-
-- ENH-1338
-- ENH-1339
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 71
@@ -17,6 +14,7 @@ score_ambiguity: 25
 score_change_surface: 18
 size: Very Large
 relates_to: ['ENH-1338', 'ENH-1339']
+completed_at: 2026-05-10T00:00:00Z
 ---
 
 # ENH-1337: Add Per-Subtree Depth Limit to `recursive-refine`

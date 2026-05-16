@@ -2,12 +2,10 @@
 id: ENH-1341
 type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-05-02
 completed_at: 2026-05-03T18:39:24Z
 discovered_by: research-synthesis
-
-- ENH-1340
 decision_needed: false
 confidence_score: 98
 outcome_confidence: 79
