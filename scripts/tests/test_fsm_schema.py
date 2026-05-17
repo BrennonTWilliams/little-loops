@@ -2597,9 +2597,7 @@ class TestTargetStateSpec:
         assert restored.eval_fragment == "eval-fragment-id"
 
     def test_from_dict_fields(self) -> None:
-        spec = TargetStateSpec.from_dict(
-            {"name": "s1", "examples_file": "e.yaml", "eval": "frag"}
-        )
+        spec = TargetStateSpec.from_dict({"name": "s1", "examples_file": "e.yaml", "eval": "frag"})
         assert spec.name == "s1"
         assert spec.examples_file == "e.yaml"
         assert spec.eval_fragment == "frag"
@@ -2617,9 +2615,7 @@ class TestTargetFileSpec:
     def test_from_dict_round_trip(self) -> None:
         original = TargetFileSpec(
             file="loops/my-loop.yaml",
-            states=[
-                TargetStateSpec(name="s1", examples_file="e.yaml", eval_fragment="f1")
-            ],
+            states=[TargetStateSpec(name="s1", examples_file="e.yaml", eval_fragment="f1")],
         )
         restored = TargetFileSpec.from_dict(original.to_dict())
         assert restored.file == "loops/my-loop.yaml"
@@ -2673,9 +2669,7 @@ class TestFSMLoopTargetsField:
         data["targets"] = [
             {
                 "file": "loops/harness-optimize.yaml",
-                "states": [
-                    {"name": "optimize", "examples_file": "e.yaml", "eval": "frag"}
-                ],
+                "states": [{"name": "optimize", "examples_file": "e.yaml", "eval": "frag"}],
             }
         ]
         fsm = FSMLoop.from_dict(data)

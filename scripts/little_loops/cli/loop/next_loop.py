@@ -258,7 +258,9 @@ def cmd_next_loop(
         resolved_input = params.get("input")
         if resolved_input:
             item_count = len(resolved_input.split())
-            param_note = f"input resolved ({item_count} items)" if item_count > 1 else "input resolved"
+            param_note = (
+                f"input resolved ({item_count} items)" if item_count > 1 else "input resolved"
+            )
         elif loop_name in _PARAM_RESOLVERS:
             param_note = "input resolver found no active items"
 

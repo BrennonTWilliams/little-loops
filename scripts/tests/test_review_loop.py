@@ -1162,7 +1162,8 @@ class TestReviewLoopArtifact:
         return {
             "loop": loop,
             "reviewed_at": reviewed_at,
-            "scorecard": scorecard or {
+            "scorecard": scorecard
+            or {
                 "clarity": 4,
                 "decomposition": 3,
                 "resilience": 2,
@@ -1179,35 +1180,71 @@ class TestReviewLoopArtifact:
     def test_artifact_frontmatter_has_required_fields(self) -> None:
         """Artifact frontmatter must include all 6 required fields."""
         fm = self._make_artifact_frontmatter()
-        required = {"loop", "reviewed_at", "scorecard", "findings_count", "simulation_result", "fixes_applied"}
+        required = {
+            "loop",
+            "reviewed_at",
+            "scorecard",
+            "findings_count",
+            "simulation_result",
+            "fixes_applied",
+        }
         assert required.issubset(fm.keys())
 
     def test_artifact_scorecard_has_all_dimensions(self) -> None:
         """Scorecard must include all 6 dimensions and composite."""
         fm = self._make_artifact_frontmatter()
         scorecard = fm["scorecard"]
-        dims = {"clarity", "decomposition", "resilience", "observability", "idempotence", "cost_efficiency"}
+        dims = {
+            "clarity",
+            "decomposition",
+            "resilience",
+            "observability",
+            "idempotence",
+            "cost_efficiency",
+        }
         assert dims.issubset(scorecard.keys())
         assert "composite" in scorecard
 
     def test_artifact_scorecard_composite_is_sum(self) -> None:
         """Composite score must equal sum of 6 dimension scores."""
         scorecard = {
-            "clarity": 4, "decomposition": 3, "resilience": 2,
-            "observability": 3, "idempotence": 4, "cost_efficiency": 3,
+            "clarity": 4,
+            "decomposition": 3,
+            "resilience": 2,
+            "observability": 3,
+            "idempotence": 4,
+            "cost_efficiency": 3,
             "composite": 19,
         }
-        dims = ["clarity", "decomposition", "resilience", "observability", "idempotence", "cost_efficiency"]
+        dims = [
+            "clarity",
+            "decomposition",
+            "resilience",
+            "observability",
+            "idempotence",
+            "cost_efficiency",
+        ]
         assert scorecard["composite"] == sum(scorecard[d] for d in dims)
 
     def test_artifact_scorecard_scores_in_range(self) -> None:
         """All dimension scores must be in [1, 5]."""
         scorecard = {
-            "clarity": 5, "decomposition": 1, "resilience": 3,
-            "observability": 2, "idempotence": 4, "cost_efficiency": 3,
+            "clarity": 5,
+            "decomposition": 1,
+            "resilience": 3,
+            "observability": 2,
+            "idempotence": 4,
+            "cost_efficiency": 3,
             "composite": 18,
         }
-        dims = ["clarity", "decomposition", "resilience", "observability", "idempotence", "cost_efficiency"]
+        dims = [
+            "clarity",
+            "decomposition",
+            "resilience",
+            "observability",
+            "idempotence",
+            "cost_efficiency",
+        ]
         for dim in dims:
             assert 1 <= scorecard[dim] <= 5, f"{dim} score out of range"
 
@@ -1221,6 +1258,7 @@ class TestReviewLoopArtifact:
     def test_artifact_filename_timestamp_format(self) -> None:
         """Artifact filename uses %Y%m%d-%H%M%S format (dash-separated, no T)."""
         import re
+
         # %Y%m%d-%H%M%S produces e.g. 20260517-143207
         pattern = r"^\d{8}-\d{6}$"
         timestamp = "20260517-143207"
@@ -1268,8 +1306,12 @@ class TestReviewLoopRubric:
     def test_rubric_has_six_dimensions(self) -> None:
         """Rubric must include exactly 6 dimensions as defined in reference.md."""
         expected_dims = {
-            "clarity", "decomposition", "resilience",
-            "observability", "idempotence", "cost_efficiency",
+            "clarity",
+            "decomposition",
+            "resilience",
+            "observability",
+            "idempotence",
+            "cost_efficiency",
         }
         assert len(expected_dims) == 6
 
@@ -1289,21 +1331,28 @@ class TestReviewLoopRubric:
         """Resilience dimension 1–2 when states lack on_error routing."""
         spec = {
             "states": {
-                "check": {"action": "ruff check .", "evaluate": {"type": "exit_code"}, "on_yes": "done", "on_no": "fix"},
+                "check": {
+                    "action": "ruff check .",
+                    "evaluate": {"type": "exit_code"},
+                    "on_yes": "done",
+                    "on_no": "fix",
+                },
                 "fix": {"action": "ruff check . --fix", "next": "check"},
                 "done": {"terminal": True},
             }
         }
         states_with_evaluate = [
-            name for name, state in spec["states"].items()
+            name
+            for name, state in spec["states"].items()
             if "evaluate" in state and not state.get("terminal")
         ]
         states_missing_on_error = [
-            name for name in states_with_evaluate
-            if "on_error" not in spec["states"][name]
+            name for name in states_with_evaluate if "on_error" not in spec["states"][name]
         ]
         # All evaluate states lack on_error → Resilience should be 1 or 2
-        assert states_missing_on_error, "Fixture should have states missing on_error for low Resilience score"
+        assert states_missing_on_error, (
+            "Fixture should have states missing on_error for low Resilience score"
+        )
 
     def test_cost_efficiency_low_with_pr1_findings(self) -> None:
         """Cost-efficiency dimension 1–2 when multiple PR-1 findings are present."""
@@ -1328,21 +1377,27 @@ class TestReviewLoopRubric:
         """↑ trend shown when current score exceeds prior score for a dimension."""
         prior_score = 3
         current_score = 4
-        trend = "↑" if current_score > prior_score else ("↓" if current_score < prior_score else "→")
+        trend = (
+            "↑" if current_score > prior_score else ("↓" if current_score < prior_score else "→")
+        )
         assert trend == "↑"
 
     def test_trend_down_when_score_decreases(self) -> None:
         """↓ trend shown when current score is below prior score for a dimension."""
         prior_score = 4
         current_score = 2
-        trend = "↑" if current_score > prior_score else ("↓" if current_score < prior_score else "→")
+        trend = (
+            "↑" if current_score > prior_score else ("↓" if current_score < prior_score else "→")
+        )
         assert trend == "↓"
 
     def test_trend_flat_when_score_unchanged(self) -> None:
         """→ trend shown when current score equals prior score for a dimension."""
         prior_score = 3
         current_score = 3
-        trend = "↑" if current_score > prior_score else ("↓" if current_score < prior_score else "→")
+        trend = (
+            "↑" if current_score > prior_score else ("↓" if current_score < prior_score else "→")
+        )
         assert trend == "→"
 
     def test_rubric_only_flag_stops_after_scorecard(self) -> None:
@@ -1441,7 +1496,12 @@ class TestReviewLoopPostFixIteration:
     """
 
     def _make_finding(self, check_id: str, location: str, message: str = "x") -> dict:
-        return {"check_id": check_id, "severity": "Warning", "location": location, "message": message}
+        return {
+            "check_id": check_id,
+            "severity": "Warning",
+            "location": location,
+            "message": message,
+        }
 
     def test_rt1_detected_when_new_finding_appears(self) -> None:
         """RT-1: a finding in post-fix pass not in original findings triggers RT-1."""
@@ -1454,8 +1514,7 @@ class TestReviewLoopPostFixIteration:
         # Build a set of (check_id, location) keys from original
         original_keys = {(f["check_id"], f["location"]) for f in original_findings}
         regressions = [
-            f for f in post_fix_findings
-            if (f["check_id"], f["location"]) not in original_keys
+            f for f in post_fix_findings if (f["check_id"], f["location"]) not in original_keys
         ]
         assert len(regressions) == 1
         assert regressions[0]["check_id"] == "QC-2"
@@ -1472,8 +1531,7 @@ class TestReviewLoopPostFixIteration:
         ]
         original_keys = {(f["check_id"], f["location"]) for f in original_findings}
         regressions = [
-            f for f in post_fix_findings
-            if (f["check_id"], f["location"]) not in original_keys
+            f for f in post_fix_findings if (f["check_id"], f["location"]) not in original_keys
         ]
         assert len(regressions) == 0
         # → no RT-1 Warning
@@ -1486,8 +1544,7 @@ class TestReviewLoopPostFixIteration:
         post_fix_findings: list[dict] = []  # QC-6 was fixed, no longer present
         original_keys = {(f["check_id"], f["location"]) for f in original_findings}
         regressions = [
-            f for f in post_fix_findings
-            if (f["check_id"], f["location"]) not in original_keys
+            f for f in post_fix_findings if (f["check_id"], f["location"]) not in original_keys
         ]
         assert len(regressions) == 0
         # → no RT-1; fix successfully resolved the original finding

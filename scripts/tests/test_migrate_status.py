@@ -97,8 +97,7 @@ class TestMigrateStatusNormalization:
 
     def test_status_in_body_text_is_not_modified(self) -> None:
         content = (
-            "---\nid: ENH-001\nstatus: done\n---\n\n"
-            "The status: completed value was normalized.\n"
+            "---\nid: ENH-001\nstatus: done\n---\n\nThe status: completed value was normalized.\n"
         )
         updated, changes = _migrate_content(content)
         assert updated == content

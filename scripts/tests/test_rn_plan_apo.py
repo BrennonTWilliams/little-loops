@@ -153,7 +153,12 @@ class TestScorePlansState:
     def test_scores_four_dimensions(self, raw_data: dict) -> None:
         """Per AC: scoring must cover at least 4 dimensions."""
         action = raw_data["states"]["score_plans"].get("action", "")
-        for dim in ("subtask_success_rate", "depth_complexity_ratio", "redundancy", "coverage_gaps"):
+        for dim in (
+            "subtask_success_rate",
+            "depth_complexity_ratio",
+            "redundancy",
+            "coverage_gaps",
+        ):
             assert dim in action, f"score_plans action must reference dimension {dim!r}"
 
     def test_emits_plan_quality_aggregate(self, raw_data: dict) -> None:

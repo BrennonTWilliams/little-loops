@@ -1557,8 +1557,7 @@ class TestAdaptiveLayoutTopologies:
         from little_loops.cli import output as output_mod
 
         long_merged = (
-            "system_problem/max_rounds_exhausted/degrade_give_up"
-            "/retry_flood/blender_5_incompatible"
+            "system_problem/max_rounds_exhausted/degrade_give_up/retry_flood/blender_5_incompatible"
         )
         with _patch.object(output_mod, "terminal_width", return_value=80):
             fsm = self._make_fsm(
@@ -1589,9 +1588,7 @@ class TestAdaptiveLayoutTopologies:
         )
 
         # Truncation marker must be present
-        assert "\u2026" in result, (
-            "Long merged forward-edge label should be truncated with \u2026"
-        )
+        assert "\u2026" in result, "Long merged forward-edge label should be truncated with \u2026"
 
         # No letter should immediately follow a box-border pipe (garbled-label guard)
         for ln in lines:

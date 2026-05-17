@@ -191,16 +191,21 @@ class TestDeepResearchEvaluators:
 
         assert evaluate_output_contains("COVERAGE_SUFFICIENT\n", pattern).verdict == "yes"
         assert evaluate_output_contains("NEED_MORE\n", pattern).verdict == "no"
-        assert evaluate_output_contains(
-            "Average coverage: 4.2/5\nCOVERAGE_SUFFICIENT", pattern
-        ).verdict == "yes"
+        assert (
+            evaluate_output_contains(
+                "Average coverage: 4.2/5\nCOVERAGE_SUFFICIENT", pattern
+            ).verdict
+            == "yes"
+        )
         assert evaluate_output_contains("", pattern).verdict == "no"
 
 
 class TestDeepResearchResolution:
     """Verify the loop is discoverable via the built-in loop resolver."""
 
-    def test_loop_resolves_as_builtin(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_loop_resolves_as_builtin(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """resolve_loop_path finds deep-research as a built-in loop."""
         from little_loops.cli.loop._helpers import get_builtin_loops_dir, resolve_loop_path
 

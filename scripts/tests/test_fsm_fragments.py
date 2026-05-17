@@ -1226,12 +1226,8 @@ class TestScorePlanQualityFragment:
     def test_score_plan_quality_has_description(self) -> None:
         data = self._load_yaml()
         frag = data["fragments"]["score_plan_quality"]
-        assert "description" in frag, (
-            "score_plan_quality fragment is missing a description field"
-        )
-        assert frag["description"].strip(), (
-            "score_plan_quality fragment has an empty description"
-        )
+        assert "description" in frag, "score_plan_quality fragment is missing a description field"
+        assert frag["description"].strip(), "score_plan_quality fragment has an empty description"
 
     def test_score_plan_quality_resolves_in_loop(self, tmp_path: Path) -> None:
         """Full resolve_fragments integration against lib/score-plan-quality.yaml."""

@@ -548,27 +548,20 @@ class TestTargetsValidation:
         )
 
     def test_non_yaml_file_rejected(self) -> None:
-        fsm = self._make_fsm(
-            [TargetFileSpec(file="loops/harness-optimize.txt")]
-        )
+        fsm = self._make_fsm([TargetFileSpec(file="loops/harness-optimize.txt")])
         errors = validate_fsm(fsm)
         assert any(
-            "targets[0].file" in e.message or "targets[0].file" in (e.path or "")
-            for e in errors
+            "targets[0].file" in e.message or "targets[0].file" in (e.path or "") for e in errors
         )
 
     def test_yaml_file_accepted(self) -> None:
-        fsm = self._make_fsm(
-            [TargetFileSpec(file="loops/harness-optimize.yaml")]
-        )
+        fsm = self._make_fsm([TargetFileSpec(file="loops/harness-optimize.yaml")])
         errors = validate_fsm(fsm)
         target_errors = [e for e in errors if "targets" in (e.path or "")]
         assert target_errors == []
 
     def test_glob_only_accepted(self) -> None:
-        fsm = self._make_fsm(
-            [TargetFileSpec(glob="loops/*.yaml")]
-        )
+        fsm = self._make_fsm([TargetFileSpec(glob="loops/*.yaml")])
         errors = validate_fsm(fsm)
         target_errors = [e for e in errors if "targets" in (e.path or "")]
         assert target_errors == []
@@ -580,8 +573,6 @@ class TestTargetsValidation:
         assert target_errors == []
 
     def test_error_message_contains_offending_value(self) -> None:
-        fsm = self._make_fsm(
-            [TargetFileSpec(file="not-yaml.json")]
-        )
+        fsm = self._make_fsm([TargetFileSpec(file="not-yaml.json")])
         errors = validate_fsm(fsm)
         assert any("not-yaml.json" in e.message for e in errors)

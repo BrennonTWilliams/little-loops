@@ -625,9 +625,7 @@ def _validate_targets(fsm: FSMLoop) -> list[ValidationError]:
         if target.file is not None and not target.file.endswith(".yaml"):
             errors.append(
                 ValidationError(
-                    message=(
-                        f"targets[{i}].file must be a .yaml file, got '{target.file}'"
-                    ),
+                    message=(f"targets[{i}].file must be a .yaml file, got '{target.file}'"),
                     path=f"targets[{i}].file",
                 )
             )

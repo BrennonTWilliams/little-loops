@@ -127,8 +127,14 @@ class TestRnPlanYaml:
     def test_rubric_dimensions_mentioned_in_score_action(self, data: dict) -> None:
         action = data["states"]["score"].get("action", "")
         dimensions = [
-            "breadth", "depth", "complexity", "granularity",
-            "clarity", "consistency", "logic_strategy", "outcome_confidence",
+            "breadth",
+            "depth",
+            "complexity",
+            "granularity",
+            "clarity",
+            "consistency",
+            "logic_strategy",
+            "outcome_confidence",
         ]
         missing = [d for d in dimensions if d not in action]
         assert not missing, f"Score action missing rubric dimensions: {missing}"
@@ -199,9 +205,9 @@ echo "$(pwd)/$DIR"
         output_dir = tmp_path / ".loops" / "plans"
         output_dir.mkdir(parents=True)
 
-        script = f"""
+        script = """
 SLUG=$(echo "" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\\+/-/g; s/^-//; s/-$//')
-SLUG="${{SLUG:-rn-plan-run}}"
+SLUG="${SLUG:-rn-plan-run}"
 echo "$SLUG"
 """
         result = _bash(script, tmp_path)
@@ -213,7 +219,9 @@ echo "$SLUG"
 class TestRnPlanExecution:
     """End-to-end tests exercising rn-plan via the ll-loop CLI entry point."""
 
-    def test_loop_resolves_as_builtin(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_loop_resolves_as_builtin(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """ll-loop can resolve rn-plan as a built-in loop without local YAML."""
         from little_loops.cli.loop._helpers import get_builtin_loops_dir, resolve_loop_path
 
@@ -262,4 +270,6 @@ class TestRnPlanExecution:
 
         assert evaluate_output_contains("ALL_VERY_HIGH\n", pattern).verdict == "yes"
         assert evaluate_output_contains("ITERATE\n", pattern).verdict == "no"
-        assert evaluate_output_contains("breadth: VERY-HIGH\nALL_VERY_HIGH", pattern).verdict == "yes"
+        assert (
+            evaluate_output_contains("breadth: VERY-HIGH\nALL_VERY_HIGH", pattern).verdict == "yes"
+        )

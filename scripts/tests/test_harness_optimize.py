@@ -16,6 +16,7 @@ from little_loops.loops.yaml_state_editor import extract_action, replace_action
 def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True)
 
+
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
 LOOP_FILE = BUILTIN_LOOPS_DIR / "harness-optimize.yaml"
 
@@ -208,7 +209,7 @@ class TestHarnessOptimizeStates:
         import subprocess
 
         state_yaml_action = (
-            'RUN_ID=$(date +%s%N)\n'
+            "RUN_ID=$(date +%s%N)\n"
             'TRAJ=".ll/runs/harness-optimize/${RUN_ID}/states/whole-file/trajectory.jsonl"\n'
             'mkdir -p "$(dirname "$TRAJ")"\n'
             'echo "$TRAJ"\n'
@@ -223,7 +224,9 @@ class TestHarnessOptimizeStates:
         traj_path = result.stdout.strip()
         assert ".ll/runs/harness-optimize" in traj_path
         assert traj_path.endswith("trajectory.jsonl")
-        assert (tmp_path / traj_path).parent.is_dir(), f"Expected directory to exist: {(tmp_path / traj_path).parent}"
+        assert (tmp_path / traj_path).parent.is_dir(), (
+            f"Expected directory to exist: {(tmp_path / traj_path).parent}"
+        )
 
 
 class TestYamlStateEditor:
@@ -365,9 +368,10 @@ class TestDequeueState:
     def test_advances_queue_after_each_pop(self, tmp_path: Path) -> None:
         loops_tmp = tmp_path / ".loops" / "tmp"
         loops_tmp.mkdir(parents=True)
-        entries = "\n".join(
-            json.dumps({"name": f"state_{i}", "examples_file": ""}) for i in range(3)
-        ) + "\n"
+        entries = (
+            "\n".join(json.dumps({"name": f"state_{i}", "examples_file": ""}) for i in range(3))
+            + "\n"
+        )
         (loops_tmp / "harness-optimize-state-queue.txt").write_text(entries)
 
         _bash(_DEQUEUE_SCRIPT, tmp_path)
