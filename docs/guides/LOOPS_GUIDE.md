@@ -301,6 +301,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | Loop | Description |
 |------|-------------|
 | `deep-research` | Iterative web research synthesis — generates search queries, performs web searches, evaluates sources, identifies coverage gaps, and produces a structured Markdown report with citations |
+| `rn-plan` | Recursive task planning with self-scoring rubric — accepts a natural language task description, generates an 8-dimension rubric (breadth, depth, complexity, granularity, clarity, consistency, logic_strategy, outcome_confidence), then iteratively researches and refines the plan until all dimensions reach VERY-HIGH |
 
 Run:
 ```bash
@@ -319,6 +320,52 @@ The loop writes all artifacts to `.loops/research/<slug>/`:
 - `query-log.md` — all search queries issued, grouped by iteration
 
 See [`## deep-research`](../reference/loops.md#deep-research) in the loop reference for context variables, state graph, and invocation details.
+
+### `rn-plan` — Recursive Task Planning with Self-Scoring Rubric
+
+**Technique**: Accepts a natural language task description, generates an initial plan outline and an 8-dimension rubric, then iterates: classify the most needed research type (NEEDS_FILES or NEEDS_WEB) → research → synthesize findings into the plan → score all 8 dimensions → loop until all dimensions reach VERY-HIGH or `max_iterations` is exhausted.
+
+**When to use**: When you need a fully elaborated, implementable plan for a complex task before execution — especially when the task touches multiple files, external APIs, or requires tradeoff analysis. Produces `plan.md` (the refined plan) and `plan-rubric.md` (dimension scores) as primary artifacts. Use [`rn-plan-apo`](#rn-plan-apo--plan-quality-gradient-optimization) to iteratively improve the *planning prompt itself* using accumulated plan trees.
+
+**Usage:**
+
+```bash
+ll-loop run rn-plan "build a rate-limiting middleware for the API"
+
+# Write plans to a custom directory:
+ll-loop run rn-plan "refactor the authentication module" \
+  --context output_dir=.loops/plans/auth
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `task` | `""` | Task description (populated from positional CLI arg via `input_key: task`) |
+| `output_dir` | `.loops/plans` | Directory where per-task run directories are created |
+
+**Output artifacts** (written to `${output_dir}/<slug>/`):
+
+| File | Description |
+|------|-------------|
+| `plan.md` | Primary output — the refined, multi-phase implementation plan |
+| `plan-rubric.md` | 8-dimension scores (LOW/MEDIUM/HIGH/VERY-HIGH) with aggregate verdict |
+| `research.md` | Accumulated file and web research findings |
+
+**FSM flow:**
+
+```
+init             (shell: mkdir run_dir, touch plan.md / plan-rubric.md / research.md)
+  → generate_rubric     (prompt: write initial outline + 8-dim rubric at LOW)
+    → classify_research (prompt: emit NEEDS_FILES or NEEDS_WEB token)
+      → route_files / route_web  (router: dispatch to file or web research branch)
+        → research_files  (prompt: Read/Grep/Glob to inspect local code and files)
+        → research_web    (prompt: WebSearch/WebFetch to gather external facts)
+          → synthesize   (prompt: merge research.md findings into plan.md)
+            → score      (prompt: rate all 8 dims; emit ALL_VERY_HIGH or ITERATE)
+              on_yes (ALL_VERY_HIGH) → done    (terminal: report final scores)
+              on_no  (ITERATE)       → classify_research  (next iteration)
+```
 
 **Issue Management**
 
@@ -793,6 +840,7 @@ run_eval → score_results → analyze_failures
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
 | `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI |
 | `svg-textgrad` | TextGrad-style SVG harness — optimizes the visual brief via structured gradient updates (FAILURE_PATTERN → ROOT_CAUSE → GRADIENT) rather than feeding raw critique to the generator; accumulates gradient history for repeated-failure escalation |
+| `loop-specialist-eval` | Behavioral eval harness for the `loop-specialist` agent — drives the agent against a seeded `broken-verify-loop.yaml` fixture (ambiguous-output failure mode) and verifies that the diagnosis artifact is written and the failure mode is correctly classified |
 
 For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, and `svg-textgrad`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
 
