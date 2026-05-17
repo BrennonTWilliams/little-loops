@@ -2,16 +2,19 @@
 id: ENH-1557
 type: ENH
 priority: P4
-status: open
+status: done
+completed_at: 2026-05-17T23:26:58Z
 parent: ENH-1554
-confidence_score: 85
-outcome_confidence: 71
-score_complexity: 18
-score_test_coverage: 10
-score_ambiguity: 18
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 18
+score_ambiguity: 25
 score_change_surface: 25
 implementation_order_risk: true
 size: Very Large
+decision_needed: false
+labels: [documentation, harness-optimize, loops]
 ---
 
 # ENH-1557: harness-optimize State-Mode Documentation
@@ -19,6 +22,23 @@ size: Very Large
 ## Summary
 
 Update `docs/guides/LOOPS_GUIDE.md` and `docs/reference/loops.md` to document the new state-mode behavior, the per-state trajectory path layout, and the `targets:` YAML snippet. Can start after ENH-1555 (trajectory path established) and runs in parallel with ENH-1556.
+
+## Current Behavior
+
+`docs/guides/LOOPS_GUIDE.md` and `docs/reference/loops.md` contain the state-mode content (verified 2026-05-17), but `scripts/tests/test_enh1557_doc_wiring.py` does not exist. There are no automated assertions to guard against future regressions in the state-mode documentation.
+
+## Expected Behavior
+
+Both doc files fully document harness-optimize state-mode as specified. `scripts/tests/test_enh1557_doc_wiring.py` exists and asserts all key substrings, catching any future removal or renaming of the state-mode section.
+
+## Impact
+
+Without the wiring test file, future edits to the two doc files could silently remove or rename the state-mode section without CI catching it.
+
+## Scope Boundaries
+
+**In scope**: Write `scripts/tests/test_enh1557_doc_wiring.py` with `TestLoopsGuideStateModeSection` and `TestLoopsRefTrajectorySection` test classes.
+**Out of scope**: Runtime loop behavior changes, ENH-1556 wiring, or modifications to files other than the two named doc files and the new test file.
 
 ## Parent Issue
 
@@ -39,7 +59,7 @@ Once the trajectory path format is known from ENH-1555, both doc files can be up
 
 - `docs/guides/LOOPS_GUIDE.md`
   - `harness-optimize` catalog entry (~line 790 table): add state-mode note
-  - New `#### State Mode` subsection under the `harness-optimize` section:
+  - New `### State Mode` subsection under the `harness-optimize` section:
     - Whole-file mode remains default; state-mode is opt-in via `targets[].states[]`
     - Include the `targets:` YAML snippet (from ENH-1535 parent issue API/Interface section)
     - Document queue-based iteration over states (`dequeue_state` / `check_queue` cycle)
@@ -53,7 +73,30 @@ Once the trajectory path format is known from ENH-1555, both doc files can be up
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_enh1557_doc_wiring.py` — new test file needed; follow pattern in `scripts/tests/test_enh1345_doc_wiring.py` (LOOPS_GUIDE assertions) and `scripts/tests/test_enh1550_doc_wiring.py` (multi-class, two doc files). Assert: `#### State Mode` present in LOOPS_GUIDE, `targets:`/`states:` YAML snippet present, `check_queue`/`dequeue_state` mentioned; `STATE_NAME`/`EXAMPLES_FILE` in `loops.md` context-vars table, new trajectory path (`.ll/runs/harness-optimize`) present, old path (`.loops/tmp/harness-optimize-trajectory.jsonl`) absent.
+- `scripts/tests/test_enh1557_doc_wiring.py` — new test file needed; follow pattern in `scripts/tests/test_enh1345_doc_wiring.py` (LOOPS_GUIDE assertions) and `scripts/tests/test_enh1550_doc_wiring.py` (multi-class, two doc files). Assert: `### State Mode` present in LOOPS_GUIDE, `targets:`/`states:` YAML snippet present, `check_queue`/`dequeue_state` mentioned; `STATE_NAME`/`EXAMPLES_FILE` in `loops.md` context-vars table, new trajectory path (`.ll/runs/harness-optimize`) present, old path (`.loops/tmp/harness-optimize-trajectory.jsonl`) absent.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Heading-level resolution**: LOOPS_GUIDE uses `### State Mode` (h3) at line 2103, not `#### State Mode` (h4) as the original spec said. Write test assertions against `### State Mode` to match the existing doc.
+
+**Confirmed present in `docs/guides/LOOPS_GUIDE.md`** (use these as test assertion substrings):
+- `"### State Mode"` (line 2103) — use this, NOT `"#### State Mode"`
+- `"check_queue / dequeue_state cycle"` (line 2124) — exact phrase in Behavior bullet
+- `".ll/runs/harness-optimize/<run-id>/states/<state-name>/trajectory.jsonl"` (line 2127)
+- `"targets:"` and `"states:"` — present in YAML snippet (lines 2109-2120)
+
+**Confirmed present in `docs/reference/loops.md`**:
+- `"STATE_NAME"` (line 53, Context Variables table)
+- `"EXAMPLES_FILE"` (line 54, Context Variables table)
+- `"check_queue"` and `"dequeue_state"` (lines 61-62, State Graph)
+- `".ll/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl"` (line 85, Trajectory section)
+
+**Confirmed absent from `docs/reference/loops.md`** (use as negative assertion):
+- `".loops/tmp/harness-optimize-trajectory.jsonl"` — old path no longer present; assert `not in content`
+
+**Test pattern to follow** (from `test_enh1345_doc_wiring.py`): module-level `Path` constants, two test classes, plain `assert "<substring>" in content` with descriptive failure message — no regex, no heading-level checks beyond substring presence.
 
 ## Implementation Steps
 
@@ -64,7 +107,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 2. **Update `docs/guides/LOOPS_GUIDE.md`**:
    - In the `harness-optimize` catalog table row, add a "state-mode" column or note
-   - Add `#### State Mode` subsection with:
+   - Add `### State Mode` subsection with:
      - Activation: `targets:` list with `states:` entries in the loop YAML
      - YAML snippet example:
        ```yaml
@@ -87,7 +130,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-4. Write `scripts/tests/test_enh1557_doc_wiring.py` — doc-wiring test file asserting acceptance criteria at the file-content level. Classes: `TestLoopsGuideStateModeSection` (asserts `#### State Mode` heading, `targets:`/`states:` snippet, `check_queue`/`dequeue_state` mentioned, per-state scoring described) and `TestLoopsRefTrajectorySection` (asserts new `.ll/runs/harness-optimize` path present, old `.loops/tmp/harness-optimize-trajectory.jsonl` absent, `STATE_NAME`/`EXAMPLES_FILE` rows present, `dequeue_state`/`check_queue` in state graph). Follow pattern in `test_enh1345_doc_wiring.py`.
+4. Write `scripts/tests/test_enh1557_doc_wiring.py` — doc-wiring test file asserting acceptance criteria at the file-content level.
+   - Class `TestLoopsGuideStateModeSection` (tests `docs/guides/LOOPS_GUIDE.md`):
+     - Assert `"### State Mode" in content` (h3, NOT `####`)
+     - Assert `"targets:" in content` and `"states:" in content`
+     - Assert `"check_queue / dequeue_state cycle" in content`
+     - Assert `".ll/runs/harness-optimize/<run-id>/states/<state-name>/trajectory.jsonl" in content`
+   - Class `TestLoopsRefTrajectorySection` (tests `docs/reference/loops.md`):
+     - Assert `".ll/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl" in content`
+     - Assert `".loops/tmp/harness-optimize-trajectory.jsonl" not in content` (old path absent)
+     - Assert `"STATE_NAME" in content` and `"EXAMPLES_FILE" in content`
+     - Assert `"dequeue_state" in content` and `"check_queue" in content`
+   - Follow module-level `Path` constants + plain `assert "<substring>" in content` pattern from `test_enh1345_doc_wiring.py`.
 
 ## Dependencies
 
@@ -98,7 +152,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - [ ] `docs/reference/loops.md` `### Trajectory` section references the new per-state path layout (no old `.loops/tmp/` path)
 - [ ] `docs/reference/loops.md` `### Context Variables` table includes `STATE_NAME` and `EXAMPLES_FILE` entries
-- [ ] `docs/guides/LOOPS_GUIDE.md` has a `#### State Mode` subsection with YAML example and behavioral description
+- [ ] `docs/guides/LOOPS_GUIDE.md` has a `### State Mode` subsection with YAML example and behavioral description
 - [ ] No broken links in modified doc files (`ll-check-links`)
 
 ## Verification Notes
@@ -124,7 +178,16 @@ _Added by `/ll:confidence-check` on 2026-05-17_
 - Heading-level ambiguity: the issue specifies `#### State Mode` (h4) but the current LOOPS_GUIDE has `### State Mode` (h3); tests that assert the `####` form will fail unless the doc heading is corrected to match the spec or the test assertion is adjusted to use `###`
 - Tests are co-deliverables: write `scripts/tests/test_enh1557_doc_wiring.py` first to determine which assertions currently pass on the existing doc state, then fix any discrepancies before considering the issue done
 
+## Resolution
+
+Wrote `scripts/tests/test_enh1557_doc_wiring.py` with two test classes (`TestLoopsGuideStateModeSection`, `TestLoopsRefTrajectorySection`) asserting 12 substrings against the two doc files. All 12 tests pass. Doc content was already present; the test file was the only remaining gap.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-17T23:26:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-05-17T23:24:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07c2203b-6a06-435c-9577-b5209a8f382f.jsonl`
+- `/ll:confidence-check` - 2026-05-17T23:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7bc106b-f90c-481f-8942-3cb1e8715e53.jsonl`
+- `/ll:wire-issue` - 2026-05-17T23:20:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35d7deee-1a10-4c7b-a19e-13a48385bf38.jsonl`
+- `/ll:refine-issue` - 2026-05-17T23:14:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/14260dfd-c7eb-4cf2-ba1d-ede3a34556dd.jsonl`
 - `/ll:verify-issues` - 2026-05-17T17:04:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/907d2d29-7e38-4120-a77d-deb597ac2df4.jsonl`
 - `/ll:confidence-check` - 2026-05-17T12:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/369fdb2c-e21f-4bc3-a48c-750db77527c7.jsonl`
 - `/ll:wire-issue` - 2026-05-17T12:02:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35b52d52-9151-48b2-9caa-da04b7531187.jsonl`
