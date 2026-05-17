@@ -2,11 +2,19 @@
 id: BUG-1498
 type: BUG
 priority: P3
-status: open
-captured_at: "2026-05-16T14:12:59Z"
-discovered_date: "2026-05-16"
+status: done
+captured_at: '2026-05-16T14:12:59Z'
+completed_at: '2026-05-17T23:11:40Z'
+discovered_date: '2026-05-16'
 discovered_by: capture-issue
 depends_on: ENH-839
+decision_needed: false
+confidence_score: 95
+outcome_confidence: 96
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1498: FSM diagram same-layer right-to-left edge draws wrong arrowhead
@@ -98,9 +106,11 @@ The existing test `test_same_layer_edge_does_not_occlude_intermediate_box` (line
 - `scripts/tests/test_ll_loop_display.py` — `TestRenderFsmDiagram` class (line 640)
   - `test_same_layer_edge_does_not_occlude_intermediate_box` (line 1171) — existing same-layer coverage, no direction assertion
   - New test to add (see Test Plan)
+- `scripts/tests/test_ll_loop_commands.py` — `TestCmdShow.test_show_displays_diagram` (line 1289) — existing E2E coverage for `ll-loop show`; asserts section headers and state names only, no arrowhead direction; no update needed [Agent 3 finding, _wiring pass added by `/ll:wire-issue`_]
 
 ### Documentation
 - `docs/reference/OUTPUT_STYLING.md` — documents FSM diagram rendering and glyph conventions; may need minor update if arrowhead conventions are described
+  - _Wiring pass added by `/ll:wire-issue`:_ specifically the `### Edge arrows` section — add `◀──label─` as the right-to-left same-layer form, mirroring the existing `──label──▶` entry [Agent 2 finding]
 
 ## Implementation Steps
 
@@ -126,7 +136,20 @@ The existing test `test_same_layer_edge_does_not_occlude_intermediate_box` (line
 - **Discovered**: 2026-05-16 via investigation plan against `eval-specfile-gold`
 - **Captured by**: `/ll:capture-issue`
 
+## Resolution
+
+Fixed in `scripts/little_loops/cli/loop/layout.py` (`_render_layered_diagram`, right-to-left branch):
+- Changed `edge_text` from `"─label──▶"` to `"◄──label─"` (left-aligned, arrowhead at destination)
+- Replaced right-aligned leading-dashes loop with left-aligned placement: writes `edge_text` at `start = dst_right`, then fills trailing dashes from `start + len(edge_text)` to `end - 1`
+- Added regression test `test_same_layer_right_to_left_edge_has_correct_arrowhead` in `scripts/tests/test_ll_loop_display.py`
+- Updated `test_branching_fsm_shows_branches_section` to accept `◄` as a valid arrowhead (the `fix → done` edge in that test is legitimately right-to-left)
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-17T23:11:40Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-05-17T23:06:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5ab478e-beb2-4a23-ad03-18f9718dcc6b.jsonl`
+- `/ll:confidence-check` - 2026-05-17T23:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f8ebccd-978d-4ea8-82c6-c1e4e6f0e1e9.jsonl`
+- `/ll:wire-issue` - 2026-05-17T23:03:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07bcc90f-c1cb-4e31-a39c-5e5fad281c38.jsonl`
+- `/ll:refine-issue` - 2026-05-17T22:58:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81514626-4858-4e0f-b637-be7914aaeea1.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-17T18:46:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
 - `/ll:refine-issue` - 2026-05-17T14:48:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70b5ac5f-6894-4bfd-9384-d9d089bceb7e.jsonl`
 - `/ll:capture-issue` - 2026-05-16T14:12:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f204025d-307a-4f4d-80b2-206dfd3b1de1.jsonl`

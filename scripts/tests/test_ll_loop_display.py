@@ -707,7 +707,7 @@ class TestRenderFsmDiagram:
         assert "yes" in result
         # Branch edges shown
         assert "no" in result
-        assert "\u25b6" in result  # arrow head ▶
+        assert "◄" in result or "▶" in result  # some arrowhead present
         # Off-path state rendered as box (not just text)
         lines = result.split("\n")
         fix_box_lines = [line for line in lines if "fix" in line and "\u2502" in line]
@@ -1210,6 +1210,49 @@ class TestRenderFsmDiagram:
             name_lines = [ln for ln in result.split("\n") if state in ln and "│" in ln]
             assert name_lines, (
                 f"State {state!r} name occluded by connector: not visible in any box line.\n{result}"
+            )
+
+    def test_same_layer_right_to_left_edge_has_correct_arrowhead(self) -> None:
+        """Right-to-left same-layer edge renders ◀ at destination, not ▶.
+
+        Regression test (BUG-1498): when two states share a layer and a
+        transition runs right-to-left (dst is left of src), the rendered
+        connector must use ◀ pointing at the destination and must not contain
+        a spurious ▶ on that row.
+
+        Topology: start → a → b (different layers); a ←yes─ b (same layer,
+        right-to-left).  The b→a edge should render as  a ◀──yes─ b.
+        """
+        # Topology: start branches to both "alpha" and "beta" (same layer).
+        # beta.on_yes → alpha is a right-to-left same-layer edge because
+        # "alpha" sorts before "beta" in layout order (left of "beta").
+        fsm = self._make_fsm(
+            initial="start",
+            states={
+                "start": StateConfig(action="init", on_yes="alpha", on_no="beta"),
+                "alpha": StateConfig(action="step_a", on_yes="done"),
+                "beta": StateConfig(action="step_b", on_yes="alpha"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+
+        # Strip ANSI codes for plain-text assertions
+        import re
+
+        plain = re.sub(r"\x1b\[[0-9;]*m", "", result)
+
+        # The right-to-left same-layer edge (beta → alpha) must use ◀
+        assert "◄" in plain, (
+            f"Right-to-left same-layer edge should have ◀ arrowhead.\n{plain}"
+        )
+        # No ▶ should appear on the row that contains both state names
+        rows_with_both = [
+            ln for ln in plain.split("\n") if "alpha" in ln and "beta" in ln and "│" in ln
+        ]
+        for row in rows_with_both:
+            assert "▶" not in row, (
+                f"Spurious ▶ found on right-to-left same-layer edge row.\n{row}\nFull diagram:\n{plain}"
             )
 
     def test_highlighted_state_uses_configured_color(self) -> None:

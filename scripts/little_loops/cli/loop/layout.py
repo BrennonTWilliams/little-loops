@@ -1220,17 +1220,12 @@ def _render_layered_diagram(
             # Right to left: dst is left of src: src → dst drawn as dst ◀──label── src
             start = dst_right
             end = src_left
-            edge_text = "\u2500" + label + "\u2500\u2500\u25b6"
+            edge_text = "\u25c4\u2500\u2500" + label + "\u2500"
             available = end - start
             if available < len(edge_text):
                 edge_text = edge_text[: max(1, available)]
-            left_dashes = max(0, available - len(edge_text))
-            for k in range(left_dashes):
-                pos = start + k
-                if pos < total_width and name_row < total_height and pos not in _row_boxes:
-                    grid[name_row][pos] = _lc("\u2500")
             for k, ch in enumerate(edge_text):
-                pos = start + left_dashes + k
+                pos = start + k
                 if (
                     0 <= pos < end
                     and pos < total_width
@@ -1238,6 +1233,9 @@ def _render_layered_diagram(
                     and pos not in _row_boxes
                 ):
                     grid[name_row][pos] = _lc(ch)
+            for k in range(start + len(edge_text), end):
+                if k < total_width and name_row < total_height and k not in _row_boxes:
+                    grid[name_row][k] = _lc("\u2500")
 
     # Back-edges: left-margin vertical arrows with labels
     if non_self_back:
