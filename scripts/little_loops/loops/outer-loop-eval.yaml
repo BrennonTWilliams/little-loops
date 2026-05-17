@@ -24,8 +24,13 @@ states:
       test -n "${context.input}" \
         && echo "loop: ${context.input}" \
         || (echo "ERROR: target loop name is required. Pass as positional arg: ll-loop run outer-loop-eval <name>" >&2; exit 1)
-    on_error: done
+    on_error: fail_missing_input
     next: load_definition
+
+  fail_missing_input:
+    action_type: shell
+    action: "echo 'outer-loop-eval: missing required context variable input' >&2; exit 1"
+    terminal: true
 
   load_definition:
     action_type: shell
