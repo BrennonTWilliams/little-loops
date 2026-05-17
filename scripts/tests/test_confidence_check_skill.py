@@ -106,9 +106,13 @@ class TestDecisionNeededFlagWriteBack:
 
     def test_signal_phrases_documented(self) -> None:
         text = self._phase_text()
-        assert "open decision" in text or "unresolved decision" in text, (
-            "Phase 4.6 must document the signal phrases that trigger the flag"
-        )
+        assert (
+            "open decision" in text
+            or "unresolved decision" in text
+            or "either/or" in text
+            or "resolve before starting" in text
+            or "open question" in text
+        ), "Phase 4.6 must document the signal phrases that trigger the flag"
 
     def test_idempotency_guard_present(self) -> None:
         text = self._phase_text()

@@ -524,6 +524,13 @@ After Phase 4.5 writes Outcome Risk Factors, scan the generated risk-factor cont
 - "unresolved decision"
 - "resolve before implementing"
 - "decision point"
+- "either/or"
+- "either...or"
+- "either…or"
+- "resolve before starting"
+- "open question"
+- "Option A/B"
+- "Option A or"
 
 If any signal phrase is found in the Outcome Risk Factors content written by Phase 4.5:
 

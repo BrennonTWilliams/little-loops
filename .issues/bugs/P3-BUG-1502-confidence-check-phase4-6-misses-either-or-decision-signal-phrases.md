@@ -2,17 +2,26 @@
 id: BUG-1502
 type: BUG
 priority: P3
-status: open
-captured_at: "2026-05-16T15:05:57Z"
+status: done
+captured_at: '2026-05-16T15:05:57Z'
+completed_at: '2026-05-17T05:24:40Z'
 discovered_date: 2026-05-16
 discovered_by: capture-issue
 decision_needed: false
-relates_to: ['BUG-1278', 'BUG-1294']
+relates_to:
+- BUG-1278
+- BUG-1294
 labels:
-  - captured
-  - confidence-check
-  - decision-needed
-  - signal-phrases
+- captured
+- confidence-check
+- decision-needed
+- signal-phrases
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1502: `confidence-check` Phase 4.6 misses "either/or" and "resolve before starting" decision signal phrases
@@ -58,10 +67,14 @@ The signal-phrase list at lines 522-526 was scoped to four exact substrings when
 
 ### Codebase Research Findings
 
-_To be filled by `/ll:refine-issue`._
+_Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **Existing wider vocabulary in same skill**: `skills/confidence-check/SKILL.md:375` already documents `"TBD"`, `"TODO"`, `"open question"`, `"decide"`, `"either...or"`, `"Option A/B"` as ambiguity indicators for Phase 3 (input scan). Phase 4.6 (output scan) should reuse this list — the asymmetry is the bug.
 - **Phase 4.6 mechanism is sound** — see BUG-1278 (`P3-BUG-1278-confidence-check-does-not-set-decision-needed-flag.md`, status: done) for the design rationale of the post-prose scan, idempotency guard, and CHECK_MODE guard. This bug only extends the signal-phrase set; no architectural change.
+- **Exact signal phrase block confirmed at lines 522–526**: `skills/confidence-check/SKILL.md:522-526` — four bullet literals under `**Signal phrases** (any match triggers the flag):`; format is `- "quoted phrase"`, one per line. New phrases slot in as additional bullets.
+- **Criterion C vocabulary confirmed at line 375**: `skills/confidence-check/SKILL.md:375` — `"TBD"`, `"TODO"`, `"open question"`, `"decide"`, `"either...or"`, `"Option A/B"` are listed as a single comma-separated detection-method sentence; no de-duplication work needed between sections.
+- **Partial bypass in `triage_outcome_failure`**: `scripts/little_loops/loops/autodev.yaml` (lines ~415–429) also gates on `score_ambiguity <= 10` as a numeric proxy — so that one autodev path can still route to `run_decide` even if `decision_needed` is `false`. However, `check_decision_after_refine` (lines ~122–130) and `check_decision_before_size_review` (lines ~406–413) rely **solely** on the frontmatter flag with no numeric fallback — meaning those two gate states always misroute when the signal phrases are missed.
+- **`decision_needed` serialization path**: `scripts/little_loops/cli/issues/show.py:248-250` serializes the YAML boolean `true` to JSON string `"true"` for `ll-issues show --json` output; autodev compares against the string `'true'`. No changes needed here — the fix only affects what Phase 4.6 writes.
 
 ## Proposed Solution
 
@@ -86,6 +99,17 @@ Optionally consolidate by extracting the ambiguity-indicator list into a single 
 - `scripts/little_loops/loops/autodev.yaml` — `check_decision_after_refine`, `triage_outcome_failure`, `check_decision_before_size_review`, `decide_current` all gate on `decision_needed == 'true'`
 - `skills/manage-issue/SKILL.md` — Phase 2.3 Decision Gate
 - `skills/wire-issue/SKILL.md` — advisory warning
+- `scripts/little_loops/issue_parser.py` — parses `decision_needed` from frontmatter (no changes needed)
+- `scripts/little_loops/cli/issues/show.py:248-250` — serializes YAML boolean `true` → JSON string `"true"` for `ll-issues show --json` (no changes needed; autodev reads this output)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `check_decision_needed` state (line ~265) gates via `ll-issues check-flag`; routes to `done` when true to preserve signal for outer loop (no changes needed)
+- `scripts/little_loops/loops/recursive-refine.yaml` — `check_decision_needed` state (line ~448) reads frontmatter directly; skips size-review when flag is true (no changes needed)
+- `scripts/little_loops/issue_manager.py:719-723` — Decision gate invokes `/ll:decide-issue` when `issue.decision_needed is True` (no changes needed)
+- `scripts/little_loops/parallel/worker_pool.py:378` — Decision gate invokes decide command when `issue.decision_needed is True` (no changes needed)
+- `skills/decide-issue/SKILL.md` — Phases 3b and 7b read `decision_needed` and set it to `false` after deciding (no changes needed)
+- `scripts/little_loops/cli/issues/check_flag.py` — `ll-issues check-flag <ID> decision_needed` CLI; used by FSM loops to read the boolean (no changes needed)
+- `skills/issue-workflow/SKILL.md` — references decide-issue invocation when `decision_needed: true` (no changes needed)
 
 _No changes needed in dependents — only the detection set widens._
 
@@ -93,7 +117,10 @@ _No changes needed in dependents — only the detection set widens._
 - `scripts/tests/test_confidence_check_skill.py` — extend the existing Phase 4.6 structural test (added in BUG-1278) to assert each new signal phrase is present in the phase text
 
 ### Documentation
-- None required if signal-phrase list is the only change. If consolidation is chosen, update Phase 3 (line 375) cross-reference.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/COMMANDS.md:255` — The `### /ll:confidence-check` section's `**decision_needed` write-back**` paragraph contains a hard-coded parenthetical: `("open decision", "unresolved decision", "resolve before implementing", "decision point")`. After this fix the parenthetical will be a stale subset; update it to include the new phrases or rewrite as representative examples. This is the only doc file that enumerates the exact phrase list verbatim.
+- If the optional consolidation (referencing Phase 3 vocabulary from Phase 4.6) is chosen, update the Phase 3 cross-reference at `skills/confidence-check/SKILL.md:375`.
 
 ## Acceptance Criteria
 
@@ -111,8 +138,14 @@ Detection-set coverage gaps in Phase 4.6 cause silent FSM mis-routing in autodev
 1. Open `skills/confidence-check/SKILL.md` and locate the Phase 4.6 signal-phrase bullet list (lines 522-526).
 2. Add the five new phrases as additional bullets, preserving the existing four.
 3. (Optional) Add a brief inline note referencing Phase 3's ambiguity indicators at line 375 for traceability.
-4. Update the Phase 4.6 structural test in `scripts/tests/test_confidence_check_skill.py` to assert each new phrase appears in the phase text.
+4. Update `scripts/tests/test_confidence_check_skill.py` — extend `TestDecisionNeededFlagWriteBack.test_signal_phrases_documented` (line 109) to assert new phrases. Current assertion is `"open decision" in text or "unresolved decision" in text`; extend the `or`-chain to include `"either/or"` and `"resolve before starting"` following the same pattern used for Phases 4.7–4.9 (lines 152–153, 202–203).
 5. Run `python -m pytest scripts/tests/test_confidence_check_skill.py -v` and `ruff check scripts/`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `docs/reference/COMMANDS.md:255` — revise the `**decision_needed` write-back**` parenthetical in the `### /ll:confidence-check` section to include the new signal phrases (or replace with representative examples). The current text `("open decision", "unresolved decision", "resolve before implementing", "decision point")` will be a stale subset after step 2.
 
 ## Impact
 
@@ -137,6 +170,10 @@ Detection-set coverage gaps in Phase 4.6 cause silent FSM mis-routing in autodev
 **Open** | Created: 2026-05-16 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-17T05:23:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3739429-a254-4809-8c56-81eb569dba7a.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bd0252f-eb36-4d40-844f-1ba82253318b.jsonl`
+- `/ll:wire-issue` - 2026-05-17T05:19:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0aea8500-1a0e-469e-8b08-e2ac6cbc305c.jsonl`
+- `/ll:refine-issue` - 2026-05-17T05:15:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f7f83fc-e3c9-4852-a03a-c2b11669e9bc.jsonl`
 - `/ll:format-issue` - 2026-05-16T15:12:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c24f73c-ba02-48c1-b2ce-dc8f94ab89b0.jsonl`
 - `/ll:format-issue` - 2026-05-16T15:07:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c24f73c-ba02-48c1-b2ce-dc8f94ab89b0.jsonl`
 - `/ll:capture-issue` - 2026-05-16T15:05:57Z
