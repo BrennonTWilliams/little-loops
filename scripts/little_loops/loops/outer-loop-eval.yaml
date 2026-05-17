@@ -59,8 +59,22 @@ states:
       input: "${context.loop_input}"
     capture: sub_loop_output
     on_yes: analyze_execution
-    on_no: analyze_execution
-    on_error: analyze_execution
+    on_no: handle_sub_loop_failed
+    on_error: handle_sub_loop_error
+
+  handle_sub_loop_failed:
+    action_type: shell
+    action: |
+      echo "SUB_LOOP_FAILED: child loop reached non-done terminal state" >&2
+      exit 0
+    terminal: true
+
+  handle_sub_loop_error:
+    action_type: shell
+    action: |
+      echo "SUB_LOOP_ERROR: child loop terminated with error" >&2
+      exit 0
+    terminal: true
 
   analyze_execution:
     action_type: slash_command

@@ -63,9 +63,12 @@ class TestOuterLoopEvalStates:
 
     REQUIRED_STATES = {
         "validate_input",
+        "fail_missing_input",
         "load_definition",
         "analyze_definition",
         "run_sub_loop",
+        "handle_sub_loop_failed",
+        "handle_sub_loop_error",
         "analyze_execution",
         "generate_report",
         "refine_analysis",
@@ -82,9 +85,9 @@ class TestOuterLoopEvalStates:
         assert state.get("action_type") == "shell"
         assert "context.input" in state.get("action", "")
 
-    def test_validate_input_routes_error_to_done(self, loop_data: dict) -> None:
+    def test_validate_input_routes_error_to_fail_missing_input(self, loop_data: dict) -> None:
         state = loop_data["states"]["validate_input"]
-        assert state.get("on_error") == "done"
+        assert state.get("on_error") == "fail_missing_input"
 
     def test_validate_input_routes_next_to_load_definition(self, loop_data: dict) -> None:
         state = loop_data["states"]["validate_input"]
@@ -101,13 +104,11 @@ class TestOuterLoopEvalStates:
     def test_run_sub_loop_is_native_loop(self, loop_data: dict) -> None:
         state = loop_data["states"]["run_sub_loop"]
         assert "loop" in state, "run_sub_loop must use native loop action (not shell)"
-        assert "context.input" in state.get("loop", ""), (
-            "loop field must reference context.input"
-        )
+        assert "context.input" in state.get("loop", ""), "loop field must reference context.input"
         assert state.get("capture") == "sub_loop_output"
         assert state.get("on_yes") == "analyze_execution"
-        assert state.get("on_no") == "analyze_execution"
-        assert state.get("on_error") == "analyze_execution"
+        assert state.get("on_no") == "handle_sub_loop_failed"
+        assert state.get("on_error") == "handle_sub_loop_error"
         with_ = state.get("with", {})
         assert "input" in with_, "run_sub_loop must bind input via with:"
 
