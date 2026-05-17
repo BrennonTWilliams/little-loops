@@ -303,6 +303,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `backlog-flow-optimizer` | Iteratively diagnose the primary throughput bottleneck in the issue backlog |
 | `evaluation-quality` | Multi-dimensional quality health check across issue quality, code quality, and backlog health; routes to remediation loops when thresholds are breached |
 | `issue-discovery-triage` | Automated issue discovery and triage cycle |
+| `scan-and-implement` | Full discovery → triage → implement pipeline. Snapshots active issue IDs, runs `issue-discovery-triage` as a sub-loop, then delegates to `autodev` scoped to **only** the net-new IDs that survived triage (issues that were created during scan but closed by tradeoff-review are excluded automatically via the pre/post snapshot diff) |
 | `auto-refine-and-implement` | For each backlog issue in priority order: recursively refine via `recursive-refine` (which handles decomposition into child issues), run an adversarial go/no-go gate, then implement all passed issues; issues that fail the gate are skipped; loops until backlog is exhausted |
 | `issue-refinement` | Progressively refine all active issues — delegates per-issue refinement to the `refine-to-ready-issue` sub-loop with commit cadence |
 | `recursive-refine` | Refine one or more issues to readiness recursively; when size-review decomposes an issue into children, each child is enqueued and refined before the next sibling; accepts a single ID or comma-separated list |
@@ -505,6 +506,35 @@ init → dequeue_next → [queue empty?]
 **In-flight tracking** (BUG-1226): `dequeue_next` writes the popped issue ID to `.loops/tmp/autodev-inflight`; `enqueue_or_skip` clears it in the children-found branch; `recheck_after_size_review` clears it on the skip path (BUG-1230); `enqueue_children` clears it after decomposition; `init` resets it at loop start. On natural termination, `done` reads this flag and, if non-empty, prints a warning naming the issue that did not reach a clean resolution so the user knows to re-queue it. Pairs with the executor's pending-shell-state flush (see `docs/reference/EVENT-SCHEMA.md` `loop_complete` / `state_enter.flushed`) — between them, autodev no longer silently drops a breakdown result when the wall-clock timeout fires between `refine_current` returning and `copy_broke_down` executing.
 
 **Outcome failure triage** (BUG-1277, ENH-1291, ENH-1415): When `check_passed` fails (confidence thresholds not met), the loop enters `triage_outcome_failure` rather than immediately routing to size-review. This state reads `score_ambiguity` from the issue frontmatter and branches: if `score_ambiguity ≤ 10`, the issue is well-scoped but has an unresolved design decision causing low outcome confidence — the loop routes to `run_decide` (invoking `/ll:decide-issue --auto`) → `mark_decide_ran` (sets `.loops/tmp/autodev-decide-ran` so decide does not re-fire later in the same iteration) → `rerun_confidence_after_decide` (invoking `/ll:confidence-check` to refresh stale pre-decision scores, BUG-1378) → `recheck_after_decide` (threshold gate). On gate pass, the loop proceeds to `implement_current` without decomposition. On gate fail (ENH-1415), the loop routes to `snap_and_size_review` (refreshes the pre-ids baseline) → `run_size_review` rather than dropping the issue, since the only outcome dimensions that can still drag the score below threshold after decide are Complexity and Change Surface — both decomposable. The decide-ran flag means that if size-review fails to decompose and `recheck_after_size_review` re-enters `decide_current`, that state short-circuits to `implement_current` rather than firing decide a second time. On parse error, the loop falls back safely to `detect_children`. Otherwise, the loop enters `check_missing_artifacts`, which reads the `missing_artifacts` frontmatter flag (set by `/ll:confidence-check` Phase 4.7 when Outcome Risk Factors mention absent files or unwired components): if `true`, the loop routes to `run_wire` (invoking `/ll:wire-issue --auto`) → `run_refine` (invoking `/ll:refine-issue --auto`) → `rerun_confidence_after_wire` (invoking `/ll:confidence-check` to refresh stale pre-repair scores, BUG-1491) → `enqueue_or_skip`; if `false`, the loop falls through to `detect_children → size_review`. This three-branch triage prevents incorrect decomposition of issues whose low outcome confidence stems from an unresolved design decision or a wiring gap rather than excessive scope.
+
+<!-- TODO: update-docs stub — git change 4e692df0 — drafted 2026-05-16 -->
+### `scan-and-implement` — Discover, Triage, then Implement Net-New Issues
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Expand with a state diagram and example run output if/when needed.
+
+**Technique**: Full discovery-to-implementation pipeline composed from two existing sub-loops. Before discovery, snapshots the IDs of all currently-active issues to `.loops/tmp/scan-and-implement-pre-ids.txt`. Runs `issue-discovery-triage` as a sub-loop. After discovery, snapshots the post-discovery active-issue IDs and computes `comm -13` against the pre-snapshot — yielding only issues that are **net-new and still active** (i.e., they were created during scan **and** survived triage; issues that were created and then closed by tradeoff-review move to `.issues/completed/` and so naturally drop out of the diff). Passes the resulting ID list as `input` to the `autodev` sub-loop, which then refines and implements each one.
+
+**When to use**: When you want to go from "scan the codebase for new work" to "implement everything that's worth doing" in a single hands-off pass. Pairs the breadth of `/ll:scan-codebase` / `issue-discovery-triage` with the depth-first implementation of `autodev`, but without `autodev`'s requirement that you already know the issue IDs.
+
+**Invocation**:
+
+```bash
+ll-loop run scan-and-implement
+```
+
+Takes no `input` — discovery is the input.
+
+**State graph**:
+
+```
+snapshot_pre → discover (sub-loop: issue-discovery-triage)
+            → diff_issues (captures net-new IDs as ${captured.input.output})
+                ├─ YES (new IDs) → implement (sub-loop: autodev with input=<id-list>) → done
+                └─ NO (empty diff) → done
+```
+
+**Notes**: The loop runs up to 5 outer iterations with a 10-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Because both sub-loops (`issue-discovery-triage` and `autodev`) have their own iteration budgets, the outer cap of 5 mostly exists as a safety net — a typical run completes in a single outer iteration. If `diff_issues` returns an empty list (no new work survived triage), the loop short-circuits to `done` with a "nothing to implement" message rather than invoking `autodev` with an empty queue.
+<!-- END TODO stub -->
 
 ### `recursive-refine` — Depth-First Issue Refinement with Decomposition
 
