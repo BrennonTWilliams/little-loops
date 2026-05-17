@@ -2,13 +2,16 @@
 discovered_date: 2026-05-16
 discovered_by: capture-issue
 captured_at: '2026-05-17T00:04:56Z'
-status: open
-confidence_score: 96
-outcome_confidence: 75
+status: done
+confidence_score: 91
+outcome_confidence: 67
 score_complexity: 14
-score_test_coverage: 18
+score_test_coverage: 10
 score_ambiguity: 18
 score_change_surface: 25
+decision_needed: false
+implementation_order_risk: true
+size: Very Large
 ---
 
 # FEAT-1532: agent-loop-specialist monitors, analyzes, refines, and optimizes FSM loops
@@ -192,7 +195,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `ll-loop run <name> --dry-run` exists but is **structural-only**: it calls `print_execution_plan()` and exits without executing a single state. It cannot verify a transition predicate.
 - `ll-loop simulate <name> --scenario <all-pass|all-fail|all-error|first-fail|alternating>` (`cmd_simulate()` in `scripts/little_loops/cli/loop/testing.py`) is the closest deterministic-replay tool. It intercepts every action via `SimulationActionRunner` (in `scripts/little_loops/fsm/runners.py`) and returns synthetic `ActionResult` values per the chosen pattern, without subprocess execution or `.loops/.running/` writes. This is what the verify step should call.
 - `ll-loop test <name>` (`cmd_test()` in `testing.py`) executes exactly one state and reports the transition that would fire — good for single-state predicate checks.
-- The agent should prefer `ll-loop test` for single-state predicates ("state X fires transition Y") and `ll-loop simulate --scenario` for multi-step replay; reserve real `ll-loop run` for end-to-end smoke after both pass.
+- **CORRECTION (second refine-issue pass)**: The recommendation above to prefer `ll-loop simulate --scenario` is wrong for content-sensitive predicates. `SimulationActionRunner` (used by both `ll-loop test` and `ll-loop simulate`) returns the literal string `"[simulated output for: ...]"` for every prompt/slash-command state — it never invokes the LLM. An evaluator checking `output_contains: "PASS"` against that synthetic string will always return `"no"`, meaning `ll-loop simulate --scenario all-pass` trivially "passes" any routing-table check but cannot confirm a content predicate fires.
+  - **Correct verify step**: `ll-loop run <name> --max-iterations 1 [--context KEY=VALUE ...]` — this is the only invocation that calls the real LLM for prompt/slash states (`DefaultActionRunner.run()` → `run_claude_command()` in `runners.py:FSMExecutor`) and feeds real output to the configured evaluator. Use `ll-loop test <loop> --state <name>` only for shell-action states (where `DefaultActionRunner` IS used) or for routing-table wiring checks via `--exit-code N`.
+  - **For non-initial states**: no built-in `--start-state` flag exists; an agent verifying a non-initial state must either reach it via `--max-iterations N` from initial, or limit verification scope to `ll-loop test --state <name>` for shell states only.
 
 **Machine-parseable output**:
 
@@ -223,6 +228,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/adapt_agents_for_codex.py` — auto-discovers all `agents/*.md` files; will process `loop-specialist.md` without code changes, but `ll-adapt-agents-for-codex --apply` must be re-run to generate `.codex/agents/loop-specialist.toml` [Agent 1 finding]
 - `scripts/little_loops/cli/__init__.py` — imports/exports `main_adapt_agents_for_codex`; no changes needed [Agent 1 finding]
+- `scripts/little_loops/loops/docs-sync.yaml` — behavioral coupling: the `verify_docs` initial state runs `ll-verify-docs 2>&1` and routes to `fix_docs` on non-zero exit; if `agents/loop-specialist.md` is committed before count strings in `README.md`, `CONTRIBUTING.md`, and `docs/ARCHITECTURE.md` are updated, this loop will auto-fire its repair state on next run — **implementation ordering risk: create agent file and update all count docs in the same commit** [Agent 2 finding]
 
 Already-known callers:
 - `ll-adapt-agents-for-codex` script — will auto-generate `.codex/agents/loop-specialist.toml` from the new file
@@ -237,6 +243,8 @@ Already-known callers:
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_adapt_agents_for_codex.py:TestRealAgentsIntegrationGuard.test_all_real_agents_have_toml_files` — integration guard that checks all `agents/*.md` have a corresponding `.codex/agents/*.toml`; will fail until `ll-adapt-agents-for-codex --apply` is run after creating `loop-specialist.md` [Agent 1 finding — update test or run apply]
 - `scripts/tests/` — add integration test covering the full monitor → diagnose → contract → refine → verify round-trip (not just static diagnosis); this is an acceptance criterion
+- `scripts/tests/test_doc_counts.py` — **CORRECTION (second wiring pass)**: `TestVerifyDocumentation` and all methods in this class use `tmp_path` fixtures with synthetic data — they will **not fail** when disk count changes to 9. The real enforcement of count-string accuracy is `ll-verify-docs` CLI (via `verify_documentation(Path.cwd())`) and the `docs-sync.yaml` loop, not this test suite [Agent 2 + 3 finding]
+- `scripts/tests/test_feat1532_doc_wiring.py` — new doc-wiring test; follow `test_feat1462_doc_wiring.py` pattern (one class per doc surface: `PROJECT_ROOT / "docs/reference/API.md"`, `README.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`; assert `"loop-specialist" in content`); also add **`TestPluginJsonWiring`** class asserting `"./agents/loop-specialist.md"` appears in `.claude-plugin/plugin.json` agents array [Agent 3 finding — class not yet specified in step 8]
 
 ### Documentation
 - `docs/reference/API.md` — create new `## Agents` section; no such section exists yet [Agent 1 finding]
@@ -259,7 +267,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 6. Update count references from 8 → 9 in: `README.md:164`, `CONTRIBUTING.md:111`, `docs/ARCHITECTURE.md:25,71`; add `│   ├── loop-specialist.md` to the explicit agent tree listing in `CONTRIBUTING.md:119` and `docs/ARCHITECTURE.md:79`
 7. Create `## Agents` section in `docs/reference/API.md` (no such section exists yet); list `loop-specialist` and all 8 existing agents with descriptions
 8. Write `scripts/tests/test_feat1532_doc_wiring.py` covering: (a) `agents/loop-specialist.md` exists with required frontmatter, (b) `.codex/agents/loop-specialist.toml` exists with marker, (c) `README.md` contains "9 specialized agents", (d) `docs/reference/API.md` contains "loop-specialist" — follow pattern from `test_feat1462_doc_wiring.py`
-9. Write an eval covering the full round-trip including the verify re-run (not just static diagnosis): seed a deliberately broken loop, confirm the agent diagnoses the correct failure mode, writes the artifact, edits the YAML, re-runs, and verifies the predicate
+9. Write an eval YAML + pytest following `test_create_eval_from_issues.py` VARIANT_A pattern: `execute` state (`action_type: prompt`) drives the agent against a seeded broken loop, `check_skill` state uses `evaluate.type: llm_structured` to assert the contracted predicate fired after the agent called `ll-loop run --max-iterations 1`. Structural assertions follow `test_outer_loop_eval.py` pattern (`load_and_validate` + `validate_fsm`). The eval must cover the full contract → refine → verify round-trip, not just static diagnosis.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -272,12 +280,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 14. Update `docs/ARCHITECTURE.md:25` — change `AGT[Agents<br/>8 specialized agents]` → 9; update line 71 count and line 79 listing
 15. Create `docs/reference/API.md` `## Agents` section — no section exists; create it listing all 9 agents with descriptions
 16. Run `ll-adapt-agents-for-codex --apply` and commit `.codex/agents/loop-specialist.toml` — required to prevent `TestRealAgentsIntegrationGuard.test_all_real_agents_have_toml_files` from failing
-17. Write `scripts/tests/test_feat1532_doc_wiring.py` — wiring test following the `test_feat1462_doc_wiring.py` pattern
+17. Write `scripts/tests/test_feat1532_doc_wiring.py` — wiring test following the `test_feat1462_doc_wiring.py` pattern; include `TestPluginJsonWiring` class asserting `"./agents/loop-specialist.md"` in plugin.json agents array
+18. **Commit atomically**: create `agents/loop-specialist.md` and update all count-bearing docs (README.md, CONTRIBUTING.md, docs/ARCHITECTURE.md) in the **same commit** to prevent `docs-sync.yaml`'s `verify_docs` → `fix_docs` auto-repair from firing between commits
 
 ## Open Questions
 
-- **Verifier separation**: keep verification inside loop-specialist (`--verify` re-run step), or split into a distinct evaluator agent? Anthropic's harness-design post argues for full separation; the P3/small-effort framing argues for the in-agent version first, with a follow-up to split if self-evaluation bias shows up in eval runs.
-- ~~**Fixture story**~~ — **RESOLVED** by `/ll:refine-issue` research: no fixture mode exists, but `ll-loop simulate --scenario` (multi-step deterministic replay via `SimulationActionRunner`) and `ll-loop test` (single-state) cover the verify-step needs. No precursor `ll-loop` enhancement required. See "Codebase Research Findings" under Proposed Solution.
+- ~~**Verifier separation**~~ — **RESOLVED (second refine-issue pass)**: `ll-loop run --max-iterations 1` is the in-agent verify step that calls the real LLM, so the "simulate can't verify" go/no-go blocker on AC-7 is resolved. The in-agent approach is viable at P3 effort. A separate evaluator agent remains a future option if self-evaluation bias appears in eval runs, but it is not a prerequisite to ship.
+- ~~**Fixture story**~~ — **RESOLVED (UPDATED second refine-issue pass)**: no `--fixture` flag exists. `ll-loop simulate --scenario` uses `SimulationActionRunner` (synthetic results only) and cannot verify real predicates — see CORRECTION note in Proposed Solution > Codebase Research Findings. The correct verify step is `ll-loop run <name> --max-iterations 1`, which calls the real LLM. No precursor `ll-loop` enhancement required.
 - ~~**Cost trend storage**~~ — **PARTIALLY RESOLVED** by `/ll:refine-issue` research: `duration_ms` per action and `accumulated_ms` total are recorded (events.jsonl + state.json); **cost and token counts are NOT tracked anywhere in `scripts/little_loops/fsm/`**. Scope the `optimize` step to duration/iteration-count regressions only, OR open a precursor ENH to add cost/token capture (likely required if the optimize step is to deliver real value).
 
 ## Impact
@@ -314,7 +323,33 @@ _Added by `/ll:go-no-go` on 2026-05-16_ — **NO-GO (REFINE)**
 ### Rationale
 The AGAINST side presents two concrete, codebase-grounded blockers that the FOR side does not credibly resolve: (1) `SimulationActionRunner` returns synthetic passes without invoking the LLM, so `ll-loop simulate --scenario` cannot satisfy AC-7's "active verification" requirement; and (2) AC-62's cost/token comparison is architecturally impossible because the FSM persistence layer tracks `accumulated_ms`/`duration_ms` but no token counts. The FOR side's "zero Python lines" framing is accurate for the agent markdown itself but elides that two acceptance criteria are unfulfillable with current infrastructure. The overlap with `debug-loop-run` + `audit-loop-run` + `review-loop` (1,361 lines combined) is real, but a thin orchestrator agent is still a defensible addition — the issue just needs its ACs reconciled with infrastructure reality before it ships.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-17_
+
+**Readiness Score**: 91/100 → PROCEED
+**Outcome Confidence**: 67/100 → MODERATE
+
+### Outcome Risk Factors
+- **Low test coverage (Criterion B: 10/25)**: `test_feat1532_doc_wiring.py` and `TestPluginJsonWiring` are co-deliverables of this issue; implement tests first so doc-wiring and plugin.json registration are validated before applying the main changes
+- **Breadth across 9 sites (Criterion A: 5/12 breadth)**: coordination overhead across docs, config, agent definition, and test files — each site is mechanical/local, but the count means one missed update causes CI failure (docs-sync loop fires)
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-05-17
+- **Reason**: Issue too large for single session (score 11/11 — Very Large)
+
+### Decomposed Into
+- FEAT-1543: Create loop-specialist agent, wiring, docs, and doc-wiring test
+- FEAT-1544: Write eval YAML + pytest for loop-specialist full behavioral round-trip
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f2aa363-89b4-48fb-b7e2-882be8ac2cc8.jsonl`
+- `/ll:wire-issue` - 2026-05-17T06:01:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38d57e6b-2308-4ce7-84c3-e08b16c8205e.jsonl`
+- `/ll:refine-issue` - 2026-05-17T05:55:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6075fffb-a261-4749-bc91-6a5ccd982e45.jsonl`
 - `/ll:go-no-go` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79ebee4b-bfa2-4125-97d9-5c564585a388.jsonl`
 - `/ll:refine-issue` - 2026-05-17T01:55:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b41cd01e-2f66-4d8a-9569-7533e00b817e.jsonl`
 - `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60ba9ff7-61cd-4a6b-83ff-2a4a1099aaf1.jsonl`
@@ -322,6 +357,7 @@ The AGAINST side presents two concrete, codebase-grounded blockers that the FOR 
 - `/ll:wire-issue` - 2026-05-17T01:47:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c6e016f-d3b2-4f3e-a2c1-6c7553275998.jsonl`
 - `/ll:format-issue` - 2026-05-17T00:13:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9399e2ff-d506-4e4e-838b-3a1fd8d6d558.jsonl`
 
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/89589346-d055-4c50-9998-e16a3d3ff394.jsonl`
 - `/ll:capture-issue` - 2026-05-17T00:04:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff887948-4996-409c-8d0b-4292b9dd69d2.jsonl`
 
 ---

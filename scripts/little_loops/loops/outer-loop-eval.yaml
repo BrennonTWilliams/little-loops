@@ -13,17 +13,17 @@ max_iterations: 15
 timeout: 14400
 on_handoff: spawn
 context:
-  loop_name: ""  # Required: target loop name (built-in or project-level)
-  input: ""      # Optional: input value passed to the sub-loop
+  input: ""       # Required: target loop name (built-in or project-level)
+  loop_input: ""  # Optional: input value passed to the sub-loop
 
 states:
 
   validate_input:
     action_type: shell
     action: |
-      test -n "${context.loop_name}" \
-        && echo "loop_name: ${context.loop_name}" \
-        || (echo "ERROR: loop_name is required. Pass with --context loop_name=<name>" >&2; exit 1)
+      test -n "${context.input}" \
+        && echo "loop: ${context.input}" \
+        || (echo "ERROR: target loop name is required. Pass as positional arg: ll-loop run outer-loop-eval <name>" >&2; exit 1)
     on_error: done
     next: load_definition
 
@@ -31,7 +31,7 @@ states:
     action_type: shell
     timeout: 60
     action: |
-      ll-loop show "${context.loop_name}" 2>&1
+      ll-loop show "${context.input}" 2>&1
     capture: loop_definition
     on_error: analyze_definition
     next: analyze_definition
@@ -39,7 +39,7 @@ states:
   analyze_definition:
     action_type: slash_command
     timeout: 600
-    action: "/ll:debug-loop-run ${context.loop_name} --auto"
+    action: "/ll:debug-loop-run ${context.input} --auto"
     capture: definition_analysis
     on_blocked: $current
     on_error: run_sub_loop
@@ -48,10 +48,10 @@ states:
     next: run_sub_loop
 
   run_sub_loop:
-    loop: "${context.loop_name}"
+    loop: "${context.input}"
     timeout: 3600
     with:
-      input: "${context.input}"
+      input: "${context.loop_input}"
     capture: sub_loop_output
     on_yes: analyze_execution
     on_no: analyze_execution
@@ -60,7 +60,7 @@ states:
   analyze_execution:
     action_type: slash_command
     timeout: 600
-    action: "/ll:debug-loop-run ${context.loop_name} --auto"
+    action: "/ll:debug-loop-run ${context.input} --auto"
     capture: execution_analysis
     on_blocked: $current
     on_error: generate_report
@@ -71,7 +71,7 @@ states:
   generate_report:
     action_type: slash_command
     timeout: 600
-    action: "/ll:audit-loop-run ${context.loop_name} --auto"
+    action: "/ll:audit-loop-run ${context.input} --auto"
     capture: improvement_report
     on_blocked: $current
     on_error: done
@@ -94,7 +94,7 @@ states:
   refine_analysis:
     action_type: slash_command
     timeout: 600
-    action: "/ll:audit-loop-run ${context.loop_name} --auto"
+    action: "/ll:audit-loop-run ${context.input} --auto"
     capture: improvement_report
     on_blocked: $current
     on_error: done

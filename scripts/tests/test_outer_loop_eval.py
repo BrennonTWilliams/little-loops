@@ -49,13 +49,13 @@ class TestOuterLoopEvalFile:
 
     def test_context_variables(self, loop_data: dict) -> None:
         context = loop_data.get("context", {})
-        assert "loop_name" in context, "context must have loop_name variable"
-        assert "input" in context, "context must have input variable"
+        assert "input" in context, "context must have input variable (target loop name)"
+        assert "loop_input" in context, "context must have loop_input variable"
 
     def test_context_defaults(self, loop_data: dict) -> None:
         context = loop_data.get("context", {})
-        assert context.get("loop_name") == "", "loop_name default must be empty string"
         assert context.get("input") == "", "input default must be empty string"
+        assert context.get("loop_input") == "", "loop_input default must be empty string"
 
 
 class TestOuterLoopEvalStates:
@@ -80,7 +80,7 @@ class TestOuterLoopEvalStates:
     def test_validate_input_checks_loop_name(self, loop_data: dict) -> None:
         state = loop_data["states"]["validate_input"]
         assert state.get("action_type") == "shell"
-        assert "context.loop_name" in state.get("action", "")
+        assert "context.input" in state.get("action", "")
 
     def test_validate_input_routes_error_to_done(self, loop_data: dict) -> None:
         state = loop_data["states"]["validate_input"]
@@ -94,15 +94,15 @@ class TestOuterLoopEvalStates:
         state = loop_data["states"]["analyze_definition"]
         assert state.get("action_type") == "slash_command"
         assert "debug-loop-run" in state.get("action", "")
-        assert "loop_name" in state.get("action", "")
+        assert "context.input" in state.get("action", "")
         assert state.get("capture") == "definition_analysis"
         assert state.get("next") == "run_sub_loop"
 
     def test_run_sub_loop_is_native_loop(self, loop_data: dict) -> None:
         state = loop_data["states"]["run_sub_loop"]
         assert "loop" in state, "run_sub_loop must use native loop action (not shell)"
-        assert "context.loop_name" in state.get("loop", ""), (
-            "loop field must reference context.loop_name"
+        assert "context.input" in state.get("loop", ""), (
+            "loop field must reference context.input"
         )
         assert state.get("capture") == "sub_loop_output"
         assert state.get("on_yes") == "analyze_execution"
@@ -115,7 +115,7 @@ class TestOuterLoopEvalStates:
         state = loop_data["states"]["analyze_execution"]
         assert state.get("action_type") == "slash_command"
         assert "debug-loop-run" in state.get("action", "")
-        assert "loop_name" in state.get("action", "")
+        assert "context.input" in state.get("action", "")
         assert state.get("capture") == "execution_analysis"
         assert state.get("next") == "generate_report"
 
@@ -138,12 +138,14 @@ class TestOuterLoopEvalStates:
     def test_load_definition_captures_loop_definition(self, loop_data: dict) -> None:
         state = loop_data["states"]["load_definition"]
         assert state.get("action_type") == "shell"
-        assert "context.loop_name" in state.get("action", "")
+        assert "context.input" in state.get("action", "")
         assert state.get("capture") == "loop_definition"
         assert state.get("next") == "analyze_definition"
 
     def test_run_sub_loop_input_binding_uses_context_var(self, loop_data: dict) -> None:
-        """with: binding for input must reference context.input."""
+        """with: binding for input must reference context.loop_input."""
         with_ = loop_data["states"]["run_sub_loop"].get("with", {})
         input_val = with_.get("input", "")
-        assert "context.input" in input_val, "run_sub_loop with.input must reference context.input"
+        assert "context.loop_input" in input_val, (
+            "run_sub_loop with.input must reference context.loop_input"
+        )
