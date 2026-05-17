@@ -765,6 +765,7 @@ run_eval → score_results → analyze_failures
 | `harness-multi-item` | Annotated multi-item harness example — all five evaluation phases active over a discovered item list |
 | `harness-optimize` | Score-gated hill-climbing on harness artifacts (skills, commands, CLAUDE.md) — proposes edits, benchmarks, commits accepted mutations; stops on first stall. Supports `.ll/program.md` for overnight runs: set Directive, Targets, and Benchmark once, then run `ll-loop run harness-optimize` with no flags. |
 | `html-anything` | Generalized HTML artifact harness — classifies artifact type (email, social card, résumé, dashboard, etc.) from a description, writes a platform-specific brief and dynamic scoring rubric, then iteratively generates and refines `index.html` via Playwright CLI |
+| `hitl-compare` | Human-in-the-loop comparison harness — reads whitespace-separated inputs (file paths or raw text), extracts candidate review items with 2+ options, prunes implementation-level micro-decisions, and generates a self-contained interactive HTML page with comparison controls and an "Export selections" affordance |
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
 | `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI |
 | `svg-textgrad` | TextGrad-style SVG harness — optimizes the visual brief via structured gradient updates (FAILURE_PATTERN → ROOT_CAUSE → GRADIENT) rather than feeding raw critique to the generator; accumulates gradient history for repeated-failure escalation |
@@ -844,6 +845,59 @@ For `html-social-card`:
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
 - For a plain website, `html-website-generator` is simpler (no artifact classification step). Use `html-anything` when the artifact type determines which platform constraints to enforce.
 - To customize criteria for a specific artifact type, install locally (`ll-loop install html-anything`) and edit the `plan` state's rubric design rules.
+
+### `hitl-compare` — Human-in-the-Loop Comparison Harness
+
+> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`). Playwright is used for screenshot evaluation but is optional — the loop degrades gracefully to LLM-only scoring when Playwright is unavailable.
+
+**Technique**: Implements a novel `identify → prune → generate` pipeline before the standard GAN-style `evaluate → score` loop. The `identify` state resolves each whitespace-separated input token (file path or raw text) and extracts all candidate review items (decisions, design choices, requirement variants, document versions). The `prune` state filters out implementation-level micro-decisions that the normal planning pipeline (`/ll:refine-issue`, `/ll:wire-issue`, `/ll:decide-issue`) should resolve, surfacing only items where human taste or strategic preference is the appropriate deciding signal. The `generate` state then produces a single self-contained HTML page with per-item comparison controls and an "Export selections" affordance. The `score` state evaluates a 5-criterion rubric (clarity, scannability, comparison_ergonomics, export_affordance, inline_constraint) with per-criterion thresholds.
+
+**When to use**: After running `/ll:refine-issue` on a batch of issues where several emerge with `decision_needed: true` and 2–3 viable options each. Also useful for design review (plan markdown + raw-text design alternatives) or any situation where multiple open choices need a focused human review surface rather than a long back-and-forth chat thread.
+
+**Usage:**
+
+```bash
+# Review issues with decision_needed: true
+ll-loop run hitl-compare ".issues/features/P2-FEAT-A.md .issues/features/P2-FEAT-B.md"
+
+# Mixed input: a plan plus raw text describing design alternatives
+ll-loop run hitl-compare "thoughts/shared/plans/2026-05-17-auth-plan.md 'Option A: JWT tokens stored in httpOnly cookie. Option B: Opaque tokens stored server-side.'"
+
+# Pruning check: implementation-heavy input should reduce to zero or few items
+ll-loop run hitl-compare ".issues/bugs/P1-BUG-100-implementation-details.md"
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `inputs` | (from `loop_input`) | Whitespace-separated file paths or raw text tokens — passed as the positional argument |
+| `output_dir` | `.loops/tmp/hitl-compare` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/hitl-compare/20260517-143022/`) containing `index.html`, `items.md`, `review.md`, `critique.md`, and `screenshot.png` |
+
+**FSM flow:**
+
+```
+init → identify → prune → generate → evaluate
+                                         ├─ CAPTURED → score
+                                         │              ├─ ALL_PASS → done
+                                         │              ├─ ITERATE  → generate (with critique)
+                                         │              └─ ERROR    → failed
+                                         └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
+```
+
+**Using the generated page:**
+
+1. Open `<run_dir>/index.html` in your browser (`file://` URL — no server needed).
+2. Toggle through the comparison controls to select your preferred option for each item.
+3. Click **Export Selections** to generate a copy-pasteable markdown block.
+4. Paste the block into your coding agent chat: `"Apply these review selections: [paste]"`.
+
+**Notes:**
+- The `prune` state logs every pruned item and its reason in `review.md` for traceability — you can audit what was excluded and why.
+- If all items are pruned (nothing to review), the generated HTML page reports this clearly; no human selections are needed.
+- The `evaluate` state's `on_error: generate` route means Playwright absence falls back to LLM-only `score` judgment — the loop runs end-to-end even without a browser installed.
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- To customize the scoring rubric, install locally (`ll-loop install hitl-compare`) and edit the `score` state's criteria and thresholds.
 
 ### `html-website-generator` — GAN-Style Website Design Loop
 

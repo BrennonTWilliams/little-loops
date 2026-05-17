@@ -1,0 +1,265 @@
+name: hitl-compare
+category: harness
+input_key: inputs
+description: |
+  Human-in-the-loop comparison harness — reads whitespace-separated inputs (file paths or raw text),
+  extracts candidate review items (decisions, designs, requirement variants) with 2+ options each,
+  prunes implementation-level micro-decisions, and generates a single self-contained interactive HTML
+  page with toggle/select controls per surviving item and an "Export selections" affordance that yields
+  a copy-pasteable markdown block for feeding chosen decisions back to the coding agent.
+initial: init
+max_iterations: 20
+timeout: 7200
+
+# HARNESS: Context variables control output location.
+# inputs is populated from the CLI positional arg via input_key: inputs.
+# Each whitespace-separated token is resolved as a file path (if it exists on disk)
+# or treated as raw text content — this discrimination happens in the identify prompt.
+context:
+  inputs: ""              # whitespace-separated file paths or raw text; populated via input_key
+  output_dir: ".loops/tmp/hitl-compare"
+
+states:
+
+  init:
+    # HARNESS: Setup phase — creates a timestamped run folder under output_dir and
+    # captures the full absolute path so all subsequent states write to an isolated
+    # directory. Using $(pwd) ensures the captured path is valid for file:// URIs.
+    action_type: shell
+    action: |
+      TS=$(date -u +%Y%m%d-%H%M%S)
+      DIR="${context.output_dir}/$TS"
+      mkdir -p "$DIR"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: identify
+
+  identify:
+    # HITL: Extraction phase — resolves each whitespace-separated input token (file path
+    # or raw text), then scans all content for candidate review items: decisions, design
+    # choices, requirement variants, document versions. Writes the full unfiltered candidate
+    # list to items.md so prune can apply judgment about what truly needs human review.
+    action_type: prompt
+    action: |
+      You are analyzing inputs to extract candidate review items for human comparison.
+
+      Inputs: "${context.inputs}"
+
+      For each whitespace-separated token in the inputs string above:
+      - If the token looks like a file path and the file exists on disk, read the file and use its contents.
+      - Otherwise treat the literal token string as raw text content.
+
+      Extract every candidate review item — a decision, design choice, requirement variant,
+      document version, or other option-bearing element — where there are 2 or more options
+      a human might reasonably need to choose between.
+
+      Write the full candidate list to ${captured.run_dir.output}/items.md using this format
+      for each item:
+
+      ```
+      ## [Item Title]
+
+      category: [decision | design | requirement | document-version | other]
+
+      ### Option A
+      [Short description or excerpt — 1-3 sentences max]
+      Rationale: [Why this option exists or what trade-off it represents]
+
+      ### Option B
+      [Short description or excerpt — 1-3 sentences max]
+      Rationale: [Why this option exists or what trade-off it represents]
+
+      [### Option C ... if more options exist]
+      ```
+
+      Include ALL candidate items, even implementation-level ones — the prune state filters them.
+      If no candidate review items are found anywhere in the inputs, write exactly:
+      "No review items found." to ${captured.run_dir.output}/items.md and proceed anyway;
+      the prune state will report this cleanly.
+    next: prune
+
+  prune:
+    # HITL: Pruning phase — filters the full candidate list down to only items that genuinely
+    # require human judgment, taste, or strategic preference. Implementation-level details that
+    # the normal planning pipeline (/ll:refine-issue, /ll:wire-issue, /ll:decide-issue) should
+    # resolve are pruned here rather than surfaced to the human, avoiding decision-spam.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/items.md — the full candidate review item list.
+
+      Filter this list down to only items that genuinely require human judgment, taste, or
+      strategic preference. Remove items that:
+      - Are implementation-level details (naming, code structure, method signatures, file layout)
+        that the normal planning pipeline (/ll:refine-issue, /ll:wire-issue, /ll:decide-issue) resolves
+      - Have an obvious winner based on technical merit alone (one option is strictly better)
+      - Are micro-decisions a developer can resolve autonomously without stakeholder input
+      - Are already resolved or decided in the input material
+
+      Keep items where a human's taste, judgment, strategic preference, or domain authority is
+      the appropriate deciding signal: UX/design trade-offs, business priority calls, naming
+      visible to end-users, architecture choices with genuine stakeholder impact.
+
+      Write the surviving items to ${captured.run_dir.output}/review.md using the same per-item
+      format as items.md. Prepend a summary block:
+
+      ```
+      # Review Items
+
+      Total candidates: N
+      Pruned (implementation-level or obvious winner): M
+      Surviving for human review: K
+
+      Pruned items and reasons:
+      - [Item Title]: [one-line reason for pruning]
+      ...
+
+      ---
+      ```
+
+      If all items were pruned (K=0), write a "Nothing to review — all decisions are
+      implementation-level or have obvious winners." note after the summary block and proceed
+      to generate, which will produce a friendly "nothing to review" HTML page.
+    next: generate
+
+  generate:
+    # HITL: Generator phase — produces a single self-contained HTML review page with one
+    # comparison control per surviving review item and an "Export selections" affordance.
+    # All CSS and JS must be inline so the page renders under a file:// URL without a server.
+    # On subsequent iterations, addresses all critique.md issues before introducing changes.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/review.md for the surviving review items.
+
+      If ${captured.run_dir.output}/critique.md exists, read it and address all issues listed
+      in the "Issues to Address" section specifically and completely.
+
+      Write a single self-contained HTML file to ${captured.run_dir.output}/index.html that:
+      - Embeds ALL CSS and JavaScript inline (no external dependencies, no CDN links, no <link> tags)
+      - Renders correctly under a file:// URL without an HTTP server
+      - Has a clean header identifying this as a review page and showing the total item count
+
+      If review.md indicates "nothing to review" (K=0):
+      - Produce a simple, friendly page showing the pruning summary and confirming that all
+        decisions are implementation-level — no human selections needed.
+
+      Otherwise, for each surviving review item:
+      - Show the item title and category label prominently
+      - Display each option's content and rationale in a readable format (side-by-side on wide
+        screens, stacked on narrow screens — pure CSS, no JS required for layout)
+      - Provide a comparison control: radio buttons for binary choices (2 options), a labeled
+        button group or cycle toggle for 3+ options
+      - Visually highlight the currently selected option (border, background, or checkmark)
+
+      At the bottom of the page, include an "Export Selections" button that:
+      - Uses JavaScript to read the current state of all selection controls
+      - Builds a markdown block in this format:
+        ```
+        ## Review Selections — [ISO timestamp]
+
+        - **[Item Title]**: [Chosen Option label, e.g. "Option A — [first few words of option]"]
+        ...
+        ```
+      - Displays the block in a visible <textarea> or <pre> element the user can copy
+      - Includes a "Copy to clipboard" button that calls navigator.clipboard.writeText()
+
+      Design: clean typography, generous whitespace, each item in its own card with a visible
+      border, selected state unambiguous at a glance. Avoid external fonts or images.
+    next: evaluate
+
+  evaluate:
+    # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// page.
+    # Self-contained HTML (all CSS/JS inline) renders correctly under file:// without
+    # an HTTP server. Routes to score on success; routes back to generate on failure
+    # (e.g. Playwright not installed, or file missing) so the loop degrades gracefully.
+    action_type: shell
+    action: |
+      playwright screenshot "file://${captured.run_dir.output}/index.html" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
+    evaluate:
+      type: output_contains
+      pattern: "CAPTURED"
+    on_yes: score
+    on_no: generate
+    on_error: generate
+
+  score:
+    # HARNESS: Evaluator phase — LLM judges the screenshot against a fixed 5-criterion rubric
+    # tailored to HITL comparison ergonomics. Per-criterion thresholds (not a weighted average)
+    # prevent strong visual design from masking a broken export affordance or missing inline constraint.
+    # Gates via output_contains: "ALL_PASS"; routes to generate on fail, failed on LLM error.
+    action_type: prompt
+    action: |
+      Read the screenshot at ${captured.run_dir.output}/screenshot.png to view the rendered review page.
+      Also read ${captured.run_dir.output}/review.md to recall what items should be present.
+
+      Score the review page on each criterion from 1 to 10 and write the evaluation to
+      ${captured.run_dir.output}/critique.md using this exact format:
+
+      ```
+      # Evaluation
+
+      clarity: N/10 — [explanation: can a reviewer immediately understand each item and its options?
+        Is each item title visible? Are options clearly labeled? Is the rationale readable?]
+      scannability: N/10 — [explanation: can a reviewer scan all items quickly to see what needs
+        a decision? Are items well-separated? Is the overall structure easy to navigate at a glance?]
+      comparison_ergonomics: N/10 — [explanation: does the comparison control make it easy to
+        toggle between options? Are options shown in a way that facilitates side-by-side comparison?
+        Is the selected state visually unambiguous?]
+      export_affordance: N/10 — [explanation: is the "Export selections" button visible and
+        prominent? Does the exported markdown block clearly identify each item and its chosen option?
+        Is the copy affordance obvious?]
+      inline_constraint: N/10 — [explanation: does the page appear to render correctly under
+        file://? Is there any evidence of external resource loading (broken images, missing fonts)?
+        All CSS/JS must be inline.]
+
+      ## Issues to Address
+      [Specific, actionable critique for the generator. List each problem concisely so the
+       generator can address it on the next pass. If all scores meet their thresholds, write
+       "No issues — all criteria pass."]
+      ```
+
+      Thresholds (evaluate each criterion independently — do NOT average):
+      - clarity: 7
+      - scannability: 7
+      - comparison_ergonomics: 7
+      - export_affordance: 7
+      - inline_constraint: 8
+
+      If ALL five criterion scores meet their individual thresholds, output exactly: ALL_PASS
+      Otherwise output: ITERATE
+    evaluate:
+      type: output_contains
+      pattern: "ALL_PASS"
+    on_yes: done
+    on_no: generate
+    on_error: failed
+
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
+    # Reports all output file paths and explains how to feed selections back to the coding agent.
+    action_type: prompt
+    action: |
+      The hitl-compare loop has completed successfully.
+
+      Final output files:
+      - ${captured.run_dir.output}/index.html     — the interactive review page (open in your browser)
+      - ${captured.run_dir.output}/items.md       — all candidate review items extracted from inputs
+      - ${captured.run_dir.output}/review.md      — surviving items after pruning (what's on the page)
+      - ${captured.run_dir.output}/critique.md    — final evaluation scores and notes
+      - ${captured.run_dir.output}/screenshot.png — the last Playwright-captured render
+
+      To complete the review:
+      1. Open ${captured.run_dir.output}/index.html in your browser (file:// URL works — no server needed).
+      2. Toggle through the comparison controls and select your preferred option for each item.
+      3. Click "Export Selections" at the bottom to generate the decisions markdown block.
+      4. Copy the markdown block and paste it into your coding agent chat to update the relevant
+         issues, plans, or specs with your chosen options (e.g. "Apply these review selections: [paste]").
+
+      If the page shows "nothing to review", all decisions in the inputs were implementation-level
+      or had obvious winners — the pruning step resolved them and no human input is needed.
+    terminal: true
+
+  failed:
+    # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs
+    # (e.g. LLM failure in score state). Provides a clear signal distinct from a
+    # max_iterations timeout, making failure mode visible in ll-loop history.
+    terminal: true
