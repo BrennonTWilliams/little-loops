@@ -1,0 +1,247 @@
+"""Tests for the deep-research built-in FSM loop (FEAT-1540)."""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+import yaml
+
+from little_loops.fsm.evaluators import evaluate_output_contains
+from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
+
+BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
+LOOP_FILE = BUILTIN_LOOPS_DIR / "deep-research.yaml"
+
+
+def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True)
+
+
+class TestDeepResearchYaml:
+    """Validate the deep-research YAML parses and passes FSM validation."""
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert LOOP_FILE.exists(), f"Loop file not found: {LOOP_FILE}"
+        return yaml.safe_load(LOOP_FILE.read_text())
+
+    def test_file_exists(self) -> None:
+        assert LOOP_FILE.exists()
+
+    def test_yaml_parses(self, data: dict) -> None:
+        assert isinstance(data, dict)
+
+    def test_fsm_validates_without_errors(self) -> None:
+        fsm, _ = load_and_validate(LOOP_FILE)
+        errors = validate_fsm(fsm)
+        error_msgs = [r for r in errors if r.severity == ValidationSeverity.ERROR]
+        assert not error_msgs, f"FSM validation errors: {error_msgs}"
+
+    def test_description_is_present(self, data: dict) -> None:
+        assert data.get("description"), "deep-research must have a non-empty description"
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "deep-research"
+        assert data.get("initial") == "init"
+        assert data.get("input_key") == "topic"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        required = {
+            "init",
+            "generate_queries",
+            "search_web",
+            "evaluate_sources",
+            "score_coverage",
+            "plan_next",
+            "synthesize",
+            "done",
+        }
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing required states: {missing}"
+
+    def test_init_state_is_shell_with_capture(self, data: dict) -> None:
+        state = data["states"]["init"]
+        assert state.get("action_type") == "shell"
+        assert state.get("capture") == "run_dir"
+        assert state.get("next") == "generate_queries"
+
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        action = data["states"]["init"].get("action", "")
+        assert "$(pwd)" in action, "init.action must use $(pwd) for an absolute path"
+
+    def test_init_touches_all_artifact_files(self, data: dict) -> None:
+        action = data["states"]["init"].get("action", "")
+        for artifact in ("report.md", "knowledge-base.md", "coverage.md", "query-log.md"):
+            assert artifact in action, f"init.action must touch {artifact}"
+
+    def test_coverage_state_uses_sentinel(self, data: dict) -> None:
+        state = data["states"]["score_coverage"]
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "COVERAGE_SUFFICIENT"
+        assert state.get("on_yes") == "synthesize"
+        assert state.get("on_no") == "plan_next"
+        assert state.get("on_error") == "synthesize"
+
+    def test_plan_next_loops_back_to_search_web(self, data: dict) -> None:
+        state = data["states"]["plan_next"]
+        assert state.get("next") == "search_web"
+
+    def test_terminal_done_state(self, data: dict) -> None:
+        assert data["states"]["done"].get("terminal") is True
+
+    def test_context_has_topic_and_output_dir(self, data: dict) -> None:
+        ctx = data.get("context", {})
+        assert "topic" in ctx
+        assert "output_dir" in ctx
+        assert ctx["output_dir"] == ".loops/research"
+
+    def test_context_has_depth_and_coverage_threshold(self, data: dict) -> None:
+        ctx = data.get("context", {})
+        assert "depth" in ctx
+        assert "coverage_threshold_pct" in ctx
+
+    def test_max_iterations_is_30(self, data: dict) -> None:
+        assert data.get("max_iterations") == 30
+
+    def test_score_coverage_has_on_error(self, data: dict) -> None:
+        state = data["states"]["score_coverage"]
+        assert "on_error" in state, "score_coverage must have on_error for graceful degradation"
+
+
+class TestDeepResearchShellStates:
+    """Exercise the init shell action directly to verify slug and directory creation."""
+
+    def test_init_creates_run_directory(self, tmp_path: Path) -> None:
+        """init action creates the output directory and all four artifact files."""
+        topic = "What are the trade-offs of CRDT vs OT for collaborative editing?"
+        script = f"""
+SLUG=$(echo "{topic}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\\+/-/g; s/^-//; s/-$//')
+SLUG="${{SLUG:-deep-research-run}}"
+DIR=".loops/research/$SLUG"
+mkdir -p "$DIR"
+: > "$DIR/report.md"
+: > "$DIR/knowledge-base.md"
+: > "$DIR/coverage.md"
+: > "$DIR/query-log.md"
+echo "$(pwd)/$DIR"
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0, f"init shell failed: {result.stderr}"
+        run_dir = result.stdout.strip()
+        assert run_dir, "init must output the run directory path"
+
+        run_path = Path(run_dir)
+        assert run_path.is_dir(), f"Run directory not created: {run_path}"
+        assert (run_path / "report.md").exists(), "report.md not created"
+        assert (run_path / "knowledge-base.md").exists(), "knowledge-base.md not created"
+        assert (run_path / "coverage.md").exists(), "coverage.md not created"
+        assert (run_path / "query-log.md").exists(), "query-log.md not created"
+
+    def test_init_slug_is_lowercase_hyphenated(self, tmp_path: Path) -> None:
+        """init action produces a lowercase, hyphenated slug from the topic."""
+        topic = "CRDT vs Operational Transform"
+        script = f"""
+SLUG=$(echo "{topic}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\\+/-/g; s/^-//; s/-$//')
+echo "$SLUG"
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+        slug = result.stdout.strip()
+        assert slug == "crdt-vs-operational-transform"
+
+    def test_init_outputs_absolute_path(self, tmp_path: Path) -> None:
+        """init action echoes an absolute path (starts with /)."""
+        topic = "deep research test topic"
+        script = f"""
+SLUG=$(echo "{topic}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\\+/-/g; s/^-//; s/-$//')
+DIR=".loops/research/$SLUG"
+mkdir -p "$DIR"
+echo "$(pwd)/$DIR"
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+        path = result.stdout.strip()
+        assert path.startswith("/"), f"init must output absolute path, got: {path!r}"
+
+    def test_init_empty_topic_uses_fallback_slug(self, tmp_path: Path) -> None:
+        """init action falls back to 'deep-research-run' when topic produces empty slug."""
+        script = """
+SLUG=$(echo "" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\\+/-/g; s/^-//; s/-$//')
+SLUG="${SLUG:-deep-research-run}"
+echo "$SLUG"
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+        slug = result.stdout.strip()
+        assert slug == "deep-research-run"
+
+
+class TestDeepResearchEvaluators:
+    """Unit-test the convergence evaluator without subprocess."""
+
+    def test_coverage_sentinel_matches(self) -> None:
+        """COVERAGE_SUFFICIENT → yes; NEED_MORE → no."""
+        data = yaml.safe_load(LOOP_FILE.read_text())
+        pattern = data["states"]["score_coverage"]["evaluate"]["pattern"]
+
+        assert evaluate_output_contains("COVERAGE_SUFFICIENT\n", pattern).verdict == "yes"
+        assert evaluate_output_contains("NEED_MORE\n", pattern).verdict == "no"
+        assert evaluate_output_contains(
+            "Average coverage: 4.2/5\nCOVERAGE_SUFFICIENT", pattern
+        ).verdict == "yes"
+        assert evaluate_output_contains("", pattern).verdict == "no"
+
+
+class TestDeepResearchResolution:
+    """Verify the loop is discoverable via the built-in loop resolver."""
+
+    def test_loop_resolves_as_builtin(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """resolve_loop_path finds deep-research as a built-in loop."""
+        from little_loops.cli.loop._helpers import get_builtin_loops_dir, resolve_loop_path
+
+        monkeypatch.chdir(tmp_path)
+        result = resolve_loop_path("deep-research", get_builtin_loops_dir())
+        assert result is not None, "deep-research should resolve as a built-in loop"
+        assert result.name == "deep-research.yaml"
+        assert result.exists()
+
+    def test_loop_loads_with_topic_input(self) -> None:
+        """FSMLoop loads from deep-research.yaml with input_key == topic."""
+        fsm, _ = load_and_validate(LOOP_FILE)
+        assert fsm.input_key == "topic"
+        assert "topic" in fsm.context
+        assert fsm.initial == "init"
+
+
+class TestDeepResearchDryRun:
+    """CLI smoke test via main_loop with --dry-run."""
+
+    def test_loop_dry_run_exits_zero(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ll-loop run --dry-run for deep-research outputs the loop name and exits 0."""
+        import sys
+        from unittest.mock import patch
+
+        from little_loops.cli import main_loop
+
+        monkeypatch.chdir(tmp_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-loop", "run", "deep-research", "test research topic", "--dry-run"],
+        ):
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        assert "deep-research" in captured.out
+        assert result == 0

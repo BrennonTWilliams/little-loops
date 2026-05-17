@@ -93,3 +93,77 @@ The scorer command must follow the Harbor scorer protocol:
 ### Dependencies
 
 Imports `lib/benchmark.yaml` for the `run_benchmark` fragment.
+
+---
+
+## `deep-research`
+
+**Category**: research
+**File**: `scripts/little_loops/loops/deep-research.yaml`
+
+Iterative web research synthesis loop. Accepts a research topic or question, generates an initial set of faceted search queries, performs web searches, evaluates and deduplicates sources, scores per-facet coverage, and iterates until coverage is sufficient or `max_iterations` is exhausted. Produces a structured Markdown report with executive summary, key findings, source table, coverage gaps, and conclusion.
+
+### Invocation
+
+```bash
+# Basic — positional arg injected into context.topic via input_key: topic
+ll-loop run deep-research "What are the trade-offs of CRDT vs OT for collaborative editing?"
+
+# Deeper research with higher coverage target
+ll-loop run deep-research "your research topic" \
+  --context depth=5 \
+  --context coverage_threshold_pct=90
+
+# Custom output directory
+ll-loop run deep-research "your topic" \
+  --context output_dir=.loops/my-research
+```
+
+### Context Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `topic` | `""` | **Required.** Research question or topic (injected from positional arg via `input_key: topic`). |
+| `output_dir` | `.loops/research` | Directory where per-run subdirectories are created. |
+| `depth` | `3` | Minimum number of search rounds before accepting convergence. |
+| `coverage_threshold_pct` | `85` | Target coverage percentage; surfaced in the `score_coverage` prompt. |
+
+### State Graph
+
+```
+init  (shell: slug topic, mkdir, touch 4 artifact files, capture run_dir)
+  → generate_queries  (prompt: write 3–5 faceted queries to query-log.md;
+                       initialize coverage.md with facet list)
+    → search_web  (prompt: WebSearch/WebFetch; append findings + [Source: <url>] to knowledge-base.md)
+      → evaluate_sources  (prompt: score relevance/credibility, deduplicate, mark LOW-QUALITY)
+        → score_coverage  (prompt: score facets 1–5, update coverage.md;
+                           emit COVERAGE_SUFFICIENT or NEED_MORE)
+          on_yes (COVERAGE_SUFFICIENT) → synthesize
+          on_no  (NEED_MORE)           → plan_next
+          on_error                     → synthesize  (graceful degradation)
+            → plan_next  (prompt: generate gap-filling queries, append to query-log.md)
+              → search_web  (loop back)
+  synthesize  (prompt: consolidate knowledge-base.md into structured report.md)
+    → done  (terminal: report final output paths and facet scores)
+```
+
+### Output Artifacts
+
+All artifacts are written to `${context.output_dir}/<slug>/` where `<slug>` is a lowercase, hyphenated form of `context.topic`:
+
+| File | Description |
+|------|-------------|
+| `report.md` | Primary output — executive summary, key findings, source table, coverage gaps, conclusion |
+| `knowledge-base.md` | Accumulated findings with `[Source: <url>]` (relevance: N/5, credibility: N/5) annotations |
+| `coverage.md` | Per-facet coverage scores (1–5) updated each iteration; includes iteration count and average |
+| `query-log.md` | All search queries grouped by iteration (`## Iteration N` blocks) |
+
+### Convergence
+
+`score_coverage` uses the **inline sentinel** pattern (Option A, `rn-plan`-style):
+
+- Emits `COVERAGE_SUFFICIENT` when: average facet score ≥ 4.0 AND iteration ≥ `depth`
+- Emits `NEED_MORE` otherwise
+- `on_error` routes to `synthesize` (write what we have; don't stall)
+
+Knowledge accumulation: `knowledge-base.md` **appends** across iterations (sources accumulate); `coverage.md` **overwrites** each iteration (only latest score matters for routing).

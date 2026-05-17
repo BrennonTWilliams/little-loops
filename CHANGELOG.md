@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.103.0] - 2026-05-17
+
+### Added
+
+- **`deep-research` FSM Loop** — New built-in iterative web research synthesis loop that accepts a research topic or question, generates an initial set of faceted search queries, iteratively performs web searches via WebSearch/WebFetch tools, evaluates and deduplicates sources, scores per-facet coverage on a 1–5 scale, and iterates until coverage is sufficient or `max_iterations` is exhausted. Uses the inline sentinel convergence pattern (`COVERAGE_SUFFICIENT`) modeled on `rn-plan`. Produces a structured `report.md` with executive summary, key findings, deduplicated source table, coverage gaps, and conclusion. All artifacts written to `.loops/research/<slug>/`. Run via `ll-loop run deep-research "your research topic"`. (FEAT-1540)
+
 ## [1.102.0] - 2026-05-16
 
 ### Added

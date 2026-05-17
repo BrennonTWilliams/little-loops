@@ -2,16 +2,17 @@
 id: FEAT-1540
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-05-16
 discovered_by: capture-issue
 captured_at: '2026-05-17T04:33:09Z'
-decision_needed: true
-confidence_score: 90
-outcome_confidence: 75
+completed_at: '2026-05-17T08:01:20Z'
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 82
 score_complexity: 14
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -55,6 +56,29 @@ Deep research is one of the most common use cases Claude users perform manually 
 - Complement the existing `rn-plan` loop (FEAT-1534) — deep-research feeds into planning
 - Demonstrate ll's capability as a general automation platform beyond code tasks
 
+## Use Case
+
+A developer or researcher needs to answer a complex, multi-faceted question (e.g., "What are the trade-offs of CRDT vs OT for collaborative editing?") that requires synthesizing information from multiple sources. Instead of manually issuing search queries, evaluating sources, and tracking coverage, they run:
+
+```bash
+ll-loop run deep-research "What are the trade-offs of CRDT vs OT for collaborative editing?" --context depth=3
+```
+
+The loop iteratively searches the web, accumulates a cited knowledge base, identifies coverage gaps, and produces a structured `report.md` with an executive summary, key findings, source table, and conclusion — ready for use in planning or decision-making.
+
+## Acceptance Criteria
+
+- [ ] `ll-loop run deep-research "<topic>"` runs end-to-end without error for a given topic string
+- [ ] The `init` state creates a run directory containing `report.md`, `knowledge-base.md`, `coverage.md`, and `query-log.md`
+- [ ] The loop iterates through `generate_queries → search_web → evaluate_sources → score_coverage → plan_next` and loops back
+- [ ] The `score_coverage` state emits `COVERAGE_SUFFICIENT` when facet scores are satisfied, routing to `synthesize`; otherwise routes to `plan_next`
+- [ ] The `synthesize` state produces a structured `report.md` with: executive summary, key findings, source table (deduplicated URLs), coverage gaps, and conclusion
+- [ ] `ll-loop list` includes `deep-research` in its output (auto-discovery confirmed)
+- [ ] `ll-loop validate deep-research` passes schema validation without errors
+- [ ] `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles::test_expected_loops_exist` passes with `"deep-research"` in the expected set
+- [ ] `scripts/tests/test_deep_research.py` passes all structural, shell-state, evaluator, and resolution tests
+- [ ] `--dry-run` mode exits 0 and prints the loop name
+
 ## Proposed Solution
 
 The loop will be a single YAML file at `scripts/little_loops/loops/deep-research.yaml` — built-in loops are auto-discovered from that directory by `resolve_loop_path()` in `scripts/little_loops/cli/loop/_helpers.py:127`. No registration step is needed; drop the file and it's available as `ll-loop run deep-research "<topic>"`.
@@ -72,6 +96,8 @@ The loop will be a single YAML file at `scripts/little_loops/loops/deep-research
 **CLI input plumbing:** Declare `input_key: topic` at the top level. Positional arg from `ll-loop run deep-research "<topic>"` is injected into `fsm.context["topic"]` by `cmd_run()` in `scripts/little_loops/cli/loop/run.py:126-139`. Reference as `${context.topic}` throughout. Additional inputs (`--context depth=5 --context coverage_threshold=0.85`) work with no extra wiring.
 
 ### Option A — Inline sentinel convergence (rn-plan pattern)
+
+> **Selected:** Option A — Inline sentinel convergence (rn-plan pattern) — matches 5 existing scoring states exactly; one state handles both scoring and routing with no extra infrastructure.
 
 Score and convergence-check happen in **one state** that prompts the LLM to write a coverage score *and* emit a sentinel token, evaluated by `output_contains`:
 
@@ -121,6 +147,25 @@ route_coverage:
 Mirrors `apo-textgrad.yaml` `route_convergence` (lines 39–48). More verbose but gives `compute_gradient`-style states richer numeric context for `plan_next` to consume. `source:` is required when the router has no action of its own (tested in `test_rn_plan_apo.py::TestRouteConvergenceState::test_route_convergence_evaluator_source`).
 
 **Recommendation:** Option A for v1 — simpler, matches `rn-plan`'s established style; promote to Option B only if iterative gap-driven query planning needs explicit numeric history.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-05-17.
+
+**Selected**: Option A — Inline sentinel convergence (rn-plan pattern)
+
+**Reasoning**: Option A scores 12/12 vs Option B's 8/12. It is the established pattern for convergence states in this codebase, used identically in `rn-plan.yaml:228-266`, `html-anything.yaml`, `html-website-generator.yaml`, `svg-image-generator.yaml`, and `dataset-curation.yaml`. Option B adds a second state with a `source:` redirect that has a documented silent failure mode (forgetting `source:` causes the evaluator to always match the empty string from the no-action state). All required infrastructure for Option A is fully proven with direct test templates available in `test_rn_plan.py:255-265`.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (inline sentinel) | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| Option B (separate router) | 3/3 | 1/3 | 2/3 | 2/3 | 8/12 |
+
+**Key evidence**:
+- Option A: 5 existing loops use the identical inline scoring structure; direct test template at `test_rn_plan.py:255-265` copies verbatim; zero missing infrastructure
+- Option B: 6 APO-family loops use the separate router pattern; requires 2 states vs 1; documented `source:`-omission failure mode in `test_rn_plan_apo.py:217-228`
 
 ### Secondary design question — knowledge accumulation pattern
 
@@ -219,8 +264,8 @@ _Existing path references in this section pointed at `.loops/built-in/` and `scr
 - `CHANGELOG.md` — entry under the next concrete release version (NOT `[Unreleased]` — promote during release prep per project convention).
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `README.md:167` — hardcoded `**45 FSM loops**` count (already stale at 45 vs actual 47); must be updated to N+1 when deep-research ships [Agent 2 finding]
-- `CONTRIBUTING.md:122` — hardcoded `(44 YAML files)` count in loops directory listing (already stale at 44 vs actual 47); must be updated to N+1 when deep-research ships [Agent 2 finding]
+- `README.md:167` — hardcoded `**48 FSM loops**` count (48 actual as of validation); must be updated to 49 when deep-research ships [Agent 2 finding]
+- `CONTRIBUTING.md:122` — hardcoded `(48 YAML files)` count in loops directory listing (48 actual as of validation); must be updated to 49 when deep-research ships [Agent 2 finding]
 - `docs/reference/loops.md` — established pattern for major loops (`## harness-optimize` reference section exists here); add a `## deep-research` section with state graph, context variables, and invocation example [Agent 2 finding]
 
 ### Configuration
@@ -251,8 +296,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-19. Update `README.md:167` — increment the hardcoded `**45 FSM loops**` count; the count is already stale (47 actual before deep-research), so update to the correct total when the YAML ships
-20. Update `CONTRIBUTING.md:122` — increment the hardcoded `(44 YAML files)` count in the loops directory listing to the correct total
+19. Update `README.md:167` — increment the hardcoded `**48 FSM loops**` count to 49 when deep-research ships
+20. Update `CONTRIBUTING.md:122` — increment the hardcoded `(48 YAML files)` count to 49 when deep-research ships
 21. Add `## deep-research` section to `docs/reference/loops.md` — include state graph, context variable table, and a copy-pasteable invocation example; follow the `## harness-optimize` section as a structural template
 
 ## Impact
@@ -290,7 +335,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-05-16 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-17T07:56:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b04d7fe6-41d0-4c72-8587-c000b50cae3f.jsonl`
+- `/ll:decide-issue` - 2026-05-17T07:50:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55f2e55d-e8d0-42f3-a13a-9bd3facc4209.jsonl`
 - `/ll:confidence-check` - 2026-05-17T08:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aac60a3c-4bb3-4d31-b1a0-08e1bc0000bc.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e02d381-e090-4f5e-8b94-ad82b1def412.jsonl`
 - `/ll:wire-issue` - 2026-05-17T07:43:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7e4f13a-3acd-435c-a079-10fe48342d31.jsonl`
 - `/ll:refine-issue` - 2026-05-17T07:37:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32201974-d8b4-4fa2-8deb-5675e43b50d7.jsonl`
 - `/ll:capture-issue` - 2026-05-17T04:33:09Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/314d8cca-9d5a-4567-8a16-87fa357d45fb.jsonl`

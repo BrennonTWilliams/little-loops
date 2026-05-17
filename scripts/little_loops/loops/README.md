@@ -37,6 +37,12 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `incremental-refactor` | Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure |
 | `docs-sync` | Verify documentation matches the codebase and fix broken links |
 
+## Research & Knowledge
+
+| Loop | Description | Primary Inputs |
+|---|---|---|
+| `deep-research` | Iterative web research synthesis loop — generates search queries, performs web searches, evaluates sources, identifies coverage gaps, and produces a structured cited Markdown report | `topic` (research question), `depth` (min rounds, default 3), `coverage_threshold_pct` (default 85) |
+
 ## General Purpose
 
 | Loop | Description |

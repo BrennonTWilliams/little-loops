@@ -296,6 +296,30 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 
 **Refine limit guard**: The loop enforces a **lifetime cap** on total `/ll:refine-issue` calls per issue across all loop runs. At the start of each run, the `check_lifetime_limit` state reads the issue's cumulative `refine_count` from `ll-issues refine-status --json` and compares it against `commands.max_refine_count` in `ll-config.json` (default: **5**, range: 1–20). If the cap is reached, the loop routes to `breakdown_issue` (invoking `/ll:issue-size-review`) rather than failing — a persistent readiness gap after multiple refinement passes signals a scope problem, not a content problem. To raise the limit, set `commands.max_refine_count` in your `ll-config.json`.
 
+**Research & Knowledge**
+
+| Loop | Description |
+|------|-------------|
+| `deep-research` | Iterative web research synthesis — generates search queries, performs web searches, evaluates sources, identifies coverage gaps, and produces a structured Markdown report with citations |
+
+Run:
+```bash
+ll-loop run deep-research "What are the trade-offs of CRDT vs OT for collaborative editing?"
+
+# Adjust depth (minimum search rounds) and coverage threshold:
+ll-loop run deep-research "your research topic" \
+  --context depth=5 \
+  --context coverage_threshold_pct=90
+```
+
+The loop writes all artifacts to `.loops/research/<slug>/`:
+- `report.md` — structured research report with executive summary, key findings, source table, and conclusion
+- `knowledge-base.md` — accumulated findings with inline `[Source: <url>]` citations
+- `coverage.md` — per-facet coverage scores (1–5 scale) updated each iteration
+- `query-log.md` — all search queries issued, grouped by iteration
+
+See [`## deep-research`](../reference/loops.md#deep-research) in the loop reference for context variables, state graph, and invocation details.
+
 **Issue Management**
 
 | Loop | Description |
