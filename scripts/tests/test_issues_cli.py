@@ -1407,6 +1407,34 @@ class TestIssuesCLIShow:
         captured = capsys.readouterr()
         assert "not found" in captured.out.lower()
 
+    def test_show_legacy_filename_without_priority_prefix(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show resolves legacy filenames that start with TYPE-NNN (no P-prefix)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        (bugs_dir / "BUG-099-legacy-format.md").write_text(
+            "---\nstatus: open\n---\n# BUG-099: Legacy format issue\n\n## Summary\nOld naming scheme."
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "BUG-099", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-099" in captured.out
+        assert "Legacy format issue" in captured.out
+
     def test_show_completed_issue(
         self,
         temp_project_dir: Path,

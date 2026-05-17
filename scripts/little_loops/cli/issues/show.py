@@ -86,7 +86,8 @@ def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
         for path in search_dir.glob(f"*-{numeric_id}-*.md"):
             filename = path.name
             # Verify type prefix if provided
-            if type_prefix and f"-{type_prefix}-" not in filename.upper():
+            upper = filename.upper()
+            if type_prefix and f"-{type_prefix}-" not in upper and not upper.startswith(f"{type_prefix}-"):
                 continue
             # Verify priority if provided
             if priority and not filename.upper().startswith(f"{priority}-"):
