@@ -101,6 +101,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `html-anything` | Generalized HTML artifact harness — classifies artifact type (email, social card, résumé, dashboard, etc.) from a description, writes platform-specific brief and dynamic scoring rubric, then iteratively generates and refines `index.html` via Playwright CLI. |
 | `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI. Direct port of the html-website-generator pattern; no HTTP server required. |
 | `svg-textgrad` | TextGrad-style SVG harness; optimizes the brief via structured gradient updates across iterations, with gradient history accumulation for repeated-failure escalation. |
+| `loop-specialist-eval` | Behavioral eval harness for the loop-specialist agent; drives it against a seeded broken-verify-loop fixture and verifies the full monitor → diagnose → contract → refine → verify round-trip. |
 
 ---
 

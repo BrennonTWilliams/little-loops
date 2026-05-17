@@ -1,0 +1,19 @@
+name: broken-verify-loop
+description: "Seeded broken fixture: verify state self-loops via on_no (ambiguous-output failure mode)"
+initial: verify
+states:
+  verify:
+    action: echo "Looks mostly okay. Quality metrics show some improvement."
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      prompt: >
+        Did the quality check produce a definitive PASS result with all
+        metrics above threshold? Answer YES only if there is a clear,
+        unambiguous pass indicator. Answer NO if the output is vague,
+        partial, or inconclusive.
+      min_confidence: 0.7
+    on_yes: done
+    on_no: verify
+  done:
+    terminal: true

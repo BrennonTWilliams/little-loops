@@ -1,0 +1,56 @@
+name: loop-specialist-eval
+category: harness
+description: |
+  Behavioral eval harness for the loop-specialist agent (FEAT-1543/FEAT-1544).
+  Drives the agent against a seeded broken-verify-loop fixture and verifies the
+  full monitor → diagnose → contract → refine → verify round-trip, including
+  writing a diagnosis artifact to .loops/diagnostics/ and re-running via
+  ll-loop run --max-iterations 1.
+initial: execute
+max_iterations: 5
+timeout: 1800
+context:
+  broken_loop_path: "scripts/tests/fixtures/fsm/broken-verify-loop.yaml"
+
+states:
+  execute:
+    action: >
+      Use the loop-specialist agent against the broken loop fixture at
+      ${context.broken_loop_path}. Follow the full monitor → diagnose →
+      contract → refine → verify workflow as documented in agents/loop-specialist.md.
+      Specifically: (1) read the fixture YAML and classify the failure mode using
+      the taxonomy, (2) write the diagnosis artifact to .loops/diagnostics/ with
+      all required sections, (3) propose the smallest YAML change that addresses
+      the ambiguous-output pathology, (4) re-run via
+      `ll-loop run broken-verify-loop --max-iterations 1` to verify the fix.
+    action_type: prompt
+    agent: loop-specialist
+    capture: agent_run
+    timeout: 600
+    next: check_skill
+
+  check_skill:
+    action: >
+      Inspect what the loop-specialist agent did on the broken-verify-loop fixture.
+    action_type: prompt
+    timeout: 180
+    evaluate:
+      type: llm_structured
+      source: "${captured.agent_run.output}"
+      prompt: >
+        Did the loop-specialist agent complete the full round-trip on the broken loop?
+        Answer YES only if ALL of the following are true:
+        (1) A diagnosis artifact was written to .loops/diagnostics/<loop>-<ts>.md
+            containing the sections "## Failure modes observed", "## Evidence",
+            "## Proposed change", and "## Verification"
+        (2) The agent invoked `ll-loop run broken-verify-loop --max-iterations 1`
+            as the verification step (not ll-loop simulate)
+        (3) The ambiguous-output failure mode was identified and a concrete YAML
+            change was proposed to tighten the verify predicate
+        Answer NO and specify which condition(s) were not met.
+      min_confidence: 0.7
+    on_yes: done
+    on_no: execute
+
+  done:
+    terminal: true
