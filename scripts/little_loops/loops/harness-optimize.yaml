@@ -5,8 +5,8 @@ description: |
   Each iteration proposes an edit to a declared target file set, runs a benchmark
   via lib/benchmark.yaml, accepts the change if score rises (or meets target),
   and reverts otherwise. Commits accepted mutations to the current branch.
-  Trajectory persists to .loops/tmp/harness-optimize-trajectory.jsonl.
-initial: load_directive
+  Trajectory persists to .ll/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl.
+initial: init_run
 max_iterations: 30
 timeout: 7200
 on_handoff: spawn
@@ -21,12 +21,22 @@ context:
   max_iterations: 30  # hard budget ceiling
 
 states:
+  init_run:
+    action_type: shell
+    action: |
+      RUN_ID=$(date +%s%N)
+      TRAJ=".ll/runs/harness-optimize/${RUN_ID}/states/whole-file/trajectory.jsonl"
+      mkdir -p "$(dirname "$TRAJ")"
+      echo "$TRAJ"
+    capture: traj_path
+    next: load_directive
+
   load_directive:
     action_type: shell
     action: |
-      TRAJ=.loops/tmp/harness-optimize-trajectory.jsonl
-      if [ -f "$TRAJ" ]; then
-        BEST=$(jq -r 'select(.accepted==true) | .commit_sha' "$TRAJ" | tail -1)
+      TRAJ_FILES=$(find .ll/runs/harness-optimize -name "trajectory.jsonl" -path "*/states/whole-file/*" 2>/dev/null)
+      if [ -n "$TRAJ_FILES" ]; then
+        BEST=$(echo "$TRAJ_FILES" | xargs cat 2>/dev/null | jq -r 'select(.accepted==true) | .commit_sha' | tail -1)
         [ -n "$BEST" ] && git checkout "$BEST" -- ${context.targets}
       fi
       PROG=.ll/program.md
@@ -122,14 +132,14 @@ states:
     action_type: shell
     action: |
       echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":true,"commit_sha":"${captured.last_commit.output}"}' \
-        >> .loops/tmp/harness-optimize-trajectory.jsonl
+        >> "${captured.traj_path.output}"
     next: capture_prev
 
   write_trajectory_rejected:
     action_type: shell
     action: |
       echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":false,"commit_sha":""}' \
-        >> .loops/tmp/harness-optimize-trajectory.jsonl
+        >> "${captured.traj_path.output}"
     next: done
 
   capture_prev:

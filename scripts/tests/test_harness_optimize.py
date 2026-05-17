@@ -41,7 +41,7 @@ class TestHarnessOptimizeFile:
         assert loop_data.get("name") == "harness-optimize"
 
     def test_initial_state(self, loop_data: dict) -> None:
-        assert loop_data.get("initial") == "load_directive"
+        assert loop_data.get("initial") == "init_run"
 
     def test_terminal_state(self, loop_data: dict) -> None:
         states = loop_data.get("states", {})
@@ -64,6 +64,7 @@ class TestHarnessOptimizeStates:
     """Tests for required states and their structure."""
 
     REQUIRED_STATES = {
+        "init_run",
         "load_directive",
         "baseline_score",
         "init_prev",
@@ -146,15 +147,57 @@ class TestHarnessOptimizeStates:
 
     def test_trajectory_path_in_accepted_state(self, loop_data: dict) -> None:
         action = loop_data["states"]["write_trajectory_accepted"].get("action", "")
-        assert "harness-optimize-trajectory.jsonl" in action, (
-            "write_trajectory_accepted must append to harness-optimize-trajectory.jsonl"
+        assert "captured.traj_path" in action, (
+            "write_trajectory_accepted must use captured.traj_path for per-run trajectory path"
         )
 
     def test_trajectory_path_in_rejected_state(self, loop_data: dict) -> None:
         action = loop_data["states"]["write_trajectory_rejected"].get("action", "")
-        assert "harness-optimize-trajectory.jsonl" in action, (
-            "write_trajectory_rejected must append to harness-optimize-trajectory.jsonl"
+        assert "captured.traj_path" in action, (
+            "write_trajectory_rejected must use captured.traj_path for per-run trajectory path"
         )
+
+    def test_description_references_new_path(self, loop_data: dict) -> None:
+        description = loop_data.get("description", "")
+        assert ".ll/runs/harness-optimize" in description, (
+            "description must reference the new .ll/runs/harness-optimize trajectory path"
+        )
+        assert "harness-optimize-trajectory.jsonl" not in description, (
+            "description must not reference the old hardcoded trajectory path"
+        )
+
+    def test_load_directive_no_old_path(self, loop_data: dict) -> None:
+        action = loop_data["states"]["load_directive"].get("action", "")
+        assert "harness-optimize-trajectory.jsonl" not in action, (
+            "load_directive must not reference the old hardcoded trajectory path"
+        )
+
+    def test_init_run_state_is_shell_with_capture(self, loop_data: dict) -> None:
+        state = loop_data["states"]["init_run"]
+        assert state.get("action_type") == "shell"
+        assert state.get("capture") == "traj_path"
+        assert state.get("next") == "load_directive"
+
+    def test_init_run_shell_creates_trajectory_directory(self, tmp_path: Path) -> None:
+        import subprocess
+
+        state_yaml_action = (
+            'RUN_ID=$(date +%s%N)\n'
+            'TRAJ=".ll/runs/harness-optimize/${RUN_ID}/states/whole-file/trajectory.jsonl"\n'
+            'mkdir -p "$(dirname "$TRAJ")"\n'
+            'echo "$TRAJ"\n'
+        )
+        result = subprocess.run(
+            ["bash", "-c", state_yaml_action],
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
+        )
+        assert result.returncode == 0, f"init_run action failed: {result.stderr}"
+        traj_path = result.stdout.strip()
+        assert ".ll/runs/harness-optimize" in traj_path
+        assert traj_path.endswith("trajectory.jsonl")
+        assert (tmp_path / traj_path).parent.is_dir(), f"Expected directory to exist: {(tmp_path / traj_path).parent}"
 
 
 class TestYamlStateEditor:
