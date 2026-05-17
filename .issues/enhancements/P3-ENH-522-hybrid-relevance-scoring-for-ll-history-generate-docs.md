@@ -8,7 +8,7 @@ completed_at: 2026-03-03T00:00:00Z
 issue_id: ENH-522
 issue_type: ENH
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-02
 discovered_by: capture-issue
 confidence_score: 95

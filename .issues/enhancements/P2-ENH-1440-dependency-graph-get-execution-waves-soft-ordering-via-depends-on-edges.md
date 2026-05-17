@@ -5,7 +5,7 @@ priority: P2
 parent: ENH-1436
 depends_on:
 - ENH-1439
-status: completed
+status: done
 completed_at: 2026-05-11
 ---
 

@@ -4,7 +4,7 @@ title: "Improve Codex agent selection \u2014 surface UX warning and implement pr
   \ injection"
 priority: P3
 type: ENH
-status: completed
+status: done
 completed_at: '2026-05-17T02:00:00Z'
 captured_at: '2026-05-17T00:50:07Z'
 discovered_date: '2026-05-17'

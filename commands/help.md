@@ -255,6 +255,7 @@ ll-check-links    Check markdown documentation for broken links
 ll-gitignore      Suggest and apply .gitignore patterns based on untracked files
 ll-migrate        Migrate completed/deferred issues to type-based directories (one-time, ENH-1390)
 ll-migrate-relationships Rename deprecated relationship frontmatter keys in all issue files (one-time, ENH-1434)
+ll-migrate-status Normalize non-canonical status: values to canonical ones (one-time, ENH-1551)
 ll-create-extension Scaffold a new little-loops extension project
 ll-generate-schemas Regenerate JSON Schema files for all LLEvent types (maintainer tool)
 ll-generate-skill-descriptions Auto-generate ≤100-char skill descriptions via Claude CLI (release utility)

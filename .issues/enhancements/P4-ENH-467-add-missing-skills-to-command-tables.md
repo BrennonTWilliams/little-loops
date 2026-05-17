@@ -2,7 +2,7 @@
 type: enhancement
 title: Add 7 missing skills to README and COMMANDS.md command tables
 priority: P4
-status: completed
+status: done
 created: 2026-02-23
 found_by: audit-docs
 ---

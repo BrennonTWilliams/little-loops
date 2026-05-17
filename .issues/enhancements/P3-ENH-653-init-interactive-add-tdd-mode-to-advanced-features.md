@@ -2,7 +2,7 @@
 id: ENH-653
 type: enhancement
 priority: P3
-status: completed
+status: done
 discovered_date: 2026-03-08
 discovered_by: capture-issue
 confidence_score: 100

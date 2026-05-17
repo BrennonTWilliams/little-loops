@@ -554,7 +554,7 @@ List issues with optional filters.
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
 | `--label` | Filter by label from `labels:` frontmatter; repeatable for OR match |
 | `--milestone` | Filter by milestone name from `milestone:` frontmatter (exact match) |
-| `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all` |
+| `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all`. Note: synonyms in on-disk frontmatter are normalized on read, but `--status` arguments must use canonical values (argparse validates choices before normalization runs). |
 | `--flat` | Output flat list for scripting |
 | `--json` / `-j` | Output as JSON array; each entry includes `id`, `title`, `priority`, `type`, `status`, `path`, `labels`, and `milestone` |
 | `--limit` / `-n` | Cap output at N issues (must be ≥ 1) |
@@ -568,7 +568,7 @@ Count issues. Outputs a single integer by default, or a JSON object with breakdo
 |------|-------------|
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
-| `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all` |
+| `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all`. Note: synonyms in on-disk frontmatter are normalized on read, but `--status` arguments must use canonical values (argparse validates choices before normalization runs). |
 | `--json` / `-j` | Output JSON with `total`, `status`, `by_type`, and `by_priority` breakdowns |
 | `--config` | Path to project root |
 
@@ -1265,6 +1265,26 @@ One-time migration script that reads the freeform `## Labels` body section from 
 ll-migrate-labels --dry-run   # Preview all planned migrations
 ll-migrate-labels             # Execute migration
 ll-migrate-labels --config /path/to/project  # Run for a specific project
+```
+
+---
+
+### ll-migrate-status
+
+One-time migration script that reads the `status:` frontmatter field from all `.md` files under `.issues/` and rewrites any non-canonical synonyms (e.g. `completed`, `wip`) to their canonical equivalents. Uses the authoritative `STATUS_SYNONYMS` map from `frontmatter.py`. Part of the ENH-1551 cleanup pass.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--dry-run` | `-n` | Preview all planned normalizations without modifying files |
+| `--config` | `-C` | Path to project root (default: current directory) |
+
+**Examples:**
+```bash
+ll-migrate-status --dry-run   # Preview all planned normalizations
+ll-migrate-status             # Execute migration
+ll-migrate-status --config /path/to/project  # Run for a specific project
 ```
 
 ---

@@ -93,6 +93,7 @@ ruff format scripts/
 Files in `.issues/` follow: `P[0-5]-[TYPE]-[NNN]-description.md`
 - Types: `BUG`, `FEAT`, `ENH`, `EPIC`
 - Priorities: P0 (critical) to P5 (low)
+- **Status values**: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`. Do not use synonyms (`complete`, `completed`, `finished`, `wip`). `done` is the terminal-success value; the event-bus uses `"completed"` for the *event* payload, which is a different namespace. Synonyms are coerced to canonical values on read, but writing canonical values avoids ambiguity.
 
 ## Important Files
 
@@ -124,6 +125,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-migrate` - One-time migration of completed/deferred issues to type-based directories (ENH-1390)
 - `ll-migrate-relationships` - One-time migration that renames `parent_issue:` → `parent:` and `related:` → `relates_to:` across all issue files (ENH-1434)
 - `ll-migrate-labels` - One-time migration that moves freeform `## Labels` body sections to `labels:` frontmatter across all issue files (ENH-1392)
+- `ll-migrate-status` - One-time migration that normalizes non-canonical `status:` values (e.g. `completed` → `done`) across all issue files (ENH-1551)
 - `ll-create-extension` - Scaffold a new extension repo with entry-point, skeleton handler, and LLTestBus example
 - `ll-generate-schemas` - Regenerate JSON Schema files for all `LLEvent` types into `docs/reference/schemas/` (maintainer tool)
 - `ll-generate-skill-descriptions` - Auto-generate ≤100-char skill descriptions via Claude CLI; skips `disable-model-invocation: true` skills (release utility)

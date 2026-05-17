@@ -54,8 +54,8 @@ class TestConfigureAreasWiring:
 
     def test_count_updated_to_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 23" in content, (
-            "skills/configure/areas.md must show 'Authorize all 23' ll- CLI tools"
+        assert "Authorize all 24" in content, (
+            "skills/configure/areas.md must show 'Authorize all 24' ll- CLI tools"
         )
 
     def test_ll_create_extension_in_enumeration(self) -> None:
@@ -193,8 +193,8 @@ class TestFeat1229LlActionWiring:
 
     def test_configure_areas_count_is_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 23" in content, (
-            "skills/configure/areas.md must show 'Authorize all 23' ll- CLI tools"
+        assert "Authorize all 24" in content, (
+            "skills/configure/areas.md must show 'Authorize all 24' ll- CLI tools"
         )
 
     def test_configure_areas_lists_ll_action(self) -> None:
