@@ -2,12 +2,20 @@
 id: 1548
 type: ENH
 priority: P2
-status: open
-captured_at: "2026-05-17T08:08:24Z"
-discovered_date: "2026-05-17"
+status: done
+captured_at: '2026-05-17T08:08:24Z'
+completed_at: '2026-05-17T15:39:15Z'
+discovered_date: '2026-05-17'
 discovered_by: capture-issue
 source_loop: svg-textgrad
-source_run: "2026-05-17T07:44:12"
+source_run: '2026-05-17T07:44:12'
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 22
+score_change_surface: 25
 ---
 
 # ENH-1548: svg-textgrad — fix append_gradient quoting, scores.md coverage, and evaluator self-reporting
@@ -119,21 +127,64 @@ The `score` prompt then no longer needs to output `ALL_PASS`/`ITERATE` — it on
 ### Files to Modify
 - `scripts/little_loops/loops/svg-textgrad.yaml` — states `append_gradient`, `score`, `record_scores` (possibly removed); add `verify_score`; raise `max_iterations`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — FSM flow diagram (lines ~1074–1076) names `record_scores` and `append_gradient`; max_iterations hardcoded as 20 (line ~1108); score-state customization note (line ~1109) — update all three when restructuring states and raising max_iterations to 40
+
 ### Dependent Files (Callers/Importers)
 - `ll-loop run svg-textgrad` invocations — behavioral change: `gradients.md` and `scores.md` now populate reliably; routing logic moves from prompt output to shell arithmetic
 
 ### Similar Patterns
 - `scripts/little_loops/loops/svg-image-generator.yaml` — reference for shell-state patterns; check if similar shell-quoting issues exist in its `action` blocks
+- `scripts/little_loops/loops/apo-textgrad.yaml` — sibling TextGrad loop; does NOT have `append_gradient` shell state; embeds `${captured.gradient.output}` in `prompt` actions (passed to Claude CLI as text, not to `bash -c`) — this is why it is immune to the quoting bug
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` in `verify_scores_persisted` — uses `python3 << 'PYEOF' ... PYEOF` (single-quoted heredoc delimiter) as the codebase's established safe pattern for complex file operations that would otherwise be fragile as inline shell; alternative approach if the temp-file fix proves insufficient for edge cases
 
 ### Tests
-- No existing automated tests for `svg-textgrad.yaml` loop states; manual verification via `ll-loop run svg-textgrad "a terminal keybindings reference card" --max-iterations 5` as described in Implementation Steps #6
+- `scripts/tests/test_builtin_loops.py` — structural tests for svg-textgrad already exist:
+  - `test_init_state_is_shell_with_capture()` (~line 2625) — validates `init` state has `action_type: shell` and `capture: run_dir`
+  - `test_record_scores_is_shell()` (~line 2737) — validates `record_scores` state type
+  - New `verify_score` state should get a corresponding structural test here (verify `action_type: shell`, `evaluate.type: output_contains`, routing to `done`/`record_scores`)
+- Manual verification: `ll-loop run svg-textgrad "a terminal keybindings reference card" --max-iterations 5` as described in Implementation Steps #6
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Tests that will BREAK (must update when changes are applied):**
+- `test_required_states_exist` (line 2605) — asserts exact set includes `record_scores`; remove it, add `verify_score` to the required set
+- `test_score_state_routes_to_done_on_pass` (line 2643) — asserts `score.on_yes == "done"`; Fix 4 removes `on_yes` from `score` (it routes to `verify_score` via `next:`)
+- `test_score_state_routes_to_record_scores_on_iterate` (line 2648) — asserts `score.on_no == "record_scores"`; same reason
+- `test_score_on_error_routes_to_failed` (line 2731) — asserts `score.on_error == "failed"`; may break if `score` loses `on_error` in the restructure
+- `test_record_scores_is_shell` (line 2736) — asserts `record_scores.action_type == "shell"`; fails if `record_scores` is removed
+- `test_record_scores_routes_to_compute_gradient` (line 2741) — asserts `record_scores.next == "compute_gradient"`; same
+- `test_score_uses_weighted_average_pass_condition` (line 2794) — asserts `"weighted average" in score.action.lower()`; Fix 4 strips routing output instructions from `score` prompt, may remove this phrase
+
+**New tests to WRITE for `verify_score` (follow pattern from `evaluate` state tests at line 2685):**
+- `test_verify_score_is_shell` — `state.get("action_type") == "shell"`
+- `test_verify_score_has_output_contains_evaluator` — `evaluator.get("type") == "output_contains"` and `evaluator.get("pattern") == "SHELL_PASS"`
+- `test_verify_score_routes_to_done_on_yes` — `state.get("on_yes") == "done"`
+- `test_verify_score_routes_to_record_scores_on_no` — `state.get("on_no") == "record_scores"`
+- `test_verify_score_routes_to_record_scores_on_error` — `state.get("on_error") == "record_scores"`
+- `test_score_routes_to_verify_score` — `score.get("next") == "verify_score"` (replaces broken `on_yes`/`on_no` tests)
+- `test_append_gradient_action_uses_temp_file` — assert action string does NOT contain `GRAD="${captured.gradient.output}"` (old unquoted pattern), and DOES contain the temp-file pattern (e.g., `printf '%s\n' "${captured.gradient.output}"` followed by a redirect)
 
 ### Documentation
-- N/A — no docs reference `svg-textgrad.yaml` internals
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — FSM flow ASCII diagram (lines ~1074–1076) explicitly names `record_scores` and `append_gradient` in the flow; hardcodes `max_iterations: 20` (line ~1108); note says `"edit the score ... state's prompt"` (line ~1109) for customization — update diagram for `verify_score` + `score → verify_score` flow, update iteration count, update customization note
 
 ### Configuration
 - `max_iterations` top-level field in `svg-textgrad.yaml` (raised from 20 to 40)
 - Fix 2 (scores.md) is a prerequisite for convergence detection in `compute_gradient`; Fix 1 (gradient quoting) is prerequisite for gradient escalation in `compute_gradient`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `on_handoff` field in `svg-textgrad.yaml` — `/ll:review-loop` QC-6 rule fires a Suggestion whenever `max_iterations > 20` and `on_handoff` is absent; add `on_handoff: pause` alongside the `max_iterations: 40` change to suppress this advisory (not a blocker, but avoids noise on every future review-loop run)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Interpolation mechanism (confirms Bug 1 root cause)**: `scripts/little_loops/fsm/interpolation.py:interpolate()` performs raw Python `re.sub()` substitution of `${captured.gradient.output}` into the shell action string before `scripts/little_loops/fsm/runners.py:DefaultActionRunner` passes it to `bash -c`. There is **no shell-escaping layer** between the Python string replacement and bash. When `${captured.gradient.output}` contains a backtick, bash sees it as the start of a command substitution inside the double-quoted `GRAD="..."` assignment; an unmatched or invalid command substitution produces exit code 2 (bash syntax error). This explains the intermittent nature: only iterations where the gradient contains a backtick (e.g., in code-style markdown) trigger the failure.
+- **`apo-textgrad.yaml` is not affected** because `${captured.gradient.output}` appears only in `prompt`-type actions there — those are passed to the Claude CLI as plain text, not to `bash -c`, so no shell word-splitting occurs.
+- **Executor capture behavior**: `scripts/little_loops/fsm/executor.py` stores captured output as `result.output.rstrip("\n\r")` — trailing newlines are stripped before storage. This means the gradient content starts and ends without trailing blank lines in the captured value.
+- **No existing temp-file pattern** for multi-line captured output exists elsewhere in the loop corpus — the proposed Fix 1 temp-file approach is novel to this codebase.
 
 ## Implementation Steps
 
@@ -143,6 +194,15 @@ The `score` prompt then no longer needs to output `ALL_PASS`/`ITERATE` — it on
 4. Update routing: `score → verify_score → done/record_scores` (or `score → done/verify_score` if keeping separate)
 5. Raise `max_iterations: 40`
 6. Run `ll-loop run svg-textgrad "a terminal keybindings reference card" --max-iterations 5` and verify: gradients.md non-empty after iteration 1, scores.md has an entry after iteration 1, verify_score shell routes correctly
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `scripts/tests/test_builtin_loops.py` — update 7 breaking tests and add 7 new tests:
+   - **Update**: `test_required_states_exist` (add `verify_score`, handle `record_scores` removal); `test_score_state_routes_to_done_on_pass` → replace with `test_score_routes_to_verify_score`; `test_score_state_routes_to_record_scores_on_iterate` → remove; `test_score_on_error_routes_to_failed` → update if `score` loses `on_error`; `test_record_scores_is_shell` + `test_record_scores_routes_to_compute_gradient` → remove or update; `test_score_uses_weighted_average_pass_condition` → update if phrase removed from score prompt
+   - **Add**: `test_verify_score_is_shell`, `test_verify_score_has_output_contains_evaluator` (pattern `SHELL_PASS`), `test_verify_score_routes_to_done_on_yes`, `test_verify_score_routes_to_record_scores_on_no`, `test_verify_score_routes_to_record_scores_on_error`, `test_score_routes_to_verify_score`, `test_append_gradient_action_uses_temp_file`
+8. Update `docs/guides/LOOPS_GUIDE.md` — revise FSM flow ASCII diagram to show `score → verify_score → done/record_scores`; update `max_iterations: 20` note to 40; update score-state customization note to reflect that `score` no longer outputs ALL_PASS/ITERATE
 
 ## Scope Boundaries
 
@@ -191,5 +251,9 @@ loop, svg-textgrad, shell-quoting, convergence-detection, textgrad
 **Open** | Created: 2026-05-17 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-17T15:35:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fdbe2e2c-b2da-43ee-80e0-fcc0b6085612.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2171d2b8-9351-49fc-8f46-1e676dd33916.jsonl`
+- `/ll:wire-issue` - 2026-05-17T15:32:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6fa716ae-51a1-4c8f-86a6-dd787724da7b.jsonl`
+- `/ll:refine-issue` - 2026-05-17T15:26:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/854172b0-5e33-4d14-bc4a-b22a62501a8e.jsonl`
 - `/ll:format-issue` - 2026-05-17T08:11:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4976d4f8-c206-4101-b4ca-7f83eeb1d1f4.jsonl`
 - `/ll:capture-issue` - 2026-05-17T08:08:24Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ccc2e272-5433-4234-bd5a-8b2343569a3a.jsonl`

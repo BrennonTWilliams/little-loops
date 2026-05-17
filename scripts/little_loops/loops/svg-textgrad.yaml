@@ -8,7 +8,8 @@ description: |
   A gradients.md log accumulates gradient history so compute_gradient can detect repeated
   failure patterns and escalate the gradient strength accordingly.
 initial: init
-max_iterations: 20
+max_iterations: 40
+on_handoff: pause
 timeout: 7200
 
 # HARNESS: Context variables control output location and quality threshold.
@@ -97,10 +98,10 @@ states:
 
   score:
     # HARNESS: Evaluator phase — LLM judges the screenshot against four SVG-specific
-    # criteria and writes structured critique for compute_gradient to analyze.
-    # Key divergence from svg-image-generator: routes to record_scores on ITERATE
-    # rather than back to generate directly — score history and gradient computation
-    # sit between evaluation and generation, updating the brief before the next attempt.
+    # criteria and writes structured critique to critique.md for compute_gradient to analyze.
+    # Routing (pass/iterate) is handled by the verify_score shell state that follows,
+    # which reads critique.md and computes the weighted average externally — preventing
+    # the LLM from self-certifying pass when the arithmetic does not support it.
     action_type: prompt
     action: |
       Read the screenshot at ${captured.run_dir.output}/screenshot.png to view the generated SVG.
@@ -126,36 +127,52 @@ states:
       [Specific, actionable critique. List each problem concisely.]
       ```
 
-      After writing the file, evaluate the scores:
-      - visual_clarity weight: 2× (threshold ${context.pass_threshold})
-      - originality weight: 2× (threshold ${context.pass_threshold})
-      - craft weight: 1× (threshold ${context.pass_threshold})
-      - scalability weight: 1× (threshold ${context.pass_threshold})
-
-      Compute the weighted average: (2 × visual_clarity + 2 × originality + craft + scalability) / 6.
-      If the weighted average >= ${context.pass_threshold}, output exactly: ALL_PASS
-      Otherwise output: ITERATE
-    evaluate:
-      type: output_contains
-      pattern: "ALL_PASS"
-    on_yes: done
-    on_no: record_scores
+      Write only the evaluation — do not output a pass/fail verdict. The pass decision
+      is computed externally from the scores you write.
+    next: verify_score
     on_error: failed
 
-  record_scores:
-    # TEXTGRAD: Score history + best-artifact tracking — runs after score.on_no (ITERATE).
-    # Appends per-iteration scores to scores.md so compute_gradient can detect plateaus
-    # and regressions across iterations. Also preserves the best-scoring SVG and brief
-    # so a single bad generation after a good one does not produce a worse final output.
+  verify_score:
+    # TEXTGRAD: External score verifier — runs after score, before routing.
+    # Appends scores to scores.md (every scored iteration regardless of pass/fail routing)
+    # and computes the weighted average via shell arithmetic to decide pass or iterate.
+    # Decoupling routing from the LLM prompt prevents self-certification inflation.
     action_type: shell
     action: |
       DIR="${captured.run_dir.output}"
       ITER="${state.iteration}"
-      # --- Append scores to history ---
+      # --- Append scores to history (every iteration, regardless of routing) ---
       grep -E "^(visual_clarity|originality|craft|scalability):" "$DIR/critique.md" \
         | awk -v iter="$ITER" 'BEGIN{printf "## Iteration %s\n", iter} {print}' \
         >> "$DIR/scores.md"
       echo "" >> "$DIR/scores.md"
+      # --- External weighted average: (2×VC + 2×OG + CR + SC) / 6 >= pass_threshold ---
+      VC=$(grep -E "^visual_clarity: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
+      OG=$(grep -E "^originality: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
+      CR=$(grep -E "^craft: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
+      SC=$(grep -E "^scalability: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
+      THRESH="${context.pass_threshold}"
+      WEIGHTED=$((2*VC + 2*OG + CR + SC))
+      if [ "$WEIGHTED" -ge "$((THRESH * 6))" ]; then
+        echo "SHELL_PASS"
+      else
+        echo "SHELL_ITERATE"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "SHELL_PASS"
+    on_yes: done
+    on_no: record_scores
+    on_error: record_scores
+
+  record_scores:
+    # TEXTGRAD: Best-artifact tracking — runs after verify_score.on_no (SHELL_ITERATE).
+    # scores.md append was moved to verify_score so every scored iteration is recorded
+    # regardless of routing path. This state only preserves the best-scoring SVG and brief
+    # so a single bad generation after a good one does not produce a worse final output.
+    action_type: shell
+    action: |
+      DIR="${captured.run_dir.output}"
       # --- Best-artifact tracking (weighted sum: 2×vc + 2×orig + craft + scalability, max=60) ---
       VC=$(grep -E "^visual_clarity: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
       OG=$(grep -E "^originality: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
@@ -218,16 +235,20 @@ states:
     # TEXTGRAD: Log phase — appends the computed gradient to the history file.
     # gradients.md is read by compute_gradient on every subsequent iteration to detect
     # repeated ROOT_CAUSE patterns and calibrate gradient escalation.
+    # Uses a temp file to safely handle multi-line gradient output that may contain
+    # backticks, colons, or other characters that break bash quoting if inlined directly.
     action_type: shell
     action: |
       DIR="${captured.run_dir.output}"
       ITER="${state.iteration}"
       TS=$(date -u +%Y%m%dT%H%M%SZ)
-      GRAD="${captured.gradient.output}"
+      printf '%s\n' "${captured.gradient.output}" > "$DIR/.gradient_tmp.txt"
       {
         printf '## Iteration %s — %s\n' "$ITER" "$TS"
-        printf '%s\n\n' "$GRAD"
+        cat "$DIR/.gradient_tmp.txt"
+        printf '\n'
       } >> "$DIR/gradients.md"
+      rm -f "$DIR/.gradient_tmp.txt"
     next: apply_gradient
 
   apply_gradient:

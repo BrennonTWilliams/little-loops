@@ -1069,12 +1069,13 @@ ll-loop run svg-textgrad "lightning bolt icon" \
 
 ```
 init → plan → generate → evaluate
-                            ├─ CAPTURED → score
-                            │              ├─ ALL_PASS → done
-                            │              ├─ ITERATE  → record_scores → compute_gradient → route_convergence
-                            │              │                                                   ├─ CONVERGED → done
-                            │              │                                                   └─ continue  → append_gradient → apply_gradient → generate
-                            │              └─ ERROR   → failed
+                            ├─ CAPTURED → score → verify_score
+                            │                         ├─ SHELL_PASS   → done
+                            │                         ├─ SHELL_ITERATE → record_scores → compute_gradient → route_convergence
+                            │                         │                                                        ├─ CONVERGED → done
+                            │                         │                                                        └─ continue  → append_gradient → apply_gradient → generate
+                            │                         └─ ERROR        → record_scores → compute_gradient → …
+                            │              score ERROR → failed
                             ├─ FAILED  → generate
                             └─ ERROR   → generate
 ```
@@ -1105,8 +1106,8 @@ init → plan → generate → evaluate
 **Notes:**
 - Unlike `svg-image-generator`, the generator receives only `brief.md` and never sees `critique.md`. Critique is consumed exclusively by `compute_gradient`, which distills it into a structured gradient before the brief is updated — keeping the generator working from a coherent specification rather than reconciling conflicting signals.
 - If Playwright is unavailable, the `evaluate` state's `on_no` route falls back to `generate` — no scoring occurs and the loop continues with the unchanged brief. Playwright is required to produce the screenshot that `score` reads; without it the loop re-generates rather than scoring without visual evidence.
-- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
-- To customize scoring criteria or gradient computation, install the loop locally (`ll-loop install svg-textgrad`) and edit the `score` or `compute_gradient` state's prompt.
+- The loop runs up to 40 iterations with a 2-hour timeout (`max_iterations: 40`, `timeout: 7200`). The convergence guard in `compute_gradient` (3-iteration score plateau) is the intended primary exit; the iteration cap is a safety backstop.
+- To customize scoring criteria, install the loop locally (`ll-loop install svg-textgrad`) and edit the `score` state's prompt (writes `critique.md`) and the `verify_score` state's shell arithmetic (controls the pass threshold computation and routing). To customize gradient computation, edit the `compute_gradient` state's prompt.
 - The generator enforces a strict 250-line SVG size limit — use `<circle>`, `<path>`, and `<text>` with `<g transform="">` for repeated elements rather than verbose repeated markup.
 - Prefer `svg-image-generator` for quick iterations; reach for `svg-textgrad` when you see the same failure pattern repeating across iterations.
 

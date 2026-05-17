@@ -2610,6 +2610,7 @@ class TestSvgTextgradLoop:
             "generate",
             "evaluate",
             "score",
+            "verify_score",
             "record_scores",
             "compute_gradient",
             "route_convergence",
@@ -2640,15 +2641,10 @@ class TestSvgTextgradLoop:
         action = state.get("action", "")
         assert "critique" not in action, "generate state must not reference critique.md"
 
-    def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
-        """score state must route to done when all criteria pass."""
+    def test_score_routes_to_verify_score(self, data: dict) -> None:
+        """score state must route to verify_score (external pass/fail evaluator)."""
         state = data["states"].get("score", {})
-        assert state.get("on_yes") == "done"
-
-    def test_score_state_routes_to_record_scores_on_iterate(self, data: dict) -> None:
-        """score state must route to record_scores (not compute_gradient) on ITERATE."""
-        state = data["states"].get("score", {})
-        assert state.get("on_no") == "record_scores"
+        assert state.get("next") == "verify_score"
 
     def test_compute_gradient_captures_gradient(self, data: dict) -> None:
         """compute_gradient state must capture its output as 'gradient'."""
@@ -2791,12 +2787,49 @@ class TestSvgTextgradLoop:
             "init.action must touch scores.md to prevent read errors on iteration 1"
         )
 
-    def test_score_uses_weighted_average_pass_condition(self, data: dict) -> None:
-        """score state must use weighted average pass condition, not flat all-scores check."""
-        state = data["states"].get("score", {})
+    def test_verify_score_is_shell(self, data: dict) -> None:
+        """verify_score state must use action_type: shell for external arithmetic."""
+        state = data["states"].get("verify_score", {})
+        assert state.get("action_type") == "shell"
+
+    def test_verify_score_has_output_contains_evaluator(self, data: dict) -> None:
+        """verify_score must have an output_contains evaluator with pattern SHELL_PASS."""
+        state = data["states"].get("verify_score", {})
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "SHELL_PASS"
+
+    def test_verify_score_routes_to_done_on_yes(self, data: dict) -> None:
+        """verify_score must route to done when weighted average meets pass_threshold."""
+        state = data["states"].get("verify_score", {})
+        assert state.get("on_yes") == "done"
+
+    def test_verify_score_routes_to_record_scores_on_no(self, data: dict) -> None:
+        """verify_score must route to record_scores on SHELL_ITERATE."""
+        state = data["states"].get("verify_score", {})
+        assert state.get("on_no") == "record_scores"
+
+    def test_verify_score_routes_to_record_scores_on_error(self, data: dict) -> None:
+        """verify_score must route to record_scores on error so failures continue the loop."""
+        state = data["states"].get("verify_score", {})
+        assert state.get("on_error") == "record_scores"
+
+    def test_verify_score_appends_scores_md(self, data: dict) -> None:
+        """verify_score action must append to scores.md (moved from record_scores)."""
+        state = data["states"].get("verify_score", {})
         action = state.get("action", "")
-        assert "weighted average" in action.lower(), (
-            "score.action must use weighted average pass condition to match the 2× weight documentation"
+        assert "scores.md" in action, "verify_score.action must append to scores.md"
+
+    def test_append_gradient_action_uses_temp_file(self, data: dict) -> None:
+        """append_gradient must use temp-file pattern, not inline GRAD= assignment."""
+        state = data["states"].get("append_gradient", {})
+        action = state.get("action", "")
+        assert 'GRAD="${captured.gradient.output}"' not in action, (
+            "append_gradient.action must not assign gradient output to GRAD= directly "
+            "(bash quoting breaks on backticks/colons in multi-line content)"
+        )
+        assert ".gradient_tmp.txt" in action, (
+            "append_gradient.action must use a temp file to safely handle multi-line gradient output"
         )
 
 
