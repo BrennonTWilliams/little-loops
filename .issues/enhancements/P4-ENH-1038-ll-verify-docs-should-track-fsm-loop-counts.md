@@ -74,6 +74,16 @@ The README pattern to match would be `\d+\s+FSM loops?`. The `extract_count_from
 
 **Open** | Created: 2026-04-11 | Priority: P4
 
+## Audit Update — 2026-05-16 (`/ll:audit-docs`)
+
+Two related miscounts surfaced again:
+
+1. **FSM loops** — README.md was updated 2026-05-16 from `47 FSM loops` to `43 FSM loops` (actual top-level count in `scripts/little_loops/loops/*.yaml`). This is the recurring drift this issue exists to prevent. `ll-verify-docs` still does not catch it.
+
+2. **Skills miscount (new sub-task)** — `ll-verify-docs` reports `skills: documented=30, actual=58` at `README.md:165`, `CONTRIBUTING.md:122`, `CONTRIBUTING.md:536`, `docs/ARCHITECTURE.md:26`, and `docs/ARCHITECTURE.md:112`. The documented `30` is correct: `skills/` contains 30 canonical skills + 28 Codex bridge skills (frontmatter body contains `Bridged from \`commands/...\``). `doc_counts.py` should exclude bridges when computing the skill count. Suggested implementation: filter out `SKILL.md` files whose body contains the literal `Bridged from \`commands/`. Without this, every doc that cites a real "30 skills" trips a false positive.
+
+Both fixes live in the same module (`scripts/little_loops/doc_counts.py`) — bundle them in one PR.
+
 
 ## Session Log
 - `/ll:verify-issues` - 2026-05-14T20:42:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
