@@ -59,6 +59,8 @@ states:
       printf '' > .loops/tmp/recursive-refine-skipped-decomposed.txt
       printf '' > .loops/tmp/recursive-refine-skipped-deadend.txt
       printf '' > .loops/tmp/recursive-refine-skipped-decision.txt
+      printf '' > .loops/tmp/recursive-refine-skipped-missing-artifacts.txt
+      printf '' > .loops/tmp/recursive-refine-wire-attempts.txt
       printf '' > .loops/tmp/recursive-refine-decomposition.tsv
       printf '0' > .loops/tmp/recursive-refine-dequeued-count.txt
       COUNT=$(wc -l < .loops/tmp/recursive-refine-queue.txt | tr -d ' ')
@@ -452,9 +454,61 @@ states:
       fi
       exit 0
     fragment: shell_exit
-    on_yes: run_size_review
+    on_yes: check_missing_artifacts
     on_no: dequeue_next
+    on_error: check_missing_artifacts
+
+  check_missing_artifacts:
+    # Gate before size-review: if missing_artifacts=true the low outcome score is
+    # caused by absent files/unwired components, not scope. recursive-refine has no
+    # wire capability, so skip and let the caller handle repair externally.
+    # Mirrors check_decision_needed above and refine-to-ready-issue:check_missing_artifacts.
+    action: "ll-issues check-flag ${captured.input.output} missing_artifacts"
+    fragment: shell_exit
+    on_yes: check_wire_budget
+    on_no: run_size_review
     on_error: run_size_review
+
+  check_wire_budget:
+    # Allow one wire attempt per issue. If already attempted, fall through to skip.
+    # Mirrors check_attempt_budget pattern; guards against infinite wire → refine cycles.
+    action: |
+      python3 << 'PYEOF'
+      import sys
+      from pathlib import Path
+      issue_id = '${captured.input.output}'
+      attempts_file = Path('.loops/tmp/recursive-refine-wire-attempts.txt')
+      lines = attempts_file.read_text().splitlines() if attempts_file.exists() else []
+      if issue_id in {ln.strip() for ln in lines if ln.strip()}:
+          sys.exit(1)
+      with open(attempts_file, 'a') as f:
+          f.write(issue_id + '\n')
+      sys.exit(0)
+      PYEOF
+    fragment: shell_exit
+    on_yes: run_wire_for_artifacts
+    on_no: skip_missing_artifacts
+    on_error: skip_missing_artifacts
+
+  run_wire_for_artifacts:
+    # Wire repair for missing_artifacts issues. Routes back to capture_baseline so
+    # the full sub-loop (refine + wire + confidence-check) re-evaluates with fresh
+    # wiring. On second failure check_wire_budget will skip rather than loop again.
+    fragment: with_rate_limit_handling
+    action: "/ll:wire-issue ${captured.input.output} --auto"
+    action_type: slash_command
+    next: capture_baseline
+    on_error: capture_baseline
+    on_rate_limit_exhausted: skip_missing_artifacts
+
+  skip_missing_artifacts:
+    action: |
+      echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped-missing-artifacts.txt
+      echo "${captured.input.output}" >> .loops/tmp/recursive-refine-skipped.txt
+      echo "Skipped: ${captured.input.output} (missing_artifacts — wire repair attempted but unresolved)"
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
 
   run_size_review:
     # Explicitly run issue-size-review when the sub-loop did not decompose the issue.
@@ -628,6 +682,8 @@ states:
         | grep -v '^[[:space:]]*$' | sort -u || true)
       DECISION_SKIPPED_IDS=$(cat .loops/tmp/recursive-refine-skipped-decision.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
+      MISSING_ARTIFACTS_IDS=$(cat .loops/tmp/recursive-refine-skipped-missing-artifacts.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
 
       PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
       DECOMPOSED_COUNT=$(echo "$DECOMPOSED_IDS" | grep -c '[^[:space:]]' || echo 0)
@@ -636,6 +692,7 @@ states:
       CYCLE_COUNT=$(echo "$CYCLE_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
       BUDGET_COUNT=$(echo "$BUDGET_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
       DECISION_COUNT=$(echo "$DECISION_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+      MISSING_ARTIFACTS_COUNT=$(echo "$MISSING_ARTIFACTS_IDS" | grep -c '[^[:space:]]' || echo 0)
 
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       DECOMPOSED_LIST=$(echo "$DECOMPOSED_IDS" | tr '\n' ',' | sed 's/,$//')
@@ -644,15 +701,17 @@ states:
       CYCLE_LIST=$(echo "$CYCLE_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       BUDGET_LIST=$(echo "$BUDGET_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       DECISION_LIST=$(echo "$DECISION_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+      MISSING_ARTIFACTS_LIST=$(echo "$MISSING_ARTIFACTS_IDS" | tr '\n' ',' | sed 's/,$//')
 
       printf '\n=== Recursive Refine Summary ===\n\n'
-      printf 'Passed       (%d): %s\n' "$PASSED_COUNT"     "$${PASSED_LIST:-none}"
-      printf 'Decomposed   (%d): %s\n' "$DECOMPOSED_COUNT" "$${DECOMPOSED_LIST:-none}"
-      printf 'Dead-ends    (%d): %s\n' "$DEADEND_COUNT"    "$${DEADEND_LIST:-none}"
-      printf 'Depth-cap    (%d): %s\n' "$DEPTH_COUNT"      "$${DEPTH_LIST:-none}"
-      printf 'Cycle        (%d): %s\n' "$CYCLE_COUNT"      "$${CYCLE_LIST:-none}"
-      printf 'Budget       (%d): %s\n' "$BUDGET_COUNT"     "$${BUDGET_LIST:-none}"
-      printf 'Decision     (%d): %s\n' "$DECISION_COUNT"   "$${DECISION_LIST:-none}"
+      printf 'Passed           (%d): %s\n' "$PASSED_COUNT"             "$${PASSED_LIST:-none}"
+      printf 'Decomposed       (%d): %s\n' "$DECOMPOSED_COUNT"         "$${DECOMPOSED_LIST:-none}"
+      printf 'Dead-ends        (%d): %s\n' "$DEADEND_COUNT"            "$${DEADEND_LIST:-none}"
+      printf 'Depth-cap        (%d): %s\n' "$DEPTH_COUNT"              "$${DEPTH_LIST:-none}"
+      printf 'Cycle            (%d): %s\n' "$CYCLE_COUNT"              "$${CYCLE_LIST:-none}"
+      printf 'Budget           (%d): %s\n' "$BUDGET_COUNT"             "$${BUDGET_LIST:-none}"
+      printf 'Decision         (%d): %s\n' "$DECISION_COUNT"           "$${DECISION_LIST:-none}"
+      printf 'Missing-artifacts(%d): %s\n' "$MISSING_ARTIFACTS_COUNT"  "$${MISSING_ARTIFACTS_LIST:-none}"
       if [ "${context.tree_summary}" != "false" ]; then
         python3 << 'PYEOF'
       import subprocess, sys, json, os, re
