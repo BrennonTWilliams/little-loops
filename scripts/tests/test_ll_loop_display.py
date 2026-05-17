@@ -1347,6 +1347,33 @@ class TestRenderFsmDiagram:
         # State names should be bold (ANSI SGR 1); no highlight_state set so both boxes are non-highlighted
         assert "\033[1m" in result, "Non-highlighted state names should use bold (ANSI code 1)"
 
+    def test_back_edge_labels_no_collision_on_shared_midpoint(self) -> None:
+        """Two back-edges with the same midpoint row must land on distinct lines.
+
+        With 3-row boxes and 3-row inter-layer arrow gaps, the name rows are
+        1, 7, 13, 19, 25 for a 5-state linear chain.  The b→a back-edge has
+        midpoint (7+13)//2=10 and the c→init back-edge has midpoint (1+19)//2=10;
+        without the fix both labels write to the same grid row and clobber each
+        other (regression: BUG-1499).
+        """
+        fsm = self._make_fsm(
+            initial="init",
+            states={
+                "init": StateConfig(on_yes="a"),
+                "a": StateConfig(on_yes="b"),
+                "b": StateConfig(on_yes="c", route=RouteConfig(routes={"retry_a": "a"})),
+                "c": StateConfig(on_yes="done", route=RouteConfig(routes={"retry_i": "init"})),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        lines = result.split("\n")
+        assert any("retry_a" in ln for ln in lines), "retry_a label not rendered"
+        assert any("retry_i" in ln for ln in lines), "retry_i label not rendered"
+        assert not any("retry_a" in ln and "retry_i" in ln for ln in lines), (
+            "Labels 'retry_a' and 'retry_i' collide on the same line (BUG-1499)"
+        )
+
 
 class TestAdaptiveLayoutTopologies:
     """Tests for topology-specific adaptive layout rendering."""

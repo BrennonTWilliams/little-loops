@@ -1226,6 +1226,10 @@ def _render_layered_diagram(
                 ):
                     grid[name_row][pos] = _lc(ch)
 
+    # Shared row tracker: prevents two labels (back-edge or skip-forward) landing on the
+    # same grid row, which would clobber the first label written there.
+    used_label_rows: set[int] = set()
+
     # Back-edges: left-margin vertical arrows with labels
     if non_self_back:
         sorted_back = sorted(
@@ -1324,6 +1328,21 @@ def _render_layered_diagram(
 
             # Label on the margin line (right of ALL pipes, not just this one)
             label_row_pos = (top_row + bot_row) // 2
+            # Nudge away from already-used rows to prevent clobbering earlier labels
+            if label_row_pos in used_label_rows and top_row + 1 < bot_row:
+                midpoint = label_row_pos
+                found = False
+                for _off in range(1, bot_row - top_row):
+                    for _cand in (midpoint - _off, midpoint + _off):
+                        if top_row < _cand < bot_row and _cand not in used_label_rows:
+                            label_row_pos = _cand
+                            found = True
+                            break
+                    if found:
+                        break
+                if not found:
+                    label_row_pos = top_row + 1
+            used_label_rows.add(label_row_pos)
             if 0 <= label_row_pos < total_height:
                 label_start = rightmost_pipe_col + 2
                 for j, ch in enumerate(label):
@@ -1429,6 +1448,21 @@ def _render_layered_diagram(
             # approach).  Truncate with … when label would exceed total_width
             # to prevent extending diagram lines far past the content area (BUG-1500).
             label_row_pos = (top_row + bot_row) // 2
+            # Nudge to avoid row collision with a previously-placed label (back- or fwd-edge)
+            if label_row_pos in used_label_rows and top_row + 1 < bot_row:
+                midpoint = label_row_pos
+                found = False
+                for _off in range(1, bot_row - top_row):
+                    for _cand in (midpoint - _off, midpoint + _off):
+                        if top_row < _cand < bot_row and _cand not in used_label_rows:
+                            label_row_pos = _cand
+                            found = True
+                            break
+                    if found:
+                        break
+                if not found:
+                    label_row_pos = top_row + 1
+            used_label_rows.add(label_row_pos)
             if 0 <= label_row_pos < total_height:
                 label_start = rightmost_fwd_pipe_col + 2
                 max_label = total_width - label_start
