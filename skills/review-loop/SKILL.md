@@ -8,7 +8,7 @@ allowed-tools:
   - Write
   - AskUserQuestion
 metadata:
-  short-description: Use when asked to review loop config quality, validate loop YAML, or audit a loo
+  short-description: Review loop quality: validate YAML, behavioral verification, rubric scorecard, artifact persistence
 ---
 
 # Review Loop
@@ -27,6 +27,10 @@ You are a loop quality reviewer for FSM loop configurations in little-loops. You
 - `[name]` (optional): Loop name to review. If omitted, show a list to pick from.
 - `--auto`: Non-interactive mode — apply all eligible non-breaking fixes automatically (see `reference.md` Auto-Apply Rules). Still prints the full findings report.
 - `--dry-run`: Report findings only. Make no changes, ask no approval questions.
+- `--exercise`: In addition to `ll-loop simulate`, also run `ll-loop run --max-iterations 1` for behavioral verification (Step 2.5).
+- `--no-simulate`: Skip Step 2.5 entirely (no simulation checks).
+- `--rubric-only`: Stop after displaying the rubric scorecard in Step 3. No fix proposals, no artifact persistence.
+- `--strict-semantic`: In Step 2c, prompt SR-* evaluations as a fresh context using only calibration examples from `reference.md` as anchors — prevents static-check findings from biasing semantic judgment.
 
 ---
 
@@ -89,6 +93,20 @@ Record:
 - `states`: dict of state names → state configs
 - `max_iterations`: numeric value or absent
 - `on_handoff`: string value or absent
+
+---
+
+## Step 1.5: Description Completeness Gate
+
+Check the loop's `description:` field:
+
+1. If `description:` is absent OR fewer than 5 words: draft a description from the FSM structure using the **Description Draft Template** from `reference.md`.
+2. Propose the draft as the first fix using the standard fix proposal format. Do NOT silently inject it — always ask for approval (or auto-apply in `--auto` mode, since this is a pure addition).
+3. If the draft is accepted, update the in-memory YAML dict for use in Steps 2c and 2.5.
+
+This gate unblocks SR-1 and SR-4, which otherwise skip when `description:` is absent or too short.
+
+If `description:` is already present and 5+ words: skip this step silently.
 
 ---
 
@@ -211,7 +229,7 @@ For each state where `action_type: prompt` OR where `action_type` is absent and 
 4. Also skip if the action text exceeds 50 words.
 5. If a heuristic group matches and no exemption applies: add a Suggestion finding at path `states.<name>` with check_id `PR-1`, naming the detected pattern group and providing an example alternative.
 
-**Do not output any findings yet.** Proceed to Step 2c to build the narrative, then Step 3 to display everything.
+**Do not output any findings yet.** Proceed to Step 2c to build the narrative, then Step 2.5 for behavioral verification, then Step 3 to display everything.
 
 ---
 
@@ -293,6 +311,40 @@ After Step 3 displays the findings table and before Step 4, output both blocks:
 
 ---
 
+## Step 2.5: Behavioral Verification
+
+**Skip this step if `--no-simulate` flag is set.** Record `simulation_result: "skipped"` in the artifact.
+
+Run the simulator to check behavioral correctness:
+
+```bash
+ll-loop simulate <name>
+```
+
+Parse the `=== Summary ===` block at the end of stdout for these signals (see `reference.md` Simulation Checks for full patterns):
+
+**SIM-1 (Stall)**: `States visited:` contains a repeated state AND `Terminated by: max_iterations`
+- Add Warning finding at path `(loop)` with check_id `SIM-1`
+
+**SIM-2 (Premature terminal)**: `Iterations:` value is 1 or 2 AND `Terminated by: terminal` AND loop `max_iterations > 5`
+- Add Warning finding at path `(loop)` with check_id `SIM-2`
+
+**SIM-3 (Exceeds max_iterations)**: `Terminated by: max_iterations` (regardless of states visited — this is not SIM-1 which requires a stall cycle)
+- Add Error finding at path `(loop)` with check_id `SIM-3`
+
+Record `simulation_result` for the artifact:
+- `"terminal"` — simulation reached a terminal state
+- `"max_iterations"` — simulation hit max_iterations
+- `"error"` — simulate command failed with an unexpected error
+
+**If `--exercise` flag is set**, also run:
+```bash
+ll-loop run --max-iterations 1 <name>
+```
+Report any unexpected errors from the real run in findings with check_id `SIM-3` (reuse the same Error severity).
+
+---
+
 ## Step 3: Display Findings
 
 Output the full findings report using the format from `reference.md`:
@@ -326,6 +378,16 @@ No V-*, QC-*, or SR-* findings.
 ```
 
 **Then always output the FSM Flow Review and Semantic Flow Review blocks from Step 2c-4.** These blocks are required even when all findings counts are zero — they may surface FA-* and SR-* findings and always include the narrative summary.
+
+**After the findings table and FSM Flow Review blocks, always output the rubric scorecard:**
+
+Rate each of the 6 dimensions from `reference.md` Rubric Dimensions (1–5). Check if `.loops/reviews/<name>-*.md` exists — if so, read the most recent artifact's `scorecard:` frontmatter and add trend arrows (↑ if score improved, ↓ if decreased, → if unchanged). Output the scorecard using the Scorecard Display Format from `reference.md`.
+
+If `--rubric-only` flag was given: stop here after outputting the scorecard. Output:
+
+```
+Rubric-only mode. No fixes proposed.
+```
 
 If `--dry-run` flag was given: stop here. Output:
 
@@ -369,6 +431,27 @@ Report:
 ```
 Auto-applied N fix(es) (--auto mode):
   ✓ QC-6: on_handoff: pause added
+```
+
+---
+
+## Step 4.5: Post-Fix Iteration
+
+**Skip this step if no fixes were applied in Step 4.**
+
+After fixes are applied, re-run a lightweight check pass (Steps 2a and 2b only — skip Step 2c and Step 2.5 to control cost) and compare results against the original findings.
+
+For each finding in the post-fix pass that was NOT present in the original findings (same `check_id` AND same `location`):
+- Add a Warning finding with check_id `RT-1` at that location (see `reference.md` RT-1 for finding format)
+
+Repeat up to **3 rounds** maximum. Stop when:
+- No new RT-1 findings are detected in the post-fix pass, OR
+- Round 3 is complete (even if RT-1 findings remain)
+
+Report rounds:
+```
+Post-fix iteration round N/3:
+  <N new findings / "No regressions detected">
 ```
 
 ---
@@ -434,6 +517,27 @@ Skipped:     <N>
 
 ---
 
+## Step 6.5: Persist Review Artifact
+
+**Skip this step if `--dry-run` or `--rubric-only` flag was given.**
+
+Persist the review results to `.loops/reviews/<name>-<YYYYMMDD-HHMMSS>.md`.
+
+Use `%Y%m%d-%H%M%S` timestamp format (e.g., `loop-specialist-eval-20260517-143207.md`).
+
+Build the artifact using the **Review Artifact Schema** from `reference.md`:
+- Frontmatter: `loop`, `reviewed_at`, `scorecard` (all 6 dims + composite), `findings_count`, `simulation_result`, `fixes_applied`
+- Body: findings table, rubric justifications, simulation summary, before/after fix diffs
+
+Create the `.loops/reviews/` directory if it does not exist.
+
+Write the artifact using `Write`. Report:
+```
+Review artifact saved: .loops/reviews/<name>-<timestamp>.md
+```
+
+---
+
 ## Examples
 
 ```bash
@@ -448,6 +552,18 @@ Skipped:     <N>
 
 # Report only, no changes
 /ll:review-loop fix-types --dry-run
+
+# Rubric scorecard only (no fix proposals)
+/ll:review-loop fix-types --rubric-only
+
+# Include real execution (1 iteration) in behavioral verification
+/ll:review-loop fix-types --exercise
+
+# Skip simulation entirely
+/ll:review-loop fix-types --no-simulate
+
+# Strict semantic mode (fresh context for SR-* evaluations)
+/ll:review-loop fix-types --strict-semantic
 ```
 
 ---

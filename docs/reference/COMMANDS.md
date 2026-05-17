@@ -534,12 +534,42 @@ Analyze user message history to suggest FSM loop configurations automatically.
 **Trigger keywords:** "suggest loops", "loop from history", "automate workflow", "suggest loops from commands", "loop from catalog"
 
 ### `/ll:review-loop`
-Review an existing FSM loop configuration for quality, correctness, consistency, and potential improvements. Analyzes all states and transitions, reports findings by severity (Error/Warning/Suggestion), proposes concrete fixes with before/after diffs, and applies approved changes.
+Review an existing FSM loop configuration for quality, correctness, consistency, and potential improvements. Analyzes all states and transitions, runs behavioral verification via `ll-loop simulate`, reports findings by severity (Error/Warning/Suggestion), proposes concrete fixes with before/after diffs, applies approved changes, and persists a review artifact to `.loops/reviews/<name>-<YYYYMMDD-HHMMSS>.md`.
 
 **Arguments:**
 - `loop_name` (optional): Name or path of the loop to review. If omitted, lists available loops to pick from.
 
-**Flags:** `--auto` (apply safe fixes automatically), `--dry-run` (report only, no changes)
+**Flags:**
+- `--auto`: Apply all eligible non-breaking fixes automatically. Still prints the full report.
+- `--dry-run`: Report findings and scorecard only. Make no changes, skip artifact persistence.
+- `--exercise`: In Step 2.5, also run `ll-loop run --max-iterations 1` in addition to `ll-loop simulate`.
+- `--no-simulate`: Skip behavioral verification (Step 2.5) entirely.
+- `--rubric-only`: Stop after displaying the rubric scorecard. No fix proposals, no artifact persistence.
+- `--strict-semantic`: Run SR-* semantic checks in a fresh context seeded only with calibration examples from `reference.md` to prevent static-check findings from biasing judgment.
+
+**Workflow phases:**
+
+| Step | Phase | Description |
+|------|-------|-------------|
+| 1.5 | Description gate | Draft `description:` from FSM structure if absent/< 5 words; unblocks SR-1/SR-4 |
+| 2a | Validation | Run `ll-loop validate`; surface V-* findings |
+| 2b | Quality checks | QC-1 through QC-14, FA-1 through FA-6 |
+| 2c | Semantic review | SR-1 through SR-4, FSM Flow Review narrative |
+| 2.5 | Behavioral verification | `ll-loop simulate` → SIM-1/SIM-2/SIM-3 checks |
+| 3 | Display findings | Findings table + FSM Flow Review + 6-dimension rubric scorecard |
+| 4 | Propose fixes | Interactive or `--auto` fix application |
+| 4.5 | Post-fix iteration | Re-run checks after fixes; surface RT-1 for regressions; max 3 rounds |
+| 5 | Validate and save | `ll-loop validate` after changes; restore on failure |
+| 6 | Summary | Findings count, fixes applied, pass/fail status |
+| 6.5 | Persist artifact | Write `.loops/reviews/<name>-<timestamp>.md` with frontmatter + diffs |
+
+**Simulation checks (SIM-*):**
+
+| Check | Severity | Trigger |
+|-------|----------|---------|
+| SIM-1 | Warning | Simulation stalls — repeated state in `States visited:` before `max_iterations` |
+| SIM-2 | Warning | Terminal reached in <2 iterations on a `max_iterations > 5` loop (no-op happy path) |
+| SIM-3 | Error | Simulation hit `max_iterations` without reaching a terminal state |
 
 **Semantic flow checks (SR-*):** In addition to structural (V-*, QC-*) and flow (FA-*) checks, the skill performs four semantic checks against the declared loop goal:
 
@@ -552,7 +582,11 @@ Review an existing FSM loop configuration for quality, correctness, consistency,
 
 SR-* findings are listed alongside FA-* findings in the Issues section of the output. The FSM Flow Review and Semantic Flow Review output blocks are always emitted, even when all finding counts are zero.
 
-**See also:** `/ll:create-loop`, `ll-loop validate`, `ll-loop show`
+**Rubric scorecard:** After findings, the skill rates 6 dimensions (Clarity, Decomposition, Resilience, Observability, Idempotence, Cost-Efficiency) on a 1–5 scale for a composite score /30. When a prior `.loops/reviews/<name>-*.md` artifact exists, trend arrows (↑/↓/→) are shown. See `skills/review-loop/reference.md` Rubric Dimensions for full scoring criteria.
+
+**Review artifact:** Persisted to `.loops/reviews/<name>-<YYYYMMDD-HHMMSS>.md` with YAML frontmatter (`loop`, `reviewed_at`, `scorecard`, `findings_count`, `simulation_result`, `fixes_applied`) and body sections (findings table, rubric justifications, simulation summary, fix diffs). See `skills/review-loop/reference.md` Review Artifact Schema.
+
+**See also:** `/ll:create-loop`, `ll-loop validate`, `ll-loop show`, `ll-loop simulate`
 
 ### `/ll:debug-loop-run`
 Analyze loop execution history to synthesize actionable issues from fault signals (BUG-class anomalies that broke the run) and effectiveness signals (ENH-class observations that the run completed but did not do useful work). Auto-selects the most recently interrupted/failed loop, or analyzes a named loop when specified.

@@ -78,6 +78,7 @@ docs/demo
 .loops/.queue/
 .loops/tmp/
 .loops/diagnostics/
+.loops/reviews/
 .ll/runs/harness-optimize/
 *.Cast
 

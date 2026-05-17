@@ -1,0 +1,14 @@
+name: simulation-stalls
+description: "Loop that stalls: verify self-loops indefinitely on no-pass"
+initial: verify
+states:
+  verify:
+    action: echo "checking..."
+    action_type: shell
+    evaluate:
+      type: llm_judge
+      prompt: "Did the check pass? Answer YES only for clear success."
+    on_yes: done
+    on_no: verify
+  done:
+    terminal: true

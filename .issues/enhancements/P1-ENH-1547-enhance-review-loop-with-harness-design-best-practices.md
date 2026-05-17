@@ -1,19 +1,26 @@
 ---
-title: "Enhance /ll:review-loop with harness-design best practices"
+title: Enhance /ll:review-loop with harness-design best practices
 type: ENH
 priority: P1
 effort: High
 impact: High
 risk: Medium
-status: open
-captured_at: "2026-05-17T07:41:00Z"
+status: done
+captured_at: '2026-05-17T07:41:00Z'
+completed_at: '2026-05-17T15:20:18Z'
 discovered_date: 2026-05-17
 discovered_by: capture-issue
 labels:
-  - loops
-  - review-loop
-  - harness
-  - testing
+- loops
+- review-loop
+- harness
+- testing
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1547: Enhance /ll:review-loop with harness-design best practices
@@ -118,15 +125,104 @@ For each SR-* check: one good and one bad example pair from real ll built-in loo
 
 No changes to: `scripts/little_loops/cli/loop/testing.py`, `scripts/little_loops/fsm/schema.py`, or the loop-specialist agent (reads artifact read-only).
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/create-loop/SKILL.md` — two "Tip:" lines recommend `Run /ll:review-loop <name>` post-creation; no update needed (base invocation, no flags) [Agent 1 finding]
+- `commands/loop-suggester.md` — `loops-automation` theme catalog entry lists `review-loop` as a representative example; no update needed (label only, not flag-aware) [Agent 1 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — prose mentions in "Validation" and "Further Reading" sections; no flags described, no update required; optional: could note `.loops/reviews/` artifact persistence in Further Reading [Agent 2 finding]
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/review-loop/agents/openai.yaml` — Codex adapter `short_description` field is currently truncated (`"Use when asked to review loop config quality, validate loop YAML, or audit a loo"`); `disable-model-invocation: true` in SKILL.md frontmatter causes `ll-generate-skill-descriptions` to skip this file — manual update required to reflect behavioral verification, rubric scorecard, and new flags [Agent 2 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**`.gitignore` line placement (confirmed)**: `.loops/reviews/` is NOT yet in `.gitignore`. Insert after `.loops/diagnostics/` at line 80:
+```
+.loops/diagnostics/
+.loops/reviews/
+```
+
+**`ll-loop simulate` parseable output** (`scripts/little_loops/cli/loop/testing.py:cmd_simulate()` at line 175):
+
+The `=== Summary ===` block always appears at end of stdout. Parse these lines for behavioral check signals:
+
+| SIM check | Signal to parse | Exact pattern |
+|-----------|----------------|---------------|
+| SIM-1 (stall) | `States visited:` contains repeated state names AND `Terminated by: max_iterations` | `grep "States visited:"` — check for cycle in the `→`-separated list |
+| SIM-2 (premature terminal) | `Iterations: 1` (or <2) AND `Terminated by: terminal` | `grep "Iterations:"` + `grep "Terminated by: terminal"` |
+| SIM-3 (exceeds max_iterations) | `Terminated by: max_iterations` (regardless of states visited) | `grep "Terminated by: max_iterations"` |
+
+Exit codes from `scripts/little_loops/cli/loop/_helpers.py:EXIT_CODES` (line 24): `terminal → 0`, `max_iterations → 1`, `timeout → 1`, `cycle_detected → 1`. So exit code 1 from simulate does NOT uniquely distinguish SIM-3 — must parse stdout.
+
+**Artifact filename timestamp format**: Use `%Y%m%d-%H%M%S` (dash-separated, matching `scripts/little_loops/cli/loop/run.py:301` and `parallel/worker_pool.py:243`), producing filenames like `loop-name-20260517-143207.md`. Note: `_make_instance_id()` in `_helpers.py:242` uses `%Y%m%dT%H%M%S` (T separator) — do not use that variant.
+
+**Artifact frontmatter style**: The issue says "mirror `agents/loop-specialist.md`" but the loop-specialist's `.loops/diagnostics/` artifacts use **plain markdown bullet lists, not YAML frontmatter**. The review artifact spec (Step 6.5) calls for YAML frontmatter — this is a new pattern. Follow issue spec (YAML frontmatter with `loop:`, `reviewed_at:`, `scorecard:`, `findings_count:`, `simulation_result:`, `fixes_applied:`), not the plain-bullet loop-specialist style.
+
+**Calibration example sources** for SR-* good/bad pairs in `reference.md`: good examples from `scripts/little_loops/loops/` — `harness-optimize.yaml`, `loop-specialist-eval.yaml`, `outer-loop-eval.yaml` (well-described, clear happy paths); bad examples from `scripts/tests/fixtures/fsm/` — `broken-verify-loop.yaml` (self-loop stall, ambiguous-output), `semantic-goal-mismatch.yaml`, `semantic-incoherent-state.yaml`.
+
+**Test class patterns**: Existing classes in `test_review_loop.py` use **no mocks** — pure Python dict/FSMLoop construction. New `TestReviewLoopSimulation` tests that invoke `ll-loop simulate` should follow the subprocess pattern from `scripts/tests/test_ll_loop_execution.py:1386–1540` (which asserts on stdout strings like `"SIMULATION:"`, `"Summary"`, `"terminal"`). The remaining new classes (`TestReviewLoopArtifact`, `TestReviewLoopRubric`, `TestReviewLoopDescriptionDraft`, `TestReviewLoopPostFixIteration`) should follow the existing no-mock dict-assertion pattern.
+
+**SR-* silent-skip confirmed**: `reference.md` SR-1 and SR-4 are explicitly defined to skip "when description is absent or fewer than 5 words". Step 1.5 (description draft) unblocks both by proposing a draft before Step 2c runs.
+
+**Fixture templates** for the two new files:
+
+`simulation-stalls.yaml` — modeled on `broken-verify-loop.yaml` (self-loop on `on_no`):
+```yaml
+name: simulation-stalls
+description: "Loop that stalls: verify self-loops indefinitely on no-pass"
+initial: verify
+states:
+  verify:
+    action: echo "checking..."
+    action_type: shell
+    evaluate:
+      type: llm_judge
+      prompt: "Did the check pass? Answer YES only for clear success."
+    on_yes: done
+    on_no: verify
+  done:
+    terminal: true
+```
+
+`no-description.yaml` — modeled on `valid-loop.yaml` minus `description:`:
+```yaml
+name: no-description
+initial: check
+states:
+  check:
+    action: pytest
+    on_yes: done
+    on_no: done
+  done:
+    terminal: true
+```
+
 ## Implementation Steps
 
-1. **`.gitignore`**: Add `.loops/reviews/` entry (1-line change, done first to avoid committing review artifacts)
-2. **`reference.md`**: Add Rubric Dimensions, Calibration Examples, new check IDs, Artifact Schema, Description Draft Template
-3. **`SKILL.md`**: Add Steps 1.5, 2.5, 4.5, 6.5 and new flags; extend Step 3 with scorecard rendering
-4. **Test fixtures**: `simulation-stalls.yaml` and `no-description.yaml`
-5. **`test_review_loop.py`**: Add 5 new test classes using existing `TestReviewLoopAutoFix` mock pattern
-6. **`COMMANDS.md`**: Update `/ll:review-loop` entry
-7. **Smoke test**: `/ll:review-loop loop-specialist-eval --dry-run` — verify scorecard, simulation transcript, artifact written
+1. **`.gitignore`**: Insert `.loops/reviews/` at line 81 (after `.loops/diagnostics/` at line 80) — 1-line change, done first to avoid committing review artifacts
+2. **`reference.md`**: Add Rubric Dimensions (6 dims × 1–5 scale), Calibration Examples (good: `harness-optimize.yaml`/`loop-specialist-eval.yaml`; bad: `broken-verify-loop.yaml`/`semantic-goal-mismatch.yaml`), new check IDs SIM-1..3 + RT-1, Review Artifact YAML frontmatter schema, Description Draft Template
+3. **`SKILL.md`**: Add Steps 1.5, 2.5, 4.5, 6.5 and new flags (`--exercise`, `--no-simulate`, `--rubric-only`, `--strict-semantic`); extend Step 3 with scorecard rendering; Step 2.5 parses `ll-loop simulate` stdout for `"Terminated by:"` and `"States visited:"` lines (see Integration Map > Codebase Research Findings for exact patterns)
+4. **Test fixtures**: Create `scripts/tests/fixtures/fsm/simulation-stalls.yaml` (self-loop on `on_no: verify`) and `scripts/tests/fixtures/fsm/no-description.yaml` (valid loop, `description:` absent) — templates in Integration Map > Codebase Research Findings
+5. **`test_review_loop.py`**: Add 5 new test classes:
+   - `TestReviewLoopSimulation` — subprocess pattern (from `test_ll_loop_execution.py:1386–1540`); asserts on `"Terminated by:"` in stdout
+   - `TestReviewLoopArtifact`, `TestReviewLoopRubric`, `TestReviewLoopDescriptionDraft`, `TestReviewLoopPostFixIteration` — no-mock pure-Python dict pattern (from `TestReviewLoopAutoFix`)
+6. **`COMMANDS.md`**: Update `/ll:review-loop` entry with new flags, artifact location (`.loops/reviews/<name>-<YYYYMMDD-HHMMSS>.md`), rubric reference link
+7. **Smoke test**: `ll-loop simulate loop-specialist-eval` to verify simulate output is parseable, then `/ll:review-loop loop-specialist-eval --dry-run` to verify scorecard renders and artifact path resolves
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. **`skills/review-loop/agents/openai.yaml`**: Manually update `short_description` to reflect behavioral verification, rubric scorecard, artifact persistence, and new flags — `ll-generate-skill-descriptions` skips this file due to `disable-model-invocation: true` in SKILL.md frontmatter
 
 ## Impact
 
@@ -162,9 +258,14 @@ No changes to: `scripts/little_loops/cli/loop/testing.py`, `scripts/little_loops
 |----------|-----------|
 | `skills/review-loop/SKILL.md` | The skill being enhanced |
 | `skills/review-loop/reference.md` | Check ID definitions; rubric goes here |
-| `scripts/little_loops/cli/loop/testing.py:175` | `ll-loop simulate` implementation to parse |
-| `agents/loop-specialist.md` | Artifact frontmatter style to mirror |
-| `.gitignore:80` | `.loops/diagnostics/` precedent for new gitignore entry |
+| `scripts/little_loops/cli/loop/testing.py:175` | `ll-loop simulate` / `cmd_simulate()` — parseable stdout format (see Integration Map for exact patterns) |
+| `scripts/little_loops/cli/loop/_helpers.py:24` | `EXIT_CODES` dict — exit code 1 for `max_iterations`/`timeout`/`cycle_detected`; not unique for SIM-3, must parse stdout |
+| `scripts/little_loops/fsm/types.py:32` | `ExecutionResult.terminated_by` string values: `"terminal"`, `"max_iterations"`, `"timeout"`, `"signal"`, `"error"`, `"handoff"`, `"cycle_detected"` |
+| `agents/loop-specialist.md` | Diagnostic artifact format (plain markdown bullets, NOT YAML frontmatter — review artifacts use a new YAML frontmatter pattern instead) |
+| `.gitignore:80` | `.loops/diagnostics/` at line 80; add `.loops/reviews/` at line 81 |
+| `scripts/tests/test_ll_loop_execution.py:1386` | Subprocess test pattern for simulate output assertions (`"SIMULATION:"`, `"Summary"`, `"terminal"`, `"States visited:"`) |
+| `scripts/tests/fixtures/fsm/broken-verify-loop.yaml` | Template for `simulation-stalls.yaml` (self-loop on `on_no`) |
+| `scripts/little_loops/loops/harness-optimize.yaml` | Good calibration example for SR-* checks in `reference.md` |
 
 ## Labels
 
@@ -180,5 +281,9 @@ Open — sourced from `~/.claude/plans/use-the-best-practices-glowing-sparkle.md
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-17T15:11:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78462d3d-d767-435e-b986-6bb5e5a070d9.jsonl`
+- `/ll:confidence-check` - 2026-05-17T16:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cca01b4-c345-44fc-ad43-ed4c1462fdd7.jsonl`
+- `/ll:wire-issue` - 2026-05-17T15:07:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/715ddee7-22a8-42d6-98d5-3cd589ead119.jsonl`
+- `/ll:refine-issue` - 2026-05-17T15:01:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/040a90be-219b-4227-b171-38b8a2382be5.jsonl`
 - `/ll:format-issue` - 2026-05-17T07:46:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aac60a3c-4bb3-4d31-b1a0-08e1bc0000bc.jsonl`
 - `/ll:capture-issue` - 2026-05-17T07:41:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/faeb9229-ba0c-487a-b4e2-34a81c432ad9.jsonl`

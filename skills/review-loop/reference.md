@@ -701,3 +701,281 @@ After auto-applying, report:
 Auto-applied N fixes (--auto mode):
   ✓ QC-6  on_handoff: pause added (was default, now explicit)
 ```
+
+---
+
+## Simulation Checks (SIM — behavioral verification)
+
+These checks are run during Step 2.5 (Behavioral Verification). They evaluate whether the loop behaves correctly when `ll-loop simulate` runs its FSM. Parse the `=== Summary ===` block at the end of simulate stdout.
+
+| Check ID | Phase | Severity | Trigger |
+|----------|-------|----------|---------|
+| SIM-1 | 2.5 | Warning | Simulation stalls before reaching any terminal state (cycle detected in `States visited:`) |
+| SIM-2 | 2.5 | Warning | Terminal reached in <2 iterations when `max_iterations > 5` (no-op happy path) |
+| SIM-3 | 2.5 | Error | Simulation exceeds `max_iterations` without reaching a terminal state |
+
+### Parsing `ll-loop simulate` stdout
+
+The `=== Summary ===` block always appears at end of stdout. Key lines to parse:
+
+| Signal | Pattern | Notes |
+|--------|---------|-------|
+| SIM-1 (stall) | `States visited:` contains a repeated state name AND `Terminated by: max_iterations` | Check for a cycle in the `→`-separated list |
+| SIM-2 (premature terminal) | `Iterations: 1` or `Iterations: 2` AND `Terminated by: terminal` | Only flag when `max_iterations > 5` |
+| SIM-3 (exceeds max_iterations) | `Terminated by: max_iterations` (parse stdout regardless of exit code) | Exit code 1 is non-unique; must parse stdout |
+
+**Exit code note**: `scripts/little_loops/cli/loop/_helpers.py:EXIT_CODES` — exit code 1 covers `max_iterations`, `timeout`, and `cycle_detected`. Do not use exit code alone to distinguish SIM-3; always parse stdout.
+
+### SIM-1: Simulation Stall
+
+**Severity**: Warning
+**When to auto-apply**: Never
+
+**Finding**: `Warning: (loop): Simulation stalls — verify state loops back on on_no with no escape condition. A persistent failure will reach max_iterations without terminating. Check on_no routing or add a failure terminal state.`
+
+---
+
+### SIM-2: Premature Terminal
+
+**Severity**: Warning
+**When to auto-apply**: Never
+
+**Finding**: `Warning: (loop): Simulation terminated in <N> iteration(s) on a max_iterations=<M> loop. The happy path may be a no-op (actions complete immediately with no meaningful work). Verify that the loop exercises its intended behavior before terminating.`
+
+---
+
+### SIM-3: Exceeds max_iterations
+
+**Severity**: Error
+**When to auto-apply**: Never
+
+**Finding**: `Error: (loop): Simulation hit max_iterations (<N>) without reaching a terminal state. The loop has no viable exit path on the default scenario. Review routing conditions and ensure a terminal state is reachable.`
+
+---
+
+## Post-Fix Regression Check (RT)
+
+This check is run during Step 4.5 (Post-Fix Iteration). It surfaces new issues that were introduced by applied fixes.
+
+| Check ID | Phase | Severity | Trigger |
+|----------|-------|----------|---------|
+| RT-1 | 4.5 | Warning | Post-fix pass surfaces a new finding not present before fixes were applied |
+
+### RT-1: Regression After Fix
+
+**Severity**: Warning
+**When to auto-apply**: Never
+
+For each finding present in the post-fix re-check that was NOT present in the original findings list (same check_id AND same location):
+
+**Finding**: `Warning: <location>: New finding after fix — <check_id>: <message>. A previously applied fix may have introduced this issue. Review before proceeding.`
+
+---
+
+## Rubric Dimensions (Step 3 Scorecard)
+
+Rate each dimension 1–5 and compute composite score /30. Include trend arrows (↑/↓/→) when a prior `.loops/reviews/<name>-*.md` artifact exists and has a `scorecard:` frontmatter field.
+
+| Score | Meaning |
+|-------|---------|
+| 5 | Exemplary — no issues, actively well-designed |
+| 4 | Good — minor gaps only |
+| 3 | Adequate — works but has notable weaknesses |
+| 2 | Weak — significant issues affecting reliability |
+| 1 | Poor — severe problems; loop likely fails or misleads |
+
+### Dimension 1: Clarity of Intent
+
+Does `description:` concisely state a testable, specific goal? Does the happy path match the description?
+
+- **5**: Description is specific and testable ("Fix type errors until mypy exits 0"); happy path directly implements it
+- **4**: Description is clear but happy path has minor deviations
+- **3**: Description is vague or generic; path plausibly relates but isn't tight
+- **2**: Description and path are loosely related at best
+- **1**: `description:` absent, or path has no relationship to declared goal
+
+### Dimension 2: Decomposition
+
+Are states focused single-purpose units? (FA-4 inverse)
+
+- **5**: Each state does exactly one thing; no state has ≥4 numbered steps
+- **4**: States are mostly focused; one borderline monolithic state
+- **3**: One or two states are doing multiple things
+- **2**: Several states are monolithic or mixed-concern
+- **1**: Most states are monolithic prompt-walls
+
+### Dimension 3: Resilience
+
+Are `on_error`, `on_partial`, failure terminals, and handoff all explicitly handled?
+
+- **5**: Every non-terminal state has `on_error`; explicit failure terminal; `on_handoff` set
+- **4**: Most error paths handled; one gap
+- **3**: Some error handling; no failure terminal
+- **2**: Minimal error handling; spin risk present (FA-1)
+- **1**: No error routing; guaranteed to hang on any failure
+
+### Dimension 4: Observability
+
+Do state names, capture fields, and evaluators enable debugging from logs alone?
+
+- **5**: Descriptive state names; captures named meaningfully; evaluators use structured output
+- **4**: Mostly clear; one or two opaque names
+- **3**: Some state names are generic (`check`, `step1`); minimal captures
+- **2**: State names are cryptic; no captures; evaluator output not preserved
+- **1**: Cannot determine what happened from logs
+
+### Dimension 5: Idempotence
+
+Is shared state reset on loop restart? Does the loop tolerate mid-run interruption?
+
+- **5**: No shared state; or all `/tmp`/`.loops/tmp/` writes are reset in initial state
+- **4**: Shared state reset for most paths; one edge case
+- **3**: Shared state present but only partially reset
+- **2**: FA-3 flagged; stale state on restart produces incorrect results
+- **1**: Loop is non-restartable; shared state guaranteed to corrupt on retry
+
+### Dimension 6: Cost-Efficiency
+
+Are deterministic operations programmatic (not LLM prompts)? Is `max_iterations` proportionate?
+
+- **5**: All deterministic ops are shell states; `max_iterations` is tight and justified
+- **4**: Mostly efficient; one PR-1 candidate
+- **3**: A few replaceable prompt states; `max_iterations` somewhat generous
+- **2**: Several PR-1 findings; `max_iterations` high relative to loop complexity
+- **1**: Loop uses LLM for work that bash could do; `max_iterations` excessive
+
+### Scorecard Display Format
+
+```
+### Quality Scorecard: <loop-name>
+
+| Dimension           | Score | <trend> | Notes |
+|---------------------|-------|---------|-------|
+| Clarity of Intent   |  N/5  |   ↑     | <one-line rationale> |
+| Decomposition       |  N/5  |   →     | <one-line rationale> |
+| Resilience          |  N/5  |   ↓     | <one-line rationale> |
+| Observability       |  N/5  |         | <one-line rationale> |
+| Idempotence         |  N/5  |         | <one-line rationale> |
+| Cost-Efficiency     |  N/5  |         | <one-line rationale> |
+| **Composite**       | **N/30** |      | |
+
+<Trend column present only when prior artifact exists. Omit entire column if no prior.>
+```
+
+---
+
+## Calibration Examples (SR-* Checks)
+
+Each SR-* check includes one good and one bad example from real little-loops built-in loops to anchor LLM judgment.
+
+### SR-1: Happy-Path Goal Alignment
+
+**Good example** — `harness-optimize.yaml`
+```
+description: "Iteratively optimize the harness eval loop until score reaches 85/100"
+Happy path: score → apply → verify → done
+```
+Every state name directly relates to the declared goal ("optimize", "score", "apply").
+
+**Bad example** — `broken-verify-loop.yaml`
+```
+description: "Seeded broken fixture: verify state self-loops via on_no (ambiguous-output failure mode)"
+Happy path: verify → done
+```
+The happy path does not accomplish the declared goal of demonstrating the broken behavior (it terminates on yes without triggering the loop stall).
+
+---
+
+### SR-2: State Name vs. Action Coherence
+
+**Good example** — `outer-loop-eval.yaml`
+State `check_score` has action `python scripts/score.py --output json` — narrow gate name, narrow targeted action.
+
+**Bad example** — `semantic-incoherent-state.yaml`
+State `check_quality` has action that is a 20-word open-ended analysis prompt — gate name implies a specific pass/fail criterion but action performs broad free-form review.
+
+---
+
+### SR-3: Semantically Backwards Transition
+
+**Good example** — `loop-specialist-eval.yaml`
+`on_yes` from `evaluate` routes to `done` (terminal) — success progresses forward.
+
+**Bad example** — `semantic-backwards-transition.yaml`
+`on_yes` from a mid-path state routes back to an earlier state — success regresses to a state already passed, almost always a logic inversion.
+
+---
+
+### SR-4: Goal Coverage Gap
+
+**Good example** — `outer-loop-eval.yaml`
+Description says "score → apply → verify"; states `score`, `apply`, `verify` all exist.
+
+**Bad example** — `semantic-goal-gap.yaml`
+Description mentions "commit and push changes" but no state name or action contains "commit" or "push" — the FSM cannot fulfill its declared goal.
+
+---
+
+## Review Artifact Schema (Step 6.5)
+
+Artifacts are persisted to `.loops/reviews/<name>-<YYYYMMDD-HHMMSS>.md`.
+
+Use `%Y%m%d-%H%M%S` timestamp format (e.g., `loop-name-20260517-143207.md`), matching the convention in `scripts/little_loops/cli/loop/run.py`.
+
+### Frontmatter
+
+```yaml
+---
+loop: <name>
+reviewed_at: <ISO 8601 UTC timestamp, e.g. 2026-05-17T14:32:07Z>
+scorecard:
+  clarity: <1-5>
+  decomposition: <1-5>
+  resilience: <1-5>
+  observability: <1-5>
+  idempotence: <1-5>
+  cost_efficiency: <1-5>
+  composite: <6-30>
+findings_count:
+  errors: <N>
+  warnings: <N>
+  suggestions: <N>
+simulation_result: <"terminal" | "max_iterations" | "skipped" | "error">
+fixes_applied: <N>
+---
+```
+
+### Body
+
+```markdown
+# Review: <loop-name> — <YYYYMMDD-HHMMSS>
+
+## Findings Table
+<paste findings table from Step 3>
+
+## Rubric Justifications
+<paste scorecard table from Step 3>
+
+## Simulation Summary
+<paste simulation output summary from Step 2.5, or "Simulation skipped (--no-simulate)">
+
+## Fixes Applied
+<before/after diffs for each applied fix, or "No fixes applied">
+```
+
+---
+
+## Description Draft Template (Step 1.5)
+
+When `description:` is absent or fewer than 5 words, draft a description from the FSM structure using this template:
+
+```
+<verb phrase based on initial state action> until <terminal state condition>
+```
+
+Examples:
+- Initial state runs `pytest`, terminal is `done` → `"Run pytest until all tests pass"`
+- Initial state runs `ruff check`, on_no loops back → `"Fix lint errors until ruff check exits 0"`
+- Initial state is `score` with `evaluate.type: convergence` → `"Iteratively improve score until convergence target is met"`
+
+Propose the draft as a fix in Step 1.5 before proceeding to Step 2c. Do NOT silently inject it into the YAML — always propose it as a fix with the standard approval flow.

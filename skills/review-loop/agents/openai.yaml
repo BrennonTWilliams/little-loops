@@ -1,3 +1,3 @@
 interface:
   display_name: "Review Loop"
-  short_description: "Use when asked to review loop config quality, validate loop YAML, or audit a loo"
+  short_description: "Review FSM loop quality: structural validation, behavioral verification (ll-loop simulate), 6-dimension rubric scorecard with trend tracking, post-fix iteration, and review artifact persistence to .loops/reviews/"

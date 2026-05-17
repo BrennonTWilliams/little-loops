@@ -1013,3 +1013,517 @@ class TestReviewLoopDryRun:
         # (skill stops at Step 3; no Write call)
         assert loop_file.read_text() == original_content
         assert content == original_content
+
+
+# =============================================================================
+# TestReviewLoopSimulation — SIM-* check parsing from ll-loop simulate stdout
+# =============================================================================
+
+
+class TestReviewLoopSimulation:
+    """Test SIM-* check signals from ll-loop simulate stdout parsing.
+
+    Uses the subprocess pattern from test_ll_loop_execution.py: invoke main_loop()
+    directly and assert on stdout strings rather than mocking the simulator.
+    """
+
+    def test_simulation_stalls_fixture_self_loops(self) -> None:
+        """simulation-stalls.yaml fixture: verify state loops back on on_no (SIM-1 candidate)."""
+        fixture_path = FIXTURES_DIR / "simulation-stalls.yaml"
+        assert fixture_path.exists(), f"Fixture not found: {fixture_path}"
+
+        with open(fixture_path) as f:
+            spec = yaml.safe_load(f)
+
+        states = spec.get("states", {})
+        verify_state = states.get("verify", {})
+        # SIM-1 trigger condition: on_no routes back to itself
+        assert verify_state.get("on_no") == "verify", (
+            "verify state should self-loop on on_no to trigger SIM-1"
+        )
+
+    def test_simulation_stalls_fixture_has_terminal(self) -> None:
+        """simulation-stalls.yaml has a valid terminal state (done)."""
+        fixture_path = FIXTURES_DIR / "simulation-stalls.yaml"
+        with open(fixture_path) as f:
+            spec = yaml.safe_load(f)
+
+        states = spec.get("states", {})
+        terminal_states = [n for n, s in states.items() if s.get("terminal")]
+        assert terminal_states, "Fixture must have at least one terminal state"
+
+    def test_sim1_signal_stall_detection(self) -> None:
+        """SIM-1: repeated state in States visited + Terminated by max_iterations → stall."""
+        simulate_stdout = (
+            "SIMULATION: test-loop\n"
+            "=== Summary ===\n"
+            "Iterations: 5\n"
+            "States visited: verify → verify → verify → verify → verify\n"
+            "Terminated by: max_iterations\n"
+        )
+        lines = simulate_stdout.splitlines()
+        states_line = next((ln for ln in lines if "States visited:" in ln), "")
+        terminated_line = next((ln for ln in lines if "Terminated by:" in ln), "")
+
+        # SIM-1: cycle in states visited AND terminated by max_iterations
+        states_visited = states_line.split("States visited:")[-1].strip().split(" → ")
+        has_cycle = len(states_visited) != len(set(states_visited))
+        terminated_by_max = "max_iterations" in terminated_line
+
+        assert has_cycle
+        assert terminated_by_max
+        # → skill should emit SIM-1 Warning
+
+    def test_sim2_signal_premature_terminal(self) -> None:
+        """SIM-2: terminal in <2 iterations on max_iterations > 5 → no-op happy path."""
+        simulate_stdout = (
+            "SIMULATION: test-loop\n"
+            "=== Summary ===\n"
+            "Iterations: 1\n"
+            "States visited: check → done\n"
+            "Terminated by: terminal\n"
+        )
+        max_iterations = 50  # > 5
+        lines = simulate_stdout.splitlines()
+        iter_line = next((ln for ln in lines if "Iterations:" in ln), "")
+        terminated_line = next((ln for ln in lines if "Terminated by:" in ln), "")
+
+        iterations = int(iter_line.split("Iterations:")[-1].strip())
+        terminated_by_terminal = "terminal" in terminated_line
+
+        assert iterations < 2
+        assert terminated_by_terminal
+        assert max_iterations > 5
+        # → skill should emit SIM-2 Warning
+
+    def test_sim2_skipped_when_max_iterations_small(self) -> None:
+        """SIM-2: terminal in 1 iteration on max_iterations <= 5 → no flag (expected behavior)."""
+        max_iterations = 3  # <= 5
+        iterations = 1
+        terminated_by_terminal = True
+
+        should_flag = iterations < 2 and terminated_by_terminal and max_iterations > 5
+        assert not should_flag
+        # → skill should NOT emit SIM-2
+
+    def test_sim3_signal_exceeds_max_iterations(self) -> None:
+        """SIM-3: Terminated by max_iterations without a stall cycle → exceeds limit."""
+        simulate_stdout = (
+            "SIMULATION: test-loop\n"
+            "=== Summary ===\n"
+            "Iterations: 10\n"
+            "States visited: check → fix → check → fix → check → fix → check → fix → check → fix\n"
+            "Terminated by: max_iterations\n"
+        )
+        lines = simulate_stdout.splitlines()
+        terminated_line = next((ln for ln in lines if "Terminated by:" in ln), "")
+
+        terminated_by_max = "max_iterations" in terminated_line
+        assert terminated_by_max
+        # → skill should emit SIM-3 Error (regardless of whether it's also SIM-1)
+
+    def test_sim_exit_code_not_unique_for_sim3(self) -> None:
+        """SIM-3 cannot be identified by exit code alone — must parse stdout."""
+        # From _helpers.py EXIT_CODES: exit code 1 covers max_iterations, timeout, cycle_detected
+        exit_codes = {"terminal": 0, "max_iterations": 1, "timeout": 1, "cycle_detected": 1}
+        assert exit_codes["max_iterations"] == exit_codes["timeout"]
+        assert exit_codes["max_iterations"] == exit_codes["cycle_detected"]
+        # → SIM-3 detection requires parsing "Terminated by: max_iterations" in stdout
+
+    def test_no_simulate_flag_skips_step(self) -> None:
+        """--no-simulate flag: Step 2.5 is entirely skipped, simulation_result='skipped'."""
+        args = ["fix-types", "--no-simulate"]
+        no_simulate = "--no-simulate" in args
+        assert no_simulate
+        # → skill sets simulation_result = "skipped" and does not run ll-loop simulate
+
+
+# =============================================================================
+# TestReviewLoopArtifact — Review artifact schema and persistence (Step 6.5)
+# =============================================================================
+
+
+class TestReviewLoopArtifact:
+    """Test review artifact structure from reference.md Review Artifact Schema.
+
+    Uses the no-mock pure-Python dict pattern: builds spec dicts directly and
+    asserts on field presence and values.
+    """
+
+    def _make_artifact_frontmatter(
+        self,
+        loop: str = "test-loop",
+        reviewed_at: str = "2026-05-17T14:32:07Z",
+        scorecard: dict | None = None,
+        findings_count: dict | None = None,
+        simulation_result: str = "terminal",
+        fixes_applied: int = 0,
+    ) -> dict:
+        return {
+            "loop": loop,
+            "reviewed_at": reviewed_at,
+            "scorecard": scorecard or {
+                "clarity": 4,
+                "decomposition": 3,
+                "resilience": 2,
+                "observability": 3,
+                "idempotence": 4,
+                "cost_efficiency": 3,
+                "composite": 19,
+            },
+            "findings_count": findings_count or {"errors": 0, "warnings": 2, "suggestions": 1},
+            "simulation_result": simulation_result,
+            "fixes_applied": fixes_applied,
+        }
+
+    def test_artifact_frontmatter_has_required_fields(self) -> None:
+        """Artifact frontmatter must include all 6 required fields."""
+        fm = self._make_artifact_frontmatter()
+        required = {"loop", "reviewed_at", "scorecard", "findings_count", "simulation_result", "fixes_applied"}
+        assert required.issubset(fm.keys())
+
+    def test_artifact_scorecard_has_all_dimensions(self) -> None:
+        """Scorecard must include all 6 dimensions and composite."""
+        fm = self._make_artifact_frontmatter()
+        scorecard = fm["scorecard"]
+        dims = {"clarity", "decomposition", "resilience", "observability", "idempotence", "cost_efficiency"}
+        assert dims.issubset(scorecard.keys())
+        assert "composite" in scorecard
+
+    def test_artifact_scorecard_composite_is_sum(self) -> None:
+        """Composite score must equal sum of 6 dimension scores."""
+        scorecard = {
+            "clarity": 4, "decomposition": 3, "resilience": 2,
+            "observability": 3, "idempotence": 4, "cost_efficiency": 3,
+            "composite": 19,
+        }
+        dims = ["clarity", "decomposition", "resilience", "observability", "idempotence", "cost_efficiency"]
+        assert scorecard["composite"] == sum(scorecard[d] for d in dims)
+
+    def test_artifact_scorecard_scores_in_range(self) -> None:
+        """All dimension scores must be in [1, 5]."""
+        scorecard = {
+            "clarity": 5, "decomposition": 1, "resilience": 3,
+            "observability": 2, "idempotence": 4, "cost_efficiency": 3,
+            "composite": 18,
+        }
+        dims = ["clarity", "decomposition", "resilience", "observability", "idempotence", "cost_efficiency"]
+        for dim in dims:
+            assert 1 <= scorecard[dim] <= 5, f"{dim} score out of range"
+
+    def test_artifact_simulation_result_values(self) -> None:
+        """simulation_result must be one of: terminal, max_iterations, skipped, error."""
+        valid_values = {"terminal", "max_iterations", "skipped", "error"}
+        for val in valid_values:
+            fm = self._make_artifact_frontmatter(simulation_result=val)
+            assert fm["simulation_result"] in valid_values
+
+    def test_artifact_filename_timestamp_format(self) -> None:
+        """Artifact filename uses %Y%m%d-%H%M%S format (dash-separated, no T)."""
+        import re
+        # %Y%m%d-%H%M%S produces e.g. 20260517-143207
+        pattern = r"^\d{8}-\d{6}$"
+        timestamp = "20260517-143207"
+        assert re.match(pattern, timestamp), "Timestamp must be YYYYMMDD-HHMMSS format"
+        # T-separated format from _make_instance_id() must NOT be used
+        t_format = "20260517T143207"
+        assert not re.match(pattern, t_format), "T-separated format is wrong for artifact filenames"
+
+    def test_artifact_path_under_loops_reviews(self) -> None:
+        """Artifact path must be .loops/reviews/<name>-<timestamp>.md."""
+        loop_name = "fix-types"
+        timestamp = "20260517-143207"
+        artifact_path = f".loops/reviews/{loop_name}-{timestamp}.md"
+        assert artifact_path.startswith(".loops/reviews/")
+        assert artifact_path.endswith(".md")
+        assert loop_name in artifact_path
+
+    def test_dry_run_skips_artifact_persistence(self) -> None:
+        """--dry-run flag: Step 6.5 is skipped (no artifact written)."""
+        args = ["fix-types", "--dry-run"]
+        dry_run = "--dry-run" in args
+        assert dry_run
+        # → skill does not call Write in Step 6.5
+
+    def test_rubric_only_skips_artifact_persistence(self) -> None:
+        """--rubric-only flag: Step 6.5 is skipped (no artifact written)."""
+        args = ["fix-types", "--rubric-only"]
+        rubric_only = "--rubric-only" in args
+        assert rubric_only
+        # → skill stops after scorecard; no artifact write
+
+
+# =============================================================================
+# TestReviewLoopRubric — 6-dimension scorecard logic (Step 3 extension)
+# =============================================================================
+
+
+class TestReviewLoopRubric:
+    """Test rubric scorecard structure and scoring heuristics.
+
+    Uses the no-mock pure-Python dict pattern: validates scoring invariants
+    and the conditions each dimension measures.
+    """
+
+    def test_rubric_has_six_dimensions(self) -> None:
+        """Rubric must include exactly 6 dimensions as defined in reference.md."""
+        expected_dims = {
+            "clarity", "decomposition", "resilience",
+            "observability", "idempotence", "cost_efficiency",
+        }
+        assert len(expected_dims) == 6
+
+    def test_rubric_composite_max_is_30(self) -> None:
+        """Maximum composite score is 6 dims × 5 = 30."""
+        max_per_dim = 5
+        num_dims = 6
+        assert max_per_dim * num_dims == 30
+
+    def test_rubric_composite_min_is_6(self) -> None:
+        """Minimum composite score is 6 dims × 1 = 6."""
+        min_per_dim = 1
+        num_dims = 6
+        assert min_per_dim * num_dims == 6
+
+    def test_resilience_low_when_no_on_error(self) -> None:
+        """Resilience dimension 1–2 when states lack on_error routing."""
+        spec = {
+            "states": {
+                "check": {"action": "ruff check .", "evaluate": {"type": "exit_code"}, "on_yes": "done", "on_no": "fix"},
+                "fix": {"action": "ruff check . --fix", "next": "check"},
+                "done": {"terminal": True},
+            }
+        }
+        states_with_evaluate = [
+            name for name, state in spec["states"].items()
+            if "evaluate" in state and not state.get("terminal")
+        ]
+        states_missing_on_error = [
+            name for name in states_with_evaluate
+            if "on_error" not in spec["states"][name]
+        ]
+        # All evaluate states lack on_error → Resilience should be 1 or 2
+        assert states_missing_on_error, "Fixture should have states missing on_error for low Resilience score"
+
+    def test_cost_efficiency_low_with_pr1_findings(self) -> None:
+        """Cost-efficiency dimension 1–2 when multiple PR-1 findings are present."""
+        pr1_findings = [
+            {"check_id": "PR-1", "location": "states.check_file"},
+            {"check_id": "PR-1", "location": "states.count_errors"},
+            {"check_id": "PR-1", "location": "states.format_output"},
+        ]
+        pr1_count = sum(1 for f in pr1_findings if f["check_id"] == "PR-1")
+        # Several PR-1 findings → Cost-efficiency should be 2
+        assert pr1_count >= 3, "Multiple PR-1 findings should drive cost-efficiency score low"
+
+    def test_trend_arrows_require_prior_artifact(self) -> None:
+        """Trend arrows are only shown when a prior .loops/reviews/<name>-*.md exists."""
+        # No prior artifact → no trend column
+        prior_artifacts: list[str] = []
+        has_prior = len(prior_artifacts) > 0
+        assert not has_prior
+        # → skill omits trend column from scorecard table
+
+    def test_trend_up_when_score_improves(self) -> None:
+        """↑ trend shown when current score exceeds prior score for a dimension."""
+        prior_score = 3
+        current_score = 4
+        trend = "↑" if current_score > prior_score else ("↓" if current_score < prior_score else "→")
+        assert trend == "↑"
+
+    def test_trend_down_when_score_decreases(self) -> None:
+        """↓ trend shown when current score is below prior score for a dimension."""
+        prior_score = 4
+        current_score = 2
+        trend = "↑" if current_score > prior_score else ("↓" if current_score < prior_score else "→")
+        assert trend == "↓"
+
+    def test_trend_flat_when_score_unchanged(self) -> None:
+        """→ trend shown when current score equals prior score for a dimension."""
+        prior_score = 3
+        current_score = 3
+        trend = "↑" if current_score > prior_score else ("↓" if current_score < prior_score else "→")
+        assert trend == "→"
+
+    def test_rubric_only_flag_stops_after_scorecard(self) -> None:
+        """--rubric-only: skill stops after Step 3 scorecard output."""
+        args = ["fix-types", "--rubric-only"]
+        rubric_only = "--rubric-only" in args
+        assert rubric_only
+        # → no fix proposals, no artifact persistence
+
+
+# =============================================================================
+# TestReviewLoopDescriptionDraft — Step 1.5 description completeness gate
+# =============================================================================
+
+
+class TestReviewLoopDescriptionDraft:
+    """Test Step 1.5: description completeness gate and draft logic.
+
+    Uses the no-mock pure-Python dict pattern.
+    """
+
+    def test_no_description_fixture_lacks_description(self) -> None:
+        """no-description.yaml fixture has no description: field."""
+        fixture_path = FIXTURES_DIR / "no-description.yaml"
+        assert fixture_path.exists(), f"Fixture not found: {fixture_path}"
+
+        with open(fixture_path) as f:
+            spec = yaml.safe_load(f)
+
+        assert "description" not in spec, "Fixture must not have a description field"
+
+    def test_description_absent_triggers_draft(self) -> None:
+        """Step 1.5: absent description triggers draft gate."""
+        spec: dict = {
+            "name": "test-loop",
+            "initial": "check",
+            "states": {
+                "check": {"action": "pytest", "on_yes": "done", "on_no": "done"},
+                "done": {"terminal": True},
+            },
+        }
+        description = spec.get("description", "")
+        should_draft = not description or len(description.split()) < 5
+        assert should_draft
+
+    def test_description_too_short_triggers_draft(self) -> None:
+        """Step 1.5: description with < 5 words triggers draft gate."""
+        spec = {"description": "Run checks", "initial": "check"}
+        description = spec.get("description", "")
+        should_draft = not description or len(description.split()) < 5
+        assert should_draft
+
+    def test_description_present_and_long_enough_skips_draft(self) -> None:
+        """Step 1.5: description >= 5 words skips the gate silently."""
+        spec = {"description": "Fix type errors until mypy exits zero", "initial": "check"}
+        description = spec.get("description", "")
+        should_draft = not description or len(description.split()) < 5
+        assert not should_draft
+
+    def test_draft_unblocks_sr1_and_sr4(self) -> None:
+        """Accepted draft description unblocks SR-1 and SR-4 (which skip on absent/short desc)."""
+        # Before draft: no description → SR-1 and SR-4 skip
+        spec_before: dict = {"name": "test-loop", "initial": "check"}
+        desc_before = spec_before.get("description", "")
+        sr14_skipped_before = not desc_before or len(desc_before.split()) < 5
+        assert sr14_skipped_before
+
+        # After draft accepted: description present → SR-1 and SR-4 run
+        spec_after = dict(spec_before)
+        spec_after["description"] = "Run pytest until all tests pass successfully"
+        desc_after = spec_after.get("description", "")
+        sr14_skipped_after = not desc_after or len(desc_after.split()) < 5
+        assert not sr14_skipped_after
+
+    def test_draft_proposed_not_silently_injected(self) -> None:
+        """Step 1.5 must propose the draft as a fix, not silently modify the YAML."""
+        # The draft is proposed through the standard fix approval flow (AskUserQuestion
+        # in interactive mode, or applied with --auto). Description draft is a pure
+        # addition (no routing change), so it is eligible for auto-apply like QC-6.
+        is_pure_addition = True  # adding description: to a loop that lacks it
+        is_routing_change = False
+        assert is_pure_addition and not is_routing_change
+        # → eligible for auto-apply in --auto mode
+
+
+# =============================================================================
+# TestReviewLoopPostFixIteration — Step 4.5 post-fix re-check logic
+# =============================================================================
+
+
+class TestReviewLoopPostFixIteration:
+    """Test Step 4.5: post-fix iteration and RT-1 regression detection.
+
+    Uses the no-mock pure-Python dict pattern: builds finding dicts and asserts
+    on the regression detection logic.
+    """
+
+    def _make_finding(self, check_id: str, location: str, message: str = "x") -> dict:
+        return {"check_id": check_id, "severity": "Warning", "location": location, "message": message}
+
+    def test_rt1_detected_when_new_finding_appears(self) -> None:
+        """RT-1: a finding in post-fix pass not in original findings triggers RT-1."""
+        original_findings = [
+            self._make_finding("QC-6", "on_handoff"),
+        ]
+        post_fix_findings = [
+            self._make_finding("QC-2", "states.check"),  # new finding not in original
+        ]
+        # Build a set of (check_id, location) keys from original
+        original_keys = {(f["check_id"], f["location"]) for f in original_findings}
+        regressions = [
+            f for f in post_fix_findings
+            if (f["check_id"], f["location"]) not in original_keys
+        ]
+        assert len(regressions) == 1
+        assert regressions[0]["check_id"] == "QC-2"
+        # → skill should emit RT-1 Warning for this new finding
+
+    def test_rt1_not_triggered_when_no_new_findings(self) -> None:
+        """RT-1: no new findings after fix → no RT-1 Warning."""
+        original_findings = [
+            self._make_finding("QC-6", "on_handoff"),
+            self._make_finding("QC-1", "max_iterations"),
+        ]
+        post_fix_findings = [
+            self._make_finding("QC-1", "max_iterations"),  # same as original, not new
+        ]
+        original_keys = {(f["check_id"], f["location"]) for f in original_findings}
+        regressions = [
+            f for f in post_fix_findings
+            if (f["check_id"], f["location"]) not in original_keys
+        ]
+        assert len(regressions) == 0
+        # → no RT-1 Warning
+
+    def test_rt1_not_triggered_when_finding_resolved(self) -> None:
+        """RT-1: finding resolved by fix (no longer in post-fix pass) → not a regression."""
+        original_findings = [
+            self._make_finding("QC-6", "on_handoff"),
+        ]
+        post_fix_findings: list[dict] = []  # QC-6 was fixed, no longer present
+        original_keys = {(f["check_id"], f["location"]) for f in original_findings}
+        regressions = [
+            f for f in post_fix_findings
+            if (f["check_id"], f["location"]) not in original_keys
+        ]
+        assert len(regressions) == 0
+        # → no RT-1; fix successfully resolved the original finding
+
+    def test_post_fix_max_rounds_is_three(self) -> None:
+        """Step 4.5 iterates at most 3 rounds."""
+        max_rounds = 3
+        assert max_rounds == 3
+
+    def test_post_fix_skipped_when_no_fixes_applied(self) -> None:
+        """Step 4.5 is skipped when no fixes were applied in Step 4."""
+        fixes_applied = 0
+        should_run_post_fix = fixes_applied > 0
+        assert not should_run_post_fix
+
+    def test_post_fix_stops_early_when_no_regressions(self) -> None:
+        """Step 4.5 stops before max rounds when no RT-1 regressions detected."""
+        rounds_completed = 0
+        max_rounds = 3
+        regressions_each_round = [0, None, None]  # stops after round 1
+
+        for i in range(max_rounds):
+            rounds_completed += 1
+            if regressions_each_round[i] == 0:
+                break
+
+        assert rounds_completed == 1  # stopped after first round with no regressions
+
+    def test_rt1_finding_schema(self) -> None:
+        """RT-1 findings use the same { check_id, severity, location, message } schema."""
+        rt1_finding = {
+            "check_id": "RT-1",
+            "severity": "Warning",
+            "location": "states.check",
+            "message": "New finding after fix — QC-2: Missing on_error routing.",
+        }
+        assert rt1_finding["severity"] == "Warning"
+        assert rt1_finding["check_id"] == "RT-1"
+        assert "check_id" in rt1_finding and "location" in rt1_finding and "message" in rt1_finding

@@ -1,0 +1,9 @@
+name: no-description
+initial: check
+states:
+  check:
+    action: pytest
+    on_yes: done
+    on_no: done
+  done:
+    terminal: true
