@@ -1374,6 +1374,34 @@ class TestRenderFsmDiagram:
             "Labels 'retry_a' and 'retry_i' collide on the same line (BUG-1499)"
         )
 
+    def test_skip_forward_label_no_collision_on_shared_source_row(self) -> None:
+        """Skip-forward label must not land on the same row as an adjacent-layer label
+        when both edges share a source state (regression: BUG-1501).
+
+        S has both S→layer1 (adjacent, label "yes") and S→layer2 (skip-forward,
+        label "error").  Without the fix the skip-forward nudge pass has no
+        knowledge of the adjacent label row and both land on arrow_start_row.
+        """
+        fsm = self._make_fsm(
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="step s",
+                    on_yes="layer1",
+                    route=RouteConfig(routes={"error": "layer2"}),
+                ),
+                "layer1": StateConfig(on_yes="layer2"),
+                "layer2": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        lines = result.split("\n")
+        assert any("yes" in ln for ln in lines), "yes label not rendered"
+        assert any("error" in ln for ln in lines), "error label not rendered"
+        assert not any("yes" in ln and "error" in ln for ln in lines), (
+            "Labels 'yes' and 'error' collide on the same line (BUG-1501)"
+        )
+
 
 class TestAdaptiveLayoutTopologies:
     """Tests for topology-specific adaptive layout rendering."""

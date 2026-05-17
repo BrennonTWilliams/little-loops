@@ -2,10 +2,16 @@
 id: BUG-1501
 type: BUG
 priority: P3
-status: open
-captured_at: "2026-05-16T14:12:59Z"
-discovered_date: "2026-05-16"
+status: done
+captured_at: '2026-05-16T14:12:59Z'
+discovered_date: '2026-05-16'
 discovered_by: capture-issue
+confidence_score: 95
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1501: FSM diagram spurious skip-forward label appears on shared source row
@@ -35,6 +41,53 @@ Same shape as BUG-1499:
 1. During forward-edge rendering, populate a `used_label_rows: set[int]` keyed by margin/column band.
 2. Pass it into the skip-forward pass; when the computed `label_row_pos` is in the set, nudge ±1 row to find a free row within the edge's vertical span.
 3. Consider sharing one `used_label_rows` structure across back-edge, forward, and skip-forward passes so labels never collide regardless of edge class.
+
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+### Files to Modify
+- `scripts/little_loops/cli/loop/layout.py` — sole renderer file; two-line change:
+  1. Move `used_label_rows: set[int] = set()` (currently line 1231) to before the adjacent inter-layer loop at line 1040
+  2. Inside the label-write block at lines 1115–1124, add `used_label_rows.add(label_row)` after `label_row = arrow_start_row` so each adjacent-layer label row is recorded before the skip-forward nudge pass runs
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/loop/info.py:16–22` — imports `_render_fsm_diagram` for `ll-loop show`
+- `scripts/little_loops/cli/loop/_helpers.py:408–410, 427` — calls `_render_fsm_diagram()` during `ll-loop run --show-diagrams`
+- No caller-side changes needed; fix is internal to `_render_layered_diagram()`
+
+### Similar Patterns
+- `layout.py:1330–1345` — back-edge nudge block (BUG-1499 fix): verbatim template for the populate-then-check pattern; `used_label_rows` is read and written here
+- `layout.py:1450–1465` — skip-forward nudge block: identical pattern; already reads `used_label_rows` — no change required, will benefit automatically once the set is pre-populated
+
+### Tests
+- `scripts/tests/test_ll_loop_display.py:1350–1375` — `TestRenderFsmDiagram.test_back_edge_labels_no_collision_on_shared_midpoint()`: exact template for the new regression test (fixture with arithmetic midpoint collision, assertions using `any(label in ln)` + `not any(both in same ln)`)
+- New test belongs in the `TestRenderFsmDiagram` class, after line 1375
+
+### Documentation
+- No documentation changes required
+
+---
+
+## Implementation Steps
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+1. **Move `used_label_rows` declaration** in `_render_layered_diagram()` (`layout.py:1231`): relocate `used_label_rows: set[int] = set()` to before the `for li in range(len(layers) - 1):` loop at line 1040. The comment at lines 1229–1231 moves with it.
+
+2. **Populate `used_label_rows` in the adjacent inter-layer loop** (`layout.py:1115–1124`): after `label_row = arrow_start_row` (line 1115) and inside `if label_row < total_height:`, add `used_label_rows.add(label_row)`. This records each adjacent-layer label row before the skip-forward nudge pass runs.
+
+3. **No changes needed in back-edge or skip-forward passes**: the nudge blocks at lines 1330–1345 and 1450–1465 already read and write `used_label_rows`. Pre-populating it is sufficient.
+
+4. **Add regression test** in `TestRenderFsmDiagram` (`test_ll_loop_display.py` after line 1375`): 3-state FSM where layer-0 state `S` has both `S → layer1` (adjacent, label `"yes"`) and `S → layer2` (skip-forward, label `"error"`). Verify the row containing `"yes"` does not also contain `"error"`. Follow fixture and assertion structure from `test_back_edge_labels_no_collision_on_shared_midpoint` (lines 1350–1375).
+
+5. **Verify**: `python -m pytest scripts/tests/test_ll_loop_display.py -v -k "collision or skip"`.
+
+---
 
 ## Steps to Reproduce
 
@@ -75,4 +128,8 @@ Closely related: BUG-1499 (shares the `used_label_rows` fix mechanism).
 - **Captured by**: `/ll:capture-issue`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-17T14:03:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84c55d0d-16b1-4406-9ef7-cff79317a1c0.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08a32b43-a82c-44ca-870c-a3ed903e4428.jsonl`
+- `/ll:wire-issue` - 2026-05-17T13:59:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6bd8d2eb-0ceb-4004-9285-6618c0bf77a5.jsonl`
+- `/ll:refine-issue` - 2026-05-17T13:55:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5965c677-65b9-41f7-b51f-cbb05e9da3ac.jsonl`
 - `/ll:capture-issue` - 2026-05-16T14:12:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f204025d-307a-4f4d-80b2-206dfd3b1de1.jsonl`

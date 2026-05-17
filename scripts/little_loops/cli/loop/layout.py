@@ -1036,6 +1036,10 @@ def _render_layered_diagram(
                 if pos + j < total_width:
                     grid[r][pos + j] = ch
 
+    # Shared row tracker: prevents two labels (back-edge, skip-forward, or adjacent)
+    # landing on the same grid row, which would clobber the first label written there.
+    used_label_rows: set[int] = set()
+
     # Draw forward edges between layers (vertical arrows with labels)
     for li in range(len(layers) - 1):
         layer_h = max(box_height[s] for s in layers[li])
@@ -1113,7 +1117,16 @@ def _render_layered_diagram(
             # overwriting them (BUG-1500).  Without skip-layer edges the right
             # margin is empty and the full total_width is available.
             label_row = arrow_start_row
+            # Nudge if this row already has a label from another inter-layer edge
+            # (e.g., two edges from the same source go to states in the same layer).
+            # Try pipe rows (pipe_start..arrow_end_row) before giving up (BUG-1501).
+            if label_row in used_label_rows:
+                for _cand in range(pipe_start, arrow_end_row + 1):
+                    if _cand not in used_label_rows:
+                        label_row = _cand
+                        break
             if label_row < total_height:
+                used_label_rows.add(label_row)
                 label_start = dst_cc + 2
                 max_col = total_content_w if skip_forward_edges else total_width
                 max_label = max_col - label_start
@@ -1225,10 +1238,6 @@ def _render_layered_diagram(
                     and pos not in _row_boxes
                 ):
                     grid[name_row][pos] = _lc(ch)
-
-    # Shared row tracker: prevents two labels (back-edge or skip-forward) landing on the
-    # same grid row, which would clobber the first label written there.
-    used_label_rows: set[int] = set()
 
     # Back-edges: left-margin vertical arrows with labels
     if non_self_back:
