@@ -43,6 +43,15 @@ In the `elif dst_right <= src_left:` branch:
 3. Continue to honor `_box_occ` exclusions on the cell-write loop so box-boundary columns are not overwritten.
 4. If the stray `◀` next to `loop_complete_final` persists after the directional fix and BUG-1499 lands, audit the cell-overwrite logic in `_box_occ` to skip the box-boundary column on this code path.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Bug site**: `layout.py:1223` — `edge_text = "─" + label + "──▶"` is identical in both branches; the right-to-left branch needs `"◀──" + label + "─"` (`◀──label─`).
+- **Placement issue**: the current loop uses `left_dashes = available - len(edge_text)` (right-alignment), which pushes `▶` toward `src_left`. The fix needs **left-alignment** (`left_dashes = 0`) so `◀` lands at `start = dst_right`, then trailing dashes fill `start + len(edge_text)` through `end - 1`.
+- **Reference for correct `◀` usage**: `layout.py:1454` (forward skip-layer tip) uses `grid[dst_row][dst_right] = _lc("◀")` — a direct cell write. The same-layer renderer embeds the arrowhead in `edge_text`, so the string must be built in the opposite orientation rather than using a direct write.
+- **`_box_occ` guard is already in place** at lines 1228–1240; no change needed there — the `pos not in _row_boxes` check already prevents box-boundary overwrites.
+
 ## Steps to Reproduce
 
 1. `cd /Users/brennon/AIProjects/ai-workspaces/blender-agents`
@@ -64,6 +73,41 @@ Add a case in `scripts/tests/test_ll_loop_display.py`:
 - Fixture: 2-state FSM with `A.on_yes → B` and `B.on_yes → A`, placed on the same layer.
 - Assert the rendered line containing the right-to-left edge includes `◀` adjacent to the destination and contains no `▶`.
 
+Follow the assertion pattern from `TestRenderFsmDiagram.test_branch_to_terminal_skip_layer_renders_edge` (line 1030):
+```python
+result = _render_fsm_diagram(fsm)
+assert "◀" in result, f"Right-to-left same-layer edge should have ◀ arrowhead.\n{result}"
+```
+The existing test `test_same_layer_edge_does_not_occlude_intermediate_box` (line 1171) covers `_box_occ` occlusion but does **not** assert arrowhead direction — the new test is complementary.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/loop/layout.py:1219-1240` — right-to-left branch in `_render_layered_diagram()`; change `edge_text` construction (line 1223) and flip to left-aligned placement
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/loop/info.py:16-22` — imports and calls `_render_fsm_diagram()` for `ll-loop show`
+- `scripts/little_loops/cli/loop/_helpers.py:408-410,427` — calls `_render_fsm_diagram()` for `ll-loop run --show-diagrams`
+
+### Similar Patterns (Reference)
+- `layout.py:1454` — `◀` (`◀`) placed correctly as a direct cell write for forward skip-layer tip (right margin)
+- `layout.py:1336` — `▶` (`▶`) placed correctly as a direct cell write for back-edge tip (left margin)
+
+### Tests
+- `scripts/tests/test_ll_loop_display.py` — `TestRenderFsmDiagram` class (line 640)
+  - `test_same_layer_edge_does_not_occlude_intermediate_box` (line 1171) — existing same-layer coverage, no direction assertion
+  - New test to add (see Test Plan)
+
+### Documentation
+- `docs/reference/OUTPUT_STYLING.md` — documents FSM diagram rendering and glyph conventions; may need minor update if arrowhead conventions are described
+
+## Implementation Steps
+
+1. **Fix `edge_text` in `layout.py:1223`**: change `"─" + label + "──▶"` to `"◀──" + label + "─"` (i.e., `◀──label─`)
+2. **Fix placement loop in `layout.py:1227-1240`**: remove `left_dashes` right-alignment; set `left_dashes = 0` so `◀` writes at `start = dst_right`; after writing `edge_text`, add a trailing-dashes pass from `start + len(edge_text)` to `end - 1` (mirroring the left-to-right branch's leading-dashes pass)
+3. **Add test in `TestRenderFsmDiagram`** (`test_ll_loop_display.py`): 2-state same-layer fixture (`A.on_yes → B`, `B.on_yes → A`), assert `"◀" in result` and optionally that `▶` does not appear on the right-to-left row
+4. **Verify** with `python -m pytest scripts/tests/test_ll_loop_display.py -v -k "same_layer"` and visually check `ll-loop show eval-specfile-gold` in the `blender-agents` workspace
+
 ## Related Key Documentation
 
 | Document | Relevance |
@@ -82,4 +126,5 @@ Add a case in `scripts/tests/test_ll_loop_display.py`:
 - **Captured by**: `/ll:capture-issue`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-17T14:48:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70b5ac5f-6894-4bfd-9384-d9d089bceb7e.jsonl`
 - `/ll:capture-issue` - 2026-05-16T14:12:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f204025d-307a-4f4d-80b2-206dfd3b1de1.jsonl`
