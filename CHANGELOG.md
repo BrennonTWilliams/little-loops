@@ -17,6 +17,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`deep-research` FSM Loop** — New built-in iterative web research synthesis loop that accepts a research topic or question, generates an initial set of faceted search queries, iteratively performs web searches via WebSearch/WebFetch tools, evaluates and deduplicates sources, scores per-facet coverage on a 1–5 scale, and iterates until coverage is sufficient or `max_iterations` is exhausted. Uses the inline sentinel convergence pattern (`COVERAGE_SUFFICIENT`) modeled on `rn-plan`. Produces a structured `report.md` with executive summary, key findings, deduplicated source table, coverage gaps, and conclusion. All artifacts written to `.loops/research/<slug>/`. Run via `ll-loop run deep-research "your research topic"`. (FEAT-1540)
+- **`rn-plan-apo` FSM Loop** — New built-in APO (Automatic Prompt Optimization) loop for iterative plan-quality gradient optimization.
+- **Loop-Specialist Agent** — New `loop-specialist` agent with diagnosis taxonomy, doc wiring, and an evaluation harness for monitoring, analyzing, refining, and optimizing FSM-based automation loops. (FEAT-1532, FEAT-1544)
+- **`ll-loop next-loop` Sub-command** — History-based loop suggestion sub-command that recommends the most relevant built-in loop given recent session context. (FEAT-1546)
+- **FSM `TargetStateSpec` / `TargetFileSpec` Schema** — New schema types and validation for per-FSM-state and per-file targeting in `harness-optimize`. (ENH-1552)
+
+### Fixed
+
+- **Renderer Inter-Layer Label Collision** — Prevents label collisions when two edges share a source row across adjacent layers. (BUG-1501)
+- **Renderer Back-Edge Label Collision** — Prevents label collisions when back-edges share a midpoint row.
+- **Renderer Forward-Edge Label Truncation** — Truncates merged forward-edge labels that exceed the available column width.
+- **Outer-Loop-Eval Terminal States** — Adds distinct `fail_sub_loop` and `fail_error` terminal states plus `fail_missing_input` for clearer error reporting.
+- **Confidence-Check Signal Detection** — Extends Phase 4.6 signal phrase list for more reliable decision detection.
+
+### Changed
+
+- **harness-optimize State-Mode** — State machine extension with `init_run` state, per-run trajectory paths, state-mode wiring, and docs. (ENH-1554, ENH-1555)
+- **Meta-APO Per-FSM-State Targeting** — `harness-optimize` now accepts `TargetStateSpec` to focus optimization on individual loop states. (ENH-1535)
+- **Status Synonym Normalization** — Frontmatter `status:` synonyms (e.g. `completed` → `done`, `wip` → `in_progress`) are normalized on parse; `ll-migrate-status` migrates on-disk files; regression tests and docs added. (ENH-1539)
+- **`svg-textgrad`** — Fixed gradient quoting, universal score recording, and optional external pass evaluator. (ENH-1548)
+- **`review-loop`** — Adopts all seven harness-design best practices. (ENH-1547)
+- **`ll-verify-docs`** — FSM loop tracking and bridge-skill filter added. (ENH-1038)
+- **Loops ruamel.yaml Round-Trip Editor** — New round-trip YAML state editor for in-place FSM edits that preserve formatting and comments. (ENH-1553)
 
 ## [1.102.0] - 2026-05-16
 
@@ -177,7 +199,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.101.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.103.0...HEAD
+[1.103.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.102.0...v1.103.0
 [1.102.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.101.0...v1.102.0
 [1.101.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.100.0...v1.101.0
 [1.100.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.99.0...v1.100.0
