@@ -37,7 +37,7 @@ def cmd_skip(config: BRConfig, args: argparse.Namespace) -> int:
 
     # Only skip non-terminal issues (check frontmatter status, not directory)
     issue_info = IssueParser(config).parse_file(path)
-    if issue_info.status in ("done", "cancelled", "deferred", "completed"):
+    if issue_info.status in ("done", "cancelled", "deferred"):
         print(
             f"Error: Issue '{args.issue_id}' has status '{issue_info.status}', not an active issue.",
             file=sys.stderr,

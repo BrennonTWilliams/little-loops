@@ -135,7 +135,7 @@ def _load_issues_with_status(
                 if status in ("open", "in_progress", "blocked"):
                     if include_open:
                         results.append((issue, status))
-                elif status in ("done", "cancelled", "completed"):
+                elif status in ("done", "cancelled"):
                     if include_done:
                         results.append((issue, status))
                 elif status == "deferred":

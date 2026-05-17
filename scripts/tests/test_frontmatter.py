@@ -138,6 +138,37 @@ class TestParseFrontmatter:
         assert result["tags"] == ["foo", "bar"]
         assert result["author"] == "alice"
 
+    @pytest.mark.parametrize(
+        "synonym,expected",
+        [
+            ("complete", "done"),
+            ("completed", "done"),
+            ("finished", "done"),
+            ("closed", "done"),
+            ("in-progress", "in_progress"),
+            ("in progress", "in_progress"),
+            ("wip", "in_progress"),
+        ],
+    )
+    def test_status_synonym_normalized(self, synonym: str, expected: str) -> None:
+        """Status synonyms are coerced to their canonical equivalents."""
+        content = f"---\nstatus: {synonym}\n---\n\n# Title\n"
+        result = parse_frontmatter(content)
+        assert result["status"] == expected
+
+    def test_status_unknown_passes_through(self) -> None:
+        """Unknown status values are returned unchanged."""
+        content = "---\nstatus: future-value\n---\n\n# Title\n"
+        result = parse_frontmatter(content)
+        assert result["status"] == "future-value"
+
+    def test_status_canonical_values_unchanged(self) -> None:
+        """Canonical status values are not altered by normalization."""
+        for canonical in ("open", "in_progress", "blocked", "deferred", "done", "cancelled"):
+            content = f"---\nstatus: {canonical}\n---\n\n# Title\n"
+            result = parse_frontmatter(content)
+            assert result["status"] == canonical
+
     def test_orphaned_list_item_still_warns(self, caplog: pytest.LogCaptureFixture) -> None:
         """List item after a scalar-valued key still emits a warning."""
         content = "---\nkey: value\n- orphan\n---\n\n"

@@ -11,6 +11,7 @@ from pathlib import Path
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from little_loops.frontmatter import STATUS_SYNONYMS
 from little_loops.issue_parser import IssueInfo, ProductImpact, slugify
 
 
@@ -407,3 +408,19 @@ class TestIssueInfoWithProductImpactProperties:
         assert restored.discovered_by == original.discovered_by
         assert restored.product_impact is None
         assert restored.status == original.status
+
+
+class TestStatusSynonyms:
+    """Sanity checks for the STATUS_SYNONYMS map in frontmatter."""
+
+    def test_no_canonical_value_is_a_synonym_key(self) -> None:
+        """Canonical status values must not appear as synonym map keys."""
+        canonical = {"open", "in_progress", "blocked", "deferred", "done", "cancelled"}
+        collisions = canonical & set(STATUS_SYNONYMS.keys())
+        assert not collisions, f"Canonical values found in synonym keys: {collisions}"
+
+    def test_synonym_values_are_canonical(self) -> None:
+        """Every synonym maps to a canonical value."""
+        canonical = {"open", "in_progress", "blocked", "deferred", "done", "cancelled"}
+        for synonym, target in STATUS_SYNONYMS.items():
+            assert target in canonical, f"Synonym '{synonym}' maps to non-canonical '{target}'"

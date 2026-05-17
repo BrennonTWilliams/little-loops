@@ -14,6 +14,16 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+STATUS_SYNONYMS: dict[str, str] = {
+    "complete": "done",
+    "completed": "done",
+    "finished": "done",
+    "closed": "done",
+    "in-progress": "in_progress",
+    "in progress": "in_progress",
+    "wip": "in_progress",
+}
+
 
 def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, Any]:
     """Extract YAML frontmatter from content.
@@ -81,6 +91,8 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
     # Finalize any trailing empty list key
     if current_list_key is not None and result[current_list_key] == []:
         result[current_list_key] = None
+    if "status" in result and isinstance(result["status"], str):
+        result["status"] = STATUS_SYNONYMS.get(result["status"], result["status"])
     return result
 
 

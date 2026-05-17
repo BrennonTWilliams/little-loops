@@ -366,6 +366,27 @@ class TestVerifyIssueCompleted:
         assert result is False
         mock_logger.warning.assert_called()
 
+    def test_status_completed_synonym_verified(
+        self, tmp_path: Path, sample_config: BRConfig, mock_logger: MagicMock
+    ) -> None:
+        """status: completed is normalized to done, so verify_issue_completed returns True."""
+        issue_path = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test.md"
+        issue_path.parent.mkdir(parents=True, exist_ok=True)
+        issue_path.write_text("---\nstatus: completed\n---\n\n# BUG-001: Test")
+
+        info = IssueInfo(
+            path=issue_path,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-001",
+            title="Test",
+        )
+
+        result = verify_issue_completed(info, sample_config, mock_logger)
+
+        assert result is True
+        mock_logger.success.assert_called()
+
     def test_source_missing_returns_true(
         self, tmp_path: Path, sample_config: BRConfig, mock_logger: MagicMock
     ) -> None:

@@ -3381,7 +3381,7 @@ class TestIssuesSkip:
 
         assert result == 1
         captured = capsys.readouterr()
-        assert "completed" in captured.err.lower()
+        assert "done" in captured.err.lower()
 
 
 # =============================================================================
