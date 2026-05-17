@@ -104,6 +104,7 @@ class TestBuiltinLoopFiles:
             "autodev",
             "scan-and-implement",
             "recursive-refine",
+            "html-anything",
             "html-website-generator",
             "sprint-refine-and-implement",
             "svg-image-generator",
@@ -2827,3 +2828,149 @@ class TestWorktreeHealthLoop:
         assert "ll-worktree" not in combined, (
             "worktree-health.yaml must not grep for 'll-worktree'; it matches no worktree names"
         )
+
+
+class TestHtmlAnythingLoop:
+    """Structural tests for the html-anything FSM loop (FEAT-1541)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "html-anything.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, input_key, and states fields."""
+        assert data.get("name") == "html-anything"
+        assert data.get("initial") == "init"
+        assert data.get("input_key") == "description"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present: init, plan, generate, evaluate, score, done, failed."""
+        required = {"init", "plan", "generate", "evaluate", "score", "done", "failed"}
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_init_state_is_shell_with_capture(self, data: dict) -> None:
+        """init state must be a shell action that captures the timestamped run directory."""
+        state = data["states"].get("init", {})
+        assert state.get("action_type") == "shell"
+        assert state.get("capture") == "run_dir"
+        assert state.get("next") == "plan"
+
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        """init action must echo an absolute path so file:// URIs are valid."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert "$(pwd)" in action, (
+            f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+        )
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
+
+    def test_failed_state_is_terminal(self, data: dict) -> None:
+        """failed state must have terminal: true."""
+        state = data["states"].get("failed", {})
+        assert state.get("terminal") is True
+
+    def test_evaluate_state_is_shell(self, data: dict) -> None:
+        """evaluate state must use action_type: shell for the Playwright CLI call."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("action_type") == "shell"
+
+    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
+        """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
+        state = data["states"].get("evaluate", {})
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "CAPTURED"
+
+    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
+        """evaluate state must route to score when screenshot succeeds."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_yes") == "score"
+
+    def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
+        """evaluate state must route back to generate when screenshot fails."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_no") == "generate"
+
+    def test_evaluate_on_error_routes_to_generate(self, data: dict) -> None:
+        """evaluate state must route to generate on error so Playwright absence doesn't stall."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_error") == "generate"
+
+    def test_evaluate_action_has_stderr_redirect(self, data: dict) -> None:
+        """evaluate action must redirect stderr to stdout so playwright errors surface."""
+        state = data["states"].get("evaluate", {})
+        action = state.get("action", "")
+        assert "2>&1" in action, f"evaluate.action must contain 2>&1, got: {action!r}"
+
+    def test_score_state_uses_all_pass_pattern(self, data: dict) -> None:
+        """score state must use output_contains with pattern ALL_PASS."""
+        state = data["states"].get("score", {})
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "ALL_PASS"
+
+    def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
+        """score state must route to done when all criteria pass."""
+        state = data["states"].get("score", {})
+        assert state.get("on_yes") == "done"
+
+    def test_score_state_routes_to_generate_on_iterate(self, data: dict) -> None:
+        """score state must route back to generate when criteria are not met."""
+        state = data["states"].get("score", {})
+        assert state.get("on_no") == "generate"
+
+    def test_score_on_error_routes_to_failed(self, data: dict) -> None:
+        """score state must route to failed on error to surface LLM failures explicitly."""
+        state = data["states"].get("score", {})
+        assert state.get("on_error") == "failed"
+
+    def test_context_has_description_and_output_dir(self, data: dict) -> None:
+        """context block must define description and output_dir with correct defaults."""
+        ctx = data.get("context", {})
+        assert "description" in ctx
+        assert ctx.get("output_dir") == ".loops/tmp/html-anything"
+
+    def test_context_pass_threshold_is_7(self, data: dict) -> None:
+        """pass_threshold must be 7 — higher than SVG's 6 because platform constraints are binary."""
+        ctx = data.get("context", {})
+        assert ctx.get("pass_threshold") == 7
+
+    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_iterations and timeout."""
+        assert data.get("max_iterations", 0) > 0
+        assert data.get("timeout", 0) > 0
+
+    def test_plan_action_references_brief_and_rubric(self, data: dict) -> None:
+        """plan state must write both brief.md and rubric.md in a single atomic state."""
+        state = data["states"].get("plan", {})
+        action = state.get("action", "")
+        assert "brief.md" in action, "plan.action must write brief.md"
+        assert "rubric.md" in action, "plan.action must write rubric.md"
+
+    def test_score_action_reads_rubric_dynamically(self, data: dict) -> None:
+        """score state must read rubric.md to load per-criterion thresholds dynamically."""
+        state = data["states"].get("score", {})
+        action = state.get("action", "")
+        assert "rubric.md" in action, (
+            "score.action must read rubric.md to load per-criterion thresholds"
+        )
+
+    def test_done_reports_all_five_output_files(self, data: dict) -> None:
+        """done state must reference all 5 output files: index.html, brief.md, rubric.md, critique.md, screenshot.png."""
+        state = data["states"].get("done", {})
+        action = state.get("action", "")
+        assert "index.html" in action, "done.action must reference index.html"
+        assert "brief.md" in action, "done.action must reference brief.md"
+        assert "rubric.md" in action, "done.action must reference rubric.md"
+        assert "critique.md" in action, "done.action must reference critique.md"
+        assert "screenshot.png" in action, "done.action must reference screenshot.png"

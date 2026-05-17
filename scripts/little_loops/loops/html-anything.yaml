@@ -1,0 +1,226 @@
+name: html-anything
+category: harness
+input_key: description
+description: |
+  Generalized HTML artifact harness — classifies the artifact type (email, social card,
+  résumé, dashboard, presentation, invoice, component, poster, or website) from a natural
+  language description, writes a platform-specific brief and a dynamic scoring rubric, then
+  iteratively generates and refines a self-contained index.html via Playwright CLI screenshot
+  evaluation. Implements the GAN-style architecture with per-artifact-type criteria rather
+  than hardcoded website scoring, so platform constraints (inline styles for email, dimensional
+  accuracy for social cards, print safety for résumés) are enforced via the rubric thresholds.
+initial: init
+max_iterations: 20
+timeout: 7200
+
+# HARNESS: Context variables control output location and quality threshold.
+# pass_threshold is set higher than SVG (7 vs 6) because platform constraints are
+# binary pass/fail — partial compliance with inline-style or dimensional requirements
+# is not acceptable the way aesthetic judgements can be marginal.
+context:
+  description: ""             # populated from loop_input via input_key: description
+  output_dir: ".loops/tmp/html-anything"
+  pass_threshold: 7           # minimum score per criterion (1-10) to pass
+
+states:
+
+  init:
+    # HARNESS: Setup phase — creates a timestamped run folder under output_dir and
+    # captures the full absolute path so all subsequent states write to an isolated
+    # directory. Using $(pwd) ensures the captured path is valid for file:// URIs.
+    action_type: shell
+    action: |
+      TS=$(date -u +%Y%m%d-%H%M%S)
+      DIR="${context.output_dir}/$TS"
+      mkdir -p "$DIR"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: plan
+
+  plan:
+    # HARNESS: Planner phase — atomically classifies the artifact type, writes a
+    # platform-specific brief, and writes a dynamic scoring rubric. Keeping all three
+    # in one state ensures the rubric always matches the classification.
+    #
+    # Supported artifact types: html-email, html-social-card, html-presentation,
+    # html-resume, html-invoice, html-dashboard, html-component, html-poster, html-website
+    #
+    # Platform constraint examples:
+    #   html-email      → inline styles required (no <style> blocks), table-based layout
+    #   html-social-card → exact 1200×630px (or 1080×1080px for square), text in safe zone
+    #   html-resume     → print-safe: A4/letter dimensions, no JS, high-contrast
+    #   html-invoice    → structured tabular data, total calculation visible, print-safe
+    #   html-presentation → slide-per-section layout, large readable type, high contrast
+    #   html-dashboard  → data density, clear visual hierarchy, consistent color encoding
+    #   html-component  → self-contained, no external dependencies, reusable API
+    #   html-poster     → large-format composition, hierarchy, visual impact
+    #   html-website    → responsive, semantic HTML, accessible
+    action_type: prompt
+    action: |
+      You are planning a generalized HTML artifact harness run.
+
+      Artifact description: "${context.description}"
+
+      Step 1 — Classify the artifact type. Choose the best match from:
+        html-email, html-social-card, html-presentation, html-resume,
+        html-invoice, html-dashboard, html-component, html-poster, html-website
+
+      Step 2 — Write a platform-specific brief to ${captured.run_dir.output}/brief.md.
+      The brief must include:
+      - **Artifact type**: the classified type (e.g. `html-email`)
+      - **Platform constraints**: the hard technical requirements for this type
+        (e.g. for html-email: all styles must be inline, table-based layout required,
+        no JavaScript, max 600px wide, images must use absolute URLs or be omitted)
+      - **Visual identity**: specific color palette (hex values), typeface choices, mood
+      - **Layout structure**: major sections, key components, hierarchy
+      - **Unique creative angle**: what makes this design distinctive and memorable?
+      - **Anti-patterns to avoid**: type-specific failure modes (e.g. for email: CSS
+        classes, external stylesheets, flexbox/grid layouts that break in Outlook)
+
+      Step 3 — Write a dynamic scoring rubric to ${captured.run_dir.output}/rubric.md
+      with 4–6 criteria appropriate for the classified artifact type.
+      Use this exact YAML-in-markdown format (inside a fenced block):
+
+      ```yaml
+      artifact_type: <classified-type>
+      criteria:
+        - name: <criterion_name>
+          weight: <1 or 2>
+          threshold: <7 or 8>
+          description: <what this criterion checks>
+        - name: <criterion_name>
+          weight: <1 or 2>
+          threshold: <6, 7, or 8>
+          description: <what this criterion checks>
+      ```
+
+      Rubric design rules:
+      - For html-email: include `inline_styles` (threshold 8) and `table_layout` (threshold 7)
+      - For html-social-card: include `dimensional_accuracy` (threshold 8) checking 1200×630px
+      - For html-resume: include `print_safety` (threshold 7) checking A4/letter compatibility
+      - For html-invoice: include `data_accuracy` (threshold 7) for structured totals/line items
+      - For html-website: use `design_quality`, `originality`, `craft`, `functionality`
+        (matching html-website-generator thresholds)
+      - All types: weight=2 for the primary platform-constraint criterion, weight=1 for aesthetics
+      - Thresholds: use 7–8 for platform constraints, 6–7 for aesthetic criteria
+
+      Be specific and opinionated. The generator will use brief.md as its primary reference,
+      and score.md will enforce the thresholds in rubric.md on every iteration.
+    next: generate
+
+  generate:
+    # HARNESS: Generator phase — creates or refines index.html using the platform brief
+    # and rubric. On the first pass it uses brief.md and rubric.md to understand constraints.
+    # On subsequent iterations it also addresses critique.md issues specifically and completely.
+    # All CSS/JS must be inline so the file renders correctly under a file:// URL.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/brief.md for the platform brief and artifact type.
+      Read ${captured.run_dir.output}/rubric.md for the scoring criteria and thresholds.
+
+      If ${captured.run_dir.output}/critique.md exists, read it and address all issues
+      listed in the "Issues to Address" section specifically and completely.
+
+      Write a single self-contained HTML file to ${captured.run_dir.output}/index.html that:
+      - Fully satisfies every platform constraint specified in brief.md for the artifact type
+      - Embeds all CSS and JavaScript inline (no external dependencies, no CDN links)
+      - Renders correctly under a file:// URL without an HTTP server
+      - For html-email: uses table-based layout with all styles inline on every element,
+        no <style> blocks, no external fonts, max 600px wide, compatible with major email clients
+      - For html-social-card: renders at exactly the specified dimensions (1200×630 or 1080×1080),
+        uses absolute positioning for all elements, text stays within the safe zone
+      - For html-resume: A4/letter page dimensions, no JavaScript, high contrast (WCAG AA),
+        clean typography hierarchy for name/contact/sections
+      - For html-website: responsive layout, semantic HTML, accessible, distinctive aesthetic
+      - Achieves a distinctive, high-quality aesthetic — avoid AI-slop patterns
+      - If critique exists, resolves every specific issue before introducing new ideas
+    next: evaluate
+
+  evaluate:
+    # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// page.
+    # Self-contained HTML (all CSS/JS inline) renders correctly under file:// without
+    # an HTTP server. Routes to score on success; routes back to generate on failure
+    # (e.g. Playwright not installed, or file missing) so the loop can still make
+    # progress via LLM-only scoring if the shell tool is unavailable.
+    # on_error: generate matches svg-image-generator — unlike html-website-generator
+    # which omits it and dies if Playwright is absent.
+    action_type: shell
+    action: |
+      playwright screenshot "file://${captured.run_dir.output}/index.html" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
+    evaluate:
+      type: output_contains
+      pattern: "CAPTURED"
+    on_yes: score
+    on_no: generate
+    on_error: generate
+
+  score:
+    # HARNESS: Evaluator phase — LLM reads rubric.md to load artifact-specific per-criterion
+    # thresholds, then judges the screenshot against those criteria and writes critique.md.
+    # Uses per-criterion thresholds (not a weighted average) to prevent strong aesthetics
+    # from masking broken platform constraints — an html-email with score 9/10 visual
+    # quality but CSS classes instead of inline styles must still fail.
+    # Routes via output_contains: "ALL_PASS" — simple and robust vs JSON parsing.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/rubric.md to load the artifact type and per-criterion
+      thresholds. Parse the YAML fenced block to get the criteria list.
+
+      Read the screenshot at ${captured.run_dir.output}/screenshot.png to view the rendered
+      artifact. Also read ${captured.run_dir.output}/brief.md to recall the platform intent.
+
+      Score the artifact on each criterion from 1 to 10 and write the evaluation to
+      ${captured.run_dir.output}/critique.md using this exact format:
+
+      ```
+      # Evaluation
+
+      artifact_type: <type from rubric.md>
+
+      <criterion_name>: N/10 — [explanation: does it meet the platform requirement?
+        Reference the specific constraint from brief.md. Be specific and actionable.]
+
+      <repeat for each criterion in rubric.md>
+
+      ## Issues to Address
+      [Specific, actionable critique for the generator. List each problem concisely
+       so the generator can address it directly on the next pass. If all scores meet
+       their individual thresholds, write "No issues — all criteria pass."]
+      ```
+
+      After writing the file, evaluate the scores against their individual thresholds from
+      rubric.md. Each criterion has its own threshold — do NOT use a weighted average.
+      Platform constraints (inline_styles, table_layout, dimensional_accuracy, print_safety)
+      typically have threshold 7 or 8; aesthetic criteria may have threshold 6 or 7.
+
+      If ALL criterion scores are >= their individual rubric thresholds, output exactly: ALL_PASS
+      Otherwise output: ITERATE
+    evaluate:
+      type: output_contains
+      pattern: "ALL_PASS"
+    on_yes: done
+    on_no: generate
+    on_error: failed
+
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
+    # Reports all five output file locations before ending.
+    action_type: prompt
+    action: |
+      The html-anything loop has completed successfully.
+
+      Final output files:
+      - ${captured.run_dir.output}/index.html    — the generated HTML artifact
+      - ${captured.run_dir.output}/brief.md      — platform-specific constraints and visual brief
+      - ${captured.run_dir.output}/rubric.md     — artifact-appropriate scoring rubric with thresholds
+      - ${captured.run_dir.output}/critique.md   — final evaluation scores and notes
+      - ${captured.run_dir.output}/screenshot.png — the last Playwright-captured render
+
+      Report these paths to the user and confirm the artifact is ready.
+    terminal: true
+
+  failed:
+    # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs
+    # (e.g. LLM failure in score state). Provides a clear signal distinct from a
+    # max_iterations timeout, making failure mode visible in ll-loop history.
+    terminal: true

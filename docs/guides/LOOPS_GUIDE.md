@@ -763,11 +763,86 @@ run_eval → score_results → analyze_failures
 | `harness-single-shot` | Annotated single-shot harness example — all evaluation phases with commented-out optional gates |
 | `harness-multi-item` | Annotated multi-item harness example — all five evaluation phases active over a discovered item list |
 | `harness-optimize` | Score-gated hill-climbing on harness artifacts (skills, commands, CLAUDE.md) — proposes edits, benchmarks, commits accepted mutations; stops on first stall. Supports `.ll/program.md` for overnight runs: set Directive, Targets, and Benchmark once, then run `ll-loop run harness-optimize` with no flags. |
+| `html-anything` | Generalized HTML artifact harness — classifies artifact type (email, social card, résumé, dashboard, etc.) from a description, writes a platform-specific brief and dynamic scoring rubric, then iteratively generates and refines `index.html` via Playwright CLI |
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
 | `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI |
 | `svg-textgrad` | TextGrad-style SVG harness — optimizes the visual brief via structured gradient updates (FAILURE_PATTERN → ROOT_CAUSE → GRADIENT) rather than feeding raw critique to the generator; accumulates gradient history for repeated-failure escalation |
 
 For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, and `svg-textgrad`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
+
+### `html-anything` — Generalized HTML Artifact Harness
+
+> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`).
+
+**Technique**: Extends the GAN-style pattern from `html-website-generator` by treating artifact type as a runtime variable rather than a hardcoded assumption. The `plan` state atomically classifies the artifact type from the natural language description, writes a platform-specific `brief.md`, and writes a dynamic `rubric.md` with 4–6 artifact-appropriate criteria and per-criterion thresholds. The `score` state reads `rubric.md` at runtime to load those thresholds — preventing strong aesthetic scores from masking broken platform constraints (e.g. an HTML email with beautiful design but CSS classes instead of inline styles still fails). `pass_threshold` is set to 7 (vs SVG's 6) because platform constraints are binary.
+
+**Supported artifact types**: `html-email`, `html-social-card`, `html-presentation`, `html-resume`, `html-invoice`, `html-dashboard`, `html-component`, `html-poster`, `html-website`
+
+**When to use**: When you need a polished HTML artifact other than a generic website — especially when platform constraints are binary (inline styles for email clients, exact dimensions for social cards, print safety for résumés). For a plain website, `html-website-generator` is simpler; `html-anything` is the right choice when the artifact type determines the evaluation criteria.
+
+**Usage:**
+
+```bash
+ll-loop run html-anything "a transactional email confirming a SaaS subscription"
+ll-loop run html-anything "a 1200x630 open graph card for a developer tool"
+ll-loop run html-anything "a single-page résumé for a senior software engineer"
+ll-loop run html-anything "a dashboard showing real-time server metrics"
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `description` | (from `loop_input`) | Natural language artifact description — passed as the positional argument |
+| `output_dir` | `.loops/tmp/html-anything` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/html-anything/20260413-143022/`) for `index.html`, `brief.md`, `rubric.md`, `critique.md`, and `screenshot.png` |
+| `pass_threshold` | `7` | Minimum score per criterion (1–10); **all criteria** must meet their individual rubric thresholds |
+
+Override per-run:
+
+```bash
+ll-loop run html-anything "SaaS subscription email" \
+  --context output_dir=/tmp/my-email \
+  --context pass_threshold=8
+```
+
+**FSM flow:**
+
+```
+init → plan → generate → evaluate
+                            ├─ CAPTURED → score
+                            │              ├─ ALL_PASS → done
+                            │              ├─ ITERATE  → generate (with critique)
+                            │              └─ ERROR    → failed
+                            └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
+```
+
+**Dynamic rubric examples:**
+
+For `html-email`:
+
+| Criterion | Weight | Threshold | What it checks |
+|-----------|--------|-----------|----------------|
+| `inline_styles` | 2× | 8 | All styles inline on elements — no `<style>` blocks or external CSS |
+| `table_layout` | 2× | 7 | Table-based layout compatible with major email clients (no flexbox/grid) |
+| `visual_identity` | 1× | 6 | Distinctive color palette, readable typography, branded feel |
+| `content_clarity` | 1× | 6 | Key information (amount, action, details) immediately visible |
+
+For `html-social-card`:
+
+| Criterion | Weight | Threshold | What it checks |
+|-----------|--------|-----------|----------------|
+| `dimensional_accuracy` | 2× | 8 | Renders at exactly 1200×630px (or 1080×1080px square) with all content in safe zone |
+| `visual_hierarchy` | 2× | 7 | Title/subtitle/CTA hierarchy, readable at thumbnail scale |
+| `brand_identity` | 1× | 6 | Distinctive color palette, consistent with described brand |
+| `craft` | 1× | 6 | Typography, spacing, color harmony, contrast ratios |
+
+**Notes:**
+- The `plan` state classifies artifact type atomically with brief + rubric — all three are written in one state to ensure the rubric always matches the classification.
+- Per-criterion thresholds (not a weighted average) are enforced in `score`: a platform constraint at threshold 8 can't be masked by a high aesthetic score at threshold 6.
+- If Playwright is unavailable, the `evaluate` state's `on_error` route falls back to `generate`, which then proceeds to `score` using LLM-only judgment of the HTML source.
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- For a plain website, `html-website-generator` is simpler (no artifact classification step). Use `html-anything` when the artifact type determines which platform constraints to enforce.
+- To customize criteria for a specific artifact type, install locally (`ll-loop install html-anything`) and edit the `plan` state's rubric design rules.
 
 ### `html-website-generator` — GAN-Style Website Design Loop
 
