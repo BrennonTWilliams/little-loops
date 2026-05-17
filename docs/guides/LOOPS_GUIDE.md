@@ -2281,6 +2281,7 @@ For full details on evaluation phases, MCP gates, skill-as-judge, stall detectio
 | `ll-loop resume <name>` | Resume an interrupted loop from saved state |
 | `ll-loop history <name>` | Show history; pass `run_id` to view a specific archived run |
 | `ll-loop install <name>` | Copy a built-in loop to `.loops/` for customization |
+| `ll-loop next-loop` | Suggest next loop(s) from execution history; `--count N` for top N, `--execute` to run top suggestion immediately, `--exclude <name>` to skip specific loops |
 
 ### History Flags
 

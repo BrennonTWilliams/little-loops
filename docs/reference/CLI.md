@@ -497,6 +497,31 @@ ll-loop fragments lib/benchmark.yaml  # list built-in benchmark runner fragment
 ll-loop fragments .loops/my-lib.yaml  # list project-local fragment library
 ```
 
+#### `ll-loop next-loop`
+
+Inspect `.loops/.history/` and suggest the next loop(s) to run, with resolved input parameters where available. Useful for unattended chaining or scheduled follow-up work.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--count N` | `-n` | Return top N suggestions instead of just one (default: 1) |
+| `--json` | `-j` | Output suggestions as a JSON array |
+| `--execute` | | Run the top suggestion immediately via the same code path as `ll-loop run` |
+| `--exclude NAME` | | Skip the named loop from suggestions (repeatable; useful from on-completion hooks to avoid trivial self-loops) |
+
+Each suggestion includes a scored `rationale` (run frequency, recency, success rate) and a ready-to-paste shell command. For `autodev`, the suggested input is automatically resolved to the current set of `status: open` issue IDs.
+
+**JSON output keys:** `loop`, `input`, `context`, `score`, `rationale`, `command`
+
+**Examples:**
+```bash
+ll-loop next-loop                          # Top suggestion with human-readable output
+ll-loop next-loop --count 3                # Top 3 ranked candidates
+ll-loop next-loop --json                   # Machine-readable suggestion
+ll-loop next-loop --execute                # Run the top suggestion immediately
+ll-loop next-loop --exclude autodev        # Skip autodev (e.g. from its own on-completion hook)
+ll-loop next-loop --count 3 --json        # Top 3 as JSON for downstream tooling
+```
+
 **Examples:**
 ```bash
 ll-loop fix-types                     # Run loop (shorthand for run)
@@ -526,6 +551,8 @@ ll-loop show fix-types --json --resolved  # FSM config with sub-loop states expa
 ll-loop fragments lib/common.yaml     # List built-in common fragments with descriptions
 ll-loop fragments lib/cli.yaml        # List built-in CLI tool fragments with descriptions
 ll-loop fragments lib/benchmark.yaml  # List built-in benchmark runner fragment
+ll-loop next-loop                     # Suggest next loop from history
+ll-loop next-loop --count 3 --json    # Top 3 suggestions as JSON
 ```
 
 See [LOOPS_GUIDE](../guides/LOOPS_GUIDE.md) for loop configuration details.

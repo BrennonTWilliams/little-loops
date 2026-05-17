@@ -3122,3 +3122,169 @@ class TestCmdSimulateCircuit:
 
         assert result == 0
         assert captured["kwargs"].get("circuit") is circuit
+
+
+class TestCmdNextLoop:
+    """Tests for cmd_next_loop."""
+
+    @pytest.fixture
+    def loops_dir_with_history(self, tmp_path: Path) -> Path:
+        """Create a loops dir with mock history for two loops."""
+        loops_dir = tmp_path / ".loops"
+        history_base = loops_dir / ".history"
+        history_base.mkdir(parents=True)
+
+        # autodev: 3 runs, 2 completed
+        for run_id, status in [
+            ("2026-01-01T120000", "completed"),
+            ("2026-01-02T120000", "completed"),
+            ("2026-01-03T120000", "failed"),
+        ]:
+            d = history_base / f"{run_id}-autodev"
+            d.mkdir()
+            (d / "state.json").write_text(
+                json.dumps(
+                    {
+                        "loop_name": "autodev",
+                        "status": status,
+                        "started_at": f"{run_id[:10]}T12:00:00Z",
+                        "current_state": "done",
+                        "iteration": 1,
+                        "captured": {},
+                        "prev_result": None,
+                        "last_result": None,
+                        "updated_at": "",
+                        "accumulated_ms": 1000,
+                    }
+                )
+            )
+
+        # review-loop: 1 run, completed
+        d = history_base / "2026-01-01T090000-review-loop"
+        d.mkdir()
+        (d / "state.json").write_text(
+            json.dumps(
+                {
+                    "loop_name": "review-loop",
+                    "status": "completed",
+                    "started_at": "2026-01-01T09:00:00Z",
+                    "current_state": "done",
+                    "iteration": 1,
+                    "captured": {},
+                    "prev_result": None,
+                    "last_result": None,
+                    "updated_at": "",
+                    "accumulated_ms": 500,
+                }
+            )
+        )
+
+        return loops_dir
+
+    def test_top_suggestion_by_default(
+        self,
+        loops_dir_with_history: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """next-loop returns exactly one suggestion by default."""
+        from little_loops.cli.loop.next_loop import cmd_next_loop
+        from little_loops.logger import Logger
+
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(count=1, json=False, execute=False, exclude=[])
+        result = cmd_next_loop(args, loops_dir_with_history, logger)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "#1" in out
+        # autodev has more runs so should rank higher
+        assert "autodev" in out
+
+    def test_count_returns_multiple_suggestions(
+        self,
+        loops_dir_with_history: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--count 2 returns two ranked suggestions."""
+        from little_loops.cli.loop.next_loop import cmd_next_loop
+        from little_loops.logger import Logger
+
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(count=2, json=False, execute=False, exclude=[])
+        result = cmd_next_loop(args, loops_dir_with_history, logger)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "#1" in out
+        assert "#2" in out
+
+    def test_json_output_stable(
+        self,
+        loops_dir_with_history: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json emits valid JSON with required keys."""
+        from little_loops.cli.loop.next_loop import cmd_next_loop
+        from little_loops.logger import Logger
+
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(count=1, json=True, execute=False, exclude=[])
+        result = cmd_next_loop(args, loops_dir_with_history, logger)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert isinstance(data, list)
+        assert len(data) == 1
+        item = data[0]
+        for key in ("loop", "input", "context", "score", "rationale", "command"):
+            assert key in item, f"Missing key: {key}"
+
+    def test_empty_history_returns_exit_1(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Empty history prints a clear message and returns exit code 1."""
+        from little_loops.cli.loop.next_loop import cmd_next_loop
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(count=1, json=False, execute=False, exclude=[])
+        result = cmd_next_loop(args, loops_dir, logger)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "No loop history" in out
+
+    def test_exclude_filters_loop(
+        self,
+        loops_dir_with_history: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--exclude skips the named loop from suggestions."""
+        from little_loops.cli.loop.next_loop import cmd_next_loop
+        from little_loops.logger import Logger
+
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(count=1, json=False, execute=False, exclude=["autodev"])
+        result = cmd_next_loop(args, loops_dir_with_history, logger)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "autodev" not in out
+        assert "review-loop" in out
+
+    def test_ranking_prefers_higher_frequency(
+        self,
+        loops_dir_with_history: Path,
+    ) -> None:
+        """Loop with more runs scores higher than one with fewer, all else equal."""
+        from little_loops.cli.loop.next_loop import _scan_history, _score_loop
+
+        history = _scan_history(loops_dir_with_history)
+        autodev_score, _, _ = _score_loop(history.get("autodev", []))
+        review_score, _, _ = _score_loop(history.get("review-loop", []))
+        assert autodev_score > review_score

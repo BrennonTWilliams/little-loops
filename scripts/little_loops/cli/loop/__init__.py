@@ -21,6 +21,7 @@ def main_loop() -> int:
     from little_loops.cli.loop.config_cmds import cmd_install, cmd_validate
     from little_loops.cli.loop.info import cmd_fragments, cmd_history, cmd_list, cmd_show
     from little_loops.cli.loop.lifecycle import cmd_resume, cmd_status, cmd_stop
+    from little_loops.cli.loop.next_loop import cmd_next_loop
     from little_loops.cli.loop.run import cmd_run
     from little_loops.cli.loop.testing import cmd_simulate, cmd_test
     from little_loops.config import BRConfig
@@ -48,6 +49,7 @@ def main_loop() -> int:
         "install",
         "show",
         "fragments",
+        "next-loop",
         # aliases
         "r",
         "c",
@@ -87,6 +89,8 @@ Examples:
   %(prog)s stop fix-types         # Stop a running loop
   %(prog)s resume fix-types       # Resume interrupted loop
   %(prog)s history fix-types      # Show execution history
+  %(prog)s next-loop              # Suggest next loop from history
+  %(prog)s next-loop --count 3    # Top 3 suggestions
 """,
     )
 
@@ -371,6 +375,39 @@ Examples:
         help="Fragment library file path (e.g. lib/common.yaml, lib/cli.yaml)",
     )
 
+    # Next-loop subcommand
+    next_loop_parser = subparsers.add_parser(
+        "next-loop",
+        help="Suggest next loop(s) to run based on execution history",
+    )
+    next_loop_parser.set_defaults(command="next-loop")
+    next_loop_parser.add_argument(
+        "--count",
+        "-n",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Number of suggestions to return (default: 1)",
+    )
+    next_loop_parser.add_argument(
+        "-j",
+        "--json",
+        action="store_true",
+        help="Output suggestions as JSON array",
+    )
+    next_loop_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Run the top suggestion immediately via the same path as ll-loop run",
+    )
+    next_loop_parser.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="Exclude a loop name from suggestions (repeatable)",
+    )
+
     args = parser.parse_args(argv)
 
     logger = Logger(verbose=not getattr(args, "quiet", False))
@@ -400,6 +437,8 @@ Examples:
         return cmd_show(args.loop, args, loops_dir, logger)
     elif args.command == "fragments":
         return cmd_fragments(args.lib, args, loops_dir, logger)
+    elif args.command == "next-loop":
+        return cmd_next_loop(args, loops_dir, logger)
     else:
         parser.print_help()
         return 1

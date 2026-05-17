@@ -1,8 +1,16 @@
 ---
-captured_at: "2026-05-17T07:28:10Z"
-discovered_date: "2026-05-17"
+captured_at: '2026-05-17T07:28:10Z'
+completed_at: '2026-05-17T16:00:56Z'
+discovered_date: '2026-05-17'
 discovered_by: capture-issue
-status: open
+status: done
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1546: Add `ll-loop next-loop` sub-command to suggest next loop from execution history
@@ -64,6 +72,48 @@ Parameter-suggestion contract:
 4. Wire `--execute` to call the existing run path used by `ll-loop run`.
 5. Emit JSON and text output formats; ensure JSON is stable for downstream tooling.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Step 1 — Sub-parser registration** (`scripts/little_loops/cli/loop/__init__.py`):
+- `known_subcommands` is a `set` of strings near the top of `main_loop()`. Add `"next-loop"` to it or bare-name shorthand logic will try to treat it as a loop name to `run`.
+- Each sub-parser follows the three-step pattern: `subparsers.add_parser("next-loop", aliases=[], help="...")`, `.set_defaults(command="next-loop")`, then `.add_argument(...)` calls.
+- Add a dispatch branch in the `if/elif` chain near the end of `main_loop()`.
+- Import `cmd_next_loop` from `scripts/little_loops/cli/loop/next_loop.py` at the top of that dispatch block.
+
+**Step 2 — History reading** (`scripts/little_loops/fsm/persistence.py`):
+- `HISTORY_DIR = ".history"` — relative to `loops_dir` (resolved as `loops_dir / HISTORY_DIR`).
+- `_RUN_FOLDER = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{6})-(.+)$")` — parse `(run_id, loop_name)` from directory names.
+- `list_run_history(loops_dir, loop_name)` returns `list[LoopState]` sorted newest-first; use this or the `iterdir()` pattern in `_list_archived_runs()` (`info.py`) to scan all loops.
+- `LoopState` fields for scoring: `status` (`"completed"`, `"failed"`, `"interrupted"`, `"awaiting_continuation"`, `"timed_out"`), `started_at` (ISO string), `accumulated_ms` (int), `iteration` (int).
+- Loop YAML parameter shape: `FSMLoop.context` (dict of runtime vars) from `scripts/little_loops/fsm/schema.py`; positional input lands at `FSMLoop.context[FSMLoop.input_key]` (default key `"input"`).
+
+**Step 3 — Parameter resolver for `autodev`**:
+- Call `_load_issues_with_status(config, include_open=True, include_done=False, include_deferred=False)` from `scripts/little_loops/cli/issues/search.py` to get `list[tuple[IssueInfo, str]]`.
+- Extract `issue.issue_id` from each tuple to build the active issue list.
+- Scoring/ranking reference: `build_sort_key()` and `_STRATEGY_SORT_KEYS` in `search.py` show the weighted multi-field tuple-sort pattern to follow.
+- Nearest analog for "rank items, pick top" logic: `cmd_next_issue()` in `scripts/little_loops/cli/issues/next_issue.py`.
+
+**Step 4 — `--execute` wiring**:
+- `cmd_run()` in `scripts/little_loops/cli/loop/run.py` is importable and callable directly — signature: `cmd_run(loop_name: str, args: argparse.Namespace, loops_dir: Path, logger: Logger) -> int`.
+- Construct an `argparse.Namespace` with the suggested loop name and resolved input, then call `cmd_run()` directly. No subprocess spawn needed.
+- `run_background()` in `_helpers.py` exists if background dispatch is ever needed, but foreground inline call is the simpler path.
+
+**Step 5 — JSON/text output**:
+- `print_json(data)` in `scripts/little_loops/cli/output.py` handles formatted JSON to stdout.
+- Existing sub-commands use `-j`/`--json` flag (not `--format text|json`); the issue's API proposes `--format text|json` — either convention works, but `-j`/`--json` is more consistent with the rest of the codebase.
+- Guard with `getattr(args, "json", False)` to tolerate `Namespace` objects that lack the flag.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `scripts/little_loops/cli/loop/__init__.py` epilog — add a `next-loop` usage example to the `argparse.ArgumentParser(epilog=...)` examples block inside `main_loop()` (e.g., `%(prog)s next-loop --count 3`)
+7. Add `test_next_loop_subcommand_registered` to `TestCmdSimulate` in `scripts/tests/test_ll_loop_execution.py` — patch `sys.argv = ["ll-loop", "next-loop", "--help"]` and assert `SystemExit(0)`, following `test_fragments_subcommand_registered` at line ~1355
+8. Update `docs/reference/CLI.md` — add `#### next-loop` subsection under `### ll-loop` with full flag table (`--count N`, `--format text|json`, `--execute`, `--exclude <name>...`) and usage examples
+9. Update `docs/guides/LOOPS_GUIDE.md` — add `next-loop` row to the subcommand table in `## CLI Quick Reference → ### Subcommands`
+
 ## Acceptance Criteria
 
 - `ll-loop next-loop` prints exactly one suggestion by default, including loop name and concrete parameter values.
@@ -74,6 +124,62 @@ Parameter-suggestion contract:
 - Empty history produces a clear "no history available" message and exit code 1, not a crash.
 - Unit tests cover: ranking, parameter resolution for at least one parameterized loop, JSON output stability, and the empty-history case.
 
+## Impact
+
+- **Priority**: P3 - Convenience feature enabling unattended chaining; not blocking other work
+- **Effort**: Medium - New sub-command with history-reading, scoring logic, and parameter-resolver registry
+- **Risk**: Low - Purely additive; new module with no changes to existing run path
+- **Breaking Change**: No
+
+## Labels
+
+`cli`, `loops`, `automation`, `enhancement`
+
+## Integration Map
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+### Files to Modify
+- `scripts/little_loops/cli/loop/__init__.py` — add `"next-loop"` to `known_subcommands` set; register sub-parser; add dispatch branch; import `cmd_next_loop`
+- `scripts/little_loops/cli/loop/next_loop.py` — **create new**: `cmd_next_loop(args, loops_dir, logger) -> int`; scoring logic; parameter-resolver registry
+
+### Key Imports / Dependencies
+- `scripts/little_loops/fsm/persistence.py` — `list_run_history()`, `HISTORY_DIR`, `_RUN_FOLDER`, `LoopState`
+- `scripts/little_loops/fsm/schema.py` — `FSMLoop` (fields: `context`, `input_key`, `parameters`)
+- `scripts/little_loops/fsm/validation.py` — `load_and_validate()` to read loop YAML for parameter shape
+- `scripts/little_loops/cli/loop/_helpers.py` — `resolve_loop_path()`, `get_builtin_loops_dir()`, `EXIT_CODES`
+- `scripts/little_loops/cli/loop/run.py` — `cmd_run()` (called directly for `--execute`)
+- `scripts/little_loops/cli/issues/search.py` — `_load_issues_with_status()` (for `autodev` param resolver)
+- `scripts/little_loops/cli/output.py` — `print_json()` (for JSON output format)
+- `scripts/little_loops/config/core.py` — `BRConfig` (for issue dir resolution in param resolvers)
+
+### Similar Patterns to Follow
+- `scripts/little_loops/cli/loop/info.py` — `_list_archived_runs()` — iterdir + sort pattern for reading history dirs
+- `scripts/little_loops/cli/issues/next_issue.py` — `cmd_next_issue()` — "scan all items, rank, return top N" pattern
+- `scripts/little_loops/cli/issues/search.py` — `build_sort_key()`, `_STRATEGY_SORT_KEYS` — weighted multi-field tuple-sort
+- `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_status()` — `getattr(args, "json", False)` + `print_json()` pattern
+
+### Tests
+- `scripts/tests/test_ll_loop_commands.py` — add `TestCmdNextLoop` class here (follows `TestCmdList`, `TestCmdValidate` structure)
+- `scripts/tests/test_cli_loop_lifecycle.py` — reference for `cmd_*` unit-test structure with `tmp_path` + `MagicMock()` logger
+- `scripts/tests/test_fsm_persistence.py` — reference for history-reading test fixtures
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_loop_execution.py` — existing tests to **update**: add `test_next_loop_subcommand_registered` to `TestCmdSimulate` class, following the `test_simulate_subcommand_registered` / `test_fragments_subcommand_registered` pattern (`sys.argv = ["ll-loop", "next-loop", "--help"]` → `SystemExit(0)`) [Agent 3 finding]
+
+### Documentation
+- `docs/ARCHITECTURE.md` — may need a note about `next-loop` in the loop runner section
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — contains the authoritative per-subcommand reference for `ll-loop` with `####` subsection per subcommand and a full `Examples:` block; add `#### next-loop` subsection with flag table (`--count`, `--format`, `--execute`, `--exclude`) and usage examples [Agent 2 finding]
+- `docs/guides/LOOPS_GUIDE.md` — section `## CLI Quick Reference → ### Subcommands` has a markdown table listing all `ll-loop` subcommands; add `next-loop` row [Agent 2 finding]
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/__init__.py` — re-exports `main_loop` as public API (the resolved entry point); no code changes needed, but confirms the call chain: `pyproject.toml` → `little_loops.cli:main_loop` → this module → `cli/loop/__init__.py` [Agent 1 finding]
+- `scripts/little_loops/cli/loop/__main__.py` — executes `main_loop()` as the `__main__` entry point; no changes needed, confirms the dispatch chain [Agent 1 finding]
+
 ## Related Key Documentation
 
 | Document | Why Relevant |
@@ -82,10 +188,25 @@ Parameter-suggestion contract:
 | `.claude/CLAUDE.md` | CLI tool conventions and `ll-*` entry-point pattern |
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-17T15:53:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e731980-ce6f-43fb-ae38-e4b5aaeea8ef.jsonl`
+- `/ll:confidence-check` - 2026-05-17T15:51:28Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4dd26516-8037-4dcd-9076-330b857b2aa5.jsonl`
+- `/ll:wire-issue` - 2026-05-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:refine-issue` - 2026-05-17T15:44:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/572ddb22-a72f-4507-bb72-1e4d1be296c4.jsonl`
 - `/ll:capture-issue` - 2026-05-17T07:28:10Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dce8ab13-a2bf-4753-b7b8-76c3a497a18f.jsonl`
 
 ---
 
+## Resolution
+
+Implemented `ll-loop next-loop` sub-command:
+- New module `scripts/little_loops/cli/loop/next_loop.py` with scoring, parameter resolver registry, and output formatting
+- Registered sub-parser and dispatch in `scripts/little_loops/cli/loop/__init__.py`
+- `autodev` parameter resolver resolves active issue IDs from project state
+- Scoring: 50% frequency (log-scale) + 30% recency (exponential decay, 7-day half-life) + 20% success rate
+- All flags implemented: `--count`, `--json`, `--execute`, `--exclude`
+- 7 new tests: ranking, JSON stability, empty-history, exclude, count, registration
+- Docs updated in `docs/reference/CLI.md` and `docs/guides/LOOPS_GUIDE.md`
+
 ## Status
 
-Open
+Done
