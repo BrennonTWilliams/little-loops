@@ -56,9 +56,7 @@ class TestCodexReadmeContent:
 
     def test_links_to_getting_started(self) -> None:
         content = CODEX_README.read_text()
-        assert "getting-started" in content, (
-            "docs/codex/README.md must link to getting-started.md"
-        )
+        assert "getting-started" in content, "docs/codex/README.md must link to getting-started.md"
 
     def test_links_to_usage(self) -> None:
         content = CODEX_README.read_text()
@@ -66,9 +64,7 @@ class TestCodexReadmeContent:
 
     def test_mentions_deferred_intents(self) -> None:
         content = CODEX_README.read_text()
-        assert "deferred" in content, (
-            "docs/codex/README.md must mention deferred hook intents"
-        )
+        assert "deferred" in content, "docs/codex/README.md must mention deferred hook intents"
 
     def test_mentions_agents_tool(self) -> None:
         content = CODEX_README.read_text()
@@ -152,9 +148,7 @@ class TestCodexUsageContent:
 
     def test_mentions_agent_flag_limitation(self) -> None:
         content = CODEX_USAGE.read_text()
-        assert "--agent" in content, (
-            "docs/codex/usage.md must document the --agent flag limitation"
-        )
+        assert "--agent" in content, "docs/codex/usage.md must document the --agent flag limitation"
 
     def test_mentions_capability_not_supported(self) -> None:
         content = CODEX_USAGE.read_text()
@@ -190,9 +184,7 @@ class TestReadmeCodexReference:
 
     def test_readme_mentions_codex(self) -> None:
         content = README.read_text()
-        assert "codex" in content.lower(), (
-            "README.md must mention Codex CLI in the install section"
-        )
+        assert "codex" in content.lower(), "README.md must mention Codex CLI in the install section"
 
     def test_readme_links_to_codex_getting_started(self) -> None:
         content = README.read_text()
@@ -212,9 +204,7 @@ class TestMkdocsNavWiring:
 
     def test_nav_lists_codex_readme(self) -> None:
         content = MKDOCS_YML.read_text()
-        assert "codex/README.md" in content, (
-            "mkdocs.yml nav must include codex/README.md"
-        )
+        assert "codex/README.md" in content, "mkdocs.yml nav must include codex/README.md"
 
     def test_nav_lists_codex_getting_started(self) -> None:
         content = MKDOCS_YML.read_text()
@@ -224,9 +214,7 @@ class TestMkdocsNavWiring:
 
     def test_nav_lists_codex_usage(self) -> None:
         content = MKDOCS_YML.read_text()
-        assert "codex/usage.md" in content, (
-            "mkdocs.yml nav must include codex/usage.md"
-        )
+        assert "codex/usage.md" in content, "mkdocs.yml nav must include codex/usage.md"
 
 
 class TestIndexMdWiring:
@@ -246,9 +234,7 @@ class TestIndexMdWiring:
 
     def test_index_links_to_codex_usage(self) -> None:
         content = INDEX_MD.read_text()
-        assert "codex/usage.md" in content, (
-            "docs/index.md must link to codex/usage.md"
-        )
+        assert "codex/usage.md" in content, "docs/index.md must link to codex/usage.md"
 
 
 class TestContributingWiring:

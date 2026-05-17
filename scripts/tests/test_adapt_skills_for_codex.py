@@ -487,9 +487,7 @@ class TestProcessCommands:
         _make_command(tmp_path, "check-code", description="Run quality checks.")
         (tmp_path / "skills").mkdir()
 
-        _process_commands(
-            tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True
-        )
+        _process_commands(tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True)
 
         out_md = tmp_path / "skills" / "ll-check-code" / "SKILL.md"
         assert out_md.exists()
@@ -502,9 +500,7 @@ class TestProcessCommands:
         _make_command(tmp_path, "check-code", description="Run quality checks.")
         (tmp_path / "skills").mkdir()
 
-        _process_commands(
-            tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True
-        )
+        _process_commands(tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True)
 
         openai_yaml = tmp_path / "skills" / "ll-check-code" / "agents" / "openai.yaml"
         assert openai_yaml.exists()
@@ -522,13 +518,13 @@ class TestProcessCommands:
             "---\nname: commit\ndescription: Existing skill.\n---\n# Skill\n"
         )
 
-        _process_commands(
-            tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True
-        )
+        _process_commands(tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True)
 
         # Original skill untouched
-        assert (tmp_path / "skills" / "commit" / "SKILL.md").read_text().startswith(
-            "---\nname: commit\n"
+        assert (
+            (tmp_path / "skills" / "commit" / "SKILL.md")
+            .read_text()
+            .startswith("---\nname: commit\n")
         )
         # Command installed at ll-commit
         assert (tmp_path / "skills" / "ll-commit" / "SKILL.md").exists()
@@ -537,9 +533,7 @@ class TestProcessCommands:
         _make_command(tmp_path, "scan-codebase", description="Scan it.")
         (tmp_path / "skills").mkdir()
 
-        _process_commands(
-            tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True
-        )
+        _process_commands(tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True)
 
         content = (tmp_path / "skills" / "ll-scan-codebase" / "SKILL.md").read_text()
         assert "name: ll-scan-codebase" in content
@@ -552,9 +546,7 @@ class TestProcessCommands:
             "---\nname: ll-check-code\ndescription: existing\n---\n# Body\n"
         )
         (out_dir / "agents").mkdir()
-        (out_dir / "agents" / "openai.yaml").write_text(
-            "interface:\n  display_name: x\n"
-        )
+        (out_dir / "agents" / "openai.yaml").write_text("interface:\n  display_name: x\n")
 
         adapted, skipped, errors = _process_commands(
             tmp_path / "commands", tmp_path / "skills", apply=True, quiet=True
@@ -585,9 +577,7 @@ class TestProcessCommands:
     def test_skips_command_without_description(self, tmp_path: Path) -> None:
         commands_dir = tmp_path / "commands"
         commands_dir.mkdir()
-        (commands_dir / "no-desc.md").write_text(
-            "---\nargument-hint: '[x]'\n---\n# Body\n"
-        )
+        (commands_dir / "no-desc.md").write_text("---\nargument-hint: '[x]'\n---\n# Body\n")
         (tmp_path / "skills").mkdir()
 
         adapted, skipped, errors = _process_commands(
@@ -684,8 +674,7 @@ class TestRealCommandsIntegrationGuard:
             fm = self._read_frontmatter(skill_md)
             assert fm is not None, f"skills/ll-{stem}/SKILL.md frontmatter unparseable"
             assert fm.get("name") == f"ll-{stem}", (
-                f"skills/ll-{stem}/SKILL.md name field is "
-                f"{fm.get('name')!r}, expected 'll-{stem}'"
+                f"skills/ll-{stem}/SKILL.md name field is {fm.get('name')!r}, expected 'll-{stem}'"
             )
             metadata = fm.get("metadata") or {}
             assert isinstance(metadata, dict)

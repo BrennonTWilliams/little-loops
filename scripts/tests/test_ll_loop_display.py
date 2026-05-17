@@ -1729,9 +1729,7 @@ class TestDisplayProgressEvents:
         assert "streamed line" in out
         assert "← response" not in out
 
-    def test_nonverbose_prompt_output_no_preview(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_nonverbose_prompt_output_no_preview(self, capsys: pytest.CaptureFixture[str]) -> None:
         """In non-verbose mode, action_complete does not show a post-hoc preview (output already streamed)."""
         events = [
             {

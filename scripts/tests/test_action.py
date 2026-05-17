@@ -309,9 +309,7 @@ class TestCmdInvokeJsonMode:
 
 
 class TestCmdCapabilities:
-    def test_emits_full_capability_report(
-        self, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_emits_full_capability_report(self, capsys: pytest.CaptureFixture) -> None:
         args = _make_namespace(output="json")
 
         mock_version = MagicMock()
@@ -333,9 +331,7 @@ class TestCmdCapabilities:
         assert isinstance(output["capabilities"], list)
         assert isinstance(output["hooks"], list)
 
-    def test_version_empty_when_host_unavailable(
-        self, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_version_empty_when_host_unavailable(self, capsys: pytest.CaptureFixture) -> None:
         args = _make_namespace(output="json")
 
         with (

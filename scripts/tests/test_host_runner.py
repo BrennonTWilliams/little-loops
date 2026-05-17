@@ -218,17 +218,13 @@ class TestCodexRunner:
         assert invocation.args[:3] == ["exec", "resume", "--last"]
         assert "--continue" not in invocation.args
 
-    def test_build_streaming_emits_warning_for_agent_when_toml_absent(
-        self, tmp_path: Path
-    ) -> None:
+    def test_build_streaming_emits_warning_for_agent_when_toml_absent(self, tmp_path: Path) -> None:
         """ENH-1533: warning fires only when .codex/agents/<name>.toml is absent
         (fallback path). When the TOML exists with developer_instructions, persona
         injection succeeds and no warning is emitted."""
         runner = CodexRunner()
         with pytest.warns(CapabilityNotSupported, match="agent"):
-            runner.build_streaming(
-                prompt="hi", agent="general-purpose", working_dir=tmp_path
-            )
+            runner.build_streaming(prompt="hi", agent="general-purpose", working_dir=tmp_path)
 
     def test_build_streaming_injects_persona_when_toml_present(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -239,8 +235,7 @@ class TestCodexRunner:
         agents_dir = tmp_path / ".codex" / "agents"
         agents_dir.mkdir(parents=True)
         (agents_dir / "code-reviewer.toml").write_text(
-            'name = "code-reviewer"\n'
-            'developer_instructions = """\nReview code carefully.\n"""\n'
+            'name = "code-reviewer"\ndeveloper_instructions = """\nReview code carefully.\n"""\n'
         )
 
         runner = CodexRunner()
@@ -282,9 +277,7 @@ class TestCodexRunner:
 
         runner = CodexRunner()
         with pytest.warns(CapabilityNotSupported, match="agent"):
-            invocation = runner.build_streaming(
-                prompt="hi", agent="empty", working_dir=tmp_path
-            )
+            invocation = runner.build_streaming(prompt="hi", agent="empty", working_dir=tmp_path)
         assert "[Persona:" not in invocation.args[-1]
 
     def test_build_streaming_emits_warning_for_tools(self) -> None:
@@ -356,7 +349,9 @@ class TestCodexRunner:
     def test_build_blocking_json_prompt_still_last_with_schema(self) -> None:
         """ENH-1530: prompt remains the last positional arg even when schema is wired."""
         runner = CodexRunner()
-        invocation = runner.build_blocking_json(prompt="test prompt", json_schema={"type": "object"})
+        invocation = runner.build_blocking_json(
+            prompt="test prompt", json_schema={"type": "object"}
+        )
         assert invocation.args[-1] == "test prompt"
         for p in invocation.cleanup_paths:
             p.unlink(missing_ok=True)
@@ -620,9 +615,7 @@ class TestDescribeCapabilities:
         assert report.capabilities[0].status == "unsupported"
         assert "FEAT-992" in report.capabilities[0].note
 
-    def test_codex_warnings_consistent_with_describe_capabilities(
-        self, tmp_path: Path
-    ) -> None:
+    def test_codex_warnings_consistent_with_describe_capabilities(self, tmp_path: Path) -> None:
         """ENH-1533: Pattern D consistency.
 
         - When `.codex/agents/<name>.toml` is present with developer_instructions,
@@ -638,9 +631,7 @@ class TestDescribeCapabilities:
         # TOML-present: no warning, status partial.
         agents_dir = tmp_path / ".codex" / "agents"
         agents_dir.mkdir(parents=True)
-        (agents_dir / "persona.toml").write_text(
-            'developer_instructions = """\nbe helpful\n"""\n'
-        )
+        (agents_dir / "persona.toml").write_text('developer_instructions = """\nbe helpful\n"""\n')
         with warnings.catch_warnings():
             warnings.simplefilter("error", CapabilityNotSupported)
             runner.build_streaming(prompt="hi", agent="persona", working_dir=tmp_path)
@@ -702,9 +693,7 @@ class TestApplyHostCliFromConfig:
 
         assert os.environ.get("LL_HOST_CLI") is None
 
-    def test_no_op_when_config_lacks_orchestration(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_op_when_config_lacks_orchestration(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("LL_HOST_CLI", raising=False)
         apply_host_cli_from_config(object())
         import os

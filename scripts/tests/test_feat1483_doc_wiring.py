@@ -42,9 +42,7 @@ class TestHostCompatibilityCodexSkills:
         slash_rows = [
             line for line in content.splitlines() if line.startswith("| Slash-command discovery")
         ]
-        assert slash_rows, (
-            "HOST_COMPATIBILITY.md is missing the 'Slash-command discovery' row"
-        )
+        assert slash_rows, "HOST_COMPATIBILITY.md is missing the 'Slash-command discovery' row"
         row = slash_rows[0]
         # The Codex (last) cell must contain ✓, not ✗
         codex_cell = row.rsplit("|", 2)[1] if row.count("|") >= 4 else row

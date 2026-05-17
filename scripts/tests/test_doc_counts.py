@@ -464,7 +464,9 @@ class TestVerifyDocumentation:
 class TestCheckSkillBudget:
     """Tests for check_skill_budget function."""
 
-    def _make_skill(self, skills_dir: Path, name: str, description: str, disable_model_invocation: bool = False) -> None:
+    def _make_skill(
+        self, skills_dir: Path, name: str, description: str, disable_model_invocation: bool = False
+    ) -> None:
         skill_dir = skills_dir / name
         skill_dir.mkdir()
         flag_line = "disable-model-invocation: true\n" if disable_model_invocation else ""
@@ -477,7 +479,12 @@ class TestCheckSkillBudget:
         skills_dir = tmp_path / "skills"
         skills_dir.mkdir()
         self._make_skill(skills_dir, "normal-skill", "A normal skill description")
-        self._make_skill(skills_dir, "gated-skill", "A gated skill that should be skipped", disable_model_invocation=True)
+        self._make_skill(
+            skills_dir,
+            "gated-skill",
+            "A gated skill that should be skipped",
+            disable_model_invocation=True,
+        )
 
         result: SkillBudgetResult = check_skill_budget(base_dir=tmp_path)
 

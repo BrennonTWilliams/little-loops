@@ -64,7 +64,7 @@ def _extract_body(text: str) -> str:
     end = text.find("---", 3)
     if end == -1:
         return ""
-    after_fm = text[end + 3:]
+    after_fm = text[end + 3 :]
     if after_fm.startswith("\n"):
         after_fm = after_fm[1:]
     return after_fm

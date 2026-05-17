@@ -32,13 +32,9 @@ def _print_report(report: object, *, json_mode: bool = False) -> None:
             "binary": report.binary,
             "version": report.version or "(unknown)",
             "capabilities": [
-                {"name": c.name, "status": c.status, "note": c.note}
-                for c in report.capabilities
+                {"name": c.name, "status": c.status, "note": c.note} for c in report.capabilities
             ],
-            "hooks": [
-                {"name": h.name, "status": h.status, "note": h.note}
-                for h in report.hooks
-            ],
+            "hooks": [{"name": h.name, "status": h.status, "note": h.note} for h in report.hooks],
         }
         print(json.dumps(data, indent=2))
         return

@@ -314,7 +314,9 @@ class TestMainAdaptAgentsForCodex:
 
         with (
             patch.object(
-                sys, "argv", ["ll-adapt-agents-for-codex", "--apply", "--only", "agent-a", "--quiet"]
+                sys,
+                "argv",
+                ["ll-adapt-agents-for-codex", "--apply", "--only", "agent-a", "--quiet"],
             ),
             patch(
                 "little_loops.cli.adapt_agents_for_codex._find_plugin_root",
@@ -345,8 +347,7 @@ class TestRealAgentsIntegrationGuard:
             agent_name = agent_md.stem
             out_toml = codex_agents_dir / f"{agent_name}.toml"
             assert out_toml.exists(), (
-                f".codex/agents/{agent_name}.toml missing. "
-                "Run: ll-adapt-agents-for-codex --apply"
+                f".codex/agents/{agent_name}.toml missing. Run: ll-adapt-agents-for-codex --apply"
             )
 
     def test_all_real_toml_files_have_marker(self) -> None:
