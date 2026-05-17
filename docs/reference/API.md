@@ -1928,6 +1928,7 @@ Filter out files in excluded directories.
 def verify_work_was_done(
     logger: Logger,
     changed_files: list[str] | None = None,
+    baseline_sha: str | None = None,
 ) -> bool
 ```
 
@@ -1935,9 +1936,15 @@ Verify that actual work was done (not just issue file moves).
 
 Prevents marking issues as "completed" when no actual fix was implemented. Returns `True` if there are file changes outside of excluded directories.
 
+Detection runs in three modes (first match wins):
+1. **Pre-computed list** (`changed_files` provided) — used by `ll-parallel` via `worker_pool.py`
+2. **Uncommitted/staged** — `git diff --name-only` + `git diff --cached --name-only`
+3. **Commit-range** (`baseline_sha` provided and HEAD has moved) — `git diff --name-only <baseline_sha>..HEAD` — covers the common case where the agent commits mid-phase and exits with a clean working tree
+
 **Parameters:**
 - `logger` - Logger for output
 - `changed_files` - Optional pre-computed file list. If `None`, detects via `git diff` and `git diff --cached`
+- `baseline_sha` - Optional git SHA captured before Phase 2 began. When provided and HEAD has advanced beyond this SHA, checks for non-excluded files committed in the range; enables detection of mid-phase commits in `ll-auto`
 
 **Returns:** `True` if meaningful file changes were detected
 

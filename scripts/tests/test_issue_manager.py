@@ -2253,6 +2253,124 @@ class TestFallbackVerification:
         # verify_work_was_done should NOT be called when content markers found
         mock_work.assert_not_called()
 
+    def test_baseline_sha_passed_to_verify_work_was_done(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """baseline_sha captured before Phase 2 is forwarded to verify_work_was_done."""
+        import subprocess as _subprocess
+
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+        test_sha = "deadbeef1234"
+
+        ready_result = MagicMock()
+        ready_result.returncode = 0
+        ready_result.stdout = f"## VERDICT\nREADY\n\n## VALIDATED_FILE\n{sample_issue.path}"
+
+        impl_result = MagicMock()
+        impl_result.returncode = 0
+        impl_result.stdout = "Implementation successful"
+        impl_result.stderr = ""
+
+        def fake_subprocess_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            if cmd == ["git", "rev-parse", "HEAD"]:
+                return _subprocess.CompletedProcess(args=cmd, returncode=0, stdout=f"{test_sha}\n")
+            return _subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=ready_result):
+            with patch(
+                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
+            ):
+                with patch("little_loops.issue_manager.verify_issue_completed", return_value=False):
+                    with patch(
+                        "little_loops.issue_manager.detect_plan_creation", return_value=None
+                    ):
+                        with patch(
+                            "little_loops.issue_manager.check_content_markers",
+                            return_value=False,
+                        ):
+                            with patch(
+                                "little_loops.issue_manager.subprocess.run",
+                                side_effect=fake_subprocess_run,
+                            ):
+                                with patch(
+                                    "little_loops.issue_manager.verify_work_was_done",
+                                    return_value=True,
+                                ) as mock_verify:
+                                    with patch(
+                                        "little_loops.issue_manager.complete_issue_lifecycle",
+                                        return_value=True,
+                                    ):
+                                        process_issue_inplace(
+                                            sample_issue, mock_config, mock_logger
+                                        )
+
+        mock_verify.assert_called_once_with(mock_logger, baseline_sha=test_sha)
+
+
+class TestEarlyCompletionGuard:
+    """Tests for the already_done guard when Phase 2 exits non-zero (BUG-1538)."""
+
+    @pytest.fixture
+    def mock_config(self, temp_project_dir: Path) -> BRConfig:
+        config = MagicMock(spec=BRConfig)
+        config.project_root = temp_project_dir
+        config.repo_path = temp_project_dir
+        config.automation = MagicMock()
+        config.automation.timeout_seconds = 60
+        config.automation.stream_output = False
+        config.automation.max_continuations = 3
+        config.get_category_action.return_value = "fix"
+        config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
+        return config
+
+    @pytest.fixture
+    def sample_issue(self, temp_project_dir: Path) -> IssueInfo:
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True)
+        issue_file = issues_dir / "P1-BUG-001-test.md"
+        issue_file.write_text("---\nstatus: completed\n---\n\n# BUG-001: Test")
+        return IssueInfo(
+            path=issue_file,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-001",
+            title="Test",
+        )
+
+    def test_early_completion_guard_accepts_completed_status(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """already_done guard fires for status: completed when Phase 2 exits non-zero."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+
+        ready_result = MagicMock()
+        ready_result.returncode = 0
+        ready_result.stdout = f"## VERDICT\nREADY\n\n## VALIDATED_FILE\n{sample_issue.path}"
+
+        # Phase 2 exits non-zero (simulates a spurious continuation failure)
+        impl_result = MagicMock()
+        impl_result.returncode = 1
+        impl_result.stdout = ""
+        impl_result.stderr = "Option E --continue failed"
+        impl_result.args = []
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=ready_result):
+            with patch(
+                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
+            ):
+                with patch("little_loops.issue_manager.subprocess.run") as mock_sub:
+                    mock_sub.return_value = MagicMock(returncode=0, stdout="abc123\n")
+                    with patch("little_loops.issue_manager.verify_issue_completed", return_value=True):
+                        result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+
+        # Guard should have detected status=completed (normalized to done) and treated as success
+        assert result.success
+
 
 class TestCheckContentMarkers:
     """Tests for check_content_markers() (ENH-328)."""

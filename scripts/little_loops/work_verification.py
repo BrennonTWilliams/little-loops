@@ -41,7 +41,11 @@ def filter_excluded_files(files: list[str]) -> list[str]:
     ]
 
 
-def verify_work_was_done(logger: Logger, changed_files: list[str] | None = None) -> bool:
+def verify_work_was_done(
+    logger: Logger,
+    changed_files: list[str] | None = None,
+    baseline_sha: str | None = None,
+) -> bool:
     """Verify that actual work was done (not just issue file moves).
 
     Returns True if there's evidence of implementation work - changes to files
@@ -53,6 +57,9 @@ def verify_work_was_done(logger: Logger, changed_files: list[str] | None = None)
         logger: Logger for output
         changed_files: Optional list of changed files. If not provided,
             will detect via git diff commands.
+        baseline_sha: Optional git SHA captured before Phase 2 began. When provided
+            and the working tree is clean, checks for commits made since this SHA
+            (covers the case where the agent commits mid-phase and exits cleanly).
 
     Returns:
         True if meaningful file changes were detected
@@ -108,6 +115,35 @@ def verify_work_was_done(logger: Logger, changed_files: list[str] | None = None)
                 return True
             # Collect excluded files for diagnostic logging
             all_excluded_files.extend([f for f in staged if f and f not in all_excluded_files])
+
+        # Check commits made since baseline (covers mid-phase commits in ll-auto)
+        if baseline_sha:
+            try:
+                current_head = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                )
+                if current_head.returncode == 0 and current_head.stdout.strip() != baseline_sha:
+                    result = subprocess.run(
+                        ["git", "diff", "--name-only", f"{baseline_sha}..HEAD"],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if result.returncode == 0:
+                        committed = result.stdout.strip().split("\n")
+                        meaningful_committed = filter_excluded_files(committed)
+                        if meaningful_committed:
+                            logger.info(
+                                f"Found {len(meaningful_committed)} file(s) committed since "
+                                f"baseline: {meaningful_committed[:5]}"
+                            )
+                            return True
+                        all_excluded_files.extend(
+                            [f for f in committed if f and f not in all_excluded_files]
+                        )
+            except Exception as e:
+                logger.error(f"Could not check committed changes: {e}")
 
         # Log which excluded files were modified for diagnostic purposes
         if all_excluded_files:

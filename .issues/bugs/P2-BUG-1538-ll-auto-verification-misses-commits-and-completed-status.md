@@ -1,14 +1,21 @@
 ---
-captured_at: "2026-05-17T02:15:49Z"
+captured_at: '2026-05-17T02:15:49Z'
+completed_at: '2026-05-17T22:54:30Z'
 discovered_date: 2026-05-17
 discovered_by: capture-issue
-status: open
+status: done
 priority: P2
 type: BUG
 relates_to:
-  - BUG-280
-  - BUG-1537
-  - ENH-1533
+- BUG-280
+- BUG-1537
+- ENH-1533
+confidence_score: 96
+outcome_confidence: 77
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 20
+score_change_surface: 25
 ---
 
 # BUG-1538: ll-auto Phase 3 verification misses mid-phase commits and rejects `status: completed`
@@ -71,6 +78,43 @@ verification.
   written by the agent had `status: completed`, triggering the first warning
   and forcing the fallback path into bug #1 above.
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/work_verification.py` — add `baseline_sha: str | None = None` parameter + commit-range check to `verify_work_was_done()` (Fix A)
+- `scripts/little_loops/issue_manager.py` — (Fix A) capture HEAD before Phase 2 at line 742 and pass into call at line 890; (Fix B) update `already_done` guard at line 790 (`_fm.get("status") in ("done", "cancelled")`) to also accept `"completed"`
+- `scripts/little_loops/issue_lifecycle.py` — widen `verify_issue_completed` acceptance set at line 400 (Fix B)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/git_operations.py` — re-exports `verify_work_was_done` and `filter_excluded_files` via `# noqa: F401`; callers importing from here will pick up the new signature automatically without additional changes
+- `scripts/little_loops/parallel/worker_pool.py` — calls `verify_work_was_done(self.logger, changed_files)` at line 966 (Path A); already commit-aware via `_get_changed_files()` — no change needed
+
+### Similar Patterns
+- `scripts/little_loops/parallel/worker_pool.py:1207` — `_get_main_head_sha()` uses `["rev-parse", "HEAD"]` via `_git_lock.run()`; analogous bare `subprocess.run` pattern used in `issue_manager.py`
+- `scripts/little_loops/parallel/worker_pool.py:1222` — `_detect_committed_leaks(baseline_head_sha)` captures HEAD before Phase 2 equivalent and diffs against it afterwards — direct parallel to the Fix A approach
+
+### Tests
+- `scripts/tests/test_work_verification.py` — existing comprehensive tests; multi-call `side_effect` mock at lines 256–263; command assertion pattern at lines 328–330 (`calls[N][0][0] == ["git", "diff", "--name-only"]`). New test adds a third entry: `calls[2][0][0] == ["git", "diff", "--name-only", f"{baseline_sha}..HEAD"]`
+- `scripts/tests/test_issue_lifecycle.py:369` — `test_status_completed_synonym_verified` already written as a pending/failing test asserting `status: completed` returns `True`; Fix B should make it pass
+- `scripts/tests/test_worker_pool.py:1395` — `test_get_main_head_sha_returns_sha` shows rev-parse HEAD mock pattern to follow
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_manager.py` — needs 2 new tests in existing test classes:
+  - `test_early_completion_guard_accepts_completed_status` (in `TestEarlyCompletionGuard`): write `status: completed` to issue file, have Phase 2 exit non-zero, verify the `already_done` guard at line 790 fires and `result.success` is True — this is the Fix B second location and currently has zero test coverage
+  - `test_baseline_sha_passed_to_verify_work_was_done` (in `TestFallbackVerification`): patch `subprocess.run` to return a SHA on `git rev-parse HEAD`, then use `assert_called_with` to verify `verify_work_was_done` was called with `baseline_sha=<that SHA>` — validates the Fix A plumbing end-to-end
+
+### Configuration
+- `scripts/little_loops/config/automation.py` — `require_code_changes` setting consumed by verification; no change needed but relevant to understanding the fallback logic
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Fix B may be simpler than described**: `scripts/little_loops/frontmatter.py` already contains `STATUS_SYNONYMS = {"completed": "done", ...}` applied at the end of every `parse_frontmatter()` call. If `verify_issue_completed` uses `parse_frontmatter()` (confirmed: lines 393–397), the coercion may already normalize `"completed"` → `"done"` before the acceptance check at line 400. The existing failing test `test_issue_lifecycle.py:369` will clarify whether the normalization path is actually reached. **Either way, the `already_done` guard at `issue_manager.py:790` is a second fix location** that reads frontmatter independently and must also be widened.
+- **`already_done` guard (second Fix B location not in original issue)**: `issue_manager.py:790` — `already_done = _fm.get("status") in ("done", "cancelled")` — this guard runs when Phase 2 exits with non-zero returncode. If the agent wrote `status: completed` and exited non-zero, this guard also rejects the issue. The issue's "Critical Files to Modify" lists `issue_lifecycle.py:400` but omits this second location.
+- **Phase 2 start anchor confirmed**: `issue_manager.py:742` — `timed_phase(logger, "Phase 2 (implement)")` — baseline SHA (`git rev-parse HEAD`) should be captured just before this line. Phase 3 starts at line 847 (`timed_phase(logger, "Phase 3 (verify)")`); `verify_work_was_done(logger)` call is at line 890.
+- **Subprocess convention in `issue_manager.py`**: bare `subprocess.run(["git", ...], capture_output=True, text=True)` — consistent with existing calls in `cli/parallel.py` and `cli/sprint/run.py`. Do not use `_git_lock` (that is the `worker_pool.py`-only convention).
+
 ## Steps to Reproduce
 
 1. Pick an issue where `/ll:manage-issue` will commit mid-Phase-2 (the
@@ -122,13 +166,21 @@ In `scripts/little_loops/issue_lifecycle.py:400`:
 
 ## Implementation Steps
 
-1. Add `baseline_sha` parameter + commit-range check to `verify_work_was_done`.
-2. Capture HEAD before Phase 2 in `issue_manager.py`; pass into the call.
-3. Widen the `is_issue_completed_via_frontmatter` status whitelist.
-4. Add tests (see below).
-5. Run full test suite + lint + mypy.
-6. Manual smoke: `ll-auto --only <test-issue> -v` against an issue where
-   the agent commits mid-Phase-2; confirm Phase 3 passes.
+1. **`work_verification.py`**: Add `baseline_sha: str | None = None` parameter to `verify_work_was_done()`; after the existing uncommitted/staged checks, when `baseline_sha` is provided and differs from current HEAD, run `subprocess.run(["git", "diff", "--name-only", f"{baseline_sha}..HEAD"], capture_output=True, text=True)`, pass result through `filter_excluded_files`, return `True` if non-empty.
+2. **`issue_manager.py`** (Fix A): Capture `baseline_sha` with `subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)` just before `timed_phase(logger, "Phase 2 (implement)")` at line 742; pass `baseline_sha=baseline_sha` to `verify_work_was_done(logger, ...)` at line 890.
+3. **`issue_lifecycle.py`** (Fix B): Widen acceptance set at line 400; if `STATUS_SYNONYMS` normalization already covers it (confirmed by test at `test_issue_lifecycle.py:369`), the fix may be a no-op there — verify by running that test first.
+4. **`issue_manager.py`** (Fix B): Widen `already_done` guard at line 790 from `("done", "cancelled")` to `("done", "completed", "cancelled")` — this is independent of `parse_frontmatter` normalization and must be updated regardless.
+5. Add tests (see below).
+6. Run full test suite + lint + mypy.
+7. Manual smoke: `ll-auto --only <test-issue> -v` against an issue where the agent commits mid-Phase-2; confirm Phase 3 passes.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Add `test_early_completion_guard_accepts_completed_status` to `scripts/tests/test_issue_manager.py` (`TestEarlyCompletionGuard` class) — tests Fix B second location (`already_done` guard at line 790 accepting `status: completed`); no existing test covers this path
+9. Add `test_baseline_sha_passed_to_verify_work_was_done` to `scripts/tests/test_issue_manager.py` (`TestFallbackVerification` class) — patches `subprocess.run` returning a SHA for `git rev-parse HEAD`, asserts `verify_work_was_done` is called with `baseline_sha=<sha>`; validates Fix A plumbing
+10. Update `docs/reference/API.md` — add `baseline_sha: str | None = None` to the `### verify_work_was_done` signature block and update the description to mention the third detection mode (commit-range via `git diff --name-only <baseline_sha>..HEAD`)
 
 ## Tests to Add
 
@@ -159,10 +211,12 @@ In `scripts/little_loops/issue_lifecycle.py:400`:
 ## Critical Files to Modify
 
 - `scripts/little_loops/work_verification.py` — add `baseline_sha` param + commit-range check
-- `scripts/little_loops/issue_manager.py:890` — capture HEAD before Phase 2; pass into call
-- `scripts/little_loops/issue_lifecycle.py:400` — accept `completed` as alias
-- `scripts/tests/test_work_verification.py` — new tests
-- `scripts/tests/test_issue_lifecycle.py` — new test
+- `scripts/little_loops/issue_manager.py:742` — capture HEAD just before Phase 2 start
+- `scripts/little_loops/issue_manager.py:790` — widen `already_done` guard (Fix B, second location)
+- `scripts/little_loops/issue_manager.py:890` — pass `baseline_sha` into `verify_work_was_done` call
+- `scripts/little_loops/issue_lifecycle.py:400` — accept `completed` as alias (verify if `STATUS_SYNONYMS` normalization already handles it via `parse_frontmatter`)
+- `scripts/tests/test_work_verification.py` — new tests (3-call side_effect mock pattern)
+- `scripts/tests/test_issue_lifecycle.py:369` — `test_status_completed_synonym_verified` already exists; make it pass
 
 ## Impact
 
@@ -225,5 +279,10 @@ In `scripts/little_loops/issue_lifecycle.py:400`:
 **Open** | Created: 2026-05-17 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-17T22:47:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7226416-47d7-4f0e-897f-438926cc588a.jsonl`
+- `/ll:ready-issue` - 2026-05-17T22:46:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7226416-47d7-4f0e-897f-438926cc588a.jsonl`
+- `/ll:confidence-check` - 2026-05-17T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef5a5d99-4dff-4fea-b505-2affae0a38ac.jsonl`
+- `/ll:wire-issue` - 2026-05-17T22:42:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/957b050b-c6dc-4a57-81e5-28e4f20608d2.jsonl`
+- `/ll:refine-issue` - 2026-05-17T22:36:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/741b329e-fbc3-4589-a153-a74b0ac2847a.jsonl`
 - `/ll:verify-issues` - 2026-05-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 - `/ll:capture-issue` - 2026-05-17T02:15:49Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`

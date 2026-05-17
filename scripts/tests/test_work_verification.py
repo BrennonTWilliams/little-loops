@@ -425,6 +425,90 @@ class TestVerifyWorkWasDoneWithGitDetection:
         assert result is True
 
 
+class TestVerifyWorkWasDoneBaselineSha:
+    """Tests for verify_work_was_done with baseline_sha parameter (Fix A for BUG-1538)."""
+
+    @pytest.fixture
+    def mock_logger(self) -> MagicMock:
+        """Create a mock logger."""
+        return MagicMock()
+
+    def test_committed_changes_detected_via_baseline_sha(self, mock_logger: MagicMock) -> None:
+        """Returns True when meaningful changes were committed since baseline_sha."""
+        baseline = "abc123"
+        current_head = "def456"
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                # git diff --name-only (no uncommitted)
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+                # git diff --cached --name-only (no staged)
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+                # git rev-parse HEAD (differs from baseline)
+                subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout=f"{current_head}\n", stderr=""
+                ),
+                # git diff --name-only baseline..HEAD
+                subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="scripts/little_loops/foo.py\n", stderr=""
+                ),
+            ]
+            result = verify_work_was_done(mock_logger, baseline_sha=baseline)
+
+        assert result is True
+        calls = mock_run.call_args_list
+        assert calls[2][0][0] == ["git", "rev-parse", "HEAD"]
+        assert calls[3][0][0] == ["git", "diff", "--name-only", f"{baseline}..HEAD"]
+
+    def test_committed_excluded_files_only_returns_false(self, mock_logger: MagicMock) -> None:
+        """Returns False when only excluded files were committed since baseline_sha."""
+        baseline = "abc123"
+        current_head = "def456"
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+                subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout=f"{current_head}\n", stderr=""
+                ),
+                subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout=".issues/bugs/BUG-001.md\n", stderr=""
+                ),
+            ]
+            result = verify_work_was_done(mock_logger, baseline_sha=baseline)
+
+        assert result is False
+
+    def test_baseline_sha_skipped_when_head_unchanged(self, mock_logger: MagicMock) -> None:
+        """Commit-range check is skipped when HEAD matches baseline_sha (no new commits)."""
+        sha = "abc123"
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+                # rev-parse returns same SHA as baseline
+                subprocess.CompletedProcess(args=[], returncode=0, stdout=f"{sha}\n", stderr=""),
+            ]
+            result = verify_work_was_done(mock_logger, baseline_sha=sha)
+
+        assert result is False
+        # Only 3 calls made — no git diff --name-only <sha>..HEAD
+        assert mock_run.call_count == 3
+
+    def test_no_baseline_sha_unchanged_behavior(self, mock_logger: MagicMock) -> None:
+        """Without baseline_sha, behavior is unchanged: 2 git calls, returns False."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="", stderr=""
+            )
+            result = verify_work_was_done(mock_logger)
+
+        assert result is False
+        assert mock_run.call_count == 2
+        calls = mock_run.call_args_list
+        assert calls[0][0][0] == ["git", "diff", "--name-only"]
+        assert calls[1][0][0] == ["git", "diff", "--cached", "--name-only"]
+
+
 class TestVerifyWorkWasDoneIntegration:
     """Integration-style tests for verify_work_was_done."""
 

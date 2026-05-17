@@ -739,6 +739,12 @@ def process_issue_inplace(
     # Phase 2: Implement the issue (with automatic continuation on context handoff)
     action = config.get_category_action(info.issue_type)
     logger.info(f"Phase 2: Implementing {info.issue_id}...")
+    _baseline_sha_result = subprocess.run(
+        ["git", "rev-parse", "HEAD"], capture_output=True, text=True
+    )
+    _baseline_sha: str | None = (
+        _baseline_sha_result.stdout.strip() if _baseline_sha_result.returncode == 0 else None
+    )
     with timed_phase(logger, "Phase 2 (implement)") as phase2_timing:
         if not dry_run:
             # Build manage-issue command
@@ -787,7 +793,7 @@ def process_issue_inplace(
                 from little_loops.frontmatter import parse_frontmatter
 
                 _fm = parse_frontmatter(info.path.read_text(encoding="utf-8"))
-                already_done = _fm.get("status") in ("done", "cancelled")
+                already_done = _fm.get("status") in ("done", "completed", "cancelled")
             except Exception:
                 already_done = False
         if already_done:
@@ -887,7 +893,7 @@ def process_issue_inplace(
                         logger.warning(f"Content marker completion failed for {info.issue_id}")
                 else:
                     # CRITICAL: Verify actual implementation work was done
-                    work_done = verify_work_was_done(logger)
+                    work_done = verify_work_was_done(logger, baseline_sha=_baseline_sha)
                     if work_done:
                         logger.info("Evidence of code changes found - completing lifecycle...")
                         verified = complete_issue_lifecycle(info, config, logger)
