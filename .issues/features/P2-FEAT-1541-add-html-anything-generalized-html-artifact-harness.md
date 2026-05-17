@@ -20,6 +20,8 @@ score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 22
 score_change_surface: 25
+relates_to:
+- FEAT-1534
 ---
 
 # FEAT-1541: Add html-anything generalized HTML artifact harness
@@ -279,3 +281,9 @@ Implemented `scripts/little_loops/loops/html-anything.yaml` — a 7-state FSM ha
 ## Status
 
 **Done** | Created: 2026-05-17 | Completed: 2026-05-17 | Priority: P2
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-1534 (rn-plan) share a near-identical FSM harness pattern: `init (shell) → generate → iterative refinement → score → done`, using `svg-image-generator.yaml` as template. Future harness loops should consider using a canonical `harness-template.yaml` in `scripts/little_loops/loops/` rather than copying from one of these two.

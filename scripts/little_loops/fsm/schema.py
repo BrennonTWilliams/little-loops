@@ -698,6 +698,79 @@ class CommandEntry:
 
 
 @dataclass
+class TargetStateSpec:
+    """Per-state targeting specification for harness-optimize APO (ENH-1552).
+
+    Names a single FSM state inside a target loop file and associates it with
+    the examples file and eval fragment used during that state's optimization.
+
+    Attributes:
+        name: State name within the target loop
+        examples_file: Path to the examples YAML file for this state
+        eval_fragment: Eval fragment identifier used during optimization
+    """
+
+    name: str
+    examples_file: str
+    eval_fragment: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON/YAML serialization."""
+        return {
+            "name": self.name,
+            "examples_file": self.examples_file,
+            "eval": self.eval_fragment,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TargetStateSpec:
+        """Create from dictionary (JSON/YAML deserialization)."""
+        return cls(
+            name=data["name"],
+            examples_file=data["examples_file"],
+            eval_fragment=data["eval"],
+        )
+
+
+@dataclass
+class TargetFileSpec:
+    """Per-file targeting specification for harness-optimize APO (ENH-1552).
+
+    Associates a loop YAML file (or glob pattern) with the list of states
+    to optimize within that file.
+
+    Attributes:
+        file: Explicit path to a loop YAML file (mutually exclusive with glob)
+        glob: Glob pattern matching one or more loop YAML files
+        states: States within the matched file(s) to target
+    """
+
+    file: str | None = None
+    glob: str | None = None
+    states: list[TargetStateSpec] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON/YAML serialization."""
+        result: dict[str, Any] = {}
+        if self.file is not None:
+            result["file"] = self.file
+        if self.glob is not None:
+            result["glob"] = self.glob
+        if self.states:
+            result["states"] = [s.to_dict() for s in self.states]
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TargetFileSpec:
+        """Create from dictionary (JSON/YAML deserialization)."""
+        return cls(
+            file=data.get("file"),
+            glob=data.get("glob"),
+            states=[TargetStateSpec.from_dict(s) for s in (data.get("states") or [])],
+        )
+
+
+@dataclass
 class FSMLoop:
     """Complete FSM loop definition.
 
@@ -738,6 +811,7 @@ class FSMLoop:
     category: str = ""
     labels: list[str] = field(default_factory=list)
     commands: list[CommandEntry] = field(default_factory=list)
+    targets: list[TargetFileSpec] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -787,6 +861,8 @@ class FSMLoop:
             result["labels"] = self.labels
         if self.commands:
             result["commands"] = [{"cmd": e.cmd, "comment": e.comment} for e in self.commands]
+        if self.targets:
+            result["targets"] = [t.to_dict() for t in self.targets]
 
         return result
 
@@ -831,6 +907,7 @@ class FSMLoop:
             category=data.get("category", ""),
             labels=data.get("labels", []),
             commands=[CommandEntry(**e) for e in data.get("commands", [])],
+            targets=[TargetFileSpec.from_dict(t) for t in (data.get("targets") or [])],
         )
 
     def get_all_state_names(self) -> set[str]:

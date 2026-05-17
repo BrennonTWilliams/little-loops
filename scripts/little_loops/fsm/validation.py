@@ -97,6 +97,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "category",
         "labels",
         "commands",
+        "targets",
         "import",
         "fragments",
         "from",
@@ -613,6 +614,26 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
     return errors
 
 
+def _validate_targets(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate top-level targets[] entries (ENH-1552).
+
+    Rejects any targets[].states[] entry whose sibling file: value does not
+    end with a .yaml extension.
+    """
+    errors: list[ValidationError] = []
+    for i, target in enumerate(fsm.targets):
+        if target.file is not None and not target.file.endswith(".yaml"):
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"targets[{i}].file must be a .yaml file, got '{target.file}'"
+                    ),
+                    path=f"targets[{i}].file",
+                )
+            )
+    return errors
+
+
 def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
     """Validate FSM structure and return list of errors.
 
@@ -647,6 +668,9 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     # Validate parameters block
     errors.extend(_validate_parameters(fsm))
+
+    # Validate targets block (ENH-1552)
+    errors.extend(_validate_targets(fsm))
 
     # Check initial state exists
     if fsm.initial not in defined_states:

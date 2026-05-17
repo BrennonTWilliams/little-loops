@@ -130,9 +130,31 @@ No changes to: `scripts/little_loops/cli/loop/testing.py`, `scripts/little_loops
 
 ## Impact
 
+- **Priority**: P1 — Review skill is the primary quality gate for FSM loops; static-only analysis provides false confidence by missing behavioral failures (stalls, premature termination)
+- **Effort**: High — 6 files modified, 5 new test classes, 4 new step phases (1.5, 2.5, 4.5, 6.5) added to SKILL.md, new reference.md sections (rubric, calibration examples, artifact schema)
+- **Risk**: Medium — All new phases are additive; existing V-*/QC-*/FA-*/SR-* check behavior unchanged; primary risk is behavioral verification depending on `ll-loop simulate` CLI
+- **Breaking Change**: No
 - **Affected**: `skills/review-loop/SKILL.md`, `skills/review-loop/reference.md`, `scripts/tests/test_review_loop.py`, `docs/reference/COMMANDS.md`, `.gitignore`
 - **Backwards compatible**: All new steps and flags are additive; existing V-*/QC-*/FA-*/SR-* behavior unchanged
 - **New capability**: Trend tracking across reviews, behavioral verification, quality scorecard
+
+## Scope Boundaries
+
+**In scope:**
+- Steps 1.5, 2.5, 4.5, 6.5 added to `skills/review-loop/SKILL.md`
+- New check IDs: SIM-1, SIM-2, SIM-3 (simulation checks), RT-1 (post-fix regression)
+- 6-dimension rubric scorecard with trend tracking in `reference.md`
+- Review artifact persistence to `.loops/reviews/<name>-<timestamp>.md`
+- New flags: `--exercise`, `--no-simulate`, `--rubric-only`, `--strict-semantic`
+- Calibration examples (good/bad pairs) for all SR-* checks in `reference.md`
+
+**Out of scope:**
+- Changes to `scripts/little_loops/cli/loop/testing.py` (loop simulation engine)
+- Changes to `scripts/little_loops/fsm/schema.py` (FSM schema)
+- Modifications to loop-specialist agent (reads review artifacts read-only)
+- New `ll-loop` CLI subcommands
+- Changes to existing check IDs (V-*, QC-*, FA-*, SR-*)
+- Loop YAML schema changes
 
 ## Related Key Documentation
 
@@ -158,4 +180,5 @@ Open — sourced from `~/.claude/plans/use-the-best-practices-glowing-sparkle.md
 ---
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-17T07:46:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aac60a3c-4bb3-4d31-b1a0-08e1bc0000bc.jsonl`
 - `/ll:capture-issue` - 2026-05-17T07:41:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/faeb9229-ba0c-487a-b4e2-34a81c432ad9.jsonl`

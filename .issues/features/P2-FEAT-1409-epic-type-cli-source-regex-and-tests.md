@@ -250,4 +250,10 @@ _Added by `/ll:confidence-check` on 2026-05-09_
 
 ---
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue's integration map incorrectly states that both the `export` and `gendocs` subparsers in `history.py` have a `--type` choices list requiring update. FEAT-1410 (the implementing child) verified against the actual codebase: **there is no `gendocs` subparser with a `--type` argument** — `export` is the only subparser to update. The integration map entry for `gendocs` at line 172 is stale and should be ignored.
+
+---
+
 **Decomposed** | Created: 2026-05-09 | Priority: P2

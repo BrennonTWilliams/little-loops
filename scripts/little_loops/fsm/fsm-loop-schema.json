@@ -195,6 +195,13 @@
     "from": {
       "type": "string",
       "description": "Parent loop name for template inheritance. Child inherits all parent fields; child overrides win per deep-merge semantics."
+    },
+    "targets": {
+      "type": "array",
+      "description": "Per-FSM-state targeting spec for harness-optimize APO (ENH-1552). Each entry names a loop YAML file (or glob) and the states within it to optimize.",
+      "items": {
+        "$ref": "#/definitions/targetFileSpec"
+      }
     }
   },
   "additionalProperties": false,
@@ -577,6 +584,48 @@
           "description": "Timeout for LLM calls in seconds",
           "default": 30,
           "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "targetStateSpec": {
+      "type": "object",
+      "description": "Per-state optimization spec: names one FSM state and its associated examples file and eval fragment.",
+      "required": ["name", "examples_file", "eval"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "State name within the target loop"
+        },
+        "examples_file": {
+          "type": "string",
+          "description": "Path to the examples YAML file for this state"
+        },
+        "eval": {
+          "type": "string",
+          "description": "Eval fragment identifier used during optimization"
+        }
+      },
+      "additionalProperties": false
+    },
+    "targetFileSpec": {
+      "type": "object",
+      "description": "Associates a loop YAML file (or glob pattern) with the states to optimize.",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Explicit path to a loop YAML file (mutually exclusive with glob)"
+        },
+        "glob": {
+          "type": "string",
+          "description": "Glob pattern matching one or more loop YAML files"
+        },
+        "states": {
+          "type": "array",
+          "description": "States within the matched file(s) to target",
+          "items": {
+            "$ref": "#/definitions/targetStateSpec"
+          }
         }
       },
       "additionalProperties": false

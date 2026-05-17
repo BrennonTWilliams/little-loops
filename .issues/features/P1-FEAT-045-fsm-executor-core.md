@@ -533,3 +533,9 @@ class TestFSMExecutor:
 - Tests: PASS (24/24 tests pass)
 - Lint: PASS
 - Types: PASS
+
+---
+
+## Scope Addition
+
+**Note** (added by `/ll:audit-issue-conflicts`): After this issue completed, `DefaultActionRunner` was refactored and moved from `executor.py` to `scripts/little_loops/fsm/runners.py`. The original implementation hardcoded `["claude", ...]` for slash command execution; the refactored version routes through `run_claude_command()` → `resolve_host()` in `subprocess_utils.py`, honoring the `LL_HOST_CLI` env var and `orchestration.host_cli` config. Any future changes to action execution should modify `runners.py`, not `executor.py`.

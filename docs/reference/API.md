@@ -3836,6 +3836,7 @@ FSM (Finite State Machine) loop system for automation workflows. This subpackage
 from little_loops.fsm import (
     # Schema
     FSMLoop, StateConfig, EvaluateConfig, RouteConfig, LLMConfig,
+    TargetFileSpec, TargetStateSpec,
     # Validation
     ValidationError, validate_fsm, load_and_validate,
     # Interpolation
@@ -3879,6 +3880,7 @@ class FSMLoop:
     maintain: bool = False             # If True, restart after completion
     llm: LLMConfig = LLMConfig()       # LLM evaluation settings
     commands: list[CommandEntry] = []  # Optional Commands section override for ll-loop show
+    targets: list[TargetFileSpec] = []  # Per-FSM-state targeting spec for harness-optimize APO (ENH-1552)
 ```
 
 **Methods:**
@@ -4036,6 +4038,34 @@ class LearningConfig:
 > **Rate-limit handling (two-tier):** When a state's action returns an HTTP 429, the executor runs a two-tier retry ladder. **Short-burst tier** (up to `max_rate_limit_retries` attempts) uses `rate_limit_backoff_base_seconds * 2^n` + jitter. Once the short tier is spent, the executor enters the **long-wait tier** and walks `rate_limit_long_wait_ladder` (advancing index on each 429, capped at the last entry). The FSM routes to `on_rate_limit_exhausted` only once `total_wait_seconds >= rate_limit_max_wait_seconds`. The jitter is important under `ll-parallel` to avoid thundering-herd re-requests after a shared 429.
 
 > **Alias note:** `on_success` and `on_failure` are accepted as aliases for `on_yes` and `on_no` in all states (including sub-loop states).
+
+#### TargetStateSpec
+
+`from little_loops.fsm import TargetStateSpec`
+
+ENH-1552: per-state optimization spec for `harness-optimize` APO. Names a single FSM state within a target loop file and associates it with the examples file and eval fragment used during that state's optimization pass.
+
+```python
+@dataclass
+class TargetStateSpec:
+    name: str             # State name within the target loop
+    examples_file: str    # Path to the examples YAML file for this state
+    eval_fragment: str    # Eval fragment identifier (serialized as "eval:" in YAML)
+```
+
+#### TargetFileSpec
+
+`from little_loops.fsm import TargetFileSpec`
+
+ENH-1552: per-file targeting spec for `harness-optimize` APO. Associates a loop YAML file (or glob pattern) with the list of states to optimize.
+
+```python
+@dataclass
+class TargetFileSpec:
+    file: str | None = None            # Explicit path to a loop YAML file
+    glob: str | None = None            # Glob pattern matching loop YAML files
+    states: list[TargetStateSpec] = [] # States within the matched file(s) to optimize
+```
 
 #### EvaluateConfig
 

@@ -272,4 +272,10 @@ _Added by `/ll:confidence-check` on 2026-05-09_
 
 ---
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): `cli/output.py` (TYPE_COLOR dict) and `config-schema.json` were both implemented by FEAT-1405, not this issue. Remove these from any future re-implementation of FEAT-1406. The canonical owner is FEAT-1405; FEAT-1406's integration map entries for these files are stale. All documentation updates (`docs/reference/CLI.md`, `docs/reference/API.md`, `docs/reference/OUTPUT_STYLING.md`, `docs/reference/CONFIGURATION.md`, `.claude/CLAUDE.md`) are owned by FEAT-1407 — do not re-implement here.
+
+---
+
 **Open** | Created: 2026-05-09 | Priority: P2

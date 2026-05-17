@@ -11,6 +11,8 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 completed_at: 2026-05-09T19:01:12Z
+relates_to:
+- BUG-848
 ---
 
 # BUG-1385: `--resume` fails in print mode during Option E context-handoff continuation

@@ -1,6 +1,12 @@
 ---
 status: done
 completed_at: 2026-02-01T00:00:00Z
+relates_to:
+- ENH-056
+- ENH-057
+- ENH-206
+- ENH-208
+- ENH-209
 ---
 # P1-FEAT-210: Add end-to-end CLI workflow tests
 
@@ -98,3 +104,9 @@ Test Coverage Audit - 2026-02-01
 - Tests: 11 passed
 - Lint: PASS
 - Types: Not run (test files excluded from type checking)
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The "Loop execution workflow" E2E coverage was already delivered by ENH-056 (`TestEndToEndExecution` in `test_ll_loop.py`) and ENH-057 (resume path test). If `TestLoopExecutionWorkflow` in `test_cli_e2e.py` duplicates those scenarios, consolidate into whichever file is the authoritative home. Future loop E2E tests should live in `test_ll_loop.py` (ENH-056/057 territory) or clearly distinguish user-journey scope from unit-execution scope. Similarly, `main_auto`/`main_parallel` integration tests in this file overlap with ENH-206 (`test_cli.py`) and ENH-209 (`test_orchestrator.py`) — verify no identical test scenarios exist across files.

@@ -116,10 +116,24 @@ The `score` prompt then no longer needs to output `ALL_PASS`/`ITERATE` — it on
 
 ## Integration Map
 
-- **File**: `scripts/little_loops/loops/svg-textgrad.yaml`
-- **States affected**: `append_gradient`, `score`, `record_scores` (possibly removed), new `verify_score`
-- **Context**: `max_iterations` (top-level field)
-- **Dependencies**: Fix 2 (scores.md) is a prerequisite for convergence detection in `compute_gradient`; Fix 1 (gradient quoting) is prerequisite for gradient escalation in `compute_gradient`
+### Files to Modify
+- `scripts/little_loops/loops/svg-textgrad.yaml` — states `append_gradient`, `score`, `record_scores` (possibly removed); add `verify_score`; raise `max_iterations`
+
+### Dependent Files (Callers/Importers)
+- `ll-loop run svg-textgrad` invocations — behavioral change: `gradients.md` and `scores.md` now populate reliably; routing logic moves from prompt output to shell arithmetic
+
+### Similar Patterns
+- `scripts/little_loops/loops/svg-image-generator.yaml` — reference for shell-state patterns; check if similar shell-quoting issues exist in its `action` blocks
+
+### Tests
+- No existing automated tests for `svg-textgrad.yaml` loop states; manual verification via `ll-loop run svg-textgrad "a terminal keybindings reference card" --max-iterations 5` as described in Implementation Steps #6
+
+### Documentation
+- N/A — no docs reference `svg-textgrad.yaml` internals
+
+### Configuration
+- `max_iterations` top-level field in `svg-textgrad.yaml` (raised from 20 to 40)
+- Fix 2 (scores.md) is a prerequisite for convergence detection in `compute_gradient`; Fix 1 (gradient quoting) is prerequisite for gradient escalation in `compute_gradient`
 
 ## Implementation Steps
 
@@ -130,12 +144,38 @@ The `score` prompt then no longer needs to output `ALL_PASS`/`ITERATE` — it on
 5. Raise `max_iterations: 40`
 6. Run `ll-loop run svg-textgrad "a terminal keybindings reference card" --max-iterations 5` and verify: gradients.md non-empty after iteration 1, scores.md has an entry after iteration 1, verify_score shell routes correctly
 
+## Scope Boundaries
+
+**In scope:**
+- `svg-textgrad.yaml` states: `append_gradient` (shell quoting fix), `score` (remove self-reported routing), `record_scores` (possibly removed), `verify_score` (new shell state)
+- `max_iterations` field (raise to 40)
+
+**Out of scope:**
+- Other loops (`svg-image-generator.yaml`, etc.) — no cross-loop changes even if similar shell-quoting patterns exist
+- Loop executor, FSM runner, or `orchestrator.py` — no Python changes
+- `compute_gradient` escalation logic — thresholds and escalation rules unchanged
+- General shell-quoting audit of all loop YAML files — this fix is svg-textgrad only
+
 ## Impact
 
-- **Gradient history restored**: `compute_gradient` can detect repeated root causes and escalate; currently always reads an empty file
-- **Convergence detection restored**: 3-iteration plateau check becomes functional; loop can exit early instead of burning all 40 iterations
+- **Priority**: P2 — Both bugs completely disable core TextGrad mechanisms (gradient accumulation and convergence detection), but the loop still produces output; not a crash-level failure
+- **Effort**: Small — All changes are isolated to `svg-textgrad.yaml`; no Python code changes; 4 targeted edits to YAML states and one integer update
+- **Risk**: Low — Changes are scoped to one loop file; no breaking changes to the FSM executor, Python modules, or other loops
+- **Breaking Change**: No — `ll-loop run svg-textgrad` call signature is unchanged; output files (`gradients.md`, `scores.md`, `critique.md`) still produced in same locations
+
+**Value restored:**
+- **Gradient history**: `compute_gradient` can detect repeated root causes and escalate; currently always reads an empty file
+- **Convergence detection**: 3-iteration plateau check becomes functional; loop can exit early instead of burning all 40 iterations
 - **Rubric integrity**: external shell arithmetic prevents LLM from self-certifying pass when math doesn't support it
 - **Audit trail**: `scores.md` accurately reflects every scored iteration, making post-run analysis meaningful
+
+## Success Metrics
+
+- `gradients.md` is non-empty after iteration 1 (Fix 1: shell quoting verified)
+- `scores.md` has one entry per scored iteration, regardless of ALL_PASS/ITERATE routing path (Fix 2: universal append verified)
+- `verify_score` shell state routes to `done` when weighted average ≥ `pass_threshold` and to `record_scores` otherwise (Fix 4: external routing verified)
+- Loop exits via convergence detection (3-iteration plateau in `compute_gradient`) before `max_iterations: 40` when the brief produces plateauing scores (Fixes 1+2 enable this path)
+- Verification command: `ll-loop run svg-textgrad "a terminal keybindings reference card" --max-iterations 5` produces non-empty `gradients.md` and `scores.md` after the first scored iteration
 
 ## Related Key Documentation
 
@@ -148,7 +188,8 @@ loop, svg-textgrad, shell-quoting, convergence-detection, textgrad
 
 ## Status
 
----
+**Open** | Created: 2026-05-17 | Priority: P2
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-17T08:11:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4976d4f8-c206-4101-b4ca-7f83eeb1d1f4.jsonl`
 - `/ll:capture-issue` - 2026-05-17T08:08:24Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ccc2e272-5433-4234-bd5a-8b2343569a3a.jsonl`

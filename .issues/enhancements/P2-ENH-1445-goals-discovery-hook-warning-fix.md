@@ -148,3 +148,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `/ll:refine-issue` - 2026-05-11T19:47:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f6570c7-cc28-4156-88a6-a61486c174bb.jsonl`
 - `/ll:issue-size-review` - 2026-05-11T19:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0abadba2-fa26-422a-8f2e-9ed2d2744c98.jsonl`
 - `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/33a403c7-158c-474f-923d-29419c3cafc5.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `docs/reference/CONFIGURATION.md` line 327 (`### product` prose) update is owned by ENH-1443. Do not re-apply that change here — ENH-1443 is the designated documentation issue for all goals-discovery prose softening. This issue covers only `hooks/scripts/session-start.sh` warning removal and `scripts/tests/test_hooks_integration.py`.

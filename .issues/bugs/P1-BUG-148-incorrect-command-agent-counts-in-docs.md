@@ -6,6 +6,8 @@ discovered_by: audit_docs
 doc_file: README.md
 status: done
 completed_at: 2026-01-28T00:00:00Z
+relates_to:
+- BUG-162
 ---
 
 # BUG-004: Incorrect command and agent counts in documentation
@@ -116,3 +118,9 @@ And update the agents table to include all 7 agents.
 - Tests: PASS
 - Lint: PASS
 - All documentation now reflects accurate counts (18 commands, 7 agents)
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): BUG-162 (completed 2026-02-13) later re-fixed the command count in `docs/ARCHITECTURE.md`, updating it to 26 commands. This issue's ARCHITECTURE.md fix (setting it to 18) was superseded by BUG-162 as the project grew. The fixes to `README.md` and `scripts/README.md` (also set to 18) may also be stale — audit those files if the current command count is closer to 26+.

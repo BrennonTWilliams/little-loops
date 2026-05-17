@@ -1,6 +1,8 @@
 ---
 status: done
 completed_at: 2026-03-20T00:00:00Z
+relates_to:
+- BUG-1385
 ---
 # BUG-848: Implementation Failure - FEAT-543
 

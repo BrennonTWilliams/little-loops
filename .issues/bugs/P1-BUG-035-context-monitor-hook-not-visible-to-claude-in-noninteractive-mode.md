@@ -1,6 +1,8 @@
 ---
 status: done
 completed_at: 2026-01-14T00:00:00Z
+relates_to:
+- ENH-190
 ---
 # BUG-035: Context Monitor Hook Output Not Visible to Claude in Non-Interactive Mode
 

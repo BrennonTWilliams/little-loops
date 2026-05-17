@@ -204,3 +204,15 @@ class TestFSMSchema:
 - Tests: PASS (48 tests for FSM schema, 794 total)
 - Lint: PASS (ruff check)
 - Types: PASS (mypy)
+
+---
+
+## Scope Addition
+
+**Note** (added by `/ll:audit-issue-conflicts`): Several fields were added to the FSM schema after this issue completed, resolved during downstream issues but not tracked here:
+
+- `StateConfig.action_type: str | None` — dispatch type for prompt/slash_command/shell/mcp_tool (BUG-711, FEAT-1534, FEAT-1541)
+- `StateConfig.on_yes: str | None` / `StateConfig.on_no: str | None` — shorthand routing for yes/no evaluator verdicts (all built-in loops)
+- `EvaluateConfig.source: str | None` — redirects evaluator input to a captured variable (FEAT-1534, FEAT-1541)
+- `FSMLoop.input_key: str`, `FSMLoop.category: str | None`, `FSMLoop.description: str | None` — loop metadata for CLI and catalog (FEAT-047)
+- `EvaluateConfig.tolerance` broadened to `str | float | None` for interpolation strings (FEAT-041)

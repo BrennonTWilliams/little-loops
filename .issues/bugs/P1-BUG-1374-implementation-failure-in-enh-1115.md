@@ -1,6 +1,8 @@
 ---
 status: done
 completed_at: 2026-05-06T00:00:00Z
+relates_to:
+- BUG-1537
 ---
 # BUG-1374: Implementation Failure - ENH-1115
 
@@ -66,3 +68,6 @@ Closed. ENH-1115 was successfully implemented in commit c2f41949 ("feat(fsm): im
 
 ## Related Issues
 - [ENH-1115](/Users/brennon/AIProjects/brenentech/little-loops/.issues/enhancements/P3-ENH-1115-progressive-throttling-for-fsm-loops.md)
+- BUG-1537 — same auto-generated false-positive pattern (both resolved with no code defect found)
+
+**Note** (added by `/ll:audit-issue-conflicts`): Both BUG-1374 and BUG-1537 are examples of the auto-capture mechanism filing P1 issues for mid-run narration or context-window interruptions rather than genuine code failures. See ENH-191 for work on distinguishing transient vs real failures to reduce these false positives.

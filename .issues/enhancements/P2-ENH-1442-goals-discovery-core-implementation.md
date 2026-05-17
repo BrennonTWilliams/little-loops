@@ -233,3 +233,9 @@ _Added by `/ll:confidence-check` on 2026-05-11_
 - `/ll:refine-issue` - 2026-05-11T08:13:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a51073a8-32f8-4cb4-b8d7-89559d2abda8.jsonl`
 - `/ll:issue-size-review` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a400556-76fe-4ad7-9557-40b6a1c32a72.jsonl`
 - `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91964bec-3326-48c8-ac3d-4b50f98761b4.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Implementation Step 5 (create `scripts/tests/test_enh1442_doc_wiring.py`) is exclusively owned by ENH-1444. Do not re-implement this test file here — the creation and all assertions are specified and delivered by ENH-1444. This issue's implementation scope ends at the command/skill/hook changes; the corresponding test file is ENH-1444's deliverable.

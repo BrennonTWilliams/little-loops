@@ -131,6 +131,8 @@ from little_loops.fsm.schema import (
     ParameterSpec,
     RouteConfig,
     StateConfig,
+    TargetFileSpec,
+    TargetStateSpec,
     ThrottleConfig,
 )
 from little_loops.fsm.signal_detector import (
@@ -189,6 +191,8 @@ __all__ = [
     "SignalPattern",
     "StateConfig",
     "StatePersistence",
+    "TargetFileSpec",
+    "TargetStateSpec",
     "THROTTLE_HARD_EVENT",
     "THROTTLE_STOP_EVENT",
     "THROTTLE_WARN_EVENT",

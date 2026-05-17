@@ -228,4 +228,10 @@ Implemented all regex extensions (`BUG|FEAT|ENH` → `BUG|FEAT|ENH|EPIC`) across
 
 ---
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): `scripts/tests/conftest.py` changes (adding `epics/` dir to `issues_dir` fixture and `epics` to `sample_config`) are owned by FEAT-1410. Verify FEAT-1410 has landed before implementing this issue. Do not re-create or modify conftest.py here — treat those changes as pre-existing when you start. Similarly, all doc-file updates (`docs/reference/CLI.md`, `docs/reference/API.md`, `docs/reference/CONFIGURATION.md`) are owned by FEAT-1407 — defer to that issue for documentation changes.
+
+---
+
 **Open** | Created: 2026-05-09 | Priority: P2

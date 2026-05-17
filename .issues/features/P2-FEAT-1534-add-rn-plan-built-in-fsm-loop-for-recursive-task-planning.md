@@ -15,6 +15,8 @@ score_ambiguity: 22
 score_change_surface: 25
 size: Very Large
 decision_needed: false
+relates_to:
+- FEAT-1541
 ---
 
 # FEAT-1534: Add rn-plan built-in FSM loop for recursive task planning and execution
@@ -419,6 +421,12 @@ _Updated by `/ll:confidence-check` on 2026-05-16_
 - `/ll:refine-issue` - 2026-05-17T01:19:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76bec7dc-bf41-4c71-a95b-5d226691fa23.jsonl`
 - `/ll:format-issue` - 2026-05-17T01:11:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c1c0949-0900-40f0-8cd1-9755750db2fa.jsonl`
 - `/ll:capture-issue` - 2026-05-17T01:07:32Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9f536c9-fcc5-4138-bf10-9ec509b5e3a6.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-1541 (html-anything) follow a near-identical FSM harness pattern: `init (shell, capture: run_dir) → generate/plan → iterative refinement → score (output_contains sentinel) → done`. Both use `svg-image-generator.yaml` as their primary template. If additional harness loops are needed in future, consider creating a canonical `harness-template.yaml` skeleton in `scripts/little_loops/loops/` rather than copying the pattern from one of these two issues.
 
 ---
 

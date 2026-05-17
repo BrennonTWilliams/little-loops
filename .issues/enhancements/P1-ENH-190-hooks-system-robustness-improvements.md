@@ -5,6 +5,9 @@ discovered_date: 2026-01-31T00:00:00Z
 discovered_by: security-audit
 status: done
 completed_at: 2026-01-31T00:00:00Z
+relates_to:
+- BUG-035
+- ENH-191
 ---
 
 # ENH-190: Hooks System Audit and Robustness Improvements

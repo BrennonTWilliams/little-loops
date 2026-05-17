@@ -329,3 +329,9 @@ class TestImperativeCompiler:
 - Lint: PASS
 - Types: PASS
 - All acceptance criteria met
+
+---
+
+## Scope Addition
+
+**Note** (added by `/ll:audit-issue-conflicts`): FEAT-040 typed `EvaluateConfig.tolerance` as `float | None`. This issue broadened it to `str | float | None` to support `${context.*}` interpolation strings injected by the convergence compiler. FEAT-040's test suite (`test_fsm_schema.py`) was not updated to cover string-valued tolerance — those tests exist in `test_fsm_compilers.py` added here. Future work on the schema should treat `tolerance` as accepting interpolation strings.

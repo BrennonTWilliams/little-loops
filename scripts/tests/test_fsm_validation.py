@@ -11,6 +11,7 @@ from little_loops.fsm.schema import (
     FSMLoop,
     ParameterSpec,
     StateConfig,
+    TargetFileSpec,
     ThrottleConfig,
 )
 from little_loops.fsm.validation import (
@@ -531,3 +532,56 @@ class TestThrottleValidation:
         errors = validate_fsm(fsm)
         throttle_errors = [e for e in errors if "throttle" in e.message.lower()]
         assert throttle_errors == []
+
+
+class TestTargetsValidation:
+    """ENH-1552: validate_fsm rejects targets[].file values that are not .yaml."""
+
+    def _make_fsm(self, targets: list[TargetFileSpec]) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="s",
+            states={
+                "s": make_state(terminal=True),
+            },
+            targets=targets,
+        )
+
+    def test_non_yaml_file_rejected(self) -> None:
+        fsm = self._make_fsm(
+            [TargetFileSpec(file="loops/harness-optimize.txt")]
+        )
+        errors = validate_fsm(fsm)
+        assert any(
+            "targets[0].file" in e.message or "targets[0].file" in (e.path or "")
+            for e in errors
+        )
+
+    def test_yaml_file_accepted(self) -> None:
+        fsm = self._make_fsm(
+            [TargetFileSpec(file="loops/harness-optimize.yaml")]
+        )
+        errors = validate_fsm(fsm)
+        target_errors = [e for e in errors if "targets" in (e.path or "")]
+        assert target_errors == []
+
+    def test_glob_only_accepted(self) -> None:
+        fsm = self._make_fsm(
+            [TargetFileSpec(glob="loops/*.yaml")]
+        )
+        errors = validate_fsm(fsm)
+        target_errors = [e for e in errors if "targets" in (e.path or "")]
+        assert target_errors == []
+
+    def test_empty_targets_no_errors(self) -> None:
+        fsm = self._make_fsm([])
+        errors = validate_fsm(fsm)
+        target_errors = [e for e in errors if "targets" in (e.path or "")]
+        assert target_errors == []
+
+    def test_error_message_contains_offending_value(self) -> None:
+        fsm = self._make_fsm(
+            [TargetFileSpec(file="not-yaml.json")]
+        )
+        errors = validate_fsm(fsm)
+        assert any("not-yaml.json" in e.message for e in errors)

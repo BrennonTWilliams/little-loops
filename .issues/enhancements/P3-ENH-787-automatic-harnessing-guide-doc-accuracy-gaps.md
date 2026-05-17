@@ -3,7 +3,8 @@ id: ENH-787
 type: enhancement
 priority: P3
 title: "Fix accuracy and completeness gaps in AUTOMATIC_HARNESSING_GUIDE.md"
-status: open
+status: done
+completed_at: '2026-03-16T00:00:00Z'
 area: docs
 created: 2026-03-16
 ---
@@ -83,6 +84,7 @@ Three targeted edits made to `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`:
 **Completed** | Created: 2026-03-16 | Resolved: 2026-03-16 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-17T05:54:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9fb51237-8283-40d3-94ce-bda6ff4b1b33.jsonl`
 - `/ll:ready-issue` - 2026-03-16T20:40:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c341e96d-0119-4ad5-8dc1-bedb00c86279.jsonl`
 - `/ll:verify-issues` - 2026-03-16T20:18:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22cecf25-fcc4-4976-8633-e065ce8ec15a.jsonl`
 - `/ll:manage-issue` - 2026-03-16 - improve ENH-787

@@ -24,6 +24,8 @@ from little_loops.fsm.schema import (
     ParameterSpec,
     RouteConfig,
     StateConfig,
+    TargetFileSpec,
+    TargetStateSpec,
     ThrottleConfig,
 )
 from little_loops.fsm.validation import (
@@ -2578,3 +2580,146 @@ class TestThrottleConfig:
         )
         assert state.learning is not None
         assert state.learning.max_retries == 2
+
+
+class TestTargetStateSpec:
+    """ENH-1552: TargetStateSpec dataclass round-trip and defaults."""
+
+    def test_from_dict_round_trip(self) -> None:
+        original = TargetStateSpec(
+            name="optimize",
+            examples_file="examples/optimize.yaml",
+            eval_fragment="eval-fragment-id",
+        )
+        restored = TargetStateSpec.from_dict(original.to_dict())
+        assert restored.name == "optimize"
+        assert restored.examples_file == "examples/optimize.yaml"
+        assert restored.eval_fragment == "eval-fragment-id"
+
+    def test_from_dict_fields(self) -> None:
+        spec = TargetStateSpec.from_dict(
+            {"name": "s1", "examples_file": "e.yaml", "eval": "frag"}
+        )
+        assert spec.name == "s1"
+        assert spec.examples_file == "e.yaml"
+        assert spec.eval_fragment == "frag"
+
+    def test_to_dict_uses_eval_key(self) -> None:
+        spec = TargetStateSpec(name="s", examples_file="e.yaml", eval_fragment="f")
+        d = spec.to_dict()
+        assert d["eval"] == "f"
+        assert "eval_fragment" not in d
+
+
+class TestTargetFileSpec:
+    """ENH-1552: TargetFileSpec dataclass round-trip and defaults."""
+
+    def test_from_dict_round_trip(self) -> None:
+        original = TargetFileSpec(
+            file="loops/my-loop.yaml",
+            states=[
+                TargetStateSpec(name="s1", examples_file="e.yaml", eval_fragment="f1")
+            ],
+        )
+        restored = TargetFileSpec.from_dict(original.to_dict())
+        assert restored.file == "loops/my-loop.yaml"
+        assert restored.glob is None
+        assert len(restored.states) == 1
+        assert restored.states[0].name == "s1"
+        assert restored.states[0].eval_fragment == "f1"
+
+    def test_from_dict_empty(self) -> None:
+        spec = TargetFileSpec.from_dict({})
+        assert spec.file is None
+        assert spec.glob is None
+        assert spec.states == []
+
+    def test_from_dict_glob(self) -> None:
+        spec = TargetFileSpec.from_dict({"glob": "loops/*.yaml"})
+        assert spec.glob == "loops/*.yaml"
+        assert spec.file is None
+
+    def test_to_dict_omits_none(self) -> None:
+        spec = TargetFileSpec(file="f.yaml")
+        d = spec.to_dict()
+        assert d == {"file": "f.yaml"}
+        assert "glob" not in d
+        assert "states" not in d
+
+    def test_from_dict_with_states(self) -> None:
+        spec = TargetFileSpec.from_dict(
+            {
+                "file": "loop.yaml",
+                "states": [{"name": "n", "examples_file": "e.yaml", "eval": "frag"}],
+            }
+        )
+        assert len(spec.states) == 1
+        assert spec.states[0].name == "n"
+
+
+class TestFSMLoopTargetsField:
+    """ENH-1552: FSMLoop.targets field parsing and defaults."""
+
+    def _make_minimal(self) -> dict:
+        return {
+            "name": "t",
+            "description": "test",
+            "initial": "s",
+            "states": {"s": {"terminal": True}},
+        }
+
+    def test_from_dict_with_targets_populates_list(self) -> None:
+        data = self._make_minimal()
+        data["targets"] = [
+            {
+                "file": "loops/harness-optimize.yaml",
+                "states": [
+                    {"name": "optimize", "examples_file": "e.yaml", "eval": "frag"}
+                ],
+            }
+        ]
+        fsm = FSMLoop.from_dict(data)
+        assert len(fsm.targets) == 1
+        assert fsm.targets[0].file == "loops/harness-optimize.yaml"
+        assert len(fsm.targets[0].states) == 1
+        assert fsm.targets[0].states[0].name == "optimize"
+
+    def test_from_dict_without_targets_defaults_to_empty(self) -> None:
+        fsm = FSMLoop.from_dict(self._make_minimal())
+        assert fsm.targets == []
+
+    def test_to_dict_emits_targets_when_non_empty(self) -> None:
+        data = self._make_minimal()
+        data["targets"] = [
+            {"file": "loop.yaml", "states": [{"name": "s", "examples_file": "e.yaml", "eval": "f"}]}
+        ]
+        fsm = FSMLoop.from_dict(data)
+        d = fsm.to_dict()
+        assert "targets" in d
+        assert d["targets"][0]["file"] == "loop.yaml"
+
+    def test_to_dict_omits_targets_when_empty(self) -> None:
+        fsm = FSMLoop.from_dict(self._make_minimal())
+        d = fsm.to_dict()
+        assert "targets" not in d
+
+    def test_targets_key_no_warning(self, tmp_path: Path) -> None:
+        """A YAML with top-level 'targets:' produces no unknown-key warning (ENH-1552)."""
+        loop_yaml = tmp_path / "targets-key.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop with targets\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    terminal: true\n"
+            "targets:\n"
+            "  - file: loops/harness-optimize.yaml\n"
+            "    states:\n"
+            "      - name: optimize\n"
+            "        examples_file: e.yaml\n"
+            "        eval: frag\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []

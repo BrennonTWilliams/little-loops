@@ -189,3 +189,9 @@ _Updated by `/ll:confidence-check` on 2026-05-11_
 - `/ll:refine-issue` - 2026-05-11T08:28:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/738a9c42-7028-4bea-9dfa-7e9c727b4b87.jsonl`
 - `/ll:issue-size-review` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a400556-76fe-4ad7-9557-40b6a1c32a72.jsonl`
 - `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be1e58ed-bc9d-4da3-8129-97d5e6621836.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): `skills/init/interactive.md` is owned by ENH-1401, not this issue. Any wiring-phase step that references `skills/init/interactive.md:245` (Round 4 option text softening) belongs in ENH-1401's acceptance criteria, not here. This issue covers the five listed documentation files only — `commands/scan-product.md`, `docs/guides/PRODUCT_ANALYSIS.md`, `docs/reference/CONFIGURATION.md`, `docs/reference/API.md`, and `docs/reference/CLI.md`.
