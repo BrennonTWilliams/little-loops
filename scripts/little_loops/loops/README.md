@@ -37,6 +37,14 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `incremental-refactor` | Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure |
 | `docs-sync` | Verify documentation matches the codebase and fix broken links |
 
+## Planning
+
+| Loop | Description | Primary Inputs |
+|---|---|---|
+| `rn-plan` | Recursive-N planning loop — builds a structured plan from scratch with iterative rubric-driven refinement | `task` (natural language description) |
+| `rn-refine` | Recursive-N refinement loop — improves an existing plan document using the same rubric cycle | `plan_file` (path to `.md`) |
+| `rn-plan-apo` | Plan-quality gradient optimization for the `rn-plan` recursive planner — refines the planning prompt via text gradient until `target_plan_quality` is reached | `target_plan_quality` |
+
 ## Research & Knowledge
 
 | Loop | Description | Primary Inputs |
@@ -81,7 +89,6 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `apo-opro` | OPRO-style — history-guided proposal loop until convergence |
 | `apo-beam` | Beam search — generate N variants, score all, advance the winner |
 | `apo-textgrad` | TextGrad-style — test on examples, compute failure gradient, apply refinement |
-| `rn-plan-apo` | Plan-quality gradient optimization for the `rn-plan` recursive planner — scores plan trees on subtask success rate, depth/complexity ratio, redundancy, and coverage gaps; refines the planning prompt via text gradient until `target_plan_quality` is reached |
 | `examples-miner` | Co-evolutionary corpus miner — harvest session logs, quality-gate via three-layer judge, calibrate to 40–80% difficulty band, run apo-textgrad as inner loop, synthesize adversarial examples from gradient signal, enforce diversity, publish fresh examples.json |
 
 ## Data & Testing
