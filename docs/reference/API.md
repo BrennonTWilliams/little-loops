@@ -5101,7 +5101,7 @@ if rec and rec.status == "proven":
 
 ## little_loops.doc_counts
 
-Automated verification that documented counts (commands, agents, skills) match actual file counts in the codebase.
+Automated verification that documented counts (commands, agents, skills, loops) match actual file counts in the codebase.
 
 ### Data Classes
 
@@ -5110,7 +5110,7 @@ Automated verification that documented counts (commands, agents, skills) match a
 ```python
 @dataclass
 class CountResult:
-    category: str              # e.g., "commands", "agents", "skills"
+    category: str              # e.g., "commands", "agents", "skills", "loops"
     actual: int                # Actual file count
     documented: int | None     # Documented count (if found)
     file: str | None           # Documentation file path

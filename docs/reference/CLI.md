@@ -1291,7 +1291,7 @@ ll-migrate-status --config /path/to/project  # Run for a specific project
 
 ### ll-verify-docs
 
-Verify that documented counts (commands, agents, skills) match actual file counts.
+Verify that documented counts (commands, agents, skills, loops) match actual file counts.
 
 **Flags:**
 

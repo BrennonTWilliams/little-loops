@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from little_loops.doc_counts import (
+    BRIDGE_MARKER,
     CountResult,
     SkillBudgetResult,
     VerificationResult,
@@ -38,8 +39,25 @@ class TestCountFiles:
         skill1_dir.mkdir()
         (skill1_dir / "SKILL.md").write_text("# Skill 1")
 
-        count = count_files("skills", "SKILL.md", tmp_path)
+        count = count_files("skills", "*/SKILL.md", tmp_path)
         assert count == 1
+
+    def test_count_loops_top_level_only(self, tmp_path: Path) -> None:
+        """Count only top-level loop YAML files, not those in subdirectories."""
+        loops_dir = tmp_path / "loops"
+        loops_dir.mkdir()
+        (loops_dir / "loop1.yaml").write_text("name: loop1")
+        (loops_dir / "loop2.yaml").write_text("name: loop2")
+        # Subdirectory files should not be counted
+        lib_dir = loops_dir / "lib"
+        lib_dir.mkdir()
+        (lib_dir / "extra.yaml").write_text("name: lib-extra")
+        oracles_dir = loops_dir / "oracles"
+        oracles_dir.mkdir()
+        (oracles_dir / "oracle.yaml").write_text("name: oracle")
+
+        count = count_files("loops", "*.yaml", tmp_path)
+        assert count == 2
 
     def test_count_nonexistent_directory(self, tmp_path: Path) -> None:
         """Return 0 for nonexistent directory."""
@@ -92,6 +110,16 @@ class TestExtractCountFromLine:
         """Extract count from markdown bold text."""
         count = extract_count_from_line("**34 slash commands** for workflows", "commands")
         assert count == 34
+
+    def test_extract_loops_fsm_format(self) -> None:
+        """Extract count from '49 FSM loops' phrasing."""
+        count = extract_count_from_line("49 FSM loops", "loops")
+        assert count == 49
+
+    def test_extract_loops_plain_format(self) -> None:
+        """Extract count from plain '12 loops' phrasing."""
+        count = extract_count_from_line("12 loops", "loops")
+        assert count == 12
 
 
 class TestVerificationResult:
@@ -443,7 +471,6 @@ class TestVerifyDocumentation:
 
     def test_verify_with_skills_subdirectories(self, tmp_path: Path) -> None:
         """Verify correctly counts skills in subdirectories."""
-        # Create skills with subdirectories
         skills_dir = tmp_path / "skills"
         skills_dir.mkdir()
         for i in range(3):
@@ -451,9 +478,48 @@ class TestVerifyDocumentation:
             skill_dir.mkdir()
             (skill_dir / "SKILL.md").write_text(f"# Skill {i}")
 
-        # Create documentation with correct count
         readme = tmp_path / "README.md"
         readme.write_text("## 3 skills\n")
+
+        result = verify_documentation(tmp_path)
+
+        assert result.all_match is True
+        assert result.total_checked == 1
+
+    def test_verify_detects_loops_mismatch(self, tmp_path: Path) -> None:
+        """Verify detects when documented loop count doesn't match actual."""
+        loops_dir = tmp_path / "scripts" / "little_loops" / "loops"
+        loops_dir.mkdir(parents=True)
+        for i in range(3):
+            (loops_dir / f"loop{i}.yaml").write_text(f"name: loop{i}")
+
+        readme = tmp_path / "README.md"
+        readme.write_text("## 5 FSM loops\n")
+
+        result = verify_documentation(tmp_path)
+
+        assert result.all_match is False
+        assert any(m.category == "loops" for m in result.mismatches)
+        loops_mismatch = next(m for m in result.mismatches if m.category == "loops")
+        assert loops_mismatch.documented == 5
+        assert loops_mismatch.actual == 3
+
+    def test_verify_skills_excludes_bridge_skills(self, tmp_path: Path) -> None:
+        """Skill count excludes bridge skills (auto-generated from commands/)."""
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        # Two canonical skills
+        for i in range(2):
+            d = skills_dir / f"real-skill{i}"
+            d.mkdir()
+            (d / "SKILL.md").write_text(f"# Skill {i}")
+        # One bridge skill (should not be counted)
+        bridge_dir = skills_dir / "bridge-skill"
+        bridge_dir.mkdir()
+        (bridge_dir / "SKILL.md").write_text(f"{BRIDGE_MARKER}some-command.md`\n# Bridge")
+
+        readme = tmp_path / "README.md"
+        readme.write_text("## 2 skills\n")
 
         result = verify_documentation(tmp_path)
 

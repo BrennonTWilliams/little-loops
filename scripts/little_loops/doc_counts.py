@@ -22,8 +22,12 @@ DOC_FILES = [
 COUNT_TARGETS = {
     "commands": ("commands", "*.md"),
     "agents": ("agents", "*.md"),
-    "skills": ("skills", "SKILL.md"),
+    "skills": ("skills", "*/SKILL.md"),
+    "loops": ("scripts/little_loops/loops", "*.yaml"),
 }
+
+# Bridge skills are auto-generated from commands/ and should be excluded from the skill count
+BRIDGE_MARKER = "Bridged from `commands/"
 
 
 @dataclass
@@ -78,8 +82,7 @@ def count_files(directory: str, pattern: str, base_dir: Path | None = None) -> i
     if not dir_path.exists():
         return 0
 
-    # Use rglob for recursive search to handle subdirectories
-    return len(list(dir_path.rglob(pattern)))
+    return len(list(dir_path.glob(pattern)))
 
 
 def extract_count_from_line(line: str, category: str) -> int | None:
@@ -129,6 +132,13 @@ def verify_documentation(
     actual_counts: dict[str, int] = {}
     for category, (directory, pattern) in COUNT_TARGETS.items():
         actual_counts[category] = count_files(directory, pattern, base_dir)
+
+    # Adjust skill count to exclude bridge skills (auto-generated from commands/)
+    skills_dir = base_dir / "skills"
+    if "skills" in actual_counts and skills_dir.exists():
+        actual_counts["skills"] -= sum(
+            1 for p in skills_dir.glob("*/SKILL.md") if BRIDGE_MARKER in p.read_text()
+        )
 
     # Check each documentation file
     for doc_file in DOC_FILES:
