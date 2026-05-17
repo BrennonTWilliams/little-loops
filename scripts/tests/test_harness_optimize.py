@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
+from little_loops.loops.yaml_state_editor import extract_action, replace_action
 
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
 LOOP_FILE = BUILTIN_LOOPS_DIR / "harness-optimize.yaml"
@@ -154,3 +155,77 @@ class TestHarnessOptimizeStates:
         assert "harness-optimize-trajectory.jsonl" in action, (
             "write_trajectory_rejected must append to harness-optimize-trajectory.jsonl"
         )
+
+
+class TestYamlStateEditor:
+    """Tests for yaml_state_editor.extract_action and replace_action."""
+
+    FIXTURE_YAML = (
+        "name: test-loop\n"
+        "initial: first\n"
+        "states:\n"
+        "  first:\n"
+        "    action: |\n"
+        "      Do something first\n"
+        "      Multi-line action text\n"
+        "    prompt: first-prompt\n"
+        "    on_yes: second\n"
+        "    on_no: done\n"
+        "  second:\n"
+        "    action: |\n"
+        "      Do something second\n"
+        "      Another multi-line action\n"
+        "    prompt: second-prompt\n"
+        "    on_yes: done\n"
+        "  done:\n"
+        "    terminal: true\n"
+    )
+
+    @pytest.fixture
+    def loop_yaml(self, tmp_path: Path) -> Path:
+        path = tmp_path / "test-loop.yaml"
+        path.write_text(self.FIXTURE_YAML)
+        return path
+
+    def test_extract_action_returns_correct_text_first(self, loop_yaml: Path) -> None:
+        result = extract_action(loop_yaml, "first")
+        assert "Do something first" in result
+        assert "Multi-line action text" in result
+
+    def test_extract_action_returns_correct_text_second(self, loop_yaml: Path) -> None:
+        result = extract_action(loop_yaml, "second")
+        assert "Do something second" in result
+        assert "Another multi-line action" in result
+
+    def test_extract_action_raises_for_unknown_state(self, loop_yaml: Path) -> None:
+        with pytest.raises(KeyError):
+            extract_action(loop_yaml, "nonexistent")
+
+    def test_replace_action_modifies_only_target_state(self, loop_yaml: Path) -> None:
+        replace_action(loop_yaml, "second", "New action text\nLine two\n")
+        assert "New action text" in extract_action(loop_yaml, "second")
+        # first state must be unchanged
+        assert "Do something first" in extract_action(loop_yaml, "first")
+
+    def test_replace_action_preserves_sibling_keys(self, loop_yaml: Path) -> None:
+        replace_action(loop_yaml, "first", "Replacement text\n")
+        import yaml
+
+        data = yaml.safe_load(loop_yaml.read_text())
+        assert data["states"]["first"]["prompt"] == "first-prompt"
+        assert data["states"]["first"]["on_yes"] == "second"
+        assert data["states"]["first"]["on_no"] == "done"
+
+    def test_replace_action_leaves_other_states_unchanged(self, loop_yaml: Path) -> None:
+        replace_action(loop_yaml, "first", "Changed\n")
+        import yaml
+
+        data = yaml.safe_load(loop_yaml.read_text())
+        assert "Do something second" in data["states"]["second"]["action"]
+        assert data["states"]["done"].get("terminal") is True
+
+    def test_replace_action_preserves_block_scalar_style(self, loop_yaml: Path) -> None:
+        replace_action(loop_yaml, "second", "Updated multi-line\naction content\n")
+        raw = loop_yaml.read_text()
+        # ruamel must emit `action: |` not `action: "..."` or `action: 'Updated...'`
+        assert "action: |" in raw

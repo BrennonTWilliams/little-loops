@@ -54,6 +54,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.cli` | CLI entry points (package) |
 | `little_loops.parallel` | Parallel processing subpackage |
 | `little_loops.fsm` | FSM loop system subpackage |
+| `little_loops.loops` | Loop YAML utilities subpackage (`yaml_state_editor`: round-trip `extract_action`/`replace_action`) |
 | `little_loops.cli_args` | CLI argument parsing utilities |
 | `little_loops.sprint` | Sprint planning and execution |
 | `little_loops.issue_template` | Issue template assembly for sync pull (v2.0-compliant markdown from per-type section files) |

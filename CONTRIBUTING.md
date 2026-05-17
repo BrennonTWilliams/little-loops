@@ -119,7 +119,7 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── loops/                # Built-in FSM loop definitions (49 YAML files)
+├── loops/                # Built-in FSM loop definitions (49 YAML files) + yaml_state_editor Python module
 ├── skills/               # 30 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── debug-loop-run/               # Analyze loop execution history
@@ -242,6 +242,9 @@ little-loops/
         │   ├── analysis.py      #   Core analysis: boundaries, entity clustering
         │   ├── models.py        #   Data models (Workflow, SessionLink, etc.)
         │   └── io.py            #   YAML/JSON input-output helpers
+        ├── loops/               # Loop YAML utilities (sub-package)
+        │   ├── __init__.py
+        │   └── yaml_state_editor.py  # Round-trip extract_action / replace_action
         ├── fsm/                  # FSM loop system
         │   ├── __init__.py
         │   ├── schema.py
