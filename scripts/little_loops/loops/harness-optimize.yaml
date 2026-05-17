@@ -34,7 +34,20 @@ states:
   load_directive:
     action_type: shell
     action: |
-      TRAJ_FILES=$(find .ll/runs/harness-optimize -name "trajectory.jsonl" -path "*/states/whole-file/*" 2>/dev/null)
+      # Write state queue when loop YAML targets[].states[] is non-empty
+      LOOP_YAML="${context.targets}"
+      mkdir -p .loops/tmp
+      if [ -f "$LOOP_YAML" ]; then
+        python3 -c "import yaml,json; data=yaml.safe_load(open('$LOOP_YAML')); states=[s for t in data.get('targets',[]) for s in t.get('states',[])]; open('.loops/tmp/harness-optimize-state-queue.txt','w').write(''.join(json.dumps({'name':s['name'],'examples_file':s.get('examples_file','')})+'\n' for s in states)) if states else None" 2>/dev/null || true
+      fi
+      # Branch trajectory find path by current STATE_NAME (set by dequeue_state)
+      STATE_NAME=$(cat .loops/tmp/harness-optimize-state-name.txt 2>/dev/null || echo "")
+      if [ -n "$STATE_NAME" ]; then
+        TRAJ_PATH="*/states/${STATE_NAME}/*"
+      else
+        TRAJ_PATH="*/states/whole-file/*"
+      fi
+      TRAJ_FILES=$(find .ll/runs/harness-optimize -name "trajectory.jsonl" -path "$TRAJ_PATH" 2>/dev/null)
       if [ -n "$TRAJ_FILES" ]; then
         BEST=$(echo "$TRAJ_FILES" | xargs cat 2>/dev/null | jq -r 'select(.accepted==true) | .commit_sha' | tail -1)
         [ -n "$BEST" ] && git checkout "$BEST" -- ${context.targets}
@@ -43,7 +56,43 @@ states:
       if [ -f "$PROG" ]; then
         awk 'BEGIN{s=0} /^## [Dd]irective/{s=1;next} s && /^## /{exit} s{print}' "$PROG" | sed '/^[[:space:]]*$/d'
       fi
+      # Route to check_queue (state-mode) or baseline_score (whole-file)
+      if [ -s .loops/tmp/harness-optimize-state-queue.txt ]; then
+        exit 0
+      else
+        exit 1
+      fi
     capture: directive
+    evaluate:
+      type: exit_code
+    on_yes: check_queue
+    on_no: baseline_score
+
+  check_queue:
+    action_type: shell
+    action: |
+      if [ ! -s .loops/tmp/harness-optimize-state-queue.txt ]; then
+        exit 1
+      fi
+    evaluate:
+      type: exit_code
+    on_yes: dequeue_state
+    on_no: done
+
+  dequeue_state:
+    action_type: shell
+    action: |
+      ENTRY=$(head -1 .loops/tmp/harness-optimize-state-queue.txt)
+      tail -n +2 .loops/tmp/harness-optimize-state-queue.txt \
+        > .loops/tmp/harness-optimize-state-queue.tmp
+      mv .loops/tmp/harness-optimize-state-queue.tmp \
+        .loops/tmp/harness-optimize-state-queue.txt
+      STATE_NAME=$(echo "$ENTRY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['name'])")
+      EXAMPLES_FILE=$(echo "$ENTRY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('examples_file',''))")
+      printf '%s' "$STATE_NAME" > .loops/tmp/harness-optimize-state-name.txt
+      printf '%s' "$EXAMPLES_FILE" > .loops/tmp/harness-optimize-examples-file.txt
+      echo "$STATE_NAME"
+    capture: state_name
     next: baseline_score
 
   baseline_score:
@@ -70,10 +119,20 @@ states:
       Baseline score: ${captured.baseline.output}
       Last benchmark output: ${captured.benchmark_score.output}
 
-      Pick ONE file from the target list to improve this iteration.
-      Read it, then propose ONE targeted edit to raise the benchmark score.
-      Output the complete revised file contents only —
-      no preamble, no explanation, no markdown fences.
+      State-mode target: ${captured.state_name.output}
+
+      If state-mode target (above) is non-empty:
+        Read the target loop YAML (${context.targets}) and extract the `action:` block
+        for state "${captured.state_name.output}". For additional context, read the
+        examples file at .loops/tmp/harness-optimize-examples-file.txt if it exists.
+        Propose a targeted edit to that action block to raise the benchmark score.
+        Output ONLY the revised action block text — no YAML keys, no fences, no preamble.
+
+      If state-mode target is empty:
+        Pick ONE file from the target list to improve this iteration.
+        Read it, then propose ONE targeted edit to raise the benchmark score.
+        Output the complete revised file contents only —
+        no preamble, no explanation, no markdown fences.
     capture: candidate
     on_blocked: done
     next: apply
@@ -82,12 +141,30 @@ states:
     action_type: prompt
     timeout: 120
     action: |
-      Write the following revised contents to the file you proposed editing.
-      Replace the entire file contents exactly — no preamble, no explanation.
+      Apply the following proposed change.
 
+      State-mode target state: ${captured.state_name.output}
+      Target file: ${context.targets}
+
+      Proposed change:
       ${captured.candidate.output}
 
-      Confirm the file has been updated.
+      If state-mode target (above) is non-empty:
+        1. Write the proposed action text to:
+           .loops/tmp/harness-optimize-candidate-action.txt
+        2. Apply it using the yaml_state_editor:
+           python3 -c "
+      from little_loops.loops.yaml_state_editor import replace_action
+      from pathlib import Path
+      action = Path('.loops/tmp/harness-optimize-candidate-action.txt').read_text()
+      replace_action(Path('${context.targets}'), '${captured.state_name.output}', action)
+      "
+
+      If state-mode target is empty:
+        Write the following revised contents to the file you proposed editing.
+        Replace the entire file contents exactly — no preamble, no explanation.
+
+      Confirm the change has been applied.
     next: score
 
   score:
@@ -131,16 +208,48 @@ states:
   write_trajectory_accepted:
     action_type: shell
     action: |
+      STATE_NAME=$(cat .loops/tmp/harness-optimize-state-name.txt 2>/dev/null || echo "")
+      if [ -n "$STATE_NAME" ]; then
+        RUN_ID=$(echo "${captured.traj_path.output}" | sed 's|.*/harness-optimize/\([^/]*\)/.*|\1|')
+        TRAJ=".ll/runs/harness-optimize/${RUN_ID}/states/${STATE_NAME}/trajectory.jsonl"
+        mkdir -p "$(dirname "$TRAJ")"
+      else
+        TRAJ="${captured.traj_path.output}"
+      fi
       echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":true,"commit_sha":"${captured.last_commit.output}"}' \
-        >> "${captured.traj_path.output}"
-    next: capture_prev
+        >> "$TRAJ"
+      if [ -n "$STATE_NAME" ]; then
+        exit 0
+      else
+        exit 1
+      fi
+    evaluate:
+      type: exit_code
+    on_yes: check_queue
+    on_no: capture_prev
 
   write_trajectory_rejected:
     action_type: shell
     action: |
+      STATE_NAME=$(cat .loops/tmp/harness-optimize-state-name.txt 2>/dev/null || echo "")
+      if [ -n "$STATE_NAME" ]; then
+        RUN_ID=$(echo "${captured.traj_path.output}" | sed 's|.*/harness-optimize/\([^/]*\)/.*|\1|')
+        TRAJ=".ll/runs/harness-optimize/${RUN_ID}/states/${STATE_NAME}/trajectory.jsonl"
+        mkdir -p "$(dirname "$TRAJ")"
+      else
+        TRAJ="${captured.traj_path.output}"
+      fi
       echo '{"iter":${state.iteration},"score":${captured.benchmark_score.output},"accepted":false,"commit_sha":""}' \
-        >> "${captured.traj_path.output}"
-    next: done
+        >> "$TRAJ"
+      if [ -n "$STATE_NAME" ]; then
+        exit 0
+      else
+        exit 1
+      fi
+    evaluate:
+      type: exit_code
+    on_yes: check_queue
+    on_no: done
 
   capture_prev:
     action_type: shell

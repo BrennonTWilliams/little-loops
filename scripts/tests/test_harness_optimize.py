@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -9,6 +11,10 @@ import yaml
 
 from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
 from little_loops.loops.yaml_state_editor import extract_action, replace_action
+
+
+def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True)
 
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
 LOOP_FILE = BUILTIN_LOOPS_DIR / "harness-optimize.yaml"
@@ -78,6 +84,8 @@ class TestHarnessOptimizeStates:
         "write_trajectory_rejected",
         "capture_prev",
         "done",
+        "dequeue_state",
+        "check_queue",
     }
 
     def test_has_all_required_states(self, loop_data: dict) -> None:
@@ -139,11 +147,29 @@ class TestHarnessOptimizeStates:
         assert state.get("capture") == "prev_score"
         assert state.get("next") == "propose"
 
-    def test_write_trajectory_accepted_routes_to_capture_prev(self, loop_data: dict) -> None:
-        assert loop_data["states"]["write_trajectory_accepted"].get("next") == "capture_prev"
+    def test_write_trajectory_accepted_routes_based_on_mode(self, loop_data: dict) -> None:
+        state = loop_data["states"]["write_trajectory_accepted"]
+        assert state.get("next") is None, (
+            "write_trajectory_accepted must use route dispatch, not static next"
+        )
+        assert state.get("on_yes") == "check_queue", (
+            "write_trajectory_accepted must route to check_queue in state-mode (exit 0)"
+        )
+        assert state.get("on_no") == "capture_prev", (
+            "write_trajectory_accepted must route to capture_prev in whole-file mode (exit 1)"
+        )
 
-    def test_write_trajectory_rejected_routes_to_done(self, loop_data: dict) -> None:
-        assert loop_data["states"]["write_trajectory_rejected"].get("next") == "done"
+    def test_write_trajectory_rejected_routes_based_on_mode(self, loop_data: dict) -> None:
+        state = loop_data["states"]["write_trajectory_rejected"]
+        assert state.get("next") is None, (
+            "write_trajectory_rejected must use route dispatch, not static next"
+        )
+        assert state.get("on_yes") == "check_queue", (
+            "write_trajectory_rejected must route to check_queue in state-mode (exit 0)"
+        )
+        assert state.get("on_no") == "done", (
+            "write_trajectory_rejected must route to done in whole-file mode (exit 1)"
+        )
 
     def test_trajectory_path_in_accepted_state(self, loop_data: dict) -> None:
         action = loop_data["states"]["write_trajectory_accepted"].get("action", "")
@@ -272,3 +298,247 @@ class TestYamlStateEditor:
         raw = loop_yaml.read_text()
         # ruamel must emit `action: |` not `action: "..."` or `action: 'Updated...'`
         assert "action: |" in raw
+
+
+# ---------------------------------------------------------------------------
+# Bash snippets extracted from dequeue_state and check_queue states
+# ---------------------------------------------------------------------------
+
+_DEQUEUE_SCRIPT = r"""
+ENTRY=$(head -1 .loops/tmp/harness-optimize-state-queue.txt)
+tail -n +2 .loops/tmp/harness-optimize-state-queue.txt \
+  > .loops/tmp/harness-optimize-state-queue.tmp
+mv .loops/tmp/harness-optimize-state-queue.tmp \
+  .loops/tmp/harness-optimize-state-queue.txt
+STATE_NAME=$(echo "$ENTRY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['name'])")
+EXAMPLES_FILE=$(echo "$ENTRY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('examples_file',''))")
+printf '%s' "$STATE_NAME" > .loops/tmp/harness-optimize-state-name.txt
+printf '%s' "$EXAMPLES_FILE" > .loops/tmp/harness-optimize-examples-file.txt
+echo "$STATE_NAME"
+"""
+
+_CHECK_QUEUE_SCRIPT = r"""
+if [ ! -s .loops/tmp/harness-optimize-state-queue.txt ]; then
+  exit 1
+fi
+"""
+
+
+class TestDequeueState:
+    """dequeue_state queue pop and capture logic."""
+
+    def test_pops_first_entry_and_emits_state_name(self, tmp_path: Path) -> None:
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        entry1 = json.dumps({"name": "state_a", "examples_file": "examples/a.txt"})
+        entry2 = json.dumps({"name": "state_b", "examples_file": "examples/b.txt"})
+        (loops_tmp / "harness-optimize-state-queue.txt").write_text(f"{entry1}\n{entry2}\n")
+
+        result = _bash(_DEQUEUE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0, f"dequeue_state failed: {result.stderr}"
+        assert result.stdout.strip() == "state_a"
+        queue = (loops_tmp / "harness-optimize-state-queue.txt").read_text()
+        assert "state_a" not in queue
+        assert "state_b" in queue
+
+    def test_writes_state_name_to_temp_file(self, tmp_path: Path) -> None:
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        entry = json.dumps({"name": "optimize_trigger", "examples_file": "ex.txt"})
+        (loops_tmp / "harness-optimize-state-queue.txt").write_text(f"{entry}\n")
+
+        _bash(_DEQUEUE_SCRIPT, tmp_path)
+
+        assert (loops_tmp / "harness-optimize-state-name.txt").read_text() == "optimize_trigger"
+
+    def test_writes_examples_file_to_temp_file(self, tmp_path: Path) -> None:
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        entry = json.dumps({"name": "some_state", "examples_file": "examples/test.txt"})
+        (loops_tmp / "harness-optimize-state-queue.txt").write_text(f"{entry}\n")
+
+        _bash(_DEQUEUE_SCRIPT, tmp_path)
+
+        assert (loops_tmp / "harness-optimize-examples-file.txt").read_text() == "examples/test.txt"
+
+    def test_advances_queue_after_each_pop(self, tmp_path: Path) -> None:
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        entries = "\n".join(
+            json.dumps({"name": f"state_{i}", "examples_file": ""}) for i in range(3)
+        ) + "\n"
+        (loops_tmp / "harness-optimize-state-queue.txt").write_text(entries)
+
+        _bash(_DEQUEUE_SCRIPT, tmp_path)
+        _bash(_DEQUEUE_SCRIPT, tmp_path)
+        result = _bash(_DEQUEUE_SCRIPT, tmp_path)
+
+        assert result.stdout.strip() == "state_2"
+        assert (loops_tmp / "harness-optimize-state-queue.txt").read_text().strip() == ""
+
+    def test_empty_examples_file_field_writes_empty_string(self, tmp_path: Path) -> None:
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        entry = json.dumps({"name": "bare_state"})
+        (loops_tmp / "harness-optimize-state-queue.txt").write_text(f"{entry}\n")
+
+        _bash(_DEQUEUE_SCRIPT, tmp_path)
+
+        assert (loops_tmp / "harness-optimize-examples-file.txt").read_text() == ""
+
+
+class TestCheckQueue:
+    """check_queue routing logic."""
+
+    def test_exits_1_when_queue_file_empty(self, tmp_path: Path) -> None:
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "harness-optimize-state-queue.txt").write_text("")
+
+        result = _bash(_CHECK_QUEUE_SCRIPT, tmp_path)
+
+        assert result.returncode != 0
+
+    def test_exits_1_when_queue_file_missing(self, tmp_path: Path) -> None:
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+
+        result = _bash(_CHECK_QUEUE_SCRIPT, tmp_path)
+
+        assert result.returncode != 0
+
+    def test_exits_0_when_queue_non_empty(self, tmp_path: Path) -> None:
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        entry = json.dumps({"name": "state_a", "examples_file": ""})
+        (loops_tmp / "harness-optimize-state-queue.txt").write_text(f"{entry}\n")
+
+        result = _bash(_CHECK_QUEUE_SCRIPT, tmp_path)
+
+        assert result.returncode == 0
+
+    def test_exits_1_after_queue_drained(self, tmp_path: Path) -> None:
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        entry = json.dumps({"name": "only_state", "examples_file": ""})
+        (loops_tmp / "harness-optimize-state-queue.txt").write_text(f"{entry}\n")
+
+        _bash(_DEQUEUE_SCRIPT, tmp_path)
+        result = _bash(_CHECK_QUEUE_SCRIPT, tmp_path)
+
+        assert result.returncode != 0
+
+
+class TestStateModeIntegration:
+    """Integration tests for state-mode isolation using yaml_state_editor."""
+
+    FIXTURE_LOOP_YAML = (
+        "name: test-target-loop\n"
+        "initial: first\n"
+        "targets:\n"
+        "  - file: test-target-loop.yaml\n"
+        "    states:\n"
+        "      - name: first\n"
+        "        examples_file: examples/first.txt\n"
+        "        eval: score\n"
+        "      - name: second\n"
+        "        examples_file: examples/second.txt\n"
+        "        eval: score\n"
+        "states:\n"
+        "  first:\n"
+        "    action: |\n"
+        "      Do first action\n"
+        "    next: second\n"
+        "  second:\n"
+        "    action: |\n"
+        "      Do second action\n"
+        "    next: done\n"
+        "  done:\n"
+        "    terminal: true\n"
+    )
+
+    @pytest.fixture
+    def target_loop(self, tmp_path: Path) -> Path:
+        path = tmp_path / "test-target-loop.yaml"
+        path.write_text(self.FIXTURE_LOOP_YAML)
+        return path
+
+    def test_replace_first_state_leaves_second_unchanged(self, target_loop: Path) -> None:
+        replace_action(target_loop, "first", "Optimized first action\n")
+
+        assert "Optimized first action" in extract_action(target_loop, "first")
+        assert "Do second action" in extract_action(target_loop, "second")
+
+    def test_replace_second_state_leaves_first_unchanged(self, target_loop: Path) -> None:
+        replace_action(target_loop, "second", "Optimized second action\n")
+
+        assert "Do first action" in extract_action(target_loop, "first")
+        assert "Optimized second action" in extract_action(target_loop, "second")
+
+    def test_independent_mutations_preserve_yaml_structure(self, target_loop: Path) -> None:
+        replace_action(target_loop, "first", "New first\n")
+        replace_action(target_loop, "second", "New second\n")
+
+        data = yaml.safe_load(target_loop.read_text())
+        assert data["states"]["first"]["next"] == "second"
+        assert data["states"]["second"]["next"] == "done"
+        assert data["states"]["done"].get("terminal") is True
+
+    def test_queue_written_from_loop_yaml_targets(self, tmp_path: Path, target_loop: Path) -> None:
+        """load_directive queue-writing script populates state queue from targets[].states[]."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+
+        write_queue_script = rf"""
+LOOP_YAML="{target_loop}"
+mkdir -p .loops/tmp
+if [ -f "$LOOP_YAML" ]; then
+  python3 - "$LOOP_YAML" 2>/dev/null <<'PYEOF'
+import yaml, json, sys
+data = yaml.safe_load(open(sys.argv[1]))
+states = [s for t in data.get('targets', []) for s in t.get('states', [])]
+if states:
+    with open('.loops/tmp/harness-optimize-state-queue.txt', 'w') as f:
+        for s in states:
+            f.write(json.dumps({{'name': s['name'], 'examples_file': s.get('examples_file', '')}}) + '\n')
+PYEOF
+fi
+"""
+        result = _bash(write_queue_script, tmp_path)
+        assert result.returncode == 0, f"queue write failed: {result.stderr}"
+
+        queue_file = loops_tmp / "harness-optimize-state-queue.txt"
+        assert queue_file.exists(), "queue file was not created"
+        lines = [json.loads(ln) for ln in queue_file.read_text().strip().splitlines()]
+        assert len(lines) == 2
+        assert lines[0]["name"] == "first"
+        assert lines[0]["examples_file"] == "examples/first.txt"
+        assert lines[1]["name"] == "second"
+
+    def test_no_queue_written_for_non_loop_yaml(self, tmp_path: Path) -> None:
+        """load_directive does not write queue when target is a plain text file."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        plain_file = tmp_path / "SKILL.md"
+        plain_file.write_text("# Skill\nSome content\n")
+
+        write_queue_script = rf"""
+LOOP_YAML="{plain_file}"
+mkdir -p .loops/tmp
+if [ -f "$LOOP_YAML" ]; then
+  python3 - "$LOOP_YAML" 2>/dev/null <<'PYEOF'
+import yaml, json, sys
+data = yaml.safe_load(open(sys.argv[1]))
+states = [s for t in data.get('targets', []) for s in t.get('states', [])]
+if states:
+    with open('.loops/tmp/harness-optimize-state-queue.txt', 'w') as f:
+        for s in states:
+            f.write(json.dumps({{'name': s['name'], 'examples_file': s.get('examples_file', '')}}) + '\n')
+PYEOF
+fi
+"""
+        _bash(write_queue_script, tmp_path)
+
+        queue_file = loops_tmp / "harness-optimize-state-queue.txt"
+        assert not queue_file.exists() or queue_file.read_text().strip() == ""
