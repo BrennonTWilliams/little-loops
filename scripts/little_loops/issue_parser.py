@@ -512,8 +512,8 @@ class IssueParser:
 
         depends_on: list[str] = []
 
-        # Parse title and dependencies from file content
-        title = self._parse_title_from_content(content, issue_path)
+        # Parse title: prefer frontmatter title: field, then markdown header, then filename stem
+        title = frontmatter.get("title") or self._parse_title_from_content(content, issue_path)
         blocked_by = self._parse_blocked_by(content)
         blocks = self._parse_blocks(content)
 
