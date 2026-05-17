@@ -297,7 +297,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `agents`, `loops`, `fsm`, `captured`
 
+## Go/No-Go Findings
+
+_Added by `/ll:go-no-go` on 2026-05-16_ — **NO-GO (REFINE)**
+
+**Deciding Factor**: Two acceptance criteria depend on infrastructure that demonstrably does not exist (AC-7 active verification, AC-62 cost/token comparison). Shipping now means quietly weakening the contract or stranding the agent with broken ACs. Refine the issue — or land precursor enhancements for token tracking and a real `--fixture` replay mode — before implementing.
+
+### Key Arguments For
+- Pattern fit is strong: 8 existing agents (`agents/consistency-checker.md`, `agents/plugin-config-auditor.md`) provide a direct template; `ll-adapt-agents-for-codex` auto-discovers `agents/*.md`; plugin registration is one line in `.claude-plugin/plugin.json:21-29`.
+- Problem is observable now: two stuck runs in `.loops/.running/` (`autodev-20260516T201239` SIGKILL'd at iteration 13 after 573 events; `autodev-20260504T160814` abandoned in `refine_current` since May 4), plus 46 built-in loops and 225 archived history runs justify a dedicated coordinator.
+
+### Key Arguments Against
+- AC-7 "active verification" is not satisfiable with current tooling: `SimulationActionRunner` in `scripts/little_loops/fsm/runners.py` returns synthetic `ActionResult` values without invoking the LLM, so `ll-loop simulate --scenario all-pass` trivially "verifies" any change. `ll-loop test` only exercises one state in isolation. Real verification requires live `ll-loop run`, which has side effects and takes minutes.
+- AC-62 cost/optimization comparison has no data source: FSM persistence (`scripts/little_loops/fsm/persistence.py:86-103`) stores `accumulated_ms` and per-action `duration_ms` but zero token/cost counts. The issue itself admits this; a precursor ENH to add token capture has not been opened.
+
+### Rationale
+The AGAINST side presents two concrete, codebase-grounded blockers that the FOR side does not credibly resolve: (1) `SimulationActionRunner` returns synthetic passes without invoking the LLM, so `ll-loop simulate --scenario` cannot satisfy AC-7's "active verification" requirement; and (2) AC-62's cost/token comparison is architecturally impossible because the FSM persistence layer tracks `accumulated_ms`/`duration_ms` but no token counts. The FOR side's "zero Python lines" framing is accurate for the agent markdown itself but elides that two acceptance criteria are unfulfillable with current infrastructure. The overlap with `debug-loop-run` + `audit-loop-run` + `review-loop` (1,361 lines combined) is real, but a thin orchestrator agent is still a defensible addition — the issue just needs its ACs reconciled with infrastructure reality before it ships.
+
 ## Session Log
+- `/ll:go-no-go` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79ebee4b-bfa2-4125-97d9-5c564585a388.jsonl`
 - `/ll:refine-issue` - 2026-05-17T01:55:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b41cd01e-2f66-4d8a-9569-7533e00b817e.jsonl`
 - `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60ba9ff7-61cd-4a6b-83ff-2a4a1099aaf1.jsonl`
 - `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07f68ba4-062e-4796-966c-af5b799a1fb1.jsonl`

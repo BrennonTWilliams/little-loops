@@ -6,11 +6,11 @@ status: open
 discovered_date: 2026-05-16
 discovered_by: capture-issue
 captured_at: '2026-05-17T01:07:32Z'
-confidence_score: 85
-outcome_confidence: 67
+confidence_score: 95
+outcome_confidence: 79
 score_complexity: 14
 score_test_coverage: 18
-score_ambiguity: 10
+score_ambiguity: 22
 score_change_surface: 25
 size: Very Large
 ---
@@ -69,11 +69,11 @@ A developer starts a non-trivial implementation task and wants a battle-tested p
 - [ ] `ll-loop run rn-plan "<task>"` accepts a positional task description and runs end-to-end without manual intervention
 - [ ] Loop writes `<slug>-plan.md` and `<slug>-plan-rubric.md` to the configured output directory (default `.loops/plans/`)
 - [ ] Rubric file contains all 8 dimensions (breadth, depth, complexity, granularity, clarity, consistency, logic_strategy, outcome_confidence) on a LOW/MEDIUM/HIGH/VERY-HIGH scale
-- [ ] FSM states include init, generate_rubric, classify_research, research_files, research_web, synthesize, score, check_convergence, done
-- [ ] Loop terminates with `done` when all rubric dimensions are VERY-HIGH or when `max_iterations` (default 50) is reached
-- [ ] `--max-iterations` and `--output-dir` flags override defaults
-- [ ] Research classification routes to file research, web research, or both based on task content
-- [ ] Tests in `scripts/tests/loops/` cover rubric generation, research classification, score computation, and convergence detection
+- [ ] FSM states include `init`, `generate_rubric`, `classify_research`, `route_files`, `route_web`, `research_files`, `research_web`, `synthesize`, `score`, `done`, `failed` (convergence is embedded in `score` via `evaluate: llm_structured` — see "Resolved Design Decisions" below; no separate `check_convergence` state, which matches the pattern used by all existing convergence-driving loops)
+- [ ] Loop terminates with `done` when the score state's `llm_structured` verdict is `yes` (all 8 rubric dimensions == VERY-HIGH) or when `max_iterations` (default 50) is reached (enforced by `FSMExecutor.run()` at `scripts/little_loops/fsm/executor.py:265-267` — no YAML counter needed)
+- [ ] `--max-iterations` overrides the default; output directory is overridden via the existing `--context output_dir=<path>` flag (no new `--output-dir` CLI flag — see "Resolved Design Decisions")
+- [ ] Research classification routes to file research, web research, or both via chained binary router states (`route_files` then `route_web`) modeled on `backlog-flow-optimizer.yaml:route_bloat → route_size → route_priority`
+- [ ] Tests at `scripts/tests/test_rn_plan.py` (NOT a `scripts/tests/loops/` subdirectory, which does not exist) cover rubric generation, research classification, score computation, and convergence detection
 
 ## Motivation
 
@@ -124,6 +124,86 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **LLM-scored convergence**: `evaluate: type: llm_structured` (see `evaluate_llm_structured()` at `scripts/little_loops/fsm/evaluators.py:609`) builds a host invocation via `resolve_host().build_blocking_json(...)` and passes a JSON schema. This is the right evaluator for the score state (returns yes/no verdict directly).
 - **No web-search FSM primitive**: A grep across all 43 built-in loop YAMLs found zero direct WebSearch/WebFetch state invocations. `rn-plan`'s `research_web` state must be `action_type: prompt` with explicit instructions telling the LLM to use its WebSearch/WebFetch tools (Claude/Codex provide these as built-in tools in their tool catalogs).
 
+### Resolved Design Decisions
+
+_Added by `/ll:refine-issue` (second pass) — resolves the three open design choices flagged in the previous Confidence Check:_
+
+**1. Three-way `classify_research` routing → chained binary router states (NOT `output_contains` with custom routes)**
+
+`evaluate_output_contains()` at `scripts/little_loops/fsm/evaluators.py:274-310` is **binary** — it only returns `yes`/`no`/`error`, so a single `output_contains` evaluate block cannot dispatch three ways. The `route:` config block (RouteConfig at `scripts/little_loops/fsm/schema.py:144`) only adds custom verdicts when the evaluator natively emits them (e.g., the `convergence` evaluator emits `target`/`progress`/`stall`).
+
+The only existing pattern for 3+ way `output_contains` routing is **chained no-action router states** that each re-read the same captured variable via `source:`. Closest analog: `scripts/little_loops/loops/backlog-flow-optimizer.yaml` (`route_bloat` → `route_size` → `route_priority`) and `scripts/little_loops/loops/context-health-monitor.yaml` (`route` → `route_scratch`).
+
+YAML stub for `rn-plan`'s classify_research → 3-way dispatch:
+
+```yaml
+classify_research:
+  action_type: prompt
+  action: |
+    Analyze the task and the current plan. Decide what research is needed.
+    End your response with EXACTLY one of these tokens on its own line:
+    NEEDS_FILES
+    NEEDS_WEB
+    NEEDS_BOTH
+  capture: classification
+  next: route_files
+
+route_files:
+  evaluate:
+    type: output_contains
+    source: "${captured.classification.output}"
+    pattern: "NEEDS_FILES"
+  on_yes: research_files
+  on_no: route_web
+  on_error: synthesize
+
+route_web:
+  evaluate:
+    type: output_contains
+    source: "${captured.classification.output}"
+    pattern: "NEEDS_WEB"
+  on_yes: research_web
+  on_no: research_files     # NEEDS_BOTH fallback: run files first, then chain to web
+  on_error: synthesize
+
+research_files:
+  action_type: prompt
+  # ... uses Read/Grep/Glob
+  next: route_web_after_files     # OR: next: synthesize if classification was NEEDS_FILES only
+
+# Simpler alternative: don't try to express NEEDS_BOTH as a parallel/sequential composite —
+# emit only NEEDS_FILES or NEEDS_WEB and treat "both" as two sequential loop iterations.
+```
+
+**Recommended simplification**: drop `NEEDS_BOTH` and let the loop itself handle "both is needed" by iterating (run files-research on iteration 1, score still NO, classify_research emits NEEDS_WEB on iteration 2, etc.). This eliminates the parallel/sequential composite design problem entirely and matches how convergence loops naturally explore the solution space.
+
+**2. Convergence checking → embed in `score` state (NO separate `check_convergence` state)**
+
+Searched all 43 built-in loops: **zero use a separate `check_convergence` state**. The universal pattern is to embed convergence in the routing/score state via `evaluate: type: llm_structured` with `on_yes: done` / `on_no: <loop_back_state>`. Examples (8+ loops use Pattern A): `eval-driven-development.yaml:69-79` (`route_eval`), `incremental-refactor.yaml:39-46` (`check_complete`), `fix-quality-and-tests.yaml:16`, `general-task.yaml:72`, `outer-loop-eval.yaml:81`.
+
+The `llm_structured` schema is **fixed** at `scripts/little_loops/fsm/evaluators.py:59-84` as `{verdict, confidence, reason}` (verdict ∈ `yes`/`no`/`blocked`/`partial`). It cannot return all 8 rubric dimension scores directly. Therefore `score` must split into two sub-actions:
+- Phase A — `action_type: prompt` reads plan+rubric, scores each dimension, and rewrites the rubric file with updated scores
+- Phase B — same state's `evaluate: llm_structured` block then asks: "Are all 8 dimensions VERY-HIGH in the updated rubric?" with `source: "${captured.score.output}"` and routes `on_yes: done` / `on_no: classify_research`
+
+**3. `--output-dir` CLI flag → use existing `--context output_dir=<path>` (NO new flag)**
+
+The `--context KEY=VALUE` flag already exists at `scripts/little_loops/cli/loop/__init__.py:148-153` (repeatable via `action="append"`). Four existing built-in loops use this exact pattern with an `output_dir` context variable: `svg-image-generator.yaml`, `html-website-generator.yaml`, `svg-textgrad.yaml`, `dataset-curation.yaml`. Adding a dedicated `--output-dir` flag would be inconsistent with established convention and require argparse changes for marginal ergonomic gain.
+
+**Init-state slug derivation**: the closest analog (`svg-image-generator.yaml:24-35`) uses a **timestamp** (`date -u +%Y%m%d-%H%M%S`), not a slug. For `rn-plan`, prefer slug-from-task for human-readable filenames — use a Python one-liner that invokes `slugify()` from `scripts/little_loops/issue_parser.py:99` to stay consistent with how issue files are named:
+
+```yaml
+init:
+  action_type: shell
+  action: |
+    SLUG=$(python -c "from little_loops.issue_parser import slugify; print(slugify('${context.task}'))")
+    DIR="${context.output_dir}/$SLUG"
+    mkdir -p "$DIR"
+    : > "$DIR/$SLUG-plan.md"
+    : > "$DIR/$SLUG-plan-rubric.md"
+    echo "$(pwd)/$DIR"
+  capture: run_dir
+```
+
 ## Integration Map
 
 ### Files to Modify
@@ -163,6 +243,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_builtin_loops.py:TestSvgImageGeneratorLoop` (line 2488) — closest structural analog for per-state assertion pattern; use as template [Agent 3 finding]
 - Auto-coverage (no changes needed): `test_fsm_flow.py:TestBuiltinLoopRegression.test_all_builtin_loops_still_load`, `test_review_loop.py:TestLoopValidation.test_builtin_loops_are_valid`, `test_fsm_fragments.py:TestBuiltinLoopMigration.test_builtin_loops_load_after_migration` exercise all builtin YAML files dynamically and will cover `rn-plan.yaml` automatically [Agent 3 finding]
 
+_Wiring pass (2nd pass) added by `/ll:wire-issue`:_
+- **CORRECTION — `test_review_loop.py` is inert**: `LOOPS_DIR = PROJECT_ROOT / "loops"` resolves to a top-level `loops/` path that does NOT exist; `@pytest.mark.parametrize` list is empty and zero test cases are generated — `rn-plan.yaml` is NOT auto-covered by this test [Agent 3 finding]
+- **CONDITIONAL — `test_fsm_fragments.py:TestBuiltinLoopMigration` line 950**: `migration_targets` is a hardcoded list covering only loops that use `fragment: shell_exit`; if `rn-plan.yaml` uses that fragment in any state, add `"rn-plan.yaml"` to the list — based on the `svg-image-generator.yaml` analogue (which does not use `fragment: shell_exit`), this is likely not needed; verify after writing the YAML [Agent 2/3 finding]
+
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md` — add `rn-plan` entry to the built-in loops listing section
 - `docs/reference/loops.md` — add a state graph / reference section for `rn-plan` (matches the format of existing entries)
@@ -172,6 +256,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `README.md` — line 167 hardcodes `**47 FSM loops**`; update to `48` after adding `rn-plan.yaml` [Agent 2 finding]
 - `CONTRIBUTING.md` — line 121 hardcodes `Built-in FSM loop definitions (43 YAML files)`; update to current count (already stale before this change) [Agent 2 finding]
 - `CHANGELOG.md` — add `rn-plan` entry under the next concrete version `### Added` section (do NOT use `[Unreleased]`) [Agent 2 finding]
+
+_Wiring pass (2nd pass) added by `/ll:wire-issue`:_
+- **CORRECTION — README.md count target**: actual loop count is currently 43 (not 47); `README.md` is already stale; after adding `rn-plan.yaml` the correct value is `**44 FSM loops**`, not `**48 FSM loops**` as prior wiring step 8 states — verify with `ls scripts/little_loops/loops/*.yaml | wc -l` before editing [Agent 2 finding]
+- **CORRECTION — CONTRIBUTING.md count**: `43 YAML files` matches the current actual count and is NOT stale; after adding `rn-plan.yaml`, update to `44 YAML files` [Agent 2 finding]
 
 ### Configuration
 - Output directory default `.loops/plans/` is set via the `context.output_dir` default in the YAML (no `.ll/ll-config.json` entry required)
@@ -193,11 +281,13 @@ _Wiring pass added by `/ll:wire-issue`:_
    - `init` — `action_type: shell`, action computes `SLUG=$(...)`, mkdir `${context.output_dir}/$SLUG`, writes blank plan+rubric files, echoes absolute run dir. `capture: run_dir`. `next: generate_rubric`.
      - Use Python-via-`python -c` to call `from little_loops.issue_parser import slugify; print(slugify("${context.task}"))` OR inline `tr`/`sed` (slugify is canonical).
    - `generate_rubric` — `action_type: prompt`, instructs the LLM to populate `${captured.run_dir.output}/<slug>-plan-rubric.md` with 8 dimensions on LOW/MEDIUM/HIGH/VERY-HIGH scale. `next: classify_research`.
-   - `classify_research` — `action_type: prompt`, instructs the LLM to emit exactly one of `FILES`, `WEB`, or `BOTH`. `evaluate: type: output_contains` to detect token; route to `research_files`, `research_web`, or a `research_both` orchestration state.
+   - `classify_research` — `action_type: prompt`, instructs the LLM to emit exactly one of `NEEDS_FILES` or `NEEDS_WEB` (dropped `NEEDS_BOTH` — see Resolved Design Decisions: iteration naturally handles "both is needed"). `capture: classification`. `next: route_files`.
+   - `route_files` — **no-action router state**; `evaluate: type: output_contains` with `source: "${captured.classification.output}"`, `pattern: "NEEDS_FILES"`. `on_yes: research_files`, `on_no: route_web`, `on_error: synthesize`.
+   - `route_web` — **no-action router state**; `evaluate: type: output_contains` with `source: "${captured.classification.output}"`, `pattern: "NEEDS_WEB"`. `on_yes: research_web`, `on_no: research_files` (default fallback), `on_error: synthesize`.
    - `research_files` — `action_type: prompt`, tells LLM to use Read/Grep/Glob to research codebase; write findings into `${captured.run_dir.output}/<slug>-research.md`. `next: synthesize`.
    - `research_web` — `action_type: prompt`, tells LLM to use WebSearch/WebFetch (host tools); write findings into the same research file. `next: synthesize`.
    - `synthesize` — `action_type: prompt`, merges research into `${captured.run_dir.output}/<slug>-plan.md`. `next: score`.
-   - `score` — `action_type: prompt` that reads the plan + rubric, scores each dimension, and writes scores back to the rubric file. Use `evaluate: type: llm_structured` (see `evaluators.py:609`) with a yes/no schema: "yes" if all 8 dimensions == VERY-HIGH, else "no". `on_yes: done`, `on_no: classify_research`, `on_error: failed`.
+   - `score` — `action_type: prompt` that reads the plan + rubric, scores each dimension, and writes scores back to the rubric file (capture the score-state output for evaluator consumption). Then `evaluate: type: llm_structured` (see `evaluators.py:609`) with `source: "${captured.score.output}"` and a prompt asking "Are all 8 dimensions VERY-HIGH?" — the fixed verdict schema (`evaluators.py:59-84`) returns `yes`/`no`. `on_yes: done`, `on_no: classify_research`, `on_error: failed`. **Note**: convergence is embedded here, NOT in a separate `check_convergence` state (matches all 8+ existing convergence loops — see Resolved Design Decisions).
    - `done` — `action_type: prompt` that prints the final paths and summary. `terminal: true`.
    - `failed` — `terminal: true` (catches scoring errors).
 
@@ -222,6 +312,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 9. Update `CONTRIBUTING.md` line 121 — change `Built-in FSM loop definitions (N YAML files)` count to reflect the new actual count after adding `rn-plan.yaml` (count is already stale before this change; verify with `ls scripts/little_loops/loops/*.yaml | wc -l`)
 10. Add `CHANGELOG.md` entry under the next concrete version `### Added` section: `Added \`rn-plan\` built-in FSM loop for recursive, self-scoring task planning`
 11. **Test file placement**: place new test at `scripts/tests/test_rn_plan.py` (following `test_harness_optimize.py` / `test_outer_loop_eval.py` convention) — the `loops/` subdirectory does not exist; create `scripts/tests/loops/__init__.py` first if the subdirectory location is intentional
+12. **CORRECTION to step 8**: `README.md` should be changed from `**47 FSM loops**` to `**44 FSM loops**` (actual current count is 43; 43+1=44 after adding `rn-plan.yaml`); verify: `ls scripts/little_loops/loops/*.yaml | wc -l`
+13. **CORRECTION to step 9**: `CONTRIBUTING.md` `43 YAML files` is currently accurate (not stale); after adding `rn-plan.yaml`, update to `44 YAML files`
+14. **CONDITIONAL — `test_fsm_fragments.py`**: after writing `rn-plan.yaml`, check whether any state uses `fragment: shell_exit`; if yes, add `"rn-plan.yaml"` to `migration_targets` at `scripts/tests/test_fsm_fragments.py:950` — expected: no update needed (analogue `svg-image-generator.yaml` does not use this fragment)
 
 ## API/Interface
 
@@ -271,6 +364,9 @@ _Updated by `/ll:confidence-check` on 2026-05-16_
 - Breadth increased since previous check (wire-issue added README/CONTRIBUTING/CHANGELOG sites); Complexity score dropped 18→14, reflecting wider doc surface
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-17T05:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cc7a84a3-acbc-4423-85f5-f2777298812b.jsonl`
+- `/ll:wire-issue` - 2026-05-17T03:53:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dae2ff73-9340-414a-9144-2b2bf9623aff.jsonl`
+- `/ll:refine-issue` - 2026-05-17T03:43:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39939ff9-fb87-4bf7-96fc-d1e3264ea5f0.jsonl`
 - `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98cb73b6-2acb-4c4d-8e34-69fd0182f1e1.jsonl`
 - `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 - `/ll:wire-issue` - 2026-05-17T01:26:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a7b4be4f-93c3-4066-a776-3422cb63071d.jsonl`
