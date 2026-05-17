@@ -86,6 +86,7 @@ docs/demo
 deepcodebase-*.txt
 
 # little-loops context/sync state files
+.ll/*.lock
 .ll/ll-context-state.json
 .ll/ll-sync-state.json
 .ll/ll-update-docs.watermark
