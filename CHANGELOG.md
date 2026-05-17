@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`rn-plan` FSM Loop** — New built-in recursive planning loop (`rn-plan`) that accepts a natural language task description, generates a structured plan and 8-dimension scoring rubric (breadth, depth, complexity, granularity, clarity, consistency, logic_strategy, outcome_confidence), then iteratively researches and refines the plan until all dimensions reach VERY-HIGH or `max_iterations` is exhausted. Run via `ll-loop run rn-plan "task description"`. (FEAT-1534)
 - **Host Runner Abstraction Framework** — All host CLI invocations now route through `resolve_host()` in `host_runner.py`; `HostInvocation` carries binary + args without embedding host literals. Supports `CodexRunner`, `OpenCodeRunner`, and `PiRunner` stubs with streaming, blocking-JSON, detached, and version-check build modes. Set `LL_HOST_CLI` or `orchestration.host_cli` in config to override. (FEAT-1465, FEAT-1467, FEAT-1469, FEAT-1470, FEAT-1471, FEAT-1472, FEAT-1473)
 - **Codex/OpenCode Hook Wiring** — `post_tool_use` fires fire-and-forget for Codex and OpenCode adapters; `pre_tool_use` benchmarked for latency characterization. (FEAT-1489)
 - **`ll-adapt-agents-for-codex` CLI** — Generates `.codex/agents/*.toml` from `agents/*.md` so Codex CLI can discover and invoke ll agents via `--agent <name>`; includes full documentation and integration tests. (FEAT-1527, FEAT-1528)

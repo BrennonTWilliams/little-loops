@@ -108,6 +108,7 @@ class TestBuiltinLoopFiles:
             "sprint-refine-and-implement",
             "svg-image-generator",
             "svg-textgrad",
+            "rn-plan",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
