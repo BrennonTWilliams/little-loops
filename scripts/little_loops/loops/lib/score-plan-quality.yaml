@@ -1,0 +1,29 @@
+# Plan-quality scoring fragment library for little-loops.
+#
+# Import in any loop with:
+#   import:
+#     - lib/score-plan-quality.yaml
+#
+# Then reference a fragment in a state:
+#   score_plans:
+#     fragment: score_plan_quality
+#     action: |
+#       (caller supplies the scoring prompt body)
+#     capture: plan_scores
+#     on_blocked: done
+#     next: compute_gradient
+
+fragments:
+  score_plan_quality:
+    description: |
+      Score a set of rn-plan plan trees on 4 dimensions: subtask success rate,
+      depth/complexity ratio, redundancy (higher = less redundant), and
+      coverage gaps (higher = fewer gaps). Emits per-plan lines and a final
+      aggregate PLAN_QUALITY=<integer 0-100>. Designed for the rn-plan-apo
+      loop's score_plans state but reusable by any loop that consumes a
+      directory of rn-plan output dirs (each containing plan.md and
+      plan-rubric.md).
+      Caller must supply: action (the scoring prompt body), capture.
+      Caller may supply: timeout, on_blocked, next.
+    action_type: prompt
+    timeout: 300

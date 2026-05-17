@@ -753,6 +753,7 @@ run_eval → score_results → analyze_failures
 | `apo-feedback-refinement` | Feedback-driven APO — generate → evaluate → refine until convergence |
 | `apo-opro` | OPRO-style prompt optimization — history-guided proposal until convergence |
 | `apo-textgrad` | TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement |
+| `rn-plan-apo` | Plan-quality gradient optimization for the `rn-plan` recursive planner — scores plan trees on four plan-quality dimensions and refines the planning prompt via text gradient until `target_plan_quality` is reached |
 | `examples-miner` | Co-evolutionary corpus mining — harvest completed issue sessions, quality-gate, calibrate difficulty band, synthesize adversarial examples; runs `apo-textgrad` as a child loop |
 | `prompt-regression-test` | CI for prompts — run a prompt suite, score against baseline, flag regressions, and trigger APO repair when quality drops |
 
@@ -1462,7 +1463,7 @@ The resumed loop inherits the saved state (current FSM state, iteration count, c
 
 Automatic Prompt Optimization (APO) loops apply iterative improvement techniques to refine prompts using LLM-driven evaluation. They are a practical alternative to manual prompt engineering: instead of tweaking prompts by hand, you describe your criteria and let the loop drive convergence.
 
-Seven built-in APO loops ship with little-loops:
+Eight built-in APO loops ship with little-loops:
 
 ---
 
@@ -1674,6 +1675,56 @@ test_on_examples ──→ compute_gradient ──→ route_convergence
 
 ---
 
+### `rn-plan-apo` — Plan-Quality Gradient Optimization
+
+**Technique**: Run `rn-plan` over a benchmark task set with the current planning prompt → score the resulting plan trees on four plan-quality dimensions (subtask success rate, depth/complexity ratio, redundancy, coverage gaps) → compute a text gradient (FAILURE_PATTERN / ROOT_CAUSE / GRADIENT) over the aggregate plan-quality score → overwrite the planning prompt → repeat until `target_plan_quality` is reached.
+
+**When to use**: You have shipped [`rn-plan`](#rn-plan--recursive-task-planning-with-self-scoring-rubric) and want its decomposition prompt to improve as plan trees accumulate. Unlike `apo-textgrad` (labeled I/O pairs) and `harness-optimize` (single-score hill-climb), `rn-plan-apo`'s gradient is computed over structured plan-quality signals derived from `rn-plan`'s output directory shape (`plan.md` + `plan-rubric.md` per task). Use when systematic plan-quality issues — over-splitting trivial tasks, skipping dependency analysis, recurring coverage gaps — are visible across plans and you want a targeted gradient rather than free-form feedback.
+
+**Required context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `plan_prompt_file` | `.ll/prompts/rn-plan-planning.md` | Path to the planning prompt that this loop iteratively refines |
+| `tasks_file` | `benchmarks/rn-plan-tasks.json` | Path to a JSON array of task strings (one task per element) or a plain-text file (one task per line) |
+| `target_plan_quality` | `80` | Aggregate plan-quality score (0–100) at which the loop considers the prompt converged |
+
+**`tasks_file` format** — either a JSON array of strings:
+
+```json
+[
+  "Add a feature flag system to the API",
+  "Migrate the auth middleware to async",
+  "Document the webhook retry strategy"
+]
+```
+
+Or a plain text file with one task per line. The `run_planner` state auto-detects the format.
+
+**Invocation**:
+
+```bash
+# Run with default planning prompt and benchmark task set
+ll-loop run rn-plan-apo
+
+# Point at a custom planning prompt and benchmark
+ll-loop run rn-plan-apo \
+  --context plan_prompt_file=.ll/prompts/rn-plan-planning.md \
+  --context tasks_file=benchmarks/rn-plan-tasks.json \
+  --context target_plan_quality=85
+```
+
+**FSM flow**:
+```
+run_planner ──→ score_plans ──→ compute_gradient ──→ route_convergence
+                                                     ├─ CONVERGED ──→ done
+                                                     └─ CONTINUE ──→ apply_gradient ──→ run_planner
+```
+
+**Persistence guarantee**: `apply_gradient` overwrites `plan_prompt_file` only on accepted refinements — the state is structurally unreachable from `route_convergence`'s `on_yes` (CONVERGED) branch. The planning prompt is never touched when the loop has already converged.
+
+---
+
 ### `examples-miner` — Co-evolutionary Corpus Mining
 
 **Technique**: Harvest skill invocations from completed issue session logs → quality-gate via a three-layer judge (code persistence, revision distance, oracle scoring) → calibrate to the 40–80% difficulty band → run `apo-textgrad` as a child loop to obtain a gradient signal → synthesize adversarial examples targeting the failure pattern → enforce diversity → publish a fresh `examples.json`.
@@ -1821,15 +1872,16 @@ ll-loop run prompt-regression-test \
 | Optimizing a prompt against a fixed metric | `apo-opro` |
 | Want to explore multiple prompt candidates | `apo-beam` |
 | Have gradient-like feedback signals | `apo-textgrad` |
+| Optimizing the `rn-plan` planning prompt | `rn-plan-apo` |
 | Building a training example corpus | `examples-miner` |
 | Prompt quality has regressed vs. baseline | `prompt-regression-test` |
 
-| | `apo-feedback-refinement` | `apo-contrastive` | `apo-opro` | `apo-beam` | `apo-textgrad` | `prompt-regression-test` |
-|---|---|---|---|---|---|---|
-| Exploration per iteration | Low (single candidate) | Medium (N candidates, comparative) | Low (history-guided single candidate) | High (N parallel candidates, independent) | Low (single targeted refinement) | Low (one repair pass via apo-textgrad) |
-| Convergence speed | Fastest when feedback is precise | Moderate | Moderate | Slowest (most LLM calls) | Fast when examples have clear correct answers | Fast when regression has concrete failing examples |
-| Local optima risk | High | Moderate | Moderate | Low | Low (example failures provide precise signal) | Low (triggered only by concrete regressions) |
-| Best for | Targeted improvement with clear criteria | Broad style exploration | Long runs where history improves proposals | Escaping plateaus, high-variance search spaces | Prompts with measurable pass/fail examples (classification, extraction) | CI integration; defending a known-good quality baseline |
+| | `apo-feedback-refinement` | `apo-contrastive` | `apo-opro` | `apo-beam` | `apo-textgrad` | `rn-plan-apo` | `prompt-regression-test` |
+|---|---|---|---|---|---|---|---|
+| Exploration per iteration | Low (single candidate) | Medium (N candidates, comparative) | Low (history-guided single candidate) | High (N parallel candidates, independent) | Low (single targeted refinement) | Low (single targeted refinement over plan-quality scores) | Low (one repair pass via apo-textgrad) |
+| Convergence speed | Fastest when feedback is precise | Moderate | Moderate | Slowest (most LLM calls) | Fast when examples have clear correct answers | Moderate (one `rn-plan` execution per task per iteration) | Fast when regression has concrete failing examples |
+| Local optima risk | High | Moderate | Moderate | Low | Low (example failures provide precise signal) | Low (4-dimension structural signal from plan trees) | Low (triggered only by concrete regressions) |
+| Best for | Targeted improvement with clear criteria | Broad style exploration | Long runs where history improves proposals | Escaping plateaus, high-variance search spaces | Prompts with measurable pass/fail examples (classification, extraction) | The `rn-plan` planning prompt; plans scored on subtask success rate, depth/complexity, redundancy, coverage gaps | CI integration; defending a known-good quality baseline |
 
 ### Tips for APO Loops
 
@@ -2463,7 +2515,7 @@ Local `fragments:` definitions override any imported fragment with the same name
 
 ### Built-in Libraries
 
-Three libraries ship with little-loops, all in `scripts/little_loops/loops/lib/`:
+Four libraries ship with little-loops, all in `scripts/little_loops/loops/lib/`:
 
 #### `lib/common.yaml` — type-pattern fragments
 
@@ -2498,6 +2550,27 @@ states:
     capture: benchmark_score   # stores the float score in captured.benchmark_score
     on_yes: pass
     on_no: fail
+```
+
+#### `lib/score-plan-quality.yaml` — plan-quality scoring fragment
+
+Single `score_plan_quality` fragment for scoring `rn-plan` plan trees on four plan-quality dimensions (subtask success rate, depth/complexity ratio, redundancy, coverage gaps). Used by `rn-plan-apo`:
+
+| Fragment | Description | Provides | Caller must supply |
+|----------|-------------|----------|--------------------|
+| `score_plan_quality` | Score a set of `rn-plan` plan trees on four plan-quality dimensions and emit an aggregate `PLAN_QUALITY=<integer 0-100>` line. | `action_type: prompt` + default `timeout: 300` | `action` (scoring prompt body), `capture` |
+
+```yaml
+import:
+  - lib/score-plan-quality.yaml
+
+states:
+  score_plans:
+    fragment: score_plan_quality
+    action: |
+      (scoring prompt body — see rn-plan-apo.yaml for the canonical example)
+    capture: plan_scores
+    next: compute_gradient
 ```
 
 #### `lib/cli.yaml` — ll- CLI tool fragments

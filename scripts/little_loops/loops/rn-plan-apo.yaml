@@ -1,0 +1,161 @@
+name: rn-plan-apo
+from: lib/apo-base
+description: |
+  Plan-quality gradient optimization for the rn-plan recursive planner. Runs
+  rn-plan over a benchmark task set with the current planning prompt, scores
+  the resulting plan trees on four plan-quality dimensions (subtask success
+  rate, depth/complexity ratio, redundancy, coverage gaps), computes a text
+  gradient (FAILURE_PATTERN / ROOT_CAUSE / GRADIENT) over the aggregate
+  plan-quality score, and applies the gradient to overwrite the planning
+  prompt. Loop converges when the LLM emits CONVERGED — typically when the
+  aggregate PLAN_QUALITY exceeds target_plan_quality.
+
+  Run as:
+    ll-loop run rn-plan-apo \
+      --context plan_prompt_file=.ll/prompts/rn-plan-planning.md \
+      --context tasks_file=benchmarks/rn-plan-tasks.json
+
+  Companion to FEAT-1534 (rn-plan). Unlike apo-textgrad (labeled I/O pairs)
+  and harness-optimize (single-score hill-climb), rn-plan-apo's gradient is
+  computed over structured plan-quality signals extracted from rn-plan's
+  output directory shape (plan.md + plan-rubric.md per task).
+initial: run_planner
+import:
+  - lib/score-plan-quality.yaml
+context:
+  plan_prompt_file: .ll/prompts/rn-plan-planning.md
+  tasks_file: benchmarks/rn-plan-tasks.json
+  target_plan_quality: 80
+states:
+
+  run_planner:
+    # Executes rn-plan once per task in tasks_file using the current planning
+    # prompt at plan_prompt_file. tasks_file is a JSON array of task strings;
+    # plain text (one task per line) also works via the python fallback.
+    # Captures the parent directory holding every per-task output dir so
+    # score_plans can read plan.md + plan-rubric.md from each.
+    action_type: shell
+    timeout: 1800
+    action: |
+      TS=$(date -u +%Y%m%d-%H%M%S)
+      RUN_DIR=".loops/tmp/rn-plan-apo/$TS"
+      mkdir -p "$RUN_DIR/plans"
+      python3 -c "import json,sys; raw=open('${context.tasks_file}').read(); data=(json.loads(raw) if raw.lstrip().startswith('[') else [l for l in raw.splitlines() if l.strip()]); print('\n'.join(t if isinstance(t,str) else t.get('task','') for t in data))" > "$RUN_DIR/tasks.txt"
+      COUNT=0
+      while IFS= read -r TASK; do
+        [ -z "$TASK" ] && continue
+        COUNT=$((COUNT + 1))
+        ll-loop run rn-plan "$TASK" --context output_dir="$RUN_DIR/plans" >> "$RUN_DIR/planner.log" 2>&1 || true
+      done < "$RUN_DIR/tasks.txt"
+      echo "$(pwd)/$RUN_DIR"
+      echo "PLANS_GENERATED=$COUNT"
+    capture: plans
+    on_blocked: done
+    next: score_plans
+
+  score_plans:
+    # Scores every per-task rn-plan output directory on four plan-quality
+    # dimensions and emits an aggregate. Uses the score_plan_quality fragment
+    # (lib/score-plan-quality.yaml) to inherit the prompt-state scaffolding;
+    # the caller (this state) supplies the scoring prompt body.
+    fragment: score_plan_quality
+    action: |
+      Read every plan tree under ${captured.plans.output}/plans/. Each
+      subdirectory is one rn-plan run and contains plan.md (the refined
+      plan) and plan-rubric.md (the planner's self-scored 8-dimension
+      rubric, ending in `verdict: ALL_VERY_HIGH` or `verdict: ITERATE`).
+
+      For each plan tree, score the planning prompt's *decomposition
+      quality* on a 0-100 scale on each of these four dimensions:
+
+      - subtask_success_rate: did the recursive planner reach
+        ALL_VERY_HIGH (4/4 dimensions HIGH) on a majority of leaves? A
+        plan that bottomed out at ITERATE on every leaf scores low.
+      - depth_complexity_ratio: was the recursion depth calibrated to
+        task complexity? Excessive depth on a trivial task or shallow
+        depth on a complex task both score low; calibrated depth scores
+        high.
+      - redundancy: are subtasks distinct? Duplicate or near-duplicate
+        bullets across the plan and its sub-rubric reduce the score.
+        Higher = less redundant.
+      - coverage_gaps: does the plan reference work that was never
+        assigned a concrete subtask? Higher = fewer gaps.
+
+      For each plan output one line:
+        Plan N: subtask_success_rate=<int>, depth_complexity_ratio=<int>, redundancy=<int>, coverage_gaps=<int>
+
+      Then on the final line output exactly:
+        PLAN_QUALITY=<integer 0-100>
+      where the aggregate is the mean of all per-plan dimension scores.
+    capture: plan_scores
+    on_blocked: done
+    next: compute_gradient
+
+  compute_gradient:
+    # Analyzes plan-quality scores to produce a text gradient targeting the
+    # planning prompt. Convergence is LLM-emitted: when PLAN_QUALITY exceeds
+    # target_plan_quality, the prompt outputs CONVERGED on its own line
+    # instead of the three labeled gradient lines.
+    action_type: prompt
+    timeout: 300
+    action: |
+      Analyze these plan-quality scores to compute a text gradient — a
+      structured description of the systematic decomposition failures
+      across the run:
+
+      ${captured.plan_scores.output}
+
+      Output exactly three labeled lines:
+      1. FAILURE_PATTERN: <common plan-quality issue across all plans>
+      2. ROOT_CAUSE: <what is wrong in the current planning prompt at
+         ${context.plan_prompt_file} that causes this pattern>
+      3. GRADIENT: <precise instruction for how to change the planning
+         prompt to fix this root cause>
+
+      If the final PLAN_QUALITY=<integer> line in the scores exceeds
+      ${context.target_plan_quality}, output CONVERGED on its own line
+      instead of the three labeled lines.
+    capture: gradient
+    on_blocked: done
+    next: route_convergence
+
+  route_convergence:
+    # Pure evaluator state — no action. The `source:` field is mandatory:
+    # without it the evaluator reads this state's empty output instead of
+    # the prior compute_gradient capture. Mirrors apo-textgrad and
+    # svg-textgrad's route_convergence invariant.
+    evaluate:
+      type: output_contains
+      source: "${captured.gradient.output}"
+      pattern: "CONVERGED"
+    on_yes: done
+    on_no: apply_gradient
+    on_error: run_planner
+
+  apply_gradient:
+    # Overwrites plan_prompt_file with a refined planning prompt that
+    # addresses the gradient's ROOT_CAUSE. The file write happens inside the
+    # LLM agent's tool calls (Read + Write), not via the FSM executor. The
+    # AC "loop overwrites plan_prompt_file only on accepted refinements" is
+    # satisfied structurally: this state is unreachable from
+    # route_convergence when CONVERGED fires (on_yes: done branch).
+    action_type: prompt
+    timeout: 300
+    action: |
+      Apply this text gradient to improve the rn-plan planning prompt:
+
+      Current prompt: read from ${context.plan_prompt_file}
+      Gradient: ${captured.gradient.output}
+
+      Produce a refined planning prompt that:
+      - Addresses the ROOT_CAUSE identified in the gradient directly
+      - Follows the GRADIENT instruction precisely
+      - Preserves all aspects of the current prompt that were NOT causing
+        the observed plan-quality failures
+      - Remains a complete, actionable planning prompt (do not truncate)
+
+      Output the full refined prompt, then overwrite
+      ${context.plan_prompt_file} with it.
+    on_blocked: done
+    next: run_planner
+  # `done: {terminal: true}` inherited from lib/apo-base — do not re-declare.

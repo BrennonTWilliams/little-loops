@@ -2,19 +2,26 @@
 id: FEAT-1536
 type: FEAT
 priority: P3
-captured_at: "2026-05-17T01:43:21Z"
-discovered_date: "2026-05-17"
+captured_at: '2026-05-17T01:43:21Z'
+completed_at: '2026-05-17T07:29:05Z'
+discovered_date: '2026-05-17'
 discovered_by: capture-issue
-status: open
+status: done
 relates_to:
-  - FEAT-1534
-  - FEAT-766
-  - FEAT-1120
+- FEAT-1534
+- FEAT-766
+- FEAT-1120
 labels:
-  - loops
-  - automation
-  - apo
-  - planning
+- loops
+- automation
+- apo
+- planning
+confidence_score: 90
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1536: rn-plan-apo Loop for Plan-Quality Gradient Optimization
@@ -89,16 +96,25 @@ Running `ll-loop run rn-plan-apo --context plan_prompt_file=<path> --context tas
 
 ### Test Templates
 
-- `scripts/tests/test_builtin_loops.py` — `TestSvgTextgradLoop` (closest template: gradient + route_convergence + apply_gradient + score recording) and `TestEvaluationQualityLoop` (multi-threshold context block pattern)
+- `scripts/tests/test_builtin_loops.py` — `TestSvgTextgradLoop` (closest template: gradient + route_convergence + apply_gradient + score recording; lines 2585–2798) and `TestEvaluationQualityLoop` (multi-threshold context block pattern); `test_expected_loops_exist` (lines 65–116): `"rn-plan"` already in expected set at ~line 112; add `"rn-plan-apo"` alongside it
 - `scripts/tests/test_harness_optimize.py` — example per-loop test file with context defaults, state validation, fragment usage patterns
 - `scripts/tests/test_loops_recursive_refine.py` — `_bash(script, cwd)` helper for testing shell-state snippets in isolation (relevant only if `score_plans` or `run_planner` uses a shell state)
 - `scripts/tests/test_fsm_executor.py:31-88` — `MockActionRunner` pattern for unit-testing convergence and max-iteration termination without invoking the host CLI
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_fragments.py` — add `TestScorePlanQualityFragment` class following `TestBenchmarkYamlFragments` pattern (lines 1102–1159); no sweep tests auto-cover new `lib/*.yaml` files — this is the only test coverage for the new fragment's structural validity; tests should assert: `score_plan_quality` key exists in `fragments`, fragment has `description`, fragment has `action_type: prompt` [Agent 3 finding]
 
 ### Documentation
 
 - `docs/guides/LOOPS_GUIDE.md:2545` — explicit description of the `from: lib/apo-base` merge rule (useful when documenting the new loop's inheritance)
 - `docs/reference/loops.md` — loop YAML reference and state graph documentation
 - `docs/generalized-fsm-loop.md` — FSM loop conceptual documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` line 1465 — literal count `"Seven built-in APO loops ship with little-loops:"` must become `"Eight"` when `rn-plan-apo` is added [Agent 2 finding]
+- `docs/guides/LOOPS_GUIDE.md` line 2466 — `"Three libraries ship with little-loops:"` count prose and accompanying table must become `"Four"` with `lib/score-plan-quality.yaml` added as the 4th fragment library; this is a 4th edit location within LOOPS_GUIDE.md beyond the three already listed [Agent 2 finding]
 
 ## Implementation Steps
 
@@ -111,6 +127,14 @@ Running `ll-loop run rn-plan-apo --context plan_prompt_file=<path> --context tas
    - `apply_gradient` → overwrites `plan_prompt_file`
 3. **Add test** at `scripts/tests/test_rn_plan_apo.py` with a fixture `tasks_file` and a stubbed planner that returns deterministic plan trees so scoring is testable.
 4. **Document** in `docs/guides/LOOPS_GUIDE.md` alongside the `apo-*` loop family, and reference from `rn-plan`'s entry once FEAT-1534 lands.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Add `TestScorePlanQualityFragment` class to `scripts/tests/test_fsm_fragments.py` — follows `TestBenchmarkYamlFragments` pattern (lines 1102–1159); assert `score_plan_quality` exists in `fragments`, has `description`, has `action_type: prompt`; there is no sweep test that auto-covers new `lib/*.yaml` files
+6. Update `docs/guides/LOOPS_GUIDE.md` line 1465 — change `"Seven built-in APO loops ship with little-loops:"` → `"Eight built-in APO loops ship with little-loops:"`
+7. Update `docs/guides/LOOPS_GUIDE.md` line 2466 — change `"Three libraries ship with little-loops:"` → `"Four libraries ship with little-loops:"` and append `lib/score-plan-quality.yaml` row to the accompanying fragment library table
 
 ### Codebase Research Findings
 
@@ -132,7 +156,9 @@ _Added by `/ll:refine-issue` — concrete shapes derived from `apo-textgrad.yaml
 
 **File-write semantics for `apply_gradient`**: the `plan_prompt_file` overwrite happens via the LLM agent's tool calls inside the host subprocess (Read + Write), not by the FSM executor. The AC requirement "loop overwrites `plan_prompt_file` only on accepted refinements" is satisfied structurally because `apply_gradient` is unreachable from `route_convergence` when the LLM emits `CONVERGED` (the `on_yes: done` branch fires) — the prompt file is only touched on the `on_no` branch.
 
-**FEAT-1534 blocker is real**: `rn-plan.yaml` does not exist on disk today. `run_planner` cannot delegate to `ll-loop run rn-plan ...` until FEAT-1534 lands. The scoring fragment and FSM scaffold can be authored against a stubbed planner (per AC step 3), but live execution waits on FEAT-1534.
+**FEAT-1534 now shipped**: `rn-plan.yaml` exists on disk (landed 2026-05-17, commit `8ae87d9d`). `run_planner` can delegate to `ll-loop run rn-plan ...`. The blocker is resolved — live execution is unblocked.
+
+**rn-plan output shape (critical for `run_planner` design)**: rn-plan does NOT produce JSON plan trees. It accepts `task` (string) and `output_dir: ".loops/plans"` — no batch tasks file. Per run, it writes `plan.md`, `plan-rubric.md`, and `research.md` under `${captured.run_dir.output}/`. The `run_planner` state in the YAML skeleton (which says "Capture each plan tree as JSON") must be revised: it needs to loop over tasks in `tasks_file` individually (one `ll-loop run rn-plan "<task>"` per task) and collect the resulting output directories so `score_plans` can read `plan-rubric.md` from each. Options: (a) use `action_type: shell` to loop deterministically; (b) use `action_type: prompt` and let the LLM manage the subprocess loop. The svg-textgrad `record_scores` pattern (`action_type: shell`) is more reliable for deterministic per-task iteration. rn-plan's convergence sentinel is `ALL_VERY_HIGH` (internal to rn-plan, 8-dimension rubric) — rn-plan-apo's own sentinel is `CONVERGED` in `compute_gradient` output, unrelated.
 
 **Plan-quality scoring is novel**: `lib/score-*.yaml` does not exist yet — `lib/` currently holds `apo-base.yaml`, `benchmark.yaml`, `cli.yaml`, `common.yaml`. The new fragment is the first of its kind; follow `lib/benchmark.yaml`'s `fragments:` + per-fragment `description:` + `action_type:` + `evaluate:` shape.
 
@@ -284,7 +310,7 @@ fragments:
 | `scripts/little_loops/fsm/fragments.py` | `resolve_inheritance()` and `_deep_merge()` define how `from:` merges parent + child |
 | `scripts/little_loops/fsm/executor.py` | `FSMExecutor._run_action()` defines the `{output, stderr, exit_code, duration_ms}` capture shape that every `${captured.X.output}` reference depends on |
 | `scripts/tests/test_builtin_loops.py` | Contains `TestSvgTextgradLoop` (closest test template) and `TestBuiltinLoopFiles.test_expected_loops_exist:65` (must register `"rn-plan-apo"` in the expected set) |
-| `.issues/features/P2-FEAT-1534-add-rn-plan-built-in-fsm-loop-for-recursive-task-planning.md` | Defines `rn-plan` and its planning prompt — the artifact this loop optimizes; rn-plan.yaml does not exist on disk yet |
+| `.issues/features/P2-FEAT-1534-add-rn-plan-built-in-fsm-loop-for-recursive-task-planning.md` | Defines `rn-plan` and its planning prompt — the artifact this loop optimizes. FEAT-1534 shipped 2026-05-17 (commit `8ae87d9d`); `rn-plan.yaml` exists on disk |
 | `docs/guides/LOOPS_GUIDE.md` | Where the new loop must be documented: APO section (line 1353), summary table (line 719), Choosing-Between table (line 1712), feature matrix (line 1722) |
 
 ## Acceptance Criteria
@@ -310,16 +336,42 @@ fragments:
 - **FEAT-1534** (`rn-plan` built-in loop) must ship first — `rn-plan-apo` has no artifact to optimize until then.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-17T07:18:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f28a43ba-dd64-429a-8074-add6cf202fce.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6dd09366-ca88-452f-87df-e7e23ed6a020.jsonl`
+- `/ll:wire-issue` - 2026-05-17T07:14:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50200190-a30f-43aa-ae48-7a74b10ee7e2.jsonl`
+- `/ll:refine-issue` - 2026-05-17T07:06:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e962b8a1-d20a-43df-a232-15a54426f6a1.jsonl`
 - `/ll:refine-issue` - 2026-05-17T01:54:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21a23601-8801-4478-b899-816a89ded470.jsonl`
 - `/ll:format-issue` - 2026-05-17T01:46:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1772a9c9-375e-4635-9d23-f8a61e7e3c7f.jsonl`
 
 - `/ll:capture-issue` - 2026-05-17T01:43:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ff744fb-fd2c-4c52-b59d-5acb13e9557a.jsonl`
 
 - `/ll:refine-issue` - 2026-05-17T02:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b9595aa-5604-4993-8970-761fc7eda533.jsonl`
+- `/ll:manage-issue` - 2026-05-17T07:29:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
+
+## Resolution
+
+Implemented `rn-plan-apo` as a new built-in FSM loop that applies TextGrad-style gradient optimization to the `rn-plan` planning prompt, with plan-quality scoring across four dimensions.
+
+**Files created**:
+- `scripts/little_loops/loops/rn-plan-apo.yaml` — 5-state FSM (`run_planner` → `score_plans` → `compute_gradient` → `route_convergence` → `apply_gradient`), inherits scaffolding from `lib/apo-base` (category, max_iterations, timeout, on_handoff, done state)
+- `scripts/little_loops/loops/lib/score-plan-quality.yaml` — first `lib/score-*.yaml` fragment, defines `score_plan_quality` as a prompt-state fragment with `timeout: 300`
+- `scripts/tests/test_rn_plan_apo.py` — 48 structural tests covering inheritance, fragment resolution, state graph invariants, the mandatory `route_convergence.evaluate.source` invariant, and prompt-file persistence contract
+
+**Files modified**:
+- `scripts/tests/test_builtin_loops.py` — registered `rn-plan-apo` in the `expected` set
+- `scripts/tests/test_fsm_fragments.py` — added `TestScorePlanQualityFragment` (4 tests)
+- `docs/guides/LOOPS_GUIDE.md` — summary table, new `### rn-plan-apo` subsection in APO section, Seven→Eight APO loops count, Choosing-Between trigger table + comparative feature matrix, Three→Four libraries count + `lib/score-plan-quality.yaml` documentation block
+- `scripts/little_loops/loops/README.md` — APO table entry and fragment library table entry
+
+**Verification**:
+- `ll-loop validate rn-plan-apo` passes
+- `ruff check` clean
+- Full test suite: 6966 passed, 5 skipped
 
 ---
 
 ## Status
 
-- **Status**: open
+- **Status**: done
 - **Discovered**: 2026-05-17
+- **Completed**: 2026-05-17

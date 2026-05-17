@@ -75,6 +75,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `apo-opro` | OPRO-style — history-guided proposal loop until convergence |
 | `apo-beam` | Beam search — generate N variants, score all, advance the winner |
 | `apo-textgrad` | TextGrad-style — test on examples, compute failure gradient, apply refinement |
+| `rn-plan-apo` | Plan-quality gradient optimization for the `rn-plan` recursive planner — scores plan trees on subtask success rate, depth/complexity ratio, redundancy, and coverage gaps; refines the planning prompt via text gradient until `target_plan_quality` is reached |
 | `examples-miner` | Co-evolutionary corpus miner — harvest session logs, quality-gate via three-layer judge, calibrate to 40–80% difficulty band, run apo-textgrad as inner loop, synthesize adversarial examples from gradient signal, enforce diversity, publish fresh examples.json |
 
 ## Data & Testing
@@ -120,6 +121,7 @@ Built-in fragment libraries are in `lib/`:
 | `lib/common.yaml` | Generic type-pattern fragments (`shell_exit`, `llm_gate`, `retry_counter`, `numeric_gate`) |
 | `lib/cli.yaml` | Pre-filled ll- CLI tool fragments (`ll_auto`, `ll_check_links`, `ll_issues_list`, `ll_loop_run`, etc.) |
 | `lib/benchmark.yaml` | Harbor-format benchmark runner fragment (`run_benchmark`) with `harbor_scorer` evaluator |
+| `lib/score-plan-quality.yaml` | Plan-quality scoring fragment (`score_plan_quality`) used by `rn-plan-apo` to score plan trees on four dimensions |
 
 Import a library in any loop:
 

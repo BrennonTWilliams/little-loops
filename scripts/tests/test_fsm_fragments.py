@@ -1189,3 +1189,70 @@ class TestBenchmarkYamlFragments:
         assert fsm.states["score"].action_type == "shell"
         assert fsm.states["score"].evaluate is not None
         assert fsm.states["score"].evaluate.type == "harbor_scorer"
+
+
+# ---------------------------------------------------------------------------
+# lib/score-plan-quality.yaml: verify score_plan_quality fragment is present
+# ---------------------------------------------------------------------------
+
+
+class TestScorePlanQualityFragment:
+    """Tests that score_plan_quality fragment exists in lib/score-plan-quality.yaml."""
+
+    @staticmethod
+    def _load_yaml() -> dict:
+        import yaml
+
+        lib_path = (
+            Path(__file__).parent.parent
+            / "little_loops"
+            / "loops"
+            / "lib"
+            / "score-plan-quality.yaml"
+        )
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_score_plan_quality_defined(self) -> None:
+        data = self._load_yaml()
+        assert "score_plan_quality" in data["fragments"], (
+            "score_plan_quality fragment missing from lib/score-plan-quality.yaml"
+        )
+
+    def test_score_plan_quality_has_prompt_action_type(self) -> None:
+        data = self._load_yaml()
+        assert data["fragments"]["score_plan_quality"]["action_type"] == "prompt"
+
+    def test_score_plan_quality_has_description(self) -> None:
+        data = self._load_yaml()
+        frag = data["fragments"]["score_plan_quality"]
+        assert "description" in frag, (
+            "score_plan_quality fragment is missing a description field"
+        )
+        assert frag["description"].strip(), (
+            "score_plan_quality fragment has an empty description"
+        )
+
+    def test_score_plan_quality_resolves_in_loop(self, tmp_path: Path) -> None:
+        """Full resolve_fragments integration against lib/score-plan-quality.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "score_plans",
+            "import": ["lib/score-plan-quality.yaml"],
+            "states": {
+                "score_plans": {
+                    "fragment": "score_plan_quality",
+                    "action": "score the plans",
+                    "capture": "plan_scores",
+                    "next": "done",
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["score_plans"]
+        assert state["action_type"] == "prompt"
+        assert state["action"] == "score the plans"
+        assert state["capture"] == "plan_scores"
+        assert "fragment" not in state
