@@ -28,6 +28,7 @@ This skill uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Templates dir**: `{{config.issues.templates_dir}}` (custom section JSON directory, or plugin default if null)
 - **Template style**: `{{config.issues.capture_template}}` (full, minimal, or legacy — controls which creation variant to use when assembling sections)
+- **Status enum**: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled` — see `.claude/CLAUDE.md` § Issue File Format for full enum and forbidden synonyms.
 
 ## Arguments
 

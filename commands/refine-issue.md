@@ -27,6 +27,7 @@ The core workflow: read the issue, research the codebase, identify what an imple
 This command uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Source dir**: `{{config.project.src_dir}}`
+- **Status enum**: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled` — see `.claude/CLAUDE.md` § Issue File Format for full enum and forbidden synonyms.
 
 ## Arguments
 

@@ -32,6 +32,7 @@ This command uses project configuration from `.ll/ll-config.json`:
 - **Test command**: `{{config.project.test_cmd}}`
 - **Lint command**: `{{config.project.lint_cmd}}`
 - **Custom verification**: `{{config.commands.custom_verification}}`
+- **Status enum**: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled` — see `.claude/CLAUDE.md` § Issue File Format for full enum and forbidden synonyms.
 
 ### Workflow Settings
 - **Phase gates**: Disabled by default (enable with `--gates` flag)

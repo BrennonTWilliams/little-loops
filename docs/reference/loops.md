@@ -45,39 +45,51 @@ See [`.ll/program.md` convention](program-md.md) for the steering file format an
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `targets` | `""` | **Required.** Space-separated file paths to optimize (e.g. `"skills/foo/SKILL.md"`). |
+| `targets` | `""` | **Required.** Whole-file mode: space-separated file paths to optimize (e.g. `"skills/foo/SKILL.md"`). State mode: path to a loop YAML file whose `targets:` block contains `states:` entries. |
 | `tasks_dir` | `""` | **Required.** Path to Harbor task directory passed to scorer. |
 | `scorer` | `""` | **Required.** Scorer command that prints a bare float to stdout on exit 0. |
 | `target_score` | `1.0` | Early-stop threshold. `1.0` means "never early-stop on target reached". |
 | `max_iterations` | `30` | Hard budget ceiling. |
+| `STATE_NAME` | — | State-mode only. Name of the state being optimized; set by `dequeue_state` and read by `propose`, `apply`, and `write_trajectory_*`. |
+| `EXAMPLES_FILE` | — | State-mode only. Path to the examples file for the current state; set by `dequeue_state` and injected into the `propose` prompt. |
 
 ### State Graph
 
 ```
-load_directive  (reads .ll/program.md Directive section → captured.directive.output)
-  → baseline_score (fragment: run_benchmark)
-    on_yes → init_prev
-      → propose (LLM: uses directive + targets to pick one file and propose an edit)
-        → apply (LLM: write candidate to file)
-          → score (fragment: run_benchmark)
-            on_yes → gate (convergence evaluator, direction: maximize)
-              target/progress → commit_and_log
-                → write_trajectory_accepted
-                  → capture_prev → propose  (continues)
-              stall/error → revert_and_log
-                → write_trajectory_rejected → done
-            on_no/on_error → revert_and_log → write_trajectory_rejected → done
-    on_no/on_error → done
+init_run  (shell: create .ll/runs/harness-optimize/<run-id>/ dir, capture traj_path)
+  → load_directive  (reads .ll/program.md; builds state queue when targets is a loop YAML)
+      on_yes (state-mode: queue non-empty) → check_queue
+        on_yes → dequeue_state  (pops STATE_NAME + EXAMPLES_FILE from queue)
+          → baseline_score  (fragment: run_benchmark)
+              on_yes → init_prev
+                → propose  (LLM: extracts state action block; proposes revised action text)
+                  → apply  (LLM: writes candidate action via yaml_state_editor.replace_action)
+                    → score  (fragment: run_benchmark)
+                        on_yes → gate  (convergence evaluator, direction: maximize)
+                          target/progress → commit_and_log
+                            → write_trajectory_accepted
+                                on_yes (state-mode) → check_queue  (advance to next state)
+                                on_no  (whole-file)  → capture_prev → propose  (continues)
+                          stall/error → revert_and_log
+                            → write_trajectory_rejected
+                                on_yes (state-mode) → check_queue  (advance to next state)
+                                on_no  (whole-file)  → done
+                        on_no/on_error → revert_and_log → write_trajectory_rejected → ...
+              on_no/on_error → done
+        on_no (queue exhausted) → done
+      on_no (whole-file mode) → baseline_score  (same subgraph; loops via capture_prev)
 ```
 
 ### Trajectory
 
-Each iteration appends one JSON line to `.loops/tmp/harness-optimize-trajectory.jsonl`:
+Each iteration appends one JSON line to `.ll/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl`:
 
 ```json
 {"iter": 3, "score": 0.82, "accepted": true, "commit_sha": "abc1234"}
 {"iter": 4, "score": 0.79, "accepted": false, "commit_sha": ""}
 ```
+
+In whole-file mode `<state>` is `whole-file`. In state mode `<state>` is the name of the state being optimized (e.g. `propose`, `apply`). The `<run-id>` is a nanosecond timestamp captured by `init_run`.
 
 ### Resume Behavior
 

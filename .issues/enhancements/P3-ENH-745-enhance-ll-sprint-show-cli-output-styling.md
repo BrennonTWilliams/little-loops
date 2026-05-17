@@ -1,10 +1,16 @@
 ---
 id: ENH-745
 type: enhancement
+status: done
 discovered_date: 2026-03-14
 discovered_by: capture-issue
-confidence_score: 96
+confidence_score: 100
 outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
+completed_at: '2026-05-17T12:18:58Z'
 ---
 
 # ENH-745: Enhance `ll-sprint show` CLI Output Styling
@@ -59,6 +65,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/sprint/__init__.py:220-221` — dispatches `args.command == "show"` to `_cmd_sprint_show`; already calls `configure_output(config.cli)` at line 215 so `_USE_COLOR` and color dicts are initialized before `show` runs
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/sprint/manage.py` — calls `_render_execution_plan()` directly in `_cmd_sprint_analyze()` (line 206); any signature change to `_render_execution_plan` breaks this caller [Agent 1 finding]
+- `scripts/little_loops/cli/__init__.py` — re-exports `_render_execution_plan`, `_render_dependency_graph`, `_render_health_summary` in `__all__` for backward compatibility with tests; public API contract must stay stable [Agent 1 finding]
+
 ### Similar Patterns
 - `scripts/little_loops/cli/issues/list_cmd.py:127-134` — reference for colorized issue lines: `colorize(issue.priority, PRIORITY_COLOR[priority])` + `colorize(issue.issue_id, TYPE_COLOR[type_prefix])` — apply same pattern to execution plan issue rows in `_render_execution_plan`
 - `scripts/little_loops/cli/issues/sequence.py:67-70` — minimal single-line pattern: `f"  [{colored_pri}, ...] {colored_id}: {issue.title}"` — closest match to sprint's `"  ├── FEAT-001: Title (P2)"` format
@@ -69,8 +79,19 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_cli_output.py:251-292` — `TestIssueListNoColor` test class shows the pattern for `_USE_COLOR=False` no-color assertions: `patch.object(output_mod, "_USE_COLOR", False)` then assert `"\033[" not in captured.out`
 - `scripts/tests/test_cli.py:882-1277` (`TestSprintShowDependencyVisualization`) — render-function unit tests for `_render_execution_plan` — add parallel tests asserting `colorize()` was applied to issue IDs and priorities
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_sprint.py:979` (`test_show_includes_dependency_analysis`) — **latent risk**: no `_USE_COLOR` patch; asserts `"Sprint: overlap-test"` verbatim; safe in non-TTY CI (`_USE_COLOR=False`) but breaks in color-on TTY environments [Agent 3 finding]
+- `scripts/tests/test_sprint.py:1002` (`test_show_skip_analysis_flag`) — **latent risk**: same unpatched `_USE_COLOR` exposure as above [Agent 3 finding]
+- `scripts/tests/test_cli.py:1377–1404` (`test_render_health_summary_*`) — **latent risk**: `.startswith("OK")` / `.startswith("BLOCKED")` / `.startswith("WARNING")` assertions will break in color-on environments if the status word is ANSI-wrapped by `colorize()` [Agent 3 finding]
+- `scripts/tests/test_cli.py` — **new test to write**: `test_render_health_summary_color_on/no_color` — no `_USE_COLOR` on/off coverage exists for `_render_health_summary`; follow pattern from `test_render_execution_plan_color_on/no_color` at lines 1406–1444 [Agent 3 finding]
+- `scripts/tests/test_cli.py` — **new test to write**: `test_render_dependency_graph_color_on/no_color` — no `_USE_COLOR` on/off coverage exists for `_render_dependency_graph` [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/OUTPUT_STYLING.md` — documents the output styling system; may need a line noting `ll-sprint show` now participates in the color system
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/SPRINT_GUIDE.md` — documents the five output fields produced by `_cmd_sprint_show` under "`ll-sprint show`" section (line 330); update if any output field labels change [Agent 2 finding]
+- `docs/reference/CLI.md` — documents `ll-sprint show` flags (`--json`, `--config`, `--skip-analysis`) at line 287; update if flags are added or renamed [Agent 2 finding]
 
 ## Implementation Steps
 
@@ -82,6 +103,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 4. **Colorize health summary prefix** — in `_render_health_summary` add an inline color map `{"OK": "32", "REVIEW": "33", "WARNING": "38;5;208", "BLOCKED": "31"}` and wrap the leading word with `colorize()`; follow pattern at `show.py:329-330`
 5. **Colorize sprint metadata header** — in `_cmd_sprint_show` at lines 187–197, apply a dim or bold style to the "Sprint:" label line using `colorize("Sprint:", "1")` for consistency with other command headers
 6. **Add/update tests** — in `scripts/tests/test_sprint.py`, add a color-on test asserting `"\033[" in captured.out` when `_USE_COLOR=True`, and a no-color test using `patch.object(output_mod, "_USE_COLOR", False)` asserting `"\033[" not in captured.out`; follow pattern from `test_cli_output.py:251-292`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Verify `scripts/little_loops/cli/sprint/manage.py` — confirm `_cmd_sprint_analyze()` call to `_render_execution_plan()` (line 206) is compatible with any signature changes to the function
+8. Add `test_render_health_summary_color_on/no_color` in `test_cli.py` — no `_USE_COLOR` coverage exists; follow pattern from `test_render_execution_plan_color_on/no_color` at lines 1406–1444
+9. Add `test_render_dependency_graph_color_on/no_color` in `test_cli.py` — no color on/off coverage for `_render_dependency_graph`
+10. Update `docs/guides/SPRINT_GUIDE.md` line 330 if any output field label changes
 
 ## Impact
 
@@ -123,6 +153,9 @@ Applied color styling to `ll-sprint show` output using existing `colorize`, `PRI
 All 3591 tests pass.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-17T12:18:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/edd12900-0e7a-411b-8cce-44fc94966bc9.jsonl`
+- `/ll:confidence-check` - 2026-05-17T13:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1721b98c-efe2-4756-b771-ffb5af710a17.jsonl`
+- `/ll:wire-issue` - 2026-05-17T12:14:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97085e98-ba0d-4836-b13e-2d9b7130c673.jsonl`
 - `/ll:ready-issue` - 2026-03-17T03:43:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4bc601fe-3133-4658-ac80-94621748a79b.jsonl`
 - `/ll:refine-issue` - 2026-03-17T03:35:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/532865b2-afcc-4542-a851-1511b776f7cd.jsonl`
 - `/ll:format-issue` - 2026-03-16T01:20:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e105a0a-8129-46b0-9889-ec4f193c35ed.jsonl`

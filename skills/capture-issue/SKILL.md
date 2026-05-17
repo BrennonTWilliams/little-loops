@@ -30,6 +30,7 @@ This command uses project configuration from `.ll/ll-config.json`:
 - **Template style**: `{{config.issues.capture_template}}` (full or minimal)
 - **Exact duplicate threshold**: `{{config.issues.duplicate_detection.exact_threshold}}` (default: 0.8)
 - **Similar issue threshold**: `{{config.issues.duplicate_detection.similar_threshold}}` (default: 0.5)
+- **Status enum**: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled` — see `.claude/CLAUDE.md` § Issue File Format for full enum and forbidden synonyms.
 
 ## Arguments
 

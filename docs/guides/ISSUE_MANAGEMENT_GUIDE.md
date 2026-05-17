@@ -116,6 +116,8 @@ The lifecycle diagram above shows conceptual workflow phases. The frontmatter `s
 | `done` | Work finished and committed |
 | `cancelled` | Decided not to implement or closed without a code change |
 
+Synonyms (`complete`, `completed`, `finished`, `wip`, `in-progress`) are silently coerced to canonical values on read; authors don't need to worry about fixing them manually.
+
 **Frontmatter `status` determines CLI bucketing.** Tools like `ll-issues list`, `ll-auto`, and `ll-sprint` filter issues by the `status` frontmatter field — not by directory location. All active issues live in type directories (`bugs/`, `features/`, `enhancements/`, `epics/`); their lifecycle state is recorded in frontmatter.
 
 ### Reopen a Completed Issue

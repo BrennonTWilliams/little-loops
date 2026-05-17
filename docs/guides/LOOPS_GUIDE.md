@@ -787,7 +787,7 @@ run_eval → score_results → analyze_failures
 |------|-------------|
 | `harness-single-shot` | Annotated single-shot harness example — all evaluation phases with commented-out optional gates |
 | `harness-multi-item` | Annotated multi-item harness example — all five evaluation phases active over a discovered item list |
-| `harness-optimize` | Score-gated hill-climbing on harness artifacts (skills, commands, CLAUDE.md) — proposes edits, benchmarks, commits accepted mutations; stops on first stall. Supports `.ll/program.md` for overnight runs: set Directive, Targets, and Benchmark once, then run `ll-loop run harness-optimize` with no flags. |
+| `harness-optimize` | Score-gated hill-climbing on harness artifacts (skills, commands, CLAUDE.md) — proposes edits, benchmarks, commits accepted mutations; stops on first stall. Supports `.ll/program.md` for overnight runs. Also supports **state mode**: set `targets` to a loop YAML with a `targets.states` list to optimize individual state `action:` blocks independently. |
 | `html-anything` | Generalized HTML artifact harness — classifies artifact type (email, social card, résumé, dashboard, etc.) from a description, writes a platform-specific brief and dynamic scoring rubric, then iteratively generates and refines `index.html` via Playwright CLI |
 | `hitl-compare` | Human-in-the-loop comparison harness — reads whitespace-separated inputs (file paths or raw text), extracts candidate review items with 2+ options, prunes implementation-level micro-decisions, and generates a self-contained interactive HTML page with comparison controls and an "Export selections" affordance |
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
@@ -2050,6 +2050,34 @@ The loop reads `.ll/program.md` automatically, injects `directive`, `targets`, `
 **Precedence**: `--context KEY=VALUE` CLI flags override `.ll/program.md` values; `.ll/program.md` values override YAML defaults.
 
 See [`.ll/program.md` reference](../reference/program-md.md) for the full section reference and examples.
+
+### State Mode
+
+State mode activates when `context.targets` points to a loop YAML file whose `targets:` block contains `states:` entries. Instead of proposing edits to arbitrary file contents, the loop mutates and scores each state's `action:` block independently via `yaml_state_editor.replace_action()`.
+
+**Activation** — add a `targets:` block to `.ll/program.md` (or pass via `--context targets=<path>`):
+
+```yaml
+# .ll/program.md
+## Targets
+- file: scripts/little_loops/loops/my-loop.yaml
+  states:
+    - name: propose
+      examples_file: .ll/examples/propose.jsonl
+      eval: score >= 7
+    - name: apply
+      examples_file: .ll/examples/apply.jsonl
+      eval: score >= 6
+```
+
+**Behavior**:
+
+- States are processed in declaration order via a runtime queue (`check_queue` / `dequeue_state` cycle)
+- Each state's `action:` block is mutated and benchmarked independently — accepting or reverting one state does not affect any other state's accepted mutation
+- Per-state scoring: each state's `eval` threshold is evaluated against that state's benchmark result only
+- Trajectories are written per-state to `.ll/runs/harness-optimize/<run-id>/states/<state-name>/trajectory.jsonl`
+
+See [harness-optimize reference](../reference/loops.md#harness-optimize) for the full state graph showing the `check_queue` / `dequeue_state` dispatch.
 
 ---
 

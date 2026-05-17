@@ -74,7 +74,7 @@ states:
     action: "/ll:audit-loop-run ${context.input} --auto"
     capture: improvement_report
     on_blocked: $current
-    on_error: done
+    on_error: refine_analysis
     max_retries: 2
     on_retry_exhausted: done
     evaluate:
@@ -89,7 +89,7 @@ states:
       min_confidence: 0.7
     on_yes: done
     on_no: refine_analysis
-    on_error: done
+    on_error: refine_analysis
 
   refine_analysis:
     action_type: slash_command
