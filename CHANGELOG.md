@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.102.0] - 2026-05-16
+
+### Added
+
+- **Host Runner Abstraction Framework** — All host CLI invocations now route through `resolve_host()` in `host_runner.py`; `HostInvocation` carries binary + args without embedding host literals. Supports `CodexRunner`, `OpenCodeRunner`, and `PiRunner` stubs with streaming, blocking-JSON, detached, and version-check build modes. Set `LL_HOST_CLI` or `orchestration.host_cli` in config to override. (FEAT-1465, FEAT-1467, FEAT-1469, FEAT-1470, FEAT-1471, FEAT-1472, FEAT-1473)
+- **Codex/OpenCode Hook Wiring** — `post_tool_use` fires fire-and-forget for Codex and OpenCode adapters; `pre_tool_use` benchmarked for latency characterization. (FEAT-1489)
+- **`ll-adapt-agents-for-codex` CLI** — Generates `.codex/agents/*.toml` from `agents/*.md` so Codex CLI can discover and invoke ll agents via `--agent <name>`; includes full documentation and integration tests. (FEAT-1527, FEAT-1528)
+
+### Fixed
+
+- **`completed` Status Missing from Terminal Filter** — `find_issues` and `skip.py` now recognize `completed` as a terminal status, preventing stale issues from being re-queued for processing. (BUG-1485)
+
 ## [1.101.0] - 2026-05-15
 
 ### Added
@@ -156,6 +168,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
 [Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.101.0...HEAD
+[1.102.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.101.0...v1.102.0
 [1.101.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.100.0...v1.101.0
 [1.100.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.99.0...v1.100.0
 [1.99.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.98.0...v1.99.0
