@@ -64,13 +64,10 @@ states:
       # Does the plan cover all relevant concerns, stakeholders, and edge cases?
 
       depth: LOW
-      # Are sub-steps sufficiently detailed to be actionable without further clarification?
+      # Are sub-steps sufficiently detailed and granular to be actionable without further clarification?
 
       complexity: LOW
       # Is the plan's complexity calibrated to the task — neither over- nor under-engineered?
-
-      granularity: LOW
-      # Are action items at the right level of detail — concrete enough to execute?
 
       clarity: LOW
       # Is language unambiguous, specific, and free of vague directives like "handle X" or "ensure Y"?
@@ -81,8 +78,14 @@ states:
       logic_strategy: LOW
       # Does the ordering and approach make sense? Is the strategy sound for this specific task?
 
-      outcome_confidence: LOW
-      # How confident is this plan to produce the desired result if followed precisely?
+      feasibility: LOW
+      # Are the steps achievable given realistic constraints (time, resources, skills, access)?
+
+      testability: LOW
+      # Does the plan define clear success criteria and verification steps for each phase?
+
+      risk_mitigation: LOW
+      # Are key risks identified with concrete contingencies or mitigation strategies?
 
       ## Aggregate
 
@@ -226,7 +229,7 @@ states:
     next: score
 
   score:
-    # Scoring — evaluates the current plan against all 8 rubric dimensions, updates
+    # Scoring — evaluates the current plan against all 9 rubric dimensions, updates
     # the rubric file with new scores, and signals convergence via ALL_VERY_HIGH sentinel.
     # Convergence is embedded here — no separate check_convergence state needed.
     action_type: prompt
@@ -234,7 +237,7 @@ states:
       Read the current plan at ${captured.run_dir.output}/plan.md.
       Read the rubric at ${captured.run_dir.output}/plan-rubric.md.
 
-      Evaluate the plan against each of the 8 dimensions using the LOW/MEDIUM/HIGH/VERY-HIGH scale:
+      Evaluate the plan against each of the 9 dimensions using the LOW/MEDIUM/HIGH/VERY-HIGH scale:
       - LOW (1): significant gaps; not yet actionable
       - MEDIUM (2): covers basics but missing important details
       - HIGH (3): solid; minor gaps or ambiguities remain
@@ -242,21 +245,22 @@ states:
 
       Scoring criteria:
       - breadth: Are all relevant concerns, risks, and stakeholders covered?
-      - depth: Are sub-steps specific enough to execute without guessing?
+      - depth: Are sub-steps specific and granular enough to execute without guessing?
       - complexity: Is the plan's scope calibrated to the task — not over- or under-engineered?
-      - granularity: Are action items at the right level — concrete but not micro-managing?
       - clarity: Is every directive unambiguous and free of vague language?
       - consistency: Are steps non-contradictory? No duplication or conflicting advice?
       - logic_strategy: Is the ordering sound? Does the approach make sense for this task?
-      - outcome_confidence: Will following this plan reliably produce the desired result?
+      - feasibility: Are the steps achievable given realistic constraints (time, resources, skills, access)?
+      - testability: Does the plan define clear success criteria and verification steps for each phase?
+      - risk_mitigation: Are key risks identified with concrete contingencies or mitigation strategies?
 
       Update ${captured.run_dir.output}/plan-rubric.md — rewrite the ## Dimensions section
       with the new scores and update the ## Aggregate section:
-      - score = mean of all 8 dimension values (1-4 scale)
-      - verdict = ALL_VERY_HIGH if all 8 are VERY-HIGH, otherwise ITERATE
+      - score = mean of all 9 dimension values (1-4 scale)
+      - verdict = ALL_VERY_HIGH if all 9 are VERY-HIGH, otherwise ITERATE
 
       After updating the rubric file:
-      - If ALL 8 dimensions are VERY-HIGH, output exactly: ALL_VERY_HIGH
+      - If ALL 9 dimensions are VERY-HIGH, output exactly: ALL_VERY_HIGH
       - Otherwise output: ITERATE
     evaluate:
       type: output_contains
