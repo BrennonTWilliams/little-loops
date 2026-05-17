@@ -108,11 +108,12 @@ little-loops/
 │   └── plugin.json       # Plugin manifest
 ├── config-schema.json    # Configuration JSON Schema
 ├── commands/             # Slash command templates (*.md)
-├── agents/               # 8 agent definitions (*.md)
+├── agents/               # 9 agent definitions (*.md)
 │   ├── codebase-analyzer.md
 │   ├── codebase-locator.md
 │   ├── codebase-pattern-finder.md
 │   ├── consistency-checker.md
+│   ├── loop-specialist.md
 │   ├── plugin-config-auditor.md
 │   ├── prompt-optimizer.md
 │   ├── web-search-researcher.md

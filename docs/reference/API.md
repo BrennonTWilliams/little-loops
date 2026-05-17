@@ -6519,3 +6519,19 @@ prompt = expand_skill("ready-issue", ["FEAT-123"], config)
 if prompt is None:
     prompt = "/ll:ready-issue FEAT-123"  # fallback
 ```
+
+## Agents
+
+Specialized sub-agents live in `agents/*.md` and are registered in `.claude-plugin/plugin.json`. Each agent is spawned via the `Task` / `Agent` tool with `subagent_type` set to the agent name. Codex-CLI mirrors are generated into `.codex/agents/*.toml` by `ll-adapt-agents-for-codex`.
+
+| Agent | Model | Tools | Purpose |
+|-------|-------|-------|---------|
+| [`codebase-analyzer`](../../agents/codebase-analyzer.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch | Trace HOW code works — implementation details, data flows, integration points, anchor-based references. |
+| [`codebase-locator`](../../agents/codebase-locator.md) | haiku | Read, Glob, Grep, WebFetch, WebSearch | Find WHERE code lives — file paths grouped by purpose without reading contents. |
+| [`codebase-pattern-finder`](../../agents/codebase-pattern-finder.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch | Extract concrete code examples of patterns and conventions to model new work after. |
+| [`consistency-checker`](../../agents/consistency-checker.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch | Validate cross-component references between CLAUDE.md, agents, skills, commands, hooks, and MCP config. |
+| [`loop-specialist`](../../agents/loop-specialist.md) | sonnet | Bash, Read, Edit, Write | Monitor, diagnose, refine, and verify FSM loops; classifies failures against the six-mode taxonomy and writes diagnosis artifacts to `.loops/diagnostics/`. |
+| [`plugin-config-auditor`](../../agents/plugin-config-auditor.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch | Audit individual agent/skill/command/hook definitions for quality, completeness, and best practices. |
+| [`prompt-optimizer`](../../agents/prompt-optimizer.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch, Write | Gather codebase context so vague user prompts can be rewritten with specific references and conventions. |
+| [`web-search-researcher`](../../agents/web-search-researcher.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch, Bash | Fetch current external documentation, release notes, and best-practice references beyond the training cutoff. |
+| [`workflow-pattern-analyzer`](../../agents/workflow-pattern-analyzer.md) | sonnet | Read, Glob, Grep, WebFetch, WebSearch, Write | Categorize extracted user messages and emit `step1-patterns.yaml` for the three-step workflow-analysis pipeline. |

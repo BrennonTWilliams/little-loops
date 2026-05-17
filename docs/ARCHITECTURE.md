@@ -22,7 +22,7 @@ The system consists of three main layers:
 flowchart TB
     subgraph "Claude Code Plugin"
         CMD[Commands<br/>28 slash commands]
-        AGT[Agents<br/>8 specialized agents]
+        AGT[Agents<br/>9 specialized agents]
         SKL[Skills<br/>30 composable skills]
     end
 
@@ -68,11 +68,12 @@ little-loops/
 │   ├── scan-codebase.md
 │   ├── normalize-issues.md
 │   └── ...
-├── agents/                  # 8 specialized agents
+├── agents/                  # 9 specialized agents
 │   ├── codebase-analyzer.md
 │   ├── codebase-locator.md
 │   ├── codebase-pattern-finder.md
 │   ├── consistency-checker.md
+│   ├── loop-specialist.md
 │   ├── plugin-config-auditor.md
 │   ├── prompt-optimizer.md
 │   ├── web-search-researcher.md
