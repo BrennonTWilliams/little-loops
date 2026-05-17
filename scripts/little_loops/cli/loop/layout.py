@@ -1107,12 +1107,20 @@ def _render_layered_diagram(
             if arrow_end_row < total_height and 0 <= dst_cc < total_width:
                 grid[arrow_end_row][dst_cc] = _lc("\u25bc")
 
-            # Label to the right of the pipe (or left if it would overlap)
+            # Label to the right of the pipe.  When skip-layer forward edges
+            # exist their vertical pipes occupy columns starting at
+            # total_content_w+2, so clamp to total_content_w to avoid
+            # overwriting them (BUG-1500).  Without skip-layer edges the right
+            # margin is empty and the full total_width is available.
             label_row = arrow_start_row
             if label_row < total_height:
                 label_start = dst_cc + 2
+                max_col = total_content_w if skip_forward_edges else total_width
+                max_label = max_col - label_start
+                if 0 < max_label < len(label):
+                    label = label[: max_label - 1] + "…"
                 for j, ch in enumerate(label):
-                    if label_start + j < total_width:
+                    if label_start + j < max_col:
                         grid[label_row][label_start + j] = ch
 
         # Post-pass: connect horizontal gaps for multi-branch sources
@@ -1417,10 +1425,15 @@ def _render_layered_diagram(
             if 0 <= dst_row < total_height and dst_right < col and dst_right < total_width:
                 grid[dst_row][dst_right] = _lc("\u25c0")
 
-            # Label on the margin line (right of ALL pipes, mirroring left-margin approach)
+            # Label on the margin line (right of ALL pipes, mirroring left-margin
+            # approach).  Truncate with … when label would exceed total_width
+            # to prevent extending diagram lines far past the content area (BUG-1500).
             label_row_pos = (top_row + bot_row) // 2
             if 0 <= label_row_pos < total_height:
                 label_start = rightmost_fwd_pipe_col + 2
+                max_label = total_width - label_start
+                if 0 < max_label < len(label):
+                    label = label[: max_label - 1] + "…"
                 for j, ch in enumerate(label):
                     if label_start + j < total_width:
                         grid[label_row_pos][label_start + j] = _lc(ch)

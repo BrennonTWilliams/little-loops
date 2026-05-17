@@ -1487,6 +1487,64 @@ class TestAdaptiveLayoutTopologies:
         assert "partial" in result
         assert "error" in result
 
+    def test_fanout_merged_label_truncated_with_ellipsis(self) -> None:
+        """Regression for BUG-1500: \u22655 transitions to same dst truncate with \u2026
+
+        A fan-out state whose 5 routes all target the same destination produces
+        an ~85-char merged label.  Without the fix the label overflows the content
+        area and corrupts adjacent box borders.  With the fix the label is
+        truncated at total_content_w with an ellipsis and no border corruption
+        occurs.
+        """
+        import re
+        from unittest.mock import patch as _patch
+
+        from little_loops.cli import output as output_mod
+
+        long_merged = (
+            "system_problem/max_rounds_exhausted/degrade_give_up"
+            "/retry_flood/blender_5_incompatible"
+        )
+        with _patch.object(output_mod, "terminal_width", return_value=80):
+            fsm = self._make_fsm(
+                initial="investigate_failure",
+                states={
+                    "investigate_failure": StateConfig(
+                        action="investigate",
+                        route=RouteConfig(
+                            routes={
+                                "system_problem": "done",
+                                "max_rounds_exhausted": "done",
+                                "degrade_give_up": "done",
+                                "retry_flood": "done",
+                                "blender_5_incompatible": "done",
+                            }
+                        ),
+                    ),
+                    "done": StateConfig(terminal=True),
+                },
+            )
+            result = _render_fsm_diagram(fsm)
+
+        lines = result.split("\n")
+
+        # Full merged label must not appear (it overflows content area)
+        assert long_merged not in result, (
+            "Full untruncated merged label should not appear; expected truncation"
+        )
+
+        # Truncation marker must be present
+        assert "\u2026" in result, (
+            "Long merged forward-edge label should be truncated with \u2026"
+        )
+
+        # No letter should immediately follow a box-border pipe (garbled-label guard)
+        for ln in lines:
+            garbled = re.findall(r"\u2502[a-zA-Z]", ln)
+            assert not garbled, (
+                f"Garbled label (letter touching pipe \u2502): {garbled!r} in: {ln!r}"
+            )
+
 
 class TestDisplayProgressEvents:
     """Tests for display_progress event formatting in run_foreground."""
