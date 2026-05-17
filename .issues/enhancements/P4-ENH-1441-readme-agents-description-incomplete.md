@@ -35,6 +35,13 @@ Found by `/ll:audit-docs` on 2026-05-10 (scope=readme). Counts (8 agents) verifi
 
 **Verdict**: NEEDS_UPDATE — Re-verified 2026-05-17
 
+- README now reads: `**9 specialized agents** — codebase analysis, pattern finding, consistency checking, loop diagnosis, web research` (count bumped from 8→9; "loop diagnosis" added for loop-specialist agent)
+- Still omits plugin-config-auditor, prompt-optimizer, workflow-pattern-analyzer from the description.
+- Issue title and summary reference "8 agents" — update to reflect 9 agents now present.
+- No fix applied; issue remains open.
+
+**Verdict**: NEEDS_UPDATE — Re-verified 2026-05-17 (earlier)
+
 - `README.md:164` still reads: `**8 specialized agents** — codebase analysis, pattern finding, consistency checking, web research`
 - Still omits plugin-config-auditor, prompt-optimizer, workflow-pattern-analyzer from the description.
 - No fix applied; issue remains open.
@@ -46,5 +53,6 @@ Found by `/ll:audit-docs` on 2026-05-10 (scope=readme). Counts (8 agents) verifi
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-17T17:04:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/907d2d29-7e38-4120-a77d-deb597ac2df4.jsonl`
 - `/ll:verify-issues` - 2026-05-17T05:54:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9fb51237-8283-40d3-94ce-bda6ff4b1b33.jsonl`
 - `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`

@@ -4,6 +4,7 @@ type: FEAT
 priority: P5
 status: open
 parent: FEAT-1477
+relates_to: FEAT-1476
 ---
 
 # FEAT-1480: Pi Adapter — Wire PiRunner and Host Runner Tests
@@ -45,13 +46,6 @@ In `scripts/little_loops/host_runner.py` at `PiRunner` class (lines ~478–532):
 - `scripts/tests/test_host_runner.py:TestPiRunner` (~lines 337–392) — replace 4 `pytest.raises(HostNotConfigured, match="FEAT-992")` assertions with argv-snapshot tests following `TestCodexRunner` as template; update `test_pirunner_probe_returns_stub_not_raise` (~line 357) — remove the `HostNotConfigured` assertion and replace with an argv snapshot (e.g. `assert invocation.binary == "pi"`) following `test_codex_runner_flag_translation` at line 194
 - `scripts/tests/test_hook_intents.py:TestHooksMainModule` (~line 359) — add `test_ll_hook_host_env_var_propagates_pi` after the codex variant
 
-### Step 4: Update Documentation
-
-- `docs/reference/HOST_COMPATIBILITY.md` — update Pi row from "stub" to "supported"
-- `docs/reference/API.md` — `little_loops.host_runner` section; `PiRunner` runner-table row (currently says "stub"); remove `PiRunner` from `HostNotConfigured` stub-runner sentence
-- `docs/ARCHITECTURE.md` — `PiRunner` row at line 570: update from `"Stub for the Raspberry Pi host (FEAT-992 research deferred)"`
-- `docs/development/TROUBLESHOOTING.md` — lines 294 and 308: remove `PiRunner` from stub-runner list and FEAT-992 references
-
 ## Integration Map
 
 ### Files to Modify
@@ -89,4 +83,5 @@ In `scripts/little_loops/host_runner.py` at `PiRunner` class (lines ~478–532):
 **Open** | Created: 2026-05-15 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
 - `/ll:issue-size-review` - 2026-05-15T20:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e9b11ad-de12-4f82-9761-25c38e59c783.jsonl`

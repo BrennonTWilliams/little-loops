@@ -1,7 +1,7 @@
 ---
 discovered_date: 2026-04-07
 discovered_by: split-from-ENH-494
-blocked_by: [ENH-494, ENH-1038]
+blocked_by: [ENH-494]
 ---
 
 # ENH-977: Add `ll-verify-skills` CLI Lint Command
@@ -89,6 +89,13 @@ Extend `scripts/little_loops/doc_counts.py` with a skill-size checker function a
 
 ## Verification Notes
 
+**Verdict**: VALID — Re-verified 2026-05-17
+
+- No `check_skill_sizes()` function in `scripts/little_loops/doc_counts.py` ✓
+- No `main_verify_skills()` in `scripts/little_loops/cli/docs.py` ✓
+- No `ll-verify-skills` entry point in `scripts/pyproject.toml` ✓
+- ENH-1038 is now `status: done` — removed from `blocked_by`; only ENH-494 remains as blocker
+
 **Verdict**: VALID — Verified 2026-04-11; re-verified 2026-05-14
 
 - No `check_skill_sizes()` function in `scripts/little_loops/doc_counts.py`
@@ -103,6 +110,7 @@ Extend `scripts/little_loops/doc_counts.py` with a skill-size checker function a
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-17T17:04:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/907d2d29-7e38-4120-a77d-deb597ac2df4.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-14T21:02:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75505ad4-6733-4424-b334-3143f412786b.jsonl`
 - `/ll:verify-issues` - 2026-05-14T20:42:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-10T19:45:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`

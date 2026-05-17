@@ -101,6 +101,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] `docs/guides/LOOPS_GUIDE.md` has a `#### State Mode` subsection with YAML example and behavioral description
 - [ ] No broken links in modified doc files (`ll-check-links`)
 
+## Verification Notes
+
+**Verdict**: NEEDS_UPDATE — Verified 2026-05-17
+
+- `docs/guides/LOOPS_GUIDE.md:2103` — `### State Mode` section already present with YAML snippet and `check_queue`/`dequeue_state` behavior documented
+- `docs/reference/loops.md:53-54` — `STATE_NAME` and `EXAMPLES_FILE` context var rows already present; trajectory path updated to `.ll/runs/harness-optimize`; `dequeue_state`/`check_queue` in state graph
+- **Remaining work**: `scripts/tests/test_enh1557_doc_wiring.py` does not exist; heading-level mismatch (issue specifies `####` but LOOPS_GUIDE uses `###`) must be resolved before/alongside test creation
+- Issue is 80-90% done on doc content; primary gap is the wiring test file
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-05-17_
@@ -116,6 +125,7 @@ _Added by `/ll:confidence-check` on 2026-05-17_
 - Tests are co-deliverables: write `scripts/tests/test_enh1557_doc_wiring.py` first to determine which assertions currently pass on the existing doc state, then fix any discrepancies before considering the issue done
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-17T17:04:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/907d2d29-7e38-4120-a77d-deb597ac2df4.jsonl`
 - `/ll:confidence-check` - 2026-05-17T12:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/369fdb2c-e21f-4bc3-a48c-750db77527c7.jsonl`
 - `/ll:wire-issue` - 2026-05-17T12:02:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35b52d52-9151-48b2-9caa-da04b7531187.jsonl`
 - `/ll:refine-issue` - 2026-05-17T11:57:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5557aeab-881f-43e5-b354-2745da83ae98.jsonl`

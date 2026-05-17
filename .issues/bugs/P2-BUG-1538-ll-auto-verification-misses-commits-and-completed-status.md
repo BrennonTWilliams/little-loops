@@ -212,8 +212,18 @@ In `scripts/little_loops/issue_lifecycle.py:400`:
 
 ---
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-05-17
+
+- `scripts/little_loops/work_verification.py:44` — `def verify_work_was_done(logger, changed_files=None)` confirmed; no `baseline_sha` parameter ✓
+- `scripts/little_loops/issue_manager.py:890` — `work_done = verify_work_was_done(logger)` with no `changed_files` passed ✓
+- `scripts/little_loops/issue_lifecycle.py:400` — `if status in ("done", "cancelled"):` confirmed; `completed` not accepted ✓
+- Bug not yet fixed.
+
 ## Status
 **Open** | Created: 2026-05-17 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 - `/ll:capture-issue` - 2026-05-17T02:15:49Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`

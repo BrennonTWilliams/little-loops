@@ -177,6 +177,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-17T17:04:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/907d2d29-7e38-4120-a77d-deb597ac2df4.jsonl`
 - `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
@@ -212,11 +213,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Verification Notes
 
-- **Date**: 2026-05-14
+- **Date**: 2026-05-17
 - **Verdict**: VALID (counts refreshed)
-- **4 skills** still exceed 500 lines: `confidence-check/SKILL.md` = **779** (was 697, +82), `audit-claude-config/SKILL.md` = **709**, `init/SKILL.md` = **614**, `manage-issue/SKILL.md` = **559**. No companion files extracted yet; `confidence-check` continues to grow.
+- **4 skills** still exceed 500 lines: `confidence-check/SKILL.md` = **817** (was 779, +38), `audit-claude-config/SKILL.md` = **712** (was 709), `init/SKILL.md` = **696** (was 614, +82), `manage-issue/SKILL.md` = **560** (was 559). No companion files extracted yet; `confidence-check` and `init` continue to grow.
 
 ### Prior verifications
+- 2026-05-14 — 779 / 709 / 614 / 559
 - 2026-04-26 — 711 / 697 / 606 / 556
 
 ## Status

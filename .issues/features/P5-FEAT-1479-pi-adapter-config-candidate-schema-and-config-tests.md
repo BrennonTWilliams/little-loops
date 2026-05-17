@@ -10,6 +10,7 @@ score_complexity: 22
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+relates_to: FEAT-1476
 ---
 
 # FEAT-1479: Pi Adapter — Config Candidate, Schema, and Config Tests
@@ -204,6 +205,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 **Open** | Created: 2026-05-15 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
 - `/ll:manage-issue` - 2026-05-15T20:23:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a222200-0970-406f-ab67-4aaf8d296ca4.jsonl`
 - `/ll:ready-issue` - 2026-05-15T20:19:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f9a440f-13e7-4f06-9cb4-450f590e4bfe.jsonl`
 - `/ll:wire-issue` - 2026-05-15T20:14:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/283ba605-37bc-48cb-a598-ae75817694a9.jsonl`

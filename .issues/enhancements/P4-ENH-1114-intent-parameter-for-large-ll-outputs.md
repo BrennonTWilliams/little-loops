@@ -7,7 +7,7 @@ discovered_date: 2026-04-15
 discovered_by: capture-issue
 
 blocked_by: [FEAT-1112]
-relates_to: ['FEAT-1112', 'ENH-1111']
+relates_to: ['FEAT-1112', 'ENH-1111', 'FEAT-1160']
 ---
 
 # ENH-1114: Intent Parameter for Large ll-* CLI Outputs
@@ -60,6 +60,7 @@ Context-mode (github.com/mksglu/context-mode) calls this "intent-driven filterin
 - Feature not yet implemented ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-14T20:57:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75505ad4-6733-4424-b334-3143f412786b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
@@ -93,3 +94,9 @@ Context-mode (github.com/mksglu/context-mode) calls this "intent-driven filterin
 
 ### Recommendation
 Update first — This issue is explicitly blocked by FEAT-1112 (SQLite + FTS5 store), which does not yet exist. The proposed `ranking.py` BM25 module is designed to be thrown away once FEAT-1112 lands, creating throwaway tech debt. Defer implementation until FEAT-1112 is complete and replace BM25 backend directly with FTS5 rather than building the interim layer. If you do implement the interim, ensure `ranking.py` is a thin swappable backend with no callers hard-coupling to BM25 specifics.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-17): Schema extensions to FEAT-1112's `tool_events` table must be coordinated with FEAT-1160. ENH-1114 adds FTS5 intent-ranking indexing; FEAT-1160 adds per-tool `bytes_in`/`bytes_out`/`cache_hit` columns. Both must target FEAT-1112's migration framework to avoid column collisions — implement sequentially after FEAT-1112 ships, not concurrently.

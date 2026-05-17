@@ -5,6 +5,7 @@ priority: P3
 status: open
 title: "ll-verify-docs false positive: '0 skill descriptions dropped' matched as skill count"
 created: 2026-05-17
+relates_to: ENH-977
 ---
 
 ## Problem
@@ -53,3 +54,21 @@ Also add a test case to `scripts/tests/test_doc_counts.py` covering this edge ca
 - [ ] `ll-verify-docs` returns exit code 0 on the current codebase with no changes to CONTRIBUTING.md
 - [ ] `"0 skill descriptions dropped"` no longer matches as a skills count in the regex
 - [ ] New test covers this edge case in `test_doc_counts.py`
+
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-05-17
+
+- `scripts/little_loops/doc_counts.py:108` — `pattern = r"(\d+)\s+\w*\s*skills?"` confirmed; tested against `"0 skill descriptions dropped"` → matches `"0 skill"` ✓
+- `CONTRIBUTING.md:540` — contains the triggering text `verify "0 skill descriptions dropped"` ✓
+- No fix applied; regex still too broad.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-17): ENH-977 also modifies `scripts/little_loops/doc_counts.py` (adds `check_skill_sizes()` function). Implement this bug fix (narrowing the skills regex at line 108) **before** ENH-977 to avoid a merge conflict on the same file. Alternatively, include this fix directly in ENH-977's PR.
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
+- `/ll:verify-issues` - 2026-05-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

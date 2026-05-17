@@ -6,6 +6,7 @@ status: open
 captured_at: "2026-05-16T14:12:59Z"
 discovered_date: "2026-05-16"
 discovered_by: capture-issue
+depends_on: ENH-839
 ---
 
 # BUG-1498: FSM diagram same-layer right-to-left edge draws wrong arrowhead
@@ -126,5 +127,6 @@ The existing test `test_same_layer_edge_does_not_occlude_intermediate_box` (line
 - **Captured by**: `/ll:capture-issue`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
 - `/ll:refine-issue` - 2026-05-17T14:48:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70b5ac5f-6894-4bfd-9384-d9d089bceb7e.jsonl`
 - `/ll:capture-issue` - 2026-05-16T14:12:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f204025d-307a-4f4d-80b2-206dfd3b1de1.jsonl`

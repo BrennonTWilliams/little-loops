@@ -7,7 +7,7 @@ discovered_date: 2026-04-18
 discovered_by: capture-issue
 
 blocked_by: [FEAT-1112]
-relates_to: ['FEAT-1159', 'FEAT-1112']
+relates_to: ['FEAT-1159', 'FEAT-1112', 'ENH-1114']
 ---
 
 # FEAT-1160: Context Window Analytics Command
@@ -88,6 +88,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `analytics`, `context-window`, `hooks`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-14T21:18:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75505ad4-6733-4424-b334-3143f412786b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
@@ -115,3 +116,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): The "Approach 1" implementation path (PostToolUse hook writing to `.ll/ll-ctx-stats.json`) is removed from scope. Scope this issue exclusively to Approach 2: extend FEAT-1112's SQLite schema with per-tool byte columns and implement `/ll:ctx-stats` as a query over that store. The flat-file hook approach re-introduces the fragmentation FEAT-1112 was designed to eliminate. Implementation steps 1-3 must be rewritten to describe schema extension + query logic rather than a hook accumulator.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-17): Schema extensions to FEAT-1112's `tool_events` table must be coordinated with ENH-1114. This issue adds per-tool `bytes_in`/`bytes_out`/`cache_hit` columns; ENH-1114 adds FTS5 intent-ranking indexing. Both must target FEAT-1112's migration framework to avoid column collisions — implement sequentially after FEAT-1112 ships, not concurrently.
