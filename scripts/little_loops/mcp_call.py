@@ -314,29 +314,40 @@ def call_mcp_tool(
 
 def main() -> None:
     """Entry point for mcp-call CLI."""
-    if len(sys.argv) < 3:
-        print(
-            'Usage: mcp-call server/tool-name \'{"param": "value"}\'',
-            file=sys.stderr,
-        )
-        sys.exit(2)
+    import argparse
 
-    spec = sys.argv[1]
-    params_json = sys.argv[2]
+    parser = argparse.ArgumentParser(
+        description="Call an MCP tool directly via JSON-RPC",
+    )
+    parser.add_argument(
+        "spec",
+        help="server/tool-name (e.g. zai-mcp-server/analyze_image)",
+    )
+    parser.add_argument(
+        "params",
+        help='Tool arguments as JSON object (e.g. \'{"param": "value"}\')',
+    )
+    parser.add_argument(
+        "-t", "--timeout",
+        type=int,
+        default=_DEFAULT_TIMEOUT,
+        help=f"Timeout in seconds (default: {_DEFAULT_TIMEOUT})",
+    )
+    args = parser.parse_args()
 
     # Parse server/tool-name
-    if "/" not in spec:
+    if "/" not in args.spec:
         print(
-            f"Error: spec must be 'server/tool-name', got: {spec!r}",
+            f"Error: spec must be 'server/tool-name', got: {args.spec!r}",
             file=sys.stderr,
         )
         sys.exit(2)
 
-    server_name, tool_name = spec.split("/", 1)
+    server_name, tool_name = args.spec.split("/", 1)
 
     # Parse params JSON
     try:
-        params = json.loads(params_json)
+        params = json.loads(args.params)
     except json.JSONDecodeError as e:
         print(f"Error: invalid params JSON: {e}", file=sys.stderr)
         sys.exit(2)
@@ -349,6 +360,7 @@ def main() -> None:
         server_name=server_name,
         tool_name=tool_name,
         params=params,
+        timeout=args.timeout,
     )
 
     print(json.dumps(envelope))
