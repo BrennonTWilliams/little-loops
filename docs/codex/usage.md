@@ -80,9 +80,20 @@ After saving, start a new Codex session. Codex will prompt you to re-trust the m
 
 ### `--agent` (persona selection)
 
-`CodexRunner` does not support the `--agent` flag in ll-orchestrated sessions (`ll-auto`, `ll-parallel`, `ll-loop`). When an orchestration tool or skill requests a persona (e.g., `--agent coding`), the flag is silently dropped and `CapabilityNotSupported` is emitted to the log. The session proceeds with Codex's default model configuration.
+`CodexRunner` has no native `--agent` CLI flag (this is the permanent native gap tracked in ENH-1531 / openai/codex#10067). Instead, ENH-1533 implements a **prompt-injection workaround**: when `CodexRunner.build_streaming(agent=…)` is called, it reads `.codex/agents/<name>.toml`, extracts `developer_instructions`, and prepends a `[Persona: <name>]\n<instructions>\n\n---\n\n` block to the prompt payload. No warning fires when injection succeeds, and `describe_capabilities()` reports `agent_select.status == "partial"`.
 
-**Mitigation for interactive sessions:** Run `ll-adapt-agents-for-codex --apply` once to generate `.codex/agents/*.toml` files from ll's `agents/*.md` definitions. After this step, the Codex TUI can select ll subagents via `--agent <name>` (e.g., `--agent codebase-analyzer`). Re-run after adding new agents to `agents/`.
+**Setup:** Run `ll-adapt-agents-for-codex --apply` once to generate `.codex/agents/*.toml` files from ll's `agents/*.md` definitions. Re-run after adding new agents.
+
+**Fallback path:** When the TOML file (or its `developer_instructions` key) is absent, `CodexRunner` emits `CapabilityNotSupported` and prints a `[ll] Warning` stderr notice that names the dropped persona and points at `ll-adapt-agents-for-codex --apply`. The session proceeds with Codex's default model configuration.
+
+**Native-flag gap (permanent).** Research (ENH-1531, `thoughts/research/codex-agent-selection.md`) confirmed no Codex CLI mechanism selects a named profile at invocation time:
+- The `codex` CLI has no `--agent` flag. Feature request: openai/codex#10067 (open, no timeline).
+- `CODEX_AGENT` and `CODEX_PROFILE` environment variables do not exist.
+- The `agents.<name>.config_file` config stanza only governs `spawn_agent` subagent calls within an existing session, not the root session persona.
+
+The injection workaround is therefore the only way to get ll-defined persona behavior under Codex; interactive Codex TUI sessions can additionally select agents via `--agent <name>` once the TOML files exist.
+
+**Note for CI/`ll-doctor` consumers:** Before ENH-1533, `ll-doctor` exited `1` on Codex hosts because `agent_select` was `"unsupported"`. With prompt injection, `agent_select` is `"partial"`, which does not trigger exit `1`. Codex hosts that previously failed `ll-doctor` solely on `agent_select` will now exit `0`.
 
 ### `--tools` (tool allowlist / sandbox modes)
 

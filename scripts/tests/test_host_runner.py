@@ -218,12 +218,74 @@ class TestCodexRunner:
         assert invocation.args[:3] == ["exec", "resume", "--last"]
         assert "--continue" not in invocation.args
 
-    def test_build_streaming_emits_warning_for_agent(self) -> None:
-        """Per AC: Codex has no CLI-flag agent selection (subagents are model-spawned);
-        passing `agent=` must surface a warning."""
+    def test_build_streaming_emits_warning_for_agent_when_toml_absent(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-1533: warning fires only when .codex/agents/<name>.toml is absent
+        (fallback path). When the TOML exists with developer_instructions, persona
+        injection succeeds and no warning is emitted."""
         runner = CodexRunner()
         with pytest.warns(CapabilityNotSupported, match="agent"):
-            runner.build_streaming(prompt="hi", agent="general-purpose")
+            runner.build_streaming(
+                prompt="hi", agent="general-purpose", working_dir=tmp_path
+            )
+
+    def test_build_streaming_injects_persona_when_toml_present(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-1533: When .codex/agents/<name>.toml exists with
+        developer_instructions, the prompt is prefixed with a persona block and
+        no CapabilityNotSupported warning fires (Pattern C)."""
+        agents_dir = tmp_path / ".codex" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "code-reviewer.toml").write_text(
+            'name = "code-reviewer"\n'
+            'developer_instructions = """\nReview code carefully.\n"""\n'
+        )
+
+        runner = CodexRunner()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", CapabilityNotSupported)
+            invocation = runner.build_streaming(
+                prompt="please review", agent="code-reviewer", working_dir=tmp_path
+            )
+
+        assert "[Persona: code-reviewer]" in invocation.args[-1]
+        assert "Review code carefully." in invocation.args[-1]
+        assert invocation.args[-1].endswith("please review")
+        captured = capsys.readouterr()
+        assert "[ll] Warning" not in captured.err
+
+    def test_build_streaming_falls_back_when_toml_absent(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-1533: TOML-absent path emits the stderr notice and the
+        CapabilityNotSupported warning; persona is not injected."""
+        runner = CodexRunner()
+        with pytest.warns(CapabilityNotSupported, match="agent"):
+            invocation = runner.build_streaming(
+                prompt="hi", agent="ghost-agent", working_dir=tmp_path
+            )
+        assert "[Persona:" not in invocation.args[-1]
+        captured = capsys.readouterr()
+        assert "ghost-agent" in captured.err
+        assert "ll-adapt-agents-for-codex" in captured.err
+
+    def test_build_streaming_falls_back_when_developer_instructions_empty(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-1533: TOML present but with empty/missing developer_instructions
+        falls back to warn-and-drop."""
+        agents_dir = tmp_path / ".codex" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "empty.toml").write_text('name = "empty"\n')
+
+        runner = CodexRunner()
+        with pytest.warns(CapabilityNotSupported, match="agent"):
+            invocation = runner.build_streaming(
+                prompt="hi", agent="empty", working_dir=tmp_path
+            )
+        assert "[Persona:" not in invocation.args[-1]
 
     def test_build_streaming_emits_warning_for_tools(self) -> None:
         """Codex uses sandbox modes, not a tool allowlist; expect a warning."""
@@ -531,10 +593,14 @@ class TestDescribeCapabilities:
         assert report.host == "codex"
         assert report.binary == "codex"
 
-    def test_codex_runner_agent_select_unsupported(self) -> None:
+    def test_codex_runner_agent_select_partial(self) -> None:
+        """ENH-1533: agent_select is now "partial" — persona is injected via
+        .codex/agents/<name>.toml when the file exists; `HostCapabilities.agent_select`
+        bool stays False because there is still no native --agent CLI parity."""
         report = CodexRunner().describe_capabilities()
         by_name = {e.name: e for e in report.capabilities}
-        assert by_name["agent_select"].status == "unsupported"
+        assert by_name["agent_select"].status == "partial"
+        assert "developer_instructions" in by_name["agent_select"].note
         assert by_name["tool_allowlist"].status == "unsupported"
         assert by_name["json_schema"].status == "partial"
 
@@ -554,23 +620,40 @@ class TestDescribeCapabilities:
         assert report.capabilities[0].status == "unsupported"
         assert "FEAT-992" in report.capabilities[0].note
 
-    def test_codex_warnings_consistent_with_describe_capabilities(self) -> None:
-        """Every CapabilityNotSupported warning from CodexRunner maps to an unsupported entry.
+    def test_codex_warnings_consistent_with_describe_capabilities(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-1533: Pattern D consistency.
 
-        Uses pytest.warns() matching the established pattern in this test module.
+        - When `.codex/agents/<name>.toml` is present with developer_instructions,
+          no warning fires and `agent_select` is "partial".
+        - When the TOML is absent, the fallback emits CapabilityNotSupported.
+        - `tools=` still emits CapabilityNotSupported and `tool_allowlist` is
+          "unsupported".
         """
         runner = CodexRunner()
-        with pytest.warns(CapabilityNotSupported):
-            runner.build_streaming(prompt="hi", agent="general-purpose")
-
         report = runner.describe_capabilities()
-        unsupported = {e.name for e in report.capabilities if e.status == "unsupported"}
-        assert "agent_select" in unsupported
+        by_name = {e.name: e for e in report.capabilities}
 
-        with pytest.warns(CapabilityNotSupported):
+        # TOML-present: no warning, status partial.
+        agents_dir = tmp_path / ".codex" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "persona.toml").write_text(
+            'developer_instructions = """\nbe helpful\n"""\n'
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", CapabilityNotSupported)
+            runner.build_streaming(prompt="hi", agent="persona", working_dir=tmp_path)
+        assert by_name["agent_select"].status == "partial"
+
+        # TOML-absent: fallback emits the warning.
+        with pytest.warns(CapabilityNotSupported, match="agent"):
+            runner.build_streaming(prompt="hi", agent="missing", working_dir=tmp_path)
+
+        # Tools remain unsupported.
+        with pytest.warns(CapabilityNotSupported, match="tool"):
             runner.build_streaming(prompt="hi", tools=["Read"])
-
-        assert "tool_allowlist" in unsupported
+        assert by_name["tool_allowlist"].status == "unsupported"
 
 
 class TestApplyHostCliFromConfig:

@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 import tempfile
+import tomllib
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -390,6 +392,46 @@ class CodexRunner:
     def detect(self) -> bool:
         return shutil.which("codex") is not None
 
+    @staticmethod
+    def _emit_agent_warning(agent: str) -> None:
+        # Note: this stderr print writes to the parent process's sys.stderr.
+        # `subprocess_utils.run_claude_command()`'s `stream_callback(is_stderr=True)`
+        # captures the spawned subprocess's stderr only — programmatic stream
+        # consumers will not see this message; interactive terminals will.
+        warnings.warn(
+            "codex has no CLI-flag agent selection. Codex subagents "
+            "(.codex/agents/*.toml) exist but are spawned by the model "
+            "during a conversation, not selected at invocation. The "
+            "'agent' parameter will be ignored; ship native Codex agent "
+            "files for persona behavior under this host.",
+            CapabilityNotSupported,
+            stacklevel=3,
+        )
+        print(
+            f"[ll] Warning: Codex does not support --agent at invocation time (ENH-1531).\n"
+            f"     Persona hint {agent!r} was dropped. For interactive sessions,\n"
+            f"     run `ll-adapt-agents-for-codex --apply` and use `--agent {agent}`\n"
+            f"     in the Codex TUI.",
+            file=sys.stderr,
+        )
+
+    @staticmethod
+    def _inject_agent_persona(
+        agent: str, prompt: str, working_dir: Path | None
+    ) -> tuple[str, bool]:
+        base = Path(working_dir) if working_dir is not None else Path.cwd()
+        toml_path = base / ".codex" / "agents" / f"{agent}.toml"
+        if not toml_path.exists():
+            return prompt, False
+        try:
+            data = tomllib.loads(toml_path.read_text())
+        except (OSError, tomllib.TOMLDecodeError):
+            return prompt, False
+        instructions = str(data.get("developer_instructions", "")).strip()
+        if not instructions:
+            return prompt, False
+        return f"[Persona: {agent}]\n{instructions}\n\n---\n\n{prompt}", True
+
     def build_streaming(
         self,
         *,
@@ -400,15 +442,9 @@ class CodexRunner:
         tools: list[str] | None = None,
     ) -> HostInvocation:
         if agent is not None:
-            warnings.warn(
-                "codex has no CLI-flag agent selection. Codex subagents "
-                "(.codex/agents/*.toml) exist but are spawned by the model "
-                "during a conversation, not selected at invocation. The "
-                "'agent' parameter will be ignored; ship native Codex agent "
-                "files for persona behavior under this host.",
-                CapabilityNotSupported,
-                stacklevel=2,
-            )
+            prompt, injected = self._inject_agent_persona(agent, prompt, working_dir)
+            if not injected:
+                self._emit_agent_warning(agent)
         if tools:
             warnings.warn(
                 "codex host does not support a tool allowlist; "
@@ -513,12 +549,17 @@ class CodexRunner:
             capabilities=[
                 CapabilityEntry("streaming", "full"),
                 CapabilityEntry("permission_skip", "full"),
-                # agent_select=False (lines 303-304); warning at build_streaming lines 319-325
+                # agent_select=False bool stays False (no native --agent CLI flag),
+                # but status is "partial" because build_streaming injects persona via
+                # .codex/agents/<name>.toml `developer_instructions` when present.
+                # Fallback path (TOML absent) emits CapabilityNotSupported + stderr notice.
                 CapabilityEntry(
                     "agent_select",
-                    "unsupported",
-                    "codex subagents (.codex/agents/*.toml) exist but are spawned "
-                    "by the model, not selected via CLI flag; --agent is ignored",
+                    "partial",
+                    "codex has no native --agent CLI flag; build_streaming injects "
+                    "`developer_instructions` from .codex/agents/<name>.toml into the "
+                    "prompt as a persona prefix when the file exists. Falls back to "
+                    "CapabilityNotSupported + stderr warning when the TOML is absent.",
                 ),
                 # tool_allowlist=False (line 304); warning at build_streaming lines 326-333
                 CapabilityEntry(

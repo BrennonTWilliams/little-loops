@@ -5791,7 +5791,7 @@ class HostRunner(Protocol):
 | Runner | Host | Status | Notes |
 |---|---|---|---|
 | `ClaudeCodeRunner` | `claude` CLI | ✓ production | Argv mirrors `subprocess_utils.run_claude_command`; snapshot test in `tests/test_host_runner.py::test_claude_runner_matches_legacy_args`. |
-| `CodexRunner` | `codex` CLI | ✓ production | Translates the Claude-shaped Protocol surface to Codex `exec` headless mode. Auto-detected when `codex` is on PATH (probe order: `claude → codex → pi`). Emits `CapabilityNotSupported` for `agent` / `tools` parameters. |
+| `CodexRunner` | `codex` CLI | ✓ production | Translates the Claude-shaped Protocol surface to Codex `exec` headless mode. Auto-detected when `codex` is on PATH (probe order: `claude → codex → pi`). For `agent`, `build_streaming` reads `.codex/agents/<name>.toml` and prepends `developer_instructions` as a `[Persona: <name>]` block (ENH-1533); when the TOML is absent, falls back to emitting `CapabilityNotSupported` plus a stderr notice. `tools` always emits `CapabilityNotSupported` and is dropped. `describe_capabilities()` reports `agent_select.status == "partial"`. |
 | `OpenCodeRunner` | `opencode` CLI | stub | Registered so `LL_HOST_CLI=opencode` resolves to a useful error rather than the generic "unknown host". All `build_*` methods raise `HostNotConfigured`. See FEAT-1472. |
 | `PiRunner` | `pi` CLI | stub | Present in `_PROBE_ORDER`, so hosts with `pi` on PATH resolve to this stub. All `build_*` methods raise `HostNotConfigured`. Pi orchestration is tracked under FEAT-992. |
 
@@ -5913,7 +5913,7 @@ Also raised by stub runners (`OpenCodeRunner`, `PiRunner`) on any `build_*` call
 
 ### CapabilityNotSupported
 
-Warning emitted when a caller requests a capability the active host lacks (e.g., requesting `agent=` against `CodexRunner`).
+Warning emitted when a caller requests a capability the active host lacks (e.g., requesting `tools=` against `CodexRunner`; or requesting `agent=` against `CodexRunner` when `.codex/agents/<name>.toml` is absent — ENH-1533 prompt injection succeeds silently when the TOML exists).
 
 ```python
 class CapabilityNotSupported(UserWarning): ...

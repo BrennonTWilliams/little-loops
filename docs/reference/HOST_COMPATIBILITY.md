@@ -87,7 +87,7 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 | ---------------- | ----------- | -------- | ---------------------------------- |
 | Streaming        | ✓           | ✓        | ✓                                  |
 | Permission skip  | ✓           | ✗        | ✗                                  |
-| Agent selection  | ✓           | ✗        | ✓ (partial — model-spawned)[^agent] |
+| Agent selection  | ✓           | ✗        | partial (prompt injection)[^agent] |
 | Tool allowlist   | ✓           | ✗        | ✗                                  |
 | `json_schema`    | ✗           | ✗        | partial (file-mediated)[^schema]   |
 
@@ -96,10 +96,28 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 [^agent]: Codex agent selection works via `.codex/agents/*.toml` files generated
     by `ll-adapt-agents-for-codex --apply` (FEAT-1527). Interactive Codex TUI
     sessions can use `--agent <name>` (e.g., `--agent codebase-analyzer`) once
-    those TOML files are present. However, ll's orchestration layer (`ll-auto`,
-    `ll-parallel`, `ll-loop`) cannot pass `--agent` programmatically —
-    `CodexRunner` emits `CapabilityNotSupported` and drops the flag. Re-run
-    `ll-adapt-agents-for-codex --apply` after adding new agents.
+    those TOML files are present.
+
+    **Programmatic prompt-injection workaround (ENH-1533)**: For ll's
+    orchestration layer (`ll-auto`, `ll-parallel`, `ll-loop`),
+    `CodexRunner.build_streaming(agent=…)` reads
+    `.codex/agents/<name>.toml`, extracts `developer_instructions`, and
+    prepends `[Persona: <name>]\n<instructions>\n\n---\n\n` to the prompt
+    payload. When the TOML file (or its `developer_instructions` key) is
+    absent, `CodexRunner` falls back to emitting `CapabilityNotSupported`
+    plus a stderr notice that names the dropped agent and points users at
+    `ll-adapt-agents-for-codex --apply`. `HostCapabilities.agent_select`
+    stays `False` because there is still no native `--agent` CLI parity;
+    `describe_capabilities()` reports `agent_select.status == "partial"`.
+
+    **Permanent native-gap (ENH-1531)**: Research confirmed no CLI-level
+    mechanism exists to select a named agent profile at `codex exec`
+    invocation time. The `codex` CLI has no `--agent` flag; `CODEX_AGENT`
+    and `CODEX_PROFILE` env-vars do not exist; the
+    `agents.<name>.config_file` config stanza only governs `spawn_agent`
+    subagent calls, not the root session's persona. The feature request is
+    tracked at openai/codex#10067 (open, no linked PR). See
+    `thoughts/research/codex-agent-selection.md` for full findings.
 
 ## Orchestration CLI
 
