@@ -31,7 +31,7 @@ states:
     action_type: shell
     capture: issue_id
     next: check_lifetime_limit
-    on_error: failed
+    on_error: diagnose
 
   check_lifetime_limit:
     action: |
@@ -74,13 +74,13 @@ states:
       target: 1
     on_yes: refine_issue
     on_no: breakdown_issue
-    on_error: failed
+    on_error: diagnose
 
   refine_issue:
     action: "/ll:refine-issue ${captured.issue_id.output} --auto"
     action_type: slash_command
     next: check_wire_done
-    on_error: failed
+    on_error: diagnose
 
   check_wire_done:
     action: |
@@ -155,7 +155,7 @@ states:
     action: "/ll:confidence-check ${captured.issue_id.output}"
     action_type: slash_command
     next: verify_scores_persisted_final
-    on_error: failed
+    on_error: diagnose
 
   verify_scores_persisted_final:
     # Second persistence check after retry_confidence_check. If scores are still
@@ -190,8 +190,8 @@ states:
     evaluate:
       type: exit_code
     on_yes: check_readiness
-    on_no: failed
-    on_error: failed
+    on_no: diagnose
+    on_error: diagnose
 
   check_readiness:
     # Step 1 of 2: check only technical readiness (confidence_score vs readiness_threshold).
@@ -255,7 +255,7 @@ states:
       type: exit_code
     on_yes: done
     on_no: check_decision_needed
-    on_error: failed
+    on_error: diagnose
 
   check_decision_needed:
     # Gate before size-review: if decision_needed=true the low outcome score is driven
@@ -296,7 +296,7 @@ states:
       target: 2
     on_yes: refine_issue
     on_no: breakdown_issue
-    on_error: failed
+    on_error: diagnose
 
   check_scores_from_file:
     # Error-recovery fallback: reached when check_readiness subprocess fails.
@@ -329,13 +329,13 @@ states:
     fragment: shell_exit
     on_yes: done
     on_no: breakdown_issue
-    on_error: failed
+    on_error: diagnose
 
   breakdown_issue:
     action: "/ll:issue-size-review ${captured.issue_id.output} --auto"
     action_type: slash_command
     next: write_broke_down
-    on_error: failed
+    on_error: diagnose
 
   write_broke_down:
     action: printf '1' > .loops/tmp/recursive-refine-broke-down
@@ -345,6 +345,20 @@ states:
 
   done:
     terminal: true
+
+  diagnose:
+    action_type: prompt
+    action: |
+      The refine-to-ready-issue loop has terminated with an unrecoverable failure.
+
+      Diagnose what happened:
+      - Report the issue ID being refined: ${captured.issue_id.output}
+      - Identify which state failed (resolve_issue, check_lifetime_limit, check_readiness, etc.).
+      - If the issue file exists, read its current status and last session log entry.
+      - Identify the most likely failure cause (e.g., issue not found, lifetime limit exceeded, size-review decomposed it).
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run or inspect the issue.
+    next: failed
 
   failed:
     terminal: true

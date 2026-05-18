@@ -106,7 +106,7 @@ states:
       target: done
       progress: improve
       stall: act
-      error: failed
+      error: diagnose
 
   # POLICY OUTER: Update the coding strategy based on observed reward and refine output.
   # Replace the echo stubs with real strategy adaptation logic: update a prompt file,
@@ -131,6 +131,20 @@ states:
 
   done:
     terminal: true
+
+  diagnose:
+    action_type: prompt
+    action: |
+      The rl-coding-agent loop has terminated with an unrecoverable failure.
+
+      Diagnose what happened:
+      - Report the last known observation: ${captured.observation.output}
+      - Report the last known reward: ${captured.prev_reward.output}
+      - Identify the most likely failure cause (convergence evaluator error in the score state).
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run or adjust the eval suite.
+    next: failed
+
   failed:
     terminal: true
 

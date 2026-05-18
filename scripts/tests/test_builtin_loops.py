@@ -693,12 +693,22 @@ class TestRefineToReadyIssueSubLoop:
             "resolve_issue action must initialize '.loops/tmp/recursive-refine-broke-down' flag"
         )
 
-    def test_breakdown_issue_on_error_is_failed(self, data: dict) -> None:
-        """breakdown_issue.on_error must route to 'failed'."""
+    def test_breakdown_issue_on_error_is_diagnose(self, data: dict) -> None:
+        """breakdown_issue.on_error must route to 'diagnose', not 'failed' directly."""
         state = data["states"].get("breakdown_issue", {})
-        assert state.get("on_error") == "failed", (
-            f"breakdown_issue.on_error should be 'failed', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "diagnose", (
+            f"breakdown_issue.on_error should be 'diagnose', got {state.get('on_error')!r}"
         )
+
+    def test_diagnose_routes_to_failed(self, data: dict) -> None:
+        """diagnose state must route to failed."""
+        state = data["states"].get("diagnose", {})
+        assert state.get("next") == "failed"
+
+    def test_diagnose_is_not_terminal(self, data: dict) -> None:
+        """diagnose state must not be a terminal state."""
+        state = data["states"].get("diagnose", {})
+        assert not state.get("terminal", False)
 
     def test_check_wire_done_state_exists(self, data: dict) -> None:
         """check_wire_done state must exist to gate wire_issue to once per run."""
@@ -3223,4 +3233,139 @@ class TestHitlCompareLoop:
         action = state.get("action", "")
         assert "write-in" in action, (
             "score.action comparison_ergonomics must reference the write-in affordance"
+        )
+
+
+class TestRlCodingAgentLoop:
+    """Structural tests for the rl-coding-agent FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rl-coding-agent.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, and states fields."""
+        assert data.get("name") == "rl-coding-agent"
+        assert data.get("initial") == "act"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {"act", "refine", "observe", "score", "improve", "persist_reward", "done", "diagnose", "failed"}
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        assert data["states"].get("done", {}).get("terminal") is True
+
+    def test_failed_state_is_terminal(self, data: dict) -> None:
+        """failed state must have terminal: true."""
+        assert data["states"].get("failed", {}).get("terminal") is True
+
+    def test_diagnose_routes_to_failed(self, data: dict) -> None:
+        """diagnose state must route to failed."""
+        state = data["states"].get("diagnose", {})
+        assert state.get("next") == "failed"
+
+    def test_diagnose_is_not_terminal(self, data: dict) -> None:
+        """diagnose state must not be a terminal state."""
+        state = data["states"].get("diagnose", {})
+        assert not state.get("terminal", False)
+
+    def test_score_error_routes_to_diagnose(self, data: dict) -> None:
+        """score state convergence evaluator error route must target diagnose, not failed."""
+        state = data["states"].get("score", {})
+        route = state.get("route", {})
+        assert route.get("error") == "diagnose", (
+            f"score.route.error should be 'diagnose', got {route.get('error')!r}"
+        )
+
+
+class TestAgentEvalImproveLoop:
+    """Structural tests for the agent-eval-improve FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "agent-eval-improve.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, and states fields."""
+        assert data.get("name") == "agent-eval-improve"
+        assert data.get("initial") == "run_eval"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {"run_eval", "score_results", "analyze_failures", "route_quality", "refine_config", "done", "diagnose", "failed"}
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        assert data["states"].get("done", {}).get("terminal") is True
+
+    def test_failed_state_is_terminal(self, data: dict) -> None:
+        """failed state must have terminal: true."""
+        assert data["states"].get("failed", {}).get("terminal") is True
+
+    def test_diagnose_routes_to_failed(self, data: dict) -> None:
+        """diagnose state must route to failed."""
+        state = data["states"].get("diagnose", {})
+        assert state.get("next") == "failed"
+
+    def test_diagnose_is_not_terminal(self, data: dict) -> None:
+        """diagnose state must not be a terminal state."""
+        state = data["states"].get("diagnose", {})
+        assert not state.get("terminal", False)
+
+    def test_run_eval_retry_exhausted_routes_to_diagnose(self, data: dict) -> None:
+        """run_eval.on_retry_exhausted must route to diagnose."""
+        state = data["states"].get("run_eval", {})
+        assert state.get("on_retry_exhausted") == "diagnose", (
+            f"run_eval.on_retry_exhausted should be 'diagnose', got {state.get('on_retry_exhausted')!r}"
+        )
+
+    def test_score_results_retry_exhausted_routes_to_diagnose(self, data: dict) -> None:
+        """score_results.on_retry_exhausted must route to diagnose."""
+        state = data["states"].get("score_results", {})
+        assert state.get("on_retry_exhausted") == "diagnose", (
+            f"score_results.on_retry_exhausted should be 'diagnose', got {state.get('on_retry_exhausted')!r}"
+        )
+
+    def test_analyze_failures_retry_exhausted_routes_to_diagnose(self, data: dict) -> None:
+        """analyze_failures.on_retry_exhausted must route to diagnose."""
+        state = data["states"].get("analyze_failures", {})
+        assert state.get("on_retry_exhausted") == "diagnose", (
+            f"analyze_failures.on_retry_exhausted should be 'diagnose', got {state.get('on_retry_exhausted')!r}"
+        )
+
+    def test_analyze_failures_error_routes_to_diagnose(self, data: dict) -> None:
+        """analyze_failures.on_error must route to diagnose."""
+        state = data["states"].get("analyze_failures", {})
+        assert state.get("on_error") == "diagnose", (
+            f"analyze_failures.on_error should be 'diagnose', got {state.get('on_error')!r}"
+        )
+
+    def test_route_quality_error_routes_to_diagnose(self, data: dict) -> None:
+        """route_quality convergence evaluator error route must target diagnose."""
+        state = data["states"].get("route_quality", {})
+        route = state.get("route", {})
+        assert route.get("error") == "diagnose", (
+            f"route_quality.route.error should be 'diagnose', got {route.get('error')!r}"
+        )
+
+    def test_refine_config_retry_exhausted_routes_to_diagnose(self, data: dict) -> None:
+        """refine_config.on_retry_exhausted must route to diagnose."""
+        state = data["states"].get("refine_config", {})
+        assert state.get("on_retry_exhausted") == "diagnose", (
+            f"refine_config.on_retry_exhausted should be 'diagnose', got {state.get('on_retry_exhausted')!r}"
         )

@@ -27,7 +27,7 @@ states:
     capture: eval_results
     on_blocked: $current
     max_retries: 2
-    on_retry_exhausted: failed
+    on_retry_exhausted: diagnose
     next: score_results
   score_results:
     action_type: prompt
@@ -40,7 +40,7 @@ states:
     capture: scores
     on_blocked: $current
     max_retries: 2
-    on_retry_exhausted: failed
+    on_retry_exhausted: diagnose
     next: analyze_failures
   analyze_failures:
     action_type: prompt
@@ -53,7 +53,7 @@ states:
     capture: failure_analysis
     on_blocked: $current
     max_retries: 2
-    on_retry_exhausted: failed
+    on_retry_exhausted: diagnose
     evaluate:
       type: llm_structured
       prompt: >
@@ -63,7 +63,7 @@ states:
         no patterns emerged, or no actionable fixes were identified.
     on_yes: route_quality
     on_no: done
-    on_error: failed
+    on_error: diagnose
   route_quality:
     action_type: shell
     action: |
@@ -77,7 +77,7 @@ states:
       target: done
       progress: refine_config
       stall: done
-      error: failed
+      error: diagnose
   refine_config:
     action_type: prompt
     timeout: 600
@@ -90,7 +90,7 @@ states:
       Document what was changed and why.
     on_blocked: $current
     max_retries: 2
-    on_retry_exhausted: failed
+    on_retry_exhausted: diagnose
     next: run_eval
   run_benchmark_opt_in:
     fragment: run_benchmark
@@ -102,5 +102,20 @@ states:
 
   done:
     terminal: true
+
+  diagnose:
+    action_type: prompt
+    action: |
+      The agent-eval-improve loop has terminated with an unrecoverable failure.
+
+      Diagnose what happened:
+      - Check the evals/results/ directory for any partial evaluation output.
+      - Report which state exhausted retries (run_eval, score_results, analyze_failures, or refine_config).
+      - If any captured variables are available (eval_results, scores, failure_analysis), summarize them.
+      - Identify the most likely failure cause.
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run or adjust eval configuration.
+    next: failed
+
   failed:
     terminal: true
