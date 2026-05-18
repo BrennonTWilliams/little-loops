@@ -138,6 +138,34 @@ class TestBuiltinLoopFiles:
                         "Use a compound token (e.g. 'ALL_PASS')."
                     )
 
+    def test_all_failure_terminals_have_diagnostic_action(self, builtin_loops: list[Path]) -> None:
+        """Loops with a diagnose state must have a diagnostic action before failure terminals.
+
+        Regression guard for BUG-1606: all fixed loops must have a pre-terminal diagnose
+        state that executes a prompt action before transitioning to a failure terminal.
+        Loops without a diagnose state are skipped (not yet updated).
+        """
+        for loop_file in builtin_loops:
+            with open(loop_file) as f:
+                data = yaml.safe_load(f)
+            states = data.get("states", {})
+            failure_terminals = {
+                name
+                for name, cfg in states.items()
+                if cfg.get("terminal") and name in ("failed", "error", "aborted")
+            }
+            if not failure_terminals:
+                continue
+            diagnose = states.get("diagnose") or states.get("diagnose_failure")
+            if diagnose is None:
+                continue  # Loop not yet updated with diagnose state (pending BUG-1606)
+            assert diagnose.get("action"), (
+                f"{loop_file.name}: 'diagnose' state exists but has no diagnostic action"
+            )
+            assert not diagnose.get("terminal", False), (
+                f"{loop_file.name}: 'diagnose' state must not be terminal"
+            )
+
 
 class TestBuiltinLoopResolution:
     """Tests for resolve_loop_path with built-in fallback."""
@@ -2771,6 +2799,16 @@ class TestSvgTextgradLoop:
         state = data["states"].get("failed", {})
         assert state.get("terminal") is True
 
+    def test_diagnose_routes_to_failed(self, data: dict) -> None:
+        """diagnose state must route to failed."""
+        state = data["states"].get("diagnose", {})
+        assert state.get("next") == "failed"
+
+    def test_diagnose_is_not_terminal(self, data: dict) -> None:
+        """diagnose state must not be a terminal state."""
+        state = data["states"].get("diagnose", {})
+        assert not state.get("terminal", False)
+
     def test_evaluate_on_error_routes_to_generate(self, data: dict) -> None:
         """evaluate state must route to generate on error so Playwright failures don't stall."""
         state = data["states"].get("evaluate", {})
@@ -2967,6 +3005,16 @@ class TestHtmlAnythingLoop:
         """failed state must have terminal: true."""
         state = data["states"].get("failed", {})
         assert state.get("terminal") is True
+
+    def test_diagnose_routes_to_failed(self, data: dict) -> None:
+        """diagnose state must route to failed."""
+        state = data["states"].get("diagnose", {})
+        assert state.get("next") == "failed"
+
+    def test_diagnose_is_not_terminal(self, data: dict) -> None:
+        """diagnose state must not be a terminal state."""
+        state = data["states"].get("diagnose", {})
+        assert not state.get("terminal", False)
 
     def test_evaluate_state_is_shell(self, data: dict) -> None:
         """evaluate state must use action_type: shell for the Playwright CLI call."""
