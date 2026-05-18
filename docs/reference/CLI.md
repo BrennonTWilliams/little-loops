@@ -1605,6 +1605,7 @@ Thin CLI wrapper for direct MCP tool invocation via JSON-RPC. Reads `.mcp.json` 
 |----------|-------------|
 | `server/tool-name` | MCP server name and tool name joined by `/` (e.g., `pencil/batch_get`) |
 | `params_json` | Tool parameters as a JSON object string |
+| `--timeout SECONDS` | Request timeout in seconds (default: 30). Exit code `124` on timeout. |
 
 **Exit codes:** `0` = success, `1` = tool error, `2` = usage/config error, `124` = timeout, `127` = server or tool not found in `.mcp.json`
 
@@ -1612,6 +1613,7 @@ Thin CLI wrapper for direct MCP tool invocation via JSON-RPC. Reads `.mcp.json` 
 ```bash
 mcp-call pencil/batch_get '{"patterns": ["**/*.pen"]}'
 mcp-call my-server/my-tool '{"key": "value"}'
+mcp-call pencil/batch_design '{"nodes": [...]}' --timeout 120
 ```
 
 ---

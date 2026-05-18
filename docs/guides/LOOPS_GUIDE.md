@@ -301,7 +301,8 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | Loop | Description |
 |------|-------------|
 | `deep-research` | Iterative web research synthesis — generates search queries, performs web searches, evaluates sources, identifies coverage gaps, and produces a structured Markdown report with citations |
-| `rn-plan` | Recursive task planning with self-scoring rubric — accepts a natural language task description, generates an 8-dimension rubric (breadth, depth, complexity, granularity, clarity, consistency, logic_strategy, outcome_confidence), then iteratively researches and refines the plan until all dimensions reach VERY-HIGH |
+| `rn-plan` | Recursive task planning with self-scoring rubric — accepts a natural language task description, generates a 8-dimension rubric (breadth, depth, complexity, clarity, consistency, logic_strategy, feasibility, testability, risk_mitigation), then iteratively researches and refines the plan until all dimensions reach VERY-HIGH |
+| `rn-refine` | Recursive refinement loop for an existing plan document — accepts a path to a plan `.md` file, calibrates a 9-dimension rubric to the plan's current state, then iteratively researches and refines until all dimensions reach VERY-HIGH |
 
 Run:
 ```bash
@@ -323,7 +324,7 @@ See [`## deep-research`](../reference/loops.md#deep-research) in the loop refere
 
 ### `rn-plan` — Recursive Task Planning with Self-Scoring Rubric
 
-**Technique**: Accepts a natural language task description, generates an initial plan outline and an 8-dimension rubric, then iterates: classify the most needed research type (NEEDS_FILES or NEEDS_WEB) → research → synthesize findings into the plan → score all 8 dimensions → loop until all dimensions reach VERY-HIGH or `max_iterations` is exhausted.
+**Technique**: Accepts a natural language task description, generates an initial plan outline and an 8-dimension rubric (breadth, depth, complexity, clarity, consistency, logic_strategy, feasibility, testability, risk_mitigation), then iterates: classify the most needed research type (NEEDS_FILES or NEEDS_WEB) → research → synthesize findings into the plan → score all 8 dimensions → loop until all dimensions reach VERY-HIGH or `max_iterations` is exhausted.
 
 **When to use**: When you need a fully elaborated, implementable plan for a complex task before execution — especially when the task touches multiple files, external APIs, or requires tradeoff analysis. Produces `plan.md` (the refined plan) and `plan-rubric.md` (dimension scores) as primary artifacts. Use [`rn-plan-apo`](#rn-plan-apo--plan-quality-gradient-optimization) to iteratively improve the *planning prompt itself* using accumulated plan trees.
 
@@ -363,9 +364,58 @@ init             (shell: mkdir run_dir, touch plan.md / plan-rubric.md / researc
         → research_web    (prompt: WebSearch/WebFetch to gather external facts)
           → synthesize   (prompt: merge research.md findings into plan.md)
             → score      (prompt: rate all 8 dims; emit ALL_VERY_HIGH or ITERATE)
-              on_yes (ALL_VERY_HIGH) → done    (terminal: report final scores)
+              on_yes (ALL_VERY_HIGH) → verify_score → report → done
               on_no  (ITERATE)       → classify_research  (next iteration)
 ```
+
+### `rn-refine` — Recursive Refinement of an Existing Plan
+
+**Technique**: Accepts a path to an existing plan `.md` file, copies it into a run directory, and calibrates a 9-dimension scoring rubric to the plan's **current** state (unlike `rn-plan`, which always initialises all dimensions at LOW). Then iterates: classify the most needed research type (NEEDS_FILES or NEEDS_WEB) → research → synthesize findings into the plan → score all 9 dimensions → loop until all reach VERY-HIGH or `max_iterations` is exhausted. A `verify_score` shell state reads the rubric file after the LLM emits `ALL_VERY_HIGH` to guard against hallucinated convergence signals.
+
+**When to use**: When you already have a draft plan (from `rn-plan`, `/ll:iterate-plan`, or written manually) and want to iteratively improve it without starting from scratch. Produces an in-place improved `plan.md` alongside a `plan-rubric.md` and `research.md` in a new run directory under `output_dir`.
+
+**Usage:**
+
+```bash
+ll-loop run rn-refine ".loops/plans/my-task/plan.md"
+
+# Write refined output to a custom directory:
+ll-loop run rn-refine "thoughts/auth-refactor-plan.md" \
+  --context output_dir=.loops/plans/auth-refine
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `plan_file` | `""` | Path to the existing plan `.md` file (populated from positional CLI arg via `input_key: plan_file`) |
+| `output_dir` | `.loops/plans` | Directory where per-run directories are created |
+
+**Output artifacts** (written to `${output_dir}/<slug>/`):
+
+| File | Description |
+|------|-------------|
+| `plan.md` | Refined version of the input plan (primary output) |
+| `plan-rubric.md` | 9-dimension scores (LOW/MEDIUM/HIGH/VERY-HIGH) with aggregate verdict |
+| `research.md` | Accumulated file and web research findings |
+
+**FSM flow:**
+
+```
+init             (shell: validate plan_file exists, copy to run_dir/plan.md)
+  → assess_existing     (prompt: infer goal, score all 9 dims at ACTUAL current level)
+    → classify_research (prompt: emit NEEDS_FILES or NEEDS_WEB token)
+      → route_files / route_web  (router: dispatch to file or web research branch)
+        → research_files  (prompt: Read/Grep/Glob to inspect local code and files)
+        → research_web    (prompt: WebSearch/WebFetch to gather external facts)
+          → synthesize   (prompt: merge research.md findings into plan.md)
+            → score      (prompt: rate all 9 dims; emit ALL_VERY_HIGH or ITERATE)
+              on_yes (ALL_VERY_HIGH) → verify_score → report → done
+              on_no  (ITERATE)       → classify_research  (next iteration)
+              on_error               → diagnose → failed
+```
+
+**Notes**: The key difference from `rn-plan` is `assess_existing` — it reads the plan and scores dimensions at their *actual* current level rather than defaulting all to LOW. This avoids wasting iterations refining dimensions that are already HIGH or VERY-HIGH. `verify_score` is a deterministic shell check that confirms `ALL_VERY_HIGH` appears in the rubric file before accepting convergence — guarding against hallucinated convergence where the LLM emits the sentinel but writes `ITERATE` to disk.
 
 **Issue Management**
 
@@ -836,7 +886,7 @@ run_eval → score_results → analyze_failures
 | `harness-multi-item` | Annotated multi-item harness example — all five evaluation phases active over a discovered item list |
 | `harness-optimize` | Score-gated hill-climbing on harness artifacts (skills, commands, CLAUDE.md) — proposes edits, benchmarks, commits accepted mutations; stops on first stall. Supports `.ll/program.md` for overnight runs. Also supports **state mode**: set `targets` to a loop YAML with a `targets.states` list to optimize individual state `action:` blocks independently. |
 | `html-anything` | Generalized HTML artifact harness — classifies artifact type (email, social card, résumé, dashboard, etc.) from a description, writes a platform-specific brief and dynamic scoring rubric, then iteratively generates and refines `index.html` via Playwright CLI |
-| `hitl-compare` | Human-in-the-loop comparison harness — reads whitespace-separated inputs (file paths or raw text), extracts candidate review items with 2+ options, prunes implementation-level micro-decisions, and generates a self-contained interactive HTML page with comparison controls and an "Export selections" affordance |
+| `hitl-compare` | Human-in-the-loop comparison harness — reads whitespace-separated inputs (file paths or raw text), extracts candidate review items with 2+ options, prunes implementation-level micro-decisions, and generates a self-contained interactive HTML page with comparison controls, write-in custom options, and an "Export selections" affordance |
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
 | `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI |
 | `svg-textgrad` | TextGrad-style SVG harness — optimizes the visual brief via structured gradient updates (FAILURE_PATTERN → ROOT_CAUSE → GRADIENT) rather than feeding raw critique to the generator; accumulates gradient history for repeated-failure escalation |
@@ -924,7 +974,7 @@ For `html-social-card`:
 
 > **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`). Playwright is used for screenshot evaluation but is optional — the loop degrades gracefully to LLM-only scoring when Playwright is unavailable.
 
-**Technique**: Implements a novel `identify → prune → generate` pipeline before the standard GAN-style `evaluate → score` loop. The `identify` state resolves each whitespace-separated input token (file path or raw text) and extracts all candidate review items (decisions, design choices, requirement variants, document versions). The `prune` state filters out implementation-level micro-decisions that the normal planning pipeline (`/ll:refine-issue`, `/ll:wire-issue`, `/ll:decide-issue`) should resolve, surfacing only items where human taste or strategic preference is the appropriate deciding signal. The `generate` state then produces a single self-contained HTML page with per-item comparison controls and an "Export selections" affordance. The `score` state evaluates a 5-criterion rubric (clarity, scannability, comparison_ergonomics, export_affordance, inline_constraint) with per-criterion thresholds.
+**Technique**: Implements a novel `identify → prune → generate` pipeline before the standard GAN-style `evaluate → score` loop. The `identify` state resolves each whitespace-separated input token (file path or raw text) and extracts all candidate review items (decisions, design choices, requirement variants, document versions). The `prune` state filters out implementation-level micro-decisions that the normal planning pipeline (`/ll:refine-issue`, `/ll:wire-issue`, `/ll:decide-issue`) should resolve, surfacing only items where human taste or strategic preference is the appropriate deciding signal. The `generate` state then produces a single self-contained HTML page with per-item comparison controls, a write-in custom option field for each item (so reviewers can enter a choice not listed), and an "Export selections" affordance. The `score` state evaluates a 5-criterion rubric (clarity, scannability, comparison_ergonomics, export_affordance, inline_constraint) with per-criterion thresholds.
 
 **When to use**: After running `/ll:refine-issue` on a batch of issues where several emerge with `decision_needed: true` and 2–3 viable options each. Also useful for design review (plan markdown + raw-text design alternatives) or any situation where multiple open choices need a focused human review surface rather than a long back-and-forth chat thread.
 
