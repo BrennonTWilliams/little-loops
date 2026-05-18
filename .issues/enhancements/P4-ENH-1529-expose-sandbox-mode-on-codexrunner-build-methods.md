@@ -214,7 +214,14 @@ def _sandbox_args(sandbox_mode: str | None) -> list[str]: ...
 
 ---
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-18): This issue modifies `host_runner.py` in the `CodexRunner` region (lines 270–418) and adds a new `_sandbox_args()` module-level helper. FEAT-1480 also modifies `host_runner.py` to wire `PiRunner` (lines 478–532). The two changes target different class regions and are non-overlapping, but landing both PRs simultaneously can produce near-miss merge conflicts during rebase. Sequence or merge these PRs deliberately — review both diff hunks together before landing.
+
+---
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`
 - `/ll:confidence-check` - 2026-05-16T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b12ed97-216f-4ef4-a15b-b3a885a9ca71.jsonl`
 - `/ll:wire-issue` - 2026-05-16T22:08:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f37cba0-e05a-4523-b0f7-0e74784e29ae.jsonl`
 - `/ll:refine-issue` - 2026-05-16T21:42:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/201cbae4-355e-4f65-a0aa-66b54b7cd3ee.jsonl`

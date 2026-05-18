@@ -132,6 +132,16 @@ Also generate a summary preview showing:
 3. Terminal states marked with `[terminal]`
 4. Initial state and max_iterations from the configuration
 
+**Routing graph check (before presenting to user):**
+
+Scan the generated routing graph for infinite cycles. If any non-terminal state A routes to state B (via `on_no`, `on_error`, or `next:`), and state B routes unconditionally back to A, warn the user inline:
+
+> ⚠️ Routing cycle detected: `<A>` → `<B>` → `<A>`. If the condition that triggers `on_no`/`on_error` is persistent (e.g. a required tool is unavailable), this cycle runs until `max_iterations` is exhausted. Consider routing failures forward to a recovery or terminal state instead.
+
+The most common case: a `generate` state with `next: evaluate` and an `evaluate` state with `on_no: generate` is a cycle when Playwright or another external capture tool is absent. The fix is `on_no: score` (degrade to LLM evaluation) rather than `on_no: generate`.
+
+Also warn if the generated YAML includes a `terminal: true` failure state with no `action:` field — silent failure terminals produce blank entries in `ll-loop history`.
+
 **Display format:**
 
 ```

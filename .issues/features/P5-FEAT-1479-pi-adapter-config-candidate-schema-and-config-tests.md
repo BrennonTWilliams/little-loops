@@ -200,11 +200,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Effort**: Small
 - **Risk**: Low — purely additive; no changes to existing host logic
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-18): This issue modifies `config-schema.json` (adds `"pi"` to `hooks.properties.host.enum`). Two other open issues touch the same file: BUG-1461 (removes or implements `continuation.auto_detect_on_session_start`) and FEAT-948 (adds a top-level `decisions` object schema). All three edits are to different keys and are additive, but concurrent PRs on the same JSON file risk merge conflicts. Resolve BUG-1461 first (FEAT-948 already notes this); sequence FEAT-1479 after BUG-1461 resolves so `config-schema.json` is stable before the Pi enum addition.
+
 ## Status
 
 **Open** | Created: 2026-05-15 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
 - `/ll:manage-issue` - 2026-05-15T20:23:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a222200-0970-406f-ab67-4aaf8d296ca4.jsonl`
 - `/ll:ready-issue` - 2026-05-15T20:19:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f9a440f-13e7-4f06-9cb4-450f590e4bfe.jsonl`

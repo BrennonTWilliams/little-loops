@@ -70,6 +70,13 @@ Context-mode (github.com/mksglu/context-mode) uses a per-project SQLite + FTS5 d
 
 ## Verification Notes
 
+**Verdict**: NEEDS_UPDATE — Re-verified 2026-05-17
+
+- `blocked_by: [FEAT-918]` was confirmed in frontmatter at 2026-04-26 verification, but the field is **no longer present** in the current frontmatter.
+- FEAT-918 (`P5-FEAT-918-transport-protocol-foundation-and-jsonl-transport.md`) is still open.
+- The Scope Boundary prose still correctly states FEAT-1112 subscribes to FEAT-918's Transport sink.
+- Action: restore `blocked_by: [FEAT-918]` to frontmatter or document why the block was deliberately removed.
+
 **Verdict**: VALID — Verified 2026-04-26
 
 - Frontmatter `blocked_by: [FEAT-918]` is accurate — FEAT-1002 reference already cleared ✓
@@ -78,6 +85,7 @@ Context-mode (github.com/mksglu/context-mode) uses a per-project SQLite + FTS5 d
 - No `ll-session` CLI entry point in `scripts/pyproject.toml` ✓
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-18T04:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2807bd8b-4e79-4b76-994d-e6f6cae14245.jsonl`
 - `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`

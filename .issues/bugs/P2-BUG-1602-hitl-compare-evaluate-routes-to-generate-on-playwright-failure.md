@@ -66,3 +66,18 @@ The guide at line 957 and 970 already documents the *intended* degradation behav
 ---
 
 **Priority**: P2 | **Created**: 2026-05-17
+
+## Verification Notes
+
+**Verdict**: OUTDATED — Re-verified 2026-05-17
+
+- `scripts/little_loops/loops/hitl-compare.yaml` — `evaluate` state now routes `on_no: score` and `on_error: score` ✓ (fix applied)
+- `scripts/little_loops/loops/html-anything.yaml:154–155` — still routes `on_no: generate` and `on_error: generate` ✗ (bug persists)
+- `docs/guides/LOOPS_GUIDE.md:847` — new design rule added: "route on_no/on_error to score, never back to generate" ✓
+- `docs/guides/LOOPS_GUIDE.md:892` — FSM diagram still shows `FAILED → generate (Playwright unavailable)` ✗ (inaccurate)
+- `docs/guides/LOOPS_GUIDE.md:918` — prose still says "falls back to `generate`, which then proceeds to `score`" ✗ (inaccurate)
+- Remaining scope: fix `html-anything.yaml` routing + correct LOOPS_GUIDE lines 892 and 918
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-05-18T04:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2807bd8b-4e79-4b76-994d-e6f6cae14245.jsonl`

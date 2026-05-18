@@ -60,3 +60,16 @@ The `create-loop` wizard should also warn when generating a `failed` terminal wi
 ---
 
 **Priority**: P3 | **Created**: 2026-05-17
+
+## Verification Notes
+
+**Verdict**: OUTDATED — Re-verified 2026-05-17
+
+- `scripts/little_loops/loops/hitl-compare.yaml` — `failed` terminal state now has a `action_type: prompt` diagnostic action ✓ (fix applied at lines 278–292)
+- `scripts/little_loops/loops/html-anything.yaml:223–226` — `failed` terminal state still has only `terminal: true` with no `action:` ✗ (bug persists)
+- `docs/generalized-fsm-loop.md` — has staged changes; convention documentation may be in progress (not yet committed)
+- Remaining scope: add diagnostic action to `html-anything.yaml` `failed` state + commit `generalized-fsm-loop.md` authoring-convention section
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-05-18T04:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2807bd8b-4e79-4b76-994d-e6f6cae14245.jsonl`

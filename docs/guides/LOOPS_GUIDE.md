@@ -844,6 +844,8 @@ run_eval → score_results → analyze_failures
 
 For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, and `svg-textgrad`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
 
+> **Design rule: Playwright failure routing.** In any harness that uses Playwright for screenshot capture, route the `evaluate` state's `on_no` and `on_error` to the `score` state (LLM-only evaluation) — never back to `generate`. Routing to `generate` creates an infinite cycle: `generate` routes unconditionally back to `evaluate`, which fails again, repeating until `max_iterations` is exhausted with zero useful output. Routing forward to `score` lets the evaluator assess the HTML source directly and produce actionable critique even when no screenshot is available.
+
 ### `html-anything` — Generalized HTML Artifact Harness
 
 > **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`).
@@ -954,7 +956,7 @@ init → identify → prune → generate → evaluate
                                          │              ├─ ALL_PASS → done
                                          │              ├─ ITERATE  → generate (with critique)
                                          │              └─ ERROR    → failed
-                                         └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
+                                         └─ FAILED  → score (Playwright unavailable — LLM-only scoring)
 ```
 
 **Using the generated page:**
@@ -967,7 +969,7 @@ init → identify → prune → generate → evaluate
 **Notes:**
 - The `prune` state logs every pruned item and its reason in `review.md` for traceability — you can audit what was excluded and why.
 - If all items are pruned (nothing to review), the generated HTML page reports this clearly; no human selections are needed.
-- The `evaluate` state's `on_error: generate` route means Playwright absence falls back to LLM-only `score` judgment — the loop runs end-to-end even without a browser installed.
+- The `evaluate` state's `on_no`/`on_error: score` routing means Playwright absence falls back to LLM-only `score` judgment — the loop runs end-to-end even without a browser installed.
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
 - To customize the scoring rubric, install locally (`ll-loop install hitl-compare`) and edit the `score` state's criteria and thresholds.
 

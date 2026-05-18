@@ -1574,6 +1574,45 @@ Loop completed: done (1 iteration, 2m 34s)
 
 ---
 
+## Authoring Conventions
+
+### Failure Terminals Must Include a Diagnostic Action
+
+A `terminal: true` state that signals failure (as opposed to a successful `done`) must always include an `action_type: prompt` action that diagnoses and reports what went wrong. A failure terminal with no action produces a blank entry in `ll-loop history` — the only visible signal is the state name. A diagnostic action costs nothing extra (runs once, at termination) and makes failure immediately visible to the operator without requiring raw event-file inspection.
+
+```yaml
+  failed:
+    action_type: prompt
+    action: |
+      The loop has terminated with an unrecoverable error.
+
+      Diagnose what failed:
+      - Check recent captured outputs for error signals.
+      - Identify which state most likely caused the failure.
+      - Write a one-paragraph diagnostic summary.
+    terminal: true
+```
+
+### Generator-Evaluator Loops: Never Route Evaluate Failures Back to Generate
+
+In any generator-evaluator pattern (`generate → evaluate → score → generate`), the `evaluate` state's `on_no` and `on_error` routes must point **forward** — to `score` or another evaluation fallback — not back to `generate`. Routing back creates an undetectable infinite cycle: `generate` routes unconditionally to `evaluate`, which fails again for the same reason, repeating until `max_iterations` is exhausted with zero useful output.
+
+When the external tool used by `evaluate` (Playwright, a linter, a build system) is unavailable, the correct fallback is to degrade to an alternative evaluation — LLM judgment of the artifact source, for example — not to regenerate the artifact.
+
+```yaml
+  evaluate:
+    # CORRECT: route failures forward to score (LLM fallback)
+    on_yes: score
+    on_no: score    # Playwright absent → LLM evaluates HTML source directly
+    on_error: score
+
+  # WRONG: routes back to generate, which routes back to evaluate — infinite cycle
+  # on_no: generate
+  # on_error: generate
+```
+
+---
+
 ## Design Decisions
 
 ### Why Two Layers (Evaluate + Route)?

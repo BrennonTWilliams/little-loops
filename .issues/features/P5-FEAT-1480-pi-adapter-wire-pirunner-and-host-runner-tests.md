@@ -82,6 +82,11 @@ In `scripts/little_loops/host_runner.py` at `PiRunner` class (lines ~478–532):
 
 **Open** | Created: 2026-05-15 | Priority: P5
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-18): This issue modifies `host_runner.py` to wire `PiRunner` (lines 478–532). ENH-1529 also modifies `host_runner.py` to add `_sandbox_args()` and thread `sandbox_mode` through `CodexRunner` (lines 270–418). The two changes target different class regions and are non-overlapping, but landing both PRs simultaneously on the same file can produce near-miss merge conflicts during rebase. Sequence or merge these PRs deliberately; review both diff hunks together before landing.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
 - `/ll:issue-size-review` - 2026-05-15T20:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e9b11ad-de12-4f82-9761-25c38e59c783.jsonl`
