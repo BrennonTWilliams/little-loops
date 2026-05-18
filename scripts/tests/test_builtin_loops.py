@@ -111,6 +111,7 @@ class TestBuiltinLoopFiles:
             "svg-textgrad",
             "rn-plan",
             "rn-plan-apo",
+            "rn-refine",
             "loop-specialist-eval",
             "hitl-compare",
             "deep-research",
@@ -933,7 +934,16 @@ class TestPromptAcrossIssuesLoop:
 
     def test_required_states_exist(self, data: dict) -> None:
         """All required states must be present."""
-        required = {"init", "discover", "prepare_prompt", "execute", "advance", "done", "diagnose_error", "error"}
+        required = {
+            "init",
+            "discover",
+            "prepare_prompt",
+            "execute",
+            "advance",
+            "done",
+            "diagnose_error",
+            "error",
+        }
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
@@ -3302,7 +3312,17 @@ class TestRlCodingAgentLoop:
 
     def test_required_states_exist(self, data: dict) -> None:
         """All required states must be present."""
-        required = {"act", "refine", "observe", "score", "improve", "persist_reward", "done", "diagnose", "failed"}
+        required = {
+            "act",
+            "refine",
+            "observe",
+            "score",
+            "improve",
+            "persist_reward",
+            "done",
+            "diagnose",
+            "failed",
+        }
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
@@ -3352,7 +3372,16 @@ class TestAgentEvalImproveLoop:
 
     def test_required_states_exist(self, data: dict) -> None:
         """All required states must be present."""
-        required = {"run_eval", "score_results", "analyze_failures", "route_quality", "refine_config", "done", "diagnose", "failed"}
+        required = {
+            "run_eval",
+            "score_results",
+            "analyze_failures",
+            "route_quality",
+            "refine_config",
+            "done",
+            "diagnose",
+            "failed",
+        }
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"

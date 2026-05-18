@@ -76,7 +76,7 @@ class TestFeat1045DocUpdates:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "25 typed CLI tools" in content, "README.md must say '25 typed CLI tools'"
+        assert "27 typed CLI tools" in content, "README.md must say '27 typed CLI tools'"
 
     def test_claude_md_lists_ll_create_extension(self) -> None:
         content = CLAUDE_MD.read_text()
@@ -189,7 +189,7 @@ class TestFeat1229LlActionWiring:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "25 typed CLI tools" in content, "README.md must say '25 typed CLI tools'"
+        assert "27 typed CLI tools" in content, "README.md must say '27 typed CLI tools'"
 
     def test_configure_areas_count_is_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()

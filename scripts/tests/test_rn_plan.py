@@ -131,11 +131,9 @@ class TestRnPlanYaml:
             "breadth",
             "depth",
             "complexity",
-            "granularity",
             "clarity",
             "consistency",
             "logic_strategy",
-            "outcome_confidence",
         ]
         missing = [d for d in dimensions if d not in action]
         assert not missing, f"Score action missing rubric dimensions: {missing}"

@@ -97,14 +97,18 @@ class TestSequentialWorkflowIntegration:
             category=None,
         )
 
-        # Run should complete without calling any subprocess
-        with patch("subprocess.Popen") as mock_popen:
-            with patch("subprocess.run") as mock_run:
+        import subprocess as _subprocess
+
+        git_result = _subprocess.CompletedProcess(
+            args=["git", "rev-parse", "HEAD"], returncode=0, stdout="abc123\n", stderr=""
+        )
+        # subprocess.run handles read-only git introspection; Popen is used for real invocations
+        with patch("subprocess.run", return_value=git_result):
+            with patch("subprocess.Popen") as mock_popen:
                 _ = manager.run()
 
-        # Verify no subprocess calls were made
+        # Verify no process-launching calls were made (Claude/tool invocations use Popen)
         mock_popen.assert_not_called()
-        mock_run.assert_not_called()
 
         # Original issue files should still exist
         bugs_dir = project_root / ".issues" / "bugs"
