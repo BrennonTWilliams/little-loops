@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`html-anything` Silent Infinite Cycle on Playwright Failure** — `evaluate` state now routes `on_no`/`on_error` to `score` instead of `generate`, preventing a silent 20-iteration cycle when Playwright is absent. `score` action gains a screenshot-or-HTML fallback preamble for LLM-only graceful degradation. Corrects stale LOOPS_GUIDE FSM diagram and prose. (BUG-1602)
 - **Renderer Inter-Layer Label Collision** — Prevents label collisions when two edges share a source row across adjacent layers. (BUG-1501)
 - **Renderer Back-Edge Label Collision** — Prevents label collisions when back-edges share a midpoint row.
 - **Renderer Forward-Edge Label Truncation** — Truncates merged forward-edge labels that exceed the available column width.

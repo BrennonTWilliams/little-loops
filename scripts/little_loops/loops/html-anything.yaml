@@ -139,11 +139,9 @@ states:
   evaluate:
     # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// page.
     # Self-contained HTML (all CSS/JS inline) renders correctly under file:// without
-    # an HTTP server. Routes to score on success; routes back to generate on failure
-    # (e.g. Playwright not installed, or file missing) so the loop can still make
-    # progress via LLM-only scoring if the shell tool is unavailable.
-    # on_error: generate matches svg-image-generator — unlike html-website-generator
-    # which omits it and dies if Playwright is absent.
+    # an HTTP server. Routes to score on success; routes to score on failure too
+    # (e.g. Playwright not installed, or file missing) so the loop degrades gracefully
+    # to LLM-only evaluation of the HTML source rather than cycling back to generate.
     action_type: shell
     action: |
       playwright screenshot "file://${captured.run_dir.output}/index.html" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
@@ -151,8 +149,8 @@ states:
       type: output_contains
       pattern: "CAPTURED"
     on_yes: score
-    on_no: generate
-    on_error: generate
+    on_no: score
+    on_error: score
 
   score:
     # HARNESS: Evaluator phase — LLM reads rubric.md to load artifact-specific per-criterion
@@ -166,8 +164,9 @@ states:
       Read ${captured.run_dir.output}/rubric.md to load the artifact type and per-criterion
       thresholds. Parse the YAML fenced block to get the criteria list.
 
-      Read the screenshot at ${captured.run_dir.output}/screenshot.png to view the rendered
-      artifact. Also read ${captured.run_dir.output}/brief.md to recall the platform intent.
+      If ${captured.run_dir.output}/screenshot.png exists, read it to view the rendered
+      artifact. Otherwise read ${captured.run_dir.output}/index.html directly to evaluate
+      the HTML source. Also read ${captured.run_dir.output}/brief.md to recall the platform intent.
 
       Score the artifact on each criterion from 1 to 10 and write the evaluation to
       ${captured.run_dir.output}/critique.md using this exact format:

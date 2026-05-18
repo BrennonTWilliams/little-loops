@@ -2,10 +2,18 @@
 id: BUG-1602
 type: BUG
 priority: P2
-title: "hitl-compare evaluate state routes to generate on Playwright failure — silent infinite cycle"
+title: "hitl-compare evaluate state routes to generate on Playwright failure \u2014\
+  \ silent infinite cycle"
 discovered_date: 2026-05-17
 discovered_by: loop-audit
-status: open
+status: done
+completed_at: 2026-05-18T07:05:26Z
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1602: hitl-compare evaluate state routes to generate on Playwright failure — silent infinite cycle
@@ -76,13 +84,65 @@ Otherwise read ${captured.run_dir.output}/index.html directly to evaluate the HT
 
 The guide at line 957 and 970 already documents the *intended* degradation behavior (LLM-only scoring) but the prose at line 916/970 incorrectly states `on_error: generate` "falls back to `generate`, which then proceeds to `score`" — which is false. The FSM flow diagram also shows `FAILED → generate` where it should show `FAILED → score`. Both must be corrected alongside the YAML fix.
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Files to Modify**
+- `scripts/little_loops/loops/html-anything.yaml:154–155` — change `on_no: generate` and `on_error: generate` to `on_no: score` and `on_error: score` in the `evaluate` state
+- `scripts/little_loops/loops/html-anything.yaml:141–146` — update comment that currently describes routing to `generate` on failure (conflicts with the design rule at LOOPS_GUIDE line 847)
+- `scripts/little_loops/loops/html-anything.yaml:169–170` — add screenshot-or-HTML fallback to `score` state action; currently reads `screenshot.png` unconditionally; model after `hitl-compare.yaml:206–207`
+- `docs/guides/LOOPS_GUIDE.md:892` — FSM flow diagram entry: `└─ FAILED  → generate (Playwright unavailable — LLM-only scoring)` must change to `└─ FAILED  → score (Playwright unavailable — LLM-only scoring)`
+- `docs/guides/LOOPS_GUIDE.md:918` — prose: "falls back to `generate`, which then proceeds to `score`" must become "falls back to `score` directly for LLM-only evaluation of the HTML source"
+- `scripts/tests/test_builtin_loops.py:2936–2944` — `TestHtmlAnythingLoop.test_evaluate_routes_to_generate_on_no` and `test_evaluate_on_error_routes_to_generate` assert the buggy routing; update to assert `score`
+- `scripts/tests/test_builtin_loops.py:3082–3090` — `TestHitlCompareLoop.test_evaluate_routes_to_generate_on_no` and `test_evaluate_on_error_routes_to_generate` assert the old buggy routing (already broken by the hitl-compare fix); update to assert `score`
+
+**Similar Patterns**
+- `scripts/little_loops/loops/hitl-compare.yaml:183–197` — already-fixed `evaluate` state; use its `on_no: score`, `on_error: score` routing and comment language as the model
+- `scripts/little_loops/loops/hitl-compare.yaml:206–207` — screenshot-or-HTML fallback preamble ("If screenshot.png exists, read it … Otherwise read index.html directly") — copy this pattern to `html-anything.yaml` score state
+
+**Tests**
+- `scripts/tests/test_builtin_loops.py` — `TestHtmlAnythingLoop` (lines ~2870–3014) and `TestHitlCompareLoop` (lines ~3016–3173) both have stale routing assertions that must be updated alongside the YAML changes
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- No runtime callers or importers — loop YAML files are loaded by name at runtime; no Python code imports `html-anything` or `hitl-compare` by path
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `CHANGELOG.md` — add `### Fixed` entry for BUG-1602 in the current release section (the existing `## [1.102.0]` `### Added` entries for these loops do not name routing targets and do not need retroactive revision)
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py::TestHtmlAnythingLoop` (lines 2936–2939) — `test_evaluate_routes_to_generate_on_no`: change `assert state.get("on_no") == "generate"` → `== "score"`; update docstring from "route back to generate when screenshot fails" to "route to score for LLM-only fallback when screenshot fails" [update]
+- `scripts/tests/test_builtin_loops.py::TestHtmlAnythingLoop` (lines 2941–2944) — `test_evaluate_on_error_routes_to_generate`: change `assert state.get("on_error") == "generate"` → `== "score"`; update docstring [update]
+- `scripts/tests/test_builtin_loops.py::TestHitlCompareLoop` (lines 3082–3085) — same: assert `"score"` and update docstring [update — currently **failing** because `hitl-compare.yaml` YAML already fixed but test still asserts `"generate"`]
+- `scripts/tests/test_builtin_loops.py::TestHitlCompareLoop` (lines 3087–3090) — same [update — currently **failing**]
+- `scripts/tests/test_builtin_loops.py::TestHtmlAnythingLoop` — `test_score_action_has_screenshot_or_html_fallback` — new test verifying the `score` state action preamble contains the `"screenshot.png exists"` / `"Otherwise read"` conditional added in step 4; follow `test_score_action_reads_rubric_dynamically` (line ~2997) as pattern [new]
+
 ## Implementation Steps
 
-1. Fix `on_no`/`on_error` routing in `hitl-compare.yaml` `evaluate` state → route to `score`
-2. Fix same routing in `html-anything.yaml` `evaluate` state → route to `score`
-3. Add screenshot-or-HTML fallback preamble to the `score` action in both loops
-4. Correct `docs/guides/LOOPS_GUIDE.md` lines 892 and 918 (FSM diagram + prose)
-5. Verify: run `ll-loop run hitl-compare` without Playwright, confirm `score` state executes and produces output
+1. ~~Fix `on_no`/`on_error` routing in `hitl-compare.yaml` `evaluate` state~~ — **already done** (Verification Notes confirm `on_no: score`, `on_error: score`)
+2. Fix `html-anything.yaml` `evaluate` state routing: change `on_no: generate` → `on_no: score` and `on_error: generate` → `on_error: score` (lines 154–155)
+3. Update the `evaluate` state comment in `html-anything.yaml` (lines 141–146) to match `hitl-compare.yaml:183–187` language describing graceful degradation to `score`
+4. Add screenshot-or-HTML fallback preamble to `html-anything.yaml` `score` action (lines 169–170), following `hitl-compare.yaml:206–207`: "If `screenshot.png` exists, read it; otherwise read `index.html` directly"
+5. Fix `docs/guides/LOOPS_GUIDE.md:892` FSM diagram: `FAILED → generate` → `FAILED → score`
+6. Fix `docs/guides/LOOPS_GUIDE.md:918` prose: remove "falls back to `generate`, which then proceeds to `score`" → "falls back to `score` directly for LLM-only evaluation of the HTML source"
+7. Update `test_builtin_loops.py` `TestHtmlAnythingLoop` (lines 2936–2944): change `assert state.get("on_no") == "generate"` and `assert state.get("on_error") == "generate"` to assert `"score"`; update docstrings to match
+8. Update `test_builtin_loops.py` `TestHitlCompareLoop` (lines 3082–3090): same update — assert `"score"` and update docstrings
+9. Add `TestHtmlAnythingLoop.test_score_action_has_screenshot_or_html_fallback` verifying the new `score` state fallback preamble in `html-anything.yaml`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+10. Add `### Fixed` entry to `CHANGELOG.md` for BUG-1602 in the current release section: "`hitl-compare`, `html-anything`: fix silent infinite cycle when Playwright is absent — `evaluate` now routes `on_no`/`on_error` to `score` for LLM-only graceful degradation"
+11. Verify: `python -m pytest scripts/tests/test_builtin_loops.py -k "HtmlAnything or HitlCompare" -v` passes
 
 ## Impact
 
@@ -112,5 +172,9 @@ The guide at line 957 and 970 already documents the *intended* degradation behav
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-18T07:03:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3eaf5bb8-b9eb-4860-af89-a4d4e17c30d7.jsonl`
+- `/ll:confidence-check` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/465df8a0-34fa-4f6a-9580-366c97ce73f9.jsonl`
+- `/ll:wire-issue` - 2026-05-18T07:00:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b07556c9-586e-4e8b-91ec-d7ed97af867a.jsonl`
+- `/ll:refine-issue` - 2026-05-18T06:56:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/550b1b65-bc06-425e-8792-8868b508cc92.jsonl`
 - `/ll:format-issue` - 2026-05-18T05:16:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb7f2fc9-52f4-4d22-8182-c197fa8741c5.jsonl`
 - `/ll:verify-issues` - 2026-05-18T04:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2807bd8b-4e79-4b76-994d-e6f6cae14245.jsonl`

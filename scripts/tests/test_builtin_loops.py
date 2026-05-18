@@ -2933,15 +2933,15 @@ class TestHtmlAnythingLoop:
         state = data["states"].get("evaluate", {})
         assert state.get("on_yes") == "score"
 
-    def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
-        """evaluate state must route back to generate when screenshot fails."""
+    def test_evaluate_routes_to_score_on_no(self, data: dict) -> None:
+        """evaluate state must route to score for LLM-only fallback when screenshot fails."""
         state = data["states"].get("evaluate", {})
-        assert state.get("on_no") == "generate"
+        assert state.get("on_no") == "score"
 
-    def test_evaluate_on_error_routes_to_generate(self, data: dict) -> None:
-        """evaluate state must route to generate on error so Playwright absence doesn't stall."""
+    def test_evaluate_on_error_routes_to_score(self, data: dict) -> None:
+        """evaluate state must route to score on error so Playwright absence degrades gracefully."""
         state = data["states"].get("evaluate", {})
-        assert state.get("on_error") == "generate"
+        assert state.get("on_error") == "score"
 
     def test_evaluate_action_has_stderr_redirect(self, data: dict) -> None:
         """evaluate action must redirect stderr to stdout so playwright errors surface."""
@@ -2970,6 +2970,17 @@ class TestHtmlAnythingLoop:
         """score state must route to failed on error to surface LLM failures explicitly."""
         state = data["states"].get("score", {})
         assert state.get("on_error") == "failed"
+
+    def test_score_action_has_screenshot_or_html_fallback(self, data: dict) -> None:
+        """score state action must have the screenshot-or-HTML fallback preamble for graceful Playwright degradation."""
+        state = data["states"].get("score", {})
+        action = state.get("action", "")
+        assert "screenshot.png exists" in action, (
+            "score.action must check if screenshot.png exists for graceful Playwright degradation"
+        )
+        assert "Otherwise read" in action, (
+            "score.action must fall back to reading index.html when screenshot is absent"
+        )
 
     def test_context_has_description_and_output_dir(self, data: dict) -> None:
         """context block must define description and output_dir with correct defaults."""
@@ -3079,15 +3090,15 @@ class TestHitlCompareLoop:
         state = data["states"].get("evaluate", {})
         assert state.get("on_yes") == "score"
 
-    def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
-        """evaluate state must route back to generate when screenshot fails."""
+    def test_evaluate_routes_to_score_on_no(self, data: dict) -> None:
+        """evaluate state must route to score for LLM-only fallback when screenshot fails."""
         state = data["states"].get("evaluate", {})
-        assert state.get("on_no") == "generate"
+        assert state.get("on_no") == "score"
 
-    def test_evaluate_on_error_routes_to_generate(self, data: dict) -> None:
-        """evaluate state must route to generate on error so Playwright absence doesn't stall."""
+    def test_evaluate_on_error_routes_to_score(self, data: dict) -> None:
+        """evaluate state must route to score on error so Playwright absence degrades gracefully."""
         state = data["states"].get("evaluate", {})
-        assert state.get("on_error") == "generate"
+        assert state.get("on_error") == "score"
 
     def test_evaluate_action_has_stderr_redirect(self, data: dict) -> None:
         """evaluate action must redirect stderr to stdout so playwright errors surface."""

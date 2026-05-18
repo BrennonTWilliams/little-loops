@@ -889,7 +889,7 @@ init → plan → generate → evaluate
                             │              ├─ ALL_PASS → done
                             │              ├─ ITERATE  → generate (with critique)
                             │              └─ ERROR    → failed
-                            └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
+                            └─ FAILED  → score (Playwright unavailable — LLM-only scoring)
 ```
 
 **Dynamic rubric examples:**
@@ -915,7 +915,7 @@ For `html-social-card`:
 **Notes:**
 - The `plan` state classifies artifact type atomically with brief + rubric — all three are written in one state to ensure the rubric always matches the classification.
 - Per-criterion thresholds (not a weighted average) are enforced in `score`: a platform constraint at threshold 8 can't be masked by a high aesthetic score at threshold 6.
-- If Playwright is unavailable, the `evaluate` state's `on_error` route falls back to `generate`, which then proceeds to `score` using LLM-only judgment of the HTML source.
+- If Playwright is unavailable, the `evaluate` state's `on_error` route falls back to `score` directly for LLM-only evaluation of the HTML source.
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
 - For a plain website, `html-website-generator` is simpler (no artifact classification step). Use `html-anything` when the artifact type determines which platform constraints to enforce.
 - To customize criteria for a specific artifact type, install locally (`ll-loop install html-anything`) and edit the `plan` state's rubric design rules.
