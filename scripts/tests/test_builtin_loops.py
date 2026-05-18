@@ -3155,3 +3155,19 @@ class TestHitlCompareLoop:
         assert "review.md" in action, "done.action must reference review.md"
         assert "critique.md" in action, "done.action must reference critique.md"
         assert "screenshot.png" in action, "done.action must reference screenshot.png"
+
+    def test_generate_action_has_write_in_affordance(self, data: dict) -> None:
+        """generate state action must include write-in custom option affordance instructions (ENH-1604)."""
+        state = data["states"].get("generate", {})
+        action = state.get("action", "")
+        assert "Write custom option" in action, (
+            "generate.action must contain write-in affordance instructions ('Write custom option')"
+        )
+
+    def test_score_comparison_ergonomics_references_write_in(self, data: dict) -> None:
+        """score state comparison_ergonomics must reference the write-in affordance (ENH-1604)."""
+        state = data["states"].get("score", {})
+        action = state.get("action", "")
+        assert "write-in" in action, (
+            "score.action comparison_ergonomics must reference the write-in affordance"
+        )

@@ -1,5 +1,6 @@
 name: hitl-compare
 category: harness
+labels: [hitl, comparison, html, interactive]
 input_key: inputs
 description: |
   Human-in-the-loop comparison harness — reads whitespace-separated inputs (file paths or raw text),
@@ -149,6 +150,15 @@ states:
       - Provide a comparison control: radio buttons for binary choices (2 options), a labeled
         button group or cycle toggle for 3+ options
       - Visually highlight the currently selected option (border, background, or checkmark)
+      - Below the last option for each item, include a subtle secondary affordance:
+        a small "＋ Write custom option" trigger (font-size: 0.85em, color: #888, cursor: pointer,
+        no border) that when clicked reveals a <textarea> (width: 100%, min-height: 60px,
+        border: 1px solid #ccc, border-radius: 4px, padding: 8px, font-size: 0.9em) with
+        placeholder "Describe your preferred option...". The write-in section is hidden on
+        page load. Clicking anywhere inside the textarea deselects any radio button and marks
+        the item as custom; clicking an extracted option radio re-collapses the textarea.
+        Style it visually subordinate — smaller font, muted color — so it does not compete
+        with the primary comparison controls.
 
       At the bottom of the page, include an "Export Selections" button that:
       - Uses JavaScript to read the current state of all selection controls
@@ -157,8 +167,12 @@ states:
         ## Review Selections — [ISO timestamp]
 
         - **[Item Title]**: [Chosen Option label, e.g. "Option A — [first few words of option]"]
+        - **[Item Title]**: Custom — [first ~80 chars of textarea text]  ← for write-in items
         ...
         ```
+        Items where the write-in textarea is active and non-empty emit "Custom — [text]";
+        items where the write-in textarea is active but empty are treated as unselected
+        (no line emitted for that item).
       - Displays the block in a visible <textarea> or <pre> element the user can copy
       - Includes a "Copy to clipboard" button that calls navigator.clipboard.writeText()
 
@@ -169,8 +183,9 @@ states:
   evaluate:
     # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// page.
     # Self-contained HTML (all CSS/JS inline) renders correctly under file:// without
-    # an HTTP server. Routes to score on success; routes back to generate on failure
-    # (e.g. Playwright not installed, or file missing) so the loop degrades gracefully.
+    # an HTTP server. Routes to score on success; routes to score on failure too
+    # (e.g. Playwright not installed, or file missing) so the loop degrades gracefully
+    # to LLM-only evaluation of the HTML source rather than cycling back to generate.
     action_type: shell
     action: |
       playwright screenshot "file://${captured.run_dir.output}/index.html" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
@@ -178,8 +193,8 @@ states:
       type: output_contains
       pattern: "CAPTURED"
     on_yes: score
-    on_no: generate
-    on_error: generate
+    on_no: score
+    on_error: score
 
   score:
     # HARNESS: Evaluator phase — LLM judges the screenshot against a fixed 5-criterion rubric
@@ -188,7 +203,8 @@ states:
     # Gates via output_contains: "ALL_PASS"; routes to generate on fail, failed on LLM error.
     action_type: prompt
     action: |
-      Read the screenshot at ${captured.run_dir.output}/screenshot.png to view the rendered review page.
+      If ${captured.run_dir.output}/screenshot.png exists, read it to view the rendered review page.
+      Otherwise read ${captured.run_dir.output}/index.html directly to evaluate the HTML source.
       Also read ${captured.run_dir.output}/review.md to recall what items should be present.
 
       Score the review page on each criterion from 1 to 10 and write the evaluation to
@@ -203,7 +219,8 @@ states:
         a decision? Are items well-separated? Is the overall structure easy to navigate at a glance?]
       comparison_ergonomics: N/10 — [explanation: does the comparison control make it easy to
         toggle between options? Are options shown in a way that facilitates side-by-side comparison?
-        Is the selected state visually unambiguous?]
+        Is the selected state visually unambiguous? Is there a subtle write-in affordance below
+        the options that is clearly secondary (not a peer option)?]
       export_affordance: N/10 — [explanation: is the "Export selections" button visible and
         prominent? Does the exported markdown block clearly identify each item and its chosen option?
         Is the copy affordance obvious?]
@@ -245,7 +262,7 @@ states:
       - ${captured.run_dir.output}/items.md       — all candidate review items extracted from inputs
       - ${captured.run_dir.output}/review.md      — surviving items after pruning (what's on the page)
       - ${captured.run_dir.output}/critique.md    — final evaluation scores and notes
-      - ${captured.run_dir.output}/screenshot.png — the last Playwright-captured render
+      - ${captured.run_dir.output}/screenshot.png — the last Playwright-captured render (omitted if Playwright unavailable)
 
       To complete the review:
       1. Open ${captured.run_dir.output}/index.html in your browser (file:// URL works — no server needed).
@@ -262,4 +279,14 @@ states:
     # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs
     # (e.g. LLM failure in score state). Provides a clear signal distinct from a
     # max_iterations timeout, making failure mode visible in ll-loop history.
+    action_type: prompt
+    action: |
+      The hitl-compare loop has terminated with an unrecoverable error.
+
+      Diagnose what failed:
+      - If ${captured.run_dir.output}/critique.md exists, read it and summarize the last evaluation scores.
+      - If ${captured.run_dir.output}/review.md exists, report how many items were identified for review.
+      - Identify the most likely failure cause (most commonly: LLM error in the score state).
+
+      Write a one-paragraph diagnostic summary so the operator can diagnose and re-run.
     terminal: true
