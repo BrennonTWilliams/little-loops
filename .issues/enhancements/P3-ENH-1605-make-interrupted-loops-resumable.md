@@ -74,6 +74,20 @@ Users who stop a loop intentionally (to free resources, handle a distraction, or
 4. Run existing persistence tests; add new round-trip test.
 5. Update help text / docs to reflect that interrupted loops are resumable.
 
+## Scope Boundaries
+
+**In scope:**
+- Adding `"interrupted"` to the resumable-status set in `PersistentExecutor.resume()`
+- Fixing archive timing so interrupted loops remain in `.loops/.running/` for `_find_instances()` to discover
+- Updating `_reconcile_stale_runs()` to not treat `"interrupted"` + dead-PID as stale (keep available for resume)
+- Optionally surfacing `"interrupted"` loops in `ll-loop list` with a `[paused]` label
+
+**Out of scope:**
+- Changing crash/SIGKILL recovery behavior (already handled via `"running"` status)
+- Introducing new loop status values beyond adding `"interrupted"` to the resumable set
+- Modifying FSM state-transition logic or execution behavior during the loop run
+- Changing semantics of terminal statuses (`"completed"`, `"failed"`, `"cancelled"`)
+
 ## API/Interface
 
 ```python
@@ -107,5 +121,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-05-18 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-18T05:38:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3ddc6287-f781-4278-a8a4-03871998cfc3.jsonl`
 
 - `/ll:capture-issue` - 2026-05-18T05:35:25Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a80e31cf-a675-4c97-bce5-05347c0aadf2.jsonl`

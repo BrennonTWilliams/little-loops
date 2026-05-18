@@ -272,6 +272,24 @@ states:
     evaluate:
       type: output_contains
       pattern: "ALL_VERY_HIGH"
+    on_yes: verify_score
+    on_no: classify_research
+    on_error: failed
+
+  verify_score:
+    # File verification — reads the actual rubric file to confirm ALL_VERY_HIGH is
+    # present before accepting convergence. Guards against hallucinated convergence
+    # signals where the LLM outputs ALL_VERY_HIGH but writes ITERATE to the file.
+    action_type: shell
+    action: |
+      RUBRIC="${captured.run_dir.output}/plan-rubric.md"
+      if [ ! -f "$RUBRIC" ]; then echo "RUBRIC_MISSING"; exit 0; fi
+      grep -q "ALL_VERY_HIGH" "$RUBRIC" && echo "ALL_VERY_HIGH" || echo "ITERATE"
+    capture: rubric_check
+    evaluate:
+      type: output_contains
+      source: "${captured.rubric_check.output}"
+      pattern: "ALL_VERY_HIGH"
     on_yes: report
     on_no: classify_research
     on_error: failed

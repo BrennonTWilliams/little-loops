@@ -197,10 +197,20 @@ class TestRoutingStructure:
         fsm, _ = load_and_validate(loop_path)
         return fsm
 
-    def test_score_routes_to_report_on_yes(self) -> None:
-        """score.on_yes must point to report, not done."""
+    def test_score_routes_to_verify_score_on_yes(self) -> None:
+        """score.on_yes routes to verify_score for file-content confirmation before report."""
         fsm = self._load_rn_refine()
-        assert fsm.states["score"].on_yes == "report"
+        assert fsm.states["score"].on_yes == "verify_score"
+
+    def test_verify_score_routes_to_report_on_yes(self) -> None:
+        """verify_score.on_yes must point to report after rubric file confirms ALL_VERY_HIGH."""
+        fsm = self._load_rn_refine()
+        assert fsm.states["verify_score"].on_yes == "report"
+
+    def test_verify_score_routes_to_classify_research_on_no(self) -> None:
+        """verify_score.on_no returns to classify_research when rubric file has ITERATE."""
+        fsm = self._load_rn_refine()
+        assert fsm.states["verify_score"].on_no == "classify_research"
 
     def test_report_state_exists(self) -> None:
         """report state must be present in the loop."""
