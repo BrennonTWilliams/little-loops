@@ -33,6 +33,7 @@ states:
       DIR="${context.output_dir}/$SLUG"
       mkdir -p "$DIR"
       cp "${context.plan_file}" "$DIR/plan.md"
+      realpath "${context.plan_file}" > "$DIR/.source-path"
       : > "$DIR/plan-rubric.md"
       : > "$DIR/research.md"
       echo "$(pwd)/$DIR"
@@ -315,8 +316,24 @@ states:
       - ${captured.run_dir.output}/plan-rubric.md   — the final rubric scores
       - ${captured.run_dir.output}/research.md      — accumulated research findings
 
-      Read ${captured.run_dir.output}/plan-rubric.md and report the final dimension scores
-      and aggregate verdict to the user. Confirm the plan is ready for implementation.
+      Step 1: Read ${captured.run_dir.output}/plan-rubric.md and report the final dimension
+      scores and aggregate verdict to the user. Confirm the plan is ready for implementation.
+
+      Step 2: Read ${captured.run_dir.output}/.source-path to get the absolute path of the
+      original plan file the user passed in. Call this value SOURCE.
+
+      Step 3: Print the following block VERBATIM to the user, replacing <SOURCE> with the
+      absolute path read from .source-path and <REFINED> with ${captured.run_dir.output}/plan.md.
+      Use the actual absolute paths — do not leave the placeholders in. Both paths must be
+      absolute so the commands work from any working directory.
+
+      ```
+      To review changes:
+        diff <SOURCE> <REFINED>
+
+      To apply the refined plan (this OVERWRITES the original — review the diff first):
+        cp <REFINED> <SOURCE>
+      ```
     next: done
 
   done:
