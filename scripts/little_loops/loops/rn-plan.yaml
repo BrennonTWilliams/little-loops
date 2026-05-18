@@ -24,7 +24,7 @@ states:
     action_type: shell
     action: |
       SLUG=$(echo "${context.task}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\+/-/g; s/^-//; s/-$//')
-      SLUG="${SLUG:-rn-plan-run}"
+      SLUG="$${SLUG:-rn-plan-run}"
       DIR="${context.output_dir}/$SLUG"
       mkdir -p "$DIR"
       : > "$DIR/plan.md"

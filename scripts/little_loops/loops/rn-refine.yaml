@@ -29,7 +29,7 @@ states:
         exit 1
       fi
       SLUG=$(basename "${context.plan_file}" .md | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\+/-/g; s/^-//; s/-$//')
-      SLUG="${SLUG:-rn-refine-run}"
+      SLUG="$${SLUG:-rn-refine-run}"
       DIR="${context.output_dir}/$SLUG"
       mkdir -p "$DIR"
       cp "${context.plan_file}" "$DIR/plan.md"

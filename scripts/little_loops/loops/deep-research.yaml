@@ -26,7 +26,7 @@ states:
     action_type: shell
     action: |
       SLUG=$(echo "${context.topic}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\+/-/g; s/^-//; s/-$//')
-      SLUG="${SLUG:-deep-research-run}"
+      SLUG="$${SLUG:-deep-research-run}"
       DIR="${context.output_dir}/$SLUG"
       mkdir -p "$DIR"
       : > "$DIR/report.md"
