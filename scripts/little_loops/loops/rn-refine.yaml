@@ -272,13 +272,15 @@ states:
     evaluate:
       type: output_contains
       pattern: "ALL_VERY_HIGH"
-    on_yes: done
+    on_yes: report
     on_no: classify_research
     on_error: failed
 
-  done:
-    # Terminal — reached when all 9 rubric dimensions score VERY-HIGH or max_iterations
-    # is exhausted. Reports the final output file locations.
+  report:
+    # Pre-terminal report — reads the final rubric and summarises results for the user
+    # before transitioning to the bare terminal anchor. Exists as a separate state
+    # because the FSM runner skips actions on terminal states (fires loop_complete
+    # immediately on routing to a terminal without entering it).
     action_type: prompt
     action: |
       The rn-refine recursive refinement loop has completed.
@@ -290,6 +292,11 @@ states:
 
       Read ${captured.run_dir.output}/plan-rubric.md and report the final dimension scores
       and aggregate verdict to the user. Confirm the plan is ready for implementation.
+    next: done
+
+  done:
+    # Terminal anchor — clean exit point with no action. Report is handled by the
+    # preceding `report` state to work around the runner's terminal short-circuit.
     terminal: true
 
   failed:

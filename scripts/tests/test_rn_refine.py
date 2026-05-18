@@ -1,13 +1,16 @@
-"""Tests for the rn-refine loop init state shell logic.
+"""Tests for the rn-refine loop init state shell logic and routing structure.
 
-Validates slug derivation, file-not-found error handling, and the cp-based
-content preservation that distinguishes rn-refine from rn-plan's blank init.
+Validates slug derivation, file-not-found error handling, the cp-based
+content preservation that distinguishes rn-refine from rn-plan's blank init,
+and the routing fix that ensures the report state fires before done.
 """
 
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+
+from little_loops.fsm.validation import load_and_validate
 
 
 def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -183,6 +186,46 @@ class TestInitFileCopy:
         assert result.returncode == 0
         run_dir = Path(result.stdout.strip())
         assert (run_dir / "plan.md").read_text() == content
+
+
+class TestRoutingStructure:
+    """Routing fix: report state fires before done so terminal action is not skipped."""
+
+    @staticmethod
+    def _load_rn_refine():
+        loop_path = Path(__file__).parent.parent / "little_loops" / "loops" / "rn-refine.yaml"
+        fsm, _ = load_and_validate(loop_path)
+        return fsm
+
+    def test_score_routes_to_report_on_yes(self) -> None:
+        """score.on_yes must point to report, not done."""
+        fsm = self._load_rn_refine()
+        assert fsm.states["score"].on_yes == "report"
+
+    def test_report_state_exists(self) -> None:
+        """report state must be present in the loop."""
+        fsm = self._load_rn_refine()
+        assert "report" in fsm.states
+
+    def test_report_action_type_is_prompt(self) -> None:
+        """report.action_type must be prompt so the runner executes it."""
+        fsm = self._load_rn_refine()
+        assert fsm.states["report"].action_type == "prompt"
+
+    def test_report_routes_to_done(self) -> None:
+        """report.next must point to done."""
+        fsm = self._load_rn_refine()
+        assert fsm.states["report"].next == "done"
+
+    def test_done_has_no_action(self) -> None:
+        """done must be a bare terminal with no action so it is a clean exit anchor."""
+        fsm = self._load_rn_refine()
+        assert getattr(fsm.states["done"], "action", None) is None
+
+    def test_done_is_terminal(self) -> None:
+        """done.terminal must be True."""
+        fsm = self._load_rn_refine()
+        assert fsm.states["done"].terminal is True
 
 
 class TestInitOutputDir:
