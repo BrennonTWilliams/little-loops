@@ -233,6 +233,13 @@ states:
 
       Overwrite ${captured.run_dir.output}/plan.md with the improved version.
       Preserve the task title and goal statement; replace everything else as needed.
+
+      Step 7: After overwriting plan.md, update the task: field in
+      ${captured.run_dir.output}/plan-rubric.md to reflect the corrected goal
+      statement from the rewritten plan. Derive the new task value from the
+      title, objective, or first goal statement in the just-written plan.md.
+      Update only the task: line (format: task: "<double-quoted goal>"); preserve
+      all ## Dimensions scores and the ## Aggregate section exactly as they are.
     next: score
 
   score:

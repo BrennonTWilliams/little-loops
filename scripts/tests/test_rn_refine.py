@@ -188,6 +188,41 @@ class TestInitFileCopy:
         assert (run_dir / "plan.md").read_text() == content
 
 
+class TestSynthesizeState:
+    """synthesize state updates plan-rubric.md task: field after rewriting plan.md."""
+
+    @staticmethod
+    def _load_yaml() -> dict:
+        import yaml
+
+        loop_path = Path(__file__).parent.parent / "little_loops" / "loops" / "rn-refine.yaml"
+        return yaml.safe_load(loop_path.read_text())
+
+    def test_synthesize_action_references_plan_rubric(self) -> None:
+        """synthesize action must reference plan-rubric.md for the task: field update."""
+        data = self._load_yaml()
+        action = data["states"]["synthesize"]["action"]
+        assert "plan-rubric.md" in action
+
+    def test_synthesize_action_references_task_field(self) -> None:
+        """synthesize action must instruct updating the task: field."""
+        data = self._load_yaml()
+        action = data["states"]["synthesize"]["action"]
+        assert "task:" in action
+
+    def test_synthesize_action_preserves_dimensions(self) -> None:
+        """synthesize action must explicitly preserve ## Dimensions scores."""
+        data = self._load_yaml()
+        action = data["states"]["synthesize"]["action"]
+        assert "## Dimensions" in action or "Dimensions" in action
+
+    def test_synthesize_action_preserves_aggregate(self) -> None:
+        """synthesize action must explicitly preserve the ## Aggregate section."""
+        data = self._load_yaml()
+        action = data["states"]["synthesize"]["action"]
+        assert "## Aggregate" in action or "Aggregate" in action
+
+
 class TestRoutingStructure:
     """Routing fix: report state fires before done so terminal action is not skipped."""
 
