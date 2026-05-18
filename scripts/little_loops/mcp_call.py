@@ -328,7 +328,8 @@ def main() -> None:
         help='Tool arguments as JSON object (e.g. \'{"param": "value"}\')',
     )
     parser.add_argument(
-        "-t", "--timeout",
+        "-t",
+        "--timeout",
         type=int,
         default=_DEFAULT_TIMEOUT,
         help=f"Timeout in seconds (default: {_DEFAULT_TIMEOUT})",

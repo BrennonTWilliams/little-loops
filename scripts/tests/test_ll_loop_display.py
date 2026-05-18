@@ -1243,9 +1243,7 @@ class TestRenderFsmDiagram:
         plain = re.sub(r"\x1b\[[0-9;]*m", "", result)
 
         # The right-to-left same-layer edge (beta → alpha) must use ◀
-        assert "◄" in plain, (
-            f"Right-to-left same-layer edge should have ◀ arrowhead.\n{plain}"
-        )
+        assert "◄" in plain, f"Right-to-left same-layer edge should have ◀ arrowhead.\n{plain}"
         # No ▶ should appear on the row that contains both state names
         rows_with_both = [
             ln for ln in plain.split("\n") if "alpha" in ln and "beta" in ln and "│" in ln

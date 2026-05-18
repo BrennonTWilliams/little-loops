@@ -2365,7 +2365,9 @@ class TestEarlyCompletionGuard:
             ):
                 with patch("little_loops.issue_manager.subprocess.run") as mock_sub:
                     mock_sub.return_value = MagicMock(returncode=0, stdout="abc123\n")
-                    with patch("little_loops.issue_manager.verify_issue_completed", return_value=True):
+                    with patch(
+                        "little_loops.issue_manager.verify_issue_completed", return_value=True
+                    ):
                         result = process_issue_inplace(sample_issue, mock_config, mock_logger)
 
         # Guard should have detected status=completed (normalized to done) and treated as success

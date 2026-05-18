@@ -329,9 +329,7 @@ def cmd_resume(
     instances = _find_instances(loop_name, running_dir)
     from little_loops.fsm.persistence import RESUMABLE_STATUSES
 
-    resumable = [
-        (iid, s) for iid, s in instances if s.status in RESUMABLE_STATUSES
-    ]
+    resumable = [(iid, s) for iid, s in instances if s.status in RESUMABLE_STATUSES]
     if len(resumable) > 1:
         print(f"Multiple instances of '{loop_name}' are resumable:")
         for iid, _ in resumable:

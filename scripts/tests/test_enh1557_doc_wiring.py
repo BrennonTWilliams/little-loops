@@ -55,7 +55,9 @@ class TestLoopsGuideStateModeSection:
 
     def test_per_state_trajectory_path_present(self) -> None:
         content = LOOPS_GUIDE.read_text()
-        assert ".ll/runs/harness-optimize/<run-id>/states/<state-name>/trajectory.jsonl" in content, (
+        assert (
+            ".ll/runs/harness-optimize/<run-id>/states/<state-name>/trajectory.jsonl" in content
+        ), (
             "docs/guides/LOOPS_GUIDE.md must document the per-state trajectory path "
             "'.ll/runs/harness-optimize/<run-id>/states/<state-name>/trajectory.jsonl'"
         )
