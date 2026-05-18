@@ -68,8 +68,8 @@ states:
       echo "Queued $COUNT issue(s) for recursive refinement"
     fragment: shell_exit
     on_yes: dequeue_next
-    on_no: failed
-    on_error: failed
+    on_no: diagnose
+    on_error: diagnose
 
   dequeue_next:
     # Pop the head of the queue and advance the file.
@@ -814,6 +814,20 @@ states:
       printf '\n'
     action_type: shell
     terminal: true
+
+  diagnose:
+    action_type: prompt
+    action: |
+      The recursive-refine loop has terminated with an unrecoverable failure.
+
+      Diagnose what happened:
+      - If ${env.PWD}/.loops/tmp/recursive-refine-queue.txt exists, report its contents (remaining issues).
+      - If ${env.PWD}/.loops/tmp/recursive-refine-visited.txt exists, report how many issues were processed.
+      - If failure was in parse_input, report whether the input issue list was empty or malformed.
+      - Identify the most likely failure cause.
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run with corrected input.
+    next: failed
 
   failed:
     terminal: true

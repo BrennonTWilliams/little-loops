@@ -39,7 +39,7 @@ states:
       echo "Found $${COUNT} issues to process"
     fragment: shell_exit
     on_yes: discover
-    on_error: error
+    on_error: diagnose_error
 
   discover:
     # Read the next issue ID from the head of the pending list.
@@ -95,6 +95,19 @@ states:
 
   done:
     terminal: true
+
+  diagnose_error:
+    action_type: prompt
+    action: |
+      The prompt-across-issues loop has terminated with an unrecoverable error.
+
+      Diagnose what happened:
+      - If ${env.PWD}/.loops/tmp/prompt-across-issues-pending.txt exists, report its contents.
+      - If failure was in the init state, report whether the prompt argument was provided and whether ll-issues list succeeded.
+      - Identify the most likely failure cause.
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run with a valid prompt argument.
+    next: error
 
   error:
     terminal: true

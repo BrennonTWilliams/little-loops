@@ -41,7 +41,7 @@ states:
       target: done
       progress: improve
       stall: act
-      error: failed
+      error: diagnose
   improve:
     action: |
       # Update the policy based on the observed reward.
@@ -52,6 +52,17 @@ states:
     next: act
   done:
     terminal: true
+  diagnose:
+    action_type: prompt
+    action: |
+      The rl-policy loop has terminated with an unrecoverable failure.
+
+      Diagnose what happened:
+      - Identify the most likely failure cause (convergence evaluator error in the score state).
+      - Note that this is a template/stub loop — no file artifacts are written.
+
+      Write a one-paragraph diagnostic summary the operator can use to debug the policy stub.
+    next: failed
   failed:
     terminal: true
 max_iterations: 100

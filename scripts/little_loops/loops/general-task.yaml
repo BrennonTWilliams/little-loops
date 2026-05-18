@@ -23,7 +23,7 @@ states:
       or reading outputs. Do NOT start any work. Only write the DoD file.
     action_type: prompt
     next: plan
-    on_error: failed
+    on_error: diagnose
 
   plan:
     action: >
@@ -43,7 +43,7 @@ states:
       Do NOT start executing any steps yet. Only write the plan file.
     action_type: prompt
     next: execute
-    on_error: failed
+    on_error: diagnose
 
   execute:
     action: >
@@ -56,7 +56,7 @@ states:
       Do not work on multiple steps. Complete one step, update the plan file, stop.
     action_type: prompt
     next: check_done
-    on_error: failed
+    on_error: diagnose
 
   check_done:
     action: >
@@ -76,7 +76,7 @@ states:
         Answer YES only if every criterion is checked off. Answer NO if any remain unchecked.
     on_yes: done
     on_no: continue_work
-    on_error: failed
+    on_error: diagnose
 
   continue_work:
     action: >
@@ -89,10 +89,23 @@ states:
       Do not work on multiple steps. Complete one step, update the plan file, stop.
     action_type: prompt
     next: check_done
-    on_error: failed
+    on_error: diagnose
 
   done:
     terminal: true
+
+  diagnose:
+    action_type: prompt
+    action: |
+      The general-task loop has terminated with an unrecoverable failure.
+
+      Diagnose what happened:
+      - If ${env.PWD}/.loops/tmp/general-task-plan.md exists, read it and summarize completed steps.
+      - If ${env.PWD}/.loops/tmp/general-task-dod.md exists, report which done-criteria were met.
+      - Identify the most likely failure cause and which state failed (define_done, plan, execute, check_done, or continue_work).
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run or adjust the task description.
+    next: failed
 
   failed:
     terminal: true

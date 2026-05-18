@@ -895,7 +895,7 @@ class TestPromptAcrossIssuesLoop:
 
     def test_required_states_exist(self, data: dict) -> None:
         """All required states must be present."""
-        required = {"init", "discover", "prepare_prompt", "execute", "advance", "done", "error"}
+        required = {"init", "discover", "prepare_prompt", "execute", "advance", "done", "diagnose_error", "error"}
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
@@ -942,6 +942,18 @@ class TestPromptAcrossIssuesLoop:
         """execute state must define max_retries to prevent stuck items."""
         execute_state = data["states"].get("execute", {})
         assert execute_state.get("max_retries", 0) > 0
+
+    def test_diagnose_error_routes_to_error(self, data: dict) -> None:
+        state = data["states"].get("diagnose_error", {})
+        assert state.get("next") == "error"
+
+    def test_diagnose_error_is_not_terminal(self, data: dict) -> None:
+        state = data["states"].get("diagnose_error", {})
+        assert not state.get("terminal", False)
+
+    def test_init_on_error_routes_to_diagnose_error(self, data: dict) -> None:
+        state = data["states"].get("init", {})
+        assert state.get("on_error") == "diagnose_error"
 
 
 class TestAutoRefineAndImplementLoop:
@@ -1953,6 +1965,7 @@ class TestRecursiveRefineLoop:
             "enqueue_or_skip",
             "aggregate_decomposition",
             "done",
+            "diagnose",
             "failed",
         }
         actual = set(data["states"].keys())
@@ -1987,6 +2000,19 @@ class TestRecursiveRefineLoop:
     def test_aggregate_decomposition_state_exists(self, data: dict) -> None:
         """aggregate_decomposition state must be present in the FSM."""
         assert "aggregate_decomposition" in data["states"]
+
+    def test_diagnose_routes_to_failed(self, data: dict) -> None:
+        state = data["states"].get("diagnose", {})
+        assert state.get("next") == "failed"
+
+    def test_diagnose_is_not_terminal(self, data: dict) -> None:
+        state = data["states"].get("diagnose", {})
+        assert not state.get("terminal", False)
+
+    def test_parse_input_on_error_routes_to_diagnose(self, data: dict) -> None:
+        state = data["states"].get("parse_input", {})
+        assert state.get("on_error") == "diagnose"
+        assert state.get("on_no") == "diagnose"
 
     def test_aggregate_decomposition_routes_to_done(self, data: dict) -> None:
         """aggregate_decomposition.next must route to done."""
