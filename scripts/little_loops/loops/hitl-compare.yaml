@@ -63,15 +63,22 @@ states:
       category: [decision | design | requirement | document-version | other]
 
       ### Option A
+      source_path: /absolute/path/to/file.ext   ← include if this option came from a file on disk; omit for raw text
       [Short description or excerpt — 1-3 sentences max]
       Rationale: [Why this option exists or what trade-off it represents]
 
       ### Option B
+      source_path: /absolute/path/to/file.ext   ← include if this option came from a file on disk; omit for raw text
       [Short description or excerpt — 1-3 sentences max]
       Rationale: [Why this option exists or what trade-off it represents]
 
       [### Option C ... if more options exist]
       ```
+
+      IMPORTANT: For each option whose content came from a file on disk, the FIRST line of the
+      option body must be `source_path: <absolute path>` — this lets the generate state embed
+      the file visually in the HTML review page. Use the absolute path (not relative). Omit the
+      source_path line entirely for options derived from raw text tokens.
 
       Include ALL candidate items, even implementation-level ones — the prune state filters them.
       If no candidate review items are found anywhere in the inputs, write exactly:
@@ -177,7 +184,19 @@ states:
       - Includes a "Copy to clipboard" button that calls navigator.clipboard.writeText()
 
       Design: clean typography, generous whitespace, each item in its own card with a visible
-      border, selected state unambiguous at a glance. Avoid external fonts or images.
+      border, selected state unambiguous at a glance. Avoid external fonts.
+
+      For images: Do NOT use relative or absolute file:// paths in <img src> — browsers block these
+      under file://. Instead, for each option in review.md that has a `source_path:` line pointing
+      to an image file (.jpg, .jpeg, .png, .gif, .webp, .svg), embed the image inline as a base64
+      data URI. Use the Bash tool to convert each file:
+        base64 < /path/to/image.png
+      Then embed the result as:
+        <img src="data:image/TYPE;base64,OUTPUT" style="max-width:100%;height:auto;border-radius:4px;display:block;margin-bottom:8px;">
+      where TYPE matches the extension (use "jpeg" for .jpg, "svg+xml" for .svg, otherwise match
+      the extension). Place the <img> above the text description inside the option card. If base64
+      conversion fails or source_path is absent, render the card with text only — do not emit a
+      broken <img> tag.
     next: evaluate
 
   evaluate:
@@ -225,8 +244,10 @@ states:
         prominent? Does the exported markdown block clearly identify each item and its chosen option?
         Is the copy affordance obvious?]
       inline_constraint: N/10 — [explanation: does the page appear to render correctly under
-        file://? Is there any evidence of external resource loading (broken images, missing fonts)?
-        All CSS/JS must be inline.]
+        file://? All CSS/JS must be inline. Images, if present, must be embedded as base64 data
+        URIs (src="data:image/...;base64,...") — NOT as file paths or relative URLs. A broken
+        image icon or any external src= attribute is a constraint violation. Data URI images
+        rendering correctly is a pass, not a violation.]
 
       ## Issues to Address
       [Specific, actionable critique for the generator. List each problem concisely so the
