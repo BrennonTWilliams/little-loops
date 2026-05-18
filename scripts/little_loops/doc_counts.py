@@ -105,7 +105,7 @@ def extract_count_from_line(line: str, category: str) -> int | None:
     # Examples: "34 commands", "8 specialized agents", "6 skill definitions"
     if category == "skills":
         # Match both "skills" and "skill" (singular)
-        pattern = r"(\d+)\s+\w*\s*skills?"
+        pattern = r"(\d+)\s+\w*\s*skills?(?!\s+description)"
     else:
         pattern = rf"(\d+)\s+\w*\s*{category}"
 
@@ -362,7 +362,7 @@ def fix_counts(base_dir: Path, result: VerificationResult) -> FixResult:
                 # Build regex pattern based on category
                 # For skills, also match singular "skill"
                 if mismatch.category == "skills":
-                    pattern = r"(\d+)(\s+\w*\s*skills?)"
+                    pattern = r"(\d+)(\s+\w*\s*skills?(?!\s+description))"
                 else:
                     pattern = rf"(\d+)(\s+\w*\s*{re.escape(mismatch.category)})"
 

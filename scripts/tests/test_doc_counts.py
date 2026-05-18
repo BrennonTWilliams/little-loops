@@ -96,6 +96,11 @@ class TestExtractCountFromLine:
         count = extract_count_from_line("6 skill definitions", "skills")
         assert count == 6
 
+    def test_no_match_skill_descriptions_phrase(self) -> None:
+        """Do not match '0 skill descriptions dropped' (quoted CLI output, not a count)."""
+        count = extract_count_from_line('verify "0 skill descriptions dropped"', "skills")
+        assert count is None
+
     def test_no_match_returns_none(self) -> None:
         """Return None when pattern doesn't match."""
         count = extract_count_from_line("no numbers here", "commands")
