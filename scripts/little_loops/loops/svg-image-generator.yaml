@@ -148,7 +148,7 @@ states:
       pattern: "ALL_PASS"
     on_yes: done
     on_no: generate
-    on_error: failed
+    on_error: diagnose
 
   done:
     # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
@@ -165,6 +165,19 @@ states:
 
       Report these paths to the user and confirm the SVG is ready.
     terminal: true
+
+  diagnose:
+    action_type: prompt
+    action: |
+      The svg-image-generator loop has terminated with an unrecoverable failure.
+
+      Diagnose what happened:
+      - If ${captured.run_dir.output}/critique.md exists, read it and summarize the last evaluation scores.
+      - Note whether ${captured.run_dir.output}/image.svg exists as a partial output.
+      - Identify the most likely failure cause (most commonly: LLM error in the score state).
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run or adjust the image brief.
+    next: failed
 
   failed:
     # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs

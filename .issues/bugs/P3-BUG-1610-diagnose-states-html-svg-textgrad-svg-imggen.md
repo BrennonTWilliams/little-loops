@@ -2,10 +2,19 @@
 id: BUG-1610
 type: BUG
 priority: P3
-title: Add pre-terminal diagnose states to html-anything, svg-textgrad, svg-image-generator loops
-status: open
+title: Add pre-terminal diagnose states to html-anything, svg-textgrad, svg-image-generator
+  loops
+status: done
+completed_at: 2026-05-18T08:39:05Z
 parent: BUG-1606
 size: Small
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1610: Add pre-terminal diagnose states to html-anything, svg-textgrad, svg-image-generator loops
@@ -125,9 +134,70 @@ diagnose:
 - `test_builtin_loops.py` assertions updated for HtmlAnything and SvgTextgrad test classes; new diagnose tests added for SvgImageGenerator
 - All listed tests pass
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+#### Files to Modify
+
+- `scripts/little_loops/loops/html-anything.yaml` — change `score.on_error: failed` → `diagnose` (line 202); insert `diagnose` state before `failed` terminal (line 221)
+- `scripts/little_loops/loops/svg-textgrad.yaml` — change `score.on_error: failed` → `diagnose` (line 133); insert `diagnose` state before `failed` terminal (line 295)
+- `scripts/little_loops/loops/svg-image-generator.yaml` — change `score.on_error: failed` → `diagnose` (line 151); insert `diagnose` state before `failed` terminal (line 169)
+- `scripts/tests/test_builtin_loops.py` — update three test classes (lines 2494, 2588, 2870)
+
+#### Exact Test Locations
+
+| Test Class | Method | Line | Change Required |
+|---|---|---|---|
+| `TestHtmlAnythingLoop` | `test_score_on_error_routes_to_failed` | 2969 | assert `"failed"` → `"diagnose"` |
+| `TestHtmlAnythingLoop` | `test_required_states_exist` | 2887 | add `"diagnose"` to required set |
+| `TestSvgTextgradLoop` | `test_score_on_error_routes_to_failed` | 2727 | assert `"failed"` → `"diagnose"` |
+| `TestSvgTextgradLoop` | `test_required_states_exist` | 2605 | add `"diagnose"` to required set |
+| `TestSvgImageGeneratorLoop` | `test_required_states_exist` | 2511 | add `"diagnose"` and `"failed"` to required set |
+| `TestSvgImageGeneratorLoop` | *(new)* `test_diagnose_routes_to_failed` | — | add new test method |
+| `TestSvgImageGeneratorLoop` | *(new)* `test_diagnose_is_not_terminal` | — | add new test method |
+
+#### Reference Patterns (loops with existing `diagnose` states)
+
+- `scripts/little_loops/loops/rn-plan.yaml:288` — `diagnose` → `failed` pattern (single on_error entry point from `score`)
+- `scripts/little_loops/loops/rn-refine.yaml:327` — `diagnose` → `failed` pattern (multiple on_error entry points)
+
+#### Test Method Template for `TestSvgImageGeneratorLoop`
+
+```python
+def test_score_on_error_routes_to_failed(self, data: dict) -> None:
+    state = data["states"].get("score", {})
+    assert state.get("on_error") == "diagnose"
+
+def test_diagnose_routes_to_failed(self, data: dict) -> None:
+    state = data["states"].get("diagnose", {})
+    assert state.get("next") == "failed"
+
+def test_diagnose_is_not_terminal(self, data: dict) -> None:
+    state = data["states"].get("diagnose", {})
+    assert not state.get("terminal", False)
+```
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — FSM flow diagrams for all three loop sections currently show `score ERROR → failed` directly; after this change they should read `score ERROR → diagnose → failed`. Update the three diagram blocks (html-anything, svg-textgrad, svg-image-generator sections). [Agent 2 finding]
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `docs/guides/LOOPS_GUIDE.md` — locate the FSM flow diagram in each of the three loop sections and change the `score ERROR → failed` edge to `score ERROR → diagnose → failed` to keep the guide accurate.
+
 ---
 
 **Priority**: P3 | **Created**: 2026-05-18
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-18T08:36:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4dd9e2e7-22bb-4393-a800-a706bec9a003.jsonl`
+- `/ll:confidence-check` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/879bfbbb-f1c6-4079-91d4-5ebaa50bec25.jsonl`
+- `/ll:wire-issue` - 2026-05-18T08:32:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98081d03-dad0-4282-a3ad-a84a14877223.jsonl`
+- `/ll:refine-issue` - 2026-05-18T08:28:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6155691-1618-4b9d-84e7-e4b8fbfcb95d.jsonl`
 - `/ll:issue-size-review` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3772e425-1416-4cc8-baac-8e0f351122fa.jsonl`

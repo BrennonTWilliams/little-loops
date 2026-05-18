@@ -2510,7 +2510,7 @@ class TestSvgImageGeneratorLoop:
 
     def test_required_states_exist(self, data: dict) -> None:
         """All required states must be present."""
-        required = {"init", "plan", "generate", "evaluate", "score", "done"}
+        required = {"init", "plan", "generate", "evaluate", "score", "done", "diagnose", "failed"}
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
@@ -2584,6 +2584,21 @@ class TestSvgImageGeneratorLoop:
         action = state.get("action", "")
         assert "2>&1" in action, f"evaluate.action must contain 2>&1, got: {action!r}"
 
+    def test_score_on_error_routes_to_failed(self, data: dict) -> None:
+        """score state must route to diagnose on error to surface LLM failures explicitly."""
+        state = data["states"].get("score", {})
+        assert state.get("on_error") == "diagnose"
+
+    def test_diagnose_routes_to_failed(self, data: dict) -> None:
+        """diagnose state must route to failed."""
+        state = data["states"].get("diagnose", {})
+        assert state.get("next") == "failed"
+
+    def test_diagnose_is_not_terminal(self, data: dict) -> None:
+        """diagnose state must not be a terminal state."""
+        state = data["states"].get("diagnose", {})
+        assert not state.get("terminal", False)
+
 
 class TestSvgTextgradLoop:
     """Structural tests for the svg-textgrad FSM loop."""
@@ -2617,6 +2632,7 @@ class TestSvgTextgradLoop:
             "append_gradient",
             "apply_gradient",
             "done",
+            "diagnose",
             "failed",
         }
         actual = set(data["states"].keys())
@@ -2725,9 +2741,9 @@ class TestSvgTextgradLoop:
         assert state.get("on_error") == "generate"
 
     def test_score_on_error_routes_to_failed(self, data: dict) -> None:
-        """score state must route to failed on error to surface LLM failures explicitly."""
+        """score state must route to diagnose on error to surface LLM failures explicitly."""
         state = data["states"].get("score", {})
-        assert state.get("on_error") == "failed"
+        assert state.get("on_error") == "diagnose"
 
     def test_record_scores_is_shell(self, data: dict) -> None:
         """record_scores state must be a shell action."""
@@ -2885,8 +2901,8 @@ class TestHtmlAnythingLoop:
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
-        """All required states must be present: init, plan, generate, evaluate, score, done, failed."""
-        required = {"init", "plan", "generate", "evaluate", "score", "done", "failed"}
+        """All required states must be present: init, plan, generate, evaluate, score, done, diagnose, failed."""
+        required = {"init", "plan", "generate", "evaluate", "score", "done", "diagnose", "failed"}
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
@@ -2967,9 +2983,9 @@ class TestHtmlAnythingLoop:
         assert state.get("on_no") == "generate"
 
     def test_score_on_error_routes_to_failed(self, data: dict) -> None:
-        """score state must route to failed on error to surface LLM failures explicitly."""
+        """score state must route to diagnose on error to surface LLM failures explicitly."""
         state = data["states"].get("score", {})
-        assert state.get("on_error") == "failed"
+        assert state.get("on_error") == "diagnose"
 
     def test_score_action_has_screenshot_or_html_fallback(self, data: dict) -> None:
         """score state action must have the screenshot-or-HTML fallback preamble for graceful Playwright degradation."""

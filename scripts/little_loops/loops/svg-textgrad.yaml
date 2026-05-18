@@ -130,7 +130,7 @@ states:
       Write only the evaluation — do not output a pass/fail verdict. The pass decision
       is computed externally from the scores you write.
     next: verify_score
-    on_error: failed
+    on_error: diagnose
 
   verify_score:
     # TEXTGRAD: External score verifier — runs after score, before routing.
@@ -291,6 +291,20 @@ states:
 
       Report these paths to the user and confirm the SVG is ready.
     terminal: true
+
+  diagnose:
+    action_type: prompt
+    action: |
+      The svg-textgrad loop has terminated with an unrecoverable failure.
+
+      Diagnose what happened:
+      - If ${captured.run_dir.output}/scores.md exists, read it and report the last recorded scores.
+      - If ${captured.run_dir.output}/critique.md exists, summarize the last evaluation notes.
+      - Note whether ${captured.run_dir.output}/image.svg or best.svg exist as partial outputs.
+      - Identify the most likely failure cause.
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run or adjust inputs.
+    next: failed
 
   failed:
     # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs

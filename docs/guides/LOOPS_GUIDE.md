@@ -888,7 +888,7 @@ init → plan → generate → evaluate
                             ├─ CAPTURED → score
                             │              ├─ ALL_PASS → done
                             │              ├─ ITERATE  → generate (with critique)
-                            │              └─ ERROR    → failed
+                            │              └─ ERROR    → diagnose → failed
                             └─ FAILED  → score (Playwright unavailable — LLM-only scoring)
 ```
 
@@ -1064,7 +1064,8 @@ ll-loop run svg-image-generator "lightning bolt icon" \
 init → plan → generate → evaluate
                             ├─ CAPTURED → score
                             │              ├─ ALL_PASS → done
-                            │              └─ ITERATE  → generate (with critique)
+                            │              ├─ ITERATE  → generate (with critique)
+                            │              └─ ERROR    → diagnose → failed
                             └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
 ```
 
@@ -1125,7 +1126,7 @@ init → plan → generate → evaluate
                             │                         │                                                        ├─ CONVERGED → done
                             │                         │                                                        └─ continue  → append_gradient → apply_gradient → generate
                             │                         └─ ERROR        → record_scores → compute_gradient → …
-                            │              score ERROR → failed
+                            │              score ERROR → diagnose → failed
                             ├─ FAILED  → generate
                             └─ ERROR   → generate
 ```

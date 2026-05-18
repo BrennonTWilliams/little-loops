@@ -199,7 +199,7 @@ states:
       pattern: "ALL_PASS"
     on_yes: done
     on_no: generate
-    on_error: failed
+    on_error: diagnose
 
   done:
     # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
@@ -217,6 +217,19 @@ states:
 
       Report these paths to the user and confirm the artifact is ready.
     terminal: true
+
+  diagnose:
+    action_type: prompt
+    action: |
+      The html-anything loop has terminated with an unrecoverable failure.
+
+      Diagnose what happened:
+      - If ${captured.run_dir.output}/critique.md exists, read it and summarize the last scores.
+      - If ${captured.run_dir.output}/rubric.md exists, report the rubric dimensions that failed.
+      - Identify the most likely failure cause (most commonly: LLM error in the score state).
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run or adjust inputs.
+    next: failed
 
   failed:
     # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs
