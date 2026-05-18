@@ -40,6 +40,8 @@ from little_loops.fsm.schema import FSMLoop
 RUNNING_DIR = ".running"
 HISTORY_DIR = ".history"
 
+RESUMABLE_STATUSES: frozenset[str] = frozenset({"running", "awaiting_continuation", "interrupted"})
+
 logger = logging.getLogger(__name__)
 
 _RUN_FOLDER = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{6})-(.+)$")
@@ -354,8 +356,9 @@ def _reconcile_stale_runs(loops_dir: Path) -> int:
     Returns the count of archived files.
 
     Strategy (mirrors LockManager.find_conflict() stale-lock cleanup):
-    - Terminal-status files (completed/failed/interrupted/timed_out) are archived
+    - Terminal-status files (completed/failed/timed_out) are archived
       unconditionally — they are definitionally stale by invariant.
+    - status="interrupted" files are left alone so the user can resume them.
     - status="running" files are checked via their sibling .pid file; archived
       only if the PID is confirmed dead. No .pid file → leave alone (can't confirm).
     """
@@ -363,7 +366,7 @@ def _reconcile_stale_runs(loops_dir: Path) -> int:
     if not running_dir.exists():
         return 0
 
-    terminal_statuses = {"completed", "failed", "interrupted", "timed_out"}
+    terminal_statuses = {"completed", "failed", "timed_out"}
     archived = 0
 
     for state_file in running_dir.glob("*.state.json"):
@@ -595,7 +598,7 @@ class PersistentExecutor:
     def resume(self) -> ExecutionResult | None:
         """Resume from saved state, or None if no resumable state.
 
-        Resumable states are: "running" and "awaiting_continuation".
+        Resumable states are: "running", "awaiting_continuation", and "interrupted".
 
         Returns:
             ExecutionResult if resumed and completed, None if no resumable state
@@ -604,7 +607,7 @@ class PersistentExecutor:
         if state is None:
             return None
 
-        if state.status not in ("running", "awaiting_continuation"):
+        if state.status not in RESUMABLE_STATUSES:
             return None  # Already completed/failed
 
         # Restore executor state

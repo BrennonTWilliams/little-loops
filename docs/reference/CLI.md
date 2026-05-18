@@ -430,7 +430,7 @@ Also handles loops in `interrupted` state that hold an orphaned lock-file PID: i
 
 #### `ll-loop resume <loop>` / `ll-loop res <loop>`
 
-Resume an interrupted loop. Exits with an error listing instance IDs when two or more resumable instances exist — use `--instance-id` to select one.
+Resume a loop. Resumable statuses are `"running"`, `"awaiting_continuation"`, and `"interrupted"` — loops stopped via `ll-loop stop` or Ctrl-C are fully resumable. Exits with an error listing instance IDs when two or more resumable instances exist — use `--instance-id` to select one.
 
 | Flag | Short | Description |
 |------|-------|-------------|

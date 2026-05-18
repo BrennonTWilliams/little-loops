@@ -110,7 +110,13 @@ still alive, updates `status` to `interrupted`, and deletes the `.pid` file.
 
 **Condition**: `status == "interrupted"` AND `pid` is non-null (orphaned artifact present)
 
-**Action**: Remove the stale artifact based on `pid_source`:
+**Note**: Interrupted loops are resumable — offer `ll-loop resume` before cleanup:
+```bash
+ll-loop resume <loop_name>   # preferred: pick up where the loop left off
+```
+
+If the user wants to discard the run and only needs the orphaned artifact removed, then
+remove the stale artifact based on `pid_source`:
 - `pid_source == "pid_file"` → remove the `.pid` file:
   ```bash
   rm -f ".loops/.running/<instance_id_or_loop_name>.pid"
@@ -219,7 +225,13 @@ report:
 
 ### stale-interrupted loops
 
-Branch on `pid_source` from Step 2:
+First offer to resume the loop — interrupted loops are resumable:
+```bash
+ll-loop resume <loop_name>   # preferred: pick up where the loop left off
+```
+
+If the user wants to discard the run and only needs the orphaned artifact removed,
+branch on `pid_source` from Step 2:
 
 - `pid_source == "pid_file"`:
   ```bash

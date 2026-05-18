@@ -1820,6 +1820,38 @@ class TestCmdResumeMultiInstance:
         assert result == 0
 
 
+class TestCmdResumeInterrupted:
+    """Interrupted-loop resume — ENH-1605."""
+
+    def test_interrupted_instance_is_resumable(self, tmp_path) -> None:
+        """cmd_resume proceeds normally when the single instance is interrupted."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 3
+        mock_result.duration_ms = 5000
+        mock_result.terminated_by = "terminal"
+
+        interrupted_state = MagicMock()
+        interrupted_state.status = "interrupted"
+        interrupted_state.continuation_prompt = None
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[("myloop-20260101T120000", interrupted_state)],
+            ),
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+        ):
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("myloop", args, tmp_path, logger)
+
+        assert result == 0
+
+
 class TestCmdListMultiInstance:
     """cmd_list deduplication for multi-instance loops — ENH-1356."""
 

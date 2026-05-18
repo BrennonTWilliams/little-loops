@@ -83,7 +83,8 @@ def cmd_list(
                 name_str = colorize(state.loop_name, "1")
                 state_str = colorize(state.current_state, "34")
                 status_color = _STATUS_COLORS.get(state.status, "2")
-                status_str = colorize(f"[{state.status}]", status_color)
+                display_status = "paused" if state.status == "interrupted" else state.status
+                status_str = colorize(f"[{display_status}]", status_color)
                 elapsed_colored = colorize(elapsed_str, "2")
                 print(
                     f"  {name_str}: {state_str} (iteration {state.iteration})"
@@ -93,7 +94,10 @@ def cmd_list(
                 # Multiple instances: show a grouped summary
                 name_str = colorize(loop_name_key, "1")
                 statuses = ", ".join(
-                    colorize(f"[{s.status}]", _STATUS_COLORS.get(s.status, "2"))
+                    colorize(
+                        f"[{'paused' if s.status == 'interrupted' else s.status}]",
+                        _STATUS_COLORS.get(s.status, "2"),
+                    )
                     for s in group_states
                 )
                 count_str = colorize(f"({len(group_states)} instances)", "2")

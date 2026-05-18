@@ -44,6 +44,7 @@ Public exports:
     ActionRunner: Protocol for action execution (for testing/customization)
 
     # Persistence
+    RESUMABLE_STATUSES: Set of loop status strings that can be resumed
     LoopState: Persistent state for loop execution
     StatePersistence: File I/O for state and events
     PersistentExecutor: Executor wrapper with persistence
@@ -114,6 +115,7 @@ from little_loops.fsm.interpolation import (
     interpolate_dict,
 )
 from little_loops.fsm.persistence import (
+    RESUMABLE_STATUSES,
     LoopState,
     PersistentExecutor,
     StatePersistence,
@@ -181,6 +183,7 @@ __all__ = [
     "ParameterSpec",
     "LoopState",
     "PersistentExecutor",
+    "RESUMABLE_STATUSES",
     "RateLimitCircuit",
     "RouteConfig",
     "RouteContext",

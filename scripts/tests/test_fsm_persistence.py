@@ -723,10 +723,10 @@ class TestPersistentExecutor:
         result = executor.resume()
         assert result is None
 
-    def test_resume_returns_none_for_interrupted(
+    def test_resume_succeeds_for_interrupted(
         self, simple_fsm: FSMLoop, tmp_loops_dir: Path
     ) -> None:
-        """resume() returns None if loop was interrupted (same as completed/failed)."""
+        """resume() resumes an interrupted loop (signal-stopped loops are resumable)."""
         persistence = StatePersistence("test-loop", tmp_loops_dir)
         persistence.initialize()
 
@@ -747,7 +747,7 @@ class TestPersistentExecutor:
             simple_fsm, persistence=persistence, action_runner=MockActionRunner()
         )
         result = executor.resume()
-        assert result is None
+        assert result is not None
 
     def test_resume_emits_resume_event(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """resume() emits loop_resume event through the EventBus (no bypass)."""
@@ -1699,11 +1699,6 @@ class TestSignalHandlingPersistence:
         assert state is not None
         assert state.status == "interrupted"
 
-        # Manually set status to "running" to enable resume
-        # (In real scenario, user would mark as resumable)
-        state.status = "running"
-        executor.persistence.save_state(state)
-
         # Create new executor for resume
         runner2 = MockActionRunner()
         executor2 = PersistentExecutor(fsm, loops_dir=tmp_loops_dir, action_runner=runner2)
@@ -2034,19 +2029,34 @@ class TestReconcileStaleRuns:
         return state_file
 
     def test_terminal_status_file_is_archived(self, tmp_path: Path) -> None:
-        """Files with terminal status are archived unconditionally."""
+        """Files with terminal status are archived unconditionally (interrupted excluded)."""
         running_dir = tmp_path / ".running"
-        for status in ("completed", "failed", "interrupted", "timed_out"):
+        for status in ("completed", "failed", "timed_out"):
             # Use status as loop_name so each run gets a unique history folder
             instance_id = f"{status}-loop-20260101T120000"
             self._write_state(running_dir, instance_id, status, loop_name=f"{status}-loop")
 
         count = _reconcile_stale_runs(tmp_path)
 
-        assert count == 4
+        assert count == 3
         assert list(running_dir.glob("*.state.json")) == []
         history_dirs = list((tmp_path / ".history").iterdir())
-        assert len(history_dirs) == 4
+        assert len(history_dirs) == 3
+
+    def test_interrupted_status_file_not_swept(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Interrupted state files are NOT swept at startup so users can resume them."""
+        monkeypatch.setattr("little_loops.fsm.persistence._process_alive", lambda pid: False)
+
+        running_dir = tmp_path / ".running"
+        instance_id = "myloop-20260101T120000"
+        state_file = self._write_state(running_dir, instance_id, "interrupted")
+
+        count = _reconcile_stale_runs(tmp_path)
+
+        assert count == 0
+        assert state_file.exists()
 
     def test_dead_pid_file_is_archived(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
