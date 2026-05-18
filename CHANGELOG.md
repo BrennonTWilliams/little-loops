@@ -12,6 +12,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.104.0] - 2026-05-18
+
+### Added
+
+- **`rn-refine` FSM Loop** — New built-in loop for iterative refinement of existing plan documents using an 8-dimension scoring rubric. Run via `ll-loop run rn-refine`.
+- **`mcp-call --timeout` Flag** — Configurable request timeout for MCP tool invocations.
+- **`missing_artifacts` Gate in `recursive-refine`** — New gate state detects missing output artifacts and routes to `repair` before proceeding.
+
+### Fixed
+
+- **Pre-terminal Diagnose States in 12 FSM Loops** — Added `diagnose` states before failure terminals in `refine-to-ready-issue`, `rl-coding-agent`, `agent-eval-improve`, `general-task`, `recursive-refine`, `prompt-across-issues`, `rl-policy`, `html-anything`, `svg-textgrad`, `svg-image-generator`, `rn-plan`, and `rn-refine`. Eliminates silent failures and surfaces root-cause before exit. (BUG-1606)
+- **`rn-refine` task field** — `task:` field in `plan-rubric.md` now updated correctly after `synthesize` rewrites the plan.
+- **`rn-refine` report state** — Added `report` state so final summary executes before terminal.
+- **Doc-count skills regex** — Narrowed regex to avoid false-positive on 'skill descriptions'.
+- **`html-anything` evaluate routing** — Routes `on_no`/`on_error` to `score` instead of `generate`.
+- **FSM bash default-value syntax** — Escaped `${VAR:-default}` syntax in `rn-refine`, `rn-plan`, and `deep-research` init actions.
+- **FSM diagram arrowhead direction** — Corrected arrowhead direction for same-layer right-to-left back-edges.
+- **`verify_work_was_done` mid-phase commits** — Now recognizes commits made during mid-phase work.
+- **Issue parser title preference** — Prefers frontmatter `title:` field over filename stem in list output.
+- **`TYPE-NNN` show lookup** — Resolved show command for legacy filenames without P-prefix.
+
+### Changed
+
+- **Interrupted loops resumable** — FSM loops interrupted mid-run can now be resumed from their last stable state. (ENH-1605)
+- **`hitl-compare` write-in affordance** — Added subtle write-in custom option per review item.
+- **`rn-refine` score verification** — Added `verify_score` shell state to confirm rubric file content.
+- **`rn-plan` rubric dimensions** — Replaced `granularity`/`outcome_confidence` with `feasibility`, `testability`, `risk_mitigation`.
+- **FSM authoring conventions** — New documentation section for authoring conventions and corrected failure-routing guidance.
+
 ## [1.103.0] - 2026-05-17
 
 ### Added
@@ -200,7 +229,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.103.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.104.0...HEAD
+[1.104.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.103.0...v1.104.0
 [1.103.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.102.0...v1.103.0
 [1.102.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.101.0...v1.102.0
 [1.101.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.100.0...v1.101.0
