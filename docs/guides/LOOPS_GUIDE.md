@@ -887,6 +887,7 @@ run_eval → score_results → analyze_failures
 | `harness-optimize` | Score-gated hill-climbing on harness artifacts (skills, commands, CLAUDE.md) — proposes edits, benchmarks, commits accepted mutations; stops on first stall. Supports `.ll/program.md` for overnight runs. Also supports **state mode**: set `targets` to a loop YAML with a `targets.states` list to optimize individual state `action:` blocks independently. |
 | `html-anything` | Generalized HTML artifact harness — classifies artifact type (email, social card, résumé, dashboard, etc.) from a description, writes a platform-specific brief and dynamic scoring rubric, then iteratively generates and refines `index.html` via Playwright CLI |
 | `hitl-compare` | Human-in-the-loop comparison harness — reads whitespace-separated inputs (file paths or raw text), extracts candidate review items with 2+ options, prunes implementation-level micro-decisions, and generates a self-contained interactive HTML page with comparison controls, write-in custom options, and an "Export selections" affordance |
+| `hitl-md` | Human-in-the-loop single-document review harness — reads a markdown file (or raw text), decomposes it into GP-TSM saliency-modulated segments, and generates a self-contained interactive HTML page with per-segment color coding, keyboard navigation, five per-segment edit affordances (delete / insert-before / insert-after / inline-edit / flag-for-AI), a "Copy AI prompt" control for flagged segments, and a "Copy updated markdown" reconstruction control |
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
 | `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI |
 | `svg-textgrad` | TextGrad-style SVG harness — optimizes the visual brief via structured gradient updates (FAILURE_PATTERN → ROOT_CAUSE → GRADIENT) rather than feeding raw critique to the generator; accumulates gradient history for repeated-failure escalation |
@@ -1022,6 +1023,63 @@ init → identify → prune → generate → evaluate
 - The `evaluate` state's `on_no`/`on_error: score` routing means Playwright absence falls back to LLM-only `score` judgment — the loop runs end-to-end even without a browser installed.
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
 - To customize the scoring rubric, install locally (`ll-loop install hitl-compare`) and edit the `score` state's criteria and thresholds.
+
+### `hitl-md` — Human-in-the-Loop Single-Document Review Harness
+
+> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`). Playwright is used for screenshot evaluation but is optional — the loop degrades gracefully to LLM-only scoring when Playwright is unavailable.
+
+**Technique**: Implements a `segment → generate` pipeline before the standard GAN-style `evaluate → score` loop. The `segment` state resolves the input token (file path or raw text) and applies the **GP-TSM (Grammar-Preserving Text Saliency Modulation)** algorithm inline as LLM instructions — no external Python/ML dependencies. It identifies grammar-preserving segment boundaries (sentence/clause level, treating headings, bullets, and code blocks as atomic), assigns saliency scores (0.0–1.0) and an accessible color palette per content type, and writes `segments.json`. The `generate` state then produces a single self-contained HTML review page with per-segment color coding, keyboard/mouse navigation (Tab, arrow keys, click, Escape), selected-segment emphasis plus others-fade, five per-segment icon affordances (delete / insert-before / insert-after / inline-edit / flag-for-AI), a "Copy AI prompt" control for flagged segments, and a "Copy updated markdown" control that reconstructs the document from the live (possibly mutated) segment list. The `score` state evaluates a 6-criterion rubric with per-criterion thresholds.
+
+> **Evaluate routing note**: The `evaluate` state's `on_error` routes to `generate` (not `score`), deliberately diverging from the standard LOOPS_GUIDE.md design rule at line 897 ("never back to generate"). Playwright errors here typically indicate the HTML itself is malformed — regenerating is preferable to scoring a broken page. This follows the `svg-image-generator.yaml` precedent. The `on_no` route (Playwright unavailable) still goes to `score` for LLM-only fallback per the standard pattern.
+
+**When to use**: After running `/ll:recursive-refine` or a planning skill to produce a long PRD or implementation plan markdown file. Rather than reviewing linearly in an editor, run `hitl-md` to get a focused segment-level review surface. Also useful for reviewing AI-generated research notes, design documents, or refined issues where you want to flag specific spans for targeted AI revision without losing positional context.
+
+**Usage:**
+
+```bash
+# Review a plan or PRD file
+ll-loop run hitl-md "thoughts/shared/plans/2026-05-18-FEAT-1613-management.md"
+
+# Review raw markdown text
+ll-loop run hitl-md "# My Plan\n\nThis is the first paragraph..."
+
+# Override output directory
+ll-loop run hitl-md "path/to/doc.md" --context output_dir=/tmp/my-review
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `input` | (from `loop_input`) | File path or raw markdown text — passed as the positional argument |
+| `output_dir` | `.loops/tmp/hitl-md` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/hitl-md/20260518-143022/`) containing `index.html`, `segments.json`, `critique.md`, and `screenshot.png` |
+
+**FSM flow:**
+
+```
+init → segment → generate → evaluate
+                                ├─ CAPTURED → score
+                                │              ├─ ALL_PASS → done
+                                │              ├─ ITERATE  → generate (with critique)
+                                │              └─ ERROR    → failed
+                                ├─ FAILED  → score (Playwright unavailable — LLM-only scoring)
+                                └─ ERROR   → generate (HTML malformed — regenerate)
+```
+
+**Using the generated page:**
+
+1. Open `<run_dir>/index.html` in your browser (`file://` URL — no server needed).
+2. Navigate segment by segment using Tab, arrow keys, or mouse click. Selected segments are emphasized; others fade.
+3. Use the five per-segment icon buttons: 🗑 Delete, ↑+ Insert before, +↓ Insert after, ✏ Edit, 🚩 Flag for AI.
+4. When 1+ segments are flagged, click **Copy AI prompt** at the top — paste the copied prompt into your coding agent chat for targeted revision of those specific spans.
+5. After all edits and AI-assisted revisions, click **Copy updated markdown** at the bottom to reconstruct the full document and paste it back over the source file.
+
+**Notes:**
+- GP-TSM segmentation is implemented as LLM-in-prompt instructions — no PyPI or subprocess dependencies required, consistent with all other built-in loops.
+- The `segment` state enforces lossless reconstruction: every character of the original document must appear in exactly one segment's `markdown_source`, so "Copy updated markdown" is always lossless for unmodified segments.
+- The `evaluate` state's `on_error: generate` routing means Playwright crashes or malformed-HTML errors trigger an HTML regeneration pass rather than scoring a broken artifact.
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- To customize the scoring rubric, install locally (`ll-loop install hitl-md`) and edit the `score` state's criteria and thresholds.
 
 ### `html-website-generator` — GAN-Style Website Design Loop
 

@@ -1,0 +1,333 @@
+name: hitl-md
+category: harness
+labels: [hitl, markdown, html, interactive]
+input_key: input
+description: |
+  Human-in-the-loop single-document review harness — reads a markdown file (or raw text) and
+  decomposes it into grammar-preserving, saliency-modulated segments using the GP-TSM algorithm
+  implemented as LLM-in-prompt segmentation (no external ML dependencies). Generates a single
+  self-contained interactive HTML page with per-segment color coding, keyboard/mouse navigation,
+  per-segment edit affordances (delete / insert-before / insert-after / inline-edit / flag-for-AI),
+  a "Copy AI prompt" control for flagged segments, and a "Copy updated markdown" control for
+  reconstructing the revised document. Iteratively screenshots and scores the artifact until
+  it passes a 6-criterion rubric (segment legibility, saliency coloring, keyboard reachability,
+  affordance discoverability, inline constraint, markdown reconstruction).
+
+  GP-TSM integration: implemented as LLM-in-prompt segmentation — the segment state instructs
+  the model to apply grammar-preserving boundary detection (sentence/clause level) and assign
+  saliency scores and color codes by content type. No PyPI/subprocess dependencies required.
+
+  Note: the evaluate state's on_error routes to generate (not score), following the
+  svg-image-generator pattern. This is a deliberate divergence from the LOOPS_GUIDE.md design
+  rule ("never back to generate") at line 897 — Playwright failures here indicate the HTML itself
+  may be malformed, so regenerating is preferable to scoring a broken page. Only on_error takes
+  this route; on_yes and on_no both route to score for normal LLM-only fallback behavior.
+initial: init
+max_iterations: 20
+timeout: 7200
+
+# HARNESS: Context variables control output location.
+# input is populated from the CLI positional arg via input_key: input.
+# The token is resolved as a file path (if it exists on disk) or treated as raw markdown text.
+context:
+  input: ""              # file path or raw markdown text; populated via input_key
+  output_dir: ".loops/tmp/hitl-md"
+
+states:
+
+  init:
+    # HARNESS: Setup phase — creates a timestamped run folder under output_dir and
+    # captures the full absolute path so all subsequent states write to an isolated
+    # directory. Using $(pwd) ensures the captured path is valid for file:// URIs.
+    action_type: shell
+    action: |
+      TS=$(date -u +%Y%m%d-%H%M%S)
+      DIR="${context.output_dir}/$TS"
+      mkdir -p "$DIR"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: segment
+
+  segment:
+    # HITL-MD: Segmentation phase — resolves the input token (file path or raw text)
+    # and decomposes the document into grammar-preserving saliency-modulated segments
+    # using the GP-TSM algorithm inline as LLM instructions. Writes segments.json
+    # containing the ordered segment list so generate can render the interactive page.
+    action_type: prompt
+    action: |
+      You are decomposing a markdown document into segments for human review.
+
+      Input token: "${context.input}"
+
+      Step 1 — Resolve the input:
+      - If the token looks like a file path and the file exists on disk, read the file and use its contents as the document.
+      - Otherwise treat the literal token string as the raw markdown content to segment.
+
+      Step 2 — Apply GP-TSM segmentation (Grammar-Preserving Text Saliency Modulation):
+      Decompose the document into grammar-preserving segments at sentence or clause boundaries.
+      Preserve all structural elements (headings, list items, code blocks, blockquotes) as
+      atomic segments — never split a heading, list bullet, or code block across segments.
+      For prose paragraphs, split at sentence boundaries; for long sentences, at major clause
+      boundaries (before "which", "that", "because", "however", "therefore", etc.).
+
+      For each segment, assign:
+      - type: one of "heading", "bullet", "code", "blockquote", "prose", "separator"
+      - saliency_score: a float 0.0–1.0 reflecting importance/novelty for review
+        (headings: 0.9, code blocks: 0.85, key decisions/requirements: 0.8–0.95,
+         supporting detail: 0.4–0.6, boilerplate/filler: 0.1–0.3)
+      - color: a hex color from this accessible palette based on type and saliency:
+        - heading: "#1a56db" (blue)
+        - bullet (saliency ≥ 0.7): "#0e9f6e" (green)
+        - bullet (saliency < 0.7): "#6b7280" (gray)
+        - code: "#9333ea" (purple)
+        - blockquote: "#d97706" (amber)
+        - prose (saliency ≥ 0.8): "#dc2626" (red — high importance)
+        - prose (saliency 0.5–0.8): "#b45309" (brown — medium importance)
+        - prose (saliency < 0.5): "#6b7280" (gray — low importance)
+        - separator: "#e5e7eb" (light gray)
+      - original_text: the raw text of this segment as it appears in the document
+      - markdown_source: the markdown source (may equal original_text for prose; for
+        headings includes the # prefix, for bullets includes the - or * marker, etc.)
+
+      Step 3 — Write the ordered segment list to ${captured.run_dir.output}/segments.json
+      using this exact JSON structure:
+
+      ```json
+      {
+        "segments": [
+          {
+            "id": "s001",
+            "type": "heading",
+            "saliency_score": 0.9,
+            "color": "#1a56db",
+            "original_text": "# Introduction",
+            "markdown_source": "# Introduction"
+          },
+          ...
+        ],
+        "total_segments": N,
+        "document_source": "file path used, or 'raw text'"
+      }
+      ```
+
+      Segment IDs must be zero-padded three-digit strings (s001, s002, ...) matching the order
+      in the document. IDs must be stable — they are the primary key for reconstruction.
+
+      IMPORTANT: Every character of the original document must appear in exactly one segment's
+      markdown_source field. The concatenation of all markdown_source values must reproduce the
+      original document exactly (modulo trailing whitespace on each segment). This is required
+      for the "Copy updated markdown" affordance to be lossless.
+    next: generate
+
+  generate:
+    # HITL-MD: Generator phase — reads segments.json (and any prior critique.md) and produces
+    # a single self-contained HTML review page. All CSS and JS must be inline so the page
+    # renders under a file:// URL without an HTTP server. On subsequent iterations, addresses
+    # all critique.md issues before introducing changes.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/segments.json for the ordered segment list.
+
+      If ${captured.run_dir.output}/critique.md exists, read it and address all issues listed
+      in the "Issues to Address" section specifically and completely before writing the new page.
+
+      Write a single self-contained HTML file to ${captured.run_dir.output}/index.html that:
+      - Embeds ALL CSS and JavaScript inline (no external dependencies, no CDN links, no <link> tags)
+      - Renders correctly under a file:// URL without an HTTP server
+      - Has a clean header showing the document source and total segment count
+
+      The page must implement the following interactive features:
+
+      **Segment rendering:**
+      - Render each segment as its own block element with a left border colored with the segment's
+        color field. Apply a subtle background tint derived from the color (10% opacity).
+      - Show segments in document order with a small segment ID label (s001, s002, ...) in the
+        upper-left corner of each segment block.
+      - For heading segments: render with appropriate h1–h6 font sizing based on the # count.
+      - For code segments: render in a monospace font with a distinct code background.
+      - For bullet segments: render with the appropriate indentation and bullet marker.
+
+      **Navigation and selection:**
+      - Clicking a segment selects it: the selected segment gets full-opacity styling and a
+        stronger left border (4px solid); all other segments fade to 40% opacity.
+      - Tab key moves selection forward through segments; Shift+Tab moves backward.
+      - Arrow keys (up/down) also navigate between segments.
+      - Pressing Escape deselects all segments (all return to full opacity).
+      - The currently selected segment must be scrolled into view automatically.
+
+      **Per-segment affordance buttons:**
+      When a segment is selected, show five icon buttons in a small floating toolbar anchored
+      to the top-right corner of the selected segment:
+      - 🗑 Delete — removes the segment from the live list (marks it deleted visually)
+      - ↑+ Insert before — opens a textarea above the segment for the user to type new content
+      - +↓ Insert after — opens a textarea below the segment for the user to type new content
+      - ✏ Edit — makes the segment text inline-editable (contenteditable)
+      - 🚩 Flag for AI — toggles a red flag indicator on the segment; flagged segments are
+        included in the AI prompt copy control
+
+      **Copy AI prompt control:**
+      - A sticky button at the top of the page (initially greyed out): "Copy AI prompt (0 flagged)"
+      - Becomes active (highlighted) when 1+ segments are flagged
+      - Updates the count in real time: "Copy AI prompt (3 flagged)"
+      - When clicked, copies a prompt snippet to the clipboard:
+        ```
+        Please revise the following sections of the document. Each section is marked with its
+        segment ID for reference:
+
+        [s003] <segment text>
+
+        [s007] <segment text>
+
+        [s012] <segment text>
+
+        Focus your edits on improving clarity, accuracy, and completeness for these specific spans.
+        ```
+
+      **Copy updated markdown control:**
+      - A prominent button at the bottom of the page: "Copy updated markdown"
+      - When clicked, reconstructs the markdown document from the live segment list:
+        - Skip deleted segments
+        - For inserted segments: use the text entered in the insert textarea as prose
+        - For edited segments: use the current contenteditable text
+        - For unmodified segments: use the original markdown_source from segments.json
+        - Concatenate in document order and copy to clipboard
+
+      **Deleted segment visual treatment:**
+      - Show deleted segments with strikethrough text and 20% opacity, a ~~deleted~~ badge,
+        and a small "Restore" link that un-deletes them. Do not remove them from the DOM.
+
+      **Design:**
+      Clean typography (system font stack), generous whitespace, a light background (#f9fafb),
+      each segment block with padding (12px 16px) and a bottom margin (8px), the toolbar
+      appearing on hover/selection without layout shift. Mobile-responsive but desktop-first.
+
+      Avoid external fonts. All interactive behavior must work under file:// with no server.
+    next: evaluate
+
+  evaluate:
+    # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// page.
+    # Self-contained HTML (all CSS/JS inline) renders correctly under file:// without
+    # an HTTP server. Routes to score on success or Playwright-unavailable failure;
+    # routes back to generate on error — a deliberate divergence from the standard
+    # LOOPS_GUIDE.md routing rule (see top-level description for rationale).
+    action_type: shell
+    action: |
+      playwright screenshot "file://${captured.run_dir.output}/index.html" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
+    evaluate:
+      type: output_contains
+      pattern: "CAPTURED"
+    on_yes: score
+    on_no: score
+    on_error: generate
+
+  score:
+    # HARNESS: Evaluator phase — LLM judges the screenshot against a 6-criterion rubric
+    # tailored to HITL single-document review ergonomics. Per-criterion thresholds prevent
+    # strong visual design from masking a broken keyboard affordance or failed reconstruction.
+    # Gates via output_contains: "ALL_PASS"; routes to generate on fail, failed on LLM error.
+    action_type: prompt
+    action: |
+      If ${captured.run_dir.output}/screenshot.png exists, read it to view the rendered review page.
+      Otherwise read ${captured.run_dir.output}/index.html directly to evaluate the HTML source.
+      Also read ${captured.run_dir.output}/segments.json to recall what segments should be present.
+
+      Score the review page on each criterion from 1 to 10 and write the evaluation to
+      ${captured.run_dir.output}/critique.md using this exact format:
+
+      ```
+      # Evaluation
+
+      segment_legibility: N/10 — [explanation: can each segment be read and understood in isolation?
+        Are segment boundaries visually clear? Are the segment ID labels visible without being
+        intrusive? Are heading/code/bullet segments rendered with appropriate styling distinctions?]
+      saliency_coloring: N/10 — [explanation: does the per-segment color coding convey saliency
+        at a glance? Are high-saliency segments (score ≥ 0.8) visually distinct from low-saliency
+        ones (score < 0.5)? Is the palette accessible and readable against the background?
+        Are the color-type mappings consistent with the palette defined in the segment state?]
+      keyboard_reachability: N/10 — [explanation: can all five affordance buttons be reached and
+        activated via keyboard alone? Does Tab/arrow navigation cycle through segments? Is the
+        currently selected segment scrolled into view? Is Escape deselection functional?
+        Would a keyboard-only user be able to flag, edit, delete, and insert without a mouse?]
+      affordance_discoverability: N/10 — [explanation: are the five per-segment icon buttons
+        (delete, insert-before, insert-after, edit, flag) discoverable without reading documentation?
+        Is the "Copy AI prompt" control visible and clearly activated by flagging? Is "Copy updated
+        markdown" prominent and its purpose self-evident? Are tooltips or labels present?]
+      inline_constraint: N/10 — [explanation: does the page appear to render correctly under
+        file://? All CSS/JS must be inline. No external src= or href= references. A broken
+        resource icon or any CDN/external reference is a constraint violation. Score 10 for
+        fully self-contained; deduct 3 for each external reference found.]
+      markdown_reconstruction: N/10 — [explanation: for a smoke test, mentally trace a simple
+        scenario: delete one segment, edit one segment, insert one new segment. Would the
+        "Copy updated markdown" reconstruction produce well-formed markdown? Does segments.json
+        include all markdown_source fields needed for lossless reconstruction? Are IDs stable
+        and sequential?]
+
+      ## Issues to Address
+      [Specific, actionable critique for the generator. List each problem concisely so the
+       generator can address it on the next pass. If all scores meet their thresholds, write
+       "No issues — all criteria pass."]
+      ```
+
+      Thresholds (evaluate each criterion independently — do NOT average):
+      - segment_legibility: 7
+      - saliency_coloring: 7
+      - keyboard_reachability: 7
+      - affordance_discoverability: 7
+      - inline_constraint: 8
+      - markdown_reconstruction: 7
+
+      If ALL six criterion scores meet their individual thresholds, output exactly: ALL_PASS
+      Otherwise output: ITERATE
+    evaluate:
+      type: output_contains
+      pattern: "ALL_PASS"
+    on_yes: done
+    on_no: generate
+    on_error: failed
+
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
+    # Reports all output file paths and explains how to use the interactive review page.
+    action_type: prompt
+    action: |
+      The hitl-md loop has completed successfully.
+
+      Final output files:
+      - ${captured.run_dir.output}/index.html     — the interactive review page (open in your browser)
+      - ${captured.run_dir.output}/segments.json  — the GP-TSM segment list with saliency scores and colors
+      - ${captured.run_dir.output}/critique.md    — final evaluation scores and notes
+      - ${captured.run_dir.output}/screenshot.png — the last Playwright-captured render (omitted if Playwright unavailable)
+
+      To complete the review:
+      1. Open ${captured.run_dir.output}/index.html in your browser (file:// URL works — no server needed).
+      2. Navigate through the document segment by segment using Tab, arrow keys, or mouse click.
+         Selected segments are emphasized; others fade — this helps you focus on one span at a time.
+      3. Use the per-segment icon buttons to:
+         - 🗑 Delete segments that are stale or irrelevant
+         - ↑+ / +↓ Insert new content before or after a segment
+         - ✏ Edit a segment inline
+         - 🚩 Flag segments where you want the AI to revise or expand
+      4. When you have flagged one or more segments, click "Copy AI prompt" at the top of the page.
+         Paste the copied prompt into your coding agent chat for targeted AI revision of those spans.
+      5. After all edits and AI-assisted revisions, click "Copy updated markdown" at the bottom
+         to reconstruct the full document from the live segment list. Paste it back over your source file.
+
+      Round trip: a single focused review pass with preserved segment-level context.
+    terminal: true
+
+  failed:
+    # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs
+    # (e.g. LLM failure in the score state). Provides a clear signal distinct from a
+    # max_iterations timeout, making failure mode visible in ll-loop history.
+    action_type: prompt
+    action: |
+      The hitl-md loop has terminated with an unrecoverable error.
+
+      Diagnose what failed:
+      - If ${captured.run_dir.output}/critique.md exists, read it and summarize the last evaluation scores.
+      - If ${captured.run_dir.output}/segments.json exists, report the total_segments count and document_source.
+      - Identify the most likely failure cause (most commonly: LLM error in the score state, or
+        malformed segments.json preventing the generate state from producing valid HTML).
+
+      Write a one-paragraph diagnostic summary so the operator can diagnose and re-run.
+    terminal: true

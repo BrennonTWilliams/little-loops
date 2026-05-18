@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`hitl-md` FSM Loop** — New built-in harness for interactive single-document review. Decomposes a markdown file into GP-TSM saliency-modulated segments (LLM-in-prompt, no external ML dependencies) and generates a self-contained HTML page with per-segment color coding, keyboard/mouse navigation, five per-segment edit affordances (delete / insert-before / insert-after / inline-edit / flag-for-AI), a "Copy AI prompt" control for flagged segments, and a "Copy updated markdown" reconstruction control. Run via `ll-loop run hitl-md path/to/doc.md`. (FEAT-1613)
 - **`rn-refine` FSM Loop** — New built-in loop for iterative refinement of existing plan documents using an 8-dimension scoring rubric. Run via `ll-loop run rn-refine`.
 - **`mcp-call --timeout` Flag** — Configurable request timeout for MCP tool invocations.
 - **`missing_artifacts` Gate in `recursive-refine`** — New gate state detects missing output artifacts and routes to `repair` before proceeding.
