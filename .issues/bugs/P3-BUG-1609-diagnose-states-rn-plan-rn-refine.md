@@ -3,7 +3,8 @@ id: BUG-1609
 type: BUG
 priority: P3
 title: Add pre-terminal diagnose states to rn-plan and rn-refine loops
-status: open
+status: done
+completed_at: 2026-05-18T08:24:26Z
 parent: BUG-1606
 size: Small
 decision_needed: false
@@ -29,7 +30,7 @@ Decomposed from BUG-1606: Add pre-terminal diagnose states to 12 affected loop Y
 
 `scripts/little_loops/fsm/executor.py` `FSMExecutor.run()` calls `return self._finish("terminal")` BEFORE executing any terminal state action. An `action:` field on a `failed` terminal never executes. The correct pattern is a separate non-terminal `diagnose` state that runs the diagnostic prompt and routes `next: failed`.
 
-Structural model: `scripts/little_loops/loops/rn-refine.yaml:297` — `report` state (non-terminal action → `next: done`).
+Structural model: `scripts/little_loops/loops/rn-refine.yaml:304` — `report` state (non-terminal action → `next: done`).
 Content model: `scripts/little_loops/loops/hitl-compare.yaml:278` — but do NOT replicate its structure (its `failed` also has `terminal: true` which silences the action).
 
 ## Affected Loops
@@ -37,7 +38,7 @@ Content model: `scripts/little_loops/loops/hitl-compare.yaml:278` — but do NOT
 | Loop | File | Failed State Line | States routing to `failed` |
 |------|------|-------------------|----------------------------|
 | `rn-plan` | `scripts/little_loops/loops/rn-plan.yaml` | 288 | `score` (line 270) → `on_error: failed` |
-| `rn-refine` | `scripts/little_loops/loops/rn-refine.yaml` | 320 | `init` (line 40), `score` (line 277), `verify_score` (line 295) → `on_error: failed` |
+| `rn-refine` | `scripts/little_loops/loops/rn-refine.yaml` | 327 | `init` (line 40), `score` (line 284), `verify_score` (line 302) → `on_error: failed` |
 
 ## Implementation Steps
 
@@ -87,7 +88,7 @@ diagnose:
 
 3. Update all transitions that previously routed to `failed` to instead route to `diagnose`:
    - `rn-plan`: `score.on_error: failed` → `score.on_error: diagnose`
-   - `rn-refine`: `init.on_error: failed` → `init.on_error: diagnose`, `score.on_error: failed` → `score.on_error: diagnose`, `verify_score.on_error: failed` → `verify_score.on_error: diagnose`
+   - `rn-refine` (line 40, 284, 302): `init.on_error: failed` → `init.on_error: diagnose`, `score.on_error: failed` → `score.on_error: diagnose`, `verify_score.on_error: failed` → `verify_score.on_error: diagnose`
 
 4. Update `scripts/tests/test_rn_plan.py`:
    - `TestRnPlanYaml.test_score_state_uses_all_very_high_sentinel` (line ~105): change `state.get("on_error") == "failed"` → `== "diagnose"`
@@ -112,7 +113,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Files to Modify**
 - `scripts/little_loops/loops/rn-plan.yaml` — add `diagnose` state before `failed` (line 288); update `score.on_error` (line 270)
-- `scripts/little_loops/loops/rn-refine.yaml` — add `diagnose` state before `failed` (line 320); update `init.on_error` (line 40), `score.on_error` (line 277), `verify_score.on_error` (line 295)
+- `scripts/little_loops/loops/rn-refine.yaml` — add `diagnose` state before `failed` (line 327); update `init.on_error` (line 40), `score.on_error` (line 284), `verify_score.on_error` (line 302)
 - `scripts/tests/test_rn_plan.py` — update `test_required_states_exist` (line 50) and `test_score_state_uses_all_very_high_sentinel` (line 105)
 
 **Structural Model to Follow**
@@ -150,7 +151,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 **Priority**: P3 | **Created**: 2026-05-18
 
+## Resolution
+
+Added `diagnose` pre-terminal state to `rn-plan` and `rn-refine` loops. All `on_error` transitions now route to `diagnose` instead of directly to `failed`. Updated `test_rn_plan.py` assertions and added `TestDiagnoseRouting` to `test_rn_refine.py`. Updated `docs/generalized-fsm-loop.md` to document the two-state split pattern.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-18T08:20:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/796e3931-2c23-4720-bcb5-65cf0fd448c6.jsonl`
 - `/ll:wire-issue` - 2026-05-18T08:15:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4cc4dffa-9f8f-4f62-88c5-761913898880.jsonl`
 - `/ll:confidence-check` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e6746de-9af3-417e-811f-66de387d51c7.jsonl`
 - `/ll:refine-issue` - 2026-05-18T08:10:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e6b2734-8873-49d8-8fa8-492ffcacc300.jsonl`

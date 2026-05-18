@@ -267,7 +267,7 @@ states:
       pattern: "ALL_VERY_HIGH"
     on_yes: done
     on_no: classify_research
-    on_error: failed
+    on_error: diagnose
 
   done:
     # Terminal — reached when all 8 rubric dimensions score VERY-HIGH or max_iterations
@@ -284,6 +284,19 @@ states:
       Read ${captured.run_dir.output}/plan-rubric.md and report the final dimension scores
       and aggregate verdict to the user. Confirm the plan is ready for implementation.
     terminal: true
+
+  diagnose:
+    action_type: prompt
+    action: |
+      The rn-plan loop has terminated with an unrecoverable failure.
+
+      Diagnose what happened:
+      - If ${captured.run_dir.output}/plan-rubric.md exists, read it and report the last rubric scores.
+      - If ${captured.run_dir.output}/plan.md exists, note how far the plan was developed.
+      - Identify the most likely failure cause (most commonly: LLM error in the score state).
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run or adjust inputs.
+    next: failed
 
   failed:
     # Error terminal — reached when the score state encounters an unrecoverable error.

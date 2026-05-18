@@ -273,6 +273,40 @@ class TestRoutingStructure:
         assert fsm.states["done"].terminal is True
 
 
+class TestDiagnoseRouting:
+    """Diagnose state exists and all on_error transitions route to it instead of failed."""
+
+    @staticmethod
+    def _load_rn_refine():
+        loop_path = Path(__file__).parent.parent / "little_loops" / "loops" / "rn-refine.yaml"
+        fsm, _ = load_and_validate(loop_path)
+        return fsm
+
+    def test_init_on_error_routes_to_diagnose(self) -> None:
+        fsm = self._load_rn_refine()
+        assert fsm.states["init"].on_error == "diagnose"
+
+    def test_score_on_error_routes_to_diagnose(self) -> None:
+        fsm = self._load_rn_refine()
+        assert fsm.states["score"].on_error == "diagnose"
+
+    def test_verify_score_on_error_routes_to_diagnose(self) -> None:
+        fsm = self._load_rn_refine()
+        assert fsm.states["verify_score"].on_error == "diagnose"
+
+    def test_diagnose_state_exists(self) -> None:
+        fsm = self._load_rn_refine()
+        assert "diagnose" in fsm.states
+
+    def test_diagnose_action_type_is_prompt(self) -> None:
+        fsm = self._load_rn_refine()
+        assert fsm.states["diagnose"].action_type == "prompt"
+
+    def test_diagnose_routes_to_failed(self) -> None:
+        fsm = self._load_rn_refine()
+        assert fsm.states["diagnose"].next == "failed"
+
+
 class TestInitOutputDir:
     """init respects a custom output_dir context variable."""
 

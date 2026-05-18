@@ -37,7 +37,7 @@ states:
       : > "$DIR/research.md"
       echo "$(pwd)/$DIR"
     capture: run_dir
-    on_error: failed
+    on_error: diagnose
     next: assess_existing
 
   assess_existing:
@@ -281,7 +281,7 @@ states:
       pattern: "ALL_VERY_HIGH"
     on_yes: verify_score
     on_no: classify_research
-    on_error: failed
+    on_error: diagnose
 
   verify_score:
     # File verification — reads the actual rubric file to confirm ALL_VERY_HIGH is
@@ -299,7 +299,7 @@ states:
       pattern: "ALL_VERY_HIGH"
     on_yes: report
     on_no: classify_research
-    on_error: failed
+    on_error: diagnose
 
   report:
     # Pre-terminal report — reads the final rubric and summarises results for the user
@@ -323,6 +323,20 @@ states:
     # Terminal anchor — clean exit point with no action. Report is handled by the
     # preceding `report` state to work around the runner's terminal short-circuit.
     terminal: true
+
+  diagnose:
+    action_type: prompt
+    action: |
+      The rn-refine loop has terminated with an unrecoverable failure.
+
+      Diagnose what happened:
+      - If ${captured.run_dir.output}/plan-rubric.md exists, read it and report the last rubric scores.
+      - If ${captured.run_dir.output}/plan.md exists, note whether any refinement occurred.
+      - If failure was in the init state, report whether the source plan file was found.
+      - Identify the most likely failure cause.
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run or locate the source plan.
+    next: failed
 
   failed:
     # Error terminal — reached when the score state encounters an unrecoverable error,

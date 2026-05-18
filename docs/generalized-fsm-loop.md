@@ -1578,10 +1578,12 @@ Loop completed: done (1 iteration, 2m 34s)
 
 ### Failure Terminals Must Include a Diagnostic Action
 
-A `terminal: true` state that signals failure (as opposed to a successful `done`) must always include an `action_type: prompt` action that diagnoses and reports what went wrong. A failure terminal with no action produces a blank entry in `ll-loop history` — the only visible signal is the state name. A diagnostic action costs nothing extra (runs once, at termination) and makes failure immediately visible to the operator without requiring raw event-file inspection.
+A `terminal: true` state that signals failure (as opposed to a successful `done`) must be paired with a preceding non-terminal `diagnose` state that runs an `action_type: prompt` action before routing to the bare terminal. A failure terminal with no action produces a blank entry in `ll-loop history` — the only visible signal is the state name.
+
+**Important**: do NOT put `action_type: prompt` directly on the `terminal: true` state. The FSM runner calls `_finish("terminal")` before executing any terminal-state action, so the action is silently skipped. The correct pattern is the same two-state split used for successful completion (`report → done`): a non-terminal `diagnose` state runs the prompt and routes `next: failed`, while `failed` stays as a bare `terminal: true` anchor.
 
 ```yaml
-  failed:
+  diagnose:
     action_type: prompt
     action: |
       The loop has terminated with an unrecoverable error.
@@ -1590,7 +1592,17 @@ A `terminal: true` state that signals failure (as opposed to a successful `done`
       - Check recent captured outputs for error signals.
       - Identify which state most likely caused the failure.
       - Write a one-paragraph diagnostic summary.
+    next: failed
+
+  failed:
     terminal: true
+```
+
+All states that previously routed directly to `failed` must instead route to `diagnose`:
+
+```yaml
+  some_state:
+    on_error: diagnose   # not: on_error: failed
 ```
 
 ### Generator-Evaluator Loops: Never Route Evaluate Failures Back to Generate

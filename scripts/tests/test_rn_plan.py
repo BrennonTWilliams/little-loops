@@ -58,6 +58,7 @@ class TestRnPlanYaml:
             "research_web",
             "synthesize",
             "score",
+            "diagnose",
             "done",
             "failed",
         }
@@ -102,7 +103,7 @@ class TestRnPlanYaml:
         assert evaluator.get("pattern") == "ALL_VERY_HIGH"
         assert state.get("on_yes") == "done"
         assert state.get("on_no") == "classify_research"
-        assert state.get("on_error") == "failed"
+        assert state.get("on_error") == "diagnose"
 
     def test_done_state_is_terminal(self, data: dict) -> None:
         assert data["states"]["done"].get("terminal") is True
