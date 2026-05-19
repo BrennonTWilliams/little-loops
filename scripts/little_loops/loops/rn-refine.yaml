@@ -235,7 +235,12 @@ states:
       Overwrite ${captured.run_dir.output}/plan.md with the improved version.
       Preserve the task title and goal statement; replace everything else as needed.
 
-      Step 7: After overwriting plan.md, update the task: field in
+      Step 7: Read ${captured.run_dir.output}/.source-path to get the absolute path
+      of the original file the user passed in. Overwrite that file with the same
+      improved plan content so the user's file is updated in-place — they should not
+      need to copy anything from .loops/ to see the result.
+
+      Step 8: After overwriting both plan files, update the task: field in
       ${captured.run_dir.output}/plan-rubric.md to reflect the corrected goal
       statement from the rewritten plan. Derive the new task value from the
       title, objective, or first goal statement in the just-written plan.md.
@@ -312,7 +317,7 @@ states:
       The rn-refine recursive refinement loop has completed.
 
       Final output files:
-      - ${captured.run_dir.output}/plan.md          — the refined plan (primary output)
+      - ${captured.run_dir.output}/plan.md          — working copy of the refined plan
       - ${captured.run_dir.output}/plan-rubric.md   — the final rubric scores
       - ${captured.run_dir.output}/research.md      — accumulated research findings
 
@@ -320,19 +325,20 @@ states:
       scores and aggregate verdict to the user. Confirm the plan is ready for implementation.
 
       Step 2: Read ${captured.run_dir.output}/.source-path to get the absolute path of the
-      original plan file the user passed in. Call this value SOURCE.
+      original plan file the user passed in. Call this value SOURCE. Confirm to the user that
+      SOURCE has been updated in-place with the refined plan.
 
       Step 3: Print the following block VERBATIM to the user, replacing <SOURCE> with the
-      absolute path read from .source-path and <REFINED> with ${captured.run_dir.output}/plan.md.
+      absolute path read from .source-path and <WORKING> with ${captured.run_dir.output}/plan.md.
       Use the actual absolute paths — do not leave the placeholders in. Both paths must be
       absolute so the commands work from any working directory.
 
       ```
-      To review changes:
-        diff <SOURCE> <REFINED>
+      To review changes against the working copy:
+        diff <SOURCE> <WORKING>
 
-      To apply the refined plan (this OVERWRITES the original — review the diff first):
-        cp <REFINED> <SOURCE>
+      The original file has already been updated. The working copy in .loops/ is kept as a
+      reference — you can delete it when you're satisfied.
       ```
     next: done
 
