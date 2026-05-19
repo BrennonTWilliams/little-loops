@@ -404,7 +404,7 @@ Validate a loop definition file.
 
 #### `ll-loop list` / `ll-loop l`
 
-List available loops. Output is grouped by `category` when categories are set. Loops without a category appear under `uncategorized`.
+List available loops. Output is grouped by `category` with blank-line separators between groups. Loop names are column-aligned for scanability. Descriptions are truncated with `…` at terminal width. Labels appear as `[label]` badges between the description and `[built-in]` tag. Project loops use bold cyan names while built-in loops use dimmer (non-bold) cyan. The `[built-in]` tag is always positioned on the same line as the name.
 
 | Flag | Short | Description |
 |------|-------|-------------|

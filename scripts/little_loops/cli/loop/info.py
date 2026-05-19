@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -34,7 +35,13 @@ def _load_loop_meta(path: Path) -> dict[str, Any]:
         with open(path) as f:
             spec = yaml.safe_load(f) or {}
         desc_raw = spec.get("description", "") or ""
-        desc = desc_raw.splitlines()[0] if desc_raw.strip() else ""
+        if desc_raw.strip():
+            raw_lines = desc_raw.splitlines()
+            desc = raw_lines[0]
+            if len(raw_lines) > 1:
+                desc += "…"
+        else:
+            desc = ""
         category = spec.get("category", "") or ""
         labels: list[str] = spec.get("labels", []) or []
         return {"description": desc, "category": category, "labels": labels}
@@ -186,19 +193,56 @@ def cmd_list(
     if "uncategorized" in buckets:
         sorted_cats.append("uncategorized")
 
+    # Compute max name width for column alignment
+    max_name_len = max((len(lp["name"]) for lp in all_loops), default=0)
+    name_col = max_name_len + 2  # padding after longest name
+    tw = terminal_width()
+
+    cats_printed = False
     for cat in sorted_cats:
         group = buckets[cat]
+        if cats_printed:
+            print()  # blank line between category groups
+        cats_printed = True
         print(colorize(f"{cat} ({len(group)}):", "1"))
         for lp in group:
-            name_str = colorize(lp["name"], "36;1")
-            desc_str = f"  {colorize(lp['description'], '2')}" if lp["description"] else ""
-            tag_str = f"  {colorize('[built-in]', '2')}" if lp["builtin"] else ""
-            print(f"  {name_str}{desc_str}{tag_str}")
-        print()
+            # Name: project loops get bold cyan, built-in loops get dimmer cyan
+            name_color = "36" if lp["builtin"] else "36;1"
+            name_str = colorize(lp["name"].ljust(name_col), name_color)
+
+            # Suffix: labels + [built-in] tag
+            suffix_parts: list[str] = []
+            if lp["labels"]:
+                for label in lp["labels"]:
+                    suffix_parts.append(colorize(f"[{label}]", "2"))
+            if lp["builtin"]:
+                suffix_parts.append(colorize("[built-in]", "2"))
+
+            if suffix_parts:
+                suffix_raw = "  " + " ".join(suffix_parts)
+                suffix_visible = len(_strip_ansi(suffix_raw))
+            else:
+                suffix_raw = ""
+                suffix_visible = 0
+
+            # Available width for description: indent + name_col + "  " + desc + suffix
+            avail = tw - 2 - name_col - 2 - suffix_visible
+            desc_text = lp["description"] or ""
+            if desc_text and avail < len(desc_text):
+                desc_text = _truncate(desc_text, max(avail, 20))
+            desc_str = f"  {colorize(desc_text, '2')}" if desc_text else ""
+
+            print(f"  {name_str}{desc_str}{suffix_raw}")
     return 0
 
 
 _EVENT_TYPE_WIDTH = 16  # width of "handoff_detected"
+
+_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
 
 
 def _truncate(text: str, max_len: int) -> str:
