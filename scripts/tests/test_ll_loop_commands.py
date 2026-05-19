@@ -567,10 +567,10 @@ class TestLoopListFormatting:
         ansi_re = re.compile(r"\033\[[0-9;]*m")
         lines = out.strip().split("\n")
         # Find the two entry lines (skip header)
-        entry_lines = [l for l in lines if l.startswith("  ") and "desc-" in l]
+        entry_lines = [line for line in lines if line.startswith("  ") and "desc-" in line]
         assert len(entry_lines) == 2
         # Both descriptions should start at the same horizontal position
-        cleaned = [ansi_re.sub("", l) for l in entry_lines]
+        cleaned = [ansi_re.sub("", line) for line in entry_lines]
         desc_positions = {
             name: clean.index(name)
             for clean in cleaned
@@ -697,15 +697,11 @@ class TestLoopListFormatting:
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
-        (loops_dir / "project-loop.yaml").write_text(
-            "name: project-loop\ncategory: test\n"
-        )
+        (loops_dir / "project-loop.yaml").write_text("name: project-loop\ncategory: test\n")
 
         builtin_dir = tmp_path / "builtin"
         builtin_dir.mkdir()
-        (builtin_dir / "builtin-loop.yaml").write_text(
-            "name: builtin-loop\ncategory: test\n"
-        )
+        (builtin_dir / "builtin-loop.yaml").write_text("name: builtin-loop\ncategory: test\n")
 
         args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
         with patch(
@@ -753,7 +749,7 @@ class TestLoopListFormatting:
         out = capsys.readouterr().out
         # Each entry line that has [built-in] should be a single line
         lines = out.strip().split("\n")
-        entry_lines = [l for l in lines if "[built-in]" in l]
+        entry_lines = [line for line in lines if "[built-in]" in line]
         assert len(entry_lines) == 1
         # The [built-in] tag stays on the same line as the name
         assert "…" in entry_lines[0]
@@ -784,7 +780,7 @@ class TestLoopListFormatting:
         lines = out.split("\n")
         # Check there's a blank line before the second category header
         # "beta (1):" should follow a blank line after the first group
-        beta_header_idx = next(i for i, l in enumerate(lines) if "beta" in l and "(" in l)
+        beta_header_idx = next(i for i, line in enumerate(lines) if "beta" in line and "(" in line)
         assert beta_header_idx > 0
         assert lines[beta_header_idx - 1] == ""
 
