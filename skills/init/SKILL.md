@@ -22,7 +22,7 @@ metadata:
 
 # Initialize Configuration
 
-<!-- PLUGIN_VERSION: 1.66.0 -->
+<!-- PLUGIN_VERSION: 1.105.0 -->
 
 You are tasked with initializing little-loops configuration for a project by creating `.ll/ll-config.json`.
 
@@ -516,6 +516,7 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
      "Bash(ll-create-extension:*)",
      "Bash(ll-learning-tests:*)",
      "Bash(ll-logs:*)",
+     "Bash(ll-session:*)",
      "Bash(ll-doctor:*)",
      "Bash(ll-adapt-skills-for-codex:*)",
      "Bash(ll-adapt-agents-for-codex:*)",

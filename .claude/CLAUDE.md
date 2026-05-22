@@ -35,7 +35,7 @@ Personal development preferences.
 ```
 commands/       # Slash commands (/ll:*)
 agents/         # Subagent definitions
-skills/         # Skill definitions (30 skills)
+skills/         # Skill definitions
 hooks/          # Lifecycle hooks (subdivided below)
   adapters/     # Host translation layer; one subdir per host (claude-code/, opencode/, codex/) that envelopes the host event into LLHookEvent
   prompts/      # Prompt-text files referenced from hooks/hooks.json entries
@@ -113,6 +113,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-workflows` - Identify multi-step workflow patterns from user message history
 - `ll-logs` - Discover, extract, and tail Claude Code session logs (`discover` / `extract` / `tail` subcommands; writes `logs/index.md`)
 - `ll-messages` - Extract user messages from Claude Code logs
+- `ll-session` - Query the unified SQLite session store (`search --fts` / `recent --kind` / `backfill` subcommands; default DB `.ll/session.db`)
 - `ll-history` - View completed issue statistics, analysis, and export topic-filtered excerpts from history
 - `ll-deps` - Cross-issue dependency analysis and validation
 - `ll-sync` - Sync local issues with GitHub Issues
