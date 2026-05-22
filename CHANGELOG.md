@@ -12,6 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.105.0] - 2026-05-21
+
+### Added
+
+- **`rn-refine` apply commands in report** — The `rn-refine` loop now prints apply commands during the report state for easier execution. (0670eda)
+
+### Fixed
+
+- **`rn-refine` plan writeback** — Refined plans are now written back to the original file instead of requiring manual copy. (9fe683a)
+- **`hitl-compare` image embedding** — Images in generated HTML are now embedded as base64 data URIs for portability. (75f660a)
+- **Lint: ambiguous variable** — Renamed ambiguous variable `l` to `line` in `test_ll_loop_commands`. (0bce6b7)
+
+### Changed
+
+- **`ll-loop list` output** — Enhanced list output with column alignment, truncation, and label badges for improved readability. (ENH-1614)
+
 ## [1.104.0] - 2026-05-18
 
 ### Added
@@ -230,7 +246,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.104.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.105.0...HEAD
+[1.105.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.104.0...v1.105.0
 [1.104.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.103.0...v1.104.0
 [1.103.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.102.0...v1.103.0
 [1.102.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.101.0...v1.102.0
