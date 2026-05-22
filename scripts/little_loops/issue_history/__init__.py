@@ -119,6 +119,7 @@ from little_loops.issue_history.parsing import (
     parse_completed_issue,
     scan_active_issues,
     scan_completed_issues,
+    scan_completed_issues_from_db,
 )
 from little_loops.issue_history.quality import (
     analyze_rejection_rates,
@@ -161,6 +162,7 @@ __all__ = [
     # Parsing and scanning
     "parse_completed_issue",
     "scan_completed_issues",
+    "scan_completed_issues_from_db",
     "scan_active_issues",
     # Summary functions
     "calculate_summary",

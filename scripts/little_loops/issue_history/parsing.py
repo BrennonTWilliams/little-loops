@@ -348,6 +348,76 @@ def scan_completed_issues(
     return issues
 
 
+def scan_completed_issues_from_db(db_path: Path) -> list[CompletedIssue]:
+    """Read completed-issue summary rows from the unified session DB (ENH-1621).
+
+    Queries the v2 ``issue_events`` table for rows with ``transition='done'``
+    and rebuilds :class:`CompletedIssue` dataclasses. Only the summary-relevant
+    fields (path, type, priority, id, completion timestamps) are populated —
+    ``analyze`` / ``export`` paths that need file bodies or git history must
+    continue to use :func:`scan_completed_issues`.
+
+    Returns ``[]`` when the DB is missing or the table has no done rows; the
+    caller treats an empty result as a signal to fall back to file parsing.
+    """
+    from little_loops.session_store import connect
+
+    if not db_path.exists():
+        return []
+    try:
+        conn = connect(db_path)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to open session DB %s: %s", db_path, exc)
+        return []
+
+    issues: list[CompletedIssue] = []
+    try:
+        try:
+            rows = conn.execute(
+                "SELECT issue_id, issue_type, priority, discovered_by, "
+                "captured_at, completed_at, completed_date "
+                "FROM issue_events WHERE transition = 'done'"
+            ).fetchall()
+        except Exception as exc:  # pragma: no cover - schema mismatch / corruption
+            logger.warning("issue_events read failed for %s: %s", db_path, exc)
+            return []
+    finally:
+        conn.close()
+
+    for row in rows:
+        issue_id = row["issue_id"] or "UNKNOWN"
+        issue_type = row["issue_type"] or "UNKNOWN"
+        priority = row["priority"] or "P5"
+        captured_at = _parse_iso_datetime(row["captured_at"])
+        completed_at = _parse_iso_datetime(row["completed_at"])
+        completed_date_val = row["completed_date"]
+        completed_date: date | None = None
+        if isinstance(completed_date_val, str) and completed_date_val:
+            try:
+                completed_date = date.fromisoformat(completed_date_val[:10])
+            except ValueError:
+                completed_date = None
+        if completed_date is None and completed_at is not None:
+            completed_date = completed_at.date()
+        # discovered_date is not stored as a discrete column; derive from
+        # captured_at when present (mirrors `_parse_discovered_date`).
+        discovered_date = captured_at.date() if captured_at is not None else None
+        issues.append(
+            CompletedIssue(
+                path=Path(""),  # not tracked in the DB row
+                issue_type=issue_type,
+                priority=priority,
+                issue_id=issue_id,
+                discovered_by=row["discovered_by"],
+                discovered_date=discovered_date,
+                completed_date=completed_date,
+                captured_at=captured_at,
+                completed_at=completed_at,
+            )
+        )
+    return issues
+
+
 def _parse_discovered_date(fm: dict[str, Any]) -> date | None:
     """Extract discovered date from parsed frontmatter.
 

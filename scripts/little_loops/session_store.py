@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import sqlite3
 import threading
 from datetime import UTC, datetime
@@ -35,15 +36,16 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/session.db")
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
-_VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction"})
+_VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message"})
 _KIND_TABLE = {
     "tool": "tool_events",
     "file": "file_events",
     "issue": "issue_events",
     "loop": "loop_events",
     "correction": "user_corrections",
+    "message": "message_events",
 }
 
 # FSM event types the SQLiteTransport records as loop_events rows.
@@ -121,6 +123,22 @@ _MIGRATIONS: list[str] = [
         ts UNINDEXED
     );
     CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+    """,
+    # v2 (ENH-1621): widen issue_events with completion-summary columns so
+    # ll-history `summary` can be answered from the DB; add message_events for
+    # analyze_workflows() to read user message bodies without re-parsing JSONL.
+    """
+    ALTER TABLE issue_events ADD COLUMN issue_type TEXT;
+    ALTER TABLE issue_events ADD COLUMN priority TEXT;
+    ALTER TABLE issue_events ADD COLUMN completed_date TEXT;
+    ALTER TABLE issue_events ADD COLUMN captured_at TEXT;
+    ALTER TABLE issue_events ADD COLUMN completed_at TEXT;
+    CREATE TABLE message_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        content TEXT
+    );
     """,
 ]
 
@@ -342,8 +360,43 @@ def _hash_args(value: Any) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
+_FILENAME_TYPE_RE = re.compile(r"(BUG|ENH|FEAT|EPIC)-(\d+)")
+_FILENAME_PRIORITY_RE = re.compile(r"^(P\d)")
+
+
+def _derive_type_priority(filename: str, fm: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Derive (issue_type, priority) preferring frontmatter, falling back to filename.
+
+    Mirrors :func:`little_loops.issue_history.parsing.parse_completed_issue`'s
+    filename-parsing convention (``P[0-5]-[TYPE]-[NNN]-...``).
+    """
+    fm_type = fm.get("type")
+    issue_type: str | None = str(fm_type) if isinstance(fm_type, str) and fm_type else None
+    fm_priority = fm.get("priority")
+    priority: str | None = (
+        str(fm_priority) if isinstance(fm_priority, str) and fm_priority else None
+    )
+    if issue_type is None:
+        m = _FILENAME_TYPE_RE.search(filename)
+        if m:
+            issue_type = m.group(1)
+    if priority is None:
+        m = _FILENAME_PRIORITY_RE.match(filename)
+        if m:
+            priority = m.group(1)
+    return issue_type, priority
+
+
 def _backfill_issues(conn: sqlite3.Connection, issues_dir: Path) -> int:
-    """Seed ``issue_events`` from issue-file frontmatter under *issues_dir*."""
+    """Seed ``issue_events`` from issue-file frontmatter under *issues_dir*.
+
+    Populates the v2 summary columns (``issue_type``, ``priority``,
+    ``completed_date``, ``captured_at``, ``completed_at``) so ``ll-history
+    summary`` can be answered from the DB without re-reading the files
+    (ENH-1621). ``completed_date`` is derived from ``completed_at`` (taking the
+    date portion) when present, leaving file-mtime / Resolution-section
+    inference to the file-parsing fallback path.
+    """
     from little_loops.frontmatter import parse_frontmatter
 
     count = 0
@@ -357,14 +410,33 @@ def _backfill_issues(conn: sqlite3.Connection, issues_dir: Path) -> int:
             continue
         status = str(fm.get("status", "open"))
         discovered_by = fm.get("discovered_by")
-        ts = str(fm.get("completed_at") or fm.get("captured_at") or fm.get("discovered_date") or "")
+        captured_at = fm.get("captured_at")
+        completed_at = fm.get("completed_at")
+        ts = str(completed_at or captured_at or fm.get("discovered_date") or "")
+        issue_type, priority = _derive_type_priority(issue_file.name, fm)
+        completed_date: str | None = None
+        if isinstance(completed_at, str) and completed_at:
+            completed_date = completed_at[:10]
         conn.execute(
-            "INSERT INTO issue_events(ts, issue_id, transition, discovered_by) VALUES(?, ?, ?, ?)",
-            (ts, str(issue_id), status, str(discovered_by) if discovered_by else None),
+            "INSERT INTO issue_events("
+            "ts, issue_id, transition, discovered_by, "
+            "issue_type, priority, completed_date, captured_at, completed_at"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ts,
+                str(issue_id),
+                status,
+                str(discovered_by) if discovered_by else None,
+                issue_type,
+                priority,
+                completed_date,
+                str(captured_at) if captured_at else None,
+                str(completed_at) if completed_at else None,
+            ),
         )
         _index(
             conn,
-            content=f"{issue_id} {status} {fm.get('type', '')}",
+            content=f"{issue_id} {status} {issue_type or ''}",
             kind="issue",
             ref=str(issue_id),
             anchor=str(issue_file),
@@ -455,6 +527,66 @@ def _backfill_tool_events(conn: sqlite3.Connection, jsonl_files: list[Path]) -> 
     return count
 
 
+def _backfill_messages(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int:
+    """Seed ``message_events`` from user blocks in session JSONL files.
+
+    Mirrors :func:`_backfill_tool_events` but selects ``type == "user"`` records
+    and inserts the user's textual content. Used by analyze_workflows() so
+    workflow analysis can read message bodies from the DB instead of a JSONL
+    file (ENH-1621).
+    """
+    count = 0
+    for jsonl_file in jsonl_files:
+        try:
+            handle = jsonl_file.open(encoding="utf-8")
+        except OSError:
+            continue
+        with handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("type") != "user":
+                    continue
+                session_id = record.get("sessionId")
+                ts = str(record.get("timestamp") or "")
+                # The user message body lives at message.content; it may be a
+                # plain string or a list of content blocks. We persist a text
+                # rendering — list blocks are concatenated by their "text"
+                # field so analyze_workflows() can run its regexes over it.
+                content = record.get("message", {}).get("content", "")
+                if isinstance(content, list):
+                    parts: list[str] = []
+                    for block in content:
+                        if isinstance(block, dict) and isinstance(block.get("text"), str):
+                            parts.append(block["text"])
+                    text = "\n".join(parts)
+                elif isinstance(content, str):
+                    text = content
+                else:
+                    text = ""
+                if not text.strip():
+                    continue
+                conn.execute(
+                    "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                    (ts, str(session_id) if session_id else None, text),
+                )
+                _index(
+                    conn,
+                    content=text[:512],
+                    kind="message",
+                    ref=str(session_id) if session_id else "",
+                    anchor=str(jsonl_file),
+                    ts=ts,
+                )
+                count += 1
+    return count
+
+
 def backfill(
     db: Path | str = DEFAULT_DB_PATH,
     *,
@@ -465,13 +597,13 @@ def backfill(
     """Populate the database from existing on-disk sources.
 
     Reads issue-file frontmatter, FSM loop-state JSON, and (optionally) session
-    JSONL tool-use blocks. Returns a per-kind count of rows inserted. Sources
-    that are absent are skipped silently.
+    JSONL tool-use blocks plus user-message blocks. Returns a per-kind count of
+    rows inserted. Sources that are absent are skipped silently.
     """
     issues_dir = issues_dir if issues_dir is not None else Path(".issues")
     loops_dir = loops_dir if loops_dir is not None else Path(".loops")
     conn = connect(db)
-    counts: dict[str, int] = {"issues": 0, "loops": 0, "tools": 0}
+    counts: dict[str, int] = {"issues": 0, "loops": 0, "tools": 0, "messages": 0}
     try:
         if issues_dir.is_dir():
             counts["issues"] = _backfill_issues(conn, issues_dir)
@@ -479,6 +611,7 @@ def backfill(
             counts["loops"] = _backfill_loops(conn, loops_dir)
         if jsonl_files:
             counts["tools"] = _backfill_tool_events(conn, jsonl_files)
+            counts["messages"] = _backfill_messages(conn, jsonl_files)
         conn.commit()
     finally:
         conn.close()

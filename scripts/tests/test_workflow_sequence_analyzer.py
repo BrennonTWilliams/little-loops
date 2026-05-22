@@ -462,6 +462,115 @@ class TestAnalyzeWorkflows:
             assert "workflow_boundaries" in output_data
             assert "workflows" in output_data
 
+    def test_db_source_preferred_when_populated(
+        self,
+        sample_patterns: dict[str, Any],
+    ) -> None:
+        """ENH-1621: analyze_workflows reads messages from DB when db_path is given."""
+        from little_loops.session_store import backfill
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Seed the DB from a JSONL containing user records.
+            jsonl = tmpdir_path / "raw.jsonl"
+            with open(jsonl, "w") as f:
+                for i, text in enumerate(
+                    [
+                        "Find where the bug is in checkout.py",
+                        "Fix the null pointer in checkout.py",
+                        "Run the tests for checkout",
+                    ]
+                ):
+                    f.write(
+                        json.dumps(
+                            {
+                                "type": "user",
+                                "sessionId": "session-1",
+                                "timestamp": f"2026-01-15T10:0{i}:00Z",
+                                "message": {"content": text},
+                            }
+                        )
+                        + "\n"
+                    )
+
+            db_path = tmpdir_path / "session.db"
+            backfill(
+                db_path,
+                issues_dir=tmpdir_path / "no",
+                loops_dir=tmpdir_path / "no",
+                jsonl_files=[jsonl],
+            )
+
+            # An empty messages_file would yield 0 via the JSONL path; if the
+            # DB source is used, we'll see 3 messages.
+            empty_jsonl = tmpdir_path / "empty.jsonl"
+            empty_jsonl.write_text("", encoding="utf-8")
+
+            patterns_file = tmpdir_path / "patterns.yaml"
+            with open(patterns_file, "w") as f:
+                yaml.dump(sample_patterns, f)
+
+            result = analyze_workflows(
+                messages_file=empty_jsonl,
+                patterns_file=patterns_file,
+                db_path=db_path,
+            )
+            assert result.metadata["message_count"] == 3
+            assert str(db_path) in result.metadata["source_file"]
+
+    def test_db_source_falls_back_to_jsonl_when_empty(
+        self,
+        sample_messages: list[dict[str, Any]],
+        sample_patterns: dict[str, Any],
+    ) -> None:
+        """ENH-1621: an absent/empty DB falls back to the JSONL messages_file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            messages_file = tmpdir_path / "messages.jsonl"
+            with open(messages_file, "w") as f:
+                for msg in sample_messages:
+                    f.write(json.dumps(msg) + "\n")
+
+            patterns_file = tmpdir_path / "patterns.yaml"
+            with open(patterns_file, "w") as f:
+                yaml.dump(sample_patterns, f)
+
+            # Pass a db_path that doesn't exist; loader must return [].
+            missing_db = tmpdir_path / "never-created.db"
+
+            result = analyze_workflows(
+                messages_file=messages_file,
+                patterns_file=patterns_file,
+                db_path=missing_db,
+            )
+            assert result.metadata["message_count"] == len(sample_messages)
+            assert result.metadata["source_file"] == messages_file.name
+
+    def test_db_path_none_uses_jsonl_unchanged(
+        self,
+        sample_messages: list[dict[str, Any]],
+        sample_patterns: dict[str, Any],
+    ) -> None:
+        """ENH-1621: db_path=None preserves the pre-existing JSONL-only behavior."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            messages_file = tmpdir_path / "messages.jsonl"
+            with open(messages_file, "w") as f:
+                for msg in sample_messages:
+                    f.write(json.dumps(msg) + "\n")
+
+            patterns_file = tmpdir_path / "patterns.yaml"
+            with open(patterns_file, "w") as f:
+                yaml.dump(sample_patterns, f)
+
+            result = analyze_workflows(
+                messages_file=messages_file, patterns_file=patterns_file
+            )
+            assert result.metadata["message_count"] == len(sample_messages)
+
     def test_entity_clustering(
         self,
         sample_messages: list[dict[str, Any]],

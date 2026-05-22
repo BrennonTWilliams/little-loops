@@ -29,8 +29,10 @@ def main_history() -> int:
         format_summary_json,
         format_summary_text,
         scan_completed_issues,
+        scan_completed_issues_from_db,
         synthesize_docs,
     )
+    from little_loops.session_store import DEFAULT_DB_PATH
 
     parser = argparse.ArgumentParser(
         prog="ll-history",
@@ -198,8 +200,12 @@ Examples:
     issues_dir = args.directory or config.project_root / config.issues.base_dir
 
     if args.command == "summary":
-        # Existing summary logic
-        issues = scan_completed_issues(issues_dir)
+        # Prefer the unified session DB when populated; fall back to the
+        # file-parsing path when the DB is missing or empty (ENH-1621).
+        db_path = project_root / DEFAULT_DB_PATH
+        issues = scan_completed_issues_from_db(db_path)
+        if not issues:
+            issues = scan_completed_issues(issues_dir)
         summary = calculate_summary(issues)
 
         if args.json:

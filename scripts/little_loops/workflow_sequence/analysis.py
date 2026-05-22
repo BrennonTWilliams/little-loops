@@ -11,7 +11,11 @@ from typing import Any
 
 import yaml
 
-from little_loops.workflow_sequence.io import _load_messages, _load_patterns
+from little_loops.workflow_sequence.io import (
+    _load_messages,
+    _load_messages_from_db,
+    _load_patterns,
+)
 from little_loops.workflow_sequence.models import (
     EntityCluster,
     SessionLink,
@@ -626,6 +630,7 @@ def analyze_workflows(
     boundary_threshold: float = 0.6,
     verbose: bool = False,
     output_format: str = "yaml",
+    db_path: Path | None = None,
 ) -> WorkflowAnalysis:
     """Main entry point: analyze workflows from messages and patterns.
 
@@ -637,17 +642,30 @@ def analyze_workflows(
         boundary_threshold: Minimum boundary score to split workflow segments (default: 0.6)
         verbose: Emit per-stage progress to stderr (default: False)
         output_format: Output serialization format, "yaml" or "json" (default: "yaml")
+        db_path: Optional path to a unified session DB. When provided and the
+            DB has ``message_events`` rows (ENH-1621), messages are read from
+            the DB and *messages_file* is ignored; an empty DB falls back to
+            JSONL parsing. When omitted, the JSONL path is always used.
 
     Returns:
         WorkflowAnalysis with all analysis results
     """
-    # Load inputs
-    messages = _load_messages(messages_file)
+    # Load inputs. Prefer the DB source when configured + populated; otherwise
+    # fall back to the historical JSONL parsing path (ENH-1621).
+    messages: list[dict[str, Any]] = []
+    source_name = messages_file.name
+    if db_path is not None:
+        db_messages = _load_messages_from_db(db_path)
+        if db_messages:
+            messages = db_messages
+            source_name = str(db_path)
+    if not messages:
+        messages = _load_messages(messages_file)
     patterns = _load_patterns(patterns_file)
 
     # Build metadata
     metadata = {
-        "source_file": messages_file.name,
+        "source_file": source_name,
         "patterns_file": patterns_file.name,
         "message_count": len(messages),
         "analysis_timestamp": datetime.now().isoformat(),

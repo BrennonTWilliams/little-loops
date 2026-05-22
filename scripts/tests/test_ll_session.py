@@ -90,6 +90,41 @@ class TestMainSession:
         )
         with patch("sys.argv", ["ll-session", "--db", str(db), "backfill"]):
             with patch("little_loops.cli.session.backfill") as mock_backfill:
-                mock_backfill.return_value = {"issues": 1, "loops": 0, "tools": 0}
+                mock_backfill.return_value = {
+                    "issues": 1,
+                    "loops": 0,
+                    "tools": 0,
+                    "messages": 0,
+                }
                 assert main_session() == 0
         assert "Backfilled" in capsys.readouterr().out
+
+    def test_backfill_reports_messages_count(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """backfill success line includes the messages= count (ENH-1621)."""
+        db = tmp_path / "session.db"
+        with patch("sys.argv", ["ll-session", "--db", str(db), "backfill"]):
+            with patch("little_loops.cli.session.backfill") as mock_backfill:
+                mock_backfill.return_value = {
+                    "issues": 2,
+                    "loops": 0,
+                    "tools": 3,
+                    "messages": 5,
+                }
+                assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "messages=5" in out
+        assert "Backfilled 10" in out
+
+    def test_recent_message_kind(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The recent CLI accepts --kind message after ENH-1621."""
+        db = tmp_path / "session.db"
+        from little_loops.session_store import ensure_db
+
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "message"]):
+            assert main_session() == 0
+        assert "No message events" in capsys.readouterr().out

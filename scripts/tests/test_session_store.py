@@ -214,7 +214,7 @@ class TestBackfill:
     def test_backfill_missing_sources_is_noop(self, tmp_path: Path) -> None:
         db = tmp_path / "session.db"
         counts = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no")
-        assert counts == {"issues": 0, "loops": 0, "tools": 0}
+        assert counts == {"issues": 0, "loops": 0, "tools": 0, "messages": 0}
 
     def test_backfilled_issue_is_searchable(self, tmp_path: Path) -> None:
         issues = tmp_path / ".issues"
@@ -237,3 +237,208 @@ class TestConnect:
             assert conn.row_factory is sqlite3.Row
         finally:
             conn.close()
+
+
+class TestSchemaV2:
+    """v2 migration: widened issue_events + message_events table (ENH-1621)."""
+
+    def test_issue_events_has_v2_columns(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(issue_events)")}
+        conn.close()
+        assert {
+            "issue_type",
+            "priority",
+            "completed_date",
+            "captured_at",
+            "completed_at",
+        } <= cols
+
+    def test_message_events_table_created(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        conn.close()
+        assert "message_events" in names
+
+    def test_v1_db_upgrades_to_v2_idempotently(self, tmp_path: Path) -> None:
+        """A pre-existing v1 database is migrated forward on next ensure_db()."""
+        db = tmp_path / "session.db"
+        # Bootstrap as if v1 only (no ALTER + no message_events).
+        conn = sqlite3.connect(str(db))
+        conn.executescript(
+            """
+            CREATE TABLE tool_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, tool_name TEXT, args_hash TEXT,
+                result_size INTEGER, bytes_in INTEGER, bytes_out INTEGER, cache_hit INTEGER
+            );
+            CREATE TABLE file_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, path TEXT, op TEXT, issue_id TEXT, git_sha TEXT
+            );
+            CREATE TABLE issue_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                issue_id TEXT, transition TEXT, discovered_by TEXT
+            );
+            CREATE TABLE loop_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                loop_name TEXT, state TEXT, transition TEXT, retries INTEGER
+            );
+            CREATE TABLE user_corrections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, content TEXT, source TEXT
+            );
+            CREATE VIRTUAL TABLE search_index USING fts5(
+                content, kind UNINDEXED, ref UNINDEXED, anchor UNINDEXED, ts UNINDEXED
+            );
+            CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO meta(key, value) VALUES('schema_version', '1');
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        ensure_db(db)  # should upgrade to v2
+
+        conn = sqlite3.connect(str(db))
+        version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(issue_events)")}
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        conn.close()
+        assert int(version) == SCHEMA_VERSION
+        assert "issue_type" in cols and "completed_at" in cols
+        assert "message_events" in tables
+
+
+class TestBackfillMessages:
+    """_backfill_messages() seeds message_events from user JSONL blocks."""
+
+    def _user_record(
+        self, session_id: str, ts: str, content: object
+    ) -> str:
+        return (
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": session_id,
+                    "timestamp": ts,
+                    "message": {"content": content},
+                }
+            )
+            + "\n"
+        )
+
+    def test_backfill_messages_plain_string(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("s1", "2026-05-22T00:00:00Z", "implement ENH-1621"),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+        )
+        assert counts["messages"] == 1
+        rows = recent(db, kind="message")
+        assert rows[0]["content"] == "implement ENH-1621"
+        assert rows[0]["session_id"] == "s1"
+
+    def test_backfill_messages_block_list_content(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record(
+                "s2",
+                "2026-05-22T00:00:00Z",
+                [{"type": "text", "text": "first"}, {"type": "text", "text": "second"}],
+            ),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+        )
+        rows = recent(db, kind="message")
+        assert rows[0]["content"] == "first\nsecond"
+
+    def test_backfill_messages_skips_empty_and_assistant_records(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("s3", "2026-05-22T00:00:00Z", "")
+            + json.dumps(
+                {
+                    "type": "assistant",
+                    "sessionId": "s3",
+                    "timestamp": "2026-05-22T00:00:01Z",
+                    "message": {"content": [{"type": "text", "text": "ignored"}]},
+                }
+            )
+            + "\n"
+            + self._user_record("s3", "2026-05-22T00:00:02Z", "kept"),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+        )
+        assert counts["messages"] == 1
+
+    def test_message_events_are_searchable(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("s4", "2026-05-22T00:00:00Z", "needle in haystack"),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+        )
+        results = search(db, query="needle")
+        assert any(r["kind"] == "message" for r in results)
+
+    def test_recent_message_kind_supported(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        assert recent(db, kind="message") == []
+
+
+class TestBackfillIssuesV2Columns:
+    """_backfill_issues() populates the v2 issue_events columns (ENH-1621)."""
+
+    def test_v2_columns_populated_from_frontmatter(self, tmp_path: Path) -> None:
+        issues = tmp_path / ".issues" / "enhancements"
+        issues.mkdir(parents=True)
+        (issues / "P2-ENH-99-foo.md").write_text(
+            "---\n"
+            "id: ENH-99\n"
+            "status: done\n"
+            "type: ENH\n"
+            "priority: P2\n"
+            "captured_at: 2026-05-20T10:00:00Z\n"
+            "completed_at: 2026-05-22T15:30:00Z\n"
+            "---\n# x\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_type"] == "ENH"
+        assert rows[0]["priority"] == "P2"
+        assert rows[0]["completed_date"] == "2026-05-22"
+        assert rows[0]["completed_at"] == "2026-05-22T15:30:00Z"
+        assert rows[0]["captured_at"] == "2026-05-20T10:00:00Z"
+
+    def test_v2_columns_derived_from_filename_when_fm_absent(self, tmp_path: Path) -> None:
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True)
+        (issues / "P3-BUG-7-no-meta.md").write_text(
+            "---\nid: BUG-7\nstatus: done\n---\n", encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_type"] == "BUG"
+        assert rows[0]["priority"] == "P3"

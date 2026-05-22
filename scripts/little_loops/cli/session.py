@@ -53,7 +53,7 @@ Examples:
     recent_parser.add_argument(
         "--kind",
         required=True,
-        choices=["tool", "file", "issue", "loop", "correction"],
+        choices=["tool", "file", "issue", "loop", "correction", "message"],
         help="Event kind to list",
     )
     recent_parser.add_argument(
@@ -115,7 +115,8 @@ def main_session() -> int:
         total = sum(counts.values())
         logger.success(
             f"Backfilled {total} rows "
-            f"(issues={counts['issues']}, loops={counts['loops']}, tools={counts['tools']})"
+            f"(issues={counts['issues']}, loops={counts['loops']}, "
+            f"tools={counts['tools']}, messages={counts.get('messages', 0)})"
         )
         return 0
 

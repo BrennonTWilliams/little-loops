@@ -136,6 +136,94 @@ class TestMainHistoryIntegration:
         assert "ENH" in captured.out
 
 
+class TestSummaryDbSource:
+    """ENH-1621: ll-history summary prefers the unified session DB."""
+
+    def _write_done_issue(self, base: Path, name: str, body: str) -> None:
+        issues = base / ".issues" / "enhancements"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / name).write_text(body, encoding="utf-8")
+
+    def test_summary_uses_db_when_populated(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """When the session DB has done rows, summary reads from it (no file scan needed)."""
+        from little_loops.session_store import backfill
+
+        # Seed a backfilled DB inside a project root, but leave the
+        # file-source directory empty so we can prove the DB was used.
+        seed_dir = tmp_path / "seed-issues" / "enhancements"
+        seed_dir.mkdir(parents=True)
+        (seed_dir / "P1-ENH-100-x.md").write_text(
+            "---\nid: ENH-100\nstatus: done\ntype: ENH\npriority: P1\n"
+            "completed_at: 2026-05-21T12:00:00Z\n---\n",
+            encoding="utf-8",
+        )
+
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+        db_path = project_root / ".ll" / "session.db"
+        db_path.parent.mkdir(parents=True)
+        backfill(db_path, issues_dir=tmp_path / "seed-issues", loops_dir=tmp_path / "no")
+
+        # Empty issues directory: file-scan path would yield zero.
+        empty_issues = project_root / ".issues"
+        empty_issues.mkdir()
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-history",
+                "--config",
+                str(project_root),
+                "summary",
+                "--json",
+                "-d",
+                str(empty_issues),
+            ],
+        ):
+            from little_loops.cli import main_history
+
+            assert main_history() == 0
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["total_count"] == 1
+        assert data["type_counts"].get("ENH") == 1
+
+    def test_summary_falls_back_to_files_when_db_empty(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """An absent/empty DB falls back to scan_completed_issues() — no regression."""
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+        # No DB created — fall-back path must trigger.
+        completed_dir = project_root / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        (completed_dir / "P1-BUG-001-test.md").write_text("# BUG-001\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-history",
+                "--config",
+                str(project_root),
+                "summary",
+                "--json",
+                "-d",
+                str(project_root / ".issues"),
+            ],
+        ):
+            from little_loops.cli import main_history
+
+            assert main_history() == 0
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["total_count"] == 1
+        assert data["type_counts"].get("BUG") == 1
+
+
 class TestAnalyzeArgumentParsing:
     """Tests for ll-history analyze argument parsing."""
 

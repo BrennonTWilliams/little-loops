@@ -992,6 +992,8 @@ Show issue statistics for completed issues.
 | `--json` | `-j` | Output as JSON |
 | `--directory` | `-d` | Path to issues directory (default: `.issues`) |
 
+When the unified session DB (`.ll/session.db`, FEAT-1112) contains backfilled `issue_events` rows (run `ll-session backfill`), `summary` reads from the DB instead of re-parsing every completed-issue file. An empty/absent DB falls back to file parsing — no behavior change for un-backfilled projects (ENH-1621). Only the `summary` subcommand is DB-backed; `analyze` and `export` still scan the files because they need bodies and git history.
+
 #### `ll-history analyze`
 
 Full analysis with trends, subsystems, and debt metrics.
@@ -1049,6 +1051,8 @@ Analyze workflows from messages and Step 1 patterns.
 | `--patterns` | `-p` | **Required.** Input YAML from Step 1 (workflow-pattern-analyzer) |
 | `--output` | `-o` | Output YAML file (default: `.ll/workflow-analysis/step2-workflows.yaml`) |
 | `--verbose` | `-v` | Show verbose analysis output |
+
+The Python API (`analyze_workflows()`) accepts an optional `db_path` argument that prefers the unified session store's `message_events` table over the JSONL input when populated (ENH-1621); an empty/missing DB transparently falls back to the JSONL file. The `--patterns` YAML is a generated analysis artifact and stays a file input.
 
 **Examples:**
 ```bash

@@ -433,3 +433,57 @@ class TestScanActiveIssues:
         assert len(result) == 1
         assert "Failed to parse" in caplog.text
         assert "access denied" in caplog.text
+
+
+class TestScanCompletedIssuesFromDb:
+    """ENH-1621: DB-backed reader for completed issues."""
+
+    def test_returns_empty_when_db_missing(self, tmp_path: Path) -> None:
+        from little_loops.issue_history.parsing import scan_completed_issues_from_db
+
+        assert scan_completed_issues_from_db(tmp_path / "missing.db") == []
+
+    def test_returns_empty_when_no_done_rows(self, tmp_path: Path) -> None:
+        from little_loops.issue_history.parsing import scan_completed_issues_from_db
+        from little_loops.session_store import backfill
+
+        # Backfill issues with status:open; should yield no done rows.
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True)
+        (issues / "P3-BUG-1-x.md").write_text(
+            "---\nid: BUG-1\nstatus: open\ntype: BUG\n---\n", encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+
+        assert scan_completed_issues_from_db(db) == []
+
+    def test_rebuilds_completed_issue_from_db_row(self, tmp_path: Path) -> None:
+        from little_loops.issue_history.parsing import scan_completed_issues_from_db
+        from little_loops.session_store import backfill
+
+        issues = tmp_path / ".issues" / "enhancements"
+        issues.mkdir(parents=True)
+        (issues / "P2-ENH-100-foo.md").write_text(
+            "---\n"
+            "id: ENH-100\n"
+            "status: done\n"
+            "type: ENH\n"
+            "priority: P2\n"
+            "captured_at: 2026-05-20T10:00:00Z\n"
+            "completed_at: 2026-05-22T15:30:00Z\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+
+        results = scan_completed_issues_from_db(db)
+        assert len(results) == 1
+        issue = results[0]
+        assert issue.issue_id == "ENH-100"
+        assert issue.issue_type == "ENH"
+        assert issue.priority == "P2"
+        assert issue.completed_date == date(2026, 5, 22)
+        assert issue.completed_at == datetime(2026, 5, 22, 15, 30, 0)
+        assert issue.captured_at == datetime(2026, 5, 20, 10, 0, 0)
