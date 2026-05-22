@@ -196,6 +196,7 @@ little-loops/
         │   ├── logs.py
         │   ├── messages.py
         │   ├── parallel.py
+        │   ├── session.py       # ll-session unified session store query CLI
         │   ├── sync.py
         │   ├── output.py        # Shared CLI output utilities (colors, terminal width)
         │   ├── loop/            # ll-loop subcommands

@@ -197,6 +197,7 @@ little-loops/
         │   ├── create_extension.py  # ll-create-extension scaffold CLI
         │   ├── parallel.py
         │   ├── messages.py
+        │   ├── session.py           # ll-session: search/recent/backfill the unified session store
         │   ├── sync.py
         │   ├── docs.py
         │   ├── history.py
@@ -486,7 +487,7 @@ little-loops includes an extension architecture built on a structured event bus.
 | Component | File | Purpose |
 |-----------|------|---------|
 | `LLEvent` | `events.py` | Structured event dataclass (type, timestamp, payload) |
-| `EventBus` | `events.py` | Multi-observer dispatcher with pluggable Transport sinks (`JsonlTransport`, `UnixSocketTransport`, `OTelTransport`, `WebhookTransport`) |
+| `EventBus` | `events.py` | Multi-observer dispatcher with pluggable Transport sinks (`JsonlTransport`, `UnixSocketTransport`, `OTelTransport`, `WebhookTransport`, `SQLiteTransport`) |
 | `LLExtension` | `extension.py` | Runtime-checkable protocol for event consumers |
 | `ExtensionLoader` | `extension.py` | Discovers extensions from config paths and entry points |
 | `InterceptorExtension` | `extension.py` | Protocol for plugins providing `before_route`/`after_route` hooks; stored in `FSMExecutor._interceptors` |
@@ -515,7 +516,7 @@ Extensions are wired to the EventBus at CLI entry points via `wire_extensions()`
 | `ll-parallel` | `cli/parallel.py` | Yes — EventBus only (no FSMExecutor wiring) | Yes — `wire_transports()` after extensions; teardown runs in `ParallelOrchestrator._cleanup()` via `event_bus.close_transports()` |
 | `ll-sprint` | `cli/sprint/run.py` | Yes — EventBus only (no FSMExecutor wiring for parallel branch) | Yes — per-wave `wire_transports()` after extensions; teardown delegated to per-wave `ParallelOrchestrator._cleanup()` |
 
-The transport layer fans events out additively: every event emitted on the `EventBus` is delivered to every registered observer **and** every registered transport. Built-in transports: `JsonlTransport` (durable file log; selected via `events.transports: ["jsonl"]`), `UnixSocketTransport` (real-time `AF_UNIX` streaming for local TUIs and dashboards; selected via `events.transports: ["socket"]`, requires POSIX), `OTelTransport` (OpenTelemetry OTLP exporter; selected via `events.transports: ["otel"]`, requires `pip install 'little-loops[otel]'`), and `WebhookTransport` (batched HTTP POST to a remote endpoint; selected via `events.transports: ["webhook"]`, requires `pip install 'little-loops[webhooks]'`).
+The transport layer fans events out additively: every event emitted on the `EventBus` is delivered to every registered observer **and** every registered transport. Built-in transports: `JsonlTransport` (durable file log; selected via `events.transports: ["jsonl"]`), `UnixSocketTransport` (real-time `AF_UNIX` streaming for local TUIs and dashboards; selected via `events.transports: ["socket"]`, requires POSIX), `OTelTransport` (OpenTelemetry OTLP exporter; selected via `events.transports: ["otel"]`, requires `pip install 'little-loops[otel]'`), `WebhookTransport` (batched HTTP POST to a remote endpoint; selected via `events.transports: ["webhook"]`, requires `pip install 'little-loops[webhooks]'`), and `SQLiteTransport` (writes events to the per-project `.ll/session.db` unified session store; selected via `events.transports: ["sqlite"]`, queryable via `ll-session`).
 
 **UnixSocketTransport — initial state seeding:** When a new client connects to `events.sock`, the transport immediately sends `state_change` events for all currently running loops (read from `.loops/.running/*.state.json`) before the client enters the regular event stream. This means a dashboard or TUI that connects mid-run receives the current FSM state of every active loop without waiting for the next state transition. Clients that connect before any loop is running receive no seed events (the event stream is empty until a loop starts).
 

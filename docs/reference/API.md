@@ -3369,6 +3369,26 @@ Entry point for `ll-logs` command. Discover, extract, and tail Claude Code sessi
 
 ---
 
+### main_session
+
+```python
+def main_session() -> int
+```
+
+Entry point for `ll-session` command. Query the unified session store (SQLite + FTS5) — the per-project `.ll/session.db`.
+
+**Returns:** 0 on success, 1 when no subcommand given or on error
+
+**Global flags:**
+- `--db PATH` — Path to the session database (default: `.ll/session.db`)
+
+**Subcommands:**
+- `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--limit N` (default 20)
+- `recent` — Most recent rows for an event kind; requires `--kind {tool,file,issue,loop,correction}`, optional `--limit N` (default 20)
+- `backfill` — Seed the database from existing on-disk sources
+
+---
+
 ### main_learning_tests
 
 ```python

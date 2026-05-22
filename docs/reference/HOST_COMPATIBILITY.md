@@ -174,6 +174,7 @@ without invoking the adapter.
 | FSM runs (`.loops/`)                | `.loops/`   | `.loops/` | `.loops/` (same path)[^state] |
 | Scratch pads (`.loops/tmp/scratch/`) | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` (same path)[^state] |
 | Continuation prompt                 | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` (same path)[^state] |
+| Session store (`SQLiteTransport`)   | `.ll/session.db` | `.ll/session.db` | `.ll/session.db` (same path)[^state] |
 
 [^state]: FEAT-957 deliberately scopes `LL_STATE_DIR=.codex` to the
     config probe only. Other state directories remain at their default

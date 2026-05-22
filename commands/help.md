@@ -264,6 +264,7 @@ ll-adapt-agents-for-codex Generate .codex/agents/*.toml from agents/*.md for Cod
 ll-doctor         Check host CLI capability support for little-loops features
 ll-learning-tests Query and manage the learning test registry (check/list/mark-stale)
 ll-logs           Discover and extract ll-relevant log entries from Claude project logs
+ll-session        Query the unified SQLite session store (search/recent/backfill)
 
 ================================================================================
 Usage: /ll:<command> [arguments] [flags]

@@ -775,6 +775,7 @@ List of transports to wire onto the EventBus at runtime. Transports are additive
 | `"socket"` | Registers a `UnixSocketTransport` streaming newline-delimited JSON events over an `AF_UNIX` socket. Configured under `events.socket` (see below). Not available on Windows — `wire_transports` raises `RuntimeError`. |
 | `"otel"` | Registers an `OTelTransport` that maps loop executions to OpenTelemetry traces/spans and exports via OTLP. Configured under `events.otel` (see below). Requires `pip install 'little-loops[otel]'`. |
 | `"webhook"` | Registers a `WebhookTransport` that batches events and POSTs them as JSON arrays to an HTTP endpoint. Configured under `events.webhook` (see below). Requires `pip install 'little-loops[webhooks]'`. |
+| `"sqlite"` | Registers a `SQLiteTransport` that records events into the per-project `.ll/session.db` unified session store. Configured under `events.sqlite` (see below). Queryable via the `ll-session` CLI. |
 
 ```json
 {
@@ -852,6 +853,27 @@ Requires: `pip install 'little-loops[webhooks]'` (installs `httpx`).
       "url": "https://hooks.example.com/ll-events",
       "batch_ms": 1000,
       "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+### `events.sqlite`
+
+Records FSM loop events into the per-project session store (`.ll/session.db`) for indexed cross-cutting queries via the `ll-session` CLI.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `events.sqlite.path` | `string` | `".ll/session.db"` | Filesystem path for the SQLite session database. |
+
+The session store is a SQLite database with an FTS5 full-text index. `SQLiteTransport` writes events as they are emitted; `ll-session search`/`recent`/`backfill` query and seed it. Use `ll-session backfill` to populate the store from existing on-disk sources without a live transport.
+
+```json
+{
+  "events": {
+    "transports": ["jsonl", "sqlite"],
+    "sqlite": {
+      "path": ".ll/session.db"
     }
   }
 }

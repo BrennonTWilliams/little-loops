@@ -1215,6 +1215,47 @@ ll-logs extract --all --cmd ll-history   # Filter to ll-history invocations
 
 ---
 
+### ll-session
+
+Query the unified session store (SQLite + FTS5) — the per-project `.ll/session.db` populated by `SQLiteTransport` and `ll-session backfill`. Lets operators search and inspect session activity without re-parsing the scattered JSON/markdown sources the analyze-* skills read.
+
+**Global flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--db PATH` | Path to the session database (default: `.ll/session.db`) |
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `search` | FTS5 full-text query with BM25-ranked results |
+| `recent` | Most recent rows for an event kind |
+| `backfill` | Seed the database from existing on-disk sources |
+
+**`search` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--fts QUERY` | FTS5 match query (required) |
+| `--limit N` | Maximum results (default: 20) |
+
+**`recent` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--kind {tool,file,issue,loop,correction}` | Event kind to list (required) |
+| `--limit N` | Maximum rows (default: 20) |
+
+**Examples:**
+```bash
+ll-session search --fts "rate limit"   # Full-text search, BM25-ranked
+ll-session recent --kind loop          # Recent loop events
+ll-session backfill                    # Seed the database from on-disk sources
+```
+
+---
+
 ### ll-gitignore
 
 Suggest and apply `.gitignore` patterns based on untracked files.
