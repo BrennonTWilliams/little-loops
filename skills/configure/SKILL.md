@@ -22,7 +22,7 @@ metadata:
 
 # Configure
 
-<!-- PLUGIN_VERSION: 1.66.0 -->
+<!-- PLUGIN_VERSION: 1.105.0 -->
 
 Interactively configure specific areas of `.ll/ll-config.json` without re-running the full `/ll:init` wizard.
 

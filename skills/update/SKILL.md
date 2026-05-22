@@ -18,7 +18,7 @@ metadata:
 
 # Update little-loops
 
-<!-- PLUGIN_VERSION: 1.66.1 -->
+<!-- PLUGIN_VERSION: 1.105.0 -->
 
 Update the little-loops Claude Code plugin and pip package to the latest version.
 
