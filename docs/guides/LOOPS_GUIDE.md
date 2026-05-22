@@ -395,7 +395,7 @@ ll-loop run rn-refine "thoughts/auth-refactor-plan.md" \
 
 | File | Description |
 |------|-------------|
-| `plan.md` | Refined version of the input plan (primary output) |
+| `plan.md` | Working copy of the refined plan (kept for reference; the original file is updated in-place) |
 | `plan-rubric.md` | 9-dimension scores (LOW/MEDIUM/HIGH/VERY-HIGH) with aggregate verdict |
 | `research.md` | Accumulated file and web research findings |
 
@@ -416,6 +416,11 @@ init             (shell: validate plan_file exists, copy to run_dir/plan.md)
 ```
 
 **Notes**: The key difference from `rn-plan` is `assess_existing` — it reads the plan and scores dimensions at their *actual* current level rather than defaulting all to LOW. This avoids wasting iterations refining dimensions that are already HIGH or VERY-HIGH. `verify_score` is a deterministic shell check that confirms `ALL_VERY_HIGH` appears in the rubric file before accepting convergence — guarding against hallucinated convergence where the LLM emits the sentinel but writes `ITERATE` to disk.
+
+- <!-- TODO: update-docs stub — write-back + apply commands — drafted 2026-05-19 -->
+- **In-place update**: On completion, the loop overwrites the **original** plan file (the path passed to `ll-loop run rn-refine`) with the refined content. No manual copy from `.loops/` is needed. The `plan.md` under the run directory is kept as a working-copy reference you can diff against or delete.
+- **Report state**: Prints `diff` commands comparing the original file against the working copy, so you can review changes before discarding the reference copy.
+  <!-- END TODO stub -->
 
 **Issue Management**
 
@@ -1023,6 +1028,9 @@ init → identify → prune → generate → evaluate
 - The `evaluate` state's `on_no`/`on_error: score` routing means Playwright absence falls back to LLM-only `score` judgment — the loop runs end-to-end even without a browser installed.
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
 - To customize the scoring rubric, install locally (`ll-loop install hitl-compare`) and edit the `score` state's criteria and thresholds.
+- <!-- TODO: update-docs stub — base64 image embedding — drafted 2026-05-19 -->
+- **Image embedding**: When an option's `source_path` points to an image file (`.png`, `.jpg`, `.gif`, `.webp`, `.svg`), the `generate` state converts it to a base64 data URI and embeds it inline in the HTML. This avoids broken-image icons under `file://` URLs (browsers block `file://` paths in `<img src>`). The `evaluate` rubric's `inline_constraint` criterion treats external `src=` attributes as a violation. Text-only items render without images — no broken `<img>` tags are emitted.
+  <!-- END TODO stub -->
 
 ### `hitl-md` — Human-in-the-Loop Single-Document Review Harness
 
