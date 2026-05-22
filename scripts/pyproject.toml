@@ -69,6 +69,7 @@ ll-migrate-relationships = "little_loops.cli:main_migrate_relationships"
 ll-migrate-labels = "little_loops.cli:main_migrate_labels"
 ll-migrate-status = "little_loops.cli:main_migrate_status"
 ll-logs = "little_loops.cli:main_logs"
+ll-session = "little_loops.cli:main_session"
 # internal: dev tooling — regenerates docs/reference/schemas/ after LLEvent changes
 ll-generate-schemas = "little_loops.cli:main_generate_schemas"
 ll-generate-skill-descriptions = "little_loops.cli:main_generate_skill_descriptions"

@@ -458,6 +458,20 @@ class WebhookEventsConfig:
 
 
 @dataclass
+class SqliteEventsConfig:
+    """SQLiteTransport configuration (unified session store, FEAT-1112)."""
+
+    path: str = ".ll/session.db"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SqliteEventsConfig:
+        """Create SqliteEventsConfig from dictionary."""
+        return cls(
+            path=data.get("path", ".ll/session.db"),
+        )
+
+
+@dataclass
 class EventsConfig:
     """Event transport configuration.
 
@@ -470,6 +484,7 @@ class EventsConfig:
     socket: SocketEventsConfig = field(default_factory=SocketEventsConfig)
     otel: OTelEventsConfig = field(default_factory=OTelEventsConfig)
     webhook: WebhookEventsConfig = field(default_factory=WebhookEventsConfig)
+    sqlite: SqliteEventsConfig = field(default_factory=SqliteEventsConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EventsConfig:
@@ -479,4 +494,5 @@ class EventsConfig:
             socket=SocketEventsConfig.from_dict(data.get("socket", {})),
             otel=OTelEventsConfig.from_dict(data.get("otel", {})),
             webhook=WebhookEventsConfig.from_dict(data.get("webhook", {})),
+            sqlite=SqliteEventsConfig.from_dict(data.get("sqlite", {})),
         )

@@ -209,6 +209,15 @@ class TestConfigSchema:
         assert webhook_props["batch_ms"]["default"] == 1000
         assert webhook_props["headers"]["type"] == "object"
 
+        assert "sqlite" in events_props, (
+            "events.sqlite is not declared; configs using events.sqlite will be "
+            "rejected by additionalProperties: false on the events block"
+        )
+        sqlite_block = events_props["sqlite"]
+        assert sqlite_block["type"] == "object"
+        assert sqlite_block.get("additionalProperties") is False
+        assert sqlite_block["properties"]["path"]["default"] == ".ll/session.db"
+
     def test_issues_relationship_fields_in_schema(self) -> None:
         """Relationship fields must be declared inside issues.properties.
 

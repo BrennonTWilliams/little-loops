@@ -14,6 +14,8 @@ Built-in implementations:
     WebhookTransport: POSTs batched events to an HTTP endpoint for remote
         dashboards, Slack bots, and CI systems. Requires the optional ``httpx``
         package (``pip install little-loops[webhooks]``).
+    SQLiteTransport: records FSM loop events into the per-project session
+        database (``.ll/session.db``) for indexed cross-cutting queries.
 
 Public exports:
     Transport: runtime-checkable Protocol that any sink must satisfy
@@ -563,6 +565,7 @@ _TRANSPORT_REGISTRY: dict[str, str] = {
     "jsonl": "jsonl",
     "otel": "otel",
     "socket": "socket",
+    "sqlite": "sqlite",
     "webhook": "webhook",
 }
 
@@ -616,6 +619,10 @@ def wire_transports(
                     on_connect=_make_seed_callback(),
                 )
             )
+        elif name == "sqlite":
+            from little_loops.session_store import SQLiteTransport
+
+            bus.add_transport(SQLiteTransport(base / "session.db"))
         elif name == "webhook":
             if config.webhook.url is None:
                 logger.warning("WebhookTransport: events.webhook.url is None; skipping")

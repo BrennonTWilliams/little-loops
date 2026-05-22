@@ -241,6 +241,18 @@ class TestWireTransports:
         files = list(tmp_path.rglob("*.jsonl"))
         assert files, "expected JsonlTransport to write at least one file"
 
+    def test_sqlite_registered_by_name(self, tmp_path: Path) -> None:
+        """The sqlite transport is registered and wires up successfully."""
+        bus = EventBus()
+        config = EventsConfig(transports=["sqlite"])
+        wire_transports(bus, config, log_dir=tmp_path)
+
+        # After wiring, emitting a loop event should produce the session db
+        bus.emit({"event": "state_enter", "loop_name": "wired", "state": "go"})
+        bus.close_transports()
+
+        assert (tmp_path / "session.db").exists()
+
     def test_unknown_transport_warns_and_skips(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:

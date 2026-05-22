@@ -104,6 +104,15 @@ def handle(event: LLHookEvent) -> LLHookResult:
             merged_config = deep_merge(base_config, local_overrides)
             overrides_applied = True
 
+    # 3b. Bootstrap the unified session store (FEAT-1112). Best-effort and only
+    # for initialized projects — uninitialized projects (no config) are a no-op
+    # so the hook never creates a stray .ll/ directory.
+    if config_path is not None:
+        with contextlib.suppress(Exception):
+            from little_loops.session_store import ensure_db
+
+            ensure_db(cwd / ".ll" / "session.db")
+
     # 4. Compose the rendered stdout payload.
     if config_path is not None and not overrides_applied:
         # Match bash: preserve original on-disk formatting when no overrides.

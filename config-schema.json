@@ -1172,6 +1172,18 @@
             }
           },
           "additionalProperties": false
+        },
+        "sqlite": {
+          "type": "object",
+          "description": "SQLiteTransport configuration. Records FSM loop events into the per-project session store (.ll/session.db) for indexed cross-cutting queries via the ll-session CLI.",
+          "properties": {
+            "path": {
+              "type": "string",
+              "default": ".ll/session.db",
+              "description": "Filesystem path for the SQLite session database."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

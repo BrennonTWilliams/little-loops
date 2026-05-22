@@ -12,6 +12,7 @@ Provides command-line interfaces for automated issue management:
 - ll-messages: Extract user messages from Claude Code logs
 - ll-history: Completed issue statistics and analysis
 - ll-logs: Discover and extract ll-relevant JSONL entries from ~/.claude/projects/
+- ll-session: Query the unified session store (SQLite + FTS5)
 - ll-deps: Cross-issue dependency discovery and validation
 - ll-sync: GitHub Issues sync
 - ll-verify-docs: Documentation count verification
@@ -51,6 +52,7 @@ from little_loops.cli.migrate_relationships import main_migrate_relationships
 from little_loops.cli.migrate_status import main_migrate_status
 from little_loops.cli.parallel import main_parallel
 from little_loops.cli.schemas import main_generate_schemas  # internal: dev tooling
+from little_loops.cli.session import main_session
 from little_loops.cli.sprint import (
     _render_dependency_graph,
     _render_execution_plan,
@@ -82,6 +84,7 @@ __all__ = [
     "main_loop",
     "main_messages",
     "main_parallel",
+    "main_session",
     "main_sprint",
     "main_sync",
     "main_verify_docs",

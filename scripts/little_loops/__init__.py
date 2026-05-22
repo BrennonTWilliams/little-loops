@@ -40,6 +40,7 @@ from little_loops.issue_lifecycle import (
 from little_loops.issue_manager import AutoManager
 from little_loops.learning_tests import LearnTestRecord, check_learning_test
 from little_loops.output_parsing import parse_manage_issue_output, parse_ready_issue_output
+from little_loops.session_store import SQLiteTransport
 from little_loops.sync import GitHubSyncManager, SyncResult, SyncStatus
 from little_loops.testing import LLTestBus
 from little_loops.transport import (
@@ -91,6 +92,7 @@ __all__ = [
     # transport
     "JsonlTransport",
     "OTelTransport",
+    "SQLiteTransport",
     "Transport",
     "UnixSocketTransport",
     "WebhookTransport",
