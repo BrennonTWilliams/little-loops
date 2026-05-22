@@ -85,6 +85,7 @@ Context-mode (github.com/mksglu/context-mode) uses a per-project SQLite + FTS5 d
 - No `ll-session` CLI entry point in `scripts/pyproject.toml` ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-22T16:01:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bd1623c9-b064-4a18-a889-d90953167101.jsonl`
 - `/ll:verify-issues` - 2026-05-18T04:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2807bd8b-4e79-4b76-994d-e6f6cae14245.jsonl`
 - `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
@@ -105,6 +106,10 @@ Context-mode (github.com/mksglu/context-mode) uses a per-project SQLite + FTS5 d
 1. **Event capture is FEAT-1262's job, not this one's.** Drop "Ingestion via a lightweight daemon or SessionStart/PostToolUse hook" framing where it implies installing a parallel hook. This issue subscribes to FEAT-1262's event log via FEAT-918's Transport sink — no new PostToolUse hook is added by FEAT-1112.
 2. **PreCompact summary reconstruction is FEAT-1264's MVP.** FEAT-1264 (JSONL/jq) is the MVP path for PreCompact handoff snapshots; FEAT-1112's SQLite-backed reconstruction is a future replacement that swaps in via the same stable snapshot-builder API. Don't ship parallel summary builders.
 3. **SessionStart slot is shared.** FEAT-1112 owns SessionStart *ingestion* only; FEAT-1263 owns SessionStart *context injection*. `hooks/hooks.json` supports multiple SessionStart entries — the two are co-existing consumers, not competitors for the slot.
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-22): FEAT-1160 (Context Window Analytics) extends the `tool_events` table with per-tool byte columns (`bytes_in INTEGER`, `bytes_out INTEGER`, `cache_hit BOOLEAN`). Reserve these columns in FEAT-1112's initial `tool_events` schema so FEAT-1160 doesn't require a follow-up migration pass after the initial schema ships.
 
 ## Blocks
 

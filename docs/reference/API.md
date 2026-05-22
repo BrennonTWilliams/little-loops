@@ -4461,6 +4461,7 @@ Validate FSM structure and return list of errors.
 - No conflicting routing definitions
 - Warns about unreachable states
 - Warns when no top-level `description:` field is set
+- Warns (WARNING) when a failure-named terminal state (e.g. `failed`, `error`, `aborted`) has no predecessor state with a diagnostic action
 
 **Example:**
 ```python

@@ -140,7 +140,7 @@ Scan the generated routing graph for infinite cycles. If any non-terminal state 
 
 The most common case: a `generate` state with `next: evaluate` and an `evaluate` state with `on_no: generate` is a cycle when Playwright or another external capture tool is absent. The fix is `on_no: score` (degrade to LLM evaluation) rather than `on_no: generate`.
 
-Also warn if the generated YAML includes a `terminal: true` failure state with no `action:` field — silent failure terminals produce blank entries in `ll-loop history`.
+Also warn if the generated YAML includes a `terminal: true` failure state that has an `action:` field — the action is silently skipped by the executor (`_finish("terminal")` fires before any action runs). The correct pattern is a two-state `diagnose → failed` split: a non-terminal `diagnose` state with the diagnostic action and `next: failed`, followed by a bare `failed: terminal: true` state with no action.
 
 **Display format:**
 

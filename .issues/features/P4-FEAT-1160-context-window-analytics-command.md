@@ -89,6 +89,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `analytics`, `context-window`, `hooks`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-22T16:01:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bd1623c9-b064-4a18-a889-d90953167101.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-18T05:02:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-14T21:18:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75505ad4-6733-4424-b334-3143f412786b.jsonl`

@@ -1052,16 +1052,17 @@ states:
     loop: lint-fix
     context_passthrough: true
     on_success: run_tests
-    on_failure: escalate
+    on_failure: diagnose_failure
   run_tests:
     loop: test-suite
     on_success: done
-    on_failure: escalate
-  escalate:
+    on_failure: diagnose_failure
+  diagnose_failure:
     action: "echo 'Sub-loop failed, needs manual attention'"
     action_type: shell
+    next: failed
+  failed:
     terminal: true
-    verdict: failure
   done:
     terminal: true
 ```
