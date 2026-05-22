@@ -119,7 +119,7 @@ Extend FEAT-1112's SQLite + FTS5 store to include per-tool byte columns, then qu
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/session_store.py` — not yet created (FEAT-1112 prerequisite); primary data source for SQLite queries
-- `.ll/ll-context-state.json` — interim data source written by `hooks/scripts/context-monitor.sh` PostToolUse hook; schema: `{"breakdown": {"bash": N, "read": N, ...}, "estimated_tokens": N, "tool_calls": N, "session_start": "...", "detected_model": "..."}` — token estimates only, not raw bytes
+- `.ll/ll-context-state.json` — interim data source written by `hooks/scripts/context-monitor.sh` PostToolUse hook; full schema (verified 2026-05-22): `{"breakdown": {"bash": N, "read": N, ...}, "estimated_tokens": N, "tool_calls": N, "session_start": "...", "detected_model": "...", "threshold_crossed_at": null|"ISO8601", "handoff_complete": bool, "transcript_baseline_tokens": N}` — token estimates only, not raw bytes; `transcript_baseline_tokens` captures the session baseline before tool calls, which can drive the delta calculation for "bytes kept out"; `threshold_crossed_at`/`handoff_complete` can derive compact count without a separate counter
 - `scripts/little_loops/hooks/types.py` — `LLHookEvent` and `LLHookResult` dataclasses required when extending `post_tool_use.py::handle()`
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -174,6 +174,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `config-schema.json` — schema uses `"additionalProperties": false` at the top level; if `analytics.enabled` is implemented, a new `"analytics"` property block must be added to the top-level `properties` object or config validation will reject it; coordinate with `ll-config.json` default value
 - `templates/generic.json`, `templates/python-generic.json` (and all other project-type templates) — all templates reference `config-schema.json` via `"$schema"`; if `analytics.enabled` is added to the schema, add `"analytics": {"enabled": false}` to each template for consistency; pattern reference: `"context_monitor": {"enabled": true}` in existing templates
 
+_Clarification added by `/ll:refine-issue` 2026-05-22:_
+- The `analytics.enabled` flag governs the `post_tool_use.py` byte-tracking hook extension (step 2), **not** the `ll-ctx-stats` CLI command itself (which is already opt-in by invocation). Follow the `context_monitor.enabled` guard pattern in `hooks/scripts/context-monitor.sh` (line ~19: `ll_feature_enabled "context_monitor.enabled"`) — add an analogous guard in `post_tool_use.py::handle()` that skips SQLite writes when `analytics.enabled: false`. Recommendation: **include the flag** — it gives users a way to disable byte tracking if the SQLite write adds latency without requiring hook removal. The flag addition to `config-schema.json` is then a required step, not optional, making implementation step 9 unconditional.
+
 ## Implementation Steps
 
 > **Prerequisite**: FEAT-1112 must land first (SQLite + FTS5 store).
@@ -225,6 +228,7 @@ _Updated by `/ll:confidence-check` on 2026-05-22 (re-run after wire-issue + refi
 - **Broad change surface**: 13 distinct sites including 2 breaking test files (`test_hook_post_tool_use.py` and `test_hook_intents.py` line 319) — implement test updates for `post_tool_use` alongside the hook change to avoid a broken-test window between steps 2 and 6.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-22T20:01:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6c016c0-757a-4c25-9fb0-6b6bf3c10291.jsonl`
 - `/ll:wire-issue` - 2026-05-22T19:57:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71050fdf-80e1-449c-b1fe-daa146bb5f88.jsonl`
 - `/ll:confidence-check` - 2026-05-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71369049-8e66-40d9-974d-c382f4314900.jsonl`
 - `/ll:refine-issue` - 2026-05-22T19:47:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e312d3c3-3d24-4cb6-ab47-748c38cba6f8.jsonl`

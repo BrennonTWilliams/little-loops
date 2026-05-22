@@ -216,8 +216,18 @@ FEAT-992).
 
 `epic`, `captured`, `codex`, `host-compat`, `tracking`
 
-## Session Log
+## Verification Notes
 
+**Verdict**: NEEDS_UPDATE — Verified 2026-05-22
+
+- All 5 concrete child issues are `done`: FEAT-1483, FEAT-1486, FEAT-1487, FEAT-1488, FEAT-1489
+- Epic still `open` with 3 "(unfiled)" children (post_compact, permission_request, per-host state redirection)
+- Action: either close the epic (concrete children done, unfiled items can be captured standalone if demand surfaces) or keep open as tracking-only for the 3 deferred gaps
+
+## Session Log
+- `/ll:verify-issues` - 2026-05-22T16:11:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
+
+- `/ll:verify-issues` - 2026-05-22T11:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
 - `/ll:capture-issue` - 2026-05-15T12:15:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010190c-509e-453e-bb85-c00575d1e590.jsonl`
 
 ---

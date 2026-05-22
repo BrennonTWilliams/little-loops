@@ -208,7 +208,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 **Open** | Created: 2026-05-15 | Priority: P5
 
+## Verification Notes
+
+**Verdict**: NEEDS_UPDATE — Verified 2026-05-22
+
+- `config-schema.json` already has `"pi"` in `hooks.properties.host.enum` (`["claude-code", "codex", "opencode", "pi"]`) ✓
+- `scripts/little_loops/config/core.py` missing `PI_CONFIG_DIR` constant and `host == "pi"` branch — not yet implemented
+- Partial implementation: schema change landed, code changes (core.py + tests) remain outstanding
+
 ## Session Log
+- `/ll:verify-issues` - 2026-05-22T16:11:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
+- `/ll:verify-issues` - 2026-05-22T11:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
 - `/ll:manage-issue` - 2026-05-15T20:23:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a222200-0970-406f-ab67-4aaf8d296ca4.jsonl`

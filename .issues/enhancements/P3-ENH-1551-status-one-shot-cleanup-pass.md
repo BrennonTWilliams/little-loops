@@ -252,6 +252,7 @@ Implemented Option B (migration module pattern) as decided:
 - Verified: `grep -rn "^status: " .issues/` shows only 6 canonical values in frontmatter
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-22T16:11:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
 - `/ll:ready-issue` - 2026-05-17T09:19:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c04248b-cf40-48f6-8529-813d82ec8b61.jsonl`
 - `/ll:decide-issue` - 2026-05-17T09:14:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e6329ee2-2e87-4e97-85ea-e027a2f56866.jsonl`
 - `/ll:refine-issue` - 2026-05-17T09:03:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b593fc76-d9f5-4eba-b981-1fff01eee5e6.jsonl`
