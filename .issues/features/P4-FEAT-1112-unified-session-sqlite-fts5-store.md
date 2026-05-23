@@ -2,8 +2,9 @@
 id: FEAT-1112
 type: FEAT
 priority: P4
-status: in_progress
+status: done
 discovered_date: 2026-04-15
+completed_at: 2026-05-23T00:08:25Z
 discovered_by: capture-issue
 relates_to:
 - FEAT-1113
@@ -283,7 +284,7 @@ _Wiring pass 2 added by `/ll:wire-issue`:_
 
 ## Status
 
-**Open** | Created: 2026-04-15 | Priority: P4
+**Done** | Created: 2026-04-15 | Completed: 2026-05-23 | Priority: P4
 
 ## Confidence Check Notes
 
@@ -317,12 +318,10 @@ _Added 2026-05-22 by `/ll:manage-issue features fix FEAT-1112`._
 - Tests: `test_session_store.py`, `test_ll_session.py`,
   `test_transport.py::test_sqlite_registered_by_name`, `test_config_schema.py`.
 
-**Deferred → ENH-1621:** Step 6 / Acceptance Criterion 3 — migrating
-`main_history()` and `analyze_workflows()` to query the DB. The specified
-schema cannot reconstruct the rich `IssueInfo` / message-text inputs those
-CLIs consume; doing so safely needs a schema extension. Status stays
-`in_progress` until ENH-1621 lands. Plan:
-`thoughts/shared/plans/2026-05-22-FEAT-1112-management.md`.
+**Completed via ENH-1621 (2026-05-22):** Step 6 / Acceptance Criterion 3 —
+`main_history()` (summary subcommand) and `analyze_workflows()` now query the
+session DB. See commit `3fb84970`. All acceptance criteria satisfied; FEAT-1112
+closed 2026-05-23.
 
 ## Session Log
 - `/ll:ready-issue` - 2026-05-22T21:07:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2364d2da-6768-4e03-8b14-140e0435729f.jsonl`
