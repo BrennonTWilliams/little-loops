@@ -96,6 +96,51 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
     return result
 
 
+def parse_skill_frontmatter(text: str) -> dict[str, str]:
+    """Extract flat key/value pairs from SKILL.md frontmatter.
+
+    Uses ``yaml.safe_load`` so YAML block scalars (e.g. ``description: |``)
+    are resolved to their string content instead of the indicator literal.
+    Non-string scalar values are stringified; nested structures are dropped.
+
+    If the frontmatter is not valid YAML (e.g. unquoted colons in values),
+    falls back to a permissive line-based scan — top-level ``key: value``
+    pairs only, block scalars are not resolved in that path.
+
+    This is the canonical SKILL.md frontmatter parser. Prefer it over the
+    general ``parse_frontmatter`` for SKILL.md files: ``parse_frontmatter``
+    deliberately drops block scalars (logs a warning, sets value to
+    ``None``) which loses the description body for skills that use
+    ``description: |``.
+    """
+    if not text.startswith("---"):
+        return {}
+    end = text.find("---", 3)
+    if end == -1:
+        return {}
+    fm_text = text[3:end]
+    try:
+        loaded = yaml.safe_load(fm_text)
+    except yaml.YAMLError:
+        loaded = None
+    if isinstance(loaded, dict):
+        fm: dict[str, str] = {}
+        for key, value in loaded.items():
+            if value is None:
+                fm[str(key)] = ""
+            elif isinstance(value, str):
+                fm[str(key)] = value
+            elif isinstance(value, bool | int | float):
+                fm[str(key)] = str(value).lower() if isinstance(value, bool) else str(value)
+        return fm
+    fm = {}
+    for line in fm_text.splitlines():
+        if line and not line.startswith(" ") and not line.startswith("\t") and ":" in line:
+            key, _, val = line.partition(":")
+            fm[key.strip()] = val.strip()
+    return fm
+
+
 def strip_frontmatter(content: str) -> str:
     """Remove YAML frontmatter from content, returning the body.
 

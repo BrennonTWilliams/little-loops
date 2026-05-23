@@ -30,20 +30,14 @@ def _find_plugin_root() -> Path:
 
 def _read_skill_description(skill_md: Path) -> str:
     """Extract description from SKILL.md YAML frontmatter."""
+    from little_loops.frontmatter import parse_skill_frontmatter
+
     try:
         content = skill_md.read_text()
     except OSError:
         return ""
-    if not content.startswith("---"):
-        return ""
-    end = content.find("---", 3)
-    if end == -1:
-        return ""
-    frontmatter = content[3:end]
-    for line in frontmatter.splitlines():
-        if line.startswith("description:"):
-            return line[len("description:") :].strip().strip('"').strip("'")
-    return ""
+    fm = parse_skill_frontmatter(content)
+    return fm.get("description", "").strip().strip('"').strip("'")
 
 
 def _load_skills() -> list[dict[str, str]]:

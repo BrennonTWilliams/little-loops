@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from little_loops.frontmatter import parse_frontmatter, strip_frontmatter, update_frontmatter
+from little_loops.frontmatter import (
+    parse_frontmatter,
+    parse_skill_frontmatter,
+    strip_frontmatter,
+    update_frontmatter,
+)
 
 
 class TestParseFrontmatter:
@@ -176,6 +181,55 @@ class TestParseFrontmatter:
             result = parse_frontmatter(content)
         assert result == {"key": "value"}
         assert "Unsupported YAML list syntax" in caplog.text
+
+
+class TestParseSkillFrontmatter:
+    """Tests for parse_skill_frontmatter — the SKILL.md-specific helper."""
+
+    def test_no_frontmatter_returns_empty(self) -> None:
+        assert parse_skill_frontmatter("# No frontmatter") == {}
+
+    def test_missing_closing_delimiter_returns_empty(self) -> None:
+        assert parse_skill_frontmatter("---\nkey: value\n# missing close\n") == {}
+
+    def test_parses_simple_key_value_pairs(self) -> None:
+        text = "---\nname: foo\ndescription: bar\n---\n# Body"
+        fm = parse_skill_frontmatter(text)
+        assert fm["name"] == "foo"
+        assert fm["description"] == "bar"
+
+    def test_resolves_block_scalar_pipe(self) -> None:
+        """``description: |`` is resolved to its body string, not the literal ``|``."""
+        text = (
+            "---\n"
+            "description: |\n"
+            "  Use when user does X.\n"
+            "  Trigger keywords: foo, bar\n"
+            "---\n"
+            "# Body\n"
+        )
+        fm = parse_skill_frontmatter(text)
+        assert fm["description"] != "|"
+        assert "Use when user does X." in fm["description"]
+        assert "Trigger keywords: foo, bar" in fm["description"]
+
+    def test_stringifies_bool_values(self) -> None:
+        text = "---\ndisable-model-invocation: true\nname: foo\n---\n"
+        fm = parse_skill_frontmatter(text)
+        assert fm["disable-model-invocation"] == "true"
+
+    def test_falls_back_to_line_scan_on_invalid_yaml(self) -> None:
+        """Unquoted colon in value breaks yaml.safe_load — line-scan fallback kicks in."""
+        text = "---\nname: manage-issue\ndescription: Use when: doing things\n---\n# Body"
+        fm = parse_skill_frontmatter(text)
+        # Fallback parses top-level key: value pairs; value is whatever follows the first colon.
+        assert fm["name"] == "manage-issue"
+        assert "description" in fm
+
+    def test_none_value_stringified_to_empty(self) -> None:
+        text = "---\nname: foo\ndescription:\n---\n"
+        fm = parse_skill_frontmatter(text)
+        assert fm["description"] == ""
 
 
 class TestStripFrontmatter:

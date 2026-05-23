@@ -4962,6 +4962,7 @@ Shared YAML-subset frontmatter read/write utilities used by issue_parser, sync, 
 | Function | Purpose |
 |----------|---------|
 | `parse_frontmatter` | Extract YAML frontmatter from file content |
+| `parse_skill_frontmatter` | Extract flat key/value pairs from SKILL.md frontmatter, resolving block scalars |
 | `strip_frontmatter` | Remove YAML frontmatter block, returning the body |
 | `update_frontmatter` | Merge updates into (or create) the YAML frontmatter block |
 
@@ -4988,6 +4989,30 @@ from little_loops.frontmatter import parse_frontmatter
 content = "---\npriority: P1\ngithub_issue: 42\n---\n# Title"
 meta = parse_frontmatter(content, coerce_types=True)
 print(meta)  # {"priority": "P1", "github_issue": 42}
+```
+
+### parse_skill_frontmatter
+
+```python
+def parse_skill_frontmatter(text: str) -> dict[str, str]
+```
+
+Extract flat `key: value` pairs from SKILL.md frontmatter. Uses `yaml.safe_load` so YAML block scalars (e.g. `description: |`) are resolved to their string content instead of the indicator literal `"|"`. Non-string scalar values are stringified; nested structures are dropped. Falls back to a permissive line-based scan if the frontmatter is not valid YAML (e.g. unquoted colons in values).
+
+Prefer this over `parse_frontmatter` for SKILL.md files: `parse_frontmatter` deliberately drops block scalars (logs a warning and sets the value to `None`), which loses the description body for skills that use `description: |`.
+
+**Parameters:**
+- `text` - Full SKILL.md file content (including the `---` delimited frontmatter block).
+
+**Returns:** Dictionary mapping frontmatter keys to stringified values, or empty dict if no frontmatter found.
+
+**Example:**
+```python
+from little_loops.frontmatter import parse_skill_frontmatter
+
+content = "---\ndescription: |\n  Use when user does X.\n  Trigger keywords: foo\n---\n# Body"
+fm = parse_skill_frontmatter(content)
+print(fm["description"])  # "Use when user does X.\nTrigger keywords: foo\n"
 ```
 
 ### update_frontmatter

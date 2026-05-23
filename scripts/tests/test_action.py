@@ -99,6 +99,22 @@ class TestReadSkillDescription:
         skill_md = tmp_path / "nonexistent.md"
         assert _read_skill_description(skill_md) == ""
 
+    def test_resolves_block_scalar_description(self, tmp_path: Path) -> None:
+        """Block-scalar ``description: |`` is resolved to its body, not the literal ``|`` (BUG-1627)."""
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text(
+            "---\n"
+            "description: |\n"
+            "  Use when user does X.\n"
+            "  Trigger keywords: foo, bar\n"
+            "---\n"
+            "# Body\n"
+        )
+        desc = _read_skill_description(skill_md)
+        assert desc != "|"  # regression guard: old parser returned literal "|"
+        assert "Use when user does X." in desc
+        assert "Trigger keywords: foo, bar" in desc
+
 
 # =============================================================================
 # _load_skills

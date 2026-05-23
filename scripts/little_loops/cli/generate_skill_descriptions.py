@@ -27,19 +27,20 @@ def _find_plugin_root() -> Path:
 
 
 def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
-    """Return (frontmatter_keys, body_text) from a SKILL.md string."""
+    """Return (frontmatter_keys, body_text) from a SKILL.md string.
+
+    Thin wrapper around ``little_loops.frontmatter.parse_skill_frontmatter``
+    that preserves the historical ``(fm, body)`` tuple return shape.
+    """
+    from little_loops.frontmatter import parse_skill_frontmatter
+
     if not text.startswith("---"):
         return {}, text
     end = text.find("---", 3)
     if end == -1:
         return {}, text
-    raw = text[3:end]
     body = text[end + 3 :].lstrip("\n")
-    fm: dict[str, str] = {}
-    for line in raw.splitlines():
-        if ":" in line:
-            key, _, val = line.partition(":")
-            fm[key.strip()] = val.strip()
+    fm = parse_skill_frontmatter(text)
     return fm, body
 
 

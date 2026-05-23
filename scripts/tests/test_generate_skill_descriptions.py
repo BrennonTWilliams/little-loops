@@ -60,6 +60,22 @@ class TestParseFrontmatter:
         fm, _ = _parse_frontmatter(text)
         assert fm["disable-model-invocation"] == "true"
 
+    def test_resolves_block_scalar_description(self) -> None:
+        """``description: |`` is resolved to its body so trigger keywords are preserved (BUG-1627)."""
+        text = (
+            "---\n"
+            "description: |\n"
+            '  Use when user does X.\n'
+            '  Trigger keywords: "foo", "bar"\n'
+            "---\n"
+            "# Body\n"
+        )
+        fm, _ = _parse_frontmatter(text)
+        assert fm["description"] != "|"  # regression guard
+        assert "Trigger keywords" in fm["description"]
+        # And downstream _extract_trigger_keywords must now find the line.
+        assert "foo" in _extract_trigger_keywords(fm["description"])
+
 
 # =============================================================================
 # _extract_trigger_keywords
