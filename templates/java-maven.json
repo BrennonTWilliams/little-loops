@@ -60,6 +60,9 @@
   "product": {
     "enabled": false
   },
+  "analytics": {
+    "enabled": false
+  },
   "context_monitor": {
     "enabled": true
   }

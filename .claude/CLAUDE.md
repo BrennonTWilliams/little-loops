@@ -133,6 +133,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter (`name:`, `metadata.short-description:`, `agents/openai.yaml`) to all `skills/*/SKILL.md` files, and bridge every `commands/*.md` into a `skills/ll-<name>/` Codex-discoverable entry
 - `ll-adapt-agents-for-codex` - Generate `.codex/agents/*.toml` from `agents/*.md` so Codex CLI can use ll agents via `--agent <name>`
 - `ll-doctor` - Check host CLI capability support for little-loops features
+- `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings from `.ll/session.db`)
 
 Install: `pip install -e "./scripts[dev]"`
 

@@ -24,6 +24,7 @@ Provides command-line interfaces for automated issue management:
 - ll-migrate-labels: Migrate freeform ## Labels body sections to labels: frontmatter
 - ll-migrate-status: Normalize non-canonical status: values to canonical ones (one-time, ENH-1551)
 - ll-create-extension: Scaffold a new little-loops extension project
+- ll-ctx-stats: Show context-window analytics for the current project
 - ll-generate-schemas: Generate JSON Schema files for all LLEvent types (internal: dev tooling)
 - ll-generate-skill-descriptions: Auto-generate ≤100-char skill descriptions via Claude CLI
 - ll-learning-tests: Query and manage the learning test registry

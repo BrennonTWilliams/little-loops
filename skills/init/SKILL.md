@@ -518,6 +518,7 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
      "Bash(ll-logs:*)",
      "Bash(ll-session:*)",
      "Bash(ll-doctor:*)",
+     "Bash(ll-ctx-stats:*)",
      "Bash(ll-adapt-skills-for-codex:*)",
      "Bash(ll-adapt-agents-for-codex:*)",
      "Write(.ll/ll-continue-prompt.md)"
@@ -584,6 +585,7 @@ If user opted in:
    - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale)
    - `ll-logs` - Discover and extract ll-relevant log entries from Claude project logs
    - `ll-doctor` - Check host CLI capability support for little-loops features
+   - `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings)
    - `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter to skills and bridge commands for Codex discovery
    - `ll-adapt-agents-for-codex` - Generate `.codex/agents/*.toml` from `agents/*.md` for Codex agent-select support
 
@@ -616,6 +618,7 @@ If user opted in:
    - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale)
    - `ll-logs` - Discover and extract ll-relevant log entries from Claude project logs
    - `ll-doctor` - Check host CLI capability support for little-loops features
+   - `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings)
    - `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter to skills and bridge commands for Codex discovery
    - `ll-adapt-agents-for-codex` - Generate `.codex/agents/*.toml` from `agents/*.md` for Codex agent-select support
 

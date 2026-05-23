@@ -189,6 +189,7 @@ little-loops/
         │   ├── generate_skill_descriptions.py  # ll-generate-skill-descriptions release utility
         │   ├── auto.py
         │   ├── create_extension.py  # ll-create-extension scaffold CLI
+        │   ├── ctx_stats.py     # ll-ctx-stats context-window analytics CLI
         │   ├── doctor.py
         │   ├── docs.py
         │   ├── deps.py

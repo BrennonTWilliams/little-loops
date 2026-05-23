@@ -3406,6 +3406,24 @@ Entry point for `ll-learning-tests` command. Query and manage the learning test 
 
 ---
 
+### main_ctx_stats
+
+```python
+def main_ctx_stats() -> int
+```
+
+Entry point for `ll-ctx-stats` command. Show context-window analytics for the current project (FEAT-1160). Reads per-tool byte metrics that the `post_tool_use` hook persists into `.ll/session.db` (FEAT-1623) and renders a compact summary of how much data was processed by tools vs. how much actually entered the conversation context. Falls back to `.ll/ll-context-state.json` (token estimates) when the SQLite store is absent.
+
+**Returns:** 0 when a report was rendered (data present or fallback used), 1 when no data found in either the SQLite store or the fallback file.
+
+**Flags:**
+- `--db PATH` — Use a non-default session database (default `.ll/session.db`)
+- `--json` — Emit the report as JSON instead of the human-readable summary
+
+Enable per-tool byte tracking by setting `"analytics": {"enabled": true}` in `.ll/ll-config.json`. The `post_tool_use` hook reads this gate and no-ops when disabled or absent.
+
+---
+
 ## little_loops.workflow_sequence
 
 Step 2 of a 3-step workflow analysis pipeline. Analyzes user message patterns to identify multi-step workflows, link related sessions, and detect workflow boundaries.
