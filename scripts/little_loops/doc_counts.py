@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import yaml
+
 _DEFAULT_BUDGET_TOKENS = 2000
 _DEFAULT_PER_SKILL_WARN_TOKENS = 200
 
@@ -266,15 +268,39 @@ class SkillBudgetResult:
 
 
 def _parse_skill_frontmatter(text: str) -> dict[str, str]:
-    """Extract flat key/value pairs from SKILL.md frontmatter."""
+    """Extract flat key/value pairs from SKILL.md frontmatter.
+
+    Uses yaml.safe_load so YAML block scalars (e.g. ``description: |``)
+    are resolved to their string content instead of the indicator literal.
+    Non-string scalar values are stringified; nested structures are dropped.
+
+    If the frontmatter is not valid YAML (e.g. unquoted colons in values),
+    falls back to a permissive line-based scan that mirrors the historical
+    behaviour — top-level ``key: value`` pairs, block scalars not supported.
+    """
     if not text.startswith("---"):
         return {}
     end = text.find("---", 3)
     if end == -1:
         return {}
-    fm: dict[str, str] = {}
-    for line in text[3:end].splitlines():
-        if ":" in line:
+    fm_text = text[3:end]
+    try:
+        loaded = yaml.safe_load(fm_text)
+    except yaml.YAMLError:
+        loaded = None
+    if isinstance(loaded, dict):
+        fm: dict[str, str] = {}
+        for key, value in loaded.items():
+            if value is None:
+                fm[str(key)] = ""
+            elif isinstance(value, str):
+                fm[str(key)] = value
+            elif isinstance(value, bool | int | float):
+                fm[str(key)] = str(value).lower() if isinstance(value, bool) else str(value)
+        return fm
+    fm = {}
+    for line in fm_text.splitlines():
+        if line and not line.startswith(" ") and not line.startswith("\t") and ":" in line:
             key, _, val = line.partition(":")
             fm[key.strip()] = val.strip()
     return fm

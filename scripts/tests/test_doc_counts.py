@@ -581,3 +581,26 @@ class TestCheckSkillBudget:
         result = check_skill_budget(base_dir=tmp_path)
         assert result.total_tokens == 0
         assert result.under_budget is True
+
+    def test_block_scalar_description_parsed_correctly(self, tmp_path: Path) -> None:
+        """Block-scalar `description: |` is resolved to its string content, not '|'."""
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        skill_dir = skills_dir / "block-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            "---\n"
+            "description: |\n"
+            "  Real multi-line content here\n"
+            "  Trigger keywords: foo\n"
+            "---\n"
+            "# block-skill\n"
+        )
+
+        result: SkillBudgetResult = check_skill_budget(base_dir=tmp_path)
+
+        assert len(result.skill_breakdown) == 1
+        _, desc, tokens = result.skill_breakdown[0]
+        assert desc != "|"  # regression guard: old parser returned literal "|"
+        assert "Real multi-line content" in desc
+        assert tokens > 0
