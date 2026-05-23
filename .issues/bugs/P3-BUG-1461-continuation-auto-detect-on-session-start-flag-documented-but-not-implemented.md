@@ -3,6 +3,7 @@ id: BUG-1461
 type: BUG
 priority: P3
 status: open
+testable: false
 discovered_date: 2026-05-14
 discovered_by: verify-issues
 relates_to: [FEAT-948]
@@ -21,6 +22,19 @@ The `continuation.auto_detect_on_session_start` boolean is documented in `docs/g
 - `docs/guides/SESSION_HANDOFF.md:292,314,331` documents the on/off behavior and states: "When `continuation.auto_detect_on_session_start` is `true` (the default), little-loops checks for an existing `.ll/ll-continue-prompt.md` at the beginning of each session."
 - A grep across `scripts/`, `hooks/`, and `commands/` for `auto_detect_on_session_start` finds **only** the schema and doc references — no implementation reads the flag.
 
+## Steps to Reproduce
+
+1. In a little-loops project, set `continuation.auto_detect_on_session_start: false` in `.ll/ll-config.json`.
+2. Drop a `.ll/ll-continue-prompt.md` file into the project to simulate a pending continuation prompt.
+3. Start a new Claude Code session in the project.
+4. Observe: the continuation-detection behavior is unchanged by the flag — code never reads it, so toggling the value has no effect.
+
+## Root Cause
+
+- **File**: `scripts/little_loops/hooks/session_start.py` (and any other SessionStart handler)
+- **Anchor**: no reader exists — grep for `auto_detect_on_session_start` returns 0 hits outside `config-schema.json` and the two docs files.
+- **Cause**: The flag was added to the schema and documented in advance of (or in parallel with) the SessionStart inject feature work tracked under FEAT-1315/1316/1317, but the corresponding handler code to consult the flag was never wired up. The continuation-detection feature itself is also not implemented today, so the gap went unnoticed until `/ll:verify-issues` cross-checked schema/docs against code.
+
 ## Expected Behavior
 
 Either:
@@ -29,6 +43,38 @@ Either:
 2. **Remove the documentation**: delete the flag from `config-schema.json`, both docs files, and the example configs, since it does nothing today.
 
 Option 2 is likely the right move if the SessionStart inject feature stays deferred (FEAT-1315 was deferred by the same verify pass that found this).
+
+## Motivation
+
+Users who read the docs and try to disable continuation auto-detection by setting `continuation.auto_detect_on_session_start: false` get no behavior change, eroding trust in the documented configuration surface. Cleaning this up — by either implementing the flag or removing it — keeps `config-schema.json` and the docs honest about what little-loops actually does, which matters more than the flag itself given the underlying feature is deferred.
+
+## Integration Map
+
+### Files to Modify (Option 2 — remove)
+- `config-schema.json` — drop the `continuation.auto_detect_on_session_start` property.
+- `docs/reference/CONFIGURATION.md` — remove references at lines 116 and 396.
+- `docs/guides/SESSION_HANDOFF.md` — remove references at lines 292, 314, 331.
+- `templates/*/ll-config.json` (if any reference the flag in example configs).
+
+### Files to Modify (Option 1 — implement)
+- `scripts/little_loops/hooks/session_start.py` — read the flag and gate the continuation-detection notice on it.
+- `config-schema.json` — keep as-is (already declared).
+
+### Dependent Files (Callers/Importers)
+- N/A — no current readers of this flag (that's the bug).
+
+### Similar Patterns
+- Other `continuation.*` settings under `config-schema.json:552` — check whether they are wired up before assuming this is an isolated oversight.
+
+### Tests
+- Option 1: add a test in `scripts/tests/hooks/` asserting the SessionStart handler suppresses the continuation-detection notice when the flag is `false`.
+- Option 2: no tests needed (text-only change); `ll-verify-docs` should pass afterward.
+
+### Documentation
+- `docs/reference/CONFIGURATION.md`, `docs/guides/SESSION_HANDOFF.md` (see above).
+
+### Configuration
+- `.ll/ll-config.json` example snippets in templates (if present).
 
 ## Source
 
@@ -50,7 +96,9 @@ Discovered during `/ll:verify-issues` on 2026-05-14 while verifying the FEAT-131
 
 `bug`, `documentation`, `hooks`, `verify-issues`
 
+**Open** | Created: 2026-05-14 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-23T16:51:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a9c6d1a1-0ff3-429d-82ba-98b024c1337c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-14T21:23:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75505ad4-6733-4424-b334-3143f412786b.jsonl`
 - `/ll:verify-issues` - 2026-05-14T20:42:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
