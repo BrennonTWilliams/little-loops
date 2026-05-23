@@ -2,7 +2,8 @@
 id: FEAT-1160
 type: FEAT
 priority: P4
-status: open
+status: done
+size: Very Large
 discovered_date: 2026-04-18
 discovered_by: capture-issue
 blocked_by: []
@@ -12,13 +13,13 @@ relates_to:
 - FEAT-1159
 - FEAT-1112
 - ENH-1114
-confidence_score: 85
-outcome_confidence: 68
-score_complexity: 14
+confidence_score: 95
+outcome_confidence: 69
+score_complexity: 13
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 20
 score_change_surface: 18
-missing_artifacts: true
+missing_artifacts: false
 decision_needed: false
 ---
 
@@ -150,7 +151,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_hook_post_tool_use.py` — **will break**: `TestPostToolUseBaseline.test_empty_payload_returns_pass` and `test_arbitrary_payload_returns_pass` both assert `result.stdout is None` and `not result.data`; these will fail when `handle()` becomes non-no-op; must update assertions and add `TestPostToolUseWithSessionStore` class covering: successful SQLite write with valid payload, graceful fallback when store is absent/locked, byte fields extracted from `event.payload`
 - `scripts/tests/test_hook_intents.py` — **will break**: `TestHooksMainModule.test_dispatch_post_tool_use_happy_path` (line 319) asserts `result.stdout == ""` and `result.stderr == ""`; the subprocess assertion will fail once `handle()` emits any output; update to assert the new feedback content or structure
-- `scripts/tests/test_feat1504_doc_wiring.py` — **will break**: `TestConfigureAreasWiring.test_authorize_all_count_is_24` hard-codes `"Authorize all 24"` as the assertion string against `skills/configure/areas.md`; must be updated to `"Authorize all 25"` when `ll-ctx-stats` is added to that file
+- `scripts/tests/test_feat1504_doc_wiring.py` — **will break**: `TestConfigureAreasWiring.test_authorize_all_count_is_25` (renamed; line 47) hard-codes `"Authorize all 25"` as the assertion string against `skills/configure/areas.md`; both the test method name and the assertion string must be updated to `26` when `ll-ctx-stats` is added (method renames in this file follow the count-bump convention — see prior `_count_is_24` → `_count_is_25` rename)
+
+_Wiring pass (3rd) added by `/ll:wire-issue` 2026-05-22:_
+- `scripts/tests/test_ll_logs_wiring.py` — **will break**: `TestConfigureAreasWiring.test_authorize_all_count_is_25` (line 43) also hard-codes `"Authorize all 25"` assertion against `skills/configure/areas.md`; must update to `26` in the same pass as `test_feat1504_doc_wiring.py` — this second occurrence was not identified in prior wiring passes [Agent 3 finding]
+- `scripts/tests/test_config_schema.py` — new `test_analytics_in_schema` method needed: asserts `"analytics" in data["properties"]` with `enabled` sub-property; follow `TestConfigSchema.test_learning_tests_in_schema` (line 120) pattern — required because `config-schema.json` uses `additionalProperties: false` [Agent 3 finding]
+- `scripts/tests/test_session_store.py` — new `TestToolEventsByteColumns` class: verify `bytes_in`/`bytes_out`/`cache_hit` are populated when `post_tool_use` handler fires; follow `TestBackfill.test_backfill_tool_events_from_jsonl` + `test_tool_events_reserves_feat1160_columns` pattern [Agent 3 finding]
 
 ### Documentation
 - `docs/reference/CLI.md` — add `ll-ctx-stats` entry describing flags and output format
@@ -158,13 +164,20 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `.claude/CLAUDE.md` — **CLI Tools** section lists every `ll-` tool by name; add `ll-ctx-stats` entry to keep the list authoritative
-- `README.md` — two occurrences of `27 typed CLI tools` / `27 CLI tools` (lines 46 and 166) must be updated to `28`
+- `README.md` — two occurrences of `28 typed CLI tools` / `28 CLI tools` (lines 46 and 166) must be incremented to `29` (counts re-verified 2026-05-22 — other recent work has already bumped these from the previously documented `27 → 28`)
 - `CONTRIBUTING.md` — package structure tree (~line 188) explicitly lists individual `cli/*.py` files (e.g. `doctor.py`, `deps.py`); add `ctx_stats.py` to keep it consistent
 - `scripts/little_loops/cli/__init__.py` — module-level docstring (lines 1–30) is a hand-maintained list of all tools with one-line descriptions; add `ll-ctx-stats` bullet to match the other entries
-- `commands/help.md` — CLI TOOLS block (~line 264) maintains a hand-enumerated table of `ll-*` commands with one-line descriptions; add `ll-ctx-stats` entry; `test_feat1504_doc_wiring.py` establishes the precedent that a parallel wiring test should verify presence here
-- `skills/configure/areas.md` — line 823 contains `"Authorize all 24 ll- CLI tools"` plus an inline exhaustive list of all tool names; update count to `25` and add `ll-ctx-stats` to the inline list
+- `commands/help.md` — CLI TOOLS block (begins at line 239, runs through ~line 268) maintains a hand-enumerated table of `ll-*` commands with one-line descriptions; add `ll-ctx-stats` entry; `test_feat1504_doc_wiring.py` establishes the precedent that a parallel wiring test should verify presence here
+- `skills/configure/areas.md` — line 823 contains `"Authorize all 25 ll- CLI tools"` plus an inline exhaustive list of all tool names; increment count to `26` and add `ll-ctx-stats` to the inline list (count re-verified 2026-05-22 — already bumped from `24 → 25` by other recent work)
 - `skills/init/SKILL.md` — two blocks (lines ~502–522 and ~583–619) contain hard-coded `Bash(ll-*:*)` allow-list entries; both end with `Bash(ll-doctor:*)` as the last entry; add `"Bash(ll-ctx-stats:*)"` and a narrative list entry to both blocks
 - `docs/development/TROUBLESHOOTING.md` — **review needed**: document mentions the hook dispatch mechanism; if any section describes `post_tool_use` as a no-op, update prose to reflect the new byte-tracking behavior
+
+_Wiring pass (3rd) added by `/ll:wire-issue` 2026-05-22:_
+- `hooks/adapters/codex/post-tool-use.sh` — lines 7 and 12 contain inline comments describing the handler as "a no-op" and claiming "≤200ms p95" based on no-op behavior; update both when `handle()` becomes non-no-op [Agent 2 finding]
+- `hooks/adapters/opencode/index.ts` — line 75 comment "the handler is a no-op baseline today" — update when handler becomes active [Agent 2 finding]
+- `hooks/adapters/codex/README.md` — line 84 "A no-op handler that returns in ≪200ms p95" — p95 claim based on no-op speed; update latency characterization [Agent 2 finding]
+- `hooks/adapters/opencode/README.md` — lines 46–49 and 111 describe "observational-only semantics" and zero observable output; update when handler writes to SQLite [Agent 2 finding]
+- `docs/reference/HOST_COMPATIBILITY.md` — footnote `[^hot]` (lines 32–40) — "fire-and-forget is achieved through handler speed (no-op p95 well below the timeout)"; update latency characterization after SQLite writes are added [Agent 2 finding]
 
 ### Configuration
 - `.ll/ll-config.json` — may need `analytics.enabled` flag
@@ -173,8 +186,26 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `config-schema.json` — schema uses `"additionalProperties": false` at the top level; if `analytics.enabled` is implemented, a new `"analytics"` property block must be added to the top-level `properties` object or config validation will reject it; coordinate with `ll-config.json` default value
 - `templates/generic.json`, `templates/python-generic.json` (and all other project-type templates) — all templates reference `config-schema.json` via `"$schema"`; if `analytics.enabled` is added to the schema, add `"analytics": {"enabled": false}` to each template for consistency; pattern reference: `"context_monitor": {"enabled": true}` in existing templates
 
+_Wiring pass (3rd) added by `/ll:wire-issue` 2026-05-22 — explicit template enumeration (all 9 project templates confirmed via Agent 1):_
+- `templates/javascript.json` — add `"analytics": {"enabled": false}` beside `context_monitor`
+- `templates/typescript.json` — add `"analytics": {"enabled": false}` beside `context_monitor`
+- `templates/go.json` — add `"analytics": {"enabled": false}` beside `context_monitor`
+- `templates/java-maven.json` — add `"analytics": {"enabled": false}` beside `context_monitor`
+- `templates/java-gradle.json` — add `"analytics": {"enabled": false}` beside `context_monitor`
+- `templates/rust.json` — add `"analytics": {"enabled": false}` beside `context_monitor`
+- `templates/dotnet.json` — add `"analytics": {"enabled": false}` beside `context_monitor`
+
 _Clarification added by `/ll:refine-issue` 2026-05-22:_
 - The `analytics.enabled` flag governs the `post_tool_use.py` byte-tracking hook extension (step 2), **not** the `ll-ctx-stats` CLI command itself (which is already opt-in by invocation). Follow the `context_monitor.enabled` guard pattern in `hooks/scripts/context-monitor.sh` (line ~19: `ll_feature_enabled "context_monitor.enabled"`) — add an analogous guard in `post_tool_use.py::handle()` that skips SQLite writes when `analytics.enabled: false`. Recommendation: **include the flag** — it gives users a way to disable byte tracking if the SQLite write adds latency without requiring hook removal. The flag addition to `config-schema.json` is then a required step, not optional, making implementation step 9 unconditional.
+
+_State re-verification added by `/ll:refine-issue` 2026-05-22 (post-FEAT-1112 landing):_
+- **VERIFIED**: `scripts/little_loops/session_store.py:513-514` INSERT statement already binds `result_size, bytes_in, bytes_out, cache_hit)` — the migration step is fully in place; Implementation Step 1 reduces to verifying the column types match the analytics computation needs (no further migration work expected).
+- **VERIFIED**: `scripts/little_loops/hooks/post_tool_use.py` is still the 24-line no-op (`return LLHookResult(exit_code=0)`); the handler docstring at lines 1-14 explicitly cites FEAT-1489 as the wiring point and identifies "audit logging, token budgeting, rate-limit enforcement" as the intended future consumers — this issue is one of those consumers, so the implementation should preserve the docstring's framing.
+- **VERIFIED**: `scripts/little_loops/cli/output.py::terminal_width()` (line 16) and `format_relative_time()` (line 109) both exist as documented.
+- **VERIFIED**: `scripts/little_loops/cli/doctor.py` is 108 lines (matches the "~109-line" claim) and confirms the argparse + Logger + `main_doctor() -> int` pattern is current.
+- **VERIFIED**: `scripts/tests/test_hook_post_tool_use.py:24-35` `TestPostToolUseBaseline.test_empty_payload_returns_pass` and `test_arbitrary_payload_returns_pass` exist; their assertions will indeed break when `handle()` becomes non-no-op.
+- **VERIFIED**: `scripts/tests/test_hook_intents.py:342` asserts `result.stdout == ""` inside `test_dispatch_post_tool_use_happy_path` (declared at line 319).
+- **DEPENDENCY REASSESSMENT — ENH-1114**: The earlier confidence-check note characterizes ENH-1114 as "FTS5 intent-ranking indexing" but the current ENH-1114 title is "Intent Parameter for Large ll-* CLI Outputs" (`.issues/enhancements/P4-ENH-1114-intent-parameter-for-large-ll-outputs.md`) — it adds an `--intent <query>` parameter to `ll-history`/`ll-deps`/`ll-scan-*`/`ll-workflows` for filtered output, **not** schema changes to `tool_events`. The historical concern about `tool_events` migration collisions no longer applies. Recommendation: re-evaluate `depends_on: [ENH-1114]` — likely safe to drop, since FEAT-1112's columns are already merged and ENH-1114 touches CLI argument handling rather than the session store schema.
 
 ## Implementation Steps
 
@@ -192,11 +223,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 6. Update `scripts/tests/test_hook_post_tool_use.py` — adapt `TestPostToolUseBaseline.test_empty_payload_returns_pass` and `test_arbitrary_payload_returns_pass` to reflect new handler behavior (drop `result.stdout is None` / `not result.data` assertions); add `TestPostToolUseWithSessionStore` class covering successful SQLite write, graceful fallback when store absent/locked, and byte field extraction from `event.payload`
 7. Update `scripts/tests/test_hook_intents.py` — revise `TestHooksMainModule.test_dispatch_post_tool_use_happy_path` (line 319) to assert the new stdout content instead of `result.stdout == ""`
-8. Update docs: add `ll-ctx-stats` to `.claude/CLAUDE.md` CLI Tools list; update `README.md` CLI count (27 → 28, two occurrences); add `ctx_stats.py` to `CONTRIBUTING.md` package structure tree; add `ll-ctx-stats` bullet to `scripts/little_loops/cli/__init__.py` module docstring
+8. Update docs: add `ll-ctx-stats` to `.claude/CLAUDE.md` CLI Tools list; update `README.md` CLI count (28 → 29, two occurrences); add `ctx_stats.py` to `CONTRIBUTING.md` package structure tree; add `ll-ctx-stats` bullet to `scripts/little_loops/cli/__init__.py` module docstring
 9. If `analytics.enabled` flag is implemented: add `"analytics"` property block to `config-schema.json` top-level `"properties"` (required — schema uses `"additionalProperties": false`); also add `"analytics": {"enabled": false}` default to each `templates/*.json` file
-10. Update `commands/help.md` — add `ll-ctx-stats` entry to the CLI TOOLS block (~line 264)
-11. Update `skills/configure/areas.md` — change `"Authorize all 24 ll- CLI tools"` to `25` and add `ll-ctx-stats` to the inline tool list (line 823); update `scripts/tests/test_feat1504_doc_wiring.py::TestConfigureAreasWiring.test_authorize_all_count_is_24` assertion to match the new count
+10. Update `commands/help.md` — add `ll-ctx-stats` entry to the CLI TOOLS block (begins line 239)
+11. Update `skills/configure/areas.md` — change `"Authorize all 25 ll- CLI tools"` to `26` and add `ll-ctx-stats` to the inline tool list (line 823); rename `scripts/tests/test_feat1504_doc_wiring.py::TestConfigureAreasWiring.test_authorize_all_count_is_25` (line 47) to `_count_is_26` and update the assertion string accordingly
 12. Update `skills/init/SKILL.md` — add `"Bash(ll-ctx-stats:*)"` to both Bash allow-list JSON array blocks (~lines 502–522 and 583–619) and to both narrative description lists
+13. Update adapter no-op language — in the same commit as Step 2 (hook change): update `hooks/adapters/codex/post-tool-use.sh` (lines 7, 12), `hooks/adapters/opencode/index.ts` (line 75), `hooks/adapters/codex/README.md` (line 84), `hooks/adapters/opencode/README.md` (lines 46–49, 111), and `docs/reference/HOST_COMPATIBILITY.md` footnote `[^hot]` (lines 32–40) — replace "no-op" and "no-op p95" language with accurate latency characterization for SQLite-writing handler
+14. In same pass as Step 11 (areas.md count bump): update `scripts/tests/test_ll_logs_wiring.py::TestConfigureAreasWiring.test_authorize_all_count_is_25` (line 43) to `_count_is_26` — second test file with the same hardcoded count assertion (parallel to `test_feat1504_doc_wiring.py` Step 11 update)
+15. Add `test_config_schema.py::test_analytics_in_schema` and `test_session_store.py::TestToolEventsByteColumns` — write alongside Step 5 tests; follow `TestConfigSchema.test_learning_tests_in_schema` and `TestBackfill.test_backfill_tool_events_from_jsonl` patterns respectively
+16. Step 9 template pass covers all 9 project templates explicitly: `generic.json`, `python-generic.json`, `javascript.json`, `typescript.json`, `go.json`, `java-maven.json`, `java-gradle.json`, `rust.json`, `dotnet.json`
 
 ## Impact
 - **Priority**: P4 - Nice-to-have visibility feature; no current blocker
@@ -212,21 +247,37 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-05-22 (re-run after wire-issue + refine-issue)_
+_Updated by `/ll:confidence-check` on 2026-05-22_
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 68/100 → MODERATE
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 69/100 → MODERATE
 
 ### Concerns
-- **FEAT-1112 still open**: `scripts/little_loops/session_store.py` does not exist. The SQLite schema extension (step 1), `post_tool_use.py` byte write (step 2), and `ctx_stats.py` queries (step 3) all depend on it. Development can proceed against a stub, but full integration is blocked until FEAT-1112 ships.
-- **ENH-1114 still open**: Must coordinate `tool_events` column additions sequentially to avoid collision with ENH-1114's FTS5 indexing additions.
-- **analytics.enabled unresolved**: Implementation Step 9 is conditional — the config flag and `config-schema.json` `"analytics"` property block are either both added or both skipped; decide before touching `config-schema.json` (it uses `"additionalProperties": false`).
+- **ENH-1114 still in `depends_on`**: Open P4 issue that adds `--intent` to CLI tools — no schema changes to `tool_events`. Collision risk is moot since FEAT-1112 already shipped the byte columns. Drop from `depends_on` frontmatter before starting.
+- **`cache_hit` not populated by current hook payload**: Hosts don't emit a `cache_hit` field today. The "prompt cache metrics" AC will report 0 hits until the host wires this through — expected initial behavior, not a bug.
 
 ### Outcome Risk Factors
-- **Missing prerequisite**: `scripts/little_loops/session_store.py` does not exist — implement FEAT-1112 first or stub the interface; this is the primary SQLite data source for all queries in `ctx_stats.py`.
-- **Broad change surface**: 13 distinct sites including 2 breaking test files (`test_hook_post_tool_use.py` and `test_hook_intents.py` line 319) — implement test updates for `post_tool_use` alongside the hook change to avoid a broken-test window between steps 2 and 6.
+- **Broad enumeration across 27+ sites** — after the 3rd wiring pass, ~17 are mechanical doc/template edits and ~10 are code changes. Pattern B fanout with no explicit verification grep for `ll-ctx-stats` completeness. Add a wiring test similar to `test_feat1504_doc_wiring.py`.
+- **Two breaking test files** (`test_hook_post_tool_use.py`, `test_hook_intents.py:319`) — sequence Step 6 (test updates) in the same commit as Step 2 (hook change) to avoid a broken-test window.
+- **`analytics.enabled` config step is required** (not optional): add `"analytics"` block to `config-schema.json` and `"analytics": {"enabled": false}` to all 9 templates in one pass; schema uses `additionalProperties: false`.
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-05-22
+- **Reason**: Issue too large for single session (score 11/11)
+
+### Decomposed Into
+- FEAT-1623: ctx-stats Data Layer — Schema Extension and PostToolUse Hook
+- FEAT-1624: ctx-stats CLI Command — `ll-ctx-stats` Implementation and Tests
+- FEAT-1625: ctx-stats Docs and Wiring — Documentation, Config Schema, and Count Bumps
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-05-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:confidence-check` - 2026-05-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75d29147-cdd1-4b59-a119-df913396b6b7.jsonl`
+- `/ll:wire-issue` - 2026-05-23T00:56:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e7f7149-9b71-4fe5-b27f-1ce2ae1e4968.jsonl`
+- `/ll:refine-issue` - 2026-05-23T00:48:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40796b5b-8bda-4c75-b096-f4b2cc589273.jsonl`
+- `/ll:confidence-check` - 2026-05-22T00:00:01 - re-run; FEAT-1112 done, missing_artifacts cleared, readiness 85→91
 - `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:refine-issue` - 2026-05-22T20:01:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6c016c0-757a-4c25-9fb0-6b6bf3c10291.jsonl`
 - `/ll:wire-issue` - 2026-05-22T19:57:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71050fdf-80e1-449c-b1fe-daa146bb5f88.jsonl`
