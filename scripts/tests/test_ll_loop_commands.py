@@ -406,9 +406,7 @@ class TestCmdList:
         oracles_dir.mkdir(parents=True)
         (oracles_dir / "foo.yaml").write_text(_runnable("name: foo\n"))
 
-        args = argparse.Namespace(
-            running=False, status=None, json=False, category=None, label=None
-        )
+        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -439,9 +437,7 @@ class TestCmdList:
             "name: fragment\nstates:\n  step:\n    terminal: true\n"
         )
 
-        args = argparse.Namespace(
-            running=False, status=None, json=False, category=None, label=None
-        )
+        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -474,9 +470,7 @@ class TestCmdList:
         builtin_dir.mkdir()
         (builtin_dir / "foo.yaml").write_text(_runnable("name: foo\n"))
 
-        args = argparse.Namespace(
-            running=False, status=None, json=True, category=None, label=None
-        )
+        args = argparse.Namespace(running=False, status=None, json=True, category=None, label=None)
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=builtin_dir,
@@ -504,12 +498,8 @@ class TestLoopListCategoryFilter:
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
-        (loops_dir / "loop-apo.yaml").write_text(
-            _runnable("name: loop-apo\ncategory: apo\n")
-        )
-        (loops_dir / "loop-meta.yaml").write_text(
-            _runnable("name: loop-meta\ncategory: meta\n")
-        )
+        (loops_dir / "loop-apo.yaml").write_text(_runnable("name: loop-apo\ncategory: apo\n"))
+        (loops_dir / "loop-meta.yaml").write_text(_runnable("name: loop-meta\ncategory: meta\n"))
 
         args = argparse.Namespace(
             running=False, status=None, json=False, category="apo", label=None
@@ -566,12 +556,8 @@ class TestLoopListCategoryFilter:
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
-        (loops_dir / "loop-apo.yaml").write_text(
-            _runnable("name: loop-apo\ncategory: apo\n")
-        )
-        (loops_dir / "loop-meta.yaml").write_text(
-            _runnable("name: loop-meta\ncategory: meta\n")
-        )
+        (loops_dir / "loop-apo.yaml").write_text(_runnable("name: loop-apo\ncategory: apo\n"))
+        (loops_dir / "loop-meta.yaml").write_text(_runnable("name: loop-meta\ncategory: meta\n"))
         (loops_dir / "loop-bare.yaml").write_text(_runnable("name: loop-bare\n"))
 
         args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
@@ -895,12 +881,8 @@ class TestLoopListFormatting:
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
-        (loops_dir / "loop-a.yaml").write_text(
-            _runnable("name: loop-a\ncategory: alpha\n")
-        )
-        (loops_dir / "loop-b.yaml").write_text(
-            _runnable("name: loop-b\ncategory: beta\n")
-        )
+        (loops_dir / "loop-a.yaml").write_text(_runnable("name: loop-a\ncategory: alpha\n"))
+        (loops_dir / "loop-b.yaml").write_text(_runnable("name: loop-b\ncategory: beta\n"))
 
         args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
         with patch(

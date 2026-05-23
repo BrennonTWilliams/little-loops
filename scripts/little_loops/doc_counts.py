@@ -143,9 +143,7 @@ def verify_documentation(
     # with `ll-loop validate`'s notion of "runnable".
     loops_dir = base_dir / COUNT_TARGETS["loops"][0]
     if loops_dir.exists():
-        actual_counts["loops"] = sum(
-            1 for p in loops_dir.rglob("*.yaml") if is_runnable_loop(p)
-        )
+        actual_counts["loops"] = sum(1 for p in loops_dir.rglob("*.yaml") if is_runnable_loop(p))
 
     # Adjust skill count to exclude bridge skills (auto-generated from commands/)
     skills_dir = base_dir / "skills"

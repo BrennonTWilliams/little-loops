@@ -65,7 +65,7 @@ class TestParseFrontmatter:
         text = (
             "---\n"
             "description: |\n"
-            '  Use when user does X.\n'
+            "  Use when user does X.\n"
             '  Trigger keywords: "foo", "bar"\n'
             "---\n"
             "# Body\n"

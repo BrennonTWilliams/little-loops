@@ -232,11 +232,7 @@ class TestBuiltinLoopList:
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         (loops_dir / "fix-quality-and-tests.yaml").write_text(
-            "name: fix-quality-and-tests\n"
-            "initial: start\n"
-            "states:\n"
-            "  start:\n"
-            "    terminal: true\n"
+            "name: fix-quality-and-tests\ninitial: start\nstates:\n  start:\n    terminal: true\n"
         )
 
         monkeypatch.chdir(tmp_path)

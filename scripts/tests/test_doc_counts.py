@@ -87,11 +87,7 @@ class TestIsRunnableLoop:
         """`flow:` shorthand (alternative to states:) is accepted."""
         path = tmp_path / "flow-loop.yaml"
         path.write_text(
-            "name: flow-loop\n"
-            "initial: step1\n"
-            "flow:\n"
-            "  - step1: echo hi\n"
-            "  - step2: echo bye\n"
+            "name: flow-loop\ninitial: step1\nflow:\n  - step1: echo hi\n  - step2: echo bye\n"
         )
         assert is_runnable_loop(path) is True
 
@@ -105,9 +101,7 @@ class TestIsRunnableLoop:
         path.write_text("name: fragment\nstates:\n  s:\n    terminal: true\n")
         assert is_runnable_loop(path) is False
 
-    def test_missing_states_and_flow_returns_false(
-        self, fsm_fixtures: Path
-    ) -> None:
+    def test_missing_states_and_flow_returns_false(self, fsm_fixtures: Path) -> None:
         """YAML with neither states: nor flow: is not runnable."""
         assert is_runnable_loop(fsm_fixtures / "missing-states.yaml") is False
 
@@ -144,12 +138,7 @@ class TestIsRunnableLoop:
         """All real library fragments under loops/lib/ are excluded by the predicate."""
         from pathlib import Path as _Path
 
-        lib_dir = (
-            _Path(__file__).resolve().parents[1]
-            / "little_loops"
-            / "loops"
-            / "lib"
-        )
+        lib_dir = _Path(__file__).resolve().parents[1] / "little_loops" / "loops" / "lib"
         if not lib_dir.exists():
             return
         for fragment in lib_dir.glob("*.yaml"):
@@ -628,9 +617,7 @@ class TestVerifyDocumentation:
         result = verify_documentation(tmp_path)
 
         assert result.all_match is True
-        loops_results = [
-            m for m in result.mismatches if m.category == "loops"
-        ]
+        loops_results = [m for m in result.mismatches if m.category == "loops"]
         assert loops_results == []
 
     def test_verify_skills_excludes_bridge_skills(self, tmp_path: Path) -> None:
