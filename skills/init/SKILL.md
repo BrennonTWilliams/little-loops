@@ -22,7 +22,7 @@ metadata:
 
 # Initialize Configuration
 
-<!-- PLUGIN_VERSION: 1.105.0 -->
+<!-- PLUGIN_VERSION: 1.106.0 -->
 
 You are tasked with initializing little-loops configuration for a project by creating `.ll/ll-config.json`.
 

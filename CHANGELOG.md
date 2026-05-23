@@ -12,6 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.106.0] - 2026-05-23
+
+### Added
+
+- **Unified Session Store (SQLite + FTS5)** — New `ll-session` CLI and `.ll/session.db` provide a queryable, full-text-indexed store of Claude Code session events; supports `search --fts`, `recent --kind`, and `backfill` subcommands. (FEAT-1112)
+- **Context Window Analytics (`ll-ctx-stats`)** — New CLI command and PostToolUse hook capture per-tool byte vs. context savings from the session DB, giving visibility into context consumption across tools. (FEAT-1160, FEAT-1623, FEAT-1624, FEAT-1625, EPIC-1626)
+- **`ll-history` and `analyze-workflows` query session DB** — Both commands now read from the unified session store instead of re-parsing raw log files. (ENH-1621)
+- **`ll-session` wired across docs, help, and config** — Reference docs, init permissions, and CLAUDE.md now surface the new session store. (ENH-1619)
+
+### Fixed
+
+- **Nested loops discoverable in `ll-loop list` and doc verifier** — Recursive discovery now finds runnable loops under `loops/oracles/` and other subdirectories. (BUG-1633, BUG-1634)
+- **FSM failure-terminal diagnostic convention** — Tooling, docs, `create-loop` wizard, and validation now enforce a `diagnose` state before failure terminals to surface root causes. (BUG-1607)
+- **`SKILL.md` block-scalar description parsing** — `doc_counts` and two CLI parsers now resolve YAML block-scalar descriptions via `yaml.safe_load` instead of regex. (11afb38, a963048)
+
+### Changed
+
+- **README agent description** — Rephrased to be drift-proof rather than naming a fixed agent count. (ENH-1441)
+- **Status one-shot cleanup** — Normalized non-canonical `status:` values (e.g. `completed` → `done`) across all issue files via `ll-migrate-status`. (ENH-1551)
+
+### Other
+
+- Multiple issue refinements, plan documents (ctx-stats epic, ll-loop list readability, Hermes Agent PRD), and `ruff format` passes across `doc_counts`, ctx-stats files, and tests.
+
 ## [1.105.0] - 2026-05-21
 
 ### Added
@@ -246,7 +270,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.105.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.106.0...HEAD
+[1.106.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.105.0...v1.106.0
 [1.105.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.104.0...v1.105.0
 [1.104.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.103.0...v1.104.0
 [1.103.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.102.0...v1.103.0
