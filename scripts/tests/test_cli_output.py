@@ -43,6 +43,40 @@ class TestTerminalWidth:
         assert w == 100
 
 
+class TestTerminalSize:
+    """Tests for terminal_size() returning (cols, rows)."""
+
+    def test_returns_cols_and_rows_tuple(self) -> None:
+        import os
+        import shutil
+
+        from little_loops.cli.output import terminal_size
+
+        with patch.object(shutil, "get_terminal_size", return_value=os.terminal_size((100, 30))):
+            cols, rows = terminal_size()
+        assert (cols, rows) == (100, 30)
+
+    def test_default_dimensions_used_when_unavailable(self) -> None:
+        import os
+        import shutil
+
+        from little_loops.cli.output import terminal_size
+
+        with patch.object(shutil, "get_terminal_size", return_value=os.terminal_size((50, 15))):
+            cols, rows = terminal_size(default_cols=80, default_rows=24)
+        assert (cols, rows) == (50, 15)
+
+    def test_terminal_width_wraps_terminal_size(self) -> None:
+        import os
+        import shutil
+
+        from little_loops.cli.output import terminal_width
+
+        with patch.object(shutil, "get_terminal_size", return_value=os.terminal_size((77, 33))):
+            w = terminal_width()
+        assert w == 77
+
+
 class TestColorize:
     """Tests for colorize() with _USE_COLOR flag."""
 

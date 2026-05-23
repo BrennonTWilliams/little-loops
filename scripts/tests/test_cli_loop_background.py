@@ -26,6 +26,7 @@ class TestLoopSignalHandler:
         self.helpers._loop_executor = None
         self.helpers._loop_pid_file = None
         self.helpers._using_alt_screen = False
+        self.helpers._needs_redraw = False
 
     def teardown_method(self) -> None:
         """Reset global state after each test."""
@@ -33,6 +34,13 @@ class TestLoopSignalHandler:
         self.helpers._loop_executor = None
         self.helpers._loop_pid_file = None
         self.helpers._using_alt_screen = False
+        self.helpers._needs_redraw = False
+
+    def test_sigwinch_handler_sets_needs_redraw_flag(self) -> None:
+        """_sigwinch_handler sets the module-level _needs_redraw flag."""
+        assert self.helpers._needs_redraw is False
+        self.helpers._sigwinch_handler(28, None)  # SIGWINCH=28 on most systems
+        assert self.helpers._needs_redraw is True
 
     def test_first_signal_sets_flag(self) -> None:
         """First signal sets shutdown flag without exiting."""

@@ -10,16 +10,22 @@ This document covers all CLI output styling, formatting, and rendering code in l
 
 The central styling utility imported by most CLI commands.
 
-### Terminal width
+### Terminal width and size
 
 ```python
-from little_loops.cli.output import terminal_width, wrap_text
+from little_loops.cli.output import terminal_size, terminal_width, wrap_text
 
-w = terminal_width()          # int, falls back to 80
+w = terminal_width()                  # int, falls back to 80
+cols, rows = terminal_size()          # (int, int), falls back to (80, 24)
 text = wrap_text(text, indent="  ", width=None)  # wraps at terminal width
 ```
 
-`terminal_width()` calls `shutil.get_terminal_size((default, 24)).columns`.
+`terminal_width()` is a thin wrapper around `terminal_size()` (which calls
+`shutil.get_terminal_size((default_cols, default_rows))` and returns
+`(columns, lines)`). Prefer `terminal_size()` whenever a layout decision
+needs the **rows** dimension — e.g. the pinned-pane fallback ladder in
+`ll-loop run --show-diagrams --clear`. Use `terminal_width()` for the
+column-only case (the vast majority of callers).
 
 ### ANSI color
 

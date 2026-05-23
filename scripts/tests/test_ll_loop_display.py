@@ -2133,6 +2133,98 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert "\033[?1049l" in out
 
+    def test_scroll_region_set_when_alt_screen_active(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--show-diagrams + --clear emits a DECSTBM scroll-region sequence after pinned pane."""
+        import re
+
+        events = [{"event": "state_enter", "state": "start", "iteration": 1}]
+        executor = MockExecutor(events)
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(
+                executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=True)
+            )
+        out = capsys.readouterr().out
+        # DECSTBM: \033[<top>;<bottom>r
+        assert re.search(r"\033\[\d+;\d+r", out), f"Expected scroll region sequence in: {out!r}"
+
+    def test_scroll_region_reset_before_alt_screen_exit(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Scroll region (\\033[r) is reset before alt-screen exit (\\033[?1049l)."""
+        events = [{"event": "state_enter", "state": "start", "iteration": 1}]
+        executor = MockExecutor(events)
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(
+                executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=True)
+            )
+        out = capsys.readouterr().out
+        assert "\033[r" in out
+        assert "\033[?1049l" in out
+        # The final \033[r in the stream must precede the alt-screen exit so
+        # the main buffer is left without a restricted scroll region.
+        assert out.rindex("\033[r") < out.rindex("\033[?1049l")
+
+    def test_tall_fsm_falls_back_to_neighborhood(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """On a short terminal a tall FSM falls back to the 1-hop neighborhood view."""
+        import os
+        import shutil
+
+        tall_fsm = make_test_fsm(
+            initial="s0",
+            states={
+                f"s{i}": make_test_state(
+                    action=f"action {i}",
+                    on_yes=f"s{i + 1}" if i < 19 else None,
+                    terminal=(i == 19),
+                )
+                for i in range(20)
+            },
+        )
+        events = [{"event": "state_enter", "state": "s5", "iteration": 1}]
+        executor = MockExecutor(events)
+        with (
+            patch("sys.stdout.isatty", return_value=True),
+            patch.object(
+                shutil, "get_terminal_size", return_value=os.terminal_size((80, 12))
+            ),
+        ):
+            run_foreground(
+                executor, tall_fsm, self._make_args(show_diagrams=True, clear=True)
+            )
+        out = capsys.readouterr().out
+        # Neighborhood: just predecessor s4, active s5, successor s6 — far states
+        # like s19 must NOT appear.
+        assert "s4" in out
+        assert "s5" in out
+        assert "s6" in out
+        assert "s19" not in out
+
+    def test_extreme_short_terminal_falls_back_to_single_line(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """On a tiny terminal the pinned pane falls back to the single-line status."""
+        import os
+        import shutil
+
+        events = [{"event": "state_enter", "state": "start", "iteration": 1}]
+        executor = MockExecutor(events)
+        with (
+            patch("sys.stdout.isatty", return_value=True),
+            patch.object(
+                shutil, "get_terminal_size", return_value=os.terminal_size((80, 6))
+            ),
+        ):
+            run_foreground(
+                executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=True)
+            )
+        out = capsys.readouterr().out
+        assert "fsm:" in out
+        assert "[start]" in out
+
     def test_clear_flag_suppressed_for_sub_loop_state_enter(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -3072,3 +3164,67 @@ class TestShowDiagramsSubprocessReemit:
     def test_none_mode_suppresses_flag_from_cmd(self) -> None:
         cmd = self._capture_cmd(None)
         assert "--show-diagrams" not in cmd
+
+
+class TestChoosePinnedLayout:
+    """Tests for the pure pinned-pane fallback ladder helper."""
+
+    def test_picks_first_variant_when_it_fits(self) -> None:
+        from little_loops.cli.loop._helpers import _choose_pinned_layout
+
+        full = "a\nb\nc"  # 3 lines
+        pinned, h = _choose_pinned_layout(
+            rows=20, variants=[full, "x", "y"], min_action_rows=6
+        )
+        assert pinned == full
+        assert h == 3
+
+    def test_falls_back_to_compact_when_full_too_big(self) -> None:
+        from little_loops.cli.loop._helpers import _choose_pinned_layout
+
+        full = "\n".join(["row"] * 20)  # 20 lines
+        compact = "x\ny\nz"  # 3 lines
+        pinned, h = _choose_pinned_layout(
+            rows=10, variants=[full, compact, "single"], min_action_rows=6
+        )
+        # full = 20 + 6 = 26 > 10; compact = 3 + 6 = 9 ≤ 10
+        assert pinned == compact
+        assert h == 3
+
+    def test_returns_last_when_none_fit(self) -> None:
+        from little_loops.cli.loop._helpers import _choose_pinned_layout
+
+        pinned, h = _choose_pinned_layout(
+            rows=2, variants=["full\nfull", "single line"], min_action_rows=6
+        )
+        # Even single requires 1 + 6 = 7 > 2 → returns last variant anyway
+        assert pinned == "single line"
+        assert h == 1
+
+
+class TestRenderNeighborhoodDiagram:
+    """Tests for _render_neighborhood_diagram pure renderer."""
+
+    def test_renders_preds_active_succs(self) -> None:
+        from little_loops.cli.loop.layout import _render_neighborhood_diagram
+
+        fsm = make_test_fsm(
+            initial="a",
+            states={
+                "a": make_test_state(action="...", on_yes="b"),
+                "b": make_test_state(action="...", on_yes="c", on_no="d"),
+                "c": make_test_state(terminal=True),
+                "d": make_test_state(terminal=True),
+            },
+        )
+        out = _render_neighborhood_diagram(fsm, "b")
+        assert "a" in out
+        assert "b" in out
+        assert "c" in out
+        assert "d" in out
+
+    def test_unknown_active_returns_empty(self) -> None:
+        from little_loops.cli.loop.layout import _render_neighborhood_diagram
+
+        fsm = make_test_fsm()
+        assert _render_neighborhood_diagram(fsm, "nonexistent") == ""

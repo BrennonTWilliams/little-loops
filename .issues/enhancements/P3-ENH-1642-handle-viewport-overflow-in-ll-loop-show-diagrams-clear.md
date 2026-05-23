@@ -1,5 +1,7 @@
 ---
 captured_at: '2026-05-23T19:35:10Z'
+completed_at: '2026-05-23T23:24:44Z'
+status: done
 discovered_date: 2026-05-23
 discovered_by: capture-issue
 relates_to:
@@ -20,7 +22,7 @@ score_change_surface: 18
 
 ## Summary
 
-When `ll-loop run --show-diagrams --clear` is active, the terminal is in the alternate screen buffer (entered by BUG-989's fix via `\033[?1049h` at `_helpers.py:614`). On every `state_enter` event the screen is cleared and the FSM diagram is printed followed by streamed action output. The implementation handles terminal **width** (`shutil.get_terminal_size().columns`, label truncation, box-width clamping) but never measures terminal **height**. When one iteration's diagram + chrome + action output exceeds the viewport — common on a small terminal or a large FSM — output scrolls past the top of the alt-screen buffer and is **silently lost**: the alt-screen has no scrollback, so the user cannot recover the diagram once action output pushes it off-screen. The comment at `_helpers.py:609–610` acknowledges scrollback contamination but not this in-iteration overflow.
+When `ll-loop run --show-diagrams --clear` is active, the terminal is in the alternate screen buffer (entered by BUG-989's fix via `\033[?1049h` at `_helpers.py:629`). On every `state_enter` event the screen is cleared and the FSM diagram is printed followed by streamed action output. The implementation handles terminal **width** (`shutil.get_terminal_size().columns`, label truncation, box-width clamping) but never measures terminal **height**. When one iteration's diagram + chrome + action output exceeds the viewport — common on a small terminal or a large FSM — output scrolls past the top of the alt-screen buffer and is **silently lost**: the alt-screen has no scrollback, so the user cannot recover the diagram once action output pushes it off-screen. The comment at `_helpers.py:609–610` acknowledges scrollback contamination but not this in-iteration overflow.
 
 ## Current Behavior
 
@@ -85,30 +87,33 @@ def _choose_pinned_layout(
 ### Files to Modify
 - `scripts/little_loops/cli/output.py` — add `terminal_size()` helper returning `(cols, rows)`; keep existing `terminal_width()` (at `output.py:16`) as a thin wrapper. Current implementation passes `(default, 24)` to `shutil.get_terminal_size()` but ignores the rows value
 - `scripts/little_loops/cli/loop/layout.py` — add `_render_neighborhood_diagram(...)` next to existing `_render_fsm_diagram` (`layout.py:1534`) and `_render_horizontal_simple` (`layout.py:1653`)
-- `scripts/little_loops/cli/loop/_helpers.py` — main change in `run_foreground` (starts at `_helpers.py:335`, extends past line 660):
-  - Replace `state_enter` branch (`if event_type == "state_enter":` at line 383, extending to ~line 487; clear-screen `\033[2J\033[H` at line 393; `_render_fsm_diagram` call at line 438) with pinned-pane layout: reset scroll region → clear+home → measure → render parent FSM (with neighborhood/single-line fallback per `_choose_pinned_layout`) → render each sub-loop FSM with the same fallback ladder → emit horizontal separator → set scroll region `\033[<pinned+1>;<rows>r` → move cursor into scroll region
-  - `display_progress` (nested at `_helpers.py:375`) is a closure over `current_iteration`, `last_state_at_depth`, `child_fsm_stack`, `loop_start_time`, `quiet`, `verbose`, `show_diagrams`, `clear_screen` — track `pinned_height` in the same closure so non-`state_enter` events do not redraw the pinned pane
-  - Install a `SIGWINCH` handler (alongside SIGINT/SIGTERM registration in `register_loop_signal_handlers` at `_helpers.py:118–119`) that sets a module-level `_needs_redraw` flag; before each event in `display_progress`, if `_needs_redraw` is set, re-emit the pinned pane for `last_state_at_depth[0]` and reset the flag. Only install when alt-screen mode is active; uninstall in `finally`. NOTE: no `SIGWINCH` reference exists anywhere in `scripts/` today — this is a net-new dependency on `signal.SIGWINCH`
-  - Extend teardown (`finally:` at `_helpers.py:618`; current sequence: `print("\033[?1049l", ...)` at line 620, `_using_alt_screen = False` at line 621): emit `print("\033[r", ...)` (reset scroll region) **before** `print("\033[?1049l", ...)` to avoid leaving the main buffer with a restricted scroll region
+- `scripts/little_loops/cli/loop/_helpers.py` — main change in `run_foreground` (starts at `_helpers.py:336`, extends past line 660):
+  - Replace `state_enter` branch (`if event_type == "state_enter":` at line 384, extending to ~line 488; clear-screen `\033[2J\033[H` at line 394; `_render_fsm_diagram` call at line 439) with pinned-pane layout: reset scroll region → clear+home → measure → render parent FSM (with neighborhood/single-line fallback per `_choose_pinned_layout`) → render each sub-loop FSM with the same fallback ladder → emit horizontal separator → set scroll region `\033[<pinned+1>;<rows>r` → move cursor into scroll region
+  - `display_progress` (nested at `_helpers.py:376`) is a closure over `current_iteration`, `last_state_at_depth`, `child_fsm_stack`, `loop_start_time`, `quiet`, `verbose`, `show_diagrams`, `show_diagrams_mode` (tri-state `None`/`"main"`/`"full"` — relevant because pinned renderer should honor `verbose=(show_diagrams_mode == "full")`), `clear_screen`, plus `executor`/`fsm`/`highlight_color`/`edge_label_colors`/`badges` from the outer scope — track `pinned_height` in the same closure so non-`state_enter` events do not redraw the pinned pane
+  - Install a `SIGWINCH` handler (alongside SIGINT/SIGTERM registration in `register_loop_signal_handlers` at `_helpers.py:119–120`) that sets a module-level `_needs_redraw` flag; before each event in `display_progress`, if `_needs_redraw` is set, re-emit the pinned pane for `last_state_at_depth[0]` and reset the flag. Only install when alt-screen mode is active; uninstall in `finally`. NOTE: no `SIGWINCH` reference exists anywhere in `scripts/` today — this is a net-new dependency on `signal.SIGWINCH`. **Pattern choice**: prefer the save/restore signal-handler pattern from `parallel/orchestrator.py:183–193` (`_setup_signal_handlers`/`_restore_signal_handlers` — stash previous handler, restore in `finally`) over the simpler no-restore pattern at `_helpers.py:104–120` (SIGINT/SIGTERM), because SIGWINCH is a session-level signal that could otherwise leak across multiple loop invocations within a single Python process (e.g. `cmd_next_loop` auto-advance via `cmd_run`)
+  - Extend teardown (`finally:` at `_helpers.py:633`; current sequence: `print("\033[?1049l", ...)` at line 635, `_using_alt_screen = False` at line 636): emit `print("\033[r", ...)` (reset scroll region) **before** `print("\033[?1049l", ...)` to avoid leaving the main buffer with a restricted scroll region
+  - **Forced-exit path also needs the same reset** (added by codebase research): `_loop_signal_handler` at `_helpers.py:53` already emits `\033[?1049l` to `sys.stderr` when `_using_alt_screen` is True on the second signal (force-quit path); this branch must also emit `\033[r` first, otherwise SIGINT mid-iteration leaves the user's shell with a restricted scroll region — which is one of the listed Success Metrics. Add a parallel `\033[r` emission to `sys.stderr` (gated on the same `_using_alt_screen` check) right before the existing `print("\033[?1049l", end="", file=sys.stderr, flush=True)`
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/run.py:352` — only foreground caller of `run_foreground()`; wrapped in the `try:` block at line 289 with `lock_manager.release(...)` in `finally:` at lines 360–363; the scroll-region teardown stays inside `run_foreground`'s own `finally` and does not need changes here
-- `scripts/little_loops/cli/loop/lifecycle.py:307` — `cmd_resume` (definition at line 307; `executor.resume()` at line 418) calls the executor directly, NOT `run_foreground()`; `--show-diagrams`/`--clear` on `resume` remain decorative for foreground resume (out of scope, but see existing gap noted in ENH-1506)
+- `scripts/little_loops/cli/loop/lifecycle.py:307` — `cmd_resume` (definition at line 307; `executor.resume()` at line 431, not line 418 as originally stated) calls the executor directly, NOT `run_foreground()`; `--show-diagrams`/`--clear` on `resume` remain decorative for foreground resume (out of scope, but see existing gap noted in ENH-1506)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/cli/loop/next_loop.py:318–319` — production caller of `run_foreground()` in the auto-advance path; constructs an inline args namespace with `show_diagrams=None, clear=False`; args shape unchanged by this issue but listed as a `run_foreground` caller that must not break [Agent 1 finding]
+- `scripts/little_loops/cli/loop/next_loop.py:318–319` — production caller in the auto-advance path; constructs an inline args namespace with `show_diagrams=None, clear=False` and calls `cmd_run(top_candidate.loop, run_args, loops_dir, logger)` at line 328 (which then calls `run_foreground()` internally — one level of indirection beyond the original claim). Args shape unchanged by this issue but listed as a `run_foreground` caller that must not break [Agent 1 finding]
 
 ### Similar Patterns
-- Existing module-level flag block at `_helpers.py:34–37`:
+- Existing module-level flag block at `_helpers.py:35–38`:
   ```python
   _loop_shutdown_requested: bool = False
   _loop_executor: Any = None
   _loop_pid_file: Path | None = None
   _using_alt_screen: bool = False
   ```
-  Add `_needs_redraw: bool = False` at line 38 and reset it in `setup_method`/`teardown_method` of `test_cli_loop_background.py:23–33` alongside the other four
-- Existing signal-handler pattern: `_loop_signal_handler` at `_helpers.py:40` (body ends ~line 71) — declares `global _loop_shutdown_requested, _using_alt_screen` and on forced exit emits `\033[?1049l` to `sys.stderr` (line 52). Add SIGWINCH alongside SIGINT/SIGTERM in `register_loop_signal_handlers` (`_helpers.py:118–119`) with the same install-on-entry / restore-on-finally shape
-- Existing width-measurement: `terminal_width()` at `output.py:16` — extend, do not duplicate. No height measurement exists anywhere in `scripts/little_loops/cli/loop/` today
+  Add `_needs_redraw: bool = False` at line 39 and reset it in `setup_method`/`teardown_method` of `test_cli_loop_background.py:23–33` alongside the other four
+- Existing signal-handler pattern: `_loop_signal_handler` at `_helpers.py:41` (body ends ~line 71) — declares `global _loop_shutdown_requested, _using_alt_screen` and on forced exit emits `\033[?1049l` to `sys.stderr` (line 53). The simple install-only pattern in `register_loop_signal_handlers` at `_helpers.py:104–120` (SIGINT/SIGTERM via plain `signal.signal(...)`, no restore) is sufficient for process-fatal signals but **not** for SIGWINCH — see `parallel/orchestrator.py:183–193` for the save-and-restore variant that stashes the previous handler in `self._original_sigint`/`_original_sigterm` and restores it in `finally`. Mirror that variant for SIGWINCH so a handler doesn't leak across multiple `run_foreground` invocations in the same Python process (e.g. `cmd_next_loop` auto-advance)
+- Existing ANSI convention: SGR color sequences flow through `colorize()` at `output.py:97`, but cursor/screen control sequences (`\033[?1049h`, `\033[?1049l`, `\033[2J\033[H`) are emitted directly via `print("\033[...", end="", flush=True)` at `_helpers.py:394, 629, 635`. The new scroll-region sequences (`\033[<top>;<bottom>r`, `\033[r`) belong to the second class — emit them as bare `print()` literals, not via `colorize()`
+- Existing fallback pattern in renderer: `_render_fsm_diagram` at `layout.py:1590–1609` already branches on topology+state-count to choose between `_render_horizontal_simple` (single-state path) and `_render_layered_diagram` (general path). The new `_choose_pinned_layout` three-tier ladder (full → neighborhood → single-line) should be stylistically consistent: a single function that computes a budget, then guards branches on that budget
+- Existing width-measurement: `terminal_width()` at `output.py:16` — extend, do not duplicate. Every one of the 15+ existing callers across `scripts/little_loops/` assigns to `tw` or `width` and never unpacks rows; new `terminal_size()` callers should use a clear `(tw, th) = terminal_size()` form to avoid confusion. No height measurement exists anywhere in `scripts/little_loops/cli/loop/` today
 - No `\033[r` (DECSTBM scroll region) or `SIGWINCH` references exist anywhere in `scripts/` — both are net-new ANSI/signal capabilities for this issue
 
 ### Tests
@@ -147,7 +152,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 3. Extract a pure helper `_choose_pinned_layout(fsm, child_stack, rows) -> (diagram_str, pinned_height)` in `_helpers.py` for testable fallback logic
 4. Rewrite the `state_enter` (depth==0) branch in `run_foreground.display_progress` to compose the pinned pane and set the scroll region, calling `_choose_pinned_layout`
 5. Add module-level `_needs_redraw` flag + SIGWINCH handler installed only when `_using_alt_screen` is True; honor flag at top of each event
-6. Update teardown to reset scroll region (`\033[r`) **before** exiting alt-screen (`\033[?1049l`)
+6. Update teardown to reset scroll region (`\033[r`) **before** exiting alt-screen (`\033[?1049l`) — apply in **both** the normal `finally:` path in `run_foreground` (`_helpers.py:633–636`) **and** the forced-exit branch in `_loop_signal_handler` (`_helpers.py:53`); without the signal-handler change, SIGINT mid-iteration leaves the user's shell with a restricted scroll region and fails the listed Success Metric
 7. Add unit tests for `_render_neighborhood_diagram` and `_choose_pinned_layout`; add display tests for scroll-region emission, teardown ordering, neighborhood fallback, and single-line fallback
 8. Update CLI/LOOPS_GUIDE/README docs to describe the pinned + scroll-region layout
 
@@ -214,7 +219,11 @@ _Added by `/ll:confidence-check` on 2026-05-23_
 - New test subdirectory `scripts/tests/cli/loop/` must be created (Step 9) before pytest can discover `test_layout.py` and `test_choose_pinned_layout.py` — do this early to avoid silent test-skip during incremental development
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-23T23:24:44Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d302e094-e886-4f1c-9e6a-9cb4dda50f7a.jsonl`
+- `/ll:ready-issue` - 2026-05-23T23:01:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92b102a9-99e9-4cdd-8526-0159e852073f.jsonl`
+- `/ll:refine-issue` - 2026-05-23T22:43:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f15a5c6-3934-4aa0-9929-5919c5d54ab9.jsonl`
 - `/ll:confidence-check` - 2026-05-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb2aacf2-aaf0-4d77-a561-a081f97a838b.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:01Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a5569b1-158a-4faa-90cf-e467767979cc.jsonl`
 - `/ll:wire-issue` - 2026-05-23T20:49:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/94688148-bcef-4c17-a138-b92c41a25e82.jsonl`
 - `/ll:refine-issue` - 2026-05-23T20:37:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc466dbf-f3b4-404a-ac13-8482df50d3d6.jsonl`
 - `/ll:format-issue` - 2026-05-23T19:40:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00d572b0-3074-4df8-b905-4443cc9bb298.jsonl`

@@ -1650,6 +1650,113 @@ def _render_fsm_diagram(
     )
 
 
+def _render_neighborhood_diagram(
+    fsm: FSMLoop,
+    active_state: str,
+    *,
+    edge_label_colors: dict[str, str] | None = None,
+    badges: dict[str, str] | None = None,
+    highlight_color: str = "32",
+) -> str:
+    """Render a compact 1-hop neighborhood: predecessors → [active] → successors.
+
+    Suitable as a fallback when the full FSM diagram does not fit the viewport.
+    Bounded: ``max(len(preds), len(succs), 1) * 3`` rows (each state box is 3
+    lines tall). Returns the empty string when ``active_state`` is not in
+    ``fsm.states``.
+
+    Self-loops are collapsed: a state that only points to itself contributes
+    neither predecessors nor successors here.
+    """
+    if active_state not in fsm.states:
+        return ""
+
+    edges = _collect_edges(fsm)
+    preds = sorted({s for (s, t, _lbl) in edges if t == active_state and s != active_state})
+    succs = sorted({t for (s, t, _lbl) in edges if s == active_state and t != active_state})
+
+    terminal_states = {n for n, st in fsm.states.items() if st.terminal}
+
+    def _label(name: str) -> str:
+        label = name
+        if name == fsm.initial:
+            label = "→ " + label
+        if name in terminal_states:
+            label = label + " ◉"
+        return label
+
+    pred_labels = [_label(p) for p in preds]
+    active_label = _label(active_state)
+    succ_labels = [_label(s) for s in succs]
+
+    inner_pred = max((len(lbl) for lbl in pred_labels), default=0)
+    inner_active = len(active_label)
+    inner_succ = max((len(lbl) for lbl in succ_labels), default=0)
+
+    box_w_pred = inner_pred + 4 if pred_labels else 0
+    box_w_active = inner_active + 4
+    box_w_succ = inner_succ + 4 if succ_labels else 0
+
+    n_rows = max(len(pred_labels), len(succ_labels), 1)
+
+    def _make_box(label: str, inner_w: int, highlighted: bool) -> list[str]:
+        top = "┌" + "─" * (inner_w + 2) + "┐"
+        bot = "└" + "─" * (inner_w + 2) + "┘"
+        padded = label.ljust(inner_w)
+        if highlighted:
+            top = colorize(top, highlight_color)
+            bot = colorize(bot, highlight_color)
+            mid = (
+                colorize("│", highlight_color)
+                + " "
+                + colorize(padded, f"{highlight_color};1")
+                + " "
+                + colorize("│", highlight_color)
+            )
+        else:
+            mid = "│ " + colorize(padded, "1") + " │"
+        return [top, mid, bot]
+
+    def _build_stack(labels: list[str], box_w: int) -> list[str]:
+        rows: list[str] = []
+        for i in range(n_rows):
+            if i < len(labels):
+                rows.extend(_make_box(labels[i], box_w - 4, False))
+            else:
+                rows.extend([" " * box_w] * 3)
+        return rows
+
+    pred_col = _build_stack(pred_labels, box_w_pred) if pred_labels else None
+    succ_col = _build_stack(succ_labels, box_w_succ) if succ_labels else None
+
+    center_idx = (n_rows - 1) // 2
+    active_rows: list[str] = []
+    for i in range(n_rows):
+        if i == center_idx:
+            active_rows.extend(_make_box(active_label, inner_active, True))
+        else:
+            active_rows.extend([" " * box_w_active] * 3)
+
+    arrow = "  ──▶  "
+    arrow_blank = " " * len(arrow)
+    active_line_offset = center_idx * 3 + 1
+
+    total_lines = n_rows * 3
+    out_lines: list[str] = []
+    for i in range(total_lines):
+        parts: list[str] = []
+        if pred_col is not None:
+            parts.append(pred_col[i])
+            parts.append(arrow if i == active_line_offset else arrow_blank)
+        parts.append(active_rows[i])
+        if succ_col is not None:
+            parts.append(arrow if i == active_line_offset else arrow_blank)
+            parts.append(succ_col[i])
+        out_lines.append("".join(parts).rstrip())
+
+    return "\n".join(out_lines)
+
+
 def _render_horizontal_simple(
     main_path: list[str],
     edges: list[tuple[str, str, str]],

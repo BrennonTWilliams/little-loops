@@ -13,9 +13,19 @@ if TYPE_CHECKING:
     from little_loops.config import CliConfig
 
 
+def terminal_size(default_cols: int = 80, default_rows: int = 24) -> tuple[int, int]:
+    """Return ``(cols, rows)`` from ``shutil.get_terminal_size``.
+
+    Use this when layout needs both dimensions (e.g. pinned-pane decisions in
+    alt-screen mode). For column-only needs, prefer :func:`terminal_width`.
+    """
+    size = shutil.get_terminal_size((default_cols, default_rows))
+    return size.columns, size.lines
+
+
 def terminal_width(default: int = 80) -> int:
     """Return the current terminal column width, falling back to *default*."""
-    return shutil.get_terminal_size((default, 24)).columns
+    return terminal_size(default_cols=default)[0]
 
 
 def wrap_text(text: str, indent: str = "  ", width: int | None = None) -> str:

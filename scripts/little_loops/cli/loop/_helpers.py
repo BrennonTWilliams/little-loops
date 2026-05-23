@@ -13,7 +13,7 @@ from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING, Any
 
-from little_loops.cli.output import colorize, terminal_width
+from little_loops.cli.output import colorize, terminal_size, terminal_width
 from little_loops.fsm.concurrency import _process_alive
 from little_loops.logger import Logger
 
@@ -31,11 +31,22 @@ EXIT_CODES: dict[str, int] = {
     "stall_detected": 1,
 }
 
+# Minimum number of action-output rows reserved beneath the pinned pane in
+# alt-screen mode. When the pinned pane plus this margin would exceed the
+# terminal height, the layout falls back to a more compact diagram variant.
+MIN_ACTION_ROWS = 6
+
 # Module-level shutdown state for signal handling
 _loop_shutdown_requested: bool = False
 _loop_executor: Any = None
 _loop_pid_file: Path | None = None
 _using_alt_screen: bool = False
+# Set by SIGWINCH handler when the terminal is resized; consumed by the
+# display_progress callback to trigger a pinned-pane redraw on the next event.
+_needs_redraw: bool = False
+# Previous SIGWINCH handler, stashed when we install our own so it can be
+# restored in run_foreground's finally block. ``None`` means "not installed".
+_original_sigwinch: Any = None
 
 
 def _loop_signal_handler(signum: int, frame: FrameType | None) -> None:
@@ -50,6 +61,11 @@ def _loop_signal_handler(signum: int, frame: FrameType | None) -> None:
         if _loop_pid_file is not None:
             _loop_pid_file.unlink(missing_ok=True)
         if _using_alt_screen:
+            # Reset the DECSTBM scroll region BEFORE exiting the alt screen,
+            # otherwise the main buffer is left with a restricted scroll
+            # region — visible to the user as `seq 1 50` failing to scroll
+            # past the previous pinned-pane height.
+            print("\033[r", end="", file=sys.stderr, flush=True)
             print("\033[?1049l", end="", file=sys.stderr, flush=True)
         print(colorize("\nForce shutdown requested", "38;5;208"), file=sys.stderr)
         sys.exit(1)
@@ -118,6 +134,251 @@ def register_loop_signal_handlers(executor: Any, pid_file: Path | None = None) -
     _loop_pid_file = pid_file
     signal.signal(signal.SIGINT, _loop_signal_handler)
     signal.signal(signal.SIGTERM, _loop_signal_handler)
+
+
+# ---------------------------------------------------------------------------
+# SIGWINCH handler (alt-screen pinned-pane mode only)
+# ---------------------------------------------------------------------------
+
+
+def _sigwinch_handler(signum: int, frame: FrameType | None) -> None:
+    """Mark the pinned pane as needing a redraw after a terminal resize.
+
+    The handler does the minimum amount of work safe to perform in a signal
+    context: it just sets a flag. ``display_progress`` consumes the flag
+    before processing the next FSM event and triggers the actual redraw.
+    """
+    global _needs_redraw
+    _needs_redraw = True
+
+
+def _install_sigwinch_handler() -> None:
+    """Install ``_sigwinch_handler`` for SIGWINCH, stashing the prior handler.
+
+    Idempotent — re-calling while installed is a no-op so we never leak the
+    chain by overwriting our own stash. No-op on platforms without SIGWINCH
+    (e.g. Windows).
+    """
+    global _original_sigwinch
+    if not hasattr(signal, "SIGWINCH"):
+        return
+    if _original_sigwinch is not None:
+        return
+    _original_sigwinch = signal.signal(signal.SIGWINCH, _sigwinch_handler)
+
+
+def _restore_sigwinch_handler() -> None:
+    """Restore the SIGWINCH handler stashed by ``_install_sigwinch_handler``.
+
+    Safe to call when no handler was installed. After this returns,
+    ``_original_sigwinch`` is reset to ``None`` so the install is repeatable.
+    """
+    global _original_sigwinch, _needs_redraw
+    if not hasattr(signal, "SIGWINCH"):
+        _original_sigwinch = None
+        _needs_redraw = False
+        return
+    if _original_sigwinch is None:
+        return
+    signal.signal(signal.SIGWINCH, _original_sigwinch)
+    _original_sigwinch = None
+    _needs_redraw = False
+
+
+# ---------------------------------------------------------------------------
+# Pinned-pane layout (alt-screen mode)
+# ---------------------------------------------------------------------------
+
+
+def _count_display_lines(text: str) -> int:
+    """Return the number of terminal rows a string occupies.
+
+    Treats each ``\\n`` as a row boundary; a trailing newline is *not*
+    counted as an extra empty row. ANSI escape sequences are assumed not to
+    contain newlines (true for SGR / cursor / scroll-region codes).
+    """
+    if not text:
+        return 0
+    return text.count("\n") + (0 if text.endswith("\n") else 1)
+
+
+def _choose_pinned_layout(
+    rows: int,
+    variants: list[str],
+    min_action_rows: int = MIN_ACTION_ROWS,
+) -> tuple[str, int]:
+    """Pick the most detailed pinned-pane variant that leaves room for action output.
+
+    ``variants`` is an ordered list from most-detailed to least-detailed
+    (e.g. ``[full, neighborhood, single_line]``). Returns
+    ``(pinned_str, line_count)`` for the first variant whose height plus
+    ``min_action_rows`` fits within ``rows``. If none fit, returns the
+    last (smallest) variant unchanged — a degenerate terminal still gets
+    *something* pinned.
+    """
+    last_text = ""
+    last_h = 0
+    for variant in variants:
+        last_text = variant
+        last_h = _count_display_lines(variant)
+        if last_h + min_action_rows <= rows:
+            return variant, last_h
+    return last_text, last_h
+
+
+def _render_single_line_status(fsm: FSMLoop, active_state: str | None) -> str:
+    """Render the single-line fallback: ``fsm: <preds> → [<active>] → <succs>``."""
+    from little_loops.cli.loop.layout import _collect_edges
+
+    if active_state is None or active_state not in fsm.states:
+        return f"fsm: · → [{active_state or '?'}] → ·"
+    edges = _collect_edges(fsm)
+    preds = sorted({s for (s, t, _lbl) in edges if t == active_state and s != active_state})
+    succs = sorted({t for (s, t, _lbl) in edges if s == active_state and t != active_state})
+    preds_s = ",".join(preds) if preds else "·"
+    succs_s = ",".join(succs) if succs else "·"
+    return f"fsm: {preds_s} → [{active_state}] → {succs_s}"
+
+
+def _build_pinned_pane(
+    detail: str,
+    fsm: FSMLoop,
+    parent_highlight: str | None,
+    child_fsm_stack: dict[int, FSMLoop | None],
+    last_state_at_depth: dict[int, str],
+    iteration_line: str,
+    cols: int,
+    *,
+    show_diagrams_mode: str,
+    highlight_color: str,
+    edge_label_colors: dict[str, str] | None,
+    badges: dict[str, str] | None,
+) -> str:
+    """Compose the pinned pane (header + diagram(s) + state line + separator).
+
+    ``detail`` selects the diagram variant: ``"full"`` (existing
+    ``_render_fsm_diagram``), ``"neighborhood"`` (1-hop pred/active/succ), or
+    ``"single"`` (one-line ``fsm:`` status). The returned string is intended
+    to be printed with ``flush=True`` and is terminated by a horizontal
+    separator (no trailing newline).
+    """
+    from little_loops.cli.loop.layout import (
+        _collect_edges,
+        _filter_main_path_graph,
+        _render_fsm_diagram,
+        _render_neighborhood_diagram,
+    )
+
+    verbose = show_diagrams_mode == "full"
+
+    def _render_one(target: FSMLoop, highlight: str | None) -> str:
+        if detail == "single":
+            return _render_single_line_status(target, highlight)
+        if detail == "neighborhood":
+            return _render_neighborhood_diagram(
+                target,
+                highlight or target.initial,
+                edge_label_colors=edge_label_colors,
+                badges=badges,
+                highlight_color=highlight_color,
+            )
+        # "full"
+        mode = show_diagrams_mode
+        if mode == "main" and highlight is not None:
+            _filtered_edges, reachable = _filter_main_path_graph(target, _collect_edges(target))
+            if highlight not in reachable:
+                mode = "full"
+        return _render_fsm_diagram(
+            target,
+            verbose=verbose,
+            highlight_state=highlight,
+            highlight_color=highlight_color,
+            edge_label_colors=edge_label_colors,
+            badges=badges,
+            mode=mode,
+        )
+
+    lines: list[str] = []
+    header_text = f"== loop: {fsm.name} "
+    lines.append(header_text + "=" * max(0, cols - len(header_text)))
+    parent_diagram = _render_one(fsm, parent_highlight)
+    if parent_diagram:
+        lines.extend(parent_diagram.split("\n"))
+
+    for d, child_fsm_at_d in sorted(child_fsm_stack.items()):
+        if child_fsm_at_d is None or (d + 1) not in last_state_at_depth:
+            continue
+        sep_text = f"── sub-loop: {child_fsm_at_d.name} "
+        lines.append(sep_text + "─" * max(0, cols - len(sep_text)))
+        child_highlight = last_state_at_depth.get(d + 1)
+        child_diagram = _render_one(child_fsm_at_d, child_highlight)
+        if child_diagram:
+            lines.extend(child_diagram.split("\n"))
+
+    lines.append(iteration_line)
+    lines.append("─" * cols)
+    return "\n".join(lines)
+
+
+def _render_pinned_pane(
+    fsm: FSMLoop,
+    parent_highlight: str | None,
+    child_fsm_stack: dict[int, FSMLoop | None],
+    last_state_at_depth: dict[int, str],
+    iteration_line: str,
+    *,
+    show_diagrams_mode: str,
+    highlight_color: str,
+    edge_label_colors: dict[str, str] | None,
+    badges: dict[str, str] | None,
+    min_action_rows: int = MIN_ACTION_ROWS,
+) -> int:
+    """Render the pinned pane to stdout and set the scroll region beneath it.
+
+    Performs (in order): reset scroll region, clear+home cursor, build all
+    pinned-pane variants, pick the largest that fits, print it, set the
+    DECSTBM scroll region to start one row below the pinned pane, and
+    position the cursor at the top of that scroll region. Returns the
+    pinned-pane height in rows so the caller can track it across events.
+    """
+    cols, rows = terminal_size()
+    # 1. Reset any existing scroll region so the clear covers the full screen.
+    print("\033[r", end="", flush=True)
+    # 2. Clear + cursor home.
+    print("\033[2J\033[H", end="", flush=True)
+
+    def _build(detail: str) -> str:
+        return _build_pinned_pane(
+            detail,
+            fsm,
+            parent_highlight,
+            child_fsm_stack,
+            last_state_at_depth,
+            iteration_line,
+            cols,
+            show_diagrams_mode=show_diagrams_mode,
+            highlight_color=highlight_color,
+            edge_label_colors=edge_label_colors,
+            badges=badges,
+        )
+
+    pinned, pinned_height = _choose_pinned_layout(
+        rows,
+        [_build("full"), _build("neighborhood"), _build("single")],
+        min_action_rows=min_action_rows,
+    )
+    print(pinned, flush=True)
+
+    # Guard against degenerate terminals: scroll region must have at least
+    # 1 row beneath the pinned pane. If pinned_height >= rows, skip the
+    # scroll-region setup entirely — output will append normally and the
+    # caller can rely on the alt-screen exit to clean up.
+    if pinned_height < rows:
+        # DECSTBM uses 1-indexed inclusive rows.
+        print(f"\033[{pinned_height + 1};{rows}r", end="", flush=True)
+        # Move cursor to the top of the scroll region.
+        print(f"\033[{pinned_height + 1};1H", end="", flush=True)
+    return pinned_height
 
 
 def get_builtin_loops_dir() -> Path:
@@ -371,10 +632,49 @@ def run_foreground(
     current_iteration = [0]  # Use list to allow mutation in closure
     last_state_at_depth: dict[int, str] = {}  # Track last known state per nesting depth
     child_fsm_stack: dict[int, FSMLoop | None] = {}  # Active child FSM per depth
+    pinned_height = [0]  # Pinned-pane height; non-zero when alt-screen mode active
     loop_start_time = time.monotonic()
+
+    in_pinned_mode = show_diagrams and clear_screen and sys.stdout.isatty()
+
+    def _elapsed_str() -> str:
+        elapsed_int = int(time.monotonic() - loop_start_time)
+        if elapsed_int < 60:
+            return f"{elapsed_int}s"
+        return f"{elapsed_int // 60}m {elapsed_int % 60}s"
+
+    def _redraw_pinned(state0: str) -> None:
+        """Redraw the pinned pane in place using the current depth-0 state."""
+        assert show_diagrams_mode is not None
+        iter_line = (
+            f"[{current_iteration[0]}/{fsm.max_iterations}] "
+            f"{colorize(state0, '1')} ({colorize(_elapsed_str(), '2')})"
+        )
+        pinned_height[0] = _render_pinned_pane(
+            fsm,
+            state0,
+            child_fsm_stack,
+            last_state_at_depth,
+            iter_line,
+            show_diagrams_mode=show_diagrams_mode,
+            highlight_color=highlight_color,
+            edge_label_colors=edge_label_colors,
+            badges=badges,
+        )
 
     def display_progress(event: dict) -> None:
         """Display progress for events."""
+        global _needs_redraw
+        # SIGWINCH redraw: terminal was resized; re-render the pinned pane
+        # before processing the next event so the layout matches the new size.
+        if (
+            _needs_redraw
+            and in_pinned_mode
+            and 0 in last_state_at_depth
+        ):
+            _redraw_pinned(last_state_at_depth[0])
+            _needs_redraw = False
+
         event_type = event.get("event")
         depth = event.get("depth", 0)
         indent = "  " * depth
@@ -384,13 +684,9 @@ def run_foreground(
         if event_type == "state_enter":
             current_iteration[0] = event.get("iteration", 0)
             state = event.get("state", "")
-            if not quiet:
-                elapsed_int = int(time.monotonic() - loop_start_time)
-                if elapsed_int < 60:
-                    elapsed_str = f"{elapsed_int}s"
-                else:
-                    elapsed_str = f"{elapsed_int // 60}m {elapsed_int % 60}s"
-            if clear_screen and sys.stdout.isatty() and depth == 0:
+            elapsed_str = _elapsed_str() if not quiet else ""
+            # Non-pinned --clear path keeps the bare full-screen clear.
+            if clear_screen and sys.stdout.isatty() and depth == 0 and not in_pinned_mode:
                 print("\033[2J\033[H", end="", flush=True)
             # Update last-known state at this depth and clear stale deeper entries
             last_state_at_depth[depth] = state
@@ -414,7 +710,15 @@ def run_foreground(
             # Clear stale deeper child FSM entries
             for k in [k for k in child_fsm_stack if k > depth]:
                 del child_fsm_stack[k]
-            if show_diagrams:
+
+            if in_pinned_mode:
+                # Pinned-pane path: header + diagram + state line live in the
+                # pinned region; action output streams below in the scroll region.
+                state0 = last_state_at_depth.get(0)
+                if state0 is None:
+                    state0 = state
+                _redraw_pinned(state0)
+            elif show_diagrams:
                 from little_loops.cli.loop.layout import (
                     _collect_edges,
                     _filter_main_path_graph,
@@ -480,7 +784,9 @@ def run_foreground(
                             mode=child_mode,
                         )
                         print(child_diagram, flush=True)
-            if not quiet:
+            # In pinned mode the iteration line is part of the pinned pane;
+            # only print it inline for non-pinned paths.
+            if not quiet and not in_pinned_mode:
                 print(
                     f"{indent}[{current_iteration[0]}/{fsm.max_iterations}] {colorize(state, '1')} ({colorize(elapsed_str, '2')})",
                     end="",
@@ -627,13 +933,19 @@ def run_foreground(
     if show_diagrams and clear_screen and sys.stdout.isatty():
         _using_alt_screen = True
         print("\033[?1049h\033[H", end="", flush=True)
+        _install_sigwinch_handler()
 
     try:
         result = executor.run()
     finally:
         if _using_alt_screen:
+            # Reset DECSTBM scroll region BEFORE exiting alt-screen, otherwise
+            # the main buffer is left with a restricted scroll region (one of
+            # the Success Metrics for ENH-1642).
+            print("\033[r", end="", flush=True)
             print("\033[?1049l", end="", flush=True)
             _using_alt_screen = False
+        _restore_sigwinch_handler()
 
     if not quiet:
         print()
