@@ -771,6 +771,76 @@ class TargetFileSpec:
 
 
 @dataclass
+class RepeatedFailureConfig:
+    """Configuration for the FSM stall detector (FEAT-1637).
+
+    When N consecutive iterations produce an identical
+    `(state_name, exit_code, eval_verdict)` triple, the FSM either
+    aborts the run or routes to a configured recovery state.
+
+    Attributes:
+        window: Consecutive iterations with identical triple required to
+            fire (default 3).
+        on_repeated_failure: Either the literal ``"abort"`` (terminate
+            with ``terminated_by="stall_detected"``) or the name of a
+            declared state to route to.
+    """
+
+    window: int = 3
+    on_repeated_failure: str = "abort"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON/YAML serialization (skip-if-default)."""
+        result: dict[str, Any] = {}
+        if self.window != 3:
+            result["window"] = self.window
+        if self.on_repeated_failure != "abort":
+            result["on_repeated_failure"] = self.on_repeated_failure
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RepeatedFailureConfig:
+        """Create from dictionary (JSON/YAML deserialization)."""
+        return cls(
+            window=data.get("window", 3),
+            on_repeated_failure=data.get("on_repeated_failure", "abort"),
+        )
+
+
+@dataclass
+class CircuitConfig:
+    """Top-level ``circuit:`` block grouping loop-level safety knobs.
+
+    Currently exposes ``repeated_failure`` (the stall detector). Future
+    safety knobs (e.g. global timeouts, panic-stop guards) should be
+    added here rather than as separate top-level keys.
+
+    Attributes:
+        repeated_failure: Stall-detector configuration, or None to disable.
+    """
+
+    repeated_failure: RepeatedFailureConfig | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON/YAML serialization (skip-if-None)."""
+        result: dict[str, Any] = {}
+        if self.repeated_failure is not None:
+            rf_dict = self.repeated_failure.to_dict()
+            # Always emit the key when configured (even if all fields are defaults)
+            # so the round-trip preserves "repeated_failure was set" intent.
+            result["repeated_failure"] = rf_dict
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CircuitConfig:
+        """Create from dictionary (JSON/YAML deserialization)."""
+        rf = None
+        if "repeated_failure" in data and data["repeated_failure"] is not None:
+            rf = RepeatedFailureConfig.from_dict(data["repeated_failure"])
+        return cls(repeated_failure=rf)
+
+
+@dataclass
 class FSMLoop:
     """Complete FSM loop definition.
 
@@ -812,6 +882,7 @@ class FSMLoop:
     labels: list[str] = field(default_factory=list)
     commands: list[CommandEntry] = field(default_factory=list)
     targets: list[TargetFileSpec] = field(default_factory=list)
+    circuit: CircuitConfig | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -864,6 +935,11 @@ class FSMLoop:
         if self.targets:
             result["targets"] = [t.to_dict() for t in self.targets]
 
+        if self.circuit is not None:
+            circuit_dict = self.circuit.to_dict()
+            if circuit_dict:
+                result["circuit"] = circuit_dict
+
         return result
 
     @classmethod
@@ -881,6 +957,10 @@ class FSMLoop:
         loop_config = None
         if "config" in data:
             loop_config = LoopConfigOverrides.from_dict(data["config"])
+
+        circuit = None
+        if "circuit" in data and data["circuit"] is not None:
+            circuit = CircuitConfig.from_dict(data["circuit"])
 
         parameters = {
             name: ParameterSpec.from_dict(spec) for name, spec in data.get("parameters", {}).items()
@@ -908,6 +988,7 @@ class FSMLoop:
             labels=data.get("labels", []),
             commands=[CommandEntry(**e) for e in data.get("commands", [])],
             targets=[TargetFileSpec.from_dict(t) for t in (data.get("targets") or [])],
+            circuit=circuit,
         )
 
     def get_all_state_names(self) -> set[str]:

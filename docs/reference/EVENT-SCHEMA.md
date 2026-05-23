@@ -290,6 +290,25 @@ Emitted when a state exceeds its `max_retries` limit and the executor transition
 
 ---
 
+### `stall_detected`
+
+Emitted when the FSM stall detector (FEAT-1637) observes `window` consecutive iterations producing an identical `(state, exit_code, verdict)` triple. Configured via the top-level `circuit.repeated_failure` block. On firing, the executor either terminates the run with `terminated_by="stall_detected"` (when `on_repeated_failure: "abort"`) or routes to the configured recovery state.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state whose repeated entry triggered the stall |
+| `exit_code` | `int` | The repeating action exit code (timeouts surface as `124`) |
+| `verdict` | `str` | The repeating evaluator verdict (e.g. `"no"`, `"error"`) |
+| `consecutive` | `int` | Number of consecutive identical triples observed (equals configured `window`) |
+| `action` | `str` | Resolved action: literal `"abort"` or `"route:<state>"` |
+
+**Example:**
+```json
+{"event": "stall_detected", "ts": "...", "state": "check_semantic_vision", "exit_code": 124, "verdict": "error", "consecutive": 3, "action": "abort"}
+```
+
+---
+
 ### `rate_limit_exhausted`
 
 Emitted when the wall-clock rate-limit budget is spent across the short-burst and long-wait retry tiers and the executor transitions to `on_rate_limit_exhausted` (or `on_error`). See `rate_limit_max_wait_seconds` and `rate_limit_long_wait_ladder` on `StateConfig` for budget configuration.
@@ -516,7 +535,7 @@ Emitted once when the executor finishes, regardless of how it terminated.
 |-------|------|-------------|
 | `final_state` | `str` | Name of the state at termination. Usually the last state entered; when `terminated_by="timeout"` this may be a state that was routed to but never entered. **Exception (BUG-1226):** when that pending state is a shell action, the executor flushes it — emitting `state_enter` with `flushed: true` and running its action — before honoring the timeout, so `state_enter` for `final_state` is always emitted before `loop_complete`. Slash commands and sub-loops are not flushed. |
 | `iterations` | `int` | Total number of iterations completed |
-| `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), or the terminal state name |
+| `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), `"stall_detected"` (FEAT-1637 circuit fired with `on_repeated_failure: "abort"`), or the terminal state name |
 
 **Example:**
 ```json
@@ -775,6 +794,7 @@ docs/reference/schemas/
 ├── rate_limit_waiting.json
 ├── retry_exhausted.json
 ├── route.json
+├── stall_detected.json
 ├── state_enter.json
 ├── state_issue_completed.json
 └── state_issue_failed.json
@@ -858,6 +878,7 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `action_error` | FSM | `fsm/executor.py` |
 | `evaluate` | FSM | `fsm/executor.py` |
 | `retry_exhausted` | FSM | `fsm/executor.py` |
+| `stall_detected` | FSM | `fsm/executor.py` |
 | `rate_limit_exhausted` | FSM | `fsm/executor.py` |
 | `rate_limit_storm` | FSM | `fsm/executor.py` |
 | `rate_limit_waiting` | FSM | `fsm/executor.py` |

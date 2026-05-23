@@ -73,14 +73,24 @@ Use `/ll:create-loop` for an interactive wizard that guides you through creating
 
 > **Stub**: Auto-drafted by `/ll:update-docs`. Fill in details and integrate into loop YAML reference.
 
-Two loop-level fields guard against runaway loops:
+Three loop-level fields guard against runaway loops:
 
 | Field | Default | Behavior |
 |-------|---------|----------|
 | `max_iterations` | `50` | Total state executions before the loop terminates with `terminated_by="max_iterations"` |
 | `max_edge_revisits` | `100` | Maximum times any single state→state edge may fire; terminates with `terminated_by="cycle_detected"` (exit code 1) when exceeded. Edge counts survive `--resume`. |
+| `circuit.repeated_failure` | unset | When configured, observes consecutive identical `(state, exit_code, verdict)` triples across iterations. Fires after `window` consecutive matches (default `3`) and either terminates with `terminated_by="stall_detected"` or routes to `on_repeated_failure: <state>`. See [stall detector](#stall-detector-circuit-repeated-failure) below. |
 
 `max_edge_revisits` catches tight two-state oscillations that would otherwise drain the entire `max_iterations` budget. Lower it (e.g., `max_edge_revisits: 5`) on short focused loops to surface regressions faster.
+
+`circuit.repeated_failure` catches a complementary failure mode: a *single* state that fails the same way every iteration (e.g. a quality gate whose action times out with `exit_code=124` and whose evaluator returns `"error"` deterministically). Such a state never re-traverses an edge, so `max_edge_revisits` cannot catch it — but the stall detector compares the full `(state, exit_code, verdict)` triple across iterations and aborts (or routes to a recovery state) once the streak hits `window` consecutive matches. One non-matching iteration resets the streak.
+
+```yaml
+circuit:
+  repeated_failure:
+    window: 3                  # consecutive iterations with identical triple (default 3)
+    on_repeated_failure: abort # "abort" terminates, or name of a declared recovery state
+```
 <!-- END TODO stub -->
 
 ## Common Loop Patterns

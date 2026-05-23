@@ -202,6 +202,31 @@
       "items": {
         "$ref": "#/definitions/targetFileSpec"
       }
+    },
+    "circuit": {
+      "type": "object",
+      "description": "Loop-level safety knobs (FEAT-1637).",
+      "properties": {
+        "repeated_failure": {
+          "type": "object",
+          "description": "Stall detector for repeated (state, exit_code, verdict) triples. Fires after `window` consecutive iterations produce an identical triple.",
+          "properties": {
+            "window": {
+              "type": "integer",
+              "description": "Consecutive identical triples required to fire.",
+              "minimum": 1,
+              "default": 3
+            },
+            "on_repeated_failure": {
+              "type": "string",
+              "description": "Either the literal \"abort\" (terminate with terminated_by=\"stall_detected\") or the name of a declared state to route to.",
+              "default": "abort"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

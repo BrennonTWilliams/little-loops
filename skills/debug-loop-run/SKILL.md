@@ -184,6 +184,12 @@ Scan the event list and classify signals using the rules below. Group events by 
 - Title: `"<loop_name> loop terminated with error in <final_state> state"`
 - Include: `final_state`, `iterations`, last 5 events before termination
 
+#### BUG — Stall detector aborted the run
+- Trigger: `loop_complete` with `terminated_by == "stall_detected"` (FEAT-1637). Also surfaces as a preceding `stall_detected` event carrying `state`, `exit_code`, `verdict`, `consecutive`, and `action` fields.
+- Priority: P2
+- Title: `"<loop_name> stalled on <state> (exit_code=<code>, verdict=<verdict>) after <consecutive> iterations"`
+- Include: the `stall_detected` event payload, `final_state`, `iterations`, last 5 events before termination. Note: a stall means the same `(state, exit_code, verdict)` triple repeated `consecutive` times — investigate the upstream evaluator or action (e.g. timeouts surface as `exit_code=124` / `verdict="error"`) rather than the loop topology itself.
+
 #### ENH — Iteration-1 Convergence Without Apply (Signal 1)
 - **Class**: Effectiveness signal (terminal-event handler).
 - **Trigger**: `loop_complete` with `iterations == 1` (note: the event payload field is `iterations`, an int — see the Step 2 event-payload table) AND no state matching the apply/refine pattern was visited during the run. The apply-state prefix list is:

@@ -6247,3 +6247,173 @@ class TestThrottling:
         hard_events = [e for e in events if e.get("event") == "throttle_hard"]
         assert len(warn_events) >= 1  # warn still fires
         assert len(hard_events) == 0  # hard is suppressed for learning states
+
+
+class TestStallDetector:
+    """Tests for FEAT-1637: stall detector for repeated (state, exit_code, verdict) triples."""
+
+    def _make_fsm(
+        self,
+        on_repeated_failure: str,
+        window: int = 3,
+    ) -> FSMLoop:
+        """Build an FSM that ping-pongs check ↔ fix, with circuit.repeated_failure set."""
+        from little_loops.fsm.schema import CircuitConfig, RepeatedFailureConfig
+
+        fsm = FSMLoop(
+            name="stall-test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    on_yes="done",
+                    on_no="fix",
+                ),
+                "fix": StateConfig(action="fix.sh", next="check"),
+                "recover": StateConfig(action="echo recover", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+            max_iterations=50,
+        )
+        fsm.circuit = CircuitConfig(
+            repeated_failure=RepeatedFailureConfig(
+                window=window, on_repeated_failure=on_repeated_failure
+            )
+        )
+        return fsm
+
+    def test_stall_aborts_after_window(self) -> None:
+        """3 consecutive (state, exit_code, verdict) triples → abort with stall_detected."""
+        fsm = self._make_fsm(on_repeated_failure="abort", window=3)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)  # check always fails → ping-pongs forever
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.terminated_by == "stall_detected"
+        assert result.error is not None and "Stall detected" in result.error
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert len(stall_events) == 1
+        e = stall_events[0]
+        assert e["state"] == "check"
+        assert e["exit_code"] == 1
+        assert e["verdict"] == "no"
+        assert e["consecutive"] == 3
+        assert e["action"] == "abort"
+
+    def test_stall_does_not_fire_when_streak_broken(self) -> None:
+        """One non-matching iteration in the middle resets the consecutive counter."""
+        fsm = self._make_fsm(on_repeated_failure="abort", window=3)
+        runner = MockActionRunner()
+        # check fails 2x, then succeeds → done. Never hits stall window.
+        runner.results = [
+            ("check.sh", {"exit_code": 1}),
+            ("fix.sh", {"exit_code": 0}),
+            ("check.sh", {"exit_code": 1}),
+            ("fix.sh", {"exit_code": 0}),
+            ("check.sh", {"exit_code": 0}),
+        ]
+        runner.use_indexed_order = True
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "done"
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert stall_events == []
+
+    def test_stall_routes_to_recovery_state(self) -> None:
+        """on_repeated_failure: <state> routes to that state instead of aborting."""
+        fsm = self._make_fsm(on_repeated_failure="recover", window=3)
+        runner = MockActionRunner()
+        runner.set_result("check.sh", exit_code=1)
+        runner.set_result("fix.sh", exit_code=0)
+        runner.set_result("echo recover", exit_code=0)
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        # Should NOT abort — should route to recover → done
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "done"
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert len(stall_events) == 1
+        assert stall_events[0]["action"] == "route:recover"
+        assert "echo recover" in runner.calls
+
+    def test_no_circuit_config_no_stall_detection(self) -> None:
+        """Backward compat: FSM without circuit block does not stall-detect."""
+        fsm = FSMLoop(
+            name="no-stall",
+            initial="check",
+            states={
+                "check": StateConfig(action="check.sh", on_yes="done", on_no="fix"),
+                "fix": StateConfig(action="fix.sh", next="check"),
+                "done": StateConfig(terminal=True),
+            },
+            max_iterations=5,
+        )
+        # No fsm.circuit assigned — should run until max_iterations
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.terminated_by == "max_iterations"
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert stall_events == []
+
+    def test_stall_treats_124_error_as_stall(self) -> None:
+        """exit_code=124 with verdict='error' (timeout) stalls like verdict='no'."""
+        from little_loops.fsm.schema import CircuitConfig, RepeatedFailureConfig
+
+        fsm = FSMLoop(
+            name="timeout-stall",
+            initial="slow",
+            states={
+                "slow": StateConfig(
+                    action="slow.sh",
+                    evaluate=EvaluateConfig(type="exit_code"),
+                    route=RouteConfig(routes={"yes": "done", "error": "slow"}, error="slow"),
+                ),
+                "done": StateConfig(terminal=True),
+            },
+            max_iterations=50,
+        )
+        fsm.circuit = CircuitConfig(
+            repeated_failure=RepeatedFailureConfig(window=3, on_repeated_failure="abort")
+        )
+        runner = MockActionRunner()
+        runner.always_return(exit_code=124, stderr="timed out")
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.terminated_by == "stall_detected"
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert len(stall_events) == 1
+        assert stall_events[0]["exit_code"] == 124
+        assert stall_events[0]["verdict"] == "error"
+
+    def test_window_one_fires_immediately(self) -> None:
+        """window=1 fires after the first matching transition."""
+        fsm = self._make_fsm(on_repeated_failure="abort", window=1)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.terminated_by == "stall_detected"
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert len(stall_events) == 1
+        assert stall_events[0]["consecutive"] == 1

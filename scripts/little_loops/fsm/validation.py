@@ -98,6 +98,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "labels",
         "commands",
         "targets",
+        "circuit",
         "import",
         "fragments",
         "from",
@@ -105,6 +106,10 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "state_defs",
     }
 )
+
+# Special tokens accepted as the `on_repeated_failure` target on the
+# stall detector — `"abort"` means terminate via _finish("stall_detected").
+STALL_SPECIAL_TOKENS: frozenset[str] = frozenset({"abort"})
 
 # Valid parameter types for the 'parameters:' block
 VALID_PARAMETER_TYPES: frozenset[str] = frozenset(
@@ -816,6 +821,45 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
         )
 
     errors.extend(_validate_failure_terminal_action(fsm))
+
+    errors.extend(_validate_circuit(fsm, defined_states))
+
+    return errors
+
+
+def _validate_circuit(fsm: FSMLoop, defined_states: set[str]) -> list[ValidationError]:
+    """Validate the top-level `circuit:` block (FEAT-1637).
+
+    Checks:
+    - `circuit.repeated_failure.window` is a positive integer.
+    - `circuit.repeated_failure.on_repeated_failure` is either the special
+      token ``"abort"`` or the name of a declared state.
+    """
+    errors: list[ValidationError] = []
+    if fsm.circuit is None or fsm.circuit.repeated_failure is None:
+        return errors
+
+    rf = fsm.circuit.repeated_failure
+    if rf.window < 1:
+        errors.append(
+            ValidationError(
+                message=f"circuit.repeated_failure.window must be >= 1, got {rf.window}",
+                path="circuit.repeated_failure.window",
+            )
+        )
+
+    target = rf.on_repeated_failure
+    if target not in STALL_SPECIAL_TOKENS and target not in defined_states:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"circuit.repeated_failure.on_repeated_failure references "
+                    f"unknown state '{target}' (must be a declared state or "
+                    f"the literal \"abort\")"
+                ),
+                path="circuit.repeated_failure.on_repeated_failure",
+            )
+        )
 
     return errors
 

@@ -44,6 +44,7 @@ from little_loops.fsm.runners import (
 )
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
+from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
 from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.session_log import get_current_session_jsonl
@@ -58,6 +59,9 @@ _DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS: int = 21600
 # Long-wait tier ladder (seconds), walked once the short-tier budget is spent.
 # Mirrors RateLimitsConfig.long_wait_ladder default.
 _DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER: list[int] = [300, 900, 1800, 3600]
+# Event name emitted when the stall detector fires on N consecutive
+# identical (state, exit_code, verdict) transitions. See FEAT-1637.
+STALL_DETECTED_EVENT: str = "stall_detected"
 # Event name emitted when rate-limit retries are exhausted.
 RATE_LIMIT_EXHAUSTED_EVENT: str = "rate_limit_exhausted"
 # Event name emitted when consecutive rate-limit exhaustions reach the storm threshold.
@@ -228,6 +232,15 @@ class FSMExecutor:
         # When any edge exceeds max_edge_revisits, the loop terminates with cycle_detected.
         self._edge_revisit_counts: dict[str, int] = {}
 
+        # Stall detector for repeated (state, exit_code, verdict) triples.
+        # Enabled via fsm.circuit.repeated_failure (FEAT-1637); None when not configured.
+        self._stall_detector: StallDetector | None = None
+        if fsm.circuit is not None and fsm.circuit.repeated_failure is not None:
+            self._stall_detector = StallDetector(window=fsm.circuit.repeated_failure.window)
+        # Set by _execute_state when the detector fires with on_repeated_failure="abort";
+        # checked by run() to terminate via _finish("stall_detected", ...).
+        self._pending_stall_abort: Stall | None = None
+
         # Nesting depth for sub-loop event forwarding (0 = top-level, 1+ = sub-loop).
         # Set by the parent executor when constructing child executors.
         self._depth: int = 0
@@ -367,6 +380,22 @@ class FSMExecutor:
                 # Check for pending error signal (FATAL_ERROR)
                 if self._pending_error is not None:
                     return self._finish("error", error=self._pending_error)
+
+                # Check for pending stall abort (FEAT-1637). The detector
+                # fired with on_repeated_failure="abort" inside _execute_state;
+                # terminate cleanly via _finish (mirrors the cycle_detected
+                # guard below at lines 397-416).
+                if self._pending_stall_abort is not None:
+                    stall = self._pending_stall_abort
+                    s_state, s_exit, s_verdict = stall.triple
+                    return self._finish(
+                        "stall_detected",
+                        error=(
+                            f"Stall detected: state '{s_state}' produced "
+                            f"(exit_code={s_exit}, verdict='{s_verdict}') "
+                            f"for {stall.count} consecutive iterations"
+                        ),
+                    )
 
                 # Check for pending handoff signal
                 if self._pending_handoff:
@@ -777,6 +806,37 @@ class FSMExecutor:
 
         # Route based on verdict
         verdict = eval_result.verdict if eval_result else "yes"
+
+        # Stall detection (FEAT-1637). Record this transition's triple and
+        # check whether the last `window` triples are identical. On stall,
+        # either abort (set _pending_stall_abort for run() to catch) or
+        # override next_state to the configured recovery target.
+        stall_route_target: str | None = None
+        if self._stall_detector is not None:
+            stall_exit_code = action_result.exit_code if action_result else 0
+            self._stall_detector.record(self.current_state, stall_exit_code, verdict)
+            stall = self._stall_detector.check()
+            if stall is not None:
+                assert self.fsm.circuit is not None
+                assert self.fsm.circuit.repeated_failure is not None
+                cfg_action = self.fsm.circuit.repeated_failure.on_repeated_failure
+                self._emit(
+                    STALL_DETECTED_EVENT,
+                    {
+                        "state": self.current_state,
+                        "exit_code": stall_exit_code,
+                        "verdict": verdict,
+                        "consecutive": stall.count,
+                        "action": "abort" if cfg_action == "abort" else f"route:{cfg_action}",
+                    },
+                )
+                if cfg_action == "abort":
+                    self._pending_stall_abort = stall
+                    return None
+                # Route to recovery target; bypass _route() entirely so the
+                # eval verdict does not pull us elsewhere first.
+                stall_route_target = cfg_action
+
         route_ctx = RouteContext(
             state_name=self.current_state,
             state=state,
@@ -807,6 +867,12 @@ class FSMExecutor:
                 self._rate_limit_retries.pop(route_ctx.state_name, None)
                 self._consecutive_rate_limit_exhaustions = 0
                 self._api_error_retries.pop(route_ctx.state_name, None)
+
+        # Stall-route override: if the detector elected to route to a recovery
+        # state, honor it now (bypass interceptors and _route) so the
+        # configured target wins over the eval verdict.
+        if stall_route_target is not None:
+            return stall_route_target
 
         for interceptor in self._interceptors:
             if hasattr(interceptor, "before_route"):

@@ -3927,7 +3927,23 @@ class FSMLoop:
     llm: LLMConfig = LLMConfig()       # LLM evaluation settings
     commands: list[CommandEntry] = []  # Optional Commands section override for ll-loop show
     targets: list[TargetFileSpec] = []  # Per-FSM-state targeting spec for harness-optimize APO (ENH-1552)
+    circuit: CircuitConfig | None = None  # Top-level safety knobs; currently the stall detector (FEAT-1637)
 ```
+
+**Nested config dataclasses (FEAT-1637):**
+
+```python
+@dataclass
+class RepeatedFailureConfig:
+    window: int = 3                        # Consecutive identical triples required to fire
+    on_repeated_failure: str = "abort"     # "abort" or name of a declared recovery state
+
+@dataclass
+class CircuitConfig:
+    repeated_failure: RepeatedFailureConfig | None = None
+```
+
+The stall detector records `(state_name, exit_code, eval_verdict)` after every transition and fires when the last `window` triples are identical. When `on_repeated_failure == "abort"` the run terminates with `terminated_by="stall_detected"` (exit code 1); otherwise the executor routes to the named state. Each firing also emits a `stall_detected` event with `state`, `exit_code`, `verdict`, `consecutive`, and `action` fields.
 
 **Methods:**
 
@@ -4347,7 +4363,7 @@ result = executor.run()
 
 print(result.final_state)     # "done"
 print(result.iterations)      # Number of iterations
-print(result.terminated_by)   # "terminal", "max_iterations", "timeout", "signal", "cycle_detected", or "error"
+print(result.terminated_by)   # "terminal", "max_iterations", "timeout", "signal", "cycle_detected", "stall_detected", or "error"
 ```
 
 #### ExecutionResult
@@ -4357,7 +4373,7 @@ print(result.terminated_by)   # "terminal", "max_iterations", "timeout", "signal
 class ExecutionResult:
     final_state: str                      # State when execution stopped
     iterations: int                       # Total iterations
-    terminated_by: str                    # "terminal" | "max_iterations" | "timeout" | "signal" | "cycle_detected" | "error"
+    terminated_by: str                    # "terminal" | "max_iterations" | "timeout" | "signal" | "cycle_detected" | "stall_detected" | "error"
     duration_ms: int                      # Total execution time
     captured: dict[str, dict[str, Any]]   # Captured variable values
     error: str | None = None              # Error message if failed

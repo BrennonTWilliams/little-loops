@@ -15,6 +15,7 @@ import yaml
 
 from little_loops.fsm.schema import (
     DEFAULT_LLM_MODEL,
+    CircuitConfig,
     CommandEntry,
     EvaluateConfig,
     FSMLoop,
@@ -22,6 +23,7 @@ from little_loops.fsm.schema import (
     LLMConfig,
     LoopConfigOverrides,
     ParameterSpec,
+    RepeatedFailureConfig,
     RouteConfig,
     StateConfig,
     TargetFileSpec,
@@ -2717,3 +2719,58 @@ class TestFSMLoopTargetsField:
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
+
+
+class TestCircuitConfig:
+    """FEAT-1637: CircuitConfig + RepeatedFailureConfig round-trip serialization."""
+
+    def test_circuit_repeated_failure_round_trip(self) -> None:
+        original = CircuitConfig(
+            repeated_failure=RepeatedFailureConfig(window=5, on_repeated_failure="recover")
+        )
+        restored = CircuitConfig.from_dict(original.to_dict())
+        assert restored.repeated_failure is not None
+        assert restored.repeated_failure.window == 5
+        assert restored.repeated_failure.on_repeated_failure == "recover"
+
+    def test_repeated_failure_defaults_round_trip(self) -> None:
+        original = RepeatedFailureConfig()
+        restored = RepeatedFailureConfig.from_dict(original.to_dict())
+        assert restored.window == 3
+        assert restored.on_repeated_failure == "abort"
+
+    def test_circuit_to_dict_omits_repeated_failure_when_none(self) -> None:
+        assert CircuitConfig().to_dict() == {}
+
+    def test_fsm_loop_with_circuit_round_trip(self) -> None:
+        original = FSMLoop(
+            name="t",
+            description="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            circuit=CircuitConfig(
+                repeated_failure=RepeatedFailureConfig(window=4, on_repeated_failure="bail")
+            ),
+        )
+        d = original.to_dict()
+        assert d["circuit"]["repeated_failure"] == {
+            "window": 4,
+            "on_repeated_failure": "bail",
+        }
+        restored = FSMLoop.from_dict(d)
+        assert restored.circuit is not None
+        assert restored.circuit.repeated_failure is not None
+        assert restored.circuit.repeated_failure.window == 4
+        assert restored.circuit.repeated_failure.on_repeated_failure == "bail"
+
+    def test_fsm_loop_without_circuit_omits_key(self) -> None:
+        fsm = FSMLoop(
+            name="t",
+            description="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "circuit" not in d
+        restored = FSMLoop.from_dict(d)
+        assert restored.circuit is None

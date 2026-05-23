@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-stall_detected.json",
+  "title": "Stall Detected",
+  "description": "Emitted when the FSM stall detector observes `window` consecutive iterations with an identical (state, exit_code, verdict) triple. Either terminates the run (action=\"abort\") or routes to a recovery state (action=\"route:<state>\"). See FEAT-1637.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "exit_code",
+    "verdict",
+    "consecutive",
+    "action"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "state": {
+      "type": "string",
+      "description": "State name whose triple repeated"
+    },
+    "exit_code": {
+      "type": "integer",
+      "description": "Action exit code observed in the repeating triple"
+    },
+    "verdict": {
+      "type": "string",
+      "description": "Evaluator verdict observed in the repeating triple"
+    },
+    "consecutive": {
+      "type": "integer",
+      "description": "Number of consecutive identical triples that fired the detector"
+    },
+    "action": {
+      "type": "string",
+      "description": "Either \"abort\" or \"route:<target_state>\""
+    }
+  },
+  "additionalProperties": true
+}

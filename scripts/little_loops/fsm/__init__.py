@@ -92,6 +92,7 @@ from little_loops.fsm.executor import (
     RATE_LIMIT_EXHAUSTED_EVENT,
     RATE_LIMIT_STORM_EVENT,
     RATE_LIMIT_WAITING_EVENT,
+    STALL_DETECTED_EVENT,
     THROTTLE_HARD_EVENT,
     THROTTLE_STOP_EVENT,
     THROTTLE_WARN_EVENT,
@@ -125,12 +126,14 @@ from little_loops.fsm.persistence import (
 from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
 from little_loops.fsm.schema import (
     DEFAULT_LLM_MODEL,
+    CircuitConfig,
     CommandEntry,
     EvaluateConfig,
     FSMLoop,
     LearningConfig,
     LLMConfig,
     ParameterSpec,
+    RepeatedFailureConfig,
     RouteConfig,
     StateConfig,
     TargetFileSpec,
@@ -145,6 +148,7 @@ from little_loops.fsm.signal_detector import (
     SignalDetector,
     SignalPattern,
 )
+from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import Evaluator
 from little_loops.fsm.validation import (
     ValidationError,
@@ -156,10 +160,12 @@ from little_loops.fsm.validation import (
 __all__ = [
     "ActionResult",
     "ActionRunner",
+    "CircuitConfig",
     "CommandEntry",
     "RATE_LIMIT_EXHAUSTED_EVENT",
     "RATE_LIMIT_STORM_EVENT",
     "RATE_LIMIT_WAITING_EVENT",
+    "STALL_DETECTED_EVENT",
     "DEFAULT_LLM_MODEL",
     "Evaluator",
     "EventCallback",
@@ -186,6 +192,7 @@ __all__ = [
     "PersistentExecutor",
     "RESUMABLE_STATUSES",
     "RateLimitCircuit",
+    "RepeatedFailureConfig",
     "RouteConfig",
     "RouteContext",
     "RouteDecision",
@@ -193,6 +200,8 @@ __all__ = [
     "ScopeLock",
     "SignalDetector",
     "SignalPattern",
+    "Stall",
+    "StallDetector",
     "StateConfig",
     "StatePersistence",
     "TargetFileSpec",

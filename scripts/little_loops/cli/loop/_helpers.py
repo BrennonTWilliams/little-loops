@@ -28,6 +28,7 @@ EXIT_CODES: dict[str, int] = {
     "max_iterations": 1,
     "timeout": 1,
     "cycle_detected": 1,
+    "stall_detected": 1,
 }
 
 # Module-level shutdown state for signal handling
@@ -598,6 +599,20 @@ def run_foreground(
             if not quiet:
                 to_state = event.get("to", "")
                 print(f"{indent}       {colorize('->', '2')} {colorize(to_state, '1')}", flush=True)
+
+        elif event_type == "stall_detected":
+            if not quiet:
+                state = event.get("state", "")
+                exit_code = event.get("exit_code", 0)
+                verdict = event.get("verdict", "")
+                consecutive = event.get("consecutive", 0)
+                action = event.get("action", "abort")
+                triple = f"(exit_code={exit_code}, verdict='{verdict}')"
+                msg = (
+                    f"stall_detected: state '{state}' produced {triple} "
+                    f"for {consecutive} consecutive iterations -> {action}"
+                )
+                print(f"{indent}       {colorize(msg, '38;5;208')}", flush=True)
 
     # Wire progress display via the EventBus on PersistentExecutor
     if not quiet or show_diagrams:

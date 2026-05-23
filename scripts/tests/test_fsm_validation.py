@@ -6,10 +6,16 @@ support for custom on_<verdict> routing via extra_routes.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from little_loops.fsm.schema import (
+    CircuitConfig,
     EvaluateConfig,
     FSMLoop,
     ParameterSpec,
+    RepeatedFailureConfig,
     StateConfig,
     TargetFileSpec,
     ThrottleConfig,
@@ -18,6 +24,7 @@ from little_loops.fsm.validation import (
     ValidationSeverity,
     _validate_evaluator,
     _validate_parameters,
+    load_and_validate,
     validate_fsm,
 )
 
@@ -576,3 +583,95 @@ class TestTargetsValidation:
         fsm = self._make_fsm([TargetFileSpec(file="not-yaml.json")])
         errors = validate_fsm(fsm)
         assert any("not-yaml.json" in e.message for e in errors)
+
+
+class TestCircuitValidation:
+    """FEAT-1637: validation for circuit.repeated_failure."""
+
+    def _make_fsm(self, repeated_failure: RepeatedFailureConfig) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": make_state(action="run.sh", on_yes="done"),
+                "done": make_state(terminal=True),
+                "recover": make_state(terminal=True),
+            },
+            circuit=CircuitConfig(repeated_failure=repeated_failure),
+        )
+
+    def _write_yaml(self, tmp_path: Path, body: str) -> Path:
+        p = tmp_path / "loop.yaml"
+        p.write_text(body)
+        return p
+
+    def test_circuit_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level `circuit:` produces no Unknown-top-level warning."""
+        loop_yaml = self._write_yaml(
+            tmp_path,
+            (
+                "name: test-loop\n"
+                "description: A loop with circuit block\n"
+                "initial: work\n"
+                "states:\n"
+                "  work:\n"
+                "    action: run.sh\n"
+                "    on_yes: done\n"
+                "  done:\n"
+                "    terminal: true\n"
+                "circuit:\n"
+                "  repeated_failure:\n"
+                "    window: 3\n"
+                "    on_repeated_failure: abort\n"
+            ),
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
+
+    def test_on_repeated_failure_unknown_state_rejected(self, tmp_path: Path) -> None:
+        loop_yaml = self._write_yaml(
+            tmp_path,
+            (
+                "name: test-loop\n"
+                "description: t\n"
+                "initial: work\n"
+                "states:\n"
+                "  work:\n"
+                "    action: run.sh\n"
+                "    on_yes: done\n"
+                "  done:\n"
+                "    terminal: true\n"
+                "circuit:\n"
+                "  repeated_failure:\n"
+                "    on_repeated_failure: ghost_state\n"
+            ),
+        )
+        with pytest.raises(ValueError, match="ghost_state"):
+            load_and_validate(loop_yaml)
+
+    def test_on_repeated_failure_abort_accepted(self) -> None:
+        fsm = self._make_fsm(
+            RepeatedFailureConfig(window=3, on_repeated_failure="abort")
+        )
+        errors = [e for e in validate_fsm(fsm) if e.severity == ValidationSeverity.ERROR]
+        circuit_errors = [e for e in errors if "circuit" in (e.path or "")]
+        assert circuit_errors == []
+
+    def test_on_repeated_failure_declared_state_accepted(self) -> None:
+        fsm = self._make_fsm(
+            RepeatedFailureConfig(window=3, on_repeated_failure="recover")
+        )
+        errors = [e for e in validate_fsm(fsm) if e.severity == ValidationSeverity.ERROR]
+        circuit_errors = [e for e in errors if "circuit" in (e.path or "")]
+        assert circuit_errors == []
+
+    def test_window_must_be_positive(self) -> None:
+        fsm = self._make_fsm(
+            RepeatedFailureConfig(window=0, on_repeated_failure="abort")
+        )
+        errors = validate_fsm(fsm)
+        assert any(
+            "circuit.repeated_failure.window" in (e.path or "") and "must be >= 1" in e.message
+            for e in errors
+        )
