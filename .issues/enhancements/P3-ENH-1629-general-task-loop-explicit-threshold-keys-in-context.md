@@ -3,6 +3,7 @@ captured_at: "2026-05-23T16:40:11Z"
 discovered_date: 2026-05-23
 discovered_by: capture-issue
 status: open
+depends_on: BUG-1628
 ---
 
 # ENH-1629: Add explicit success-threshold keys to general-task loop context
@@ -119,9 +120,16 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `general-task`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53f5ce8a-8802-4e4f-a82f-cb8f836c6b67.jsonl`
 - `/ll:format-issue` - 2026-05-23T16:43:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7684c915-f5a2-4b68-9ba1-d56622191296.jsonl`
 - `/ll:capture-issue` - 2026-05-23T16:40:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
 
 ---
 
 **Open** | Created: 2026-05-23 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue extends general-task.yaml's `context:` block and `check_done` prompt. BUG-1628 restructures the `execute`/`continue_work` state actions in the same file. This issue `depends_on: BUG-1628` — let the structural fix land first (it changes what states exist and what the check_done prompt means), then extend the context keys on top of the updated structure.

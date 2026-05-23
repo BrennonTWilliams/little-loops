@@ -43,8 +43,15 @@ The existing sub-skills remain functional and user-invocable. Only the routing e
 `enhancement`, `skills`, `architecture`, `context-engineering`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
 - `/ll:capture-issue` - 2026-05-22T19:19:39Z - conversation analysis
 
 ## Status
 
 **Open** | Created: 2026-05-22 | Priority: P4
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-1617 (negative routing instructions for Tier 1 skill descriptions) has been made to depend on this issue. Resolve the audit-skill consolidation in ENH-1618 first so ENH-1617 knows which audit skills remain Tier 1 and actually need routing disambiguation. If this issue is deferred or cancelled, remove the `depends_on: ENH-1618` from ENH-1617 and unblock it.

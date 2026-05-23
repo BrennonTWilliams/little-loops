@@ -3,6 +3,7 @@ captured_at: '2026-05-22T19:19:39Z'
 discovered_date: 2026-05-22
 discovered_by: capture-issue
 status: open
+depends_on: ENH-1618
 ---
 
 # ENH-1617: Add negative routing instructions to Tier 1 skill descriptions
@@ -44,8 +45,15 @@ This adds ~20-40 chars per affected description while dramatically improving rou
 `enhancement`, `skills`, `context-engineering`, `routing`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
 - `/ll:capture-issue` - 2026-05-22T19:19:39Z - conversation analysis
 
 ## Status
 
 **Open** | Created: 2026-05-22 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue adds negative routing instructions to the 14 Tier 1 skill descriptions, including the 5 audit skills. ENH-1618 plans to consolidate those 5 audit skills into a single meta-skill entry point (demoting 4 audit sub-skills from Tier 1). Adding routing disambiguation to audit skills before ENH-1618 resolves their Tier 1 status risks wasted work. This issue `depends_on: ENH-1618` — complete the audit consolidation decision first, then apply routing instructions only to the audit skills that remain Tier 1.

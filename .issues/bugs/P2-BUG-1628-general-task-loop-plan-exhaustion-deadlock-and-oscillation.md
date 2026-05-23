@@ -3,7 +3,7 @@ captured_at: '2026-05-23T14:20:49Z'
 discovered_date: 2026-05-23
 discovered_by: capture-issue
 status: open
-confidence_score: 100
+confidence_score: 97
 outcome_confidence: 71
 score_complexity: 18
 score_test_coverage: 10
@@ -12,6 +12,7 @@ score_change_surface: 25
 implementation_order_risk: true
 size: Very Large
 decision_needed: false
+depends_on: FEAT-1637
 ---
 
 # BUG-1628: general-task loop deadlocks when DoD is unmet but plan is exhausted
@@ -152,6 +153,64 @@ continue_work:
 
 The `max_retries: 5` triggers after 5 consecutive `continue_work` re-entries without escaping to `done`, routing through `diagnose` (which already exists and routes to `failed`).
 
+### Codebase Research Findings — Correction (third refine pass)
+
+_Added by `/ll:refine-issue` — supersedes the "Recommended revised solution" above._
+
+**The `max_retries: 5` recommendation does NOT work for this oscillation pattern.** Direct read of `scripts/little_loops/fsm/executor.py` `FSMExecutor.run()` lines 298–305 shows the retry counter increments only on *self-loops* (`current_state == prev_state`), and the `else` branch *actively pops* the counter on every cross-state transition:
+
+```python
+if self._prev_state is not None:
+    if self.current_state == self._prev_state:
+        self._retry_counts[self.current_state] = (
+            self._retry_counts.get(self.current_state, 0) + 1
+        )
+    else:
+        self._retry_counts.pop(self._prev_state, None)
+        self._throttle_counts.pop(self._prev_state, None)
+```
+
+In the `check_done → continue_work → check_done → continue_work` cycle, `current_state != prev_state` on every iteration, so `_retry_counts["continue_work"]` never accumulates — it is reset on every transition to `check_done`. `max_retries` + `on_retry_exhausted` would never fire for this defect.
+
+**Confirmation by pattern audit**: every existing `max_retries` usage in `scripts/little_loops/loops/*.yaml` is paired with a self-loop edge (e.g., `on_blocked: $current` in `agent-eval-improve.yaml` lines 27–30, `score_results`, `analyze_failures`, `refine_config`) or with single-state retry on action error — never with cross-state alternation. The pattern works in `agent-eval-improve` precisely because the state stays in itself between attempts.
+
+**Corrected option set** (these actually work against the executor as-implemented):
+
+**Option A — Shell-based stall counter state (recommended).** Insert a new `detect_stall` state between `check_done` and `continue_work`. Action shells out to increment `.loops/tmp/general-task-stall-count` on entry; reset to 0 when DoD progress is detected (compare hash of DoD file vs. previous iteration's hash). Evaluator type `output_contains` or `output_json` reads the count; on threshold exceeded, route to `diagnose`. Precedent: `dead-code-cleanup.yaml` `count_findings` (`output_json` with `path: ".count" / operator: eq / target: 0`) and `issue-refinement.yaml` `check_commit` (shell counter file at `.loops/tmp/issue-refinement-commit-count`). Cost: one extra state in the FSM; preserves the `diagnose → failed` chain; gives a meaningful failure summary.
+
+> **Selected:** Option A — Shell-based stall counter state — reuses the `issue-refinement.yaml` counter-file and `dead-code-cleanup.yaml` `output_json` evaluator patterns; preserves the `diagnose → failed` chain for actionable failure summaries.
+
+**Option B — `max_edge_revisits` at loop top-level.** Set `max_edge_revisits: 5` (or lower than the default 100). The runtime tracks `_edge_revisit_counts["check_done->continue_work"]` correctly (line 399) and fires when exceeded. Drawback: this calls `_finish("cycle_detected")` (line 411) which is a hard termination — it bypasses `diagnose` entirely, producing no failure summary. The terminal status is `"failed"` (the only path that maps to `final_status="failed"` in `PersistentExecutor`). Cheaper than Option A but loses the diagnostic output that motivated the issue.
+
+**Option C — Add a `progress_detector` evaluator step inside `continue_work`.** Make the prompt write a stall counter file as a side effect, then add an `output_contains` evaluator on `continue_work` that routes `on_yes: diagnose` when the counter exceeds threshold. This is structurally similar to Option A but folds the detection into the same state as the action. Less clean (mixes prompt-driven work with evaluator-driven routing), but avoids the new state.
+
+**Option D — Refactor `check_done` to self-loop on stale verdicts via `on_blocked`.** Modify the evaluator to emit a `blocked` verdict when DoD criteria are unchanged from the prior iteration, and set `on_blocked: $current` + `max_retries: 5` + `on_retry_exhausted: diagnose` on `check_done`. This is the "purest" use of the existing retry mechanism but requires evaluator-side changes to compare against prior-iteration DoD state (which is not currently captured anywhere — the `last_result` only holds the most recent evaluator output, not historical DoD file content).
+
+The pre-correction "Recommended revised solution" block above should be treated as **invalidated** — keep it only for traceability of the prior analysis. Implementation should pick from A–D.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-05-23.
+
+**Selected**: Option A — Shell-based stall counter state (`detect_stall`)
+
+**Reasoning**: Option A scores highest (11/12) across all four dimensions. It reuses the exact counter-file pattern from `issue-refinement.yaml` (`check_commit` at `.loops/tmp/issue-refinement-commit-count`) and the `output_json` evaluator from `dead-code-cleanup.yaml count_findings`, ensuring full codebase consistency. Critically, it preserves the `diagnose → failed` chain — producing actionable failure summaries — which is the core motivation for this fix. Options B–D were ruled out: B bypasses `diagnose` via hard `_finish("cycle_detected")` with no failure summary; C mixes prompt-driven action with evaluator-driven routing (no codebase precedent); D requires new evaluator infrastructure for historical DoD file state tracking not currently captured anywhere.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (`detect_stall` state) | 3/3 | 2/3 | 3/3 | 3/3 | 11/12 |
+| Option B (`max_edge_revisits`) | 2/3 | 3/3 | 1/3 | 2/3 | 8/12 |
+| Option C (`progress_detector` in `continue_work`) | 1/3 | 2/3 | 2/3 | 2/3 | 7/12 |
+| Option D (`check_done` self-loop via `on_blocked`) | 1/3 | 0/3 | 1/3 | 1/3 | 3/12 |
+
+**Key evidence**:
+- **Option A**: Direct precedents in `issue-refinement.yaml check_commit` (shell counter file) and `dead-code-cleanup.yaml count_findings` (`output_json` evaluator); fourth wiring pass committed to 5 `detect_stall`-specific test methods; confidence check confirmed "the effective implementation path."
+- **Option B**: Runtime `_edge_revisit_counts` mechanism works but `_finish("cycle_detected")` is a hard termination — bypasses `diagnose`; explicitly flagged as less preferred.
+- **Option C**: No precedent for mixing prompt-driven action with evaluator-driven stall routing in the same state; issue notes call it "less clean."
+- **Option D**: Requires new evaluator infrastructure — historical DoD file content not captured in `last_result` or `context`; broadest change surface of all options.
+
 ## Steps to Reproduce
 
 1. Define a `general-task` run whose DoD has more verifiable criteria than the plan
@@ -220,6 +279,17 @@ Executor-level retry template: `scripts/tests/test_fsm_executor.py::TestPerState
 (line 3513) — `MockActionRunner` with `use_indexed_order = True` and `results` list of
 `(action_string, {exit_code: N})` tuples; shows exact `retry_exhausted` event structure
 emitted after `max_retries + 1` consecutive re-entries.
+
+_Wiring pass (fourth pass) added by `/ll:wire-issue`:_
+
+**New `detect_stall`-state test methods** (add to `TestGeneralTaskLoop` in `scripts/tests/test_builtin_loops.py`, beyond the 15 already planned):
+- `test_detect_stall_is_shell_state` — `detect_stall.get("action_type") == "shell"` (pattern: `TestEvaluationQualityLoop.test_prepare_report_is_shell_state` line 434)
+- `test_detect_stall_has_output_json_evaluator_with_ge` — `detect_stall["evaluate"]["type"] == "output_json"` and `detect_stall["evaluate"]["operator"] == "ge"` (no existing test uses `ge` with `output_json`)
+- `test_detect_stall_routes_on_yes_to_diagnose` — `detect_stall.get("on_yes") == "diagnose"`
+- `test_detect_stall_routes_on_no_to_continue_work` — `detect_stall.get("on_no") == "continue_work"`
+- `test_detect_stall_uses_loops_tmp_path` — `".loops/tmp/" in detect_stall["action"]` (scratch isolation: `general-task` not currently in `TestBuiltinLoopScratchIsolation` FORBIDDEN_PATTERNS — this test provides equivalent guard)
+
+**Executor unit test gap** in `scripts/tests/test_fsm_executor.py`: No test exercises `operator: "ge"` with `output_json`. Existing `test_output_json_numeric_comparison` (line 1596) only covers `"lt"`. Add `test_output_json_ge_operator` using same `MockActionRunner` pattern: `count=5, target=5, ge → on_yes`; `count=4, target=5, ge → on_no`. [Agent 3 finding]
 
 ### Documentation
 
@@ -303,6 +373,31 @@ _Added by `/ll:refine-issue` — concrete refs:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 6. Update `docs/guides/LOOPS_GUIDE.md` lines 271-279 — revise the "Continue" step description to mention that `continue_work` can escape to `diagnose` via `on_retry_exhausted` after 5 consecutive re-entries without progress, rather than looping unconditionally.
+7. Update `diagnose` state action in `general-task.yaml` — action text currently enumerates failure-origin states (`define_done, plan, execute, check_done, or continue_work`); add `detect_stall` so the diagnostic prompt accurately names the new failure-origin state. [Agent 2 finding]
+8. Add cross-run stall counter reset — `detect_stall` shell action must reset the counter to 0 when the DoD file hash changes (progress detected). On a fresh run after a prior failed run, the stale counter persists because `FSMExecutor` and `lifecycle.py` perform no `.loops/tmp/` cleanup. Add `rm -f .loops/tmp/general-task-stall-count .loops/tmp/general-task-dod-prev-hash` to the `define_done` state action (first state, always runs), or add unconditional reset at the top of the `detect_stall` shell script when hash-change is detected. Precedent: `issue-refinement.yaml` counter at `.loops/tmp/issue-refinement-commit-count` relies on the same loop-managed reset pattern. [Agent 2 finding]
+9. Add `test_output_json_ge_operator` to `scripts/tests/test_fsm_executor.py` — `operator: "ge"` with `output_json` is never unit-tested; extend the `test_output_json_numeric_comparison` pattern (line 1596) to cover `ge`. [Agent 3 finding]
+
+### Implementation Steps — Correction (third refine pass)
+
+_Added by `/ll:refine-issue` — supersedes Step 2 above and partially supersedes Step 4._
+
+The `max_retries: 5` / `on_retry_exhausted: diagnose` fix on `continue_work` (Step 1 + the parts of Step 4 asserting on those fields) **will not work** — see "Codebase Research Findings — Correction" in the Proposed Solution section. The cross-state oscillation `check_done ↔ continue_work` does not increment `_retry_counts`. A decision is required between Options A–D before implementation can proceed.
+
+Revised step set (after a decision is made):
+
+1. **(Unchanged)** Edit `scripts/little_loops/loops/general-task.yaml` `continue_work` action (lines 81–92) to add the replan branch — the action-text change is still correct and independently useful.
+2. **(Replaces old Step 2.)** Implement the chosen option (A/B/C/D). Default recommendation: **Option A** — add a `detect_stall` state between `check_done` and `continue_work`. Concrete sketch:
+   - New `detect_stall` state: `action_type: shell`, increments `.loops/tmp/general-task-stall-count` if DoD file hash unchanged since prior iteration (compare against `.loops/tmp/general-task-dod-prev-hash`); resets to 0 when hash differs. Emits `{"count": N}` to stdout.
+   - Evaluator: `output_json` with `path: ".count" / operator: ge / target: 5` → `on_yes: diagnose` / `on_no: continue_work`.
+   - Reroute `check_done.on_no` from `continue_work` to `detect_stall`.
+3. **(Unchanged)** Decide on `execute` collapsing — keep `execute` as thin entry-point (loop semantics: first iteration always runs at least one step).
+4. **(Revised.)** Update `TestGeneralTaskLoop` assertions:
+   - **Drop** `test_continue_work_has_max_retries` and `test_continue_work_retry_exhausted_routes_to_diagnose` (these field changes are no longer applicable).
+   - **Keep** `test_continue_work_action_contains_replan_branch` and `test_continue_work_action_contains_step_branch` (the action-text change is unchanged).
+   - **If Option A is chosen, add**: `test_detect_stall_state_exists`, `test_detect_stall_routes_to_diagnose_on_yes`, `test_detect_stall_routes_to_continue_work_on_no`, `test_check_done_on_no_routes_to_detect_stall`.
+   - **If Option B is chosen, add**: `test_max_edge_revisits_below_default` asserting `data.get("max_edge_revisits", 100) <= 10`.
+5. **(Unchanged)** Reproduce end-to-end with the original scenario.
+6. **(Unchanged)** Update `docs/guides/LOOPS_GUIDE.md` lines 271-279 — but the prose change depends on which option is selected (Option A: "detect_stall counts no-progress iterations and escapes to diagnose"; Option B: "cycle_detected terminates the loop after N edge traversals"; etc.).
 
 ## Impact
 
@@ -321,16 +416,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-05-23 (post wire-issue third pass)_
+_Updated by `/ll:confidence-check` on 2026-05-23_
 
-**Readiness Score**: 100/100 → PROCEED
+**Readiness Score**: 97/100 → PROCEED
 **Outcome Confidence**: 71/100 → MODERATE
 
 ### Outcome Risk Factors
-- **Test coverage gap**: `TestGeneralTaskLoop` does not yet exist in `test_builtin_loops.py`; tests are co-deliverables — implement the 15-assertion test class first so `max_retries` behavior and the replan-branch text are verified immediately after the YAML change.
-- **execute/continue_work collapse**: Research recommends keeping `execute` as a thin entry-point; commit to this path before touching the YAML to avoid a mid-implementation reversal.
+- **Test coverage gap**: `TestGeneralTaskLoop` (15 structural methods) and the 5 `detect_stall` test methods do not yet exist; tests are co-deliverables — implement the test class alongside the YAML changes so correctness is verified immediately.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-23T20:59:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
+- `/ll:confidence-check` - 2026-05-23T21:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
+- `/ll:decide-issue` - 2026-05-23T20:54:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e496b789-31d6-4e58-a1bc-5765b13f971b.jsonl`
+- `/ll:confidence-check` - 2026-05-23T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb2aacf2-aaf0-4d77-a561-a081f97a838b.jsonl`
+- `/ll:wire-issue` - 2026-05-23T20:46:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95fbcd20-11f6-45b3-adc8-6b5415125ece.jsonl`
+- `/ll:refine-issue` - 2026-05-23T20:40:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00425d15-8b49-4846-b201-0340b69a4111.jsonl`
 - `/ll:confidence-check` - 2026-05-23T20:01:52Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 - `/ll:wire-issue` - 2026-05-23T19:59:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88533aff-edf2-4543-a36c-52bada8aa103.jsonl`
 - `/ll:refine-issue` - 2026-05-23T19:51:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1435261b-96be-4e92-b607-0920af54ab06.jsonl`
@@ -346,3 +446,9 @@ _Updated by `/ll:confidence-check` on 2026-05-23 (post wire-issue third pass)_
 ---
 
 **Open** | Created: 2026-05-23 | Priority: P2
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue covers the replan branch only — fixing the structural deadlock when the plan is exhausted but DoD criteria remain unmet (differentiating `execute` vs `continue_work`, and triggering replanning). The oscillation/stall guard (detecting N consecutive verification passes with no DoD change) is intentionally left to the FSM-level `StallDetector` introduced in FEAT-1637. Implementing a loop-specific guard here before FEAT-1637 lands risks architectural incompatibility. See `depends_on: FEAT-1637`.

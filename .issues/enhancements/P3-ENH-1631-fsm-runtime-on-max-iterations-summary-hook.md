@@ -3,6 +3,7 @@ captured_at: "2026-05-23T16:40:11Z"
 discovered_date: 2026-05-23
 discovered_by: capture-issue
 status: open
+depends_on: BUG-1628
 ---
 
 # ENH-1631: Add `on_max_iterations` summary hook to FSM runtime + general-task loop
@@ -96,9 +97,16 @@ Out of scope:
 `enhancement`, `fsm-runtime`, `general-task`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53f5ce8a-8802-4e4f-a82f-cb8f836c6b67.jsonl`
 - `/ll:format-issue` - 2026-05-23T16:43:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b5c3569-1967-4199-ba4f-ccf461e65ff0.jsonl`
 - `/ll:capture-issue` - 2026-05-23T16:40:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
 
 ---
 
 **Open** | Created: 2026-05-23 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue modifies general-task.yaml FSM structure (adding `on_max_iterations: summarize_partial` + `summarize_partial` state) and schema.py (adding the top-level `on_max_iterations` field). BUG-1628 makes overlapping structural changes to the same files (replan state, execute/continue_work differentiation). This issue `depends_on: BUG-1628` — let the P2 bug fix land and settle the general-task.yaml structure before adding the on_max_iterations hook to avoid merge conflicts.
