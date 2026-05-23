@@ -72,8 +72,10 @@ const plugin: Plugin = async (ctx) => ({
   },
   "tool.execute.after": async (input: unknown) => {
     // Fire-and-forget: do NOT await the spawned Promise. Stderr / exit code
-    // are intentionally dropped — the handler is a no-op baseline today and
-    // any future consumer must tolerate observational-only semantics.
+    // are intentionally dropped — the handler (FEAT-1623) persists per-tool
+    // byte metrics to .ll/session.db when ``analytics.enabled`` is set, so
+    // OpenCode never blocks on a SQLite write. Consumers of the data layer
+    // must tolerate observational-only semantics.
     void spawnIntent("post_tool_use", input, ctx.cwd);
   },
 });

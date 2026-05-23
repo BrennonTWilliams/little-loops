@@ -1,13 +1,20 @@
-"""Python-direct tests for ``little_loops.hooks.post_tool_use.handle`` (FEAT-1489).
+"""Python-direct tests for ``little_loops.hooks.post_tool_use.handle`` (FEAT-1623).
 
-The handler is a no-op baseline returning ``LLHookResult(exit_code=0)`` —
-fire-and-forget observability registration point for future consumers on
-Codex and OpenCode. Adapter round-trip tests live in
-``test_codex_adapter.py``; this module exercises the pure-function handler
-under unit conditions.
+The handler persists per-tool byte metrics (``bytes_in`` / ``bytes_out`` /
+``cache_hit``) to the ``tool_events`` table in ``.ll/session.db`` (FEAT-1112)
+on every tool call, gated by the ``analytics.enabled`` config flag. Without a
+config or with the flag off, the handler is a no-op (no SQLite write, exit 0).
+Adapter round-trip tests live in ``test_codex_adapter.py``; this module
+exercises the pure-function handler under unit conditions.
 """
 
 from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+
+import pytest
 
 from little_loops.hooks.post_tool_use import handle as post_handle
 from little_loops.hooks.pre_tool_use import handle as pre_handle
@@ -17,25 +24,30 @@ from little_loops.hooks.types import LLHookEvent
 handle = post_handle
 
 
-def _event(payload: dict | None = None) -> LLHookEvent:
-    return LLHookEvent(host="codex", intent="post_tool_use", payload=payload or {})
+def _event(payload: dict | None = None, *, cwd: str | None = None) -> LLHookEvent:
+    return LLHookEvent(
+        host="codex",
+        intent="post_tool_use",
+        payload=payload or {},
+        cwd=cwd,
+    )
 
 
 class TestPostToolUseBaseline:
-    def test_empty_payload_returns_pass(self) -> None:
-        result = handle(_event())
+    def test_empty_payload_returns_pass(self, tmp_path, monkeypatch) -> None:
+        # No config in tmp_path → handler skips the SQLite write and exits 0.
+        monkeypatch.chdir(tmp_path)
+        result = handle(_event(cwd=str(tmp_path)))
         assert result.exit_code == 0
         assert result.feedback is None
-        assert result.stdout is None
         assert result.decision is None
-        # ``LLHookResult.data`` defaults to ``{}`` (not ``None``) — the
-        # no-op handler doesn't populate it.
-        assert not result.data
 
-    def test_arbitrary_payload_returns_pass(self) -> None:
+    def test_arbitrary_payload_returns_pass(self, tmp_path, monkeypatch) -> None:
         # The handler must tolerate any payload shape — Codex's PostToolUse and
-        # OpenCode's tool.execute.after both pass tool-specific structures that
-        # the no-op baseline ignores entirely.
+        # OpenCode's tool.execute.after both pass tool-specific structures. With
+        # no analytics config, the handler still returns exit 0 with no side
+        # effect.
+        monkeypatch.chdir(tmp_path)
         result = handle(
             _event(
                 {
@@ -43,22 +55,188 @@ class TestPostToolUseBaseline:
                     "tool_input": {"file_path": "/tmp/foo", "content": "bar"},
                     "tool_response": {"success": True},
                     "session_id": "sess-1",
-                }
+                },
+                cwd=str(tmp_path),
             )
         )
         assert result.exit_code == 0
         assert result.feedback is None
-        assert result.stdout is None
 
-    def test_handler_does_not_mutate_payload(self) -> None:
+    def test_handler_does_not_mutate_payload(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
         payload = {"tool_name": "Bash"}
-        handle(_event(payload))
+        handle(_event(payload, cwd=str(tmp_path)))
         assert payload == {"tool_name": "Bash"}
 
-    def test_handler_is_host_agnostic(self) -> None:
+    def test_handler_is_host_agnostic(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
         for host in ("claude-code", "codex", "opencode"):
-            result = handle(LLHookEvent(host=host, intent="post_tool_use", payload={}))
+            result = handle(
+                LLHookEvent(
+                    host=host,
+                    intent="post_tool_use",
+                    payload={},
+                    cwd=str(tmp_path),
+                )
+            )
             assert result.exit_code == 0, f"non-zero exit for host={host}"
+
+
+def _write_config(project_dir: Path, *, analytics_enabled: bool) -> None:
+    """Write a minimal ``.ll/ll-config.json`` toggling ``analytics.enabled``."""
+    ll_dir = project_dir / ".ll"
+    ll_dir.mkdir(parents=True, exist_ok=True)
+    (ll_dir / "ll-config.json").write_text(
+        json.dumps({"analytics": {"enabled": analytics_enabled}}),
+        encoding="utf-8",
+    )
+
+
+class TestPostToolUseWithSessionStore:
+    """FEAT-1623 byte-tracking write path (gated on ``analytics.enabled``)."""
+
+    def test_writes_row_when_analytics_enabled(self, tmp_path, monkeypatch) -> None:
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+        payload = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls -la"},
+            "tool_response": {"exit_code": 0, "stdout": "total 0"},
+            "session_id": "sess-7",
+        }
+
+        result = handle(_event(payload, cwd=str(tmp_path)))
+        assert result.exit_code == 0
+
+        db_path = tmp_path / ".ll" / "session.db"
+        assert db_path.is_file(), "handler must create session.db on first write"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute(
+                "SELECT tool_name, session_id, bytes_in, bytes_out, cache_hit "
+                "FROM tool_events"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "expected one tool_events row"
+        tool_name, session_id, bytes_in, bytes_out, cache_hit = row
+        assert tool_name == "Bash"
+        assert session_id == "sess-7"
+        # Encoded JSON byte counts (not zero, matches len(json.dumps(...))).
+        assert bytes_in == len(json.dumps(payload["tool_input"]))
+        assert bytes_out == len(json.dumps(payload["tool_response"]))
+        assert cache_hit == 0
+
+    def test_skips_write_when_analytics_disabled(self, tmp_path, monkeypatch) -> None:
+        _write_config(tmp_path, analytics_enabled=False)
+        monkeypatch.chdir(tmp_path)
+
+        result = handle(
+            _event(
+                {
+                    "tool_name": "Read",
+                    "tool_input": {"path": "/etc/hostname"},
+                    "tool_response": {"content": "hi"},
+                },
+                cwd=str(tmp_path),
+            )
+        )
+        assert result.exit_code == 0
+        # Handler must not have created the database when analytics is off.
+        assert not (tmp_path / ".ll" / "session.db").exists()
+
+    def test_skips_write_when_config_missing(self, tmp_path, monkeypatch) -> None:
+        # No .ll/ll-config.json at all — handler must no-op.
+        monkeypatch.chdir(tmp_path)
+
+        result = handle(
+            _event(
+                {"tool_name": "Edit", "tool_input": {}, "tool_response": {}},
+                cwd=str(tmp_path),
+            )
+        )
+        assert result.exit_code == 0
+        assert not (tmp_path / ".ll" / "session.db").exists()
+
+    def test_cache_hit_field_extracted(self, tmp_path, monkeypatch) -> None:
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+        payload = {
+            "tool_name": "Read",
+            "tool_input": {"path": "/x"},
+            "tool_response": {"content": "y"},
+            "cache_hit": True,
+        }
+        handle(_event(payload, cwd=str(tmp_path)))
+
+        db_path = tmp_path / ".ll" / "session.db"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            (cache_hit,) = conn.execute(
+                "SELECT cache_hit FROM tool_events"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert cache_hit == 1
+
+    def test_graceful_when_store_unwritable(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """Handler must not raise when SQLite write fails."""
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+
+        # Force ``connect`` to raise OperationalError to simulate a locked /
+        # broken store; the handler's contextlib.suppress(Exception) must
+        # swallow it and return exit_code=0.
+        def boom(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+            raise sqlite3.OperationalError("database is locked")
+
+        import little_loops.session_store as session_store
+
+        monkeypatch.setattr(session_store, "connect", boom)
+
+        result = handle(
+            _event(
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "ls"},
+                    "tool_response": {"exit_code": 0},
+                },
+                cwd=str(tmp_path),
+            )
+        )
+        assert result.exit_code == 0
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            # Missing tool_input / tool_response fall back to empty dicts;
+            # json.dumps({}) length is 2 ("{}").
+            {"tool_name": "Bash"},
+            {"tool_name": "Edit", "tool_input": None, "tool_response": None},
+        ],
+    )
+    def test_byte_field_extraction_defaults(
+        self, tmp_path, monkeypatch, payload
+    ) -> None:
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+
+        result = handle(_event(payload, cwd=str(tmp_path)))
+        assert result.exit_code == 0
+
+        db_path = tmp_path / ".ll" / "session.db"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            bytes_in, bytes_out = conn.execute(
+                "SELECT bytes_in, bytes_out FROM tool_events"
+            ).fetchone()
+        finally:
+            conn.close()
+        # Both default to len(json.dumps({})) == 2.
+        assert bytes_in == 2
+        assert bytes_out == 2
 
 
 class TestPreToolUseBaseline:

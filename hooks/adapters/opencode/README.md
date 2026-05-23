@@ -39,14 +39,19 @@ The adapter resolves `python` from the ambient `PATH`. Ensure
 | `session.created`    | `session_start` | `python -m little_loops.hooks session_start`   |
 | `session.compacted`  | `pre_compact`   | `python -m little_loops.hooks pre_compact`     |
 | `tool.execute.before`| `pre_tool_use` (opt-in) | `python -m little_loops.hooks pre_tool_use` — handler is registered but the adapter does **not** wire `tool.execute.before` by default |
-| `tool.execute.after` | `post_tool_use` | `python -m little_loops.hooks post_tool_use` — invoked fire-and-forget (no `await` on the spawned Promise) |
+| `tool.execute.after` | `post_tool_use` | `python -m little_loops.hooks post_tool_use` — invoked fire-and-forget (no `await` on the spawned Promise); handler writes byte metrics to `.ll/session.db` when `analytics.enabled` is set (FEAT-1623) |
 | `session.idle`       | (deferred)      | —                                              |
 | `tui.prompt.append`  | (deferred)      | —                                              |
 
 `tool.execute.after` is wired fire-and-forget per FEAT-1489: `spawnIntent`
 is called without `await`, so the OpenCode tool path never blocks on the
-Python handler. Stderr and exit code are dropped — any future consumer must
-tolerate observational-only semantics.
+Python handler. Stderr and exit code are dropped. Per FEAT-1623, the
+handler persists per-tool byte metrics (`bytes_in` / `bytes_out` /
+`cache_hit`) into `.ll/session.db` when `analytics.enabled` is set in the
+project config; consumers (e.g. `/ll:ctx-stats`) read those rows
+asynchronously and must tolerate observational-only semantics — failed
+writes are suppressed inside the handler so the OpenCode tool path is
+never disturbed.
 
 `tool.execute.before` is intentionally **not** wired by default. The
 Python handler (`pre_tool_use`) is available, and the cold-start budget
@@ -108,8 +113,10 @@ exit codes `0` or `2`.
 | `pre_compact`   | 8.1ms | 8.5ms  | 9.3ms | 9.7ms | 30 |
 
 **Verdict:** p95 ≈ 10ms ≪ 200ms target. Cold-start is acceptable; the
-sidecar is not required. `post_tool_use` is wired fire-and-forget;
-`pre_tool_use` is registered for opt-in. Re-run the benchmark whenever
+sidecar is not required. `post_tool_use` is wired fire-and-forget and
+adds a single-row SQLite INSERT under the `analytics.enabled` guard
+(FEAT-1623); `pre_tool_use` is registered for opt-in. Re-run the
+benchmark whenever
 the adapter shape, Bun version, or Python startup path changes
 materially.
 

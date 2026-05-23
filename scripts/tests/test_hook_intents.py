@@ -317,11 +317,12 @@ class TestHooksMainModule:
         assert "No config found" in result.stdout
 
     def test_dispatch_post_tool_use_happy_path(self, tmp_path) -> None:
-        """``post_tool_use`` intent runs the no-op handler and exits 0 (FEAT-1489).
+        """``post_tool_use`` intent runs the byte-tracking handler and exits 0 (FEAT-1623).
 
-        Mirrors ``test_dispatch_session_start_happy_path``: the handler is a
-        no-op baseline returning ``LLHookResult(exit_code=0)`` so subprocess
-        invocation exits 0 with no stdout or stderr.
+        The handler persists per-tool byte metrics into ``.ll/session.db`` when
+        ``analytics.enabled`` is true; with no config in ``tmp_path``, the
+        analytics guard short-circuits the write so the subprocess emits no
+        stdout/stderr and the SQLite database is never created.
         """
         result = subprocess.run(
             [sys.executable, "-m", "little_loops.hooks", "post_tool_use"],
@@ -338,9 +339,10 @@ class TestHooksMainModule:
             cwd=str(tmp_path),
         )
         assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
-        # No-op handler — neither stdout nor stderr are written.
+        # No config in tmp_path → analytics guard skips the write; no output.
         assert result.stdout == ""
         assert result.stderr == ""
+        assert not (tmp_path / ".ll" / "session.db").exists()
 
     def test_dispatch_pre_tool_use_happy_path(self, tmp_path) -> None:
         """``pre_tool_use`` intent runs the opt-in no-op handler and exits 0 (FEAT-1489).

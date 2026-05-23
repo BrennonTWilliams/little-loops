@@ -32,12 +32,14 @@ into `LLHookEvent` payloads.
 [^hot]: Hot-path intents (`pre_tool_use` / `post_tool_use`) fire on every
     tool invocation and require a latency budget. Research decision
     (FEAT-1488, `thoughts/research/hot-path-hook-intents.md`), executed
-    by FEAT-1489:
+    by FEAT-1489 and extended by FEAT-1623:
     - `post_tool_use` is wired fire-and-forget on both hosts. OpenCode
       invokes `spawnIntent` without `await`. Codex uses a 4-line blocking
-      shim with a 5s timeout; fire-and-forget is achieved through handler
-      speed (no-op p95 well below the timeout) rather than shell
-      backgrounding.
+      shim with a 5s timeout. Per FEAT-1623 the handler persists per-tool
+      byte metrics into `.ll/session.db` when `analytics.enabled` is set;
+      a single-row INSERT (or the disabled-guard early return) keeps
+      handler p95 well below the timeout. Failures are suppressed inside
+      the handler so the host tool path is never disturbed.
     - `pre_tool_use` is opt-in: the Python handler is registered and the
       adapter scripts are available, but the host event mappings
       (`tool.execute.before` for OpenCode, `PreToolUse` for Codex) are

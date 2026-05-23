@@ -74,17 +74,19 @@ var, the dispatcher defaults to `host="claude-code"`.
 adapter surfaces stderr to the Codex console but does not treat exit codes
 `0` or `2` as failure.
 
-### Fire-and-Forget Pattern (`post-tool-use.sh`)
+### Blocking-Shim Pattern (`post-tool-use.sh`)
 
 `post-tool-use.sh` follows the same 4-line blocking shim shape as its
 siblings (`session-start.sh`, `pre-compact.sh`, `prompt-submit.sh`) — it
-does **not** background the Python invocation with `&` / `disown`. Instead,
-fire-and-forget semantics are achieved through:
+does **not** background the Python invocation with `&` / `disown`. The
+handler (FEAT-1623) persists a single ``tool_events`` row per tool call
+when ``analytics.enabled`` is set; latency stays well under the timeout
+because:
 
-1. A no-op handler that returns in ≪200ms p95 (validated by
-   `scripts/tests/bench_opencode_adapter.py`).
-2. A short (≤5s) `timeout` in `hooks.json`, which is never reached in
-   practice given handler speed.
+1. A single-row SQLite INSERT (or an early return when analytics is
+   disabled) keeps the handler well under 200ms p95.
+2. A short (≤5s) `timeout` in `hooks.json` bounds the worst case if the
+   session store is contended.
 
 This keeps the adapter shell-script layer uniform: every script is a
 blocking shim, every script is testable with the same sentinel-file

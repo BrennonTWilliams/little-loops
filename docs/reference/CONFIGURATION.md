@@ -411,6 +411,18 @@ Context window monitoring for automatic session handoff. See [Session Handoff Gu
 | `context_limit_estimate` | `1000000` | Fallback/override for the context window token limit. Auto-detection reads the model from the JSONL transcript and selects the correct limit for known models (claude-*-4* → 200 000). Set this only to override auto-detection or when using an unknown/custom model. Also overridable via `LL_CONTEXT_LIMIT` env var. |
 | `use_transcript_baseline` | `true` | Use JSONL transcript token counts as an API-exact baseline (one-turn lag). Part of the three-tier token priority system: `result_token_count > 0` (zero-lag authoritative, written by the `on_usage` callback from stream-json `result` events) → transcript baseline (one-turn lag, ±5–15%) → pure heuristics (±30–50%). This setting enables the second tier; the first tier (`result_token_count`) is always active when available. |
 
+### `analytics`
+
+Context-window analytics settings (FEAT-1160 family). When enabled, the
+`post_tool_use` hook (FEAT-1623) persists per-tool byte metrics
+(`bytes_in` / `bytes_out` / `cache_hit`) into `.ll/session.db` for
+consumption by `/ll:ctx-stats` (FEAT-1624). Default is off; opt in once
+the ctx-stats CLI ships.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable per-tool byte tracking in the `post_tool_use` hook. When false, the handler is a no-op and writes nothing to SQLite. |
+
 ### `sprints`
 
 Sprint management settings (ll-sprint, `/ll:create-sprint`):

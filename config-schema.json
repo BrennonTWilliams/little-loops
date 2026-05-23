@@ -1199,6 +1199,18 @@
         }
       },
       "additionalProperties": false
+    },
+    "analytics": {
+      "type": "object",
+      "description": "Context-window analytics settings (FEAT-1160). When enabled, the post_tool_use hook persists per-tool byte metrics into .ll/session.db for consumption by /ll:ctx-stats.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable per-tool byte tracking in post_tool_use hook. Default off; opt-in until the ctx-stats CLI ships."
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
