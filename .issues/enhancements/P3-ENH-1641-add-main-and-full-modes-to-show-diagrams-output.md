@@ -80,25 +80,25 @@ ll-loop run my-loop.yaml --show-diagrams        # == --show-diagrams=main
 
 ## Acceptance Criteria
 
-- [ ] `--show-diagrams` accepts an optional value `main` or `full`
-- [ ] Bare `--show-diagrams` (no value) defaults to `main` — this is a
+- [x] `--show-diagrams` accepts an optional value `main` or `full`
+- [x] Bare `--show-diagrams` (no value) defaults to `main` — this is a
       behavior change from FEAT-642's all-edges output; documented in CHANGELOG
-- [ ] `main` mode hides edges with labels: `error`, `partial`, `blocked`,
+- [x] `main` mode hides edges with labels: `error`, `partial`, `blocked`,
       `retry_exhausted`, `rate_limit_exhausted`, `throttle_hard`
-- [ ] `main` mode hides states that become unreachable from `fsm.initial` once
+- [x] `main` mode hides states that become unreachable from `fsm.initial` once
       those edges are removed (i.e., dead-end fail/stall terminals)
-- [ ] States still reachable through happy-path edges (`yes`, `no`, `next`,
+- [x] States still reachable through happy-path edges (`yes`, `no`, `next`,
       `route`, `_` default) remain visible even if they are terminal
-- [ ] `full` mode renders identically to today's `--show-diagrams` output
-- [ ] Active-state highlighting works in both modes; if the active state is
+- [x] `full` mode renders identically to today's `--show-diagrams` output
+- [x] Active-state highlighting works in both modes; if the active state is
       hidden in `main`, fall back to rendering `full` for that iteration so the
       user always sees where the loop currently is (with a one-line note:
       `(showing full diagram: active state '<name>' is off the main path)`)
-- [ ] Same flag and semantics added to `ll-loop resume`
-- [ ] Help text documents the two modes and the default
-- [ ] Existing FEAT-642 tests in `test_ll_loop_display.py` updated to assert
+- [x] Same flag and semantics added to `ll-loop resume`
+- [x] Help text documents the two modes and the default
+- [x] Existing FEAT-642 tests in `test_ll_loop_display.py` updated to assert
       `full` output where they currently assert all edges present
-- [ ] New tests cover: `main` hides error edges; `main` hides unreachable
+- [x] New tests cover: `main` hides error edges; `main` hides unreachable
       fail states; `main` keeps reachable terminals; `full` matches legacy;
       active-state fallback path
 
@@ -292,6 +292,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `docs/reference/CLI.md` documents the `--show-diagrams` flag; update to describe `main` (default) vs `full`.
 - `docs/guides/LOOPS_GUIDE.md` references `--show-diagrams` in the user-facing loop walkthrough; sync the example output if it shows a diagram that would change under `main`.
 
+_Second refine pass (2026-05-23, post-implementation) — corrections for historical accuracy:_
+
+**Line-number / anchor corrections (supersede earlier findings):**
+
+- `_render_fsm_diagram` is at `layout.py:1534`, **not** `:1503`. The earlier pass conflated the function's start with where the new `_MAIN_PATH_EDGE_LABELS` constant was added.
+- `_MAIN_PATH_EDGE_LABELS = frozenset({"yes", "no", "next", "_"})` sits at `layout.py:1503` — this is the single source of truth for "main-path" labels and is what `_filter_main_path_graph` checks against.
+- `_filter_main_path_graph(fsm, edges)` at `layout.py:1506` is the actual main-mode filter that the Implementation Steps describe; it returns `(filtered_edges, reachable_state_set)` and unions `_MAIN_PATH_EDGE_LABELS` with the FSM's `route.routes` verdict keys.
+- `_colorize_label` is at `layout.py:41`, not `:42`.
+
+**`"route"` is a state field, not an edge label** (clarification for the Acceptance Criteria and the "Edge labels classified as non-happy-path" table):
+
+- `_collect_edges` does not emit a literal `"route"` label. It emits each **verdict key** from `state.route.routes` verbatim (e.g. `"approved"`, `"reject"`, etc., whatever the loop author names them) plus `"_"` for `state.route.default`. The current implementation handles this correctly via a per-FSM `route_verdicts` set unioned with `_MAIN_PATH_EDGE_LABELS`, so it's a documentation/wording issue only.
+
+**Additional edge source missed by earlier pass:**
+
+- `_collect_edges` also emits edges from `state.extra_routes` (each verdict key verbatim), treated the same as `state.route.routes` verdicts under main-mode filtering. Worth a note if any future test fixture exercises `extra_routes`.
+
 ## Labels
 
 `enhancement`, `cli`, `loop`, `ux`, `diagram`
@@ -317,6 +334,7 @@ Implemented `--show-diagrams[=main|full]` on both `ll-loop run` and `ll-loop res
 **Verification**: `python -m pytest scripts/tests/` → 7398 passed, 5 skipped, 0 failed. `ruff check scripts/` clean. `ruff format scripts/` clean after one reformat. `python -m mypy scripts/little_loops/` clean (only pre-existing `wcwidth` stub note).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-23T20:37:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cec224a-5329-4fdc-9cdb-44aa63691a0b.jsonl`
 - `/ll:manage-issue` - 2026-05-23T20:35:02Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7379b14f-1161-411a-88a9-5a21bedf0144.jsonl`
 - `/ll:ready-issue` - 2026-05-23T20:16:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd363937-9ef0-4fed-900a-5e261d42fe40.jsonl`
 - `/ll:confidence-check` - 2026-05-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9148d08-0197-4089-be39-89d58f0c2962.jsonl`
