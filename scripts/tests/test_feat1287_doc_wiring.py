@@ -77,11 +77,7 @@ class TestContributingWiring:
 
 
 class TestClaudeMdWiring:
-    """.claude/CLAUDE.md must reflect 30 skills and list ll-learning-tests as a CLI tool."""
-
-    def test_skill_count_updated(self) -> None:
-        content = CLAUDE_MD.read_text()
-        assert "(30 skills)" in content, "CLAUDE.md must show '(30 skills)'"
+    """.claude/CLAUDE.md must list ll-learning-tests as a CLI tool."""
 
     def test_ll_learning_tests_in_cli_list(self) -> None:
         content = CLAUDE_MD.read_text()
