@@ -133,6 +133,27 @@ class TestConfigSchema:
         assert "stale_after_days" in lt_props
         assert lt_props["stale_after_days"]["type"] == "integer"
 
+    def test_analytics_in_schema(self) -> None:
+        """analytics block must be declared in config-schema.json (FEAT-1624).
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing 'analytics' will be rejected unless the property is
+        declared here. The block gates the post_tool_use hook's per-tool byte
+        tracking (FEAT-1623) consumed by ``ll-ctx-stats``.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        assert "analytics" in data["properties"], (
+            "analytics is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        analytics = data["properties"]["analytics"]
+        assert analytics["type"] == "object"
+        assert analytics.get("additionalProperties") is False
+        assert "enabled" in analytics["properties"]
+        enabled = analytics["properties"]["enabled"]
+        assert enabled["type"] == "boolean"
+        assert enabled["default"] is False
+
     def test_hooks_in_schema(self) -> None:
         """hooks block must be declared in config-schema.json with a host enum.
 

@@ -228,6 +228,54 @@ class TestBackfill:
         assert any(r["kind"] == "issue" for r in results)
 
 
+class TestToolEventsByteColumns:
+    """FEAT-1624: read-side verification of the FEAT-1623 byte columns.
+
+    ``test_hook_post_tool_use.py::TestPostToolUseWithSessionStore`` covers the
+    write side (hook handler populates ``bytes_in``/``bytes_out``/``cache_hit``).
+    These tests confirm the values survive a ``connect()`` + ``recent(kind=
+    "tool")`` round-trip — what the ``ll-ctx-stats`` aggregator depends on.
+    """
+
+    def test_recent_tool_returns_byte_columns(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "
+                "result_size, bytes_in, bytes_out, cache_hit) "
+                "VALUES('2026-05-22T00:00:00Z', 's1', 'Read', 'h', 42, 7, 42, 1)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        rows = recent(db, kind="tool")
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["tool_name"] == "Read"
+        assert row["bytes_in"] == 7
+        assert row["bytes_out"] == 42
+        assert row["cache_hit"] == 1
+
+    def test_recent_tool_preserves_null_byte_columns(self, tmp_path: Path) -> None:
+        """Backfilled rows have NULL bytes_in/bytes_out — ``recent()`` must surface that."""
+        db = tmp_path / "session.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "
+                "result_size, bytes_in, bytes_out, cache_hit) "
+                "VALUES('2026-05-22T00:00:00Z', 's1', 'Bash', 'h', NULL, NULL, NULL, NULL)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        rows = recent(db, kind="tool")
+        assert rows[0]["bytes_in"] is None
+        assert rows[0]["bytes_out"] is None
+        assert rows[0]["cache_hit"] is None
+
+
 class TestConnect:
     """The connect() helper."""
 

@@ -35,6 +35,7 @@ from little_loops.cli.adapt_agents_for_codex import main_adapt_agents_for_codex
 from little_loops.cli.adapt_skills_for_codex import main_adapt_skills_for_codex
 from little_loops.cli.auto import main_auto
 from little_loops.cli.create_extension import main_create_extension
+from little_loops.cli.ctx_stats import main_ctx_stats
 from little_loops.cli.deps import main_deps
 from little_loops.cli.docs import main_check_links, main_verify_docs, main_verify_skill_budget
 from little_loops.cli.doctor import main_doctor
@@ -68,6 +69,7 @@ __all__ = [
     "main_auto",
     "main_check_links",
     "main_create_extension",
+    "main_ctx_stats",
     "main_deps",
     "main_doctor",
     "main_generate_schemas",  # internal: dev tooling
