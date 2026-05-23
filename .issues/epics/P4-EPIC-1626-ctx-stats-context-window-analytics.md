@@ -1,7 +1,7 @@
 ---
 id: EPIC-1626
 type: epic
-status: open
+status: done
 priority: P4
 discovered_date: 2026-05-22
 discovered_by: manual
@@ -88,12 +88,12 @@ end-state user experience is:
 
 ## Acceptance Criteria
 
-- [ ] All three children have `parent: EPIC-1626` in their frontmatter
-- [ ] FEAT-1623 reaches `status: done` (data layer landed)
-- [ ] FEAT-1624 reaches `status: done` (`ll-ctx-stats` shipped)
-- [ ] FEAT-1625 reaches `status: done` (docs and counts in sync)
-- [ ] No open issue references FEAT-1160 as a live parent
-- [ ] This epic's status reflects the aggregate state of the children
+- [x] All three children have `parent: EPIC-1626` in their frontmatter
+- [x] FEAT-1623 reaches `status: done` (data layer landed)
+- [x] FEAT-1624 reaches `status: done` (`ll-ctx-stats` shipped)
+- [x] FEAT-1625 reaches `status: done` (docs and counts in sync)
+- [x] No open issue references FEAT-1160 as a live parent
+- [x] This epic's status reflects the aggregate state of the children
 
 ## Labels
 
@@ -106,4 +106,7 @@ end-state user experience is:
 
 ## Status
 
-**Open** | Created: 2026-05-22 | Priority: P4
+**Done** | Created: 2026-05-22 | Closed: 2026-05-22 | Priority: P4
+
+All three children (FEAT-1623, FEAT-1624, FEAT-1625) reached `status: done`;
+acceptance criteria satisfied.
