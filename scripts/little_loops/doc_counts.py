@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from little_loops.fsm.validation import is_runnable_loop
+
 _DEFAULT_BUDGET_TOKENS = 2000
 _DEFAULT_PER_SKILL_WARN_TOKENS = 200
 
@@ -134,6 +136,16 @@ def verify_documentation(
     actual_counts: dict[str, int] = {}
     for category, (directory, pattern) in COUNT_TARGETS.items():
         actual_counts[category] = count_files(directory, pattern, base_dir)
+
+    # Loops live in nested subdirs (e.g. loops/oracles/) and share a directory
+    # with non-runnable library fragments (loops/lib/). Recursively enumerate
+    # and filter to runnable FSM definitions so the verifier stays in sync
+    # with `ll-loop validate`'s notion of "runnable".
+    loops_dir = base_dir / COUNT_TARGETS["loops"][0]
+    if loops_dir.exists():
+        actual_counts["loops"] = sum(
+            1 for p in loops_dir.rglob("*.yaml") if is_runnable_loop(p)
+        )
 
     # Adjust skill count to exclude bridge skills (auto-generated from commands/)
     skills_dir = base_dir / "skills"

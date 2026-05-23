@@ -850,6 +850,28 @@ def _find_reachable_states(fsm: FSMLoop) -> set[str]:
     return reachable
 
 
+def is_runnable_loop(path: Path) -> bool:
+    """Cheap check for whether a YAML file is a runnable FSM loop definition.
+
+    Returns True iff the file parses as a YAML mapping with the required
+    top-level keys ``name``, ``initial``, and either ``states`` or ``flow``
+    (the shorthand resolved by :func:`resolve_flow`). This matches the
+    required-fields gate in :func:`load_and_validate` (lines 885-894) so
+    "counted by the verifier" stays in sync with "runnable by ll-loop validate".
+
+    No fragment/inheritance resolution is performed — library fragments under
+    ``loops/lib/`` that omit ``initial`` or ``states`` correctly return False.
+    """
+    try:
+        data = yaml.safe_load(path.read_text())
+    except (OSError, yaml.YAMLError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    has_flow = "states" in data or "flow" in data
+    return "name" in data and "initial" in data and has_flow
+
+
 def load_and_validate(path: Path) -> tuple[FSMLoop, list[ValidationError]]:
     """Load YAML file and validate FSM structure.
 

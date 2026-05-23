@@ -148,6 +148,7 @@ from little_loops.fsm.signal_detector import (
 from little_loops.fsm.types import Evaluator
 from little_loops.fsm.validation import (
     ValidationError,
+    is_runnable_loop,
     load_and_validate,
     validate_fsm,
 )
@@ -211,6 +212,7 @@ __all__ = [
     "get_loop_history",
     "interpolate",
     "interpolate_dict",
+    "is_runnable_loop",
     "list_running_loops",
     "load_and_validate",
     "validate_fsm",

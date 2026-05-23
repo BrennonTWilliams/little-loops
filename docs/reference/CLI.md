@@ -425,7 +425,9 @@ Validate a loop definition file.
 
 #### `ll-loop list` / `ll-loop l`
 
-List available loops. Output is grouped by `category` with blank-line separators between groups. Loop names are column-aligned for scanability. Descriptions are truncated with `…` at terminal width. Labels appear as `[label]` badges between the description and `[built-in]` tag. Project loops use bold cyan names while built-in loops use dimmer (non-bold) cyan. The `[built-in]` tag is always positioned on the same line as the name.
+List available loops. Discovery is recursive: runnable loops nested under subdirectories of `loops/` (e.g. `oracles/oracle-capture-issue`) are included, while library fragments under `loops/lib/` are filtered out via `is_runnable_loop()`. Output is grouped by `category` with blank-line separators between groups. Loop names are column-aligned for scanability. Descriptions are truncated with `…` at terminal width. Labels appear as `[label]` badges between the description and `[built-in]` tag. Project loops use bold cyan names while built-in loops use dimmer (non-bold) cyan. The `[built-in]` tag is always positioned on the same line as the name.
+
+For nested loops, the displayed identifier is the **relative path** without the `.yaml` suffix (e.g. `oracles/oracle-capture-issue`) — the same string `ll-loop run` and `ll-loop validate` accept. Top-level loops continue to display as their bare stem. Override suppression (a project loop hiding a built-in of the same name) keys on the full relative path, not the bare stem — so a project `oracles/foo.yaml` does **not** suppress a built-in top-level `foo.yaml`.
 
 | Flag | Short | Description |
 |------|-------|-------------|
@@ -433,7 +435,7 @@ List available loops. Output is grouped by `category` with blank-line separators
 | `--builtin` | | Only show built-in loops (exclude project `.loops/`) |
 | `--category <cat>` | `-c` | Filter to loops with the given category (e.g. `apo`, `issue-management`, `code-quality`) |
 | `--label <tag>` | `-l` | Filter to loops that carry the given label tag; repeat for multiple tags (OR match) |
-| `--json` / `-j` | | Output as JSON array. Without `--running`: each entry includes `name`, `path`, `category`, `labels`, and `built_in`. With `--running`: each entry is a `LoopState` object (`loop_name`, `status`, `current_state`, `iteration`, `updated_at`, etc.); `instance_id` is **absent** from this output — use `ll-loop status <loop> --json` to resolve per-instance details |
+| `--json` / `-j` | | Output as JSON array. Without `--running`: each entry includes `name` (relative-path identifier — e.g. `oracles/oracle-capture-issue` for nested loops, `fix-quality-and-tests` for top-level), `path`, `category`, `labels`, and `built_in`. With `--running`: each entry is a `LoopState` object (`loop_name`, `status`, `current_state`, `iteration`, `updated_at`, etc.); `instance_id` is **absent** from this output — use `ll-loop status <loop> --json` to resolve per-instance details |
 
 #### `ll-loop status <loop>` / `ll-loop st <loop>`
 

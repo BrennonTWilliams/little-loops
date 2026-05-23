@@ -22,6 +22,7 @@ from little_loops.cli.loop.layout import (  # noqa: F401
     _render_fsm_diagram,
 )
 from little_loops.cli.output import colorize, print_json, terminal_width
+from little_loops.fsm import is_runnable_loop
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.validation import load_and_validate
 from little_loops.logger import Logger
@@ -113,19 +114,28 @@ def cmd_list(
 
     builtin_only = getattr(args, "builtin", False)
 
-    # Collect project loops (skipped when --builtin is set)
+    def _rel_key(path: Path, base: Path) -> str:
+        """Relative-path identifier matching what `ll-loop run` accepts."""
+        return str(path.relative_to(base).with_suffix(""))
+
+    # Collect project loops (skipped when --builtin is set). Recurse into
+    # subdirectories (e.g. oracles/) and filter to runnable FSM definitions so
+    # library fragments under loops/lib/ stay hidden.
     project_names: set[str] = set()
     yaml_files: list[Path] = []
     if not builtin_only and loops_dir.exists():
-        yaml_files = sorted(loops_dir.glob("*.yaml"))
-        project_names = {p.stem for p in yaml_files}
+        yaml_files = sorted(p for p in loops_dir.rglob("*.yaml") if is_runnable_loop(p))
+        project_names = {_rel_key(p, loops_dir) for p in yaml_files}
 
-    # Collect built-in loops (excluding those overridden by project)
+    # Collect built-in loops (excluding those overridden by a project loop at
+    # the same relative path).
     builtin_dir = get_builtin_loops_dir()
     builtin_files: list[Path] = []
     if builtin_dir.exists():
         builtin_files = [
-            f for f in sorted(builtin_dir.glob("*.yaml")) if f.stem not in project_names
+            f
+            for f in sorted(builtin_dir.rglob("*.yaml"))
+            if is_runnable_loop(f) and _rel_key(f, builtin_dir) not in project_names
         ]
 
     if not yaml_files and not builtin_files:
@@ -139,10 +149,14 @@ def cmd_list(
     all_loops: list[dict[str, Any]] = []
     for path in yaml_files:
         meta = _load_loop_meta(path)
-        all_loops.append({"name": path.stem, "path": path, "builtin": False, **meta})
+        all_loops.append(
+            {"name": _rel_key(path, loops_dir), "path": path, "builtin": False, **meta}
+        )
     for path in builtin_files:
         meta = _load_loop_meta(path)
-        all_loops.append({"name": path.stem, "path": path, "builtin": True, **meta})
+        all_loops.append(
+            {"name": _rel_key(path, builtin_dir), "path": path, "builtin": True, **meta}
+        )
 
     # Apply --category filter
     category_filter = getattr(args, "category", None)

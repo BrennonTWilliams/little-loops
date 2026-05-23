@@ -2945,7 +2945,7 @@ A missing parent raises `FileNotFoundError` from `resolve_loop_path`.
 
 ### Discovery: `lib/` is Hidden
 
-Inheritance-only base templates live under `loops/lib/` and are excluded from `ll-loop list` because loop discovery uses non-recursive `glob("*.yaml")`. Use a `lib/<name>` path in `from:` to point at them:
+Inheritance-only base templates live under `loops/lib/` and are excluded from `ll-loop list` because they aren't runnable FSMs on their own. Discovery recurses into subdirectories of `loops/` (so nested runnable loops like `oracles/oracle-capture-issue` show up) but filters every candidate through `is_runnable_loop()` — a YAML must have `name`, `initial`, and either `states` or `flow` to be listed. `lib/` files omit `initial:`, so they're filtered out by the predicate, not by a directory-name check. Use a `lib/<name>` path in `from:` to point at them:
 
 ```yaml
 name: apo-beam

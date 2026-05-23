@@ -272,9 +272,10 @@ states:
         """list shows all available loops."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
-        (loops_dir / "loop-a.yaml").write_text("name: a")
-        (loops_dir / "loop-b.yaml").write_text("name: b")
-        (loops_dir / "loop-c.yaml").write_text("name: c")
+        runnable_tail = "\ninitial: start\nstates:\n  start:\n    terminal: true\n"
+        (loops_dir / "loop-a.yaml").write_text("name: a" + runnable_tail)
+        (loops_dir / "loop-b.yaml").write_text("name: b" + runnable_tail)
+        (loops_dir / "loop-c.yaml").write_text("name: c" + runnable_tail)
 
         monkeypatch.chdir(tmp_path)
         with patch.object(sys, "argv", ["ll-loop", "list"]):

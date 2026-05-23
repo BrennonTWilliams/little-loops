@@ -16,6 +16,7 @@ from little_loops.doc_counts import (
     format_result_text,
     verify_documentation,
 )
+from little_loops.fsm import is_runnable_loop
 
 
 class TestCountFiles:
@@ -42,16 +43,18 @@ class TestCountFiles:
         count = count_files("skills", "*/SKILL.md", tmp_path)
         assert count == 1
 
-    def test_count_loops_top_level_only(self, tmp_path: Path) -> None:
-        """Count only top-level loop YAML files, not those in subdirectories."""
+    def test_count_loops_top_level_glob_non_recursive(self, tmp_path: Path) -> None:
+        """count_files() itself is a thin glob wrapper — confirm it stays non-recursive.
+
+        Recursive enumeration with runnable-loop filtering is the responsibility
+        of verify_documentation() (see TestVerifyDocumentation for that path);
+        keeping count_files() simple lets the other three targets (commands,
+        agents, skills) keep using it unchanged.
+        """
         loops_dir = tmp_path / "loops"
         loops_dir.mkdir()
         (loops_dir / "loop1.yaml").write_text("name: loop1")
         (loops_dir / "loop2.yaml").write_text("name: loop2")
-        # Subdirectory files should not be counted
-        lib_dir = loops_dir / "lib"
-        lib_dir.mkdir()
-        (lib_dir / "extra.yaml").write_text("name: lib-extra")
         oracles_dir = loops_dir / "oracles"
         oracles_dir.mkdir()
         (oracles_dir / "oracle.yaml").write_text("name: oracle")
@@ -71,6 +74,88 @@ class TestCountFiles:
 
         count = count_files("commands", "*.md", tmp_path)
         assert count == 0
+
+
+class TestIsRunnableLoop:
+    """Tests for is_runnable_loop predicate (BUG-1633)."""
+
+    def test_valid_loop_with_states(self, fsm_fixtures: Path) -> None:
+        """Valid loop with name + initial + states returns True."""
+        assert is_runnable_loop(fsm_fixtures / "valid-loop.yaml") is True
+
+    def test_flow_shorthand_accepted(self, tmp_path: Path) -> None:
+        """`flow:` shorthand (alternative to states:) is accepted."""
+        path = tmp_path / "flow-loop.yaml"
+        path.write_text(
+            "name: flow-loop\n"
+            "initial: step1\n"
+            "flow:\n"
+            "  - step1: echo hi\n"
+            "  - step2: echo bye\n"
+        )
+        assert is_runnable_loop(path) is True
+
+    def test_missing_name_returns_false(self, fsm_fixtures: Path) -> None:
+        """YAML missing `name:` is not runnable."""
+        assert is_runnable_loop(fsm_fixtures / "missing-name.yaml") is False
+
+    def test_missing_initial_returns_false(self, tmp_path: Path) -> None:
+        """YAML with name + states but no `initial:` is not runnable (lib fragment shape)."""
+        path = tmp_path / "no-initial.yaml"
+        path.write_text("name: fragment\nstates:\n  s:\n    terminal: true\n")
+        assert is_runnable_loop(path) is False
+
+    def test_missing_states_and_flow_returns_false(
+        self, fsm_fixtures: Path
+    ) -> None:
+        """YAML with neither states: nor flow: is not runnable."""
+        assert is_runnable_loop(fsm_fixtures / "missing-states.yaml") is False
+
+    def test_incomplete_loop_returns_false(self, fsm_fixtures: Path) -> None:
+        """YAML with only `name:` is not runnable (library fragment)."""
+        assert is_runnable_loop(fsm_fixtures / "incomplete-loop.yaml") is False
+
+    def test_non_dict_root_returns_false(self, fsm_fixtures: Path) -> None:
+        """YAML whose top-level is a list (not a mapping) is not runnable."""
+        assert is_runnable_loop(fsm_fixtures / "non-dict-root.yaml") is False
+
+    def test_malformed_yaml_returns_false(self, tmp_path: Path) -> None:
+        """Malformed YAML (parse error) is not runnable; predicate must not raise."""
+        path = tmp_path / "bad.yaml"
+        path.write_text("name: bad\n  bogus: : : indent: chaos\n[")
+        assert is_runnable_loop(path) is False
+
+    def test_oracle_capture_issue_is_runnable(self) -> None:
+        """Real nested oracle loop is recognized as runnable (the case BUG-1633 missed)."""
+        from pathlib import Path as _Path
+
+        oracle = (
+            _Path(__file__).resolve().parents[1]
+            / "little_loops"
+            / "loops"
+            / "oracles"
+            / "oracle-capture-issue.yaml"
+        )
+        # Only assert if the file is present — keep the test tolerant of future moves.
+        if oracle.exists():
+            assert is_runnable_loop(oracle) is True
+
+    def test_lib_fragments_are_not_runnable(self) -> None:
+        """All real library fragments under loops/lib/ are excluded by the predicate."""
+        from pathlib import Path as _Path
+
+        lib_dir = (
+            _Path(__file__).resolve().parents[1]
+            / "little_loops"
+            / "loops"
+            / "lib"
+        )
+        if not lib_dir.exists():
+            return
+        for fragment in lib_dir.glob("*.yaml"):
+            assert is_runnable_loop(fragment) is False, (
+                f"library fragment {fragment.name} should not be counted as runnable"
+            )
 
 
 class TestExtractCountFromLine:
@@ -496,7 +581,9 @@ class TestVerifyDocumentation:
         loops_dir = tmp_path / "scripts" / "little_loops" / "loops"
         loops_dir.mkdir(parents=True)
         for i in range(3):
-            (loops_dir / f"loop{i}.yaml").write_text(f"name: loop{i}")
+            (loops_dir / f"loop{i}.yaml").write_text(
+                f"name: loop{i}\ninitial: start\nstates:\n  start:\n    terminal: true\n"
+            )
 
         readme = tmp_path / "README.md"
         readme.write_text("## 5 FSM loops\n")
@@ -508,6 +595,43 @@ class TestVerifyDocumentation:
         loops_mismatch = next(m for m in result.mismatches if m.category == "loops")
         assert loops_mismatch.documented == 5
         assert loops_mismatch.actual == 3
+
+    def test_verify_loops_recursive_excludes_fragments(self, tmp_path: Path) -> None:
+        """verify_documentation() walks loops/ recursively but excludes fragments.
+
+        Regression guard for BUG-1633: a non-recursive glob silently missed
+        nested runnable loops (e.g. loops/oracles/oracle-capture-issue.yaml),
+        making the verifier rubber-stamp stale README counts.
+        """
+        loops_dir = tmp_path / "scripts" / "little_loops" / "loops"
+        loops_dir.mkdir(parents=True)
+        # Two runnable top-level loops
+        for i in range(2):
+            (loops_dir / f"loop{i}.yaml").write_text(
+                f"name: loop{i}\ninitial: start\nstates:\n  start:\n    terminal: true\n"
+            )
+        # One runnable nested loop under oracles/
+        oracles_dir = loops_dir / "oracles"
+        oracles_dir.mkdir()
+        (oracles_dir / "oracle1.yaml").write_text(
+            "name: oracle1\ninitial: start\nstates:\n  start:\n    terminal: true\n"
+        )
+        # Two library fragments under lib/ — missing initial:/states:, must NOT count
+        lib_dir = loops_dir / "lib"
+        lib_dir.mkdir()
+        (lib_dir / "fragment-a.yaml").write_text("name: fragment-a\n")
+        (lib_dir / "fragment-b.yaml").write_text("name: fragment-b\n")
+
+        readme = tmp_path / "README.md"
+        readme.write_text("## 3 FSM loops\n")  # matches 2 top-level + 1 oracle
+
+        result = verify_documentation(tmp_path)
+
+        assert result.all_match is True
+        loops_results = [
+            m for m in result.mismatches if m.category == "loops"
+        ]
+        assert loops_results == []
 
     def test_verify_skills_excludes_bridge_skills(self, tmp_path: Path) -> None:
         """Skill count excludes bridge skills (auto-generated from commands/)."""
