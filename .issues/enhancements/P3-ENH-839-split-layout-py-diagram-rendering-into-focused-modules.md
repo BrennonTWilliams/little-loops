@@ -111,6 +111,13 @@ Split into a `layout/` subpackage or three focused modules:
 
 ## Verification Notes
 
+**Verified**: 2026-05-22 | **Verdict**: VALID (line counts refreshed)
+
+- File `scripts/little_loops/cli/loop/layout.py` exists at **1,699 lines** (was 1,701 on 2026-05-17)
+- 3 classes still present: `TopologyDetector`, `LayerAssigner`, `CrossingMinimizer`
+- Refactor plan still accurate; no `layout/` subpackage yet
+- Slow accretion continues — file is now ~80 lines larger than the 2026-04-23 baseline (1,635 → 1,699)
+
 **Verified**: 2026-05-17 | **Verdict**: VALID (line counts refreshed)
 
 - File `scripts/little_loops/cli/loop/layout.py` exists at **1,701 lines** (was 1,645 on 2026-05-14)
@@ -126,6 +133,7 @@ Split into a `layout/` subpackage or three focused modules:
 - Integration Map note re: `_helpers.py` import of `_render_fsm_diagram` still applies
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:verify-issues` - 2026-05-17T17:04:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/907d2d29-7e38-4120-a77d-deb597ac2df4.jsonl`
 - `/ll:verify-issues` - 2026-05-14T20:42:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`

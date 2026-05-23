@@ -5,8 +5,7 @@ priority: P4
 status: open
 discovered_date: 2026-04-18
 discovered_by: capture-issue
-blocked_by:
-- FEAT-1112
+blocked_by: []
 depends_on:
 - ENH-1114
 relates_to:
@@ -228,6 +227,7 @@ _Updated by `/ll:confidence-check` on 2026-05-22 (re-run after wire-issue + refi
 - **Broad change surface**: 13 distinct sites including 2 breaking test files (`test_hook_post_tool_use.py` and `test_hook_intents.py` line 319) — implement test updates for `post_tool_use` alongside the hook change to avoid a broken-test window between steps 2 and 6.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:refine-issue` - 2026-05-22T20:01:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6c016c0-757a-4c25-9fb0-6b6bf3c10291.jsonl`
 - `/ll:wire-issue` - 2026-05-22T19:57:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71050fdf-80e1-449c-b1fe-daa146bb5f88.jsonl`
 - `/ll:confidence-check` - 2026-05-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71369049-8e66-40d9-974d-c382f4314900.jsonl`

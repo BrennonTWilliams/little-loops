@@ -3,7 +3,7 @@ id: FEAT-1479
 type: FEAT
 priority: P5
 status: open
-parent: FEAT-1477
+parent: EPIC-1622
 confidence_score: 100
 outcome_confidence: 97
 score_complexity: 22
@@ -210,13 +210,21 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Verification Notes
 
-**Verdict**: NEEDS_UPDATE — Verified 2026-05-22
+**Verdict**: VALID — Verified 2026-05-22 (re-verified, prior note was incorrect)
 
-- `config-schema.json` already has `"pi"` in `hooks.properties.host.enum` (`["claude-code", "codex", "opencode", "pi"]`) ✓
+- `config-schema.json:1103` `hooks.properties.host.enum` is still `["claude-code", "opencode", "codex"]` — `"pi"` is NOT present. The earlier 2026-05-22 note claiming partial schema landing was wrong (likely confused `hooks.host.enum` with `orchestration.host_cli`, which does include `"pi"` and is a different enum).
+- `scripts/little_loops/config/core.py` missing `PI_CONFIG_DIR` constant and `host == "pi"` branch — not implemented.
+- Nothing from this issue has actually landed yet; full scope remains outstanding.
+- Parent `FEAT-1477` is now `status: done` — re-parenting this child to a new Pi-adapter umbrella epic.
+
+**Verdict**: NEEDS_UPDATE — Verified 2026-05-22 (superseded — claim about schema was inaccurate)
+
+- ~~`config-schema.json` already has `"pi"` in `hooks.properties.host.enum` (`["claude-code", "codex", "opencode", "pi"]`) ✓~~ INCORRECT — see entry above.
 - `scripts/little_loops/config/core.py` missing `PI_CONFIG_DIR` constant and `host == "pi"` branch — not yet implemented
 - Partial implementation: schema change landed, code changes (core.py + tests) remain outstanding
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:verify-issues` - 2026-05-22T16:11:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
 - `/ll:verify-issues` - 2026-05-22T11:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`

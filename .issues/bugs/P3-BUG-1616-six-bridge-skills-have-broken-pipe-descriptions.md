@@ -91,7 +91,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `skills`, `context-engineering`, `data-quality`
 
+## Verification Notes
+
+**Verdict**: NEEDS_UPDATE — Verified 2026-05-22
+
+- The six skills are real and do report 0 tokens in `check_skill_budget()`.
+- HOWEVER, the descriptions are NOT empty: each of the six SKILL.md files has a proper YAML `description: |` block scalar with multi-line content (e.g. `skills/ll-loop-suggester/SKILL.md:3-5` has a full description plus trigger keywords).
+- Root cause is in the **parser**, not the skill files: `scripts/little_loops/doc_counts.py:268-280` contains a naive line-based `_parse_skill_frontmatter()` that returns the literal `'|'` indicator instead of consuming the indented block scalar body.
+- Two viable fixes:
+  1. Fix the parser (`doc_counts.py`) to handle YAML block scalars properly — restores routing info from the existing content with no SKILL.md edits.
+  2. Flatten the six descriptions to inline single-line strings — matches the issue's proposed solution, but discards existing well-formed content.
+- Recommendation: fix the parser first; option (2) is unnecessary if the parser does its job. The issue's framing ("broken descriptions") should be updated to "parser does not read block-scalar descriptions."
+
 ## Session Log
+- `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:format-issue` - 2026-05-22T22:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da2cdb66-57d9-4b9e-ad13-a2228c32b4d3.jsonl`
 - `/ll:capture-issue` - 2026-05-22T19:19:39Z - conversation analysis
 

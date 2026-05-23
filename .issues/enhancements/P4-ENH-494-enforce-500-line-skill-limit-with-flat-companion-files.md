@@ -177,6 +177,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:verify-issues` - 2026-05-18T04:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2807bd8b-4e79-4b76-994d-e6f6cae14245.jsonl`
 - `/ll:verify-issues` - 2026-05-17T17:04:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/907d2d29-7e38-4120-a77d-deb597ac2df4.jsonl`
 - `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
@@ -213,6 +214,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 ---
 
 ## Verification Notes
+
+- **Date**: 2026-05-22
+- **Verdict**: OUTDATED (re-confirmed)
+- **6 skills** exceed 500 lines: `confidence-check/SKILL.md` = **817**, `audit-claude-config/SKILL.md` = **712**, `init/SKILL.md` = **697** (+1), `debug-loop-run/SKILL.md` = **583** (not in scope), `review-loop/SKILL.md` = **577** (not in scope), `manage-issue/SKILL.md` = **560**. No companion files extracted yet.
+- Recommendation: expand Implementation Steps to cover `debug-loop-run` and `review-loop`, OR spin them out as a follow-up issue. Note ENH-977 is blocked by this issue; widening scope here lengthens that wait.
 
 - **Date**: 2026-05-17 (updated)
 - **Verdict**: OUTDATED (6 violators now, scope only covers 4)

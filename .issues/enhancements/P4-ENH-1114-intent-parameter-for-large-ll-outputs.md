@@ -5,8 +5,7 @@ priority: P4
 status: open
 discovered_date: 2026-04-15
 discovered_by: capture-issue
-blocked_by:
-- FEAT-1112
+blocked_by: []
 relates_to:
 - FEAT-1112
 - ENH-1111
@@ -155,6 +154,7 @@ _Added by `/ll:confidence-check` on 2026-05-18_
 - FEAT-1112 is still `open` — Step 1 (no-op flag wire-up) is immediately implementable and does not require FEAT-1112, but the acceptance criteria integration test (`ll-history --intent "rate limit" | wc -l` < `ll-history | wc -l`) and Step 2 ranking implementation are blocked until FEAT-1112 ships. Consider scoping the current implementation to Step 1 only and re-evaluating after FEAT-1112 closes.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:confidence-check` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/340fa85e-4e72-49ac-847d-86142062faa9.jsonl`
 - `/ll:wire-issue` - 2026-05-18T10:11:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/340fa85e-4e72-49ac-847d-86142062faa9.jsonl`
 - `/ll:refine-issue` - 2026-05-18T10:06:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e94093a-31ac-4afe-8d9f-df3bc2a5bd8f.jsonl`
