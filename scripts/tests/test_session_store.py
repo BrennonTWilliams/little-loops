@@ -365,9 +365,7 @@ class TestSchemaV2:
 class TestBackfillMessages:
     """_backfill_messages() seeds message_events from user JSONL blocks."""
 
-    def _user_record(
-        self, session_id: str, ts: str, content: object
-    ) -> str:
+    def _user_record(self, session_id: str, ts: str, content: object) -> str:
         return (
             json.dumps(
                 {
@@ -406,9 +404,7 @@ class TestBackfillMessages:
             encoding="utf-8",
         )
         db = tmp_path / "session.db"
-        backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
-        )
+        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
         rows = recent(db, kind="message")
         assert rows[0]["content"] == "first\nsecond"
 
@@ -441,9 +437,7 @@ class TestBackfillMessages:
             encoding="utf-8",
         )
         db = tmp_path / "session.db"
-        backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
-        )
+        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
         results = search(db, query="needle")
         assert any(r["kind"] == "message" for r in results)
 

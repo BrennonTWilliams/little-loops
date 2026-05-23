@@ -113,8 +113,7 @@ class TestPostToolUseWithSessionStore:
         conn = sqlite3.connect(str(db_path))
         try:
             row = conn.execute(
-                "SELECT tool_name, session_id, bytes_in, bytes_out, cache_hit "
-                "FROM tool_events"
+                "SELECT tool_name, session_id, bytes_in, bytes_out, cache_hit FROM tool_events"
             ).fetchone()
         finally:
             conn.close()
@@ -172,16 +171,12 @@ class TestPostToolUseWithSessionStore:
         db_path = tmp_path / ".ll" / "session.db"
         conn = sqlite3.connect(str(db_path))
         try:
-            (cache_hit,) = conn.execute(
-                "SELECT cache_hit FROM tool_events"
-            ).fetchone()
+            (cache_hit,) = conn.execute("SELECT cache_hit FROM tool_events").fetchone()
         finally:
             conn.close()
         assert cache_hit == 1
 
-    def test_graceful_when_store_unwritable(
-        self, tmp_path, monkeypatch
-    ) -> None:
+    def test_graceful_when_store_unwritable(self, tmp_path, monkeypatch) -> None:
         """Handler must not raise when SQLite write fails."""
         _write_config(tmp_path, analytics_enabled=True)
         monkeypatch.chdir(tmp_path)
@@ -217,9 +212,7 @@ class TestPostToolUseWithSessionStore:
             {"tool_name": "Edit", "tool_input": None, "tool_response": None},
         ],
     )
-    def test_byte_field_extraction_defaults(
-        self, tmp_path, monkeypatch, payload
-    ) -> None:
+    def test_byte_field_extraction_defaults(self, tmp_path, monkeypatch, payload) -> None:
         _write_config(tmp_path, analytics_enabled=True)
         monkeypatch.chdir(tmp_path)
 

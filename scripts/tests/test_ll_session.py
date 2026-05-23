@@ -117,9 +117,7 @@ class TestMainSession:
         assert "messages=5" in out
         assert "Backfilled 10" in out
 
-    def test_recent_message_kind(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_recent_message_kind(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """The recent CLI accepts --kind message after ENH-1621."""
         db = tmp_path / "session.db"
         from little_loops.session_store import ensure_db

@@ -197,8 +197,7 @@ def _render(summary: dict[str, Any], logger: Logger) -> None:
         ranked = sorted(per_tool.items(), key=lambda kv: kv[1]["bytes"], reverse=True)
         for tool, stats in ranked:
             print(
-                f"  {tool:<13} {stats['calls']:>3} calls   "
-                f"{_format_bytes(stats['bytes']):>10} used"
+                f"  {tool:<13} {stats['calls']:>3} calls   {_format_bytes(stats['bytes']):>10} used"
             )
         print()
 

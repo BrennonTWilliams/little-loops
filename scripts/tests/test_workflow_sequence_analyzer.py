@@ -566,9 +566,7 @@ class TestAnalyzeWorkflows:
             with open(patterns_file, "w") as f:
                 yaml.dump(sample_patterns, f)
 
-            result = analyze_workflows(
-                messages_file=messages_file, patterns_file=patterns_file
-            )
+            result = analyze_workflows(messages_file=messages_file, patterns_file=patterns_file)
             assert result.metadata["message_count"] == len(sample_messages)
 
     def test_entity_clustering(

@@ -227,9 +227,7 @@ class TestMainCtxStats:
         ):
             result = main_ctx_stats()
         assert result == 0
-        rendered = "".join(
-            str(call.args[0]) for call in printed.call_args_list if call.args
-        )
+        rendered = "".join(str(call.args[0]) for call in printed.call_args_list if call.args)
         assert "sqlite" in rendered
 
 
@@ -254,6 +252,4 @@ class TestToolEventsRoundtrip:
 @pytest.fixture(autouse=True)
 def _isolate_terminal_width(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pin terminal width so progress-bar output stays stable across CI shells."""
-    monkeypatch.setattr(
-        "little_loops.cli.ctx_stats.terminal_width", lambda _default=80: 100
-    )
+    monkeypatch.setattr("little_loops.cli.ctx_stats.terminal_width", lambda _default=80: 100)
