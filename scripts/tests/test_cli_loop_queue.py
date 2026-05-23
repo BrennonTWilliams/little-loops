@@ -22,7 +22,7 @@ def _make_args(**kwargs: object) -> argparse.Namespace:
         "foreground_internal": False,
         "quiet": False,
         "verbose": False,
-        "show_diagrams": False,
+        "show_diagrams": None,
         "clear": False,
         "queue": True,
         "handoff_threshold": None,

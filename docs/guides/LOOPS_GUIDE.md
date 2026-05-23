@@ -2475,7 +2475,7 @@ For full details on evaluation phases, MCP gates, skill-as-judge, stall detectio
 | `--quiet` | Suppress progress output |
 | `-v` / `--verbose` | Stream all action output live; default shows a short response head preview |
 | `-b` / `--background` | Run as a background daemon |
-| `--show-diagrams` | Display FSM box diagram with active state highlighted after each step |
+| `--show-diagrams[=main\|full]` | Display FSM box diagram with active state highlighted after each step. Bare flag defaults to `main` (hides `error`/`partial`/`blocked`/`retry_exhausted`/`rate_limit_exhausted`/`throttle_hard` edges and states only reachable through them); pass `=full` for the legacy all-edges view |
 | `--clear` | Clear terminal before each iteration; combine with `--show-diagrams` for a live in-place dashboard |
 | `--delay <SECONDS>` | Sleep N seconds between iterations; overrides `backoff:` from YAML |
 | `--context KEY=VALUE` | Override a context variable at runtime (repeatable) |

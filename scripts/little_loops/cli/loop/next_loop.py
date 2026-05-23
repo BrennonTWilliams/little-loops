@@ -315,7 +315,7 @@ def cmd_next_loop(
             instance_id=None,
             quiet=False,
             verbose=False,
-            show_diagrams=False,
+            show_diagrams=None,
             clear=False,
             queue=False,
             context=[f"{k}={v}" for k, v in top_candidate.context.items()],

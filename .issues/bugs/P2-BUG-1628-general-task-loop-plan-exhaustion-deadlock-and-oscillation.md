@@ -229,6 +229,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Configuration
 - N/A
 
+### Sibling Issue Ordering (added by `/ll:wire-issue` third pass)
+
+_ENH-1629 and ENH-1631 both also modify `general-task.yaml` — coordinate before merging:_
+- `ENH-1629` (`P3-ENH-1629-general-task-loop-explicit-threshold-keys-in-context.md`) — adds threshold context keys and modifies the `check_done` LLM evaluator prompt. Touches the same state BUG-1628 routes _into_ (`check_done`). Implement BUG-1628 first; ENH-1629 adds on top.
+- `ENH-1631` (`P3-ENH-1631-fsm-runtime-on-max-iterations-summary-hook.md`) — proposes adding a `summarize_partial` state that reads `general-task-dod.md` and `general-task-plan.md`. Adds a new state to the same loop. No merge conflict with BUG-1628's `continue_work` changes, but review state count assertions in `TestGeneralTaskLoop` before landing ENH-1631.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -315,7 +321,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-05-23 (post wire-issue)_
+_Updated by `/ll:confidence-check` on 2026-05-23 (post wire-issue third pass)_
 
 **Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 71/100 → MODERATE
@@ -325,6 +331,9 @@ _Updated by `/ll:confidence-check` on 2026-05-23 (post wire-issue)_
 - **execute/continue_work collapse**: Research recommends keeping `execute` as a thin entry-point; commit to this path before touching the YAML to avoid a mid-implementation reversal.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-23T20:01:52Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:wire-issue` - 2026-05-23T19:59:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88533aff-edf2-4543-a36c-52bada8aa103.jsonl`
+- `/ll:refine-issue` - 2026-05-23T19:51:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1435261b-96be-4e92-b607-0920af54ab06.jsonl`
 - `/ll:confidence-check` - 2026-05-23T17:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd804a36-d506-4eb1-be15-81cdac8d8557.jsonl`
 - `/ll:wire-issue` - 2026-05-23T16:57:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a9c6d1a1-0ff3-429d-82ba-98b024c1337c.jsonl`
 - `/ll:refine-issue` - 2026-05-23T16:51:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/988ce1b9-ae0c-46fd-b2cc-0a27156d1f90.jsonl`

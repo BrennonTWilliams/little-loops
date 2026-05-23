@@ -1500,6 +1500,37 @@ def _render_layered_diagram(
 # ---------------------------------------------------------------------------
 
 
+_MAIN_PATH_EDGE_LABELS: frozenset[str] = frozenset({"yes", "no", "next", "_"})
+
+
+def _filter_main_path_graph(
+    fsm: FSMLoop, edges: list[tuple[str, str, str]]
+) -> tuple[list[tuple[str, str, str]], set[str]]:
+    """Filter edges to the main happy-path subgraph and the states reachable through it.
+
+    Drops off-happy-path labels (anything not in ``_MAIN_PATH_EDGE_LABELS`` and not
+    a ``route``-verdict label) plus any state unreachable from ``fsm.initial`` once
+    those edges are gone. Route-verdict labels (everything emitted by ``state.route``
+    other than the default ``_``) are kept since routes encode normal branching.
+    """
+    route_verdicts: set[str] = set()
+    for _name, state in fsm.states.items():
+        if state.route is not None:
+            route_verdicts.update(state.route.routes.keys())
+        route_verdicts.update(state.extra_routes.keys())
+
+    def _is_main_label(label: str) -> bool:
+        return label in _MAIN_PATH_EDGE_LABELS or label in route_verdicts
+
+    filtered_edges = [(s, t, lbl) for (s, t, lbl) in edges if _is_main_label(lbl)]
+    _bfs_visited_order, depth_map = _bfs_order(fsm.initial, filtered_edges)
+    reachable: set[str] = set(depth_map.keys())
+    filtered_edges = [
+        (s, t, lbl) for (s, t, lbl) in filtered_edges if s in reachable and t in reachable
+    ]
+    return filtered_edges, reachable
+
+
 def _render_fsm_diagram(
     fsm: FSMLoop,
     verbose: bool = False,
@@ -1507,6 +1538,7 @@ def _render_fsm_diagram(
     highlight_color: str = "32",
     edge_label_colors: dict[str, str] | None = None,
     badges: dict[str, str] | None = None,
+    mode: str = "full",
 ) -> str:
     """Render an adaptive text diagram of the FSM graph.
 
@@ -1523,8 +1555,15 @@ def _render_fsm_diagram(
             Falls back to hardcoded defaults when None.
         badges: Optional glyph-key→string mapping for state type badges.
             Falls back to hardcoded defaults when None.
+        mode: "full" (default) renders every edge and state. "main" hides
+            off-happy-path edges (error, partial, blocked, retry_exhausted,
+            rate_limit_exhausted, throttle_hard) and the states only reachable
+            through them. Callers that need full-detail dumps (e.g. ``ll-loop
+            info``) keep the default.
     """
     edges = _collect_edges(fsm)
+    if mode == "main":
+        edges, _reachable = _filter_main_path_graph(fsm, edges)
     bfs_order_list, bfs_depth = _bfs_order(fsm.initial, edges)
     main_path, main_edge_set = _trace_main_path(fsm, edges)
     branches, back_edges = _classify_edges(edges, main_edge_set, bfs_order_list)

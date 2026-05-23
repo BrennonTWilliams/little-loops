@@ -291,8 +291,9 @@ def run_background(
         cmd.extend(["--llm-model", llm_model])
     if getattr(args, "verbose", False):
         cmd.append("--verbose")
-    if getattr(args, "show_diagrams", False):
-        cmd.append("--show-diagrams")
+    show_diagrams_mode = getattr(args, "show_diagrams", None)
+    if show_diagrams_mode is not None:
+        cmd.extend(["--show-diagrams", show_diagrams_mode])
     if getattr(args, "quiet", False):
         cmd.append("--quiet")
     if getattr(args, "queue", False):
@@ -351,7 +352,15 @@ def run_foreground(
     """
     quiet = getattr(args, "quiet", False)
     verbose = getattr(args, "verbose", False)
-    show_diagrams = getattr(args, "show_diagrams", False)
+    # Tri-state: None (disabled), "main", or "full". Legacy boolean True maps to "main".
+    raw_show_diagrams = getattr(args, "show_diagrams", None)
+    if raw_show_diagrams is True:
+        show_diagrams_mode: str | None = "main"
+    elif raw_show_diagrams in ("main", "full"):
+        show_diagrams_mode = raw_show_diagrams
+    else:
+        show_diagrams_mode = None
+    show_diagrams = show_diagrams_mode is not None
     clear_screen = getattr(args, "clear", False)
     if not quiet:
         print(f"Running loop: {colorize(fsm.name, '1')}")
@@ -405,18 +414,40 @@ def run_foreground(
             for k in [k for k in child_fsm_stack if k > depth]:
                 del child_fsm_stack[k]
             if show_diagrams:
-                from little_loops.cli.loop.layout import _render_fsm_diagram
+                from little_loops.cli.loop.layout import (
+                    _collect_edges,
+                    _filter_main_path_graph,
+                    _render_fsm_diagram,
+                )
 
+                assert show_diagrams_mode is not None  # narrows for type checker
+                parent_highlight = last_state_at_depth.get(0)
+                # Fall back to full when the highlighted state is hidden in main mode.
+                parent_mode = show_diagrams_mode
+                fallback_note: str | None = None
+                if parent_mode == "main" and parent_highlight is not None:
+                    _filtered_edges, parent_reachable = _filter_main_path_graph(
+                        fsm, _collect_edges(fsm)
+                    )
+                    if parent_highlight not in parent_reachable:
+                        parent_mode = "full"
+                        fallback_note = (
+                            f"(showing full diagram: active state "
+                            f"{parent_highlight!r} is off the main path)"
+                        )
                 diagram = _render_fsm_diagram(
                     fsm,
-                    highlight_state=last_state_at_depth.get(0),
+                    highlight_state=parent_highlight,
                     highlight_color=highlight_color,
                     edge_label_colors=edge_label_colors,
                     badges=badges,
+                    mode=parent_mode,
                 )
                 header_text = f"== loop: {fsm.name} "
                 header = header_text + "=" * max(0, tw - len(header_text))
                 print(header, flush=True)
+                if fallback_note is not None:
+                    print(fallback_note, flush=True)
                 print(diagram, flush=True)
                 for d, child_fsm_at_d in sorted(child_fsm_stack.items()):
                     if child_fsm_at_d is not None and (d + 1) in last_state_at_depth:
@@ -424,12 +455,28 @@ def run_foreground(
                         separator_text = f"\u2500\u2500 sub-loop: {child_name} "
                         separator = separator_text + "\u2500" * max(0, tw - len(separator_text))
                         print(separator, flush=True)
+                        child_highlight = last_state_at_depth.get(d + 1)
+                        child_mode = show_diagrams_mode
+                        child_note: str | None = None
+                        if child_mode == "main" and child_highlight is not None:
+                            _ce, child_reachable = _filter_main_path_graph(
+                                child_fsm_at_d, _collect_edges(child_fsm_at_d)
+                            )
+                            if child_highlight not in child_reachable:
+                                child_mode = "full"
+                                child_note = (
+                                    f"(showing full diagram: active state "
+                                    f"{child_highlight!r} is off the main path)"
+                                )
+                        if child_note is not None:
+                            print(child_note, flush=True)
                         child_diagram = _render_fsm_diagram(
                             child_fsm_at_d,
-                            highlight_state=last_state_at_depth.get(d + 1),
+                            highlight_state=child_highlight,
                             highlight_color=highlight_color,
                             edge_label_colors=edge_label_colors,
                             badges=badges,
+                            mode=child_mode,
                         )
                         print(child_diagram, flush=True)
             if not quiet:

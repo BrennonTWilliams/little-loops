@@ -156,7 +156,7 @@ class TestCmdRunProgramMdInjection:
             "foreground_internal": False,
             "quiet": False,
             "verbose": False,
-            "show_diagrams": False,
+            "show_diagrams": None,
             "clear": False,
             "queue": False,
             "handoff_threshold": None,

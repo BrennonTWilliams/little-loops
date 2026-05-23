@@ -2638,7 +2638,7 @@ states:
             foreground_internal=False,
             quiet=False,
             verbose=False,
-            show_diagrams=False,
+            show_diagrams=None,
             clear=False,
             queue=False,
             program_md=None,

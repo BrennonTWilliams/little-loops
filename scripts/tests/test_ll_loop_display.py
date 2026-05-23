@@ -1646,9 +1646,14 @@ class TestDisplayProgressEvents:
         self,
         quiet: bool = False,
         verbose: bool = False,
-        show_diagrams: bool = False,
+        show_diagrams: bool | str | None = None,
         clear: bool = False,
     ) -> argparse.Namespace:
+        # Back-compat shim: legacy True → "main" (the new default mode).
+        if show_diagrams is True:
+            show_diagrams = "main"
+        elif show_diagrams is False:
+            show_diagrams = None
         return argparse.Namespace(
             quiet=quiet, verbose=verbose, show_diagrams=show_diagrams, clear=clear
         )
@@ -1955,6 +1960,7 @@ class TestDisplayProgressEvents:
                 highlight_color="32",
                 edge_label_colors=None,
                 badges=None,
+                mode="main",
             )
         out = capsys.readouterr().out
         # Diagram contains box drawing characters
@@ -2015,6 +2021,7 @@ class TestDisplayProgressEvents:
                 highlight_color="32",
                 edge_label_colors=None,
                 badges=None,
+                mode="main",
             )
         out = capsys.readouterr().out
         assert "\u250c" in out
@@ -2252,6 +2259,7 @@ class TestDisplayProgressEvents:
             highlight_color="32",
             edge_label_colors=None,
             badges=None,
+            mode="main",
         )
         assert calls[1] == call(
             parent_fsm,
@@ -2259,6 +2267,7 @@ class TestDisplayProgressEvents:
             highlight_color="32",
             edge_label_colors=None,
             badges=None,
+            mode="main",
         )
         assert calls[2] == call(
             child_fsm,
@@ -2266,6 +2275,7 @@ class TestDisplayProgressEvents:
             highlight_color="32",
             edge_label_colors=None,
             badges=None,
+            mode="main",
         )
         out = capsys.readouterr().out
         assert "sub-loop: child-loop" in out
@@ -2857,3 +2867,208 @@ class TestCustomGlyphOverride:
         fsm = self._make_fsm(states={"a": StateConfig(action_type="prompt", terminal=True)})
         result = _render(fsm)
         assert "\u2726" in result  # default ✦ present
+
+
+# ---------------------------------------------------------------------------
+# ENH-1641: --show-diagrams main/full mode tests
+# ---------------------------------------------------------------------------
+
+
+class TestShowDiagramsMode:
+    """Renderer-level tests for the ``mode`` parameter on ``_render_fsm_diagram``.
+
+    ``main`` hides off-happy-path edges (error, partial, blocked, retry_exhausted,
+    rate_limit_exhausted, throttle_hard) and the states that become unreachable
+    once those edges are removed. ``full`` preserves the legacy all-edges view.
+    """
+
+    def _fsm_with_error_branch(self) -> FSMLoop:
+        return FSMLoop(
+            name="test-main",
+            initial="start",
+            states={
+                "start": StateConfig(action="echo start", on_yes="done", on_error="fail_terminal"),
+                "done": StateConfig(terminal=True),
+                "fail_terminal": StateConfig(terminal=True),
+            },
+            max_iterations=5,
+        )
+
+    def test_show_diagrams_main_hides_error_edges(self) -> None:
+        """main mode strips error/blocked/retry_exhausted edge labels from output."""
+        import re as _re
+
+        from little_loops.cli.loop.layout import _render_fsm_diagram
+
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={
+                "start": StateConfig(
+                    action="echo start",
+                    on_yes="done",
+                    on_error="fail",
+                    on_blocked="fail",
+                    on_retry_exhausted="fail",
+                ),
+                "done": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+            max_iterations=5,
+        )
+        result = _render_fsm_diagram(fsm, mode="main")
+        plain = _re.compile(r"\033\[[0-9;]*m").sub("", result)
+        assert "error" not in plain
+        assert "blocked" not in plain
+        assert "retry_exhausted" not in plain
+        assert "yes" in plain
+
+    def test_show_diagrams_main_hides_unreachable_fail_terminals(self) -> None:
+        """main mode hides states only reachable via stripped error edges."""
+        import re as _re
+
+        from little_loops.cli.loop.layout import _render_fsm_diagram
+
+        fsm = self._fsm_with_error_branch()
+        result = _render_fsm_diagram(fsm, mode="main")
+        plain = _re.compile(r"\033\[[0-9;]*m").sub("", result)
+        assert "fail_terminal" not in plain
+        assert "start" in plain
+        assert "done" in plain
+
+    def test_show_diagrams_main_keeps_reachable_terminals(self) -> None:
+        """main mode keeps terminal states reachable via happy-path edges."""
+        import re as _re
+
+        from little_loops.cli.loop.layout import _render_fsm_diagram
+
+        fsm = self._fsm_with_error_branch()
+        result = _render_fsm_diagram(fsm, mode="main")
+        plain = _re.compile(r"\033\[[0-9;]*m").sub("", result)
+        assert "done" in plain
+
+    def test_show_diagrams_full_matches_legacy_output(self) -> None:
+        """full mode produces the same output as today's default (no mode kwarg)."""
+        from little_loops.cli.loop.layout import _render_fsm_diagram
+
+        fsm = self._fsm_with_error_branch()
+        legacy = _render_fsm_diagram(fsm)
+        full = _render_fsm_diagram(fsm, mode="full")
+        assert legacy == full
+
+    def test_show_diagrams_main_falls_back_to_full_when_highlight_off_path(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Active state off the main path triggers a full-mode fallback render
+        for that iteration with an explanatory one-line note prepended.
+        """
+        from unittest.mock import patch
+
+        from little_loops.cli.loop import layout as layout_mod
+
+        fsm = self._fsm_with_error_branch()
+        events = [
+            {"event": "state_enter", "state": "fail_terminal", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        args = argparse.Namespace(quiet=True, verbose=False, show_diagrams="main", clear=False)
+        with patch.object(
+            layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
+        ) as mock_render:
+            run_foreground(executor, fsm, args)
+
+        modes_seen = [c.kwargs.get("mode") for c in mock_render.call_args_list]
+        assert "full" in modes_seen, f"Expected full-mode fallback render, got {modes_seen}"
+        out = capsys.readouterr().out
+        assert "showing full diagram" in out
+        assert "fail_terminal" in out
+
+
+class TestShowDiagramsArgparse:
+    """Argparse parsing tests for the tri-state ``--show-diagrams`` flag."""
+
+    def _parse_run_args(self, argv: list[str]) -> argparse.Namespace:
+        captured: dict[str, argparse.Namespace] = {}
+
+        def fake_cmd_run(loop, args, loops_dir, logger):  # type: ignore[no-untyped-def]
+            captured["args"] = args
+            return 0
+
+        with (
+            patch("sys.argv", argv),
+            patch("little_loops.cli.loop.run.cmd_run", fake_cmd_run),
+        ):
+            from little_loops.cli.loop import main_loop
+
+            main_loop()
+        return captured["args"]
+
+    def test_bare_show_diagrams_defaults_to_main(self) -> None:
+        args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams"])
+        assert args.show_diagrams == "main"
+
+    def test_show_diagrams_equals_main(self) -> None:
+        args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=main"])
+        assert args.show_diagrams == "main"
+
+    def test_show_diagrams_equals_full(self) -> None:
+        args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=full"])
+        assert args.show_diagrams == "full"
+
+    def test_show_diagrams_absent_is_none(self) -> None:
+        args = self._parse_run_args(["ll-loop", "run", "my-loop"])
+        assert args.show_diagrams is None
+
+
+class TestShowDiagramsSubprocessReemit:
+    """Tests for run_background re-emitting --show-diagrams to the subprocess cmd."""
+
+    def _capture_cmd(self, show_diagrams_value: object) -> list[str]:
+        from unittest.mock import MagicMock
+
+        from little_loops.cli.loop._helpers import run_background
+
+        captured: dict[str, list[str]] = {}
+
+        def fake_popen(cmd, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            captured["cmd"] = list(cmd)
+            mock_proc = MagicMock()
+            mock_proc.pid = 12345
+            return mock_proc
+
+        args_ns = argparse.Namespace(
+            input=None,
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            verbose=False,
+            show_diagrams=show_diagrams_value,
+            quiet=False,
+            queue=False,
+            context=[],
+            program_md=None,
+            delay=None,
+            handoff_threshold=None,
+            context_limit=None,
+        )
+        with patch("subprocess.Popen", side_effect=fake_popen):
+            with patch("builtins.open"):
+                with patch("pathlib.Path.write_text"):
+                    run_background("my-loop", args_ns, Path("/tmp/fake-loops"))
+        return captured["cmd"]
+
+    def test_main_mode_reemitted_to_cmd(self) -> None:
+        cmd = self._capture_cmd("main")
+        assert "--show-diagrams" in cmd
+        idx = cmd.index("--show-diagrams")
+        assert cmd[idx + 1] == "main"
+
+    def test_full_mode_reemitted_to_cmd(self) -> None:
+        cmd = self._capture_cmd("full")
+        assert "--show-diagrams" in cmd
+        idx = cmd.index("--show-diagrams")
+        assert cmd[idx + 1] == "full"
+
+    def test_none_mode_suppresses_flag_from_cmd(self) -> None:
+        cmd = self._capture_cmd(None)
+        assert "--show-diagrams" not in cmd

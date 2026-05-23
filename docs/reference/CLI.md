@@ -385,7 +385,7 @@ Run a loop.
 | `--quiet` | `-q` | Suppress progress output |
 | `--verbose` | `-v` | Stream all action output live; default shows a short response head preview |
 | `--queue` | | Wait for conflicting loops to finish; writes a queue entry to `<loops_dir>/.queue/<uuid>.json` while waiting (see [Queue entries](#queue-entries-loopsqueue)) |
-| `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step; the top-level loop is preceded by `== loop: <name> ====...` and, when sub-loops are active, each nesting level is rendered below its parent separated by `── sub-loop: <name> ──` (supports arbitrary depth) |
+| `--show-diagrams[=main\|full]` | | Display FSM box diagram with active state highlighted after each step. Optional mode: `main` (default for bare flag) hides off-happy-path edges (`error`, `partial`, `blocked`, `retry_exhausted`, `rate_limit_exhausted`, `throttle_hard`) and the states only reachable through them; `full` shows every edge and reachable state (legacy behavior). If the active state is hidden in `main`, the renderer falls back to `full` for that iteration with a one-line note. The top-level loop is preceded by `== loop: <name> ====...` and, when sub-loops are active, each nesting level is rendered below its parent separated by `── sub-loop: <name> ──` (supports arbitrary depth) |
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
 | `--builtin` | | Load loop from built-ins directory (bypasses project `.loops/` lookup) |
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
@@ -460,7 +460,7 @@ Resume a loop. Resumable statuses are `"running"`, `"awaiting_continuation"`, an
 | `--instance-id <id>` | | Select a specific instance to resume (required when 2+ resumable instances match) |
 | `--background` | `-b` | Resume as a detached background process |
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
-| `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step; the top-level loop is preceded by `== loop: <name> ====...` and, when sub-loops are active, each nesting level is rendered below its parent separated by `── sub-loop: <name> ──` (supports arbitrary depth) |
+| `--show-diagrams[=main\|full]` | | Display FSM box diagram with active state highlighted after each step. Optional mode: `main` (default for bare flag) hides off-happy-path edges (`error`, `partial`, `blocked`, `retry_exhausted`, `rate_limit_exhausted`, `throttle_hard`) and the states only reachable through them; `full` shows every edge and reachable state (legacy behavior). If the active state is hidden in `main`, the renderer falls back to `full` for that iteration with a one-line note. The top-level loop is preceded by `== loop: <name> ====...` and, when sub-loops are active, each nesting level is rendered below its parent separated by `── sub-loop: <name> ──` (supports arbitrary depth) |
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
 | `--delay` | | Sleep N seconds between iterations (useful for recording) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |

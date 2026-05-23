@@ -137,8 +137,19 @@ Examples:
     )
     run_parser.add_argument(
         "--show-diagrams",
-        action="store_true",
-        help="Display the FSM box diagram with the active state highlighted after each step",
+        nargs="?",
+        const="main",
+        default=None,
+        choices=["main", "full"],
+        metavar="MODE",
+        help=(
+            "Display the FSM box diagram after each step with the active state "
+            "highlighted. MODE=main (default with bare flag) hides off-happy-path "
+            "edges (error, partial, blocked, retry_exhausted, rate_limit_exhausted, "
+            "throttle_hard) and the states only reachable through them. MODE=full "
+            "renders every edge and state. If the active state is hidden in main, "
+            "the renderer falls back to full for that iteration."
+        ),
     )
     run_parser.add_argument(
         "--clear",
@@ -245,8 +256,19 @@ Examples:
     )
     resume_parser.add_argument(
         "--show-diagrams",
-        action="store_true",
-        help="Display the FSM box diagram with the active state highlighted after each step",
+        nargs="?",
+        const="main",
+        default=None,
+        choices=["main", "full"],
+        metavar="MODE",
+        help=(
+            "Display the FSM box diagram after each step with the active state "
+            "highlighted. MODE=main (default with bare flag) hides off-happy-path "
+            "edges (error, partial, blocked, retry_exhausted, rate_limit_exhausted, "
+            "throttle_hard) and the states only reachable through them. MODE=full "
+            "renders every edge and state. If the active state is hidden in main, "
+            "the renderer falls back to full for that iteration."
+        ),
     )
     resume_parser.add_argument(
         "--clear",
