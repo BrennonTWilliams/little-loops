@@ -4279,6 +4279,8 @@ def evaluate(
 ```
 Dispatch to appropriate evaluator based on config type.
 
+**Action-level timeouts**: When `exit_code == 124` (action killed at its `timeout:`), the dispatcher short-circuits to `EvaluationResult(verdict="error", details={"exit_code": 124, "error": "action timed out"})` for all types except `mcp_result` (which has its own `timeout` verdict). This ensures `on_error:` is the canonical branch for action timeouts regardless of evaluator type.
+
 **Example:**
 ```python
 from little_loops.fsm import evaluate_exit_code, evaluate_output_contains

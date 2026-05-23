@@ -1305,6 +1305,8 @@ evaluate:
   pattern: "All checks passed"
 ```
 
+**Action-level timeouts (`exit_code=124`)**: When a `prompt`, `mcp`, or `shell` action is killed at its `timeout:` budget, the runner returns `exit_code=124` (often with truncated stdout). All evaluator types (except `mcp_result`, which has its own `timeout` verdict) short-circuit to `verdict="error"`, so loop authors should use `on_error:` as the canonical recovery branch for action timeouts. This prevents truncated output from being misread as a deliberate `no` verdict.
+
 ### Variable Interpolation
 
 Use `${namespace.path}` in action strings, evaluator configs, and routing targets. Variables are resolved at runtime.

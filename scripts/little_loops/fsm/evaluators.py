@@ -762,6 +762,16 @@ def evaluate(
     """
     eval_type = config.type
 
+    # BUG-1640: Action-level timeouts (exit_code=124) short-circuit to "error"
+    # so loop authors' on_error: branches fire instead of being routed via
+    # on_no: based on truncated output. mcp_result is exempted because it has
+    # its own established "timeout" verdict (see evaluate_mcp_result).
+    if exit_code == 124 and eval_type != "mcp_result":
+        return EvaluationResult(
+            verdict="error",
+            details={"exit_code": exit_code, "error": "action timed out"},
+        )
+
     if eval_type == "exit_code":
         return evaluate_exit_code(exit_code)
 

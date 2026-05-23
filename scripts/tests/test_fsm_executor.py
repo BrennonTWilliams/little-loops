@@ -2027,6 +2027,44 @@ class TestTimeoutHandling:
         assert result.captured["slow_result"]["exit_code"] == 124
         assert result.captured["slow_result"]["stderr"] == "Action timed out"
 
+    def test_action_timeout_with_output_contains_routes_to_on_error(self) -> None:
+        """BUG-1640: output_contains evaluator on timeout (exit 124) routes via on_error.
+
+        Before the fix, a truncated stdout would miss the success pattern and the
+        verdict would silently become "no", routing through on_no instead of the
+        on_error: branch the loop author defined.
+        """
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="slow_command.sh",
+                    evaluate=EvaluateConfig(type="output_contains", pattern="YES"),
+                    on_yes="pass",
+                    on_no="fail",
+                    on_error="error",
+                ),
+                "pass": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+                "error": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result(
+            "slow_command.sh",
+            output="",  # truncated; pattern absent
+            exit_code=124,
+            stderr="Action timed out",
+        )
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        # Before fix: final_state == "fail" (on_no, because pattern missing).
+        # After fix: final_state == "error" (on_error, because exit 124 short-circuits).
+        assert result.final_state == "error"
+
     def test_loop_timeout_stops_execution(self) -> None:
         """Loop terminates when total time exceeds timeout."""
         fsm = FSMLoop(

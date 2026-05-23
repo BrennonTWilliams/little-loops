@@ -546,6 +546,49 @@ class TestEvaluateDispatcher:
         with pytest.raises(ValueError, match="Unknown evaluator type"):
             evaluate(config, "", 0, ctx)
 
+    @pytest.mark.parametrize(
+        "eval_type",
+        [
+            "exit_code",
+            "output_numeric",
+            "output_json",
+            "output_contains",
+            "convergence",
+            "diff_stall",
+            "llm_structured",
+            "harbor_scorer",
+        ],
+    )
+    def test_dispatch_exit_code_124_short_circuits_to_error(self, eval_type: str) -> None:
+        """BUG-1640: exit_code=124 short-circuits to 'error' before type dispatch."""
+        # Minimal configs — short-circuit fires before type-specific validation
+        config = EvaluateConfig(type=eval_type, pattern="YES", target=0)  # type: ignore[arg-type]
+        ctx = InterpolationContext()
+        result = evaluate(config, output="", exit_code=124, context=ctx)
+        assert result.verdict == "error", (
+            f"{eval_type}: expected 'error' on timeout, got {result.verdict!r}"
+        )
+        assert result.details["exit_code"] == 124
+        assert "timed out" in result.details["error"].lower()
+
+    def test_dispatch_exit_code_124_mcp_result_keeps_timeout_verdict(self) -> None:
+        """BUG-1640: mcp_result is exempt from the 124 short-circuit; it keeps 'timeout'."""
+        config = EvaluateConfig(type="mcp_result")
+        ctx = InterpolationContext()
+        result = evaluate(config, output="", exit_code=124, context=ctx)
+        assert result.verdict == "timeout"
+
+    def test_dispatch_exit_code_124_does_not_affect_success_cases(self) -> None:
+        """BUG-1640: short-circuit only fires on 124; other exit codes route normally."""
+        config = EvaluateConfig(type="output_contains", pattern="YES")
+        ctx = InterpolationContext()
+        # exit_code=0 with matching output → yes (no short-circuit)
+        result_yes = evaluate(config, output="YES we found it", exit_code=0, context=ctx)
+        assert result_yes.verdict == "yes"
+        # exit_code=1 with non-matching output → no (no short-circuit)
+        result_no = evaluate(config, output="missing", exit_code=1, context=ctx)
+        assert result_no.verdict == "no"
+
 
 class TestLLMStructuredEvaluator:
     """Tests for llm_structured evaluator (Tier 2) via Claude CLI."""
