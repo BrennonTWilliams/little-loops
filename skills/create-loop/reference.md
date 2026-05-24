@@ -123,6 +123,16 @@ Transitions:
   done: [terminal]
 ```
 
+**`execute` field reference (Multi-Item variant):**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | `str` | yes | Skill command or prompt text; `${captured.current_item.output}` injects the discovered item |
+| `action_type` | `prompt \| slash_command` | recommended | `prompt` for free-form instructions; `slash_command` for `/ll:*` commands |
+| `timeout` | `int` | no | Seconds before abort. Recommended: ≥1500 when prompt does multiple MCP calls + synthesis (default 3600s fallback is bypassed by loop-level `default_timeout:`) |
+| `capture` | `str` | no | Key name to store output (e.g. `execute_result`) for downstream evaluation states |
+| `next` | `str` | yes | State to transition to after action (typically `check_stall` or first evaluation gate) |
+
 **`check_skill` field reference:**
 
 | Field | Type | Required | Description |
@@ -172,6 +182,16 @@ Transitions:
     - on_no -> execute
   done: [terminal]
 ```
+
+**`execute` field reference (Single-Shot variant):**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | `str` | yes | Skill command or prompt text |
+| `action_type` | `prompt \| slash_command` | recommended | `prompt` for free-form instructions; `slash_command` for `/ll:*` commands |
+| `timeout` | `int` | no | Seconds before abort. Recommended: ≥1500 when prompt does multiple MCP calls + synthesis (default 3600s fallback is bypassed by loop-level `default_timeout:`) |
+| `capture` | `str` | no | Key name to store output for downstream evaluation states |
+| `next` | `str` | yes | State to transition to after action (typically `check_stall` or first evaluation gate) |
 
 ---
 

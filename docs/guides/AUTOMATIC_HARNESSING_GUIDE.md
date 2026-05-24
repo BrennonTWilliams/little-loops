@@ -710,6 +710,7 @@ states:
 - **Check `ll-config.json`** has at least one tool command (`test_cmd`, `lint_cmd`, or `type_cmd`) to get the concrete `check_concrete` gate. Without it, the wizard omits the tool phase and your loop has no objective quality check.
 - **Tune `target: 50`** in `check_invariants` if your skill intentionally makes large changes (e.g., a doc rewrite skill). Increase to 150–200 for documentation-heavy skills.
 - **Set `timeout`** on the loop-level (seconds) for long-running batch operations to avoid unbounded runs.
+- **MCP-heavy `execute` states** (e.g. ~10 Playwright or vision-agent calls + synthesis) need `timeout: 1500` or higher at the state level. The 3600s executor fallback is bypassed by any loop-level `default_timeout:` — a low value will kill the prompt mid-synthesis.
 
 ---
 

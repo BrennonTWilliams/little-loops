@@ -2870,7 +2870,7 @@ Generic structure fragments (action_type + evaluate combinator) used by all buil
 |----------|-------------|----------|--------------------|
 | `shell_exit` | Shell command evaluated by exit code. | `action_type: shell` + `evaluate.type: exit_code` | `action`, routing (`on_yes`, `on_no`) |
 | `retry_counter` | Increments a counter file and checks if still below `context.max_retries`. | Shell counter script + `output_numeric` evaluator | `context.counter_key`, `context.max_retries`, routing |
-| `llm_gate` | LLM prompt state with structured yes/no output. | `action_type: prompt` + `evaluate.type: llm_structured` | `action`, `evaluate.prompt`, routing (`on_yes`, `on_no`) |
+| `llm_gate` | LLM prompt state with structured yes/no output. When the prompt performs multiple MCP tool calls followed by synthesis (~10 calls), set `timeout: 1500` or higher at the state level; the 3600s executor fallback is bypassed by any loop-level `default_timeout:`. | `action_type: prompt` + `evaluate.type: llm_structured` | `action`, `evaluate.prompt`, routing (`on_yes`, `on_no`), optionally `timeout` |
 | `numeric_gate` | Shell command evaluated by numeric output comparison. | `action_type: shell` + `evaluate.type: output_numeric` | `action`, `evaluate.operator`, `evaluate.target`, routing (`on_yes`, `on_no`) |
 | `with_rate_limit_handling` | Applies per-state two-tier rate-limit retry handling: 3 short retries (30 s base backoff) then the default long-wait ladder (5 min → 15 min → 30 min → 1 h) up to a 6 h wall-clock budget. | `max_rate_limit_retries: 3`, `rate_limit_backoff_base_seconds: 30`, plus inherited `rate_limit_long_wait_ladder` and `rate_limit_max_wait_seconds` defaults | `on_rate_limit_exhausted` (target state name) |
 

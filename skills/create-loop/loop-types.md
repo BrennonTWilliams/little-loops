@@ -711,6 +711,7 @@ states:
   execute:
     action: "<skill-or-prompt>"
     action_type: prompt
+    timeout: 1500                # ≥1500s when prompt does multiple MCP calls + synthesis; default fallback (3600s) is bypassed by loop-level default_timeout:
     capture: execute_result      # captured as ${captured.execute_result.output}
     next: check_stall            # or check_concrete / check_semantic / check_invariants / done if stall detection omitted
   check_stall:                   # include if stall detection selected (recommended for prompt-based skills)
@@ -786,6 +787,7 @@ states:
   execute:
     action: "<skill-or-prompt> ${captured.current_item.output}"
     action_type: prompt
+    timeout: 1500                # ≥1500s when prompt does multiple MCP calls + synthesis; default fallback (3600s) is bypassed by loop-level default_timeout:
     capture: execute_result      # captured as ${captured.execute_result.output}
     max_retries: <per-item-retries>        # optional: skip stuck items automatically
     on_retry_exhausted: advance            # optional: route here when retries exceeded

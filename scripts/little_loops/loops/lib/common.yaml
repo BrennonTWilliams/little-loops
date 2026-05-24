@@ -42,6 +42,11 @@ fragments:
       LLM prompt state evaluated by structured yes/no output.
       State must supply: action (the prompt text), evaluate.prompt (the yes/no question),
       on_yes, on_no (and optionally on_error, timeout, capture).
+      Timeout budget: when the prompt performs multiple MCP tool calls followed by synthesis
+      (~10 calls), set timeout: 1500 or higher at the state level. The 3600s executor
+      fallback only applies when neither state-level timeout: nor loop-level default_timeout:
+      is set — a low default_timeout: bypasses the fallback and will kill MCP-heavy prompts
+      mid-synthesis.
     action_type: prompt
     evaluate:
       type: llm_structured

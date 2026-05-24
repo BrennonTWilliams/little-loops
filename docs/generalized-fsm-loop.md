@@ -1353,6 +1353,8 @@ states:
 - **Default timeout** (`default_timeout`): Loop-level fallback applied to all states that don't set `timeout:`; hardcoded fallback is 3600s for prompt/LLM states and 30s for MCP tool calls when neither is set
 - **Loop timeout** (`timeout`): Bounds total wall-clock execution time (independent of per-state timeouts)
 
+> **MCP-heavy prompts**: If a `prompt` state performs multiple MCP tool calls followed by synthesis (e.g. ~10 Playwright or vision-agent calls), budget `timeout: 1500` or higher at the state level. The 3600s hardcoded fallback is bypassed whenever a loop-level `default_timeout:` is set — a low `default_timeout:` (e.g. 300–600s) will kill MCP-heavy prompts mid-synthesis without triggering the fallback.
+
 LLM evaluation has its own timeout (default 1800s) configured at loop level:
 
 ```yaml
