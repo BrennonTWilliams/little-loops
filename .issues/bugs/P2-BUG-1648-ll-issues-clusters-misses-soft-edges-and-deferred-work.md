@@ -1,8 +1,15 @@
 ---
-captured_at: "2026-05-23T22:59:14Z"
+captured_at: '2026-05-23T22:59:14Z'
 discovered_date: 2026-05-23
 discovered_by: capture-issue
 status: open
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-1648: `ll-issues clusters` misses soft edges and deferred work, reporting 1 cluster instead of 10+
@@ -68,11 +75,14 @@ Instead, build the clusters command's graph directly from already-parsed `IssueI
 3. **Status-scoped issue loading** — `find_issues()` (`scripts/little_loops/issue_parser.py:831`) gains optional `status_filter: set[str] | None = None`. When `None`, current behaviour preserved. `cmd_clusters` passes the resolved status set explicitly.
 
 4. **Renderer updates** — `scripts/little_loops/cli/issues/clusters.py`:
-   - `EDGE_COLOR` (line 17-22): add `depends_on` → `35` (magenta), `relates_to` → `37` (white/dim); keep existing `blocks`/`blocked_by`/`parent`/`sibling`.
+   - `EDGE_COLOR` (line 17-22): add `depends_on` → `35` (magenta), `relates_to` → `37` (white/dim); `parent` and `sibling` entries already exist in `EDGE_COLOR` — keep them unchanged.
    - `_cluster_edges` (line 97-104): emit directed edges for every in-scope relationship type. Tuples become `(from_id, to_id, relationship)` where relationship is the canonical type recorded during graph construction.
    - `_topo_sort_cluster` (line 60-94): keep using `blocked_by` only for ordering — non-blocker edges have no DAG meaning. Cycles in soft edges must not trigger the "cycle detected" warning.
+   - `_max_degree()` closure inside `cmd_clusters()`: also uses only `graph.blocked_by + graph.blocks`. Update it in parallel with the neighbour-map change so `--min-connections` filtering is consistent with the new edge set.
 
 5. **JSON output schema** — `--json` output (clusters.py:229-249) already emits `edges` with a `relationship` field. Existing consumers will start seeing new relationship types (`depends_on`, `relates_to`, `parent`). Document in command-help epilog; no schema break.
+
+6. **Documentation updates** _(added by `/ll:wire-issue`)_ — Update `docs/reference/API.md` (find_issues signature at line 736; clusters subcommand flag table at line 3062) and add a dedicated `ll-issues clusters` subsection to `docs/reference/CLI.md` covering `--edges` and `--status` with their aliases. Use canonical status vocabulary only to avoid breaking `test_enh1428_doc_wiring.py`.
 
 ## API/Interface
 
@@ -91,16 +101,47 @@ Instead, build the clusters command's graph directly from already-parsed `IssueI
 - `find_issues()` callers must remain unaffected: `ll-auto`, `ll-parallel`, `ll-sprint`, `get_execution_waves`, `dependency_mapper.analysis`, cycle detection. Verify each uses the default `status_filter=None` path so behaviour is preserved.
 - `scripts/little_loops/dependency_graph.py` — `DependencyGraph` is intentionally **not** touched; this fix builds the clusters graph directly from `IssueInfo` to avoid corrupting wave ordering and ready-issue queries that depend on strict-blocker DAG semantics.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issue_manager.py` — `IssueManager.__init__()` calls `find_issues(self.config, self.category)` to seed the dependency graph; used by `ll-auto` and `ll-parallel`. **Safety**: if `find_issues` default behavior ever changed to include deferred issues, this would corrupt the dep_graph and break scheduling — the `status_filter=None` default must continue excluding deferred.
+- `scripts/little_loops/parallel/priority_queue.py` — `IssuePriorityQueue.scan_issues()` calls `find_issues(config, category=..., skip_ids=..., only_ids=..., type_prefixes=...)` — verify unchanged under `status_filter=None` default.
+- `scripts/little_loops/cli/deps.py` — `cmd_deps()` calls `find_issues(config, only_ids=only_ids)` and `gather_all_issue_ids()` — safe, no status logic.
+- `scripts/little_loops/issue_parser.py:find_highest_priority_issue` — internal wrapper that calls `find_issues()`; any callers of this function inherit the same default-path behaviour.
+- `scripts/little_loops/cli/issues/next_action.py`, `next_issue.py`, `next_issues.py`, `impact_effort.py`, `refine_status.py`, `sequence.py`, `search.py` — all call `find_issues()` without `status_filter`; all safe under `status_filter=None` default.
+
 ### Similar Patterns
 - The clusters command's prior `_get_connected_components` and `_cluster_edges` helpers — the new neighbour-map builder replaces them but should match their BFS shape and undirected-edge output.
 - `dependency_mapper.analysis` — also walks issue relationships but for a different purpose (waves/ready queries); ensure the new clusters builder does not converge on its DAG semantics.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Canonical BFS-on-adjacency-dict pattern**: `scripts/little_loops/issue_history/coupling.py:_build_coupling_clusters()` — builds `adjacency: dict[str, set[str]]` directly from data objects (no intermediate graph class), adds both directions per edge for undirected traversal, then runs the same BFS loop shape used in `_get_connected_components()`. This is the closest structural analogue in the codebase and should be the model for the new neighbour-map builder.
+- **`--status` flag registration pattern**: `scripts/little_loops/cli/issues/__init__.py` lines 126-131, 205-212, and 278-284 — three existing subcommands (`list`, `search`, `count`) use identical `add_argument("--status", "-S", choices=[...], default="open")` blocks. The clusters subparser `cl` is at lines 320-342; insert the new `--edges`/`--status` arguments after `--min-connections` following this pattern.
+- **`find_issues()` exact current signature** (`issue_parser.py:831-837`): `find_issues(config, category=None, skip_ids=None, only_ids=None, type_prefixes=None)`. Add `status_filter: set[str] | None = None` after `type_prefixes`; guard the existing skip at line 872 with `if status_filter is None or info.status in status_filter`.
+- **`depends_on_edges` is one-directional in `DependencyGraph`**: even if BFS were patched to consult `depends_on_edges`, targets would not find their sources. This validates the decision to build a fresh neighbour map from `IssueInfo` fields directly.
+- **`gather_all_issue_ids()`** — `scripts/little_loops/dependency_mapper/operations.py`: used by `cmd_clusters()` to populate `all_known_ids` before the graph build. Keep this call; pass the resolved ID set into the new neighbour-map builder the same way it's passed to `DependencyGraph.from_issues()` today.
+
 ### Tests
-- `scripts/tests/` — new cluster tests covering: `depends_on` edges under `--edges=all`; `relates_to`+`parent` edges under `--edges=all`; `--edges=blocking` regression guard reproducing the current single 2-issue cluster; `--status=+deferred` surfacing the frontend/UI cluster; JSON output emitting `depends_on`/`relates_to`/`parent` as valid `relationship` values.
-- Regression check that all existing `find_issues()` callers without `status_filter` see identical behaviour.
+- `scripts/tests/test_issues_cli.py:TestIssuesCLIClusters` (line 3514) — existing test class to extend; uses fixture `issues_dir_with_deps` (line 3474) for blocked_by/blocks setup. Add a parallel fixture for `depends_on`/`relates_to`/`parent` edges using either frontmatter YAML or Markdown section format.
+- New cluster tests to add: `depends_on` edges under `--edges=all`; `relates_to`+`parent` edges under `--edges=all`; `--edges=blocking` regression guard reproducing the current single 2-issue cluster; `--status=+deferred` surfacing deferred issues; JSON output emitting `depends_on`/`relates_to`/`parent` as valid `relationship` values. Model each test after `test_clusters_min_connections_filter` (line 3762) — patches `sys.argv` with `["ll-issues", "clusters", "--flag", "--json", "--config", str(dir)]`, runs `main_issues()`, parses stdout JSON.
+- `scripts/tests/test_dependency_graph.py` — regression check that all existing `find_issues()` callers without `status_filter` see identical behaviour; `make_issue()` helper in this file is reusable for building test `IssueInfo` instances.
+- `scripts/tests/test_issue_parser.py` — add parametrized tests for new `status_filter` parameter variations on `find_issues()`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- New fixture `issues_dir_with_soft_edges` — parallel to `issues_dir_with_deps` (line 3474); use frontmatter `depends_on`/`relates_to`/`parent` fields (not `## Blocks` sections); must create `completed/` and `deferred/` subdirs like the existing fixtures.
+- New test methods to write in `TestIssuesCLIClusters`: `test_clusters_depends_on_edges_under_default`, `test_clusters_relates_to_and_parent_edges`, `test_clusters_edges_blocking_regression` (`--edges=blocking` reproduces old single-cluster), `test_clusters_status_plus_deferred`, `test_clusters_json_new_relationship_types`.
+- `make_issue()` helper in `test_dependency_graph.py` (line 14) — currently accepts `blocked_by`, `blocks`, `depends_on` but **not** `relates_to` or `parent`. Extend its signature with `relates_to: list[str] | None = None, parent: str | None = None` so regression tests for the new neighbour-map builder can use it.
+- **Monitor for breakage**: `test_clusters_with_dependency_links` (line 3679) asserts `"Cluster 2"` and `"3 issues"` — safe only if `issues_dir_with_deps` fixture stays pure hard-edge (no `depends_on` frontmatter); `test_clusters_min_connections_filter` (line 3762) — safe only if `_max_degree` update remains consistent with existing fixture topology.
+- `scripts/tests/test_issue_parser.py:TestFindIssues.test_find_issues_skips_status_deferred` (line 1106) — asserts deferred is excluded from default `find_issues()` output; **must remain passing** — the `status_filter=None` default must preserve this exclusion.
 
 ### Documentation
 - `ll-issues clusters --help` epilog (in `scripts/little_loops/cli/issues/__init__.py`) — document new `--edges` and `--status` flags, default change, and the `--edges=blocking` alias for legacy behaviour.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` line 736 — `find_issues()` signature is already diverged (`only_ids: set[str] | None` vs actual `list[str] | set[str] | None`); add `status_filter: set[str] | None = None` parameter to the documented signature.
+- `docs/reference/API.md` line 3062 — `clusters` row in the `ll-issues` subcommands table documents only `--include-orphans`, `--min-connections`, `--json`; add `--edges` and `--status` to this table.
+- `docs/reference/CLI.md` — no `ll-issues clusters` dedicated subsection exists (unlike `anchor-sweep`, `check-flag`, etc.). Add a subsection documenting `--edges` and `--status` with their aliases; avoid non-canonical status vocabulary to keep `test_enh1428_doc_wiring.py:TestCliMdStatusVocab` tests passing.
 
 ### Configuration
 - N/A — no project config changes; flags are CLI-only.
@@ -160,6 +201,9 @@ Related (all `done`): BUG-1297 (skip-level edges in rendering + one-sided `block
 `bug`, `ll-issues`, `clusters`, `dependency-graph`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c3f102e7-8b1c-40a0-92c7-9fea7bc9a310.jsonl`
+- `/ll:wire-issue` - 2026-05-24T07:41:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2345830b-0a2d-4cf9-8ce2-c8909925173d.jsonl`
+- `/ll:refine-issue` - 2026-05-24T07:32:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/995aa695-3c58-4826-8afa-21cb7bcdc032.jsonl`
 - `/ll:verify-issues` - 2026-05-24T03:55:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86b55377-f187-4e58-9c10-c40043e89408.jsonl`
 - `/ll:format-issue` - 2026-05-23T23:06:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b11d6a79-dbf6-4df8-88d4-640a18cdec70.jsonl`
 

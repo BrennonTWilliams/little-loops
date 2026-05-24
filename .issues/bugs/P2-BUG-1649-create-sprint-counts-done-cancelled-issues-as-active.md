@@ -1,5 +1,5 @@
 ---
-captured_at: "2026-05-23T23:10:18Z"
+captured_at: '2026-05-23T23:10:18Z'
 discovered_date: 2026-05-23
 discovered_by: capture-issue
 status: open
@@ -9,6 +9,12 @@ labels:
 - sprint
 - create-sprint
 - migration-aftermath
+confidence_score: 95
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1649: `/ll:create-sprint` counts `done`/`cancelled` issues as active, polluting suggested sprints
@@ -83,6 +89,12 @@ Replace the raw-glob discovery in Step 1.5.1 with a call to `ll-issues list --js
 
 3. **No permissions change needed** — the `allowed-tools` frontmatter already permits `Bash(ll-issues:*)` (line 6).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+4. Write `scripts/tests/test_bug1649_doc_wiring.py` — doc-wiring test asserting (a) `ll-issues list --json` is present in `commands/create-sprint.md` Step 1.5.1 region and (b) the old raw Glob paths (`bugs/*.md`, `features/*.md`, `enhancements/*.md`) are absent from the active-scan path. Follow the pattern in `scripts/tests/test_enh1130_doc_wiring.py`.
+
 ## API/Interface
 
 No code-level API changes. Skill-level contract: the auto-grouping path now produces the same set as `ll-issues list --json`, matching what `Step 3 Option B` and `ll-sprint create` already use.
@@ -117,8 +129,27 @@ No code-level API changes. Skill-level contract: the auto-grouping path now prod
 
 ### Existing Utilities to Reuse (do not reinvent)
 - `scripts/little_loops/cli/issues/list_cmd.py:38` — canonical active filter (`status in {open, in_progress, blocked}` by default; `--status all` to include everything).
-- `_load_issues_with_status(...)` — underlying frontmatter-aware loader (`scripts/little_loops/cli/issues/search.py`).
+- `scripts/little_loops/cli/issues/search.py:106` — `_load_issues_with_status(config, include_open, include_done, include_deferred)` definition; the status gate is at line 135: `if status in ("open", "in_progress", "blocked")`. Replicate this exact set for the fallback Glob path in Implementation Step 1.
 - `little_loops.issue_parser.IssueParser` — already used elsewhere in the same command file (Step 4.5, line 383) when the JSON CLI isn't enough.
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/sprint-build-and-validate.yaml` — invokes `/ll:create-sprint --auto` in the `create_sprint` state (no `--issues` arg, hits Step 1.5); will benefit automatically from the fix — no change needed [Agent 1 finding]
+- `commands/review-sprint.md` — Phase 2 Backlog Scan uses the identical raw-Glob pattern (`{issues.base_dir}/bugs/*.md` etc.) with the same ENH-1390 blindspot; out of scope for BUG-1649 but a structural sibling that warrants a follow-up issue [Agent 2 finding]
+- `skills/ll-create-sprint/SKILL.md` — Codex bridge stub that defers entirely to `commands/create-sprint.md`; no change needed [Agent 1 finding]
+
+### Tests
+- `scripts/tests/test_issues_cli.py` — `ll-issues list` subcommand tests with active-issue filtering; key regression suite for the underlying behaviour this fix delegates to.
+- `scripts/tests/test_issues_search.py` — `_load_issues_with_status` tests; fixture at line 64 creates a `done` issue and asserts it is excluded from the active set.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_sprint.py` — primary SprintManager test suite; `TestEdgeCases.test_completed_issues_excluded_from_waves` (line 1708) and `test_all_completed_issues_returns_zero` (line 1793) cover status-filtering on the execution side; regression check that the underlying contract holds after the fix [Agent 1 + 3 finding]
+- `scripts/tests/test_sprint_integration.py` — integration tests for sprint lifecycle; `TestDependencyHandling.test_sprint_completed_dependencies_satisfied` (line 1267) tests `status: done` recognition in the dependency graph [Agent 1 + 3 finding]
+- `scripts/tests/test_bug1649_doc_wiring.py` — **new file to write** — doc-wiring test asserting `ll-issues list --json` is present in Step 1.5.1 and raw type-dir Glob patterns are absent; follow the pattern in `scripts/tests/test_enh1130_doc_wiring.py` (assert on `Path("commands/create-sprint.md").read_text()`) [Agent 3 finding]
+
+### Permissions Note
+`allowed-tools` in `commands/create-sprint.md` lists `Bash(ll-issues:*)` and `Bash(mkdir:*)` but does **not** explicitly list `Glob`. Step 1.5.1's current Glob usage is implicitly permitted by the system. After the fix, the replacement `ll-issues list --json` call is already covered by the existing `Bash(ll-issues:*)` entry — no frontmatter change needed.
 
 ## Impact
 
@@ -135,5 +166,8 @@ No code-level API changes. Skill-level contract: the auto-grouping path now prod
 | `commands/create-sprint.md` | The file being changed; Step 1.5.1 is the broken path, Step 3 Option B is the correct pattern to align with |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fcaf8e82-e9b0-459c-b420-b2d6516dcebf.jsonl`
+- `/ll:wire-issue` - 2026-05-24T07:37:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76307c23-ef5c-42f1-98e8-10d70af3ea53.jsonl`
+- `/ll:refine-issue` - 2026-05-24T07:28:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad2cb799-0357-40ae-ae3b-03344aed447c.jsonl`
 - `/ll:format-issue` - 2026-05-23T23:14:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/748c0c41-2378-4021-99b4-82ad38e41ef1.jsonl`
 - `/ll:capture-issue` - 2026-05-23T23:10:18Z - source: `~/.claude/plans/we-ran-ll-create-sprint-in-purring-hanrahan.md`

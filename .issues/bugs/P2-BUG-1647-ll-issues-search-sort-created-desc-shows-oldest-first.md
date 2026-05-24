@@ -3,9 +3,15 @@ id: BUG-1647
 type: BUG
 priority: P2
 status: open
-captured_at: 2026-05-23T22:24:46Z
+captured_at: 2026-05-23 22:24:46+00:00
 discovered_date: 2026-05-23
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-1647: `ll-issues search --sort created --desc` Returns Oldest Issues at Top
@@ -105,15 +111,27 @@ Add a YAML frontmatter block at the top of the assembled content containing at m
 - `scripts/little_loops/issue_lifecycle.py` — `create_issue_from_failure()` writes frontmatter (with `captured_at`, `status`, `priority`)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/issues/list_cmd.py` — imports `_parse_discovered_date` and `_sort_issues` from `search.py`; signature change to `_parse_discovered_date` will ripple to its call site (verify and update)
+- `scripts/little_loops/cli/issues/list_cmd.py` — imports `_parse_discovered_date` and `_sort_issues` from `search.py`; has its own call to `_parse_discovered_date` at **line 76** (inside `if sort_field == "created":` branch) — this is a **second** call site that must also be updated when adding the `file_path` parameter; `_sort_issues` is called at line 92
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Two call sites for `_parse_discovered_date` signature change** (not one): `search.py` ~line 319 (inside `cmd_search`) AND `list_cmd.py:76` — both must be updated to pass `issue.path`
+- **`_sort_issues()` already receives `descending: bool`** — the parameter is available in the closure; the fix is to reference it inside the `key()` function rather than adding a new parameter
+- **`_completed_at_now()` at `issue_lifecycle.py:33–35`** — produces `%Y-%m-%dT%H:%M:%SZ` format (same Z-suffix as the `captured_at` convention from `capture-issue`). For `create_issue_from_failure()`, consider `_completed_at_now()` over `_iso_now()` to match the Z-suffix format used by all other `captured_at` writers. Either works since `_parse_discovered_date` calls `.rstrip("Z")` before parsing.
 
 ### Similar Patterns
 - `_parse_updated_date()` at `search.py:53` already uses the mtime fallback pattern — mirror its shape for consistency
 
 ### Tests
-- `scripts/tests/cli/issues/test_search.py` (or equivalent — grep for `_sort_issues` / `cmd_search`) — new cases for sentinel direction (see Tests section)
+- `scripts/tests/test_issues_search.py` — new cases for sentinel direction (see Tests section); existing classes to extend: `TestSearchSorting` (lines 666–751), `TestBuildSortKey` (lines 970–1042, None-sentinel unit tests), `TestCreatedSortSubDayResolution` (lines 1095–1167, already has `test_created_sort_desc_uses_captured_at` and `test_created_sort_asc_uses_captured_at` — add companion cases for missing-timestamp sentinel direction and mtime fallback)
 - `scripts/tests/test_sync.py` — new test asserting `_create_local_issue` writes parseable `captured_at`
 - `scripts/tests/test_issue_lifecycle.py` — new test asserting `create_issue_from_failure` writes frontmatter with `captured_at` + `status: open`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issues_search.py` — **4 existing unit tests will break** when `file_path` parameter is added to `_parse_discovered_date()`: `test_parse_discovered_date_prefers_captured_at`, `test_parse_discovered_date_falls_back_to_discovered_date`, `test_parse_discovered_date_returns_none_when_neither_present`, `test_parse_discovered_date_falls_back_on_invalid_captured_at` — all call with one positional arg; make `file_path` optional (`Path | None = None`) or update all four [Agent 2]
+- `scripts/tests/test_issues_cli.py` — `TestListSorting.test_sort_by_created_default_desc` and `test_sort_by_created_prefers_captured_at` exercise `_sort_issues` via `ll-issues list`; verify these pass after sentinel change (not currently listed in issue) [Agent 1 + 3]
 
 ### Documentation
 - N/A — output format unchanged; sentinel/mtime are implementation details
@@ -129,6 +147,14 @@ Add a YAML frontmatter block at the top of the assembled content containing at m
 4. Add YAML frontmatter (with `captured_at`, `status: open`, `priority`) to `issue_lifecycle.py::create_issue_from_failure`.
 5. Add tests for sort direction, sentinel placement, mtime fallback, and both writer paths.
 6. Verify: `ll-issues search --sort created --desc --limit 5` shows BUG-1645, ENH-1644, ENH-1646, BUG-1647 at top (or whatever the current freshest captures are).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Make `file_path` optional in `_parse_discovered_date()` signature (`file_path: Path | None = None`, guard with `if file_path is not None:` before `.stat()`) — four existing unit tests call it with one positional arg and will break if the parameter is required; mirrors the `try/except OSError` guard pattern used in `_parse_updated_date()`
+8. Note: Step 2 says "single call site" but Codebase Research Findings already correctly identifies two (`search.py` ~line 319 and `list_cmd.py:76`) — update both
+9. Verify `test_issues_cli.py::TestListSorting.test_sort_by_created_default_desc` and `test_sort_by_created_prefers_captured_at` pass after sentinel change (they exercise `_sort_issues` via `ll-issues list`, not `search`)
 
 ## Impact
 
@@ -181,6 +207,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `cli`, `sorting`, `ll-issues`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c211824-04f2-4a82-9d94-aa93502d82f0.jsonl`
+- `/ll:wire-issue` - 2026-05-24T07:39:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4140adee-1c76-4a3e-8774-05db6094b7de.jsonl`
+- `/ll:refine-issue` - 2026-05-24T07:33:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2345830b-0a2d-4cf9-8ce2-c8909925173d.jsonl`
 - `/ll:format-issue` - 2026-05-23T22:29:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a14dcc8c-8173-4ee8-9e95-97fd610a6f26.jsonl`
 - `/ll:capture-issue` - 2026-05-23T22:24:46Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04d83e92-8a0d-4374-ac0b-80222c2a5b59.jsonl`
 

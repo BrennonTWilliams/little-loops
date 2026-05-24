@@ -3,6 +3,13 @@ captured_at: '2026-05-24T04:52:29Z'
 discovered_date: '2026-05-24'
 discovered_by: capture-issue
 status: open
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1668: `ll-loop status` shows `Log: (not found)` for foreground runs even when the run is healthy
@@ -116,9 +123,29 @@ This is the closest thing to a structured log the system already produces and ex
 - `scripts/tests/test_cli_loop_background.py` — `TestCmdStatusWithPid` already writes real PID files; add `events.jsonl` fixture alongside.
 - `scripts/tests/test_ll_loop_commands.py` — `TestCmdStatusJson` should assert presence of `events_file` in JSON output and `log_file: null` for foreground.
 
+#### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/tests/test_cli_loop_lifecycle.py:1090` — `TestCmdStatusLogFile.test_status_shows_log_not_found` currently asserts `"Log: (not found)"` and sets up NO `.pid` file (`instance_id=None`). After the fix this test **must be updated** (not just extended) to expect `"Log: (foreground run — output went to terminal)"` — it is the foreground case.
+- `scripts/tests/test_ll_loop_commands.py:2832` — `TestCmdStatusJson.test_status_json_output` currently asserts `"pid" in data` and `"pid_source" in data` but not `events_file`; this test should be extended to also assert `"events_file" in data`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_loop_lifecycle.py:1152` — `test_status_json_log_not_found` currently only asserts `data["log_file"] is None`; must also assert `data["events_file"] is None` (or check key presence) after the fix adds `events_file` to the JSON dict [Agent 2 + 3 finding]
+- `scripts/tests/test_cli_loop_lifecycle.py:1112` — `test_status_json_includes_log_fields` currently asserts `"log_file"`, `"log_updated_ago"`, `"last_event"`, `"pid_source"` in data; should also assert `"events_file" in data` for completeness in the log-file-exists branch [Agent 2 + 3 finding]
+
 ### Documentation
 
 - `docs/reference/CLI.md` — `#### ll-loop status <loop>` section: document the three Log labels and the new `Events:` line.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — "Monitoring progress" section (line 1692) contains a shell one-liner using `log_file` from `--json` output; update to document `events_file` as the foreground-run alternative and note that `log_file` is `null` for foreground runs [Agent 2 finding]
+
+### Skills (Field Enumeration)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/debug-loop-run/SKILL.md` — Step 1 (line 76) enumerates `instance_id`, `pid`, `log_file` as per-instance fields; add `events_file` so agents know to check it for foreground runs [Agent 2 finding]
+- `skills/audit-loop-run/SKILL.md` — Step 1 (line 71) enumerates `log_file` as a per-instance field; add `events_file` to the list [Agent 2 finding]
 
 ### Configuration
 
@@ -129,10 +156,19 @@ This is the closest thing to a structured log the system already produces and ex
 1. Add a small helper in `lifecycle.py` (e.g. `_format_log_label(running_dir, stem) -> str`) that returns one of the three Log labels by checking `.pid` and `.log` file existence.
 2. Replace the current `Log: ...` rendering in `_status_single()` (~lines 61–139) with a call to the helper.
 3. Apply the same change in the multi-instance branch in `cmd_status()` (~lines 196–228).
-4. Add an `_format_events_line(running_dir, stem) -> str | None` helper that reads `{stem}.events.jsonl`, counts lines, and reads the last entry's timestamp; print `Events: ...` if the file exists.
+4. Add an `_format_events_line(running_dir, stem) -> str | None` helper that reads `{stem}.events.jsonl`, counts lines, and reads the last entry's `"ts"` field (ISO 8601, e.g. `"2026-05-04T21:08:14.514427+00:00"`); use `_format_relative_time` to render the age; print `Events: ...` if the file exists.
 5. Wire the `events_file` field into the `--json` output dict in both branches.
-6. Add tests in `test_cli_loop_lifecycle.py` per the Integration Map.
+6. In `test_cli_loop_lifecycle.py`: **update** `test_status_shows_log_not_found` (line 1090) to expect the foreground label, then add the three new scenario tests per the Integration Map. In `test_ll_loop_commands.py`: extend `test_status_json_output` (line 2832) to assert `events_file` in the JSON dict.
 7. Update `docs/reference/CLI.md`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `docs/guides/LOOPS_GUIDE.md` (line 1692) — add `events_file` as foreground-run alternative to the `log_file` monitoring one-liner; note that `log_file` is `null` for foreground runs
+9. Update `skills/debug-loop-run/SKILL.md` (line 76) — add `events_file` to the field enumeration in Step 1 alongside `log_file`
+10. Update `skills/audit-loop-run/SKILL.md` (line 71) — add `events_file` to the field enumeration in Step 1
+11. In `test_cli_loop_lifecycle.py`: extend `test_status_json_log_not_found` (line 1152) to assert `data["events_file"] is None`; extend `test_status_json_includes_log_fields` (line 1112) to assert `"events_file" in data`
 
 ## Impact
 
@@ -164,6 +200,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `ll-loop`, `cli`, `status`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c3f102e7-8b1c-40a0-92c7-9fea7bc9a310.jsonl`
+- `/ll:wire-issue` - 2026-05-24T07:38:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92f99b2b-14c2-4ff7-94e7-d8d309f75b40.jsonl`
+- `/ll:refine-issue` - 2026-05-24T07:30:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0b6698c-6d8e-4600-a555-2bcb55bba112.jsonl`
 - `/ll:format-issue` - 2026-05-24T05:07:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6eeae06-e4aa-4cf4-b5de-f799be9249c8.jsonl`
 - `/ll:capture-issue` - 2026-05-24T04:52:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f605fdcc-8000-4585-8dc4-835fc0020291.jsonl`
 
