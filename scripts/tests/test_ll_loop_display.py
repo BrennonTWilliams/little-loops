@@ -2605,6 +2605,112 @@ class TestRunForegroundExitCodes:
         assert EXIT_CODES["timeout"] == 1
 
 
+class TestRunForegroundResumeMode:
+    """Tests for run_foreground(mode='resume') wiring (BUG-1645)."""
+
+    def _make_args(self) -> argparse.Namespace:
+        return argparse.Namespace(quiet=False, verbose=False, show_diagrams=False, clear=False)
+
+    def _make_fsm(self) -> FSMLoop:
+        return make_test_fsm()
+
+    def test_resume_returns_1_when_nothing_to_resume(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``executor.resume()`` returning None → exit 1, no alt-screen sequences emitted.
+
+        Regression guard for the "nothing to resume" early-return added in BUG-1645.
+        The early-return must run before any alt-screen sequence is emitted, so the
+        terminal is never left in alt-screen mode when there is nothing to resume.
+        """
+
+        class _Executor:
+            def __init__(self) -> None:
+                self._on_event: Any = None
+
+            def resume(self) -> ExecutionResult | None:
+                return None
+
+        rc = run_foreground(_Executor(), self._make_fsm(), self._make_args(), mode="resume")
+        out = capsys.readouterr().out
+        assert rc == 1
+        assert "\033[?1049h" not in out  # alt-screen enter never emitted
+        assert "\033[?1049l" not in out  # alt-screen exit never emitted
+
+    def test_resume_dispatches_to_executor_resume_not_run(self) -> None:
+        """mode='resume' calls executor.resume(), not executor.run()."""
+
+        class _Executor:
+            def __init__(self) -> None:
+                self._on_event: Any = None
+                self.resume_called = False
+                self.run_called = False
+
+            def resume(self) -> ExecutionResult:
+                self.resume_called = True
+                return ExecutionResult(
+                    final_state="done",
+                    iterations=1,
+                    terminated_by="terminal",
+                    duration_ms=100,
+                    captured={},
+                )
+
+            def run(self) -> ExecutionResult:
+                self.run_called = True
+                return ExecutionResult(
+                    final_state="done",
+                    iterations=1,
+                    terminated_by="terminal",
+                    duration_ms=100,
+                    captured={},
+                )
+
+        exec_obj = _Executor()
+        with patch("builtins.print"):
+            rc = run_foreground(exec_obj, self._make_fsm(), self._make_args(), mode="resume")
+        assert rc == 0
+        assert exec_obj.resume_called is True
+        assert exec_obj.run_called is False
+
+    def test_resume_prints_resumed_and_completed_prefix(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """mode='resume' completion line uses 'Resumed and completed:' prefix."""
+
+        class _Executor:
+            def __init__(self) -> None:
+                self._on_event: Any = None
+
+            def resume(self) -> ExecutionResult:
+                return ExecutionResult(
+                    final_state="done",
+                    iterations=3,
+                    terminated_by="terminal",
+                    duration_ms=2500,
+                    captured={},
+                )
+
+        rc = run_foreground(_Executor(), self._make_fsm(), self._make_args(), mode="resume")
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Resumed and completed" in out
+        assert "Loop completed" not in out
+
+    def test_invalid_mode_raises_value_error(self) -> None:
+        """Unknown mode strings are rejected up-front."""
+
+        class _Executor:
+            def __init__(self) -> None:
+                self._on_event: Any = None
+
+            def run(self) -> ExecutionResult:
+                raise AssertionError("should not be called")
+
+        with pytest.raises(ValueError, match="invalid mode"):
+            run_foreground(_Executor(), self._make_fsm(), self._make_args(), mode="bogus")
+
+
 class TestStateBadges:
     """Tests for unicode badge constants and _get_state_badge helper."""
 

@@ -612,6 +612,7 @@ def run_foreground(
     highlight_color: str = "32",
     edge_label_colors: dict[str, str] | None = None,
     badges: dict[str, str] | None = None,
+    mode: str = "run",
 ) -> int:
     """Run loop with progress display.
 
@@ -619,10 +620,18 @@ def run_foreground(
         highlight_color: ANSI SGR code for the active FSM state highlight in verbose mode.
         edge_label_colors: Optional label→SGR-code mapping for transition edge labels.
         badges: Optional glyph-key→string mapping for state type badges in FSM diagrams.
+        mode: ``"run"`` (default) calls ``executor.run()``; ``"resume"`` calls
+            ``executor.resume()`` so a resumed loop reuses the same display-wiring
+            path as a fresh run (BUG-1645). In ``"resume"`` mode a ``None`` result
+            from ``executor.resume()`` is treated as "nothing to resume": a warning
+            is logged and exit code 1 is returned before any alt-screen sequences
+            are emitted.
 
     Returns:
         Exit code (0 = success).
     """
+    if mode not in ("run", "resume"):
+        raise ValueError(f"run_foreground: invalid mode {mode!r}; expected 'run' or 'resume'")
     quiet = getattr(args, "quiet", False)
     verbose = getattr(args, "verbose", False)
     # Tri-state: None (disabled), "main", or "full". Legacy boolean True maps to "main".
@@ -955,7 +964,15 @@ def run_foreground(
         _install_sigwinch_handler()
 
     try:
-        result = executor.run()
+        if mode == "resume":
+            result = executor.resume()
+            # "Nothing to resume" path: no run actually executed, so don't fall
+            # through to completion-line formatting. Exit cleanly with code 1.
+            if result is None:
+                Logger().warning(f"Nothing to resume for: {fsm.name}")
+                return 1
+        else:
+            result = executor.run()
     finally:
         if _using_alt_screen:
             # Reset DECSTBM scroll region BEFORE exiting alt-screen, otherwise
@@ -979,6 +996,9 @@ def run_foreground(
             state_colored = colorize(result.final_state, "32")
         else:
             state_colored = colorize(result.final_state, "38;5;208")
-        print(f"Loop completed: {state_colored} ({result.iterations} iterations, {duration_str})")
+        completion_prefix = "Resumed and completed" if mode == "resume" else "Loop completed"
+        print(
+            f"{completion_prefix}: {state_colored} ({result.iterations} iterations, {duration_str})"
+        )
 
     return EXIT_CODES.get(result.terminated_by, 1)

@@ -11,7 +11,6 @@ import time
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import (
-    EXIT_CODES,
     load_loop,
     register_loop_signal_handlers,
     run_background,
@@ -427,25 +426,25 @@ def cmd_resume(
     wire_extensions(executor.event_bus, config.extensions, executor=executor)
     wire_transports(executor.event_bus, config.events)
 
+    # Route through run_foreground (BUG-1645) so the resume path shares the
+    # display-callback wiring that cmd_run gets via run_foreground. Without this
+    # the FSM event bus has no subscriber on a resumed run, leaving the terminal
+    # silent for the entire duration (no per-iteration lines, no FSM diagram).
+    from little_loops.cli.loop._helpers import run_foreground
+
+    _edge_label_colors = config.cli.colors.fsm_edge_labels.to_dict()
+    _highlight_color = config.cli.colors.fsm_active_state
+    _badges = config.loops.glyphs.to_dict()
+
     try:
-        result = executor.resume()
-
-        if result is None:
-            logger.warning(f"Nothing to resume for: {loop_name}")
-            return 1
-
-        duration_sec = result.duration_ms / 1000
-        if duration_sec < 60:
-            duration_str = f"{duration_sec:.1f}s"
-        else:
-            minutes = int(duration_sec // 60)
-            seconds = duration_sec % 60
-            duration_str = f"{minutes}m {seconds:.0f}s"
-
-        logger.success(
-            f"Resumed and completed: {result.final_state} "
-            f"({result.iterations} iterations, {duration_str})"
+        return run_foreground(
+            executor,
+            fsm,
+            args,
+            highlight_color=_highlight_color,
+            edge_label_colors=_edge_label_colors,
+            badges=_badges,
+            mode="resume",
         )
-        return EXIT_CODES.get(result.terminated_by, 1)
     finally:
         executor.close_transports()

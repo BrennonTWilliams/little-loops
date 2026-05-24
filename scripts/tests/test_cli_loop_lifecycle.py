@@ -400,11 +400,20 @@ class TestCmdResume:
 
         assert result == 0
 
-    def test_resume_with_minutes_duration(self, tmp_path: Path) -> None:
-        """Duration is formatted in minutes when >= 60s."""
+    def test_resume_with_minutes_duration(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Duration is formatted in minutes when >= 60s.
+
+        After BUG-1645, the completion line is printed by run_foreground via
+        ``print()`` rather than emitted by ``logger.success``, so we assert on
+        captured stdout instead of the logger mock.
+        """
         logger = MagicMock()
         args = argparse.Namespace()
         mock_fsm = MagicMock()
+        mock_fsm.name = "test-loop"
+        mock_fsm.max_iterations = 10
 
         mock_result = MagicMock()
         mock_result.final_state = "done"
@@ -425,9 +434,9 @@ class TestCmdResume:
             result = cmd_resume("test-loop", args, tmp_path, logger)
 
         assert result == 0
-        # Check logger was called with duration in minutes format
-        success_text = str(logger.success.call_args)
-        assert "2m" in success_text
+        out = capsys.readouterr().out
+        assert "2m" in out
+        assert "Resumed and completed" in out
 
     def test_resume_awaiting_continuation(self, tmp_path: Path) -> None:
         """Shows context when resuming from awaiting_continuation."""
@@ -522,6 +531,42 @@ class TestCmdResume:
         mock_register.assert_called_once_with(
             mock_exec_cls.return_value, pid_file=expected_pid_file
         )
+
+    def test_resume_wires_display_callback_to_event_bus(self, tmp_path: Path) -> None:
+        """cmd_resume registers display_progress on executor.event_bus (BUG-1645).
+
+        Regression guard: before BUG-1645 the resume path called executor.resume()
+        directly without registering any event subscriber, so the terminal stayed
+        silent for the entire run. Routing through run_foreground must register at
+        least one subscriber on the executor's event bus.
+        """
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_fsm.name = "test-loop"
+        mock_fsm.max_iterations = 5
+
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 3
+        mock_result.duration_ms = 5000
+        mock_result.terminated_by = "terminal"
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle.load_loop",
+                return_value=mock_fsm,
+            ),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        # event_bus.register must have been called with the display closure.
+        assert mock_exec_cls.return_value.event_bus.register.call_count >= 1
 
     def test_context_overrides_applied_to_fsm(self, tmp_path: Path) -> None:
         """--context KEY=VALUE overrides are applied to fsm.context before execution."""
