@@ -62,7 +62,7 @@ states:
     on_error: diagnose
 
   execute:
-    action: >
+    action: |
       Your task is: ${context.input}
 
       A step-by-step plan exists at ${env.PWD}/.loops/tmp/general-task-plan.md.
@@ -70,12 +70,24 @@ states:
       then mark it done (- [x]) in the file.
 
       Do not work on multiple steps. Complete one step, update the plan file, stop.
+
+      After completing the step, print the following two lines as the very last output
+      (fill in the actual step text and all files you created or modified):
+      LAST_STEP: <the step text you just completed>
+      LAST_FILES: <space-separated list of file paths you created or modified>
     action_type: prompt
+    capture: execute_result
     next: check_done
     on_error: diagnose
 
   check_done:
     action: |
+      The previous execute step produced this output. Extract the LAST_STEP and
+      LAST_FILES values from the structured trailing lines:
+      ---BEGIN EXECUTE OUTPUT---
+      ${captured.execute_result.output}
+      ---END EXECUTE OUTPUT---
+
       Read both files:
       - ${env.PWD}/.loops/tmp/general-task-dod.md — Definition of Done (criteria)
       - ${env.PWD}/.loops/tmp/general-task-plan.md — Task Plan (steps)
@@ -85,11 +97,16 @@ states:
       has no matching DoD criterion, ADD a new criterion to the DoD file before
       evaluating completion. Do NOT silently mark plan steps [x] without DoD coverage.
 
-      Step 2 — Verify each DoD criterion by evidence:
-      For EACH criterion, actively verify it is met by checking the actual state of
-      the filesystem, running relevant commands, or reading relevant files.
-      Do NOT assume — verify by evidence. Update the DoD file, marking each criterion
-      [x] if verified or leaving [ ] with a one-line note explaining what is missing.
+      Step 2 — Delta-scoped criterion verification:
+      Use LAST_STEP and LAST_FILES from the execute output above to scope verification:
+      - For DoD criteria that mention or depend on any file in LAST_FILES, OR that are
+        plausibly affected by LAST_STEP: VERIFY BY EVIDENCE now (filesystem read /
+        command run / file read). Update each criterion to [x] if verified, or leave
+        [ ] with a one-line note on what is missing.
+      - For previously-[x] criteria NOT plausibly affected by LAST_STEP or LAST_FILES:
+        KEEP [x] without re-running their commands.
+      - For previously-[ ] criteria NOT plausibly affected by LAST_STEP or LAST_FILES:
+        leave [ ] with their existing one-line note.
 
       Step 3 — Sample re-verification:
       Pick up to min(3, total_checked) already-[x] DoD criteria and INDEPENDENTLY

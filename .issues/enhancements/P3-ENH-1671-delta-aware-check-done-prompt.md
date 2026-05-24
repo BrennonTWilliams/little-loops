@@ -2,9 +2,10 @@
 id: ENH-1671
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-05-24
 discovered_by: audit-loop-run
+completed_at: 2026-05-24T14:02:56Z
 depends_on: ENH-1658
 supersedes: ENH-1656
 confidence_score: 95

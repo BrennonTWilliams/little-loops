@@ -332,7 +332,12 @@ The loop follows a structured cycle:
 1. **Define Done** — writes verifiable acceptance criteria to `.loops/tmp/general-task-dod.md`. When the task has a runtime surface (running code, executing tests, installing a service, producing output at runtime), the DoD must include runtime-behavior criteria — static file/import checks alone are insufficient.
 2. **Plan** — decomposes the task into discrete steps in `.loops/tmp/general-task-plan.md`
 3. **Execute** — completes the first unchecked step and marks it done in the plan
-4. **Verify** — reads both the DoD and the plan, reconciles plan-vs-DoD coverage (adding new DoD criteria for any plan step that lacks coverage), verifies each criterion against actual filesystem/command output, then sample re-verifies up to 3 already-`[x]` criteria and appends a `## Sample Verification` section to the DoD. The `llm_structured` evaluator confirms three structural conditions over the action's emitted output: DoD all `[x]`, plan all `[x]`, and sample verification reports no failures.
+4. **Verify** — reads both the DoD and the plan, then applies a three-step verification policy:
+   1. *Plan-vs-DoD coverage* — for every plan step, confirms at least one DoD criterion covers it; adds new criteria for any uncovered step.
+   2. *Delta-scoped criterion verification* — the `execute` step captures `LAST_STEP` and `LAST_FILES` (the step text and every file created or modified). `check_done` reads these from `captured.execute_result.output` and only re-verifies criteria that are plausibly affected by the delta; previously-`[x]` criteria outside the delta are kept without re-running their commands, bounding per-iteration cost to the slice of criteria the latest step could have touched.
+   3. *Sample re-verification* — picks up to `min(3, total_checked)` already-`[x]` criteria at random and independently re-verifies each, appending a `## Sample Verification` section to the DoD. This safety net catches regressions in criteria outside the delta's scope regardless of which step just ran.
+
+   The `llm_structured` evaluator confirms three structural conditions over the action's emitted output: DoD all `[x]`, plan all `[x]`, and sample verification reports no failures.
 5. **Continue** — if an unchecked plan step exists, executes the next one. If the plan is fully `[x]` but a DoD criterion remains unchecked, appends a remediation step to the plan and completes it — preventing the loop from spinning to `max_iterations` when DoD coverage diverges from plan completion.
 
 The loop runs up to 100 iterations and uses `on_handoff: spawn` to continue across session boundaries. Each execution step is deliberately scoped to a single plan item to keep changes small and verifiable.

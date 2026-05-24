@@ -171,3 +171,69 @@ class TestChange4CheckDoneEvaluatorStructural:
         check_done = raw_data["states"]["check_done"]
         assert check_done["on_yes"] == "done"
         assert check_done["on_no"] == "continue_work"
+
+
+class TestChange5ExecuteCapture:
+    """Change 5 (ENH-1671): execute state captures output for check_done delta input."""
+
+    def test_execute_has_capture_execute_result(self, raw_data: dict) -> None:
+        execute_state = raw_data["states"]["execute"]
+        assert execute_state.get("capture") == "execute_result", (
+            "execute state must have capture: execute_result so check_done can read the delta"
+        )
+
+    def test_execute_prompts_for_last_step_output(self, raw_data: dict) -> None:
+        action = raw_data["states"]["execute"]["action"]
+        assert "LAST_STEP" in action, (
+            "execute.action must instruct the model to emit a LAST_STEP: trailing line"
+        )
+
+    def test_execute_prompts_for_last_files_output(self, raw_data: dict) -> None:
+        action = raw_data["states"]["execute"]["action"]
+        assert "LAST_FILES" in action, (
+            "execute.action must instruct the model to emit a LAST_FILES: trailing line"
+        )
+
+
+class TestChange6CheckDoneDeltaAware:
+    """Change 6 (ENH-1671): check_done.action scopes verification to the most recent step."""
+
+    def test_check_done_references_captured_execute_result(self, raw_data: dict) -> None:
+        action = raw_data["states"]["check_done"]["action"]
+        assert "${captured.execute_result.output}" in action, (
+            "check_done.action must reference ${captured.execute_result.output} for delta context"
+        )
+
+    def test_check_done_references_last_step(self, raw_data: dict) -> None:
+        action = raw_data["states"]["check_done"]["action"]
+        assert "LAST_STEP" in action, (
+            "check_done.action must reference LAST_STEP from captured execute output"
+        )
+
+    def test_check_done_references_last_files(self, raw_data: dict) -> None:
+        action = raw_data["states"]["check_done"]["action"]
+        assert "LAST_FILES" in action, (
+            "check_done.action must reference LAST_FILES from captured execute output"
+        )
+
+    def test_check_done_has_plausibly_affected_scoping(self, raw_data: dict) -> None:
+        action = raw_data["states"]["check_done"]["action"]
+        assert "plausibly affected" in action.lower(), (
+            "check_done.action must use 'plausibly affected' language to describe the scoping policy"
+        )
+
+
+class TestChange6SampleVerificationPreserved:
+    """Change 6 (ENH-1671): sample re-verification safety net is unchanged after delta rewrite."""
+
+    def test_check_done_still_has_sample_verification_section(self, raw_data: dict) -> None:
+        action = raw_data["states"]["check_done"]["action"]
+        assert "## Sample Verification" in action, (
+            "check_done.action must still append a `## Sample Verification` section"
+        )
+
+    def test_check_done_still_uses_min3_sample_size(self, raw_data: dict) -> None:
+        action = raw_data["states"]["check_done"]["action"]
+        assert "min(3" in action or "up to 3" in action.lower(), (
+            "check_done.action must still sample up to min(3, total_checked) criteria"
+        )
