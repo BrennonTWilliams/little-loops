@@ -91,6 +91,22 @@ circuit:
     window: 3                  # consecutive iterations with identical triple (default 3)
     on_repeated_failure: abort # "abort" terminates, or name of a declared recovery state
 ```
+
+**False-positive stalls in check↔work loops (BUG-1674):** States with `next:` (no `evaluate:`) are invisible to the stall detector — only eval-bearing states record triples. If your loop has a `check`→`work`→`check` ping-pong where `work` uses `next:`, the detector sees three consecutive `(check, exit_code, "no")` triples and fires even though `work` made real file-level progress.
+
+Fix: add `progress_paths` under `repeated_failure`. When any listed path's `(mtime, size)` changes between two consecutive `check` records, the rolling window resets. Supports `${env.PWD}` interpolation.
+
+```yaml
+circuit:
+  repeated_failure:
+    window: 3
+    on_repeated_failure: diagnose
+    progress_paths:
+      - "${env.PWD}/.loops/tmp/plan.md"
+      - "${env.PWD}/.loops/tmp/dod.md"
+```
+
+Loops that do not set `progress_paths` are unaffected — existing semantics are preserved.
 <!-- END TODO stub -->
 
 ## Common Loop Patterns

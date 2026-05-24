@@ -221,6 +221,11 @@
               "type": "string",
               "description": "Either the literal \"abort\" (terminate with terminated_by=\"stall_detected\") or the name of a declared state to route to.",
               "default": "abort"
+            },
+            "progress_paths": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Paths (supports ${env.PWD} interpolation) to watch for mtime/size changes. When any path changes between consecutive record() calls for the same eval-bearing state, the stall window resets. Opt-in; empty by default preserves existing semantics."
             }
           },
           "additionalProperties": false

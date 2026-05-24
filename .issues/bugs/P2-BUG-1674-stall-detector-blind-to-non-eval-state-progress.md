@@ -2,8 +2,9 @@
 id: BUG-1674
 type: BUG
 priority: P2
-status: open
+status: done
 discovered_date: 2026-05-24
+completed_at: 2026-05-24T09:29:26Z
 discovered_by: downstream-report
 relates_to:
 - FEAT-1637
@@ -179,10 +180,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ---
 
-**Open** | Created: 2026-05-24 | Priority: P2
+**Done** | Created: 2026-05-24 | Priority: P2
+
+## Resolution
+
+Implemented Option A (fingerprint-based reset). Added `progress_paths: list[str]` to `RepeatedFailureConfig`; the executor computes `(mtime, size)` fingerprints for those paths before each `record()` call and resets the window when any path changed since the previous record for that state. Reverted `general-task.yaml` `window` from 7 back to 3 and added `progress_paths` for the plan/DoD files. Existing loops without `progress_paths` are unaffected.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T09:19:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2166d25c-ed32-456a-bb5f-11bf12e192e7.jsonl`
 - `/ll:confidence-check` - 2026-05-24T08:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05261683-829a-4403-986e-27389bc47dbe.jsonl`
 - `/ll:wire-issue` - 2026-05-24T07:44:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c3f102e7-8b1c-40a0-92c7-9fea7bc9a310.jsonl`
 - `/ll:decide-issue` - 2026-05-24T07:35:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81b5e62d-c94a-4872-b49f-a5ea9e87a99a.jsonl`

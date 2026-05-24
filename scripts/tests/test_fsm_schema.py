@@ -2774,3 +2774,22 @@ class TestCircuitConfig:
         assert "circuit" not in d
         restored = FSMLoop.from_dict(d)
         assert restored.circuit is None
+
+    def test_repeated_failure_progress_paths_round_trip(self) -> None:
+        paths = ["${env.PWD}/.loops/tmp/plan.md", "${env.PWD}/.loops/tmp/dod.md"]
+        original = RepeatedFailureConfig(window=3, on_repeated_failure="diagnose", progress_paths=paths)
+        d = original.to_dict()
+        assert d["progress_paths"] == paths
+        restored = RepeatedFailureConfig.from_dict(d)
+        assert restored.progress_paths == paths
+        assert restored.window == 3
+        assert restored.on_repeated_failure == "diagnose"
+
+    def test_repeated_failure_empty_progress_paths_omitted_from_dict(self) -> None:
+        original = RepeatedFailureConfig()
+        d = original.to_dict()
+        assert "progress_paths" not in d
+
+    def test_repeated_failure_defaults_include_empty_progress_paths(self) -> None:
+        restored = RepeatedFailureConfig.from_dict({})
+        assert restored.progress_paths == []

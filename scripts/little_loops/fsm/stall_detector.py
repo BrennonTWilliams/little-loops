@@ -37,9 +37,27 @@ class StallDetector:
             raise ValueError(f"window must be >= 1, got {window}")
         self._window: int = window
         self._recent: deque[tuple[str, int, str]] = deque(maxlen=window)
+        self._last_fingerprints: dict[str, tuple[object, ...] | None] = {}
 
-    def record(self, state: str, exit_code: int, verdict: str) -> None:
-        """Append a transition triple to the rolling window."""
+    def record(
+        self,
+        state: str,
+        exit_code: int,
+        verdict: str,
+        fingerprint: tuple[object, ...] | None = None,
+    ) -> None:
+        """Append a transition triple to the rolling window.
+
+        If *fingerprint* is provided and differs from the previous fingerprint
+        recorded for *state*, the window is reset before appending — meaning
+        observable file-level progress between two visits to the same
+        eval-bearing state prevents a false-positive stall fire.
+        """
+        if fingerprint is not None:
+            prev = self._last_fingerprints.get(state)
+            if prev is not None and fingerprint != prev:
+                self.reset()
+            self._last_fingerprints[state] = fingerprint
         self._recent.append((state, exit_code, verdict))
 
     def check(self) -> Stall | None:
@@ -53,5 +71,6 @@ class StallDetector:
         return Stall(triple=first, count=self._window)
 
     def reset(self) -> None:
-        """Clear the rolling window (used on streak break by external callers)."""
+        """Clear the rolling window and fingerprint cache."""
         self._recent.clear()
+        self._last_fingerprints.clear()

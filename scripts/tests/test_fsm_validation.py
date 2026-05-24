@@ -675,3 +675,30 @@ class TestCircuitValidation:
             "circuit.repeated_failure.window" in (e.path or "") and "must be >= 1" in e.message
             for e in errors
         )
+
+    def test_progress_paths_with_circuit_recognized_no_warning(self, tmp_path: Path) -> None:
+        """progress_paths under repeated_failure produces no unknown-key warnings (BUG-1674)."""
+        loop_yaml = self._write_yaml(
+            tmp_path,
+            (
+                "name: test-loop\n"
+                "description: A loop with progress_paths\n"
+                "initial: work\n"
+                "states:\n"
+                "  work:\n"
+                "    action: run.sh\n"
+                "    on_yes: done\n"
+                "  done:\n"
+                "    terminal: true\n"
+                "circuit:\n"
+                "  repeated_failure:\n"
+                "    window: 3\n"
+                "    on_repeated_failure: abort\n"
+                "    progress_paths:\n"
+                "      - '${env.PWD}/.loops/tmp/plan.md'\n"
+                "      - '${env.PWD}/.loops/tmp/dod.md'\n"
+            ),
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown" in w.message or "additional" in w.message.lower()]
+        assert unknown_warnings == []

@@ -650,6 +650,34 @@ class FSMExecutor:
         )
         return interpolate(state.on_yes, ctx) if state.on_yes else None
 
+    def _compute_progress_fingerprint(
+        self, ctx: InterpolationContext
+    ) -> tuple[object, ...] | None:
+        """Return an (mtime, size) fingerprint for configured progress_paths, or None.
+
+        Called just before stall_detector.record() so that file changes made by
+        intermediate next:-only states are visible to the detector. Returns None
+        when no progress_paths are configured (preserves existing semantics).
+        """
+        if self.fsm.circuit is None or self.fsm.circuit.repeated_failure is None:
+            return None
+        paths = self.fsm.circuit.repeated_failure.progress_paths
+        if not paths:
+            return None
+        entries: list[tuple[float, int]] = []
+        for raw_path in paths:
+            try:
+                resolved = interpolate(raw_path, ctx)
+            except Exception:
+                continue
+            p = Path(resolved)
+            if p.exists():
+                st = p.stat()
+                entries.append((st.st_mtime, st.st_size))
+            else:
+                entries.append((0.0, 0))
+        return tuple(entries) if entries else None
+
     def _check_throttle(self, state: StateConfig, state_name: str) -> str | None:
         """Increment the per-state tool-call counter and enforce throttle thresholds.
 
@@ -814,7 +842,8 @@ class FSMExecutor:
         stall_route_target: str | None = None
         if self._stall_detector is not None:
             stall_exit_code = action_result.exit_code if action_result else 0
-            self._stall_detector.record(self.current_state, stall_exit_code, verdict)
+            stall_fingerprint = self._compute_progress_fingerprint(ctx)
+            self._stall_detector.record(self.current_state, stall_exit_code, verdict, stall_fingerprint)
             stall = self._stall_detector.check()
             if stall is not None:
                 assert self.fsm.circuit is not None

@@ -90,3 +90,65 @@ class TestStallDetector:
         s = Stall(triple=("A", 0, "no"), count=3)
         with pytest.raises(dataclasses.FrozenInstanceError):
             s.count = 4  # type: ignore[misc]
+
+    # --- fingerprint-reset tests (BUG-1674) ---
+
+    def test_fingerprint_change_resets_window(self) -> None:
+        d = StallDetector(window=3)
+        fp1 = ((1000.0, 100),)
+        fp2 = ((2000.0, 200),)
+        d.record("check_done", 0, "no", fingerprint=fp1)
+        d.record("check_done", 0, "no", fingerprint=fp1)
+        # fingerprint changes — window should reset
+        d.record("check_done", 0, "no", fingerprint=fp2)
+        assert d.check() is None
+
+    def test_fingerprint_unchanged_allows_stall_to_fire(self) -> None:
+        d = StallDetector(window=3)
+        fp = ((1000.0, 100),)
+        d.record("check_done", 0, "no", fingerprint=fp)
+        d.record("check_done", 0, "no", fingerprint=fp)
+        d.record("check_done", 0, "no", fingerprint=fp)
+        assert d.check() is not None
+
+    def test_no_fingerprint_preserves_existing_semantics(self) -> None:
+        d = StallDetector(window=3)
+        d.record("check_done", 0, "no")
+        d.record("check_done", 0, "no")
+        d.record("check_done", 0, "no")
+        assert d.check() is not None
+
+    def test_first_fingerprint_for_state_never_resets(self) -> None:
+        # First record for a state has no previous fingerprint to compare against
+        d = StallDetector(window=2)
+        fp_a = ((1.0, 10),)
+        fp_b = ((2.0, 20),)
+        d.record("A", 0, "no", fingerprint=fp_a)
+        d.record("A", 0, "no", fingerprint=fp_b)
+        # window was reset after fp_b differed from fp_a, so only 1 record now
+        assert d.check() is None
+
+    def test_reset_clears_fingerprint_cache(self) -> None:
+        d = StallDetector(window=2)
+        fp1 = ((1.0, 10),)
+        fp2 = ((2.0, 20),)
+        d.record("A", 0, "no", fingerprint=fp1)
+        d.reset()
+        # After reset, fp2 has no prior to compare against — no spurious reset
+        d.record("A", 0, "no", fingerprint=fp2)
+        d.record("A", 0, "no", fingerprint=fp2)
+        assert d.check() is not None
+
+    def test_fingerprint_reset_rebuilds_streak(self) -> None:
+        d = StallDetector(window=3)
+        fp1 = ((1.0, 10),)
+        fp2 = ((2.0, 20),)
+        d.record("S", 0, "no", fingerprint=fp1)
+        d.record("S", 0, "no", fingerprint=fp1)
+        # change resets window
+        d.record("S", 0, "no", fingerprint=fp2)
+        assert d.check() is None
+        # streak rebuilds from fp2 baseline
+        d.record("S", 0, "no", fingerprint=fp2)
+        d.record("S", 0, "no", fingerprint=fp2)
+        assert d.check() is not None

@@ -6417,3 +6417,106 @@ class TestStallDetector:
         stall_events = [e for e in events if e.get("event") == "stall_detected"]
         assert len(stall_events) == 1
         assert stall_events[0]["consecutive"] == 1
+
+    def test_progress_paths_prevent_false_positive_stall(self, tmp_path: Path) -> None:
+        """BUG-1674: file changes between check cycles reset the stall window.
+
+        Simulates a check↔work ping-pong where work uses next: only (no evaluate:).
+        With progress_paths pointing to a file that changes each cycle, the stall
+        must NOT fire within window cycles.
+        """
+        import time
+
+        from little_loops.fsm.schema import CircuitConfig, RepeatedFailureConfig
+
+        progress_file = tmp_path / "plan.md"
+        progress_file.write_text("step 0")
+
+        @dataclass
+        class ProgressRunner:
+            calls: list[str] = field(default_factory=list)
+            work_count: int = 0
+
+            def run(
+                self,
+                action: str,
+                timeout: int,
+                is_slash_command: bool,
+                on_output_line: Any = None,
+                agent: str | None = None,
+                tools: list[str] | None = None,
+            ) -> ActionResult:
+                del timeout, is_slash_command, on_output_line, agent, tools
+                self.calls.append(action)
+                if "work" in action:
+                    self.work_count += 1
+                    time.sleep(0.01)
+                    progress_file.write_text(f"step {self.work_count}")
+                return ActionResult(output="", stderr="", exit_code=1, duration_ms=10)
+
+        fsm = FSMLoop(
+            name="progress-stall-test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    evaluate=EvaluateConfig(type="exit_code"),
+                    on_yes="done",
+                    on_no="work",
+                ),
+                "work": StateConfig(action="work.sh", next="check"),
+                "done": StateConfig(terminal=True),
+            },
+            max_iterations=20,
+        )
+        fsm.circuit = CircuitConfig(
+            repeated_failure=RepeatedFailureConfig(
+                window=3,
+                on_repeated_failure="abort",
+                progress_paths=[str(progress_file)],
+            )
+        )
+
+        runner = ProgressRunner()
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        # Should exhaust max_iterations without stalling (file changes reset window)
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert stall_events == [], f"Unexpected stall fired: {stall_events}"
+        assert result.terminated_by == "max_iterations"
+
+    def test_progress_paths_absent_stall_fires_as_before(self) -> None:
+        """BUG-1674 regression: without progress_paths, stall fires after window cycles."""
+        from little_loops.fsm.schema import CircuitConfig, RepeatedFailureConfig
+
+        fsm = FSMLoop(
+            name="no-progress-stall-test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    evaluate=EvaluateConfig(type="exit_code"),
+                    on_yes="done",
+                    on_no="work",
+                ),
+                "work": StateConfig(action="work.sh", next="check"),
+                "done": StateConfig(terminal=True),
+            },
+            max_iterations=50,
+        )
+        fsm.circuit = CircuitConfig(
+            repeated_failure=RepeatedFailureConfig(window=3, on_repeated_failure="abort")
+        )
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.terminated_by == "stall_detected"
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert len(stall_events) == 1

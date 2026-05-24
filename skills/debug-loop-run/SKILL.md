@@ -189,6 +189,7 @@ Scan the event list and classify signals using the rules below. Group events by 
 - Priority: P2
 - Title: `"<loop_name> stalled on <state> (exit_code=<code>, verdict=<verdict>) after <consecutive> iterations"`
 - Include: the `stall_detected` event payload, `final_state`, `iterations`, last 5 events before termination. Note: a stall means the same `(state, exit_code, verdict)` triple repeated `consecutive` times — investigate the upstream evaluator or action (e.g. timeouts surface as `exit_code=124` / `verdict="error"`) rather than the loop topology itself.
+- **False-positive stalls in check↔work loops (BUG-1674):** If the stalled state is a check/eval state and the loop topology includes a `next:`-only work state between cycles (visible in the event log as the work state appearing between stalled-state entries without recording a triple), the stall may be a false positive — the detector is blind to progress made by `next:`-only states. Fix: add `progress_paths` under `circuit.repeated_failure` pointing to files the work state writes to; the window resets whenever those files change between cycles. See [stall detector docs](../docs/guides/LOOPS_GUIDE.md#stall-detector-circuit-repeated-failure).
 
 #### ENH — Iteration-1 Convergence Without Apply (Signal 1)
 - **Class**: Effectiveness signal (terminal-event handler).
