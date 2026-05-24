@@ -14,7 +14,7 @@ The `general-task` loop's `check_done` state currently uses an `llm_structured` 
 
 ## Current Behavior
 
-`scripts/little_loops/loops/general-task.yaml:74-122` defines `check_done` as a prompt-action followed by an `llm_structured` evaluator:
+`scripts/little_loops/loops/general-task.yaml:83-142` defines `check_done` as a prompt-action followed by an `llm_structured` evaluator:
 
 - The prompt asks the model to re-read both files, verify each criterion by evidence, write a `## Sample Verification` section, and print the final DoD/plan to stdout.
 - The evaluator reads that stdout and answers YES iff (1) all DoD criteria are `[x]`, (2) all plan steps are `[x]`, (3) the Sample Verification section has no FAILED entries.
@@ -116,6 +116,34 @@ If `output_json` only supports comparing a single scalar path (the dead-code pre
 - Add a fixture under `scripts/tests/` exercising `count_done` in three cases: all-clean (→ done), unchecked criterion (→ continue_work), missing DoD (→ diagnose).
 - `ll-loop validate` smoke test confirming the new YAML parses.
 
+#### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Existing tests that will break and need updating** (`scripts/tests/test_general_task_loop.py`):
+- `TestChange4CheckDoneEvaluatorStructural.test_evaluator_is_llm_structured` — asserts `check_done.evaluate["type"] == "llm_structured"`; after the change `check_done` has no `evaluate:` block
+- `TestChange4CheckDoneEvaluatorStructural.test_evaluator_prompt_references_three_conditions` — accesses `check_done.evaluate["prompt"]`; key will not exist
+- `TestChange4CheckDoneEvaluatorStructural.test_evaluator_routes_yes_to_done_no_to_continue` — asserts `check_done.on_yes == "done"` and `check_done.on_no == "continue_work"`; these routes move to `count_done`
+- `TestGeneralTaskLoopFile.test_expected_states_present` — expected set must include `"count_done"` after the new state is added
+
+Recommended fix: rename `TestChange4CheckDoneEvaluatorStructural` to `TestChange7CountDoneShellGate`, target `count_done` instead of `check_done`, and assert `evaluate.type == "output_json"`, `evaluate.path == ".total"`, `evaluate.operator == "eq"`, `evaluate.target == 0`, `on_yes == "done"`, `on_no == "continue_work"`, `on_error == "diagnose"`, and `action_type == "shell"`.
+
+**Shell-execution test pattern** — model after `scripts/tests/test_loops_recursive_refine.py`:
+- Module-level `_bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]` helper using `subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True)`
+- Class-level `_COUNT_DONE_SCRIPT` constant holding the exact shell snippet from the YAML state
+- `_setup_dod_plan(tmp_path, *, dod_content, plan_content)` helper that writes `.loops/tmp/general-task-dod.md` and `.loops/tmp/general-task-plan.md`
+- Add new class `TestCountDoneShellScript` to `scripts/tests/test_general_task_loop.py` (no new file needed — consistent with existing structure)
+
+**`ll-loop validate` CLI pattern** (from `scripts/tests/test_create_loop.py`):
+```python
+import sys
+from unittest.mock import patch
+with patch.object(sys, "argv", ["ll-loop", "validate", "general-task"]):
+    from little_loops.cli import main_loop
+    result = main_loop()
+assert result == 0
+```
+
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md` — update the general-task section to describe the two-state gate, the JSON output, and that termination is deterministic.
 
@@ -124,14 +152,19 @@ If `output_json` only supports comparing a single scalar path (the dead-code pre
 
 ## Implementation Steps
 
-1. Read `scripts/little_loops/loops/dead-code-cleanup.yaml`'s `count_findings` state and confirm the `output_json` evaluator's supported `path` / `operator` semantics in `scripts/little_loops/fsm/`.
-2. Add `count_done` state to `general-task.yaml` per the snippet above; emit `total` if `output_json` doesn't support multi-field comparison.
-3. Strip the `evaluate:` block from `check_done`; set `next: count_done`.
-4. Move `on_yes: done`, `on_no: continue_work`, `on_error: diagnose` onto `count_done`.
-5. Run `ll-loop validate scripts/little_loops/loops/general-task.yaml`.
-6. Run `ll-loop run general-task` against a small task that terminates in 2-3 iterations to confirm the new gate fires correctly in the happy path.
-7. Manually corrupt the DoD file (delete it) mid-run and confirm `count_done` routes to `diagnose` instead of crashing.
-8. Update `docs/guides/LOOPS_GUIDE.md`.
+1. ~~Read `dead-code-cleanup.yaml`'s `count_findings` state and confirm `output_json` semantics~~ — **Confirmed**: `evaluate_output_json()` in `scripts/little_loops/fsm/evaluators.py` accepts a single `path`/`operator`/`target` and does **not** support multi-field compound checks. The `total` pre-computation workaround in the Proposed Solution is required. Use `path: ".total"`, `operator: eq`, `target: 0` (matching the `.count` pattern in `dead-code-cleanup.yaml:41-43`).
+2. Add `count_done` state to `general-task.yaml` per the snippet above; include a pre-computed `total` field (`TOTAL=$((UNCHECKED_DOD + UNCHECKED_PLAN + FAILED_SAMPLES))`) and set `evaluate.path: ".total"`.
+3. Strip the `evaluate:` block from `check_done` (lines 128-139); set `next: count_done`.
+4. Move `on_yes: done`, `on_no: continue_work`, `on_error: diagnose` from `check_done` (lines 140-142) onto `count_done`.
+5. Update `scripts/tests/test_general_task_loop.py`:
+   - Rename `TestChange4CheckDoneEvaluatorStructural` → `TestChange7CountDoneShellGate`; retarget all assertions to `count_done` state (see Tests section for specifics)
+   - Add `"count_done"` to the expected set in `TestGeneralTaskLoopFile.test_expected_states_present`
+   - Add `TestCountDoneShellScript` class with `_bash()` helper and three-scenario shell tests
+6. Run `ll-loop validate scripts/little_loops/loops/general-task.yaml`.
+7. Run `python -m pytest scripts/tests/test_general_task_loop.py -v` to confirm all tests pass.
+8. Run `ll-loop run general-task` against a small task that terminates in 2-3 iterations to confirm the new gate fires correctly in the happy path.
+9. Manually delete `.loops/tmp/general-task-dod.md` mid-run and confirm `count_done` routes to `diagnose`.
+10. Update `docs/guides/LOOPS_GUIDE.md` — general-task section (around lines 309-340) to describe the two-state gate and JSON output schema `{unchecked_dod, unchecked_plan, failed_samples, total}`.
 
 ## Scope Boundaries
 
@@ -167,6 +200,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `general-task`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-24T14:11:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/606cff41-42fc-4284-8565-e62f63b8909b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53f5ce8a-8802-4e4f-a82f-cb8f836c6b67.jsonl`
 - `/ll:format-issue` - 2026-05-23T16:43:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7684c915-f5a2-4b68-9ba1-d56622191296.jsonl`
 - `/ll:capture-issue` - 2026-05-23T16:40:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
