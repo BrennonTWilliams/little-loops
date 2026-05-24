@@ -2,7 +2,7 @@
 id: BUG-1662
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: "2026-05-24T04:15:48Z"
 discovered_date: 2026-05-24
 discovered_by: capture-issue

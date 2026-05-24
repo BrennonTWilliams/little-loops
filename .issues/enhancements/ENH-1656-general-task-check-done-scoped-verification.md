@@ -2,7 +2,7 @@
 id: ENH-1656
 type: ENH
 priority: P4
-status: open
+status: cancelled
 discovered_date: 2026-05-23
 discovered_by: audit-loop-run
 confidence_score: 70
@@ -10,6 +10,8 @@ outcome_confidence: 60
 ---
 
 # ENH-1656: check_done re-verifies all criteria every iteration, causing excessive session duration
+
+Cancelled 2026-05-24 — superseded by ENH-1671, which carries this issue's audit data, delta-aware-prompt mechanism, phased-DoD alternative, and API-failure-exposure framing forward. ENH-1658 addresses the `check_done` gate and explicitly preserves the prompt action; ENH-1671 scopes the prompt action itself.
 
 ## Summary
 

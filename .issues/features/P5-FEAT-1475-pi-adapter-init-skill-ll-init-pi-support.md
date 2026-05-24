@@ -49,7 +49,7 @@ In `skills/init/SKILL.md`:
 
 ## Notes
 
-- FEAT-1474 (core adapter) must exist before this step is useful, but the `SKILL.md` edit itself is independent and can be written in parallel.
+- The `SKILL.md` text may be drafted while FEAT-1478 is in flight, but the step-8.5 registration is only functional (and this issue is only done) after FEAT-1478 ships the `hooks/adapters/pi/index.ts` file it references. The `depends_on: FEAT-1478` frontmatter is correct; do not merge FEAT-1475 before FEAT-1478 is complete.
 - No compilation step needed for Pi — it uses jiti for auto-discovery, so no build pipeline required.
 - No trust dialog in Pi — the extension is auto-loaded with full permissions.
 
@@ -68,6 +68,7 @@ In `skills/init/SKILL.md`:
 **Open** | Created: 2026-05-15 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`

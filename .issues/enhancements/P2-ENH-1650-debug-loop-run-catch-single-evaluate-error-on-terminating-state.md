@@ -8,6 +8,7 @@ discovered_date: "2026-05-23"
 discovered_by: capture-issue
 component: skills/debug-loop-run
 labels: [debug-loop-run, signal-rules, fsm, evaluate]
+relates_to: [ENH-1655]
 ---
 
 # ENH-1650: debug-loop-run misses single evaluate-error that terminates the loop
@@ -148,9 +149,16 @@ No CLI argument or Python function signature changes — this is a report payloa
 | `docs/ARCHITECTURE.md` | FSM evaluator verdict semantics (cross-check the `pass/fail/continue/retry/error` enum stays accurate). |
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
 - `/ll:format-issue` - 2026-05-23T23:24:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fb32199-4c7e-45f4-9a40-75be401d19e7.jsonl`
 - `/ll:capture-issue` - 2026-05-23T23:20:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d302e094-e886-4f1c-9e6a-9cb4dda50f7a.jsonl`
 
 ---
 
 **Open** | Created: 2026-05-23 | Priority: P2
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-1655 (evaluate retry before termination) reduces the frequency of the event this issue detects. ENH-1650 remains valid even after ENH-1655 ships — the single evaluate-error termination can still occur for exhausted retries and non-retryable error paths. Sequence ENH-1655 before or alongside ENH-1650.

@@ -7,6 +7,7 @@ discovered_date: 2026-05-23
 discovered_by: audit-loop-run
 confidence_score: 80
 outcome_confidence: 75
+relates_to: [ENH-1655]
 ---
 
 # BUG-1657: check_done evaluate prompt is silently simplified at runtime vs FSM definition
@@ -52,3 +53,7 @@ This suggests either the FSM was updated after the run, or there's prompt trunca
 Investigate why the evaluate prompt is simplified at runtime. If this is intentional truncation (e.g., to reduce token cost), make it explicit in the FSM definition rather than silently diverging. If it's a bug in prompt resolution, fix the resolver.
 
 The evaluate prompt should at minimum check plan step completeness (condition 2), since that's the direct measure of "are we done executing steps?"
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`

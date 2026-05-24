@@ -11,6 +11,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 relates_to: FEAT-1476
+depends_on: [FEAT-1476]
 ---
 
 # FEAT-1479: Pi Adapter — Config Candidate, Schema, and Config Tests
@@ -224,6 +225,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Partial implementation: schema change landed, code changes (core.py + tests) remain outstanding
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:verify-issues` - 2026-05-22T16:11:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
 - `/ll:verify-issues` - 2026-05-22T11:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
@@ -234,3 +236,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `/ll:wire-issue` - 2026-05-15T20:14:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/283ba605-37bc-48cb-a598-ae75817694a9.jsonl`
 - `/ll:refine-issue` - 2026-05-15T20:08:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf5992b2-5c8e-47de-b8e1-f647db5de5b1.jsonl`
 - `/ll:issue-size-review` - 2026-05-15T20:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e9b11ad-de12-4f82-9761-25c38e59c783.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): All documentation file edits for the Pi adapter (HOST_COMPATIBILITY.md, ARCHITECTURE.md, TROUBLESHOOTING.md, API.md, CONFIGURATION.md) are exclusively owned by FEAT-1476. Do NOT include doc-file edits in this issue's PR. The `depends_on: [FEAT-1476]` frontmatter encodes this handoff as a formal dependency.

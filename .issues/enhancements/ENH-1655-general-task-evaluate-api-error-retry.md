@@ -7,6 +7,7 @@ discovered_date: 2026-05-23
 discovered_by: audit-loop-run
 confidence_score: 85
 outcome_confidence: 80
+relates_to: [ENH-1650, BUG-1657]
 ---
 
 # ENH-1655: Evaluate API errors should retry instead of terminating the loop
@@ -48,3 +49,13 @@ Broader fix: consider making this the default behavior for all `llm_structured` 
 - Eliminates the most common cause of premature loop termination observed in production
 - Each evaluate call costs $0.30–$0.32 (Sonnet); retrying twice is still far cheaper than losing the entire run
 - Applies to any loop using `llm_structured` evaluators with `on_error: diagnose`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-1650 (debug-loop-run signal for single evaluate-error termination) remains valid even after this issue ships — it targets exhausted-retry and non-retryable paths. Coordinate edits with BUG-1657: both touch `general-task.check_done.evaluate` in `loops/general-task.yaml` — this issue modifies `on_error` routing, BUG-1657 modifies `prompt` content. Implement in the same PR or sequential commits to avoid merge conflicts on the same YAML block.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
