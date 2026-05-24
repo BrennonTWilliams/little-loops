@@ -1651,14 +1651,21 @@ class TestDisplayProgressEvents:
         verbose: bool = False,
         show_diagrams: bool | str | None = None,
         clear: bool = False,
+        diagram_edge_labels: str | None = None,
+        diagram_state_detail: str | None = None,
+        diagram_scope: str | None = None,
     ) -> argparse.Namespace:
-        # Back-compat shim: legacy True → "main" (the new default mode).
-        if show_diagrams is True:
-            show_diagrams = "main"
-        elif show_diagrams is False:
+        # Normalize legacy bool: False → None, True stays as True sentinel for resolve_facets.
+        if show_diagrams is False:
             show_diagrams = None
         return argparse.Namespace(
-            quiet=quiet, verbose=verbose, show_diagrams=show_diagrams, clear=clear
+            quiet=quiet,
+            verbose=verbose,
+            show_diagrams=show_diagrams,
+            diagram_edge_labels=diagram_edge_labels,
+            diagram_state_detail=diagram_state_detail,
+            diagram_scope=diagram_scope,
+            clear=clear,
         )
 
     def _make_fsm(self) -> FSMLoop:
@@ -1956,6 +1963,7 @@ class TestDisplayProgressEvents:
         with patch.object(
             layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
         ) as mock_render:
+            # bare --show-diagrams \u2192 True sentinel \u2192 summary preset (main scope)
             run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True))
             mock_render.assert_called_once_with(
                 self._make_fsm(),
@@ -1964,15 +1972,17 @@ class TestDisplayProgressEvents:
                 edge_label_colors=None,
                 badges=None,
                 mode="main",
+                suppress_labels=False,
+                title_only=False,
             )
         out = capsys.readouterr().out
         # Diagram contains box drawing characters
         assert "\u250c" in out
 
-    def test_show_diagrams_mini_forwarded_to_render(
+    def test_show_diagrams_clean_forwarded_to_render(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """--show-diagrams=mini forwards mode='mini' to _render_fsm_diagram."""
+        """--show-diagrams=clean (formerly mini) forwards suppress_labels+title_only to _render_fsm_diagram."""
         from unittest.mock import patch
 
         from little_loops.cli.loop import layout as layout_mod
@@ -1984,14 +1994,16 @@ class TestDisplayProgressEvents:
         with patch.object(
             layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
         ) as mock_render:
-            run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams="mini"))
+            run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams="clean"))
             mock_render.assert_called_once_with(
                 self._make_fsm(),
                 highlight_state="start",
                 highlight_color="32",
                 edge_label_colors=None,
                 badges=None,
-                mode="mini",
+                mode="main",
+                suppress_labels=True,
+                title_only=True,
             )
         out = capsys.readouterr().out
         assert "\u250c" in out
@@ -2052,6 +2064,8 @@ class TestDisplayProgressEvents:
                 edge_label_colors=None,
                 badges=None,
                 mode="main",
+                suppress_labels=False,
+                title_only=False,
             )
         out = capsys.readouterr().out
         assert "\u250c" in out
@@ -2382,6 +2396,8 @@ class TestDisplayProgressEvents:
             edge_label_colors=None,
             badges=None,
             mode="main",
+            suppress_labels=False,
+            title_only=False,
         )
         assert calls[1] == call(
             parent_fsm,
@@ -2390,6 +2406,8 @@ class TestDisplayProgressEvents:
             edge_label_colors=None,
             badges=None,
             mode="main",
+            suppress_labels=False,
+            title_only=False,
         )
         assert calls[2] == call(
             child_fsm,
@@ -2398,6 +2416,8 @@ class TestDisplayProgressEvents:
             edge_label_colors=None,
             badges=None,
             mode="main",
+            suppress_labels=False,
+            title_only=False,
         )
         out = capsys.readouterr().out
         assert "sub-loop: child-loop" in out
@@ -2584,7 +2604,7 @@ class TestRunForegroundExitCodes:
     """Tests for run_foreground exit code mapping (BUG-605)."""
 
     def _make_args(self) -> argparse.Namespace:
-        return argparse.Namespace(quiet=False, verbose=False, show_diagrams=False, clear=False)
+        return argparse.Namespace(quiet=False, verbose=False, show_diagrams=None, diagram_edge_labels=None, diagram_state_detail=None, diagram_scope=None, clear=False)
 
     def _make_fsm(self) -> FSMLoop:
         return make_test_fsm()
@@ -2636,7 +2656,7 @@ class TestRunForegroundResumeMode:
     """Tests for run_foreground(mode='resume') wiring (BUG-1645)."""
 
     def _make_args(self) -> argparse.Namespace:
-        return argparse.Namespace(quiet=False, verbose=False, show_diagrams=False, clear=False)
+        return argparse.Namespace(quiet=False, verbose=False, show_diagrams=None, diagram_edge_labels=None, diagram_state_detail=None, diagram_scope=None, clear=False)
 
     def _make_fsm(self) -> FSMLoop:
         return make_test_fsm()
@@ -3098,6 +3118,114 @@ class TestCustomGlyphOverride:
 
 
 # ---------------------------------------------------------------------------
+# ENH-1672: DiagramFacets + resolve_facets unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestDiagramFacets:
+    """Unit tests for diagram_modes.DiagramFacets, PRESET_EXPANSIONS, and resolve_facets."""
+
+    def test_each_preset_resolves_to_documented_facets(self) -> None:
+        from little_loops.cli.loop.diagram_modes import PRESET_EXPANSIONS, DiagramFacets
+
+        expected: dict[str, DiagramFacets] = {
+            "detailed": DiagramFacets("layered", True, "full", "full", "preset"),
+            "summary": DiagramFacets("layered", True, "full", "main", "preset"),
+            "clean": DiagramFacets("layered", False, "title", "main", "preset"),
+            "local": DiagramFacets("neighborhood", True, "title", "main", "preset"),
+            "oneline": DiagramFacets("inline", True, "title", "full", "preset"),
+        }
+        for name, exp in expected.items():
+            assert PRESET_EXPANSIONS[name] == exp, f"Preset {name!r} mismatch"
+
+    def test_topology_values_resolve_with_defaults(self) -> None:
+        from little_loops.cli.loop.diagram_modes import DiagramFacets, resolve_facets
+
+        for topo in ("layered", "neighborhood", "inline"):
+            args = argparse.Namespace(
+                show_diagrams=topo,
+                diagram_edge_labels=None,
+                diagram_state_detail=None,
+                diagram_scope=None,
+            )
+            f = resolve_facets(args)
+            assert f is not None
+            assert f.topology == topo
+            assert f.source == "topology"
+            assert f.edge_labels is True
+            assert f.state_detail == "full"
+            assert f.scope == "full"
+
+    def test_modifier_overrides_preset(self) -> None:
+        from little_loops.cli.loop.diagram_modes import resolve_facets
+
+        # clean preset has edge_labels=False; override with on → edge_labels=True
+        args = argparse.Namespace(
+            show_diagrams="clean",
+            diagram_edge_labels="on",
+            diagram_state_detail=None,
+            diagram_scope=None,
+        )
+        f = resolve_facets(args)
+        assert f is not None
+        assert f.edge_labels is True  # override applied
+        assert f.state_detail == "title"  # preset default preserved
+
+    def test_absent_modifiers_preserve_preset(self) -> None:
+        from little_loops.cli.loop.diagram_modes import resolve_facets
+
+        args = argparse.Namespace(
+            show_diagrams="clean",
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+        )
+        f = resolve_facets(args)
+        assert f is not None
+        assert f.edge_labels is False  # clean preset default
+        assert f.state_detail == "title"
+
+    def test_bare_flag_sentinel_resolves_to_summary_default(self) -> None:
+        from little_loops.cli.loop.diagram_modes import resolve_facets
+
+        args = argparse.Namespace(
+            show_diagrams=True,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+        )
+        f = resolve_facets(args)
+        assert f is not None
+        assert f.topology == "layered"
+        assert f.scope == "main"
+        assert f.source == "default"
+
+    def test_none_show_diagrams_returns_none(self) -> None:
+        from little_loops.cli.loop.diagram_modes import resolve_facets
+
+        args = argparse.Namespace(show_diagrams=None)
+        assert resolve_facets(args) is None
+
+    def test_legacy_values_raise_argument_type_error(self) -> None:
+        import argparse as ap
+
+        from little_loops.cli.loop.diagram_modes import _parse_show_diagrams
+
+        for legacy in ("main", "full", "mini"):
+            with pytest.raises(ap.ArgumentTypeError) as exc_info:
+                _parse_show_diagrams(legacy)
+            assert legacy in str(exc_info.value) or "renamed" in str(exc_info.value)
+
+    def test_unknown_value_raises_argument_type_error(self) -> None:
+        import argparse as ap
+
+        from little_loops.cli.loop.diagram_modes import _parse_show_diagrams
+
+        with pytest.raises(ap.ArgumentTypeError):
+            _parse_show_diagrams("bogus")
+
+
+# ---------------------------------------------------------------------------
 # ENH-1641: --show-diagrams main/full mode tests
 # ---------------------------------------------------------------------------
 
@@ -3199,7 +3327,7 @@ class TestShowDiagramsMode:
             {"event": "state_enter", "state": "fail_terminal", "iteration": 1},
         ]
         executor = MockExecutor(events)
-        args = argparse.Namespace(quiet=True, verbose=False, show_diagrams="main", clear=False)
+        args = argparse.Namespace(quiet=True, verbose=False, show_diagrams="summary", diagram_edge_labels=None, diagram_state_detail=None, diagram_scope=None, clear=False)
         with patch.object(
             layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
         ) as mock_render:
@@ -3314,7 +3442,7 @@ class TestShowDiagramsMiniMode:
 
 
 class TestShowDiagramsArgparse:
-    """Argparse parsing tests for the tri-state ``--show-diagrams`` flag."""
+    """Argparse parsing tests for the restructured ``--show-diagrams`` flag."""
 
     def _parse_run_args(self, argv: list[str]) -> argparse.Namespace:
         captured: dict[str, argparse.Namespace] = {}
@@ -3332,31 +3460,89 @@ class TestShowDiagramsArgparse:
             main_loop()
         return captured["args"]
 
-    def test_bare_show_diagrams_defaults_to_main(self) -> None:
+    def _parse_run_args_expect_error(self, argv: list[str]) -> str:
+        """Parse argv, expect SystemExit, and return the error message."""
+        import io
+
+        with pytest.raises(SystemExit):
+            with patch("sys.argv", argv), patch("sys.stderr", io.StringIO()) as fake_err:
+                from little_loops.cli.loop import main_loop
+
+                main_loop()
+        return fake_err.getvalue()
+
+    def test_bare_show_diagrams_stores_sentinel(self) -> None:
         args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams"])
-        assert args.show_diagrams == "main"
+        assert args.show_diagrams is True  # const=True sentinel
 
-    def test_show_diagrams_equals_main(self) -> None:
-        args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=main"])
-        assert args.show_diagrams == "main"
+    def test_show_diagrams_preset_summary(self) -> None:
+        args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=summary"])
+        assert args.show_diagrams == "summary"
 
-    def test_show_diagrams_equals_full(self) -> None:
-        args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=full"])
-        assert args.show_diagrams == "full"
+    def test_show_diagrams_preset_detailed(self) -> None:
+        args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=detailed"])
+        assert args.show_diagrams == "detailed"
 
-    def test_show_diagrams_equals_mini(self) -> None:
-        args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=mini"])
-        assert args.show_diagrams == "mini"
+    def test_show_diagrams_preset_clean(self) -> None:
+        args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=clean"])
+        assert args.show_diagrams == "clean"
+
+    def test_show_diagrams_topology_layered(self) -> None:
+        args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=layered"])
+        assert args.show_diagrams == "layered"
+
+    def test_show_diagrams_topology_neighborhood(self) -> None:
+        args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=neighborhood"])
+        assert args.show_diagrams == "neighborhood"
 
     def test_show_diagrams_absent_is_none(self) -> None:
         args = self._parse_run_args(["ll-loop", "run", "my-loop"])
         assert args.show_diagrams is None
 
+    def test_legacy_main_raises_migration_hint(self) -> None:
+        err = self._parse_run_args_expect_error(
+            ["ll-loop", "run", "my-loop", "--show-diagrams=main"]
+        )
+        assert "main was renamed" in err
+        assert "summary" in err
+
+    def test_legacy_full_raises_migration_hint(self) -> None:
+        err = self._parse_run_args_expect_error(
+            ["ll-loop", "run", "my-loop", "--show-diagrams=full"]
+        )
+        assert "full was renamed" in err
+        assert "detailed" in err
+
+    def test_legacy_mini_raises_migration_hint(self) -> None:
+        err = self._parse_run_args_expect_error(
+            ["ll-loop", "run", "my-loop", "--show-diagrams=mini"]
+        )
+        assert "mini was renamed" in err
+        assert "clean" in err
+
+    def test_modifier_flags_parsed(self) -> None:
+        args = self._parse_run_args([
+            "ll-loop", "run", "my-loop",
+            "--show-diagrams=clean",
+            "--diagram-edge-labels=on",
+            "--diagram-state-detail=full",
+            "--diagram-scope=main",
+        ])
+        assert args.diagram_edge_labels == "on"
+        assert args.diagram_state_detail == "full"
+        assert args.diagram_scope == "main"
+
 
 class TestShowDiagramsSubprocessReemit:
-    """Tests for run_background re-emitting --show-diagrams to the subprocess cmd."""
+    """Tests for run_background re-emitting --show-diagrams + modifiers to the subprocess cmd."""
 
-    def _capture_cmd(self, show_diagrams_value: object) -> list[str]:
+    def _capture_cmd(
+        self,
+        show_diagrams_value: object,
+        diagram_edge_labels: str | None = None,
+        diagram_state_detail: str | None = None,
+        diagram_scope: str | None = None,
+    ) -> list[str]:
         from unittest.mock import MagicMock
 
         from little_loops.cli.loop._helpers import run_background
@@ -3376,6 +3562,9 @@ class TestShowDiagramsSubprocessReemit:
             llm_model=None,
             verbose=False,
             show_diagrams=show_diagrams_value,
+            diagram_edge_labels=diagram_edge_labels,
+            diagram_state_detail=diagram_state_detail,
+            diagram_scope=diagram_scope,
             quiet=False,
             queue=False,
             context=[],
@@ -3390,27 +3579,58 @@ class TestShowDiagramsSubprocessReemit:
                     run_background("my-loop", args_ns, Path("/tmp/fake-loops"))
         return captured["cmd"]
 
-    def test_main_mode_reemitted_to_cmd(self) -> None:
-        cmd = self._capture_cmd("main")
+    def test_preset_summary_reemitted_to_cmd(self) -> None:
+        cmd = self._capture_cmd("summary")
         assert "--show-diagrams" in cmd
         idx = cmd.index("--show-diagrams")
-        assert cmd[idx + 1] == "main"
+        assert cmd[idx + 1] == "summary"
 
-    def test_full_mode_reemitted_to_cmd(self) -> None:
-        cmd = self._capture_cmd("full")
+    def test_preset_detailed_reemitted_to_cmd(self) -> None:
+        cmd = self._capture_cmd("detailed")
         assert "--show-diagrams" in cmd
         idx = cmd.index("--show-diagrams")
-        assert cmd[idx + 1] == "full"
+        assert cmd[idx + 1] == "detailed"
 
-    def test_show_diagrams_mini_reemitted_to_subprocess_cmd(self) -> None:
-        cmd = self._capture_cmd("mini")
+    def test_preset_clean_reemitted_to_cmd(self) -> None:
+        cmd = self._capture_cmd("clean")
         assert "--show-diagrams" in cmd
         idx = cmd.index("--show-diagrams")
-        assert cmd[idx + 1] == "mini"
+        assert cmd[idx + 1] == "clean"
 
     def test_none_mode_suppresses_flag_from_cmd(self) -> None:
         cmd = self._capture_cmd(None)
         assert "--show-diagrams" not in cmd
+
+    def test_bare_flag_sentinel_reemitted_bare(self) -> None:
+        cmd = self._capture_cmd(True)
+        assert "--show-diagrams" in cmd
+        idx = cmd.index("--show-diagrams")
+        # bare flag: next token is not a value for --show-diagrams
+        assert idx == len(cmd) - 1 or not cmd[idx + 1].startswith("--show")
+
+    def test_edge_labels_off_reemitted(self) -> None:
+        cmd = self._capture_cmd("clean", diagram_edge_labels="off")
+        assert "--diagram-edge-labels" in cmd
+        idx = cmd.index("--diagram-edge-labels")
+        assert cmd[idx + 1] == "off"
+
+    def test_state_detail_title_reemitted(self) -> None:
+        cmd = self._capture_cmd("summary", diagram_state_detail="title")
+        assert "--diagram-state-detail" in cmd
+        idx = cmd.index("--diagram-state-detail")
+        assert cmd[idx + 1] == "title"
+
+    def test_scope_main_reemitted(self) -> None:
+        cmd = self._capture_cmd("detailed", diagram_scope="main")
+        assert "--diagram-scope" in cmd
+        idx = cmd.index("--diagram-scope")
+        assert cmd[idx + 1] == "main"
+
+    def test_none_modifiers_not_reemitted(self) -> None:
+        cmd = self._capture_cmd("summary")
+        assert "--diagram-edge-labels" not in cmd
+        assert "--diagram-state-detail" not in cmd
+        assert "--diagram-scope" not in cmd
 
 
 class TestChoosePinnedLayout:

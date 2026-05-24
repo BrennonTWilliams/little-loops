@@ -13,6 +13,11 @@ from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING, Any
 
+from little_loops.cli.loop.diagram_modes import (
+    TOPOLOGY_TO_DETAIL,
+    DiagramFacets,
+    resolve_facets,
+)
 from little_loops.cli.output import colorize, terminal_size, terminal_width
 from little_loops.fsm.concurrency import _process_alive
 from little_loops.logger import Logger
@@ -249,7 +254,7 @@ def _build_pinned_pane(
     iteration_line: str,
     cols: int,
     *,
-    show_diagrams_mode: str,
+    facets: DiagramFacets,
     highlight_color: str,
     edge_label_colors: dict[str, str] | None,
     badges: dict[str, str] | None,
@@ -258,7 +263,7 @@ def _build_pinned_pane(
 ) -> str:
     """Compose the pinned pane (header + diagram(s) + state line + separator).
 
-    ``detail`` selects the diagram variant: ``"full"`` (existing
+    ``detail`` selects the diagram variant: ``"full"`` (layered
     ``_render_fsm_diagram``), ``"neighborhood"`` (1-hop pred/active/succ), or
     ``"single"`` (one-line ``fsm:`` status). The returned string is intended
     to be printed with ``flush=True`` and is terminated by a horizontal
@@ -271,7 +276,7 @@ def _build_pinned_pane(
         _render_neighborhood_diagram,
     )
 
-    verbose = show_diagrams_mode == "full"
+    verbose = facets.scope == "full" and facets.state_detail == "full"
 
     def _render_one(target: FSMLoop, highlight: str | None, prev: str | None) -> str:
         if detail == "single":
@@ -283,15 +288,15 @@ def _build_pinned_pane(
                 edge_label_colors=edge_label_colors,
                 badges=badges,
                 highlight_color=highlight_color,
-                mode=show_diagrams_mode,
+                mode=facets.scope,
                 prev_state=prev,
             )
-        # "full"
-        mode = show_diagrams_mode
-        if mode in ("main", "mini") and highlight is not None:
+        # "full" (layered)
+        scope = facets.scope
+        if scope == "main" and highlight is not None:
             _filtered_edges, reachable = _filter_main_path_graph(target, _collect_edges(target))
             if highlight not in reachable:
-                mode = "full"
+                scope = "full"
         return _render_fsm_diagram(
             target,
             verbose=verbose,
@@ -299,7 +304,9 @@ def _build_pinned_pane(
             highlight_color=highlight_color,
             edge_label_colors=edge_label_colors,
             badges=badges,
-            mode=mode,
+            mode=scope,
+            suppress_labels=not facets.edge_labels,
+            title_only=facets.state_detail == "title",
         )
 
     prev_map = prev_state_at_depth or {}
@@ -333,7 +340,7 @@ def _render_pinned_pane(
     last_state_at_depth: dict[int, str],
     iteration_line: str,
     *,
-    show_diagrams_mode: str,
+    facets: DiagramFacets,
     highlight_color: str,
     edge_label_colors: dict[str, str] | None,
     badges: dict[str, str] | None,
@@ -365,7 +372,7 @@ def _render_pinned_pane(
             last_state_at_depth,
             iteration_line,
             cols,
-            show_diagrams_mode=show_diagrams_mode,
+            facets=facets,
             highlight_color=highlight_color,
             edge_label_colors=edge_label_colors,
             badges=badges,
@@ -373,9 +380,22 @@ def _render_pinned_pane(
             prev_state_at_depth=prev_map,
         )
 
+    # Build the fallback ladder based on facets source and topology.
+    # Explicit topology (source="topology"): render exactly once, no degradation.
+    # Preset/default: degrade through smaller topologies starting from the chosen one.
+    topo_detail = TOPOLOGY_TO_DETAIL[facets.topology]
+    if facets.source == "topology":
+        variants = [_build(topo_detail)]
+    elif topo_detail == "full":
+        variants = [_build("full"), _build("neighborhood"), _build("single")]
+    elif topo_detail == "neighborhood":
+        variants = [_build("neighborhood"), _build("single")]
+    else:  # inline / single
+        variants = [_build("single")]
+
     pinned, pinned_height = _choose_pinned_layout(
         rows,
-        [_build("full"), _build("neighborhood"), _build("single")],
+        variants,
         min_action_rows=min_action_rows,
     )
     print(pinned, flush=True)
@@ -564,9 +584,21 @@ def run_background(
         cmd.extend(["--llm-model", llm_model])
     if getattr(args, "verbose", False):
         cmd.append("--verbose")
-    show_diagrams_mode = getattr(args, "show_diagrams", None)
-    if show_diagrams_mode is not None:
-        cmd.extend(["--show-diagrams", show_diagrams_mode])
+    show_diagrams_raw = getattr(args, "show_diagrams", None)
+    if show_diagrams_raw is not None:
+        if show_diagrams_raw is True:
+            cmd.append("--show-diagrams")
+        else:
+            cmd.extend(["--show-diagrams", show_diagrams_raw])
+    diagram_edge_labels = getattr(args, "diagram_edge_labels", None)
+    if diagram_edge_labels is not None:
+        cmd.extend(["--diagram-edge-labels", diagram_edge_labels])
+    diagram_state_detail = getattr(args, "diagram_state_detail", None)
+    if diagram_state_detail is not None:
+        cmd.extend(["--diagram-state-detail", diagram_state_detail])
+    diagram_scope = getattr(args, "diagram_scope", None)
+    if diagram_scope is not None:
+        cmd.extend(["--diagram-scope", diagram_scope])
     if getattr(args, "quiet", False):
         cmd.append("--quiet")
     if getattr(args, "queue", False):
@@ -634,15 +666,8 @@ def run_foreground(
         raise ValueError(f"run_foreground: invalid mode {mode!r}; expected 'run' or 'resume'")
     quiet = getattr(args, "quiet", False)
     verbose = getattr(args, "verbose", False)
-    # Tri-state: None (disabled), "main", "full", or "mini". Legacy boolean True maps to "main".
-    raw_show_diagrams = getattr(args, "show_diagrams", None)
-    if raw_show_diagrams is True:
-        show_diagrams_mode: str | None = "main"
-    elif raw_show_diagrams in ("main", "full", "mini"):
-        show_diagrams_mode = raw_show_diagrams
-    else:
-        show_diagrams_mode = None
-    show_diagrams = show_diagrams_mode is not None
+    facets: DiagramFacets | None = resolve_facets(args)
+    show_diagrams = facets is not None
     clear_screen = getattr(args, "clear", False)
     if not quiet:
         print(f"Running loop: {colorize(fsm.name, '1')}")
@@ -666,7 +691,7 @@ def run_foreground(
 
     def _redraw_pinned(state0: str) -> None:
         """Redraw the pinned pane in place using the current depth-0 state."""
-        assert show_diagrams_mode is not None
+        assert facets is not None
         iter_line = (
             f"[{current_iteration[0]}/{fsm.max_iterations}] "
             f"{colorize(state0, '1')} ({colorize(_elapsed_str(), '2')})"
@@ -677,7 +702,7 @@ def run_foreground(
             child_fsm_stack,
             last_state_at_depth,
             iter_line,
-            show_diagrams_mode=show_diagrams_mode,
+            facets=facets,
             highlight_color=highlight_color,
             edge_label_colors=edge_label_colors,
             badges=badges,
@@ -753,17 +778,17 @@ def run_foreground(
                     _render_fsm_diagram,
                 )
 
-                assert show_diagrams_mode is not None  # narrows for type checker
+                assert facets is not None
                 parent_highlight = last_state_at_depth.get(0)
-                # Fall back to full when the highlighted state is hidden in main mode.
-                parent_mode = show_diagrams_mode
+                # Fall back to full scope when the highlighted state is hidden in main scope.
+                parent_scope = facets.scope
                 fallback_note: str | None = None
-                if parent_mode in ("main", "mini") and parent_highlight is not None:
+                if parent_scope == "main" and parent_highlight is not None:
                     _filtered_edges, parent_reachable = _filter_main_path_graph(
                         fsm, _collect_edges(fsm)
                     )
                     if parent_highlight not in parent_reachable:
-                        parent_mode = "full"
+                        parent_scope = "full"
                         fallback_note = (
                             f"(showing full diagram: active state "
                             f"{parent_highlight!r} is off the main path)"
@@ -774,7 +799,9 @@ def run_foreground(
                     highlight_color=highlight_color,
                     edge_label_colors=edge_label_colors,
                     badges=badges,
-                    mode=parent_mode,
+                    mode=parent_scope,
+                    suppress_labels=not facets.edge_labels,
+                    title_only=facets.state_detail == "title",
                 )
                 header_text = f"== loop: {fsm.name} "
                 header = header_text + "=" * max(0, tw - len(header_text))
@@ -789,14 +816,14 @@ def run_foreground(
                         separator = separator_text + "\u2500" * max(0, tw - len(separator_text))
                         print(separator, flush=True)
                         child_highlight = last_state_at_depth.get(d + 1)
-                        child_mode = show_diagrams_mode
+                        child_scope = facets.scope
                         child_note: str | None = None
-                        if child_mode in ("main", "mini") and child_highlight is not None:
+                        if child_scope == "main" and child_highlight is not None:
                             _ce, child_reachable = _filter_main_path_graph(
                                 child_fsm_at_d, _collect_edges(child_fsm_at_d)
                             )
                             if child_highlight not in child_reachable:
-                                child_mode = "full"
+                                child_scope = "full"
                                 child_note = (
                                     f"(showing full diagram: active state "
                                     f"{child_highlight!r} is off the main path)"
@@ -809,7 +836,9 @@ def run_foreground(
                             highlight_color=highlight_color,
                             edge_label_colors=edge_label_colors,
                             badges=badges,
-                            mode=child_mode,
+                            mode=child_scope,
+                            suppress_labels=not facets.edge_labels,
+                            title_only=facets.state_detail == "title",
                         )
                         print(child_diagram, flush=True)
             # In pinned mode the iteration line is part of the pinned pane;

@@ -721,17 +721,17 @@ def _render_layered_diagram(
     highlight_color: str,
     edge_label_colors: dict[str, str] | None = None,
     badges: dict[str, str] | None = None,
-    mode: str = "full",
+    title_only: bool = False,
+    suppress_labels: bool = False,
 ) -> str:
     """Render FSM using layered (Sugiyama-style) vertical layout.
 
-    When ``mode == "mini"``, per-state body lines are suppressed and inter-state
-    edges render without labels (skeleton view for ``--show-diagrams=mini``).
+    When ``title_only`` is True, per-state body lines are suppressed.
+    When ``suppress_labels`` is True, inter-state edges render without labels.
     """
     terminal_states = terminal_states or set()
     fsm_states = fsm_states or {}
     tw = terminal_width()
-    title_only = mode == "mini"
 
     # Flatten layers to get all states
     all_states = [s for layer in layers for s in layer]
@@ -1069,7 +1069,7 @@ def _render_layered_diagram(
 
     # Draw self-loop markers immediately below their boxes
     for sname, labels in self_loops.items():
-        marker = "\u21ba" if title_only else "\u21ba " + ", ".join(labels)
+        marker = "\u21ba" if suppress_labels else "\u21ba " + ", ".join(labels)
         r = row_start[sname] + box_height[sname]
         if r < total_height:
             cx = col_center[sname]
@@ -1167,7 +1167,7 @@ def _render_layered_diagram(
                     if _cand not in used_label_rows:
                         label_row = _cand
                         break
-            if label_row < total_height and not title_only:
+            if label_row < total_height and not suppress_labels:
                 used_label_rows.add(label_row)
                 label_start = dst_cc + 2
                 max_col = total_content_w if skip_forward_edges else total_width
@@ -1225,7 +1225,7 @@ def _render_layered_diagram(
     for src, dst, label in all_same_layer:
         if src not in col_start or dst not in col_start:
             continue
-        if title_only:
+        if suppress_labels:
             label = ""
         name_row = row_start[src] + 1
         src_right = col_start[src] + box_width[src]
@@ -1583,6 +1583,9 @@ def _render_fsm_diagram(
     edge_label_colors: dict[str, str] | None = None,
     badges: dict[str, str] | None = None,
     mode: str = "full",
+    *,
+    suppress_labels: bool = False,
+    title_only: bool = False,
 ) -> str:
     """Render an adaptive text diagram of the FSM graph.
 
@@ -1599,11 +1602,13 @@ def _render_fsm_diagram(
             Falls back to hardcoded defaults when None.
         badges: Optional glyph-key→string mapping for state type badges.
             Falls back to hardcoded defaults when None.
-        mode: "full" (default) renders every edge and state. "main" hides
-            off-happy-path edges (error, partial, blocked, retry_exhausted,
-            rate_limit_exhausted, throttle_hard) and the states only reachable
-            through them. Callers that need full-detail dumps (e.g. ``ll-loop
-            info``) keep the default.
+        mode: Controls edge scope: "main" (default when filtering active) hides
+            off-happy-path edges. "full" renders every edge and state. "mini" is
+            an alias for main-scope; use ``suppress_labels=True, title_only=True``
+            instead. Callers that need full-detail dumps (e.g. ``ll-loop info``)
+            keep the default "full".
+        suppress_labels: If True, edge labels are omitted from all rendered edges.
+        title_only: If True, state boxes show only the state name (no action body).
     """
     edges = _collect_edges(fsm)
     if mode in ("main", "mini"):
@@ -1650,7 +1655,8 @@ def _render_fsm_diagram(
             highlight_color,
             edge_label_colors,
             badges,
-            mode=mode,
+            title_only=title_only or (mode == "mini"),
+            suppress_labels=suppress_labels or (mode == "mini"),
         )
 
     # Compute max node width to determine width constraint
@@ -1692,7 +1698,8 @@ def _render_fsm_diagram(
         highlight_color,
         edge_label_colors,
         badges,
-        mode=mode,
+        title_only=title_only or (mode == "mini"),
+        suppress_labels=suppress_labels or (mode == "mini"),
     )
 
 
@@ -1887,17 +1894,16 @@ def _render_horizontal_simple(
     highlight_color: str,
     edge_label_colors: dict[str, str] | None = None,
     badges: dict[str, str] | None = None,
-    mode: str = "full",
+    title_only: bool = False,
+    suppress_labels: bool = False,
 ) -> str:
     """Simple horizontal rendering for single-state or very simple FSMs.
 
-    When ``mode == "mini"``, per-state body lines are suppressed and self-loop
-    marker rows are omitted (skeleton view for ``--show-diagrams=mini``).
+    When ``title_only`` is True, per-state body lines and self-loop labels are suppressed.
+    When ``suppress_labels`` is True, self-loop markers omit label text.
     """
     if not main_path:
         return ""
-
-    title_only = mode == "mini"
     all_states = list(main_path)
     display_label = _compute_display_labels(all_states, initial, terminal_states)
 
@@ -1951,7 +1957,7 @@ def _render_horizontal_simple(
         for src, _, label in self_loops_list:
             self_labels.setdefault(src, []).append(label)
         for sname, labels in self_labels.items():
-            marker = "\u21ba" if title_only else "\u21ba " + ", ".join(labels)
+            marker = "\u21ba" if suppress_labels else "\u21ba " + ", ".join(labels)
             self_row = [" "] * total_width
             cx = col_center.get(sname, 0)
             pos = max(0, cx - len(marker) // 2)

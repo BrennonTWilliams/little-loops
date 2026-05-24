@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.108.0] - 2026-05-24
+
+### Changed
+
+- **`--show-diagrams` restructured into topology/preset/modifier axes (ENH-1672)** — The old `main|full|mini` string values are replaced by a composable flag set. Preset aliases (`summary`, `detailed`, `clean`) and named topologies (`layered`, `neighborhood`, `inline`) act as the primary flag; three new modifier flags apply orthogonal overrides: `--diagram-edge-labels` (show/hide edge labels), `--diagram-state-detail` (show/hide state body), `--diagram-scope` (filter visible states). Bare `--show-diagrams` defaults to the `summary` preset. **Breaking change**: scripts passing `--show-diagrams=main`, `--show-diagrams=full`, or `--show-diagrams=mini` must migrate to `summary`, `detailed`, and `clean` respectively.
+
 ## [1.107.0] - 2026-05-24
 
 ### Added

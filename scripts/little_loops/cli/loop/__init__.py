@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from little_loops.cli_args import add_context_limit_arg, add_handoff_threshold_arg
+from little_loops.cli.loop.diagram_modes import _parse_show_diagrams
 
 __all__ = ["main_loop"]
 
@@ -138,20 +139,38 @@ Examples:
     run_parser.add_argument(
         "--show-diagrams",
         nargs="?",
-        const="main",
+        const=True,
         default=None,
-        choices=["main", "full", "mini"],
+        type=_parse_show_diagrams,
         metavar="MODE",
         help=(
-            "Display the FSM box diagram after each step with the active state "
-            "highlighted. MODE=main (default with bare flag) hides off-happy-path "
-            "edges (error, partial, blocked, retry_exhausted, rate_limit_exhausted, "
-            "throttle_hard) and the states only reachable through them. MODE=full "
-            "renders every edge and state. MODE=mini is a skeleton view: each "
-            "state box shows only its title (no body lines) and edges render "
-            "without labels; inherits main's edge filter. If the active state is "
-            "hidden in main/mini, the renderer falls back to full for that iteration."
+            "Display the FSM diagram after each step. MODE is a topology "
+            "(layered|neighborhood|inline) or a preset (detailed|summary|clean|local|oneline). "
+            "Bare --show-diagrams defaults to the 'summary' preset (layered, main-path scope). "
+            "Use --diagram-edge-labels, --diagram-state-detail, --diagram-scope to override "
+            "individual preset facets."
         ),
+    )
+    run_parser.add_argument(
+        "--diagram-edge-labels",
+        choices=["on", "off"],
+        default=None,
+        metavar="on|off",
+        help="Show or hide edge labels in the FSM diagram (default: on). Overrides preset.",
+    )
+    run_parser.add_argument(
+        "--diagram-state-detail",
+        choices=["title", "full"],
+        default=None,
+        metavar="title|full",
+        help="State box content: 'title' = name only, 'full' = include action body (default: full). Overrides preset.",
+    )
+    run_parser.add_argument(
+        "--diagram-scope",
+        choices=["main", "full"],
+        default=None,
+        metavar="main|full",
+        help="Edge scope: 'main' hides off-happy-path edges, 'full' shows all (default: full). Overrides preset.",
     )
     run_parser.add_argument(
         "--clear",
@@ -259,20 +278,38 @@ Examples:
     resume_parser.add_argument(
         "--show-diagrams",
         nargs="?",
-        const="main",
+        const=True,
         default=None,
-        choices=["main", "full", "mini"],
+        type=_parse_show_diagrams,
         metavar="MODE",
         help=(
-            "Display the FSM box diagram after each step with the active state "
-            "highlighted. MODE=main (default with bare flag) hides off-happy-path "
-            "edges (error, partial, blocked, retry_exhausted, rate_limit_exhausted, "
-            "throttle_hard) and the states only reachable through them. MODE=full "
-            "renders every edge and state. MODE=mini is a skeleton view: each "
-            "state box shows only its title (no body lines) and edges render "
-            "without labels; inherits main's edge filter. If the active state is "
-            "hidden in main/mini, the renderer falls back to full for that iteration."
+            "Display the FSM diagram after each step. MODE is a topology "
+            "(layered|neighborhood|inline) or a preset (detailed|summary|clean|local|oneline). "
+            "Bare --show-diagrams defaults to the 'summary' preset (layered, main-path scope). "
+            "Use --diagram-edge-labels, --diagram-state-detail, --diagram-scope to override "
+            "individual preset facets."
         ),
+    )
+    resume_parser.add_argument(
+        "--diagram-edge-labels",
+        choices=["on", "off"],
+        default=None,
+        metavar="on|off",
+        help="Show or hide edge labels in the FSM diagram (default: on). Overrides preset.",
+    )
+    resume_parser.add_argument(
+        "--diagram-state-detail",
+        choices=["title", "full"],
+        default=None,
+        metavar="title|full",
+        help="State box content: 'title' = name only, 'full' = include action body (default: full). Overrides preset.",
+    )
+    resume_parser.add_argument(
+        "--diagram-scope",
+        choices=["main", "full"],
+        default=None,
+        metavar="main|full",
+        help="Edge scope: 'main' hides off-happy-path edges, 'full' shows all (default: full). Overrides preset.",
     )
     resume_parser.add_argument(
         "--clear",
