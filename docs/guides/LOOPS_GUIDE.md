@@ -280,11 +280,11 @@ ll-loop run general-task "Refactor the auth module to use dependency injection"
 
 The loop follows a structured cycle:
 
-1. **Define Done** — writes verifiable acceptance criteria to `.loops/tmp/general-task-dod.md`
+1. **Define Done** — writes verifiable acceptance criteria to `.loops/tmp/general-task-dod.md`. When the task has a runtime surface (running code, executing tests, installing a service, producing output at runtime), the DoD must include runtime-behavior criteria — static file/import checks alone are insufficient.
 2. **Plan** — decomposes the task into discrete steps in `.loops/tmp/general-task-plan.md`
 3. **Execute** — completes the first unchecked step and marks it done in the plan
-4. **Verify** — checks each DoD criterion against actual filesystem/command output (uses `llm_structured` evaluation)
-5. **Continue** — if any criteria remain unchecked, loops back to execute the next step
+4. **Verify** — reads both the DoD and the plan, reconciles plan-vs-DoD coverage (adding new DoD criteria for any plan step that lacks coverage), verifies each criterion against actual filesystem/command output, then sample re-verifies up to 3 already-`[x]` criteria and appends a `## Sample Verification` section to the DoD. The `llm_structured` evaluator confirms three structural conditions over the action's emitted output: DoD all `[x]`, plan all `[x]`, and sample verification reports no failures.
+5. **Continue** — if an unchecked plan step exists, executes the next one. If the plan is fully `[x]` but a DoD criterion remains unchecked, appends a remediation step to the plan and completes it — preventing the loop from spinning to `max_iterations` when DoD coverage diverges from plan completion.
 
 The loop runs up to 100 iterations and uses `on_handoff: spawn` to continue across session boundaries. Each execution step is deliberately scoped to a single plan item to keep changes small and verifiable.
 

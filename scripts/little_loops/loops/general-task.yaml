@@ -20,7 +20,15 @@ states:
       ```
 
       Each criterion must be independently verifiable by checking files, running commands,
-      or reading outputs. Do NOT start any work. Only write the DoD file.
+      or reading outputs.
+
+      If the task involves running code, executing tests, installing a service, or
+      producing output at runtime, the DoD MUST include criteria for that runtime
+      behavior (e.g., "dry-run exits 0", "service plist loads without launchd errors",
+      "first injection produces expected output"). Static file/import checks alone
+      are insufficient when the task has a runtime surface.
+
+      Do NOT start any work. Only write the DoD file.
     action_type: prompt
     next: plan
     on_error: diagnose
@@ -59,34 +67,77 @@ states:
     on_error: diagnose
 
   check_done:
-    action: >
-      Read the Definition of Done at ${env.PWD}/.loops/tmp/general-task-dod.md.
+    action: |
+      Read both files:
+      - ${env.PWD}/.loops/tmp/general-task-dod.md — Definition of Done (criteria)
+      - ${env.PWD}/.loops/tmp/general-task-plan.md — Task Plan (steps)
+
+      Step 1 — Plan-vs-DoD coverage reconciliation:
+      For EVERY plan step, confirm at least one DoD criterion covers it. If a plan step
+      has no matching DoD criterion, ADD a new criterion to the DoD file before
+      evaluating completion. Do NOT silently mark plan steps [x] without DoD coverage.
+
+      Step 2 — Verify each DoD criterion by evidence:
       For EACH criterion, actively verify it is met by checking the actual state of
       the filesystem, running relevant commands, or reading relevant files.
-      Do NOT assume — verify by evidence.
+      Do NOT assume — verify by evidence. Update the DoD file, marking each criterion
+      [x] if verified or leaving [ ] with a one-line note explaining what is missing.
 
-      Update the DoD file, marking each criterion [x] if verified or leaving [ ]
-      with a one-line note explaining what is missing.
+      Step 3 — Sample re-verification:
+      Pick up to min(3, total_checked) already-[x] DoD criteria and INDEPENDENTLY
+      re-verify each by re-running the command / re-reading the file / re-checking
+      the filesystem. Append a `## Sample Verification` section to the DoD file in
+      this exact format:
+      ```
+      ## Sample Verification
+      - [x] <criterion>: <evidence>
+      - [x] <criterion>: <evidence>
+      - [ ] <criterion>: FAILED — <what happened>
+      ```
+      If any sampled criterion fails re-verification, flip the corresponding criterion
+      in the Verification Criteria list back to [ ] with a note explaining the mismatch.
+
+      Print the final contents of the DoD file (including the new Sample Verification
+      section) and the plan file to stdout so the evaluator can confirm completeness.
     action_type: prompt
     evaluate:
       type: llm_structured
-      prompt: >
-        Read ${env.PWD}/.loops/tmp/general-task-dod.md.
-        Are ALL criteria marked [x]?
-        Answer YES only if every criterion is checked off. Answer NO if any remain unchecked.
+      prompt: |
+        The check_done action wrote a sample-verification report and updated both the
+        DoD and plan files. From the action output below, answer YES only if ALL of
+        the following are true:
+        (1) The DoD file shows ALL Verification Criteria marked [x]
+        (2) The plan file shows ALL plan steps marked [x]
+        (3) The `## Sample Verification` section reports every sampled criterion as [x]
+            with passing evidence (no FAILED entries)
+        Answer NO and specify which condition(s) were not met if any criterion or plan
+        step remains [ ], or if any sampled criterion is reported as FAILED.
     on_yes: done
     on_no: continue_work
     on_error: diagnose
 
   continue_work:
-    action: >
+    action: |
       Your task is: ${context.input}
 
-      A step-by-step plan exists at ${env.PWD}/.loops/tmp/general-task-plan.md.
-      Read it, find the FIRST unchecked step (- [ ]), complete ONLY that step,
-      then mark it done (- [x]) in the file.
+      Read both files:
+      - ${env.PWD}/.loops/tmp/general-task-plan.md — Task Plan (steps)
+      - ${env.PWD}/.loops/tmp/general-task-dod.md — Definition of Done (criteria)
 
-      Do not work on multiple steps. Complete one step, update the plan file, stop.
+      Case A — Unchecked plan step exists:
+      Find the FIRST unchecked plan step (- [ ]), complete ONLY that step, then mark
+      it done (- [x]) in the plan file. Do not work on multiple steps. Stop after one.
+
+      Case B — Plan is fully [x] but a DoD criterion remains unchecked:
+      Find the first unchecked DoD criterion. APPEND a new remediation step to the
+      plan file (as - [ ] Step N: ...) describing the work needed to satisfy that
+      criterion, then complete that step and mark it [x] in the plan. Do not touch
+      the DoD file in this case — the next check_done will verify it.
+
+      Case C — Plan is fully [x] AND DoD is fully [x]:
+      Do nothing. The next check_done will route to done.
+
+      Complete at most one step per invocation, then stop.
     action_type: prompt
     next: check_done
     on_error: diagnose

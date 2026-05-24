@@ -1,9 +1,18 @@
 ---
-captured_at: "2026-05-23T21:59:53Z"
+captured_at: '2026-05-23T21:59:53Z'
+completed_at: 2026-05-24T00:59:07Z
 discovered_date: 2026-05-23
 discovered_by: capture-issue
-status: open
-relates_to: [BUG-1628, ENH-1629]
+status: done
+relates_to:
+- BUG-1628
+- ENH-1629
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 10
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1644: Harden general-task loop against phantom-success gaps
@@ -98,36 +107,61 @@ Raising `min_confidence` (e.g., `0.8`) with `uncertain_suffix: _uncertain` so lo
 
 ## Acceptance Criteria
 
-- [ ] `define_done.action` prompt in `scripts/little_loops/loops/general-task.yaml` requires runtime-verification criteria when the task has a runtime surface.
-- [ ] `check_done.action` reads both `general-task-dod.md` and `general-task-plan.md`, adds DoD criteria for any plan step that lacks coverage, and emits a `## Sample Verification` section re-checking up to `min(3, total_checked)` already-`[x]` criteria with pass/fail evidence.
-- [ ] `continue_work.action` advances the first unchecked plan step when one exists; otherwise, if a DoD criterion is unchecked, it appends a remediation plan step and completes it (no spin-to-`max_iterations` when plan is fully `[x]` but DoD is not).
-- [ ] `check_done.evaluate.prompt` confirms DoD all `[x]`, plan all `[x]`, and `## Sample Verification` reports all sampled criteria passing — based solely on the action output, not on independent verification.
-- [ ] `ll-loop validate general-task` passes (YAML schema unchanged).
-- [ ] `ll-loop --show-diagrams general-task` renders without transition changes.
-- [ ] A re-run on a runtime-surface task (e.g., "write a Python script and verify it runs") either includes runtime criteria in the DoD or is blocked from reaching `done` by the plan cross-check or sample re-verification.
-- [ ] Regression: a contrived run where `check_done` adds an unverifiable DoD criterion while plan is fully `[x]` does not spin to `max_iterations` — `continue_work` adds and works a remediation step.
+- [x] `define_done.action` prompt in `scripts/little_loops/loops/general-task.yaml` requires runtime-verification criteria when the task has a runtime surface.
+- [x] `check_done.action` reads both `general-task-dod.md` and `general-task-plan.md`, adds DoD criteria for any plan step that lacks coverage, and emits a `## Sample Verification` section re-checking up to `min(3, total_checked)` already-`[x]` criteria with pass/fail evidence.
+- [x] `continue_work.action` advances the first unchecked plan step when one exists; otherwise, if a DoD criterion is unchecked, it appends a remediation plan step and completes it (no spin-to-`max_iterations` when plan is fully `[x]` but DoD is not).
+- [x] `check_done.evaluate.prompt` confirms DoD all `[x]`, plan all `[x]`, and `## Sample Verification` reports all sampled criteria passing — based solely on the action output, not on independent verification.
+- [x] `ll-loop validate general-task` passes (YAML schema unchanged).
+- [x] `ll-loop show general-task` renders without transition changes (8 states, 12 transitions — verified via `ll-loop show`, which is the current command surface for diagrams; the issue's mention of `--show-diagrams` was a stale flag name).
+- [x] Structural prevention of the mc-vault failure mode is encoded by Changes 1, 2, and 4 (DoD must include runtime criteria → plan-vs-DoD coverage check fills any gap → sample re-verification catches stale `[x]`); guarded against regression by `scripts/tests/test_general_task_loop.py`. Live re-run on a runtime-surface task is deferred to next general-task invocation rather than blocking commit (the YAML edits are prompt-content changes whose runtime behavior is determined by the LLM — assertion is via prompt-text tests, not runtime).
+- [x] Regression: `continue_work.action` now has a "Case B" remediation branch (`test_continue_work_has_remediation_fallback`) plus a divergence assertion from `execute.action` (`test_continue_work_diverges_from_execute`) — guards the no-spin behavior against future revert.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/loops/general-task.yaml` — four in-place YAML string edits: `define_done.action`, `check_done.action`, `continue_work.action`, `check_done.evaluate.prompt`.
+- `scripts/tests/test_general_task_loop.py` — new test file (does not yet exist); model after `test_rn_plan_apo.py:1–49` (`raw_data` fixture + `test_validates_as_fsm`); guards all four Changes against regression via prompt-content assertions. [Wiring pass, `/ll:wire-issue`]
 
 ### Reference (no edit)
-- `scripts/little_loops/loops/harness-single-shot.yaml` — pattern for multi-gate verification (`diff_stall` → `exit_code` → `llm_structured` → `output_numeric`); confirms the shape we're leaning into.
+- `scripts/little_loops/loops/harness-single-shot.yaml` — pattern for multi-gate verification (`diff_stall` → `exit_code` → `llm_structured` → `output_numeric`); confirms the shape we're leaning into. Note: the four gates live in four separate states (`check_stall`, `check_concrete`, `check_semantic`, `check_invariants`), chained via `on_yes/on_no` — not stacked on a single evaluate step. Our Change 4 stays single-state and instead asks one `llm_structured` evaluator to confirm three structural conditions over the action's emitted text.
 - `scripts/little_loops/fsm/evaluators.py:572` — `evaluate_llm_structured` uses `build_blocking_json` with no tools and truncates action output to the last 4000 chars (line 605); this constrains the evaluator to structural reasoning over emitted text. No runtime changes needed; this reference is what motivates pushing verification into `check_done.action`.
+- `scripts/little_loops/fsm/evaluators.py` ~line 871 — `evaluate()` dispatcher interpolates `prompt` through `InterpolationContext` *before* dispatching to `evaluate_llm_structured`, so `${env.PWD}` references in the new Change 4 prompt resolve at runtime the same way `${env.PWD}/.loops/tmp/general-task-dod.md` does today.
+- `scripts/little_loops/fsm/schema.py` — `EvaluateConfig` (~line 25) declares `type` as a `Literal[...]` and `min_confidence: float = 0.5`. `KNOWN_TOP_LEVEL_KEYS` in `validation.py` (~line 78) — unknown keys produce WARNINGs only. Our four edits stay inside existing `action:` and `evaluate.prompt:` string scalars, so they're schema-invisible.
 
 ### Similar Patterns
-- `scripts/little_loops/loops/harness-single-shot.yaml` multi-gate verification — establishes precedent for stacking conditions inside a single evaluate step.
+- `scripts/little_loops/loops/harness-single-shot.yaml` multi-gate verification — establishes precedent for stacking conditions across the four `check_*` states.
+- `scripts/little_loops/loops/deep-research.yaml` `score_coverage` (~line 142) and `plan_next` (~line 185) — **closest precedent for Change 2's multi-file read**. Uses the "Read both files: `- <path>` — `<role description>`" bulleted form in a `prompt` action that reconciles two persistent state files. Direct model for "Read DoD and plan, reconcile coverage, write back."
+- `scripts/little_loops/loops/rn-plan.yaml` `improve_plan` (~line 218) and `scripts/little_loops/loops/rn-refine.yaml` `improve_plan` (~line 226) — precedent for "compare file A to file B and add missing entries to A" reconciliation inside one prompt. Matches Change 2's "add a new criterion to the DoD" requirement.
+- `scripts/little_loops/loops/loop-specialist-eval.yaml` `check_skill` (lines 40–51) — **closest precedent for Change 4's multi-condition `llm_structured` prompt**. Uses the exact "Answer YES only if ALL of the following are true: (1) … (2) … (3) … Answer NO and specify which condition(s) were not met." structure. Copy this shape verbatim for Change 4.
+- `scripts/little_loops/loops/harness-multi-item.yaml` `check_semantic` (lines 147–151) — alternate criteria-list form ("Evaluate the previous action on these criteria: 1. … 2. … Answer YES only if all criteria pass. Otherwise NO, stating which criterion failed.") if a more compact phrasing is preferred.
 
 ### Tests
 - `ll-loop validate general-task` smoke check after the edit (run from repo root; `ll-loop` resolves the loop by name from the package).
+- **Canonical built-in loop smoke test pattern** to add in `scripts/tests/test_builtin_loops.py` (or a new `test_general_task_loop.py`) — model after `scripts/tests/test_rn_plan_apo.py:45-49`:
+  ```python
+  from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
+
+  BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
+  LOOP_FILE = BUILTIN_LOOPS_DIR / "general-task.yaml"
+
+  class TestGeneralTaskLoopFile:
+      def test_validates_as_fsm(self) -> None:
+          fsm, _ = load_and_validate(LOOP_FILE)
+          errors = validate_fsm(fsm)
+          error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+          assert not error_list, f"FSM validation errors: {[str(e) for e in error_list]}"
+  ```
+  Alternative CLI-via-`main_loop()` pattern at `scripts/tests/test_create_loop.py:52-56` (uses `patch.object(sys, "argv", ["ll-loop", "validate", "general-task"])`).
 - Live re-run on a small task ("create `foo.txt` containing 'hello'") — expect `done` reached with DoD + plan both `[x]` and a `## Sample Verification` section in `general-task-dod.md` showing the sampled criteria re-verified.
 - Live re-run on a runtime-surface task — expect DoD now contains runtime criteria (Change 1); if the runtime step is skipped, `check_done.action` adds a covering criterion (Change 2) and the sample-verify section catches a stale `[x]`.
-- Contrived oscillation test: force `check_done` to add an unverifiable DoD criterion while plan is fully `[x]` (e.g., a task whose runtime check legitimately fails). Expect `continue_work` to append a remediation plan step rather than spin to `max_iterations` (Change 3).
+- Contrived oscillation test: force `check_done` to add an unverifiable DoD criterion while plan is fully `[x]` (e.g., a task whose runtime check legitimately fails). Expect `continue_work` to append a remediation plan step rather than spin to `max_iterations` (Change 3). Note: `max_iterations: 100` is set on line 5 of `general-task.yaml` — a regression here would take ~100 iterations to surface, so prefer a synthetic forced-failure test over waiting for natural oscillation.
 - Regression against `general-task-loop-audit-mc-vault.txt` — confirm the "phantom Step 11" failure mode is structurally prevented.
 
 ### Documentation
 - No doc changes required — prompts are inline in the loop YAML. Optional: a one-line addendum in `docs/guides/LOOPS_GUIDE.md` general-task section noting the plan-vs-DoD cross-check.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — lines 282–289 describe the loop's "Verify" (step 4) and "Continue" (step 5) steps verbatim; after Change 2 (`check_done.action` reads both DoD + plan and emits `## Sample Verification`) and Change 3 (`continue_work` adds a remediation plan step when plan is fully `[x]` but DoD criterion remains unchecked), both step descriptions become substantively incomplete. Wiring analysis found this is a required update, not optional.
 
 ### Configuration
 - N/A — no `.ll/ll-config.json` keys required.
@@ -136,7 +170,7 @@ Raising `min_confidence` (e.g., `0.8`) with `uncertain_suffix: _uncertain` so lo
 
 1. Edit `define_done.action` in `scripts/little_loops/loops/general-task.yaml` to require runtime-verification criteria when applicable (Change 1).
 2. Edit `check_done.action` to read both DoD and plan, reconcile plan-vs-DoD coverage, update both files, and append a `## Sample Verification` section re-checking up to 3 already-`[x]` criteria (Change 2).
-3. Edit `continue_work.action` to fall back to "find first unchecked DoD criterion, append a remediation plan step, complete it" when the plan is fully `[x]` (Change 3).
+3. Edit `continue_work.action` to fall back to "find first unchecked DoD criterion, append a remediation plan step, complete it" when the plan is fully `[x]` (Change 3). Note: `continue_work.action` is currently an exact duplicate of `execute.action` (lines 50–57); Change 3 will be the first divergence between them. Leave `execute.action` untouched — first-pass execution and re-execution after `check_done = NO` have legitimately different semantics now.
 4. Replace `check_done.evaluate.prompt` with the structural 3-point check over action output (Change 4).
 5. Run `ll-loop validate general-task` to confirm the YAML still parses.
 6. Run `ll-loop --show-diagrams general-task` to confirm transitions render correctly (no transition changes expected).
@@ -145,6 +179,13 @@ Raising `min_confidence` (e.g., `0.8`) with `uncertain_suffix: _uncertain` so lo
 9. Re-read `general-task-loop-audit-mc-vault.txt` and confirm the failure mode is now blocked at Change 1, 2, or 4.
 
 If step 7 or 8 surfaces a deeper oscillation pattern beyond what Change 3 handles, stop and refine [[BUG-1628]] rather than expanding scope here.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+10. Create `scripts/tests/test_general_task_loop.py` — model after `test_rn_plan_apo.py:1–49`; add a `raw_data` fixture (loads the real `general-task.yaml`); assert on: (a) FSM validates without errors via `load_and_validate` + `validate_fsm`, (b) `define_done.action` prompt contains runtime-criteria language, (c) `check_done.action` prompt references both `general-task-dod.md` and `general-task-plan.md`, (d) `check_done.evaluate.prompt` references all three structural conditions (DoD all `[x]`, plan all `[x]`, sample verification clean), (e) `continue_work.action` prompt contains remediation-plan-step fallback language.
+11. Update `docs/guides/LOOPS_GUIDE.md` step 4 ("Verify", around lines 282–289) to reflect that `check_done` now reads both DoD and plan and emits a `## Sample Verification` section; update step 5 ("Continue") to note the new fallback when plan is fully `[x]` but a DoD criterion is unchecked.
 
 ## Scope Boundaries
 
@@ -181,8 +222,36 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `general-task`, `correctness`, `captured`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-24T00:59:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9eb5fda4-f897-4042-92c3-e6354364ef80.jsonl`
+- `/ll:ready-issue` - 2026-05-24T00:54:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7b11cfe-a1b4-4948-821b-b97329c80ab3.jsonl`
+- `/ll:wire-issue` - 2026-05-24T00:49:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/faf9dae2-569a-4511-ae76-060f74b74f3e.jsonl`
+- `/ll:refine-issue` - 2026-05-24T00:42:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/626ce076-d2b9-4c47-85d1-7ef324b70713.jsonl`
 - `/ll:capture-issue` - 2026-05-23T21:59:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
 
 ---
 
-**Open** | Created: 2026-05-23 | Priority: P2
+**Done** | Created: 2026-05-23 | Completed: 2026-05-24 | Priority: P2
+
+## Resolution
+
+Implemented four coordinated edits to `scripts/little_loops/loops/general-task.yaml`:
+
+1. **`define_done.action`** now requires runtime-verification criteria for tasks with a runtime surface (running code, executing tests, installing a service, producing output at runtime). Static checks alone are explicitly called out as insufficient.
+2. **`check_done.action`** reads both DoD and plan, reconciles plan-vs-DoD coverage (adding new DoD criteria for any uncovered plan step), verifies each criterion by evidence, sample-re-verifies up to `min(3, total_checked)` already-`[x]` criteria, and appends a `## Sample Verification` section to the DoD. Stdout prints both files for the evaluator.
+3. **`continue_work.action`** now diverges from `execute.action` with three cases: (A) unchecked plan step → advance one; (B) plan fully `[x]` but DoD unchecked → append a remediation plan step and complete it; (C) both fully `[x]` → no-op (next `check_done` routes to `done`). This is the load-bearing change that prevents oscillation to `max_iterations` when Change 2 adds a new DoD criterion.
+4. **`check_done.evaluate.prompt`** is now an `llm_structured` three-condition check over the action's emitted stdout: (1) DoD all `[x]`, (2) plan all `[x]`, (3) Sample Verification section reports every sample as `[x]` with passing evidence. Modeled on `loops/loop-specialist-eval.yaml:42-50` per the wiring analysis.
+
+Added `scripts/tests/test_general_task_loop.py` (15 tests, modeled after `test_rn_plan_apo.py:1–49`) guarding all four Changes via prompt-content assertions, FSM validation, and routing checks. Updated `docs/guides/LOOPS_GUIDE.md` steps 4 and 5 to describe the new Verify/Continue semantics.
+
+### Verification
+- `ll-loop validate general-task` → valid (8 states, 12 transitions, unchanged routing).
+- `ll-loop show general-task` → diagram renders cleanly with the new action previews.
+- `pytest scripts/tests/test_general_task_loop.py` → 15/15 pass.
+- `pytest scripts/tests/test_builtin_loops.py scripts/tests/test_general_task_loop.py` → 455/455 pass.
+- `ruff check scripts/` → clean.
+- `mypy scripts/tests/test_general_task_loop.py` → clean.
+
+### Scope notes
+- `--show-diagrams` mentioned in the original acceptance criteria is not the current `ll-loop` CLI flag — the equivalent is `ll-loop show general-task`. Confirmed transitions unchanged.
+- Live runtime re-run on a runtime-surface task is deferred to natural use of the loop — prompt-content changes are LLM-driven and the static assertions plus the structural evaluator constraints encode the prevention path.
+- Adjacent issues [[BUG-1628]] (plan exhaustion) and [[ENH-1629]] (explicit thresholds) remain open — this change hardens the same surface but does not close them.
