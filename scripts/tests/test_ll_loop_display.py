@@ -3228,3 +3228,132 @@ class TestRenderNeighborhoodDiagram:
 
         fsm = make_test_fsm()
         assert _render_neighborhood_diagram(fsm, "nonexistent") == ""
+
+    def test_single_succ_aligns_with_arrow_row_when_multiple_preds(self) -> None:
+        """3 preds + 1 succ: the succ box must sit on the arrow row, not row 0.
+
+        Regression: previously `_build_stack` filled top-down, so the lone
+        succ landed at row 0 while the arrow was drawn at the active state's
+        center row (row 4 for n_rows=3), pointing into empty space.
+        """
+        import re
+
+        from little_loops.cli.loop.layout import _render_neighborhood_diagram
+
+        fsm = make_test_fsm(
+            initial="a",
+            states={
+                "a": make_test_state(action="...", on_yes="target"),
+                "b": make_test_state(action="...", on_yes="target"),
+                "c": make_test_state(action="...", on_yes="target"),
+                "target": make_test_state(action="...", on_yes="end"),
+                "end": make_test_state(terminal=True),
+            },
+        )
+        out = _render_neighborhood_diagram(fsm, "target")
+        ansi_re = re.compile(r"\x1b\[[0-9;]*m")
+        lines = [ansi_re.sub("", ln) for ln in out.split("\n")]
+
+        target_row = next(i for i, ln in enumerate(lines) if "target" in ln)
+        end_row = next(i for i, ln in enumerate(lines) if "end" in ln)
+        # Active "target" label and lone succ "end" label must share the same
+        # row — that's the row the ──▶ arrow is drawn on.
+        assert target_row == end_row, (
+            f"target at row {target_row}, end at row {end_row}; "
+            f"output:\n{out}"
+        )
+
+    def test_main_mode_filters_on_error_preds(self) -> None:
+        """mode='main' must hide preds that only connect via on_error.
+
+        Contrast with mode='full' which still includes them.
+        """
+        from little_loops.cli.loop.layout import _render_neighborhood_diagram
+
+        fsm = make_test_fsm(
+            initial="a",
+            states={
+                "a": make_test_state(action="...", on_yes="target"),
+                "x_err_only": make_test_state(action="...", on_error="target"),
+                "target": make_test_state(action="...", on_yes="end"),
+                "end": make_test_state(terminal=True),
+            },
+        )
+        out_main = _render_neighborhood_diagram(fsm, "target", mode="main")
+        out_full = _render_neighborhood_diagram(fsm, "target", mode="full")
+        assert "x_err_only" not in out_main, out_main
+        assert "a" in out_main
+        assert "x_err_only" in out_full
+
+    def test_prev_state_pred_gets_orange_border(self) -> None:
+        """The pred named in prev_state renders with an ANSI 33 (orange) border."""
+        import re
+
+        from little_loops.cli import output as output_mod
+        from little_loops.cli.loop import layout as layout_mod
+        from little_loops.cli.loop.layout import _render_neighborhood_diagram
+
+        # Initial is "start" so the preds (alpha/beta/gamma) render as bare
+        # names rather than with the "→ " initial-state prefix.
+        fsm = make_test_fsm(
+            initial="start",
+            states={
+                "start": make_test_state(
+                    action="...", on_yes="alpha", on_no="beta", on_error="gamma"
+                ),
+                "alpha": make_test_state(action="...", on_yes="target"),
+                "beta": make_test_state(action="...", on_yes="target"),
+                "gamma": make_test_state(action="...", on_yes="target"),
+                "target": make_test_state(action="...", on_yes="end"),
+                "end": make_test_state(terminal=True),
+            },
+        )
+        with patch.object(output_mod, "_USE_COLOR", True):
+            out = _render_neighborhood_diagram(fsm, "target", prev_state="beta")
+
+        orange = f"\x1b[{layout_mod._PREV_STATE_COLOR}m"
+        ansi_re = re.compile(r"\x1b\[[0-9;]*m")
+        raw_lines = out.split("\n")
+        stripped = [ansi_re.sub("", ln) for ln in raw_lines]
+
+        def label_rows(label: str) -> list[str]:
+            # Box mid row looks like "│ <label>   │" once ANSI is stripped;
+            # labels are space-padded to the widest pred so just look for the
+            # label preceded by "│ " (the box's left border + 1 space).
+            needle = f"│ {label} "
+            return [raw_lines[i] for i, ln in enumerate(stripped) if needle in ln]
+
+        b_rows = label_rows("beta")
+        assert b_rows, f"no row containing pred 'beta'; output:\n{out}"
+        assert all(orange in ln for ln in b_rows), (
+            f"expected orange border ({orange!r}) on every 'beta' row; output:\n{out}"
+        )
+        for sibling in ("alpha", "gamma"):
+            sib_rows = label_rows(sibling)
+            assert sib_rows, f"no row containing pred {sibling!r}"
+            assert not any(orange in ln for ln in sib_rows), (
+                f"sibling pred {sibling!r} unexpectedly orange; output:\n{out}"
+            )
+
+    def test_prev_state_silently_skipped_when_not_in_preds(self) -> None:
+        """prev_state naming a non-pred is silently dropped — no crash, no escape."""
+        from little_loops.cli import output as output_mod
+        from little_loops.cli.loop import layout as layout_mod
+        from little_loops.cli.loop.layout import _render_neighborhood_diagram
+
+        fsm = make_test_fsm(
+            initial="a",
+            states={
+                "a": make_test_state(action="...", on_yes="target"),
+                "b": make_test_state(action="...", on_yes="target"),
+                "target": make_test_state(action="...", on_yes="end"),
+                "end": make_test_state(terminal=True),
+            },
+        )
+        with patch.object(output_mod, "_USE_COLOR", True):
+            out = _render_neighborhood_diagram(
+                fsm, "target", prev_state="not_a_real_state"
+            )
+
+        orange = f"\x1b[{layout_mod._PREV_STATE_COLOR}m"
+        assert orange not in out, f"unexpected orange border; output:\n{out}"

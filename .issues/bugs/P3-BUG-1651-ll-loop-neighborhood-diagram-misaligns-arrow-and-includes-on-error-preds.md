@@ -1,7 +1,9 @@
 ---
 captured_at: '2026-05-23T23:49:04Z'
+completed_at: '2026-05-24T00:35:09Z'
 discovered_date: 2026-05-23
 discovered_by: capture-issue
+status: done
 relates_to:
 - ENH-1642
 confidence_score: 100
@@ -292,9 +294,21 @@ _Added by `/ll:refine-issue` — verified against current source:_
 
 ## Status
 
-**Open** | Created: 2026-05-23 | Priority: P3
+**Done** | Created: 2026-05-23 | Completed: 2026-05-24 | Priority: P3
+
+## Resolution
+
+Fixed all three defects in `_render_neighborhood_diagram` and threaded a
+previous-state tracker through the pinned-pane runtime:
+
+- **RC1** — `_build_stack` now seeds at `start = max(0, min(center_idx, n_rows - len(labels)))`, so the smaller side's first box sits on the arrow row. Symmetric cases stay byte-identical (start=0).
+- **RC2** — `_render_neighborhood_diagram` accepts `mode: str = "full"`; in `"main"` it routes edges through `_filter_main_path_graph` (with a reachability fallback that reverts to full if the active state would be filtered out), and `_build_pinned_pane._render_one` forwards `show_diagrams_mode` into the neighborhood call.
+- **RC3** — New `prev_state_at_depth` dict in the streaming loop snapshots the prior state on every `state_enter` and is threaded through `_render_pinned_pane → _build_pinned_pane → _render_neighborhood_diagram(prev_state=...)`. `_make_box` gained an optional `border_color` kwarg; the matching pred renders with ANSI 33 (orange) borders, silently dropped if the prev isn't in the pred stack.
+
+Four regression tests added to `TestRenderNeighborhoodDiagram`: arrow-row alignment, main-mode `on_error` filter, orange prev-pred border, and silent skip when prev isn't a pred. Direct repro on `rn-refine`'s `synthesize` state confirms all three modes (full+prev, main+prev, main+noprev) render as specified.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-24T00:35:09Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ba7a251-01eb-435c-ba22-90efa9dacf11.jsonl`
 - `/ll:ready-issue` - 2026-05-24T00:26:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27289f74-cb45-483a-9d52-9268dd9c6cb2.jsonl`
 - `/ll:confidence-check` - 2026-05-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8311c047-8810-418e-b17f-3b5114a82646.jsonl`
 - `/ll:wire-issue` - 2026-05-24T00:21:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f27164c8-4912-4ca8-a0c5-2f5e2455ff40.jsonl`

@@ -1650,6 +1650,9 @@ def _render_fsm_diagram(
     )
 
 
+_PREV_STATE_COLOR = "33"  # ANSI orange/yellow border for the just-prior FSM state.
+
+
 def _render_neighborhood_diagram(
     fsm: FSMLoop,
     active_state: str,
@@ -1657,6 +1660,8 @@ def _render_neighborhood_diagram(
     edge_label_colors: dict[str, str] | None = None,
     badges: dict[str, str] | None = None,
     highlight_color: str = "32",
+    mode: str = "full",
+    prev_state: str | None = None,
 ) -> str:
     """Render a compact 1-hop neighborhood: predecessors → [active] → successors.
 
@@ -1667,11 +1672,25 @@ def _render_neighborhood_diagram(
 
     Self-loops are collapsed: a state that only points to itself contributes
     neither predecessors nor successors here.
+
+    Args:
+        mode: ``"full"`` (default) includes every edge. ``"main"`` filters edges
+            through ``_filter_main_path_graph`` so off-happy-path predecessors
+            (e.g. those connected only via ``on_error``) are hidden. Falls back
+            to ``"full"`` if the active state would be filtered out.
+        prev_state: Name of the predecessor the FSM most recently transitioned
+            from. When that name appears in the rendered pred stack, its box is
+            drawn with the orange ``_PREV_STATE_COLOR`` border. Silently
+            skipped if the name is missing from the pred stack.
     """
     if active_state not in fsm.states:
         return ""
 
     edges = _collect_edges(fsm)
+    if mode == "main":
+        filtered_edges, reachable = _filter_main_path_graph(fsm, edges)
+        if active_state in reachable:
+            edges = filtered_edges
     preds = sorted({s for (s, t, _lbl) in edges if t == active_state and s != active_state})
     succs = sorted({t for (s, t, _lbl) in edges if s == active_state and t != active_state})
 
@@ -1699,7 +1718,13 @@ def _render_neighborhood_diagram(
 
     n_rows = max(len(pred_labels), len(succ_labels), 1)
 
-    def _make_box(label: str, inner_w: int, highlighted: bool) -> list[str]:
+    def _make_box(
+        label: str,
+        inner_w: int,
+        highlighted: bool,
+        *,
+        border_color: str | None = None,
+    ) -> list[str]:
         top = "┌" + "─" * (inner_w + 2) + "┐"
         bot = "└" + "─" * (inner_w + 2) + "┘"
         padded = label.ljust(inner_w)
@@ -1713,23 +1738,53 @@ def _render_neighborhood_diagram(
                 + " "
                 + colorize("│", highlight_color)
             )
+        elif border_color is not None:
+            top = colorize(top, border_color)
+            bot = colorize(bot, border_color)
+            mid = (
+                colorize("│", border_color)
+                + " "
+                + colorize(padded, "1")
+                + " "
+                + colorize("│", border_color)
+            )
         else:
             mid = "│ " + colorize(padded, "1") + " │"
         return [top, mid, bot]
 
-    def _build_stack(labels: list[str], box_w: int) -> list[str]:
+    center_idx = (n_rows - 1) // 2
+
+    def _build_stack(
+        labels: list[str],
+        box_w: int,
+        *,
+        color_for: dict[str, str] | None = None,
+    ) -> list[str]:
         rows: list[str] = []
+        # Align the stack to the arrow row (the active state's slot). Without
+        # this, a shorter stack always sits at row 0 and the single ``──▶``
+        # arrow drawn at ``active_line_offset`` points into empty space.
+        # ``min(center_idx, n_rows - len(labels))`` caps the start so longer
+        # but still-smaller stacks (e.g. 4 succs vs. 5 preds) don't overflow.
+        start = max(0, min(center_idx, n_rows - len(labels)))
+        color_map = color_for or {}
         for i in range(n_rows):
-            if i < len(labels):
-                rows.extend(_make_box(labels[i], box_w - 4, False))
+            j = i - start
+            if 0 <= j < len(labels):
+                border = color_map.get(labels[j])
+                rows.extend(_make_box(labels[j], box_w - 4, False, border_color=border))
             else:
                 rows.extend([" " * box_w] * 3)
         return rows
 
-    pred_col = _build_stack(pred_labels, box_w_pred) if pred_labels else None
-    succ_col = _build_stack(succ_labels, box_w_succ) if succ_labels else None
+    pred_color_for: dict[str, str] = {}
+    if prev_state is not None and prev_state in preds:
+        pred_color_for[_label(prev_state)] = _PREV_STATE_COLOR
 
-    center_idx = (n_rows - 1) // 2
+    pred_col = (
+        _build_stack(pred_labels, box_w_pred, color_for=pred_color_for) if pred_labels else None
+    )
+    succ_col = _build_stack(succ_labels, box_w_succ) if succ_labels else None
     active_rows: list[str] = []
     for i in range(n_rows):
         if i == center_idx:

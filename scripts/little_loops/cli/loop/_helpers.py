@@ -253,6 +253,8 @@ def _build_pinned_pane(
     highlight_color: str,
     edge_label_colors: dict[str, str] | None,
     badges: dict[str, str] | None,
+    prev_highlight: str | None = None,
+    prev_state_at_depth: dict[int, str] | None = None,
 ) -> str:
     """Compose the pinned pane (header + diagram(s) + state line + separator).
 
@@ -271,7 +273,7 @@ def _build_pinned_pane(
 
     verbose = show_diagrams_mode == "full"
 
-    def _render_one(target: FSMLoop, highlight: str | None) -> str:
+    def _render_one(target: FSMLoop, highlight: str | None, prev: str | None) -> str:
         if detail == "single":
             return _render_single_line_status(target, highlight)
         if detail == "neighborhood":
@@ -281,6 +283,8 @@ def _build_pinned_pane(
                 edge_label_colors=edge_label_colors,
                 badges=badges,
                 highlight_color=highlight_color,
+                mode=show_diagrams_mode,
+                prev_state=prev,
             )
         # "full"
         mode = show_diagrams_mode
@@ -298,10 +302,11 @@ def _build_pinned_pane(
             mode=mode,
         )
 
+    prev_map = prev_state_at_depth or {}
     lines: list[str] = []
     header_text = f"== loop: {fsm.name} "
     lines.append(header_text + "=" * max(0, cols - len(header_text)))
-    parent_diagram = _render_one(fsm, parent_highlight)
+    parent_diagram = _render_one(fsm, parent_highlight, prev_highlight)
     if parent_diagram:
         lines.extend(parent_diagram.split("\n"))
 
@@ -311,7 +316,8 @@ def _build_pinned_pane(
         sep_text = f"── sub-loop: {child_fsm_at_d.name} "
         lines.append(sep_text + "─" * max(0, cols - len(sep_text)))
         child_highlight = last_state_at_depth.get(d + 1)
-        child_diagram = _render_one(child_fsm_at_d, child_highlight)
+        child_prev = prev_map.get(d + 1)
+        child_diagram = _render_one(child_fsm_at_d, child_highlight, child_prev)
         if child_diagram:
             lines.extend(child_diagram.split("\n"))
 
@@ -332,6 +338,7 @@ def _render_pinned_pane(
     edge_label_colors: dict[str, str] | None,
     badges: dict[str, str] | None,
     min_action_rows: int = MIN_ACTION_ROWS,
+    prev_state_at_depth: dict[int, str] | None = None,
 ) -> int:
     """Render the pinned pane to stdout and set the scroll region beneath it.
 
@@ -347,6 +354,8 @@ def _render_pinned_pane(
     # 2. Clear + cursor home.
     print("\033[2J\033[H", end="", flush=True)
 
+    prev_map = prev_state_at_depth or {}
+
     def _build(detail: str) -> str:
         return _build_pinned_pane(
             detail,
@@ -360,6 +369,8 @@ def _render_pinned_pane(
             highlight_color=highlight_color,
             edge_label_colors=edge_label_colors,
             badges=badges,
+            prev_highlight=prev_map.get(0),
+            prev_state_at_depth=prev_map,
         )
 
     pinned, pinned_height = _choose_pinned_layout(
@@ -631,6 +642,7 @@ def run_foreground(
 
     current_iteration = [0]  # Use list to allow mutation in closure
     last_state_at_depth: dict[int, str] = {}  # Track last known state per nesting depth
+    prev_state_at_depth: dict[int, str] = {}  # Track immediately-prior state per depth
     child_fsm_stack: dict[int, FSMLoop | None] = {}  # Active child FSM per depth
     pinned_height = [0]  # Pinned-pane height; non-zero when alt-screen mode active
     loop_start_time = time.monotonic()
@@ -660,6 +672,7 @@ def run_foreground(
             highlight_color=highlight_color,
             edge_label_colors=edge_label_colors,
             badges=badges,
+            prev_state_at_depth=prev_state_at_depth,
         )
 
     def display_progress(event: dict) -> None:
@@ -688,10 +701,16 @@ def run_foreground(
             # Non-pinned --clear path keeps the bare full-screen clear.
             if clear_screen and sys.stdout.isatty() and depth == 0 and not in_pinned_mode:
                 print("\033[2J\033[H", end="", flush=True)
-            # Update last-known state at this depth and clear stale deeper entries
+            # Update last-known state at this depth and clear stale deeper entries.
+            # Before overwriting, snapshot the prior value into prev_state_at_depth so
+            # the neighborhood renderer can mark "which pred we just came from".
+            old_state = last_state_at_depth.get(depth)
+            if old_state is not None and old_state != state:
+                prev_state_at_depth[depth] = old_state
             last_state_at_depth[depth] = state
             for k in [k for k in last_state_at_depth if k > depth]:
                 del last_state_at_depth[k]
+                prev_state_at_depth.pop(k, None)
             # Load child FSM for the current state at this depth
             parent_at_depth = fsm if depth == 0 else child_fsm_stack.get(depth - 1)
             if parent_at_depth is not None and state in parent_at_depth.states:
