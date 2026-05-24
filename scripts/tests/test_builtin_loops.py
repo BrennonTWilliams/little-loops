@@ -1019,6 +1019,13 @@ class TestPromptAcrossIssuesLoop:
         action = advance_state.get("action", "")
         assert "pending" in action
 
+    def test_advance_emits_progress_count(self, data: dict) -> None:
+        """advance state action must compute REMAINING and echo a progress line."""
+        advance_state = data["states"].get("advance", {})
+        action = advance_state.get("action", "")
+        assert "REMAINING" in action
+        assert "remaining" in action
+
     def test_init_validates_input(self, data: dict) -> None:
         """init state action must check that ${context.input} is non-empty."""
         init_state = data["states"].get("init", {})

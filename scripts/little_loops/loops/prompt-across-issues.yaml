@@ -89,7 +89,9 @@ states:
     action: |
       tail -n +2 .loops/tmp/prompt-across-issues-pending.txt > .loops/tmp/prompt-across-issues-pending.tmp
       mv .loops/tmp/prompt-across-issues-pending.tmp .loops/tmp/prompt-across-issues-pending.txt
+      REMAINING=$(wc -l < .loops/tmp/prompt-across-issues-pending.txt | tr -d ' ')
       echo "Completed ${captured.current_item.output}"
+      echo "Progress: $REMAINING items remaining"
     action_type: shell
     next: discover
 

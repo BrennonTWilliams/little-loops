@@ -1,14 +1,16 @@
 ---
 captured_at: '2026-05-23T22:10:27Z'
+completed_at: '2026-05-24T19:15:38Z'
 discovered_date: '2026-05-23'
 discovered_by: capture-issue
-status: open
+status: done
 confidence_score: 100
 outcome_confidence: 100
 score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+milestone: refined-ready
 ---
 
 # ENH-1646: Add remaining-count progress log to prompt-across-issues advance state
@@ -91,7 +93,7 @@ Notes:
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- `scripts/tests/test_builtin_loops.py:TestPromptAcrossIssuesLoop` (lines 924–1010) — structural test class for this loop that asserts on state presence and action body content; add an assertion that `advance` action body includes `REMAINING` variable and `"remaining"` echo
+- `scripts/tests/test_builtin_loops.py:TestPromptAcrossIssuesLoop` (lines 958–1045) — structural test class for this loop that asserts on state presence and action body content; add an assertion that `advance` action body includes `REMAINING` variable and `"remaining"` echo
 - Reference pattern for shell-script assertions: `scripts/tests/test_loops_recursive_refine.py:TestDequeueProgressLine` — extracts the shell snippet verbatim into a raw string constant, runs it with `subprocess.run(["bash", "-c", script], cwd=tmp_path)`, and asserts on `result.stdout`/`result.stderr`; use as template if a full execution test is warranted
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -135,7 +137,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `loops`, `observability`, `captured`
 
+## Resolution
+
+Added `REMAINING=$(wc -l < .loops/tmp/prompt-across-issues-pending.txt | tr -d ' ')` and `echo "Progress: $REMAINING items remaining"` to the `advance` state action body. Added `test_advance_emits_progress_count` assertion to `TestPromptAcrossIssuesLoop`. YAML validates; 14 tests pass.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T19:14:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8839a46d-00c0-4f31-b8c8-188151579b21.jsonl`
+- `/ll:ready-issue` - 2026-05-24T17:52:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43b7fa3e-acf7-4526-95d7-b6317ea8e31d.jsonl`
 - `/ll:wire-issue` - 2026-05-24T15:13:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/847e0ce1-8815-443b-b5e6-c534c63a9949.jsonl`
 - `/ll:refine-issue` - 2026-05-24T15:09:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f05cec5c-4ab5-4f6b-84dc-9ddd8140f4b1.jsonl`
 - `/ll:format-issue` - 2026-05-23T22:12:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc1fd6ed-dcdc-4bc4-b6c1-4c76f8056fd9.jsonl`
