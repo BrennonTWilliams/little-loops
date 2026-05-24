@@ -163,5 +163,16 @@ trivially — possible self-eval drift).
 **Note** (added by `/ll:audit-issue-conflicts`): The artifact path `.loops/runs/<name>/meta-eval.jsonl` used here should be confirmed against ENH-1670's artifact convention (`.loops/.running/{instance_id}.log`). Both issues define per-run observability artifact conventions independently — align on a shared directory policy before both land to prevent convention drift.
 
 
+## Verification Notes
+
+_Verified 2026-05-24 by `/ll:verify-issues`:_ Soft-blocked on ENH-1665. The
+proposed instrumentation gates on `_is_meta_loop()` in
+`scripts/little_loops/fsm/executor.py`, which does not yet exist (grep found
+zero matches). This is consistent with the declared `depends_on: [ENH-1665]`
+— the detector is owned by ENH-1665 and must land first. Once it exists,
+re-verify the exact detector signature and the executor instrumentation
+site (currently described conceptually, not anchored to a line).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-05-24T07:01:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08ba673b-967b-4af4-a548-692288b5485d.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-24T06:05:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`

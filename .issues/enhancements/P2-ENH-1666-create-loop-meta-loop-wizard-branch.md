@@ -265,3 +265,18 @@ already refuses to omit `discover` in multi-item harness mode).
 - meta-loop
 - harness
 - shor
+
+## Verification Notes
+
+_Verified 2026-05-24 by `/ll:verify-issues`:_ Soft-blocked on ENH-1665. The
+generated YAML's "satisfies MR-1 by construction" claim cannot be checked
+until ENH-1665 lands MR-1 in `scripts/little_loops/fsm/validation.py` and
+`meta_self_eval_ok: bool` is added to `FSMLoop` (`scripts/little_loops/fsm/schema.py:844`).
+All other anchors verified: `skills/create-loop/SKILL.md:73` (loop-type
+AskUserQuestion), `skills/create-loop/loop-types.md:549` ("Harness Questions"
+insertion point), and `scripts/little_loops/loops/harness-optimize.yaml`
+(positive template) all exist as referenced.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-05-24T07:01:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08ba673b-967b-4af4-a548-692288b5485d.jsonl`
