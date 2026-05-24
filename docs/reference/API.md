@@ -3375,12 +3375,12 @@ Entry point for `ll-logs` command. Discover, extract, and tail Claude Code sessi
 def main_session() -> int
 ```
 
-Entry point for `ll-session` command. Query the unified session store (SQLite + FTS5) — the per-project `.ll/session.db`.
+Entry point for `ll-session` command. Query the unified session store (SQLite + FTS5) — the per-project `.ll/history.db`.
 
 **Returns:** 0 on success, 1 when no subcommand given or on error
 
 **Global flags:**
-- `--db PATH` — Path to the session database (default: `.ll/session.db`)
+- `--db PATH` — Path to the session database (default: `.ll/history.db`)
 
 **Subcommands:**
 - `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--limit N` (default 20)
@@ -3412,12 +3412,12 @@ Entry point for `ll-learning-tests` command. Query and manage the learning test 
 def main_ctx_stats() -> int
 ```
 
-Entry point for `ll-ctx-stats` command. Show context-window analytics for the current project (FEAT-1160). Reads per-tool byte metrics that the `post_tool_use` hook persists into `.ll/session.db` (FEAT-1623) and renders a compact summary of how much data was processed by tools vs. how much actually entered the conversation context. Falls back to `.ll/ll-context-state.json` (token estimates) when the SQLite store is absent.
+Entry point for `ll-ctx-stats` command. Show context-window analytics for the current project (FEAT-1160). Reads per-tool byte metrics that the `post_tool_use` hook persists into `.ll/history.db` (FEAT-1623) and renders a compact summary of how much data was processed by tools vs. how much actually entered the conversation context. Falls back to `.ll/ll-context-state.json` (token estimates) when the SQLite store is absent.
 
 **Returns:** 0 when a report was rendered (data present or fallback used), 1 when no data found in either the SQLite store or the fallback file.
 
 **Flags:**
-- `--db PATH` — Use a non-default session database (default `.ll/session.db`)
+- `--db PATH` — Use a non-default session database (default `.ll/history.db`)
 - `--json` — Emit the report as JSON instead of the human-readable summary
 
 Enable per-tool byte tracking by setting `"analytics": {"enabled": true}` in `.ll/ll-config.json`. The `post_tool_use` hook reads this gate and no-ops when disabled or absent.

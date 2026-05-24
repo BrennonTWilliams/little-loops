@@ -111,7 +111,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
         with contextlib.suppress(Exception):
             from little_loops.session_store import ensure_db
 
-            ensure_db(cwd / ".ll" / "session.db")
+            ensure_db(cwd / ".ll" / "history.db")
 
     # 4. Compose the rendered stdout payload.
     if config_path is not None and not overrides_applied:

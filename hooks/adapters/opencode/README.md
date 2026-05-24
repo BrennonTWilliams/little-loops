@@ -39,7 +39,7 @@ The adapter resolves `python` from the ambient `PATH`. Ensure
 | `session.created`    | `session_start` | `python -m little_loops.hooks session_start`   |
 | `session.compacted`  | `pre_compact`   | `python -m little_loops.hooks pre_compact`     |
 | `tool.execute.before`| `pre_tool_use` (opt-in) | `python -m little_loops.hooks pre_tool_use` — handler is registered but the adapter does **not** wire `tool.execute.before` by default |
-| `tool.execute.after` | `post_tool_use` | `python -m little_loops.hooks post_tool_use` — invoked fire-and-forget (no `await` on the spawned Promise); handler writes byte metrics to `.ll/session.db` when `analytics.enabled` is set (FEAT-1623) |
+| `tool.execute.after` | `post_tool_use` | `python -m little_loops.hooks post_tool_use` — invoked fire-and-forget (no `await` on the spawned Promise); handler writes byte metrics to `.ll/history.db` when `analytics.enabled` is set (FEAT-1623) |
 | `session.idle`       | (deferred)      | —                                              |
 | `tui.prompt.append`  | (deferred)      | —                                              |
 
@@ -47,7 +47,7 @@ The adapter resolves `python` from the ambient `PATH`. Ensure
 is called without `await`, so the OpenCode tool path never blocks on the
 Python handler. Stderr and exit code are dropped. Per FEAT-1623, the
 handler persists per-tool byte metrics (`bytes_in` / `bytes_out` /
-`cache_hit`) into `.ll/session.db` when `analytics.enabled` is set in the
+`cache_hit`) into `.ll/history.db` when `analytics.enabled` is set in the
 project config; consumers (e.g. `/ll:ctx-stats`) read those rows
 asynchronously and must tolerate observational-only semantics — failed
 writes are suppressed inside the handler so the OpenCode tool path is

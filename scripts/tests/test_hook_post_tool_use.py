@@ -1,7 +1,7 @@
 """Python-direct tests for ``little_loops.hooks.post_tool_use.handle`` (FEAT-1623).
 
 The handler persists per-tool byte metrics (``bytes_in`` / ``bytes_out`` /
-``cache_hit``) to the ``tool_events`` table in ``.ll/session.db`` (FEAT-1112)
+``cache_hit``) to the ``tool_events`` table in ``.ll/history.db`` (FEAT-1112)
 on every tool call, gated by the ``analytics.enabled`` config flag. Without a
 config or with the flag off, the handler is a no-op (no SQLite write, exit 0).
 Adapter round-trip tests live in ``test_codex_adapter.py``; this module
@@ -108,8 +108,8 @@ class TestPostToolUseWithSessionStore:
         result = handle(_event(payload, cwd=str(tmp_path)))
         assert result.exit_code == 0
 
-        db_path = tmp_path / ".ll" / "session.db"
-        assert db_path.is_file(), "handler must create session.db on first write"
+        db_path = tmp_path / ".ll" / "history.db"
+        assert db_path.is_file(), "handler must create history.db on first write"
         conn = sqlite3.connect(str(db_path))
         try:
             row = conn.execute(
@@ -142,7 +142,7 @@ class TestPostToolUseWithSessionStore:
         )
         assert result.exit_code == 0
         # Handler must not have created the database when analytics is off.
-        assert not (tmp_path / ".ll" / "session.db").exists()
+        assert not (tmp_path / ".ll" / "history.db").exists()
 
     def test_skips_write_when_config_missing(self, tmp_path, monkeypatch) -> None:
         # No .ll/ll-config.json at all — handler must no-op.
@@ -155,7 +155,7 @@ class TestPostToolUseWithSessionStore:
             )
         )
         assert result.exit_code == 0
-        assert not (tmp_path / ".ll" / "session.db").exists()
+        assert not (tmp_path / ".ll" / "history.db").exists()
 
     def test_cache_hit_field_extracted(self, tmp_path, monkeypatch) -> None:
         _write_config(tmp_path, analytics_enabled=True)
@@ -168,7 +168,7 @@ class TestPostToolUseWithSessionStore:
         }
         handle(_event(payload, cwd=str(tmp_path)))
 
-        db_path = tmp_path / ".ll" / "session.db"
+        db_path = tmp_path / ".ll" / "history.db"
         conn = sqlite3.connect(str(db_path))
         try:
             (cache_hit,) = conn.execute("SELECT cache_hit FROM tool_events").fetchone()
@@ -219,7 +219,7 @@ class TestPostToolUseWithSessionStore:
         result = handle(_event(payload, cwd=str(tmp_path)))
         assert result.exit_code == 0
 
-        db_path = tmp_path / ".ll" / "session.db"
+        db_path = tmp_path / ".ll" / "history.db"
         conn = sqlite3.connect(str(db_path))
         try:
             bytes_in, bytes_out = conn.execute(

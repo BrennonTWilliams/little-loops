@@ -95,6 +95,22 @@ class TestSessionStartContextStateCleanup:
         assert result.exit_code == 0
 
 
+class TestSessionStartDbMigration:
+    """ENH-1635: session_start triggers the session.db -> history.db rename."""
+
+    def test_migrates_legacy_session_db(self, in_tmp: Path) -> None:
+        (in_tmp / ".ll").mkdir()
+        # Need a config so the ensure_db() block runs.
+        (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
+        legacy = in_tmp / ".ll" / "session.db"
+        legacy.write_bytes(b"legacy-db")
+
+        handle(_event())
+
+        assert (in_tmp / ".ll" / "history.db").exists()
+        assert not legacy.exists()
+
+
 class TestSessionStartLocalOverrides:
     def _write_base(self, root: Path, config: dict) -> None:
         (root / ".ll").mkdir(exist_ok=True)

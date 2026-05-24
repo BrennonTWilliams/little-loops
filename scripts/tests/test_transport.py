@@ -251,7 +251,7 @@ class TestWireTransports:
         bus.emit({"event": "state_enter", "loop_name": "wired", "state": "go"})
         bus.close_transports()
 
-        assert (tmp_path / "session.db").exists()
+        assert (tmp_path / "history.db").exists()
 
     def test_unknown_transport_warns_and_skips(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture

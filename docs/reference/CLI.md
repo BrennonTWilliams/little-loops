@@ -140,10 +140,10 @@ ll-doctor --json
 
 ### ll-ctx-stats
 
-Show context-window analytics for the current project (FEAT-1160). Reads per-tool byte metrics that the `post_tool_use` hook persists into `.ll/session.db` (FEAT-1623) and renders a compact summary of how much data was processed by tools vs. how much actually entered the conversation context. Falls back to `.ll/ll-context-state.json` (token estimates) when the SQLite store is absent so first-time users still get useful output.
+Show context-window analytics for the current project (FEAT-1160). Reads per-tool byte metrics that the `post_tool_use` hook persists into `.ll/history.db` (FEAT-1623) and renders a compact summary of how much data was processed by tools vs. how much actually entered the conversation context. Falls back to `.ll/ll-context-state.json` (token estimates) when the SQLite store is absent so first-time users still get useful output.
 
 **Flags:**
-- `--db PATH` — Use a non-default session database (default `.ll/session.db`).
+- `--db PATH` — Use a non-default session database (default `.ll/history.db`).
 - `--json` — Emit the report as JSON instead of the human-readable summary.
 
 **Exit codes:** `0` = report rendered (data present or fallback used), `1` = no data found in either the SQLite store or the fallback file.
@@ -151,7 +151,7 @@ Show context-window analytics for the current project (FEAT-1160). Reads per-too
 **Examples:**
 ```bash
 ll-ctx-stats
-ll-ctx-stats --db custom/session.db
+ll-ctx-stats --db custom/history.db
 ll-ctx-stats --json
 ```
 
@@ -1015,7 +1015,7 @@ Show issue statistics for completed issues.
 | `--json` | `-j` | Output as JSON |
 | `--directory` | `-d` | Path to issues directory (default: `.issues`) |
 
-When the unified session DB (`.ll/session.db`, FEAT-1112) contains backfilled `issue_events` rows (run `ll-session backfill`), `summary` reads from the DB instead of re-parsing every completed-issue file. An empty/absent DB falls back to file parsing — no behavior change for un-backfilled projects (ENH-1621). Only the `summary` subcommand is DB-backed; `analyze` and `export` still scan the files because they need bodies and git history.
+When the unified session DB (`.ll/history.db`, FEAT-1112) contains backfilled `issue_events` rows (run `ll-session backfill`), `summary` reads from the DB instead of re-parsing every completed-issue file. An empty/absent DB falls back to file parsing — no behavior change for un-backfilled projects (ENH-1621). Only the `summary` subcommand is DB-backed; `analyze` and `export` still scan the files because they need bodies and git history.
 
 #### `ll-history analyze`
 
@@ -1244,13 +1244,13 @@ ll-logs extract --all --cmd ll-history   # Filter to ll-history invocations
 
 ### ll-session
 
-Query the unified session store (SQLite + FTS5) — the per-project `.ll/session.db` populated by `SQLiteTransport` and `ll-session backfill`. Lets operators search and inspect session activity without re-parsing the scattered JSON/markdown sources the analyze-* skills read.
+Query the unified session store (SQLite + FTS5) — the per-project `.ll/history.db` populated by `SQLiteTransport` and `ll-session backfill`. Lets operators search and inspect session activity without re-parsing the scattered JSON/markdown sources the analyze-* skills read.
 
 **Global flags:**
 
 | Flag | Description |
 |------|-------------|
-| `--db PATH` | Path to the session database (default: `.ll/session.db`) |
+| `--db PATH` | Path to the session database (default: `.ll/history.db`) |
 
 **Subcommands:**
 

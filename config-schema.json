@@ -1175,11 +1175,11 @@
         },
         "sqlite": {
           "type": "object",
-          "description": "SQLiteTransport configuration. Records FSM loop events into the per-project session store (.ll/session.db) for indexed cross-cutting queries via the ll-session CLI.",
+          "description": "SQLiteTransport configuration. Records FSM loop events into the per-project session store (.ll/history.db) for indexed cross-cutting queries via the ll-session CLI.",
           "properties": {
             "path": {
               "type": "string",
-              "default": ".ll/session.db",
+              "default": ".ll/history.db",
               "description": "Filesystem path for the SQLite session database."
             }
           },
@@ -1202,7 +1202,7 @@
     },
     "analytics": {
       "type": "object",
-      "description": "Context-window analytics settings (FEAT-1160). When enabled, the post_tool_use hook persists per-tool byte metrics into .ll/session.db for consumption by /ll:ctx-stats.",
+      "description": "Context-window analytics settings (FEAT-1160). When enabled, the post_tool_use hook persists per-tool byte metrics into .ll/history.db for consumption by /ll:ctx-stats.",
       "properties": {
         "enabled": {
           "type": "boolean",

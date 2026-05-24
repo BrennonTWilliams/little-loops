@@ -66,6 +66,51 @@ class TestEnsureDb:
         conn.close()
         assert {"bytes_in", "bytes_out", "cache_hit"} <= cols
 
+    def test_migrates_legacy_session_db(self, tmp_path: Path) -> None:
+        """ENH-1635: a pre-existing ``session.db`` (+ sidecars) is renamed
+        to ``history.db`` on first ``ensure_db()`` call after upgrade.
+
+        Bootstraps a real (versioned) SQLite legacy file, then drops an
+        arbitrary ``-shm`` sidecar next to it. The schema-bootstrap step
+        after the rename should not delete the renamed sidecar (unlike a
+        renamed ``-wal``, which SQLite will tidy on open if the main file
+        is not in WAL mode).
+        """
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        legacy = ll_dir / "session.db"
+        ensure_db(legacy)
+        legacy_bytes = legacy.read_bytes()
+        (ll_dir / "session.db-shm").write_bytes(b"shm-data")
+        new = ll_dir / "history.db"
+
+        ensure_db(new)
+
+        assert new.exists()
+        assert not legacy.exists()
+        # New db must carry the legacy content (rename, not recreate).
+        assert new.read_bytes() == legacy_bytes
+        assert (ll_dir / "history.db-shm").read_bytes() == b"shm-data"
+        assert not (ll_dir / "session.db-shm").exists()
+
+    def test_migration_skipped_when_new_db_exists(self, tmp_path: Path) -> None:
+        """If both legacy and new exist, leave legacy alone (don't clobber)."""
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        # Create the new db first so ``new.exists()`` is true when the
+        # shim sees both. (Creating ``legacy`` first would trigger the
+        # very migration we want to verify is skipped here.)
+        new = ll_dir / "history.db"
+        ensure_db(new)
+        legacy = ll_dir / "session.db"
+        ensure_db(legacy)
+        legacy_size = legacy.stat().st_size
+
+        ensure_db(new)
+
+        assert legacy.exists()
+        assert legacy.stat().st_size == legacy_size
+
 
 class TestSQLiteTransport:
     """The SQLiteTransport EventBus sink."""

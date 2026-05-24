@@ -237,7 +237,7 @@ class TestConfigSchema:
         sqlite_block = events_props["sqlite"]
         assert sqlite_block["type"] == "object"
         assert sqlite_block.get("additionalProperties") is False
-        assert sqlite_block["properties"]["path"]["default"] == ".ll/session.db"
+        assert sqlite_block["properties"]["path"]["default"] == ".ll/history.db"
 
     def test_issues_relationship_fields_in_schema(self) -> None:
         """Relationship fields must be declared inside issues.properties.

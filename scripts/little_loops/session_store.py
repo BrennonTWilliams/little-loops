@@ -1,9 +1,12 @@
 """Unified session store: a per-project SQLite + FTS5 database (FEAT-1112).
 
-A single ``.ll/session.db`` indexes tool events, file modifications, issue
+A single ``.ll/history.db`` is the per-project event history across all
+Claude Code sessions: it indexes tool events, file modifications, issue
 transitions, loop runs, and user corrections so cross-cutting queries
 ("which loops failed on issues touching file X?") can be answered in
-milliseconds rather than re-parsing scattered JSON/markdown sources.
+milliseconds rather than re-parsing scattered JSON/markdown sources. The
+``session_id`` column ties each row back to its originating session JSONL,
+but the database itself is long-lived and never rotated.
 
 The store is purely additive: it never replaces an existing data path. The
 ``SQLiteTransport`` sink subscribes to the EventBus alongside the other
@@ -11,7 +14,7 @@ transports, and the backfill routine seeds the database from on-disk sources
 that the analyze-* skills already read.
 
 Public API:
-    DEFAULT_DB_PATH:  default database location (``.ll/session.db``)
+    DEFAULT_DB_PATH:  default database location (``.ll/history.db``)
     SCHEMA_VERSION:   current schema version integer
     ensure_db(path):  create the database and apply pending migrations
     connect(path):    open a connection (ensures schema first)
@@ -35,7 +38,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DB_PATH = Path(".ll/session.db")
+DEFAULT_DB_PATH = Path(".ll/history.db")
 SCHEMA_VERSION = 2
 
 _VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message"})
@@ -175,8 +178,32 @@ def ensure_db(path: Path | str = DEFAULT_DB_PATH) -> Path:
 
     Idempotent: safe to call on every session start. The parent directory is
     created if absent. Returns the resolved database path.
+
+    On the first call after the ENH-1635 rename, transparently migrates a
+    pre-existing ``.ll/session.db`` (and any ``-shm``/``-wal`` sidecars) to
+    the new ``.ll/history.db`` path. Each sidecar is renamed independently so
+    a single failure does not abort the others; failures are logged at
+    WARNING (the caller in ``hooks/session_start.py`` wraps the whole call
+    in ``contextlib.suppress(Exception)``, which would otherwise silence
+    diagnostic context).
     """
     db_path = Path(path)
+    legacy = db_path.parent / "session.db"
+    if legacy.exists() and not db_path.exists():
+        for suffix in ("", "-shm", "-wal"):
+            src = legacy.parent / f"session.db{suffix}"
+            if src.exists():
+                dst = db_path.parent / f"history.db{suffix}"
+                try:
+                    src.rename(dst)
+                    logger.info("session_store: migrated %s -> %s", src, dst)
+                except OSError:
+                    logger.warning(
+                        "session_store: legacy rename failed for %s; continuing with fresh db",
+                        src,
+                        exc_info=True,
+                    )
+                    break
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     try:

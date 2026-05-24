@@ -319,7 +319,7 @@ class TestHooksMainModule:
     def test_dispatch_post_tool_use_happy_path(self, tmp_path) -> None:
         """``post_tool_use`` intent runs the byte-tracking handler and exits 0 (FEAT-1623).
 
-        The handler persists per-tool byte metrics into ``.ll/session.db`` when
+        The handler persists per-tool byte metrics into ``.ll/history.db`` when
         ``analytics.enabled`` is true; with no config in ``tmp_path``, the
         analytics guard short-circuits the write so the subprocess emits no
         stdout/stderr and the SQLite database is never created.
@@ -342,7 +342,7 @@ class TestHooksMainModule:
         # No config in tmp_path → analytics guard skips the write; no output.
         assert result.stdout == ""
         assert result.stderr == ""
-        assert not (tmp_path / ".ll" / "session.db").exists()
+        assert not (tmp_path / ".ll" / "history.db").exists()
 
     def test_dispatch_pre_tool_use_happy_path(self, tmp_path) -> None:
         """``pre_tool_use`` intent runs the opt-in no-op handler and exits 0 (FEAT-1489).

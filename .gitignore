@@ -89,9 +89,9 @@ deepcodebase-*.txt
 .ll/*.lock
 .ll/ll-context-state.json
 .ll/ll-sync-state.json
-.ll/session.db
-.ll/session.db-shm
-.ll/session.db-wal
+.ll/history.db
+.ll/history.db-shm
+.ll/history.db-wal
 .ll/ll-update-docs.watermark
 .ll/ll-continue-prompt.md
 .ll/loop-suggestions/

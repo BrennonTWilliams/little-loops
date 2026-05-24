@@ -461,13 +461,13 @@ class WebhookEventsConfig:
 class SqliteEventsConfig:
     """SQLiteTransport configuration (unified session store, FEAT-1112)."""
 
-    path: str = ".ll/session.db"
+    path: str = ".ll/history.db"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SqliteEventsConfig:
         """Create SqliteEventsConfig from dictionary."""
         return cls(
-            path=data.get("path", ".ll/session.db"),
+            path=data.get("path", ".ll/history.db"),
         )
 
 

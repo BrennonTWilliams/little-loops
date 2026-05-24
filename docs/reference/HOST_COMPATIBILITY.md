@@ -36,7 +36,7 @@ into `LLHookEvent` payloads.
     - `post_tool_use` is wired fire-and-forget on both hosts. OpenCode
       invokes `spawnIntent` without `await`. Codex uses a 4-line blocking
       shim with a 5s timeout. Per FEAT-1623 the handler persists per-tool
-      byte metrics into `.ll/session.db` when `analytics.enabled` is set;
+      byte metrics into `.ll/history.db` when `analytics.enabled` is set;
       a single-row INSERT (or the disabled-guard early return) keeps
       handler p95 well below the timeout. Failures are suppressed inside
       the handler so the host tool path is never disturbed.
@@ -176,7 +176,7 @@ without invoking the adapter.
 | FSM runs (`.loops/`)                | `.loops/`   | `.loops/` | `.loops/` (same path)[^state] |
 | Scratch pads (`.loops/tmp/scratch/`) | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` (same path)[^state] |
 | Continuation prompt                 | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` (same path)[^state] |
-| Session store (`SQLiteTransport`)   | `.ll/session.db` | `.ll/session.db` | `.ll/session.db` (same path)[^state] |
+| Session store (`SQLiteTransport`)   | `.ll/history.db` | `.ll/history.db` | `.ll/history.db` (same path)[^state] |
 
 [^state]: FEAT-957 deliberately scopes `LL_STATE_DIR=.codex` to the
     config probe only. Other state directories remain at their default

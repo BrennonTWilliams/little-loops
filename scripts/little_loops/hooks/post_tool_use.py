@@ -59,7 +59,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
     with contextlib.suppress(Exception):
         from little_loops.session_store import _hash_args, _now, connect
 
-        conn = connect(cwd / ".ll" / "session.db")
+        conn = connect(cwd / ".ll" / "history.db")
         try:
             conn.execute(
                 "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "

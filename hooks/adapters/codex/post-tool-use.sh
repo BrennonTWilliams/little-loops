@@ -6,7 +6,7 @@
 # the host-agnostic Python dispatcher, which routes to
 # ``little_loops.hooks.post_tool_use.handle``. Per FEAT-1623 the handler
 # persists per-tool byte metrics (``bytes_in`` / ``bytes_out`` /
-# ``cache_hit``) into ``.ll/session.db`` so ``/ll:ctx-stats`` (FEAT-1160)
+# ``cache_hit``) into ``.ll/history.db`` so ``/ll:ctx-stats`` (FEAT-1160)
 # can surface which tools consumed the most context-window bytes. Writes
 # are gated on the ``analytics.enabled`` config flag — when off, the
 # handler returns exit 0 without touching SQLite.

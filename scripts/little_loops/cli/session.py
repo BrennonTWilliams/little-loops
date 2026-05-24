@@ -1,7 +1,7 @@
 """ll-session: query the unified session store (SQLite + FTS5).
 
 Wraps :mod:`little_loops.session_store` with a CLI surface so operators can
-search and inspect the per-project ``.ll/session.db`` without re-parsing the
+search and inspect the per-project ``.ll/history.db`` without re-parsing the
 scattered JSON/markdown sources the analyze-* skills read.
 
 Subcommands:
@@ -38,7 +38,7 @@ Examples:
         type=Path,
         default=DEFAULT_DB_PATH,
         metavar="PATH",
-        help="Path to the session database (default: .ll/session.db)",
+        help="Path to the session database (default: .ll/history.db)",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")

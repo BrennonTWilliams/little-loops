@@ -113,7 +113,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-workflows` - Identify multi-step workflow patterns from user message history
 - `ll-logs` - Discover, extract, and tail Claude Code session logs (`discover` / `extract` / `tail` subcommands; writes `logs/index.md`)
 - `ll-messages` - Extract user messages from Claude Code logs
-- `ll-session` - Query the unified SQLite session store (`search --fts` / `recent --kind` / `backfill` subcommands; default DB `.ll/session.db`)
+- `ll-session` - Query the unified SQLite session store (`search --fts` / `recent --kind` / `backfill` subcommands; default DB `.ll/history.db`)
 - `ll-history` - View completed issue statistics, analysis, and export topic-filtered excerpts from history
 - `ll-deps` - Cross-issue dependency analysis and validation
 - `ll-sync` - Sync local issues with GitHub Issues
@@ -133,7 +133,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter (`name:`, `metadata.short-description:`, `agents/openai.yaml`) to all `skills/*/SKILL.md` files, and bridge every `commands/*.md` into a `skills/ll-<name>/` Codex-discoverable entry
 - `ll-adapt-agents-for-codex` - Generate `.codex/agents/*.toml` from `agents/*.md` so Codex CLI can use ll agents via `--agent <name>`
 - `ll-doctor` - Check host CLI capability support for little-loops features
-- `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings from `.ll/session.db`)
+- `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings from `.ll/history.db`)
 
 Install: `pip install -e "./scripts[dev]"`
 

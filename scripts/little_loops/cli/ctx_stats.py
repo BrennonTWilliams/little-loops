@@ -1,7 +1,7 @@
 """ll-ctx-stats: Context-window analytics for the current project (FEAT-1624).
 
 Reads per-tool byte metrics that the ``post_tool_use`` hook persists into
-``.ll/session.db`` (FEAT-1623) and renders a compact summary of how much
+``.ll/history.db`` (FEAT-1623) and renders a compact summary of how much
 data was processed by tools vs. how much actually entered the conversation
 context. Falls back to ``.ll/ll-context-state.json`` (token estimates) when
 the SQLite store is absent so first-time users still get useful output.
@@ -24,7 +24,7 @@ from little_loops.cli.output import (
 )
 from little_loops.logger import Logger
 
-DEFAULT_DB_RELPATH = Path(".ll") / "session.db"
+DEFAULT_DB_RELPATH = Path(".ll") / "history.db"
 DEFAULT_STATE_RELPATH = Path(".ll") / "ll-context-state.json"
 
 
@@ -49,7 +49,7 @@ Exit codes:
         "--db",
         type=Path,
         default=None,
-        help="Path to the session database (default: .ll/session.db)",
+        help="Path to the session database (default: .ll/history.db)",
     )
     parser.add_argument(
         "-j",
@@ -260,7 +260,7 @@ def _print_json(summary: dict[str, Any] | None, state: dict[str, Any] | None) ->
 def main_ctx_stats(argv: list[str] | None = None) -> int:
     """Entry point for ll-ctx-stats command.
 
-    Read per-tool byte metrics from ``.ll/session.db`` (FEAT-1623) and print
+    Read per-tool byte metrics from ``.ll/history.db`` (FEAT-1623) and print
     a context-window savings summary. Falls back to
     ``.ll/ll-context-state.json`` when the SQLite store is absent.
     """
@@ -283,7 +283,7 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         total_rows = int(summary["total_in"]) + int(summary["total_out"])
         if total_rows == 0:
             logger.warning(
-                "No analytic rows in .ll/session.db — set analytics.enabled: true "
+                "No analytic rows in .ll/history.db — set analytics.enabled: true "
                 "in .ll/ll-config.json and run a few tool calls to populate the store."
             )
             if fallback is None:
@@ -297,7 +297,7 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         return 0
 
     logger.error(
-        "No context analytics found: neither .ll/session.db nor "
+        "No context analytics found: neither .ll/history.db nor "
         ".ll/ll-context-state.json contained data for this project."
     )
     return 1

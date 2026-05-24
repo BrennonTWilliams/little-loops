@@ -162,7 +162,7 @@ class TestSummaryDbSource:
 
         project_root = tmp_path / "proj"
         project_root.mkdir()
-        db_path = project_root / ".ll" / "session.db"
+        db_path = project_root / ".ll" / "history.db"
         db_path.parent.mkdir(parents=True)
         backfill(db_path, issues_dir=tmp_path / "seed-issues", loops_dir=tmp_path / "no")
 
