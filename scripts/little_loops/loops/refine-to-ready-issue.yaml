@@ -110,6 +110,7 @@ states:
     action: "/ll:confidence-check ${captured.issue_id.output}"
     action_type: slash_command
     next: verify_scores_persisted
+    on_error: diagnose
 
   verify_scores_persisted:
     # Guard: assert that Phase 4 of confidence-check actually wrote scores to frontmatter.

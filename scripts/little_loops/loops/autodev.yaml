@@ -102,6 +102,7 @@ states:
     on_success: copy_broke_down
     on_failure: copy_broke_down
     on_error: copy_broke_down
+    on_no: copy_broke_down
     on_rate_limit_exhausted: dequeue_next
 
   copy_broke_down:

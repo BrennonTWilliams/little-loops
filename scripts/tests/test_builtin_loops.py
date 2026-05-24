@@ -588,6 +588,14 @@ class TestRefineToReadyIssueSubLoop:
             f"confidence_check.next should be 'verify_scores_persisted', got {confidence_check.get('next')!r}"
         )
 
+    def test_confidence_check_has_on_error(self, data: dict) -> None:
+        """confidence_check must define on_error so a SIGKILL'd subprocess routes to diagnose
+        rather than calling request_shutdown() and cascading a full loop termination."""
+        confidence_check = data["states"].get("confidence_check", {})
+        assert confidence_check.get("on_error") == "diagnose", (
+            f"confidence_check.on_error should be 'diagnose', got {confidence_check.get('on_error')!r}"
+        )
+
     def test_verify_scores_persisted_on_yes_routes_to_check_readiness(self, data: dict) -> None:
         """verify_scores_persisted.on_yes must route to check_readiness (scores written → proceed)."""
         state = data["states"].get("verify_scores_persisted", {})
@@ -1336,6 +1344,15 @@ class TestAutodevLoop:
         state = data["states"].get("refine_current", {})
         assert "on_success" in state
         assert "on_failure" in state
+
+    def test_refine_current_has_on_no_route(self, data: dict) -> None:
+        """refine_current must define on_no so that signal/timeout/max_iterations termination
+        of the inner sub-loop routes to copy_broke_down instead of returning None → 'No valid
+        transition' error that terminates the outer autodev loop."""
+        state = data["states"].get("refine_current", {})
+        assert state.get("on_no") == "copy_broke_down", (
+            f"refine_current.on_no should be 'copy_broke_down', got {state.get('on_no')!r}"
+        )
 
     def test_implement_current_uses_shell_exit_fragment(self, data: dict) -> None:
         """implement_current must use shell_exit fragment for exit-code-aware routing."""
