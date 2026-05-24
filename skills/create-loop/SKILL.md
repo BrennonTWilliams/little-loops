@@ -76,6 +76,8 @@ questions:
         description: "Generate candidate output, score quality, refine until quality target is met. Best for: iterative content improvement, prompt refinement, answer quality loops."
       - label: "RL: Policy iteration (act → observe → improve)"
         description: "Agent acts, observes reward, improves policy toward a target. Best for: environment interaction, agent training simulations, adaptive automation."
+      - label: "Optimize a harness (meta-loop)"
+        description: "Iteratively improve a loop YAML, skill, agent, or command using an external scorer. Generates diagnosis-first scaffolding required for meta-loops (SHOR-compliant)."
 ```
 
 **Type Mapping:**
@@ -88,6 +90,7 @@ questions:
 - "RL: Bandit (explore vs exploit)" -> `rl-bandit` type (states: explore, exploit, reward, done)
 - "RL: RLHF-style (generate → score → refine)" -> `rl-rlhf` type (states: generate, score, refine, done)
 - "RL: Policy iteration (act → observe → improve)" -> `rl-policy` type (states: act, observe, score, improve, done)
+- "Optimize a harness (meta-loop)" -> `meta-optimize` type (states: diagnose, baseline, propose, apply, score, gate, commit_or_revert, done)
 
 ### Step 2: Type-Specific Questions
 

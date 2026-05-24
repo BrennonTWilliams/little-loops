@@ -1,10 +1,11 @@
 ---
 id: ENH-1666
 type: ENH
-status: open
+status: done
 priority: P2
 discovered_date: 2026-05-23
 discovered_by: manual
+completed_at: 2026-05-24T14:48:17Z
 labels:
 - create-loop
 - wizard
@@ -38,6 +39,14 @@ generated YAML satisfies ENH-1665's MR-1 lint rule by construction.
 This is the generation layer of EPIC-1663 — it ensures that loops created
 through the wizard (the recommended path) never need to hit the validator
 error in the first place.
+
+## Current Behavior
+
+The `create-loop` wizard offers loop types for fix-until-clean, maintain-constraints, drive-metric, run-sequence, harness, and three RL variants. There is no meta-loop option. Users who want a diagnosis-first, scorer-driven optimization harness must author the YAML from scratch and may produce templates that fail ENH-1665's MR-1 lint rule (`_validate_meta_loop_evaluation` requires at least one non-LLM evaluator type in meta-loops).
+
+## Expected Behavior
+
+The wizard offers an "Optimize a harness (meta-loop)" branch. Selecting it triggers a 5-question flow that collects target artifacts, scorer command, target score, tasks directory, and diagnose action. The generated standalone YAML uses a `diagnose` initial state, a `convergence` gate, no `check_semantic`, and passes `ll-loop validate` (MR-1) without requiring `meta_self_eval_ok: true`.
 
 ## Motivation
 
@@ -307,7 +316,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Reference Files (No Changes)
 
 - `scripts/little_loops/loops/harness-optimize.yaml` — canonical meta-loop; the generated standalone template mirrors its diagnose → baseline → propose → apply → score → gate → commit/revert shape
-- `scripts/little_loops/fsm/validation.py:76–94` — `NON_LLM_EVALUATOR_TYPES` frozenset and `_validate_meta_loop_evaluation()` (MR-1/MR-2 rules); the generated `convergence` gate satisfies MR-1 by construction
+- `scripts/little_loops/fsm/validation.py:77` — `NON_LLM_EVALUATOR_TYPES` frozenset
+- `scripts/little_loops/fsm/validation.py:855–927` — `_is_meta_loop()` and `_validate_meta_loop_evaluation()` (MR-1/MR-2 rules); the generated `convergence` gate satisfies MR-1 by construction
 - `scripts/little_loops/fsm/schema.py:890` — `FSMLoop.meta_self_eval_ok: bool = False` field (added by ENH-1665)
 
 ### Abort Pattern Reference
@@ -352,8 +362,24 @@ not line ~549 (the section start) — the new section must go before
 block). Ready to implement.
 
 
+## Resolution
+
+Implemented 2026-05-24. Added "Optimize a harness (meta-loop)" wizard branch across three files:
+
+- `skills/create-loop/SKILL.md`: Added option to loop-type AskUserQuestion and `meta-optimize` line to Type Mapping block.
+- `skills/create-loop/loop-types.md`: Inserted new `## Optimize a Harness (Meta-Loop) Questions` section (Steps M1–M5, YAML template, worked example, scorer refusal guard) before `## Sub-Loop Composition`.
+- `skills/create-loop/templates.md`: Added `meta-optimize` to Step 0.1 options, new `### Template: meta-optimize` in Template Definitions, and `### For "Optimize a harness (meta-loop)"` in Step 0.2.
+
+Generated YAML uses `diagnose` initial state and `convergence` gate — satisfies ENH-1665 MR-1 by construction.
+
+## Status
+
+**Done** | Created: 2026-05-23 | Completed: 2026-05-24 | Priority: P2
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T14:41:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/696066f1-0b02-4d1f-bd15-1e5d834b3edf.jsonl`
 - `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c74fe13-a75b-4713-911f-502cf9b5e015.jsonl`
 - `/ll:refine-issue` - 2026-05-24T13:49:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28bd77b9-9805-4ea8-8f7b-b71214070553.jsonl`
 - `/ll:verify-issues` - 2026-05-24T07:01:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08ba673b-967b-4af4-a548-692288b5485d.jsonl`
 - `/ll:confidence-check` - 2026-05-24T14:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68308df8-d2af-4e2a-9ef6-be8a8320ae61.jsonl`
+- `/ll:manage-issue` - 2026-05-24T14:48:17Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`

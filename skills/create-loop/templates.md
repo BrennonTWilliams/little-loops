@@ -18,6 +18,8 @@ questions:
         description: "Execute ordered steps until a done-check passes. Pattern: step_0 → step_1 → … → done"
       - label: "Harness a skill or prompt"
         description: "Wrap any skill with evaluate-iterate. Pattern: execute → check → advance → done"
+      - label: "Optimize a harness (meta-loop)"
+        description: "Score-gated hill-climbing on a harness artifact. Pattern: diagnose → baseline → propose → apply → score → gate → commit/revert → done"
 ```
 
 **After template selection**: Continue to Step 0.2 (Template Customization), then skip to Step 4 (Preview and Confirm) with template-populated configuration.
@@ -97,6 +99,108 @@ states:
   done:
     terminal: true
 ```
+
+### Template: meta-optimize
+
+```yaml
+name: "{{loop_name}}"
+description: |
+  {{description}}
+initial: diagnose
+max_iterations: {{max_iterations}}
+timeout: 7200
+context:
+  targets: "{{targets}}"
+  tasks_dir: "{{tasks_dir}}"
+  scorer: "{{scorer}}"
+  target_score: {{target_score}}
+
+states:
+  diagnose:
+    action_type: {{diagnose_action_type}}
+    action: |
+      {{diagnose_action}}
+    capture: diagnosis
+    next: baseline
+
+  baseline:
+    action_type: shell
+    action: "${context.scorer} ${context.tasks_dir}"
+    capture: baseline_score
+    evaluate:
+      type: exit_code
+    on_yes: propose
+    on_no: done
+    on_error: done
+
+  propose:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Current harness artifact: ${context.targets}
+      Diagnosis from previous step: ${captured.diagnosis.output}
+      Baseline score: ${captured.baseline_score.output}
+
+      Propose ONE targeted edit to ${context.targets} that addresses the
+      highest-priority issue identified in the diagnosis. Output the revised
+      content only — no preamble, no markdown fences.
+    capture: candidate
+    next: apply
+
+  apply:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Apply this proposed change to ${context.targets}:
+      ${captured.candidate.output}
+      Confirm the change has been applied.
+    next: score
+
+  score:
+    action_type: shell
+    action: "${context.scorer} ${context.tasks_dir}"
+    capture: new_score
+    evaluate:
+      type: exit_code
+    on_yes: gate
+    on_no: revert
+    on_error: revert
+
+  gate:
+    action_type: shell
+    action: |
+      echo "${captured.new_score.output}" | tail -1 | tr -d '[:space:]'
+    evaluate:
+      type: convergence
+      direction: maximize
+      target: "${context.target_score}"
+      previous: "${captured.baseline_score.output}"
+      tolerance: 0.02
+    route:
+      target: commit
+      progress: commit
+      stall: revert
+      error: revert
+
+  commit:
+    action_type: shell
+    action: |
+      git add ${context.targets}
+      git commit -m "${loop.name}: iter ${state.iteration}, score ${captured.new_score.output}"
+    next: diagnose
+
+  revert:
+    action_type: shell
+    action: "git restore ${context.targets}"
+    next: done
+
+  done:
+    terminal: true
+```
+
+**Placeholders**: `{{loop_name}}`, `{{description}}`, `{{max_iterations}}`, `{{targets}}`, `{{tasks_dir}}`, `{{scorer}}`, `{{target_score}}`, `{{diagnose_action_type}}`, `{{diagnose_action}}`.
+
+---
 
 ### Template: harness-skill
 
@@ -275,6 +379,74 @@ questions:
 ```
 
 **Apply substitutions:** Replace `{{skill_name}}`, `{{check_cmd}}`, `{{max_iterations}}`.
+
+### For "Optimize a harness (meta-loop)"
+
+```yaml
+questions:
+  - question: "What harness artifact(s) will this loop modify? (space-separated paths)"
+    header: "Targets"
+    multiSelect: false
+    options:
+      - label: "Custom paths"
+        description: "Enter the file path(s) to modify, e.g. .loops/my-loop.yaml"
+
+  - question: "What scorer command produces a numeric quality signal? (required)"
+    header: "Scorer"
+    multiSelect: false
+    options:
+      - label: "./scripts/score.sh"
+        description: "Custom scoring script"
+      - label: "pytest scripts/tests/ -q --tb=no"
+        description: "Test suite as scorer"
+      - label: "Custom command"
+        description: "Specify your own scorer command"
+
+  - question: "What is the score target / early-stop threshold?"
+    header: "Target score"
+    multiSelect: false
+    options:
+      - label: "1.0 (Recommended)"
+        description: "Never early-stop; only commit on improvement"
+      - label: "0.9"
+        description: "Stop once score reaches 90%"
+      - label: "Custom value"
+        description: "Enter your own threshold (0.0–1.0)"
+
+  - question: "Where is the task / benchmark directory?"
+    header: "Tasks dir"
+    multiSelect: false
+    options:
+      - label: "scripts/tests/"
+        description: "Project test suite"
+      - label: ".loops/tasks/"
+        description: "Loop-specific task directory"
+      - label: "Custom path"
+        description: "Specify your own directory"
+
+  - question: "What is the diagnose action? (required)"
+    header: "Diagnose"
+    multiSelect: false
+    options:
+      - label: "Shell: read recent runs from .loops/runs/ and summarize failures"
+        description: "Uses shell to surface current failure modes"
+      - label: "Custom shell command"
+        description: "A command that prints what most needs improvement"
+      - label: "Custom prompt"
+        description: "Natural-language prompt that analyzes the artifact"
+```
+
+**Scorer refusal guard**: If scorer is empty, abort with:
+```
+Error: scorer is required for meta-optimize loops.
+  A numeric quality signal is needed to gate commits (convergence evaluation).
+  Provide a command that exits 0 on success and prints a numeric score on the last line.
+  Re-run /ll:create-loop and enter a scorer command to continue.
+```
+
+**Apply substitutions:** Replace `{{targets}}`, `{{scorer}}`, `{{target_score}}`, `{{tasks_dir}}`, `{{diagnose_action_type}}` (`shell` or `prompt`), `{{diagnose_action}}`, `{{max_iterations}}` (default 30), `{{loop_name}}` (auto-suggest: `optimize-<artifact-basename>`), `{{description}}`.
+
+---
 
 **Flow after template customization:**
 - The generated FSM YAML and auto-suggested loop name are ready

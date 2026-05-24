@@ -1030,6 +1030,251 @@ states:
 
 ---
 
+## Optimize a Harness (Meta-Loop) Questions
+
+If user selected "Optimize a harness (meta-loop)":
+
+### Step M1: Target Artifact(s)
+
+```yaml
+questions:
+  - question: "What harness artifact(s) will this loop modify?"
+    header: "Targets"
+    multiSelect: true
+    options:
+      - label: "Loop YAML(s)"
+        description: "Files under .loops/ or scripts/little_loops/loops/"
+      - label: "Skill"
+        description: "A skills/<name>/SKILL.md file"
+      - label: "Agent"
+        description: "An agents/<name>.md file"
+      - label: "Command"
+        description: "A commands/<name>.md file"
+      - label: "Custom paths"
+        description: "Specify exact file path(s) via Other"
+```
+
+Captured as the `targets` context variable (space-separated file paths).
+
+---
+
+### Step M2: Scorer Command (REQUIRED)
+
+Ask for the scorer command. This field is **required** — the wizard refuses to proceed without it.
+
+```yaml
+questions:
+  - question: "What scorer command produces a numeric quality signal? (required)"
+    header: "Scorer"
+    multiSelect: false
+    options:
+      - label: "./scripts/score.sh"
+        description: "Custom scoring script"
+      - label: "pytest scripts/tests/test_meta.py -q --tb=no"
+        description: "Test suite as scorer (exit code + pass count)"
+      - label: "python -m little_loops.bench.score"
+        description: "Python bench entry point"
+      - label: "Custom command"
+        description: "Specify your own scorer command"
+```
+
+**Refusal guard**: If the user provides an empty value or skips this question, abort:
+```
+Error: scorer is required for meta-optimize loops.
+  A numeric quality signal is needed to gate commits (convergence evaluation).
+  Provide a command that exits 0 on success and prints a numeric score on the last line.
+  Re-run /ll:create-loop and enter a scorer command to continue.
+```
+
+---
+
+### Step M3: Score Target
+
+```yaml
+questions:
+  - question: "What is the score target / early-stop threshold?"
+    header: "Target score"
+    multiSelect: false
+    options:
+      - label: "1.0 (Recommended)"
+        description: "Never early-stop; only commit on improvement"
+      - label: "0.9"
+        description: "Stop once score reaches 90%"
+      - label: "0.8"
+        description: "Stop once score reaches 80%"
+      - label: "Custom value"
+        description: "Enter your own threshold (0.0–1.0)"
+```
+
+---
+
+### Step M4: Tasks Directory
+
+```yaml
+questions:
+  - question: "Where is the task / benchmark directory?"
+    header: "Tasks dir"
+    multiSelect: false
+    options:
+      - label: "scripts/tests/"
+        description: "Project test suite as benchmark"
+      - label: ".loops/tasks/"
+        description: "Loop-specific task directory"
+      - label: "Custom path"
+        description: "Specify your own benchmark directory"
+```
+
+If the user provides a non-empty path, validate that it exists. If it does not exist, warn:
+```
+Warning: tasks_dir '<path>' does not exist. The scorer may fail on the first run.
+```
+Proceed anyway (do not abort).
+
+---
+
+### Step M5: Diagnose Action (REQUIRED)
+
+```yaml
+questions:
+  - question: "What is the diagnose action? (required)"
+    header: "Diagnose"
+    multiSelect: false
+    options:
+      - label: "Read recent runs from .loops/runs/ and summarize failure modes"
+        description: "Shell: cat recent run logs and identify what most needs improvement"
+      - label: "Custom shell command"
+        description: "A shell command that surfaces what is currently wrong with the artifact"
+      - label: "Custom prompt"
+        description: "A natural-language prompt that analyzes the artifact and identifies priorities"
+```
+
+**Diagnose action type**: Ask a follow-up to determine whether the diagnose action is `shell` or `prompt`.
+
+Captured as the `diagnose_action` variable along with `diagnose_action_type` (`shell` or `prompt`).
+
+---
+
+### Generate YAML — meta-optimize
+
+```yaml
+name: <loop-name>
+description: |
+  <user-provided description>
+initial: diagnose
+max_iterations: 30
+timeout: 7200
+context:
+  targets: "<user-provided>"
+  tasks_dir: "<user-provided>"
+  scorer: "<user-provided>"
+  target_score: <user-provided>
+
+states:
+  diagnose:
+    action_type: <shell|prompt>
+    action: |
+      <user-provided diagnose action>
+    capture: diagnosis
+    next: baseline
+
+  baseline:
+    action_type: shell
+    action: "${context.scorer} ${context.tasks_dir}"
+    capture: baseline_score
+    evaluate:
+      type: exit_code
+    on_yes: propose
+    on_no: done
+    on_error: done
+
+  propose:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Current harness artifact: ${context.targets}
+      Diagnosis from previous step: ${captured.diagnosis.output}
+      Baseline score: ${captured.baseline_score.output}
+
+      Propose ONE targeted edit to ${context.targets} that addresses the
+      highest-priority issue identified in the diagnosis. Output the revised
+      content only — no preamble, no markdown fences.
+    capture: candidate
+    next: apply
+
+  apply:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Apply this proposed change to ${context.targets}:
+      ${captured.candidate.output}
+      Confirm the change has been applied.
+    next: score
+
+  score:
+    action_type: shell
+    action: "${context.scorer} ${context.tasks_dir}"
+    capture: new_score
+    evaluate:
+      type: exit_code
+    on_yes: gate
+    on_no: revert
+    on_error: revert
+
+  gate:
+    action_type: shell
+    action: |
+      echo "${captured.new_score.output}" | tail -1 | tr -d '[:space:]'
+    evaluate:
+      type: convergence
+      direction: maximize
+      target: "${context.target_score}"
+      previous: "${captured.baseline_score.output}"
+      tolerance: 0.02
+    route:
+      target: commit
+      progress: commit
+      stall: revert
+      error: revert
+
+  commit:
+    action_type: shell
+    action: |
+      git add ${context.targets}
+      git commit -m "${loop.name}: iter ${state.iteration}, score ${captured.new_score.output}"
+    next: diagnose
+
+  revert:
+    action_type: shell
+    action: "git restore ${context.targets}"
+    next: done
+
+  done:
+    terminal: true
+```
+
+Notable properties:
+- **`diagnose` is the initial state** — implements SHOR §7.1 priority-identification before committing to an edit.
+- **No `check_semantic`** — the non-LLM `convergence` gate is the sole success signal; the generated YAML satisfies ENH-1665 MR-1 (`_validate_meta_loop_evaluation`) by construction.
+- **Standalone, not inherited** — no `from:` field; per EPIC-1663 design decision 3.
+- **Re-enters at `diagnose` after a successful commit** — each iteration re-prioritizes against the new baseline.
+
+---
+
+### Worked Example — "optimize the docs-sync loop"
+
+User answers:
+- Targets: `.loops/docs-sync.yaml`
+- Scorer: `pytest scripts/tests/test_docs_sync.py -q --tb=no`
+- Target score: `1.0`
+- Tasks dir: `scripts/tests/`
+- Diagnose action (shell): `cat $(ls -t .loops/runs/docs-sync/*/run.log 2>/dev/null | head -3) 2>/dev/null || echo "No prior runs found."`
+
+Generated loop name suggestion: `optimize-docs-sync`
+
+The generated YAML passes `ll-loop validate` without `meta_self_eval_ok: true` because the `gate` state uses `type: convergence` which is in `NON_LLM_EVALUATOR_TYPES` (`scripts/little_loops/fsm/validation.py:76–94`).
+
+---
+
 ## Sub-Loop Composition
 
 Sub-loop composition uses the `loop:` state field to invoke other loop YAMLs as nested child FSMs. This is not a separate loop type in the wizard — it is an advanced state configuration that can be used in any manually authored loop YAML.
