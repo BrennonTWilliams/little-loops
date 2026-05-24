@@ -56,6 +56,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | Loop | Description | Primary Inputs |
 |---|---|---|
 | `deep-research` | Iterative web research synthesis loop — generates search queries, performs web searches, evaluates sources, identifies coverage gaps, and produces a structured cited Markdown report | `topic` (research question), `depth` (min rounds, default 3), `coverage_threshold_pct` (default 85) |
+| `deep-research-arxiv` | Arxiv-only sibling of `deep-research` — constrains web search to `site:arxiv.org`, scores sources on relevance + recency (from arxiv submission date), and emits an arxiv-ID-keyed sources table plus a `## BibTeX` section in `report.md` | `topic` (research question), `depth` (min rounds, default 3), `coverage_threshold_pct` (default 85) |
 
 ## General Purpose
 

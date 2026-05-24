@@ -2,13 +2,20 @@
 id: FEAT-1673
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-05-24
 discovered_by: capture-issue
 captured_at: '2026-05-24T07:09:02Z'
+completed_at: '2026-05-24T07:38:47Z'
 parent: FEAT-1540
 relates_to:
-  - FEAT-1540
+- FEAT-1540
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-1673: Add deep-research-arxiv sibling loop for academic search
@@ -87,7 +94,10 @@ Unchanged states (verbatim copies): `init`, `score_coverage`, `plan_next` (struc
 - `scripts/tests/test_builtin_loops.py` — add `"deep-research-arxiv"` to the `expected` set in `TestBuiltinLoopFiles::test_expected_loops_exist` (~line 65). The auto-discovery scan picks the file up, but this hardcoded set is the canary that fails CI if a new loop is forgotten.
 - `scripts/little_loops/loops/README.md` — add a **table row** for `deep-research-arxiv` in the "Research & Knowledge" section adjacent to the existing `deep-research` entry. The section is a 3-column markdown table with header `| Loop | Description | Primary Inputs |`; the existing `deep-research` row is at line 58 (insert the new row at line 59).
 
-No code changes outside these three files.
+_Wiring pass added by `/ll:wire-issue`:_
+- `README.md` — increment "52 FSM loops" → "53 FSM loops" (line 167). Enforced by `doc_counts.py:verify_documentation()` — `ll-verify-docs` exits 1 without this update. [Agent 1 / Agent 2 finding]
+- `docs/guides/LOOPS_GUIDE.md` — add `deep-research-arxiv` row to the "Research & Knowledge" named table (~line 344) adjacent to the existing `deep-research` row. [Agent 2 finding]
+- `scripts/tests/test_deep_research_arxiv.py` — new dedicated test file following the `test_deep_research.py` pattern (see Tests section below). Established sibling convention; escalated from "out of scope" in the Tests section. [Agent 3 finding]
 
 ### Dependent Files (Callers/Importers)
 
@@ -124,11 +134,19 @@ The "sibling loop that specializes a few prompts of a parent" pattern is establi
   - `test_all_have_description_field` (line 46) — `description:` field presence
   - `test_no_bare_pass_token_in_output_contains` (line 124) — guards against bare `PASS` sentinels
   - `test_all_failure_terminals_have_diagnostic_action` (line 144) — pre-terminal `diagnose` validation
-- **No new dedicated test file required** — the sibling shares structure with `deep-research`, and dedicated `scripts/tests/test_deep_research.py` tests already cover the FSM skeleton. Author may opt to add a small `test_deep_research_arxiv.py` later if the BibTeX synthesis output needs structural assertions; out of scope for v1.
+- `scripts/tests/test_deep_research.py` — existing dedicated test file (22 tests, 5 classes) for the parent loop; serves as the template for the sibling. Covers: `TestDeepResearchYaml` (16 structural assertions), `TestDeepResearchShellStates` (init shell execution), `TestDeepResearchEvaluators` (sentinel unit tests), `TestDeepResearchResolution` (builtin resolver), `TestDeepResearchDryRun` (CLI smoke). [Agent 3 finding]
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_deep_research_arxiv.py` — **recommended new test file** (escalated from "out of scope for v1"). The established sibling-loop pattern (`test_rn_plan_apo.py`, `test_rn_refine.py`) always produces a dedicated test file per loop. Follow the `test_deep_research.py` pattern: 5 classes, ~22 tests. Key adaptations: replace `"deep-research"` → `"deep-research-arxiv"` throughout, fallback slug `"deep-research-run"` → `"deep-research-arxiv-run"`, update `test_required_top_level_fields` to assert `name == "deep-research-arxiv"`, update `test_required_states_exist` if any state names change, add assertions for `recency:` annotations (not `credibility:`). [Agent 3 finding]
 
 ### Documentation
 
 - `scripts/little_loops/loops/README.md` — add a bullet for `deep-research-arxiv` in the "Research & Knowledge" section adjacent to the existing `deep-research` entry (around line 58)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `README.md` — increment "52 FSM loops" → "53 FSM loops" (line 167). Enforced by `doc_counts.py:verify_documentation()` — `ll-verify-docs` exits 1 without this update. [Agent 2 finding]
+- `docs/guides/LOOPS_GUIDE.md` — add `deep-research-arxiv` row to the "Research & Knowledge" named table (~line 344) adjacent to the existing `deep-research` row. [Agent 2 finding]
+- `docs/reference/loops.md` — optional: add a reference entry for `deep-research-arxiv` consistent with the existing `## \`deep-research\`` section (state graph, context variables, convergence description). [Agent 2 finding]
 
 ### Configuration
 
@@ -151,6 +169,15 @@ The "sibling loop that specializes a few prompts of a parent" pattern is establi
 13. **Update loops README** — add a row for `deep-research-arxiv` in `scripts/little_loops/loops/README.md` "Research & Knowledge" section adjacent to the existing `deep-research` entry.
 14. **End-to-end smoke run** — `ll-loop run deep-research-arxiv "speculative decoding for LLM inference" --max-iterations 1`. Spot-check `knowledge-base.md` URLs are predominantly `arxiv.org/abs/...` and annotations carry `recency:` not `credibility:`.
 15. **Synthesis output check (after a converged run)** — open the final `report.md` and confirm the sources table columns are `arXiv ID | Title | Authors | Year | Relevance | Recency | Facet`, and that a `## BibTeX` section appears with at least one `@misc{...}` entry.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+16. **Update `README.md`** — increment "52 FSM loops" → "53 FSM loops" (line 167). Required: `doc_counts.py:verify_documentation()` scans `README.md` for the loop count pattern and `ll-verify-docs` exits 1 without this update.
+17. **Update `docs/guides/LOOPS_GUIDE.md`** — add `deep-research-arxiv` row to the "Research & Knowledge" named table (~line 344), adjacent to the existing `deep-research` row. Keeps the guide's enumeration of the research family complete.
+18. **Write `scripts/tests/test_deep_research_arxiv.py`** — new dedicated test file following `test_deep_research.py` pattern (5 classes, ~22 tests). Established sibling-loop convention overrides the earlier "out of scope" note. Adapt all hardcoded name strings; add assertion that `recency:` appears in evaluate annotations (not `credibility:`).
+19. **(Optional) Update `docs/reference/loops.md`** — add `deep-research-arxiv` reference entry consistent with the existing `## \`deep-research\`` section. Not CI-blocking, but keeps the reference doc complete for the research loop family.
 
 ## Impact
 
@@ -189,9 +216,26 @@ context:
 
 ## Status
 
-**Open** | Created: 2026-05-24 | Priority: P3
+**Done** | Created: 2026-05-24 | Completed: 2026-05-24 | Priority: P3
+
+## Resolution
+
+Implemented as planned. Created `scripts/little_loops/loops/deep-research-arxiv.yaml` paralleling the parent `deep-research` loop structurally — same state graph (`init` → `generate_queries` → `search_web` → `evaluate_sources` → `score_coverage` → `plan_next` / `synthesize` → `done`), same `COVERAGE_SUFFICIENT` / `NEED_MORE` sentinel routing, same top-level fields (`category: research`, `input_key: topic`, `max_iterations: 30`, `timeout: 3600`, `context.output_dir: .loops/research`, `depth: 3`, `coverage_threshold_pct: 85`). Specialized only the five prompts that diverge:
+
+- `search_web` constrains every WebSearch query with `site:arxiv.org` and instructs WebFetch on `arxiv.org/abs/<id>` for metadata extraction (arxiv ID, authors, submission date, optional Journal-ref).
+- `evaluate_sources` replaces the credibility axis with **recency** (1–5 from arxiv submission date) and includes `arxiv-id:` in the annotation format so dedup is keyed by paper, not URL.
+- `synthesize` swaps the sources table for `| # | arXiv ID | Title | Authors | Year | Relevance | Recency | Facet |` and appends a `## BibTeX` section with `@misc{...}` entries ready to drop into a `.bib` file. Used a 4-backtick outer markdown fence to unambiguously nest the inner `bibtex` code fence.
+- `generate_queries` and `plan_next` carry a wording tweak nudging the LLM toward academic terminology (method names, problem formulations) instead of informal/how-to phrasing.
+
+Wired in: `scripts/tests/test_builtin_loops.py` expected set (52 → 53 entries), new dedicated `scripts/tests/test_deep_research_arxiv.py` (31 tests across 5 classes — adds arxiv-specific assertions for `site:arxiv.org`, recency-not-credibility, arxiv-ID annotations, BibTeX section), `scripts/little_loops/loops/README.md` "Research & Knowledge" table row, `docs/guides/LOOPS_GUIDE.md` named table row, and root `README.md` loop count (52 → 54 — actual count was off by one in the wiring estimate because `doc_counts.py` rglobs nested loops).
+
+All verification passed: `ll-loop validate deep-research-arxiv`, `ll-loop list` (loop visible with `[built-in]` tag), `ll-verify-docs` (all 10 counts match), and the full builtin-loops + deep-research test suite (495 passed).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-24T07:38:47Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92f99b2b-14c2-4ff7-94e7-d8d309f75b40.jsonl`
+- `/ll:ready-issue` - 2026-05-24T07:33:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/995aa695-3c58-4826-8afa-21cb7bcdc032.jsonl`
+- `/ll:confidence-check` - 2026-05-24T08:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2aaa4e23-87ed-4641-85ed-a9de682a4d82.jsonl`
+- `/ll:wire-issue` - 2026-05-24T07:28:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6928f817-2322-4383-8ed6-d30877fc7d71.jsonl`
 - `/ll:refine-issue` - 2026-05-24T07:23:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a811c0d3-136c-4394-b80a-ab4435a7e6a2.jsonl`
 - `/ll:format-issue` - 2026-05-24T07:12:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faf9a9a-9e72-4c6e-95c6-08c2d631638f.jsonl`
 - `/ll:capture-issue` - 2026-05-24T07:09:02Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e118fada-be27-4510-9c7c-e66238684c9d.jsonl`
