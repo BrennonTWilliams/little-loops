@@ -9,6 +9,7 @@ labels: [create-loop, wizard, loops, meta-loop, harness, shor]
 parent: EPIC-1663
 relates_to: [ENH-1664, ENH-1665]
 depends_on: [ENH-1665]
+decision_needed: false
 ---
 
 # ENH-1666: `create-loop` wizard branch — "Optimize a harness (meta-loop)"
@@ -202,20 +203,39 @@ already refuses to omit `discover` in multi-item harness mode).
 
 ## Implementation Steps
 
-1. **`skills/create-loop/SKILL.md`**: Add new loop-type option to Step 1
-   AskUserQuestion. Add type mapping `meta-optimize` → state list.
-2. **`skills/create-loop/loop-types.md`**: Add new top-level section
-   "## Optimize a Harness (Meta-Loop) Questions" after the existing
-   "## Harness Questions" section (line ~549). Include the 5-question
-   flow, the YAML template above, and a worked example.
-3. **`skills/create-loop/templates.md`**: Add `meta-optimize-template`
-   pointing to the same generated YAML for users who start from template.
+1. **`skills/create-loop/SKILL.md` lines 72–91**: In `### Step 1: Loop
+   Type Selection (Custom Mode Only)`, add a new `options:` entry to the
+   AskUserQuestion block after the last RL option. Then add a new `->` line
+   to the `**Type Mapping:**` block (lines 82–90):
+   `"Optimize a harness (meta-loop)" -> meta-optimize type (states: diagnose, baseline, propose, apply, score, gate, commit_or_revert, done)`
+
+2. **`skills/create-loop/loop-types.md` after line ~1029**: The
+   "## Harness Questions" section spans lines 549–1029. Insert the new
+   "## Optimize a Harness (Meta-Loop) Questions" section **after** the
+   Harness section ends (after the last worked example) and **before**
+   `## Sub-Loop Composition`. Include the 5-question flow, the YAML
+   template above, a worked example, and the scorer refusal guard.
+   Model the structure on the Harness section (Steps H1–H4 + Generate
+   YAML subsection). Use the abort pattern from
+   `skills/rename-loop/SKILL.md:57–73` for the scorer refusal message.
+
+3. **`skills/create-loop/templates.md`**: Add `meta-optimize` to:
+   - `## Step 0.1` AskUserQuestion options list (one new option)
+   - `## Template Definitions` — new `### Template: meta-optimize` subsection
+     with `{{targets}}`, `{{scorer}}`, `{{target_score}}`, `{{tasks_dir}}`,
+     `{{diagnose_action}}`, `{{max_iterations}}` placeholders
+   - `## Step 0.2` — new `### For "Optimize a harness (meta-loop)"` customization
+     question flow mirroring the harness template flow (lines 243–277)
+
 4. **Smoke test** (manual): Invoke `/ll:create-loop`, select "Optimize a
-   harness (meta-loop)", complete the question flow, and verify the
-   generated YAML passes `ll-loop validate` (i.e., MR-1 from ENH-1665
-   does not fire).
-5. **Refusal test** (manual): Try to leave the scorer field empty and
-   verify the wizard refuses to proceed.
+   harness (meta-loop)", complete the 5-question flow, and verify the
+   generated YAML passes `ll-loop validate` (MR-1 from ENH-1665 must not
+   fire). Expected: clean validation with `convergence` gate satisfying
+   `NON_LLM_EVALUATOR_TYPES` in `scripts/little_loops/fsm/validation.py:76–94`.
+
+5. **Refusal test** (manual): Attempt to leave the scorer field empty and
+   verify the wizard refuses to proceed with an error message following the
+   abort pattern: `Error: scorer is required for meta-optimize loops. ...`
 
 ## Verification
 
@@ -257,6 +277,34 @@ already refuses to omit `discover` in multi-item harness mode).
 | `scripts/little_loops/loops/harness-optimize.yaml` | Positive template that the wizard branch mirrors |
 | `docs/research/Towards-Direct-Evaluation-of-Harness-Optimizers.md` | SHOR §6.2 Finding 2, §7.1 |
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+### Files to Modify
+
+- `skills/create-loop/SKILL.md:72–91` — Step 1 AskUserQuestion options list and Type Mapping block; add one option entry and one `->` mapping line
+- `skills/create-loop/loop-types.md:~1030` — insert new `## Optimize a Harness (Meta-Loop) Questions` section after the Harness section ends (line ~1029) and before `## Sub-Loop Composition`
+- `skills/create-loop/templates.md` — add option to Step 0.1, new template in `## Template Definitions`, and new customization flow in `## Step 0.2`
+
+### Reference Files (No Changes)
+
+- `scripts/little_loops/loops/harness-optimize.yaml` — canonical meta-loop; the generated standalone template mirrors its diagnose → baseline → propose → apply → score → gate → commit/revert shape
+- `scripts/little_loops/fsm/validation.py:76–94` — `NON_LLM_EVALUATOR_TYPES` frozenset and `_validate_meta_loop_evaluation()` (MR-1/MR-2 rules); the generated `convergence` gate satisfies MR-1 by construction
+- `scripts/little_loops/fsm/schema.py:890` — `FSMLoop.meta_self_eval_ok: bool = False` field (added by ENH-1665)
+
+### Abort Pattern Reference
+
+- `skills/rename-loop/SKILL.md:57–73` — canonical abort-with-error text pattern to mirror for scorer refusal guard
+
+### Tests (No New Tests Required — Smoke and Refusal Are Manual)
+
+- `scripts/tests/test_create_loop.py` — existing create-loop tests; review for any structure tests that cover loop-type options
+- `scripts/tests/test_harness_optimize.py` — positive control that validates `harness-optimize.yaml` structure; use as model for any automated structural test of generated output
+- `scripts/tests/test_fsm_validation.py` — `TestMetaLoopValidation` class (9 tests); generated YAML should pass all MR-1/MR-2 checks without needing `meta_self_eval_ok: true`
+
 ## Labels
 
 - create-loop
@@ -277,6 +325,18 @@ AskUserQuestion), `skills/create-loop/loop-types.md:549` ("Harness Questions"
 insertion point), and `scripts/little_loops/loops/harness-optimize.yaml`
 (positive template) all exist as referenced.
 
+_Updated 2026-05-24 by `/ll:refine-issue`:_ ENH-1665 is now `done` — the
+soft-block is resolved. `_validate_meta_loop_evaluation()`,
+`_is_meta_loop()`, and `NON_LLM_EVALUATOR_TYPES` are present in
+`scripts/little_loops/fsm/validation.py:76–94`, and `meta_self_eval_ok:
+bool = False` is at `scripts/little_loops/fsm/schema.py:890`. The loop-types.md
+insertion point is after line ~1029 (end of the Harness Questions section),
+not line ~549 (the section start) — the new section must go before
+`## Sub-Loop Composition`. Loop type selection in SKILL.md is lines 72–91
+(`### Step 1: Loop Type Selection (Custom Mode Only)` + `**Type Mapping:**`
+block). Ready to implement.
+
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-24T13:49:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28bd77b9-9805-4ea8-8f7b-b71214070553.jsonl`
 - `/ll:verify-issues` - 2026-05-24T07:01:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08ba673b-967b-4af4-a548-692288b5485d.jsonl`

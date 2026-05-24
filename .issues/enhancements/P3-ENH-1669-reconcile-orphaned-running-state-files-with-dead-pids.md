@@ -133,18 +133,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 
-**Tests that will break (must fix before merging):**
-- `TestCmdStatus.test_status_prints_state` in `test_cli_loop_lifecycle.py` — `mock_state.status = "running"` with auto-attribute MagicMock `pid`; reconciliation calls `_process_alive(MagicMock())` → `TypeError`. Fix: add `mock_state.pid = None` to `_make_state()` helper [Agent 3 finding]
-- `TestCmdStatusLogFile._make_state` in `test_cli_loop_lifecycle.py` — same MagicMock `pid` issue; 7 tests using this helper at risk. Add `mock_state.pid = None` to helper [Agent 3 finding]
-- `TestCmdStatusMultiInstance` in `test_cli_loop_lifecycle.py` — both `state1` and `state2` have `status = "running"` with no pid control. Add `.pid = None` to both mock states [Agent 3 finding]
-- `TestCmdStatusWithPid.test_status_shows_stale_pid` in `test_cli_loop_background.py` — reconciliation now writes the flip to disk; verify assertions account for state file being rewritten [Agent 3 finding]
-- `TestCmdStatusWithPid.test_status_without_pid_file` in `test_cli_loop_background.py` — `mock_state.status = "running"`, no `.pid` file, `mock_state.pid` uncontrolled (MagicMock); reconciliation falls through chain to `state.pid` → `_process_alive(MagicMock())` → `TypeError`. Fix: add `mock_state.pid = None` to this test's mock setup [Second wiring pass finding]
+**Tests pre-fixed (2026-05-24) — applied before implementation begins:**
+- ~~`TestCmdStatus.test_status_prints_state` in `test_cli_loop_lifecycle.py`~~ — **DONE**: added `mock_state.pid = None` inline; no PID file → reconciliation skips.
+- ~~`TestCmdStatusLogFile._make_state` in `test_cli_loop_lifecycle.py`~~ — **DONE**: added `mock_state.pid = None` to helper; 7 tests now safe.
+- ~~`TestCmdStatusMultiInstance` in `test_cli_loop_lifecycle.py`~~ — **DONE**: added `state1.pid = None` / `state2.pid = None` to both test bodies.
+- ~~`TestCmdStatusWithPid.test_status_shows_stale_pid` in `test_cli_loop_background.py`~~ — **DONE**: patched `StatePersistence.save_state` (decided over `to_dict.return_value` — test is about display behavior, not persistence; "stale" assertion still holds post-reconciliation since `_status_single` checks `.pid` file again for display).
+- ~~`TestCmdStatusWithPid.test_status_without_pid_file` in `test_cli_loop_background.py`~~ — **DONE**: added `mock_state.pid = None`; no PID anywhere → reconciliation skips entirely.
 
 **New tests to write:**
 - `scripts/tests/test_fsm_persistence.py` — add `test_reconciled_at_field_roundtrip`, `test_reconciled_at_defaults_to_none`, `test_reconciled_at_omitted_when_none` (follow `test_active_sub_loop_field_roundtrip` pattern at line 89) [Agent 3 finding]
 
 _Second refinement pass — `/ll:refine-issue`:_
-- **`TestCmdStatusWithPid.test_status_shows_stale_pid` fix is more complex than noted**: `save_state(mock_state)` calls `mock_state.to_dict()` which returns a `MagicMock` that `json.dumps()` cannot serialize — `mock_state.pid = None` alone is insufficient. Fix requires either (a) adding `mock_state.to_dict.return_value = {"loop_name": "test-loop", "status": "running", ...}` to the mock, or (b) patching `StatePersistence.save_state` in this test.
+- ~~**`TestCmdStatusWithPid.test_status_shows_stale_pid` fix decision**: Chose option (b) — patch `StatePersistence.save_state`. Reasoning: test is about display behavior; `"stale"` assertion holds because `_status_single` re-checks the `.pid` file for display independently of reconciliation; patching `save_state` keeps test intent clear without adding serialization boilerplate. **Resolved 2026-05-24.**~~
 - `TestReconcileStaleRuns.test_missing_pid_file_running_left_alone` in `test_fsm_persistence.py` (confirmed) — when `state.pid` is `None` and no `.pid` file exists, startup sweep leaves the orphan alone; this is exactly the case ENH-1669 must catch on the read path via the `state.pid` fallback.
 - `save_state()` in `persistence.py` mutates `state.updated_at` to `_iso_now()` before writing — reconciled state files will have a fresh `updated_at` timestamp; account for this in any test assertions that verify state content post-reconciliation.
 - `TestFindInstances._write_state()` at line 1658 in `test_cli_loop_lifecycle.py` — a second real-`LoopState` writer helper in that file; model new reconcile tests after `TestCmdStatusLockFilePid` pattern (patch `_find_instances`, write real files) rather than this helper.
@@ -180,9 +180,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 8. Update `scripts/little_loops/fsm/persistence.py` — add `reconciled_at: datetime | None = None` to `LoopState`, guard `to_dict()` with `if self.reconciled_at is not None`, add `data.get("reconciled_at")` to `from_dict()` (follow `active_sub_loop` pattern)
-9. Fix at-risk tests before merging: add `mock_state.pid = None` to `_make_state()` helpers in `TestCmdStatus`, `TestCmdStatusLogFile`, and `TestCmdStatusMultiInstance` in `test_cli_loop_lifecycle.py` — prevents `TypeError` when reconciliation chain reaches `state.pid` on a MagicMock
-10. Review `TestCmdStatusWithPid.test_status_shows_stale_pid` in `test_cli_loop_background.py` — reconciliation now writes state to disk; verify assertions account for this side effect
-11. Fix `TestCmdStatusWithPid.test_status_without_pid_file` in `test_cli_loop_background.py` — same MagicMock `pid` issue as step 9; add `mock_state.pid = None` to this test [Second wiring pass finding]
+9. ~~Fix at-risk tests: add `mock_state.pid = None` to `_make_state()` helpers in `TestCmdStatus`, `TestCmdStatusLogFile`, and `TestCmdStatusMultiInstance` in `test_cli_loop_lifecycle.py`~~ — **DONE 2026-05-24**
+10. ~~`TestCmdStatusWithPid.test_status_shows_stale_pid` in `test_cli_loop_background.py` — patch `StatePersistence.save_state`~~ — **DONE 2026-05-24**
+11. ~~`TestCmdStatusWithPid.test_status_without_pid_file` in `test_cli_loop_background.py` — add `mock_state.pid = None`~~ — **DONE 2026-05-24**
 12. Update `docs/guides/LOOPS_GUIDE.md` — add a one-line note in the Monitor section and Background loop management section that `ll-loop status` may transparently rewrite orphaned `running` state files [Second wiring pass finding]
 ~~13. Config knob — not implemented.~~ (Decided 2026-05-24: YAGNI.)
 
@@ -237,6 +237,8 @@ _Added by `/ll:confidence-check` on 2026-05-24_
 - **Status becomes a writer** — introduces a narrow race window where a just-spawned process with no `.pid` yet could be wrongly reconciled. Add a "just-started, no .pid yet" regression test modeled on `TestCmdStatusLockFilePid`.
 
 ## Session Log
+- `pre-impl test fixes + save_state decision` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b86d74a1-029b-46f2-a7b9-03e998a02e0f.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b86d74a1-029b-46f2-a7b9-03e998a02e0f.jsonl`
 - `/ll:wire-issue` - 2026-05-24T13:40:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3464582d-1db1-46a9-b80a-7ca32c3d5cd4.jsonl`
 - `/ll:refine-issue` - 2026-05-24T13:31:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73097563-3366-47c7-ad17-c2ae7263a6e6.jsonl`
 - `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/765fa3c6-1a05-4cb7-8170-c01366684b4e.jsonl`
