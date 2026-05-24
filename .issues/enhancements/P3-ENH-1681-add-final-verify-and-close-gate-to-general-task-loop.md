@@ -179,6 +179,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `general-task`, `correctness`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-24T17:35:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea088c92-461b-4afc-98b8-32abc1e0bf8d.jsonl`
 - `/ll:capture-issue` - 2026-05-24T17:30:41Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49190dcc-d6e4-4353-bf0c-cce367d61a96.jsonl`
 
 ---

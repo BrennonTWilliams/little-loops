@@ -11,7 +11,9 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 relates_to: FEAT-1476
-depends_on: [FEAT-1476]
+depends_on:
+- FEAT-1476
+milestone: refined-ready
 ---
 
 # FEAT-1479: Pi Adapter — Config Candidate, Schema, and Config Tests

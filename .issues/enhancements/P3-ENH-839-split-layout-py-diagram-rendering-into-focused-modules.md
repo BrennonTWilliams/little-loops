@@ -1,11 +1,12 @@
 ---
 discovered_commit: 8c6cf90
 discovered_branch: main
-discovered_date: 2026-03-19T00:00:00Z
+discovered_date: 2026-03-19 00:00:00+00:00
 discovered_by: audit-architecture
 focus_area: large-files
 confidence_score: 100
 outcome_confidence: 71
+milestone: refined-ready
 ---
 
 # ENH-839: Split layout.py diagram rendering into focused modules
@@ -75,7 +76,7 @@ Split into a `layout/` subpackage or three focused modules:
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/info.py` — primary consumer; imports will need updating to new subpackage paths
-- `scripts/little_loops/cli/loop/_helpers.py:324` — imports `_render_fsm_diagram`; must be updated
+- `scripts/little_loops/cli/loop/_helpers.py` (`_build_pinned_pane`) — imports `_render_fsm_diagram`; must be updated
 
 ### Similar Patterns
 - N/A — no other modules in the codebase have a similar splitting candidate
@@ -111,6 +112,13 @@ Split into a `layout/` subpackage or three focused modules:
 
 ## Verification Notes
 
+**Verified**: 2026-05-24 | **Verdict**: VALID (line counts refreshed)
+
+- File `scripts/little_loops/cli/loop/layout.py` exists at **1,967 lines** (was 1,699 on 2026-05-22)
+- 3 classes still present: `TopologyDetector`, `LayerAssigner`, `CrossingMinimizer`
+- Refactor plan still accurate; no `layout/` subpackage yet
+- File continues to grow — +268 lines since 2026-05-22 verification
+
 **Verified**: 2026-05-22 | **Verdict**: VALID (line counts refreshed)
 
 - File `scripts/little_loops/cli/loop/layout.py` exists at **1,699 lines** (was 1,701 on 2026-05-17)
@@ -133,6 +141,7 @@ Split into a `layout/` subpackage or three focused modules:
 - Integration Map note re: `_helpers.py` import of `_render_fsm_diagram` still applies
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T17:46:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0e276a3-13b8-43b1-8581-1cb2cbdbf771.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:verify-issues` - 2026-05-17T17:04:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/907d2d29-7e38-4120-a77d-deb597ac2df4.jsonl`
 - `/ll:verify-issues` - 2026-05-14T20:42:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`

@@ -22,6 +22,26 @@ that still asserts those IDs are `open` or `in_progress`, and reports (or
 auto-fixes) the stale references in one batched pass — after editing is complete,
 so it doesn't interrupt mid-session work.
 
+## Current Behavior
+
+When an issue is marked `done`, prose in other open issue files (blocker notes,
+concerns sections, session logs) may still reference that ID as `open`,
+`in_progress`, or describe it as an active blocker. There is no automated
+mechanism to detect or clean up these stale references. Engineers must manually
+audit issue files after marking work done, which is easy to forget and causes
+Claude Code to treat completed work as active in subsequent sessions.
+
+## Expected Behavior
+
+A `Stop` hook fires at the end of every Claude Code session. It collects all
+issue IDs with `status: done`, greps open issue files for patterns like
+`"<ID> is (still )?(open|in_progress|active)"` and `"blocked by .*<ID>"`
+(where the blocker is already done), and prints a concise report (file path,
+line number, matched phrase) for each stale reference found. If
+`hooks.stale_ref_fix: auto` is set in `ll-config.json`, stale phrases are
+rewritten automatically. The hook exits 0 in all cases and completes in under
+2s on repos with ~400 issue files when no matches are found.
+
 ## Motivation
 
 When an issue is marked `done`, prose in other issue files (blockers notes,
@@ -51,6 +71,31 @@ session starts.
    (or a deterministic sed pattern for the simple `is open/in_progress` case).
 5. **Wire into hooks**: Register as a `Stop` event handler in `hooks/hooks.json`.
    Keep the script fast — if grep finds no matches it should complete in < 1s.
+
+## Integration Map
+
+### Files to Modify
+- `hooks/hooks.json` — add `Stop` event handler entry
+
+### New Files
+- `scripts/little_loops/hooks/sweep_stale_refs.py` — new hook script
+- `scripts/tests/test_sweep_stale_refs.py` — unit tests
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/hooks/main_hooks.py` — invokes hook scripts; verify `Stop` event routing
+
+### Similar Patterns
+- `scripts/little_loops/hooks/session_start.py` — reference for hook script structure and exit conventions
+- Other `Stop`/`PostToolUse` handlers in `hooks/hooks.json` for timeout and error conventions
+
+### Tests
+- `scripts/tests/test_sweep_stale_refs.py` (new) — unit tests covering: no-match fast path, single stale ref detection, multiple files, auto-fix mode
+
+### Documentation
+- N/A — hook is self-documenting via `hooks/hooks.json` and the `--help` flag
+
+### Configuration
+- `ll-config.json` — optional `hooks.stale_ref_fix: "report" | "auto"` knob
 
 ## API / Interface
 
@@ -86,6 +131,13 @@ Optional config knob in `ll-config.json`:
 - [ ] Completes in < 2s on a repo with ~400 issue files when no matches found
 - [ ] Unit tests in `scripts/tests/test_sweep_stale_refs.py`
 
+## Impact
+
+- **Priority**: P3 — improves issue hygiene and prevents context confusion in future sessions; non-blocking quality improvement
+- **Effort**: Small — ~100-line Python script, `hooks/hooks.json` registration, unit tests; reuses existing frontmatter parsing utilities (`ll-issues`, `scripts/little_loops/`)
+- **Risk**: Low — hook exits 0 always; auto-fix mode requires explicit opt-in via config; grep-only path is purely advisory
+- **Breaking Change**: No
+
 ## Out of Scope
 
 - Fixing `blocked_by:` frontmatter fields (separate concern; `ll-deps` handles
@@ -94,6 +146,11 @@ Optional config knob in `ll-config.json`:
 - Structured reference markers (Approach B from brainstorm) — separate ENH if
   convention is adopted later
 
+---
+
+**Open** | Created: 2026-05-24 | Priority: P3
+
 ## Session Log
+- `/ll:format-issue` - 2026-05-24T17:28:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20c144e8-2658-4919-b9a3-e1bfd4e0786b.jsonl`
 
 - `/ll:capture-issue` - 2026-05-24T17:21:20Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a638383a-aa90-4ed6-80c0-1913cf58a71c.jsonl`

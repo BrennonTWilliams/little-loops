@@ -5,6 +5,7 @@ source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
 confidence_score: 98
 outcome_confidence: 71
 blocked_by: []
+milestone: refined-ready
 ---
 
 # ENH-494: Enforce 500-Line SKILL.md Limit with Flat Companion Files

@@ -17,6 +17,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+milestone: refined-ready
 ---
 
 # ENH-1529: Expose sandbox_mode parameter on CodexRunner build methods
@@ -55,7 +56,7 @@ suggest `sandbox_mode` as the Codex-native alternative.
 
 ## Motivation
 
-The `--tools` allowlist gap is well-documented (`host_runner.py:364-370`), but the
+The `--tools` allowlist gap is well-documented (`host_runner.py:369-375`), but the
 current workaround is all-or-nothing: either full unrestricted access or don't use Codex.
 Surfacing Codex's own sandbox modes through the standard runner API lets callers express
 the intent ("restrict file writes") in the abstraction layer rather than bypassing it.
@@ -113,15 +114,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Exact flag locations (`host_runner.py`):**
-- `build_streaming` — line 390; flag at line 422 inside `args += [...]` block (easy to replace with `_sandbox_args()` call)
-- `build_blocking_json` — line 448; flag at line 467 inside a **list literal** (lines 465–470); the entire literal must be refactored into dynamic assembly before threading `sandbox_mode`
-- `build_detached` — line 489; flag at line 492 inside a **list literal** (lines 490–495) that also includes `prompt` as its last element; same refactoring needed
-- `build_version_check` — line 481; no sandbox flag (no change required, confirmed)
-- `describe_capabilities` — line 503; `tool_allowlist` entry at line 520; no `sandbox_mode` capability entry today
+- `build_streaming` — line 435; flag at line 461 inside `args += [...]` block (easy to replace with `_sandbox_args()` call)
+- `build_blocking_json` — line 487; flag at line 496 inside a **list literal** (lines 494–499); the entire literal must be refactored into dynamic assembly before threading `sandbox_mode`
+- `build_detached` — line 530; flag at line 533 inside a **list literal** (lines 531–536) that also includes `prompt` as its last element; same refactoring needed
+- `build_version_check` — line 522; no sandbox flag (no change required, confirmed)
+- `describe_capabilities` — line 544; `tool_allowlist` entry at line 565; no `sandbox_mode` capability entry today
 
-**Tools warning (actual location):** lines 409–416 in `build_streaming`. Issue Motivation section references `host_runner.py:364–370` — those lines are in the class docstring. The actual `CapabilityNotSupported` warning for `tools` is at **line 409**. Current message: `"tool access is controlled via --sandbox mode."` — the update should also reference the Python `sandbox_mode=` parameter.
+**Tools warning (actual location):** lines 448–455 in `build_streaming`. Issue Motivation section references `host_runner.py:369–375` — those lines are in the class docstring. The actual `CapabilityNotSupported` warning for `tools` is at **line 448**. Current message: `"tool access is controlled via --sandbox mode."` — the update should also reference the Python `sandbox_mode=` parameter.
 
-**Snapshot test impact:** `test_codex_runner_flag_translation` (`test_host_runner.py:198`) asserts the exact `[binary, *args]` list. The default `sandbox_mode=None` case must continue to emit `--dangerously-bypass-approvals-and-sandbox`, so this existing test must still pass unchanged. New parametrized tests should cover each explicit mode value.
+**Snapshot test impact:** `test_codex_runner_flag_translation` (`test_host_runner.py:200`) asserts the exact `[binary, *args]` list. The default `sandbox_mode=None` case must continue to emit `--dangerously-bypass-approvals-and-sandbox`, so this existing test must still pass unchanged. New parametrized tests should cover each explicit mode value.
 
 **`build_blocking_json` / `build_detached` refactoring pattern:** These two methods use single list literals; `build_streaming` already uses a dynamic pattern (`args: list[str] = ["exec"]` then `args += [...]`). Apply the same dynamic construction pattern before inserting `_sandbox_args()`.
 
@@ -216,11 +217,12 @@ def _sandbox_args(sandbox_mode: str | None) -> list[str]: ...
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts` 2026-05-18): This issue modifies `host_runner.py` in the `CodexRunner` region (lines 270–418) and adds a new `_sandbox_args()` module-level helper. FEAT-1480 also modifies `host_runner.py` to wire `PiRunner` (lines 478–532). The two changes target different class regions and are non-overlapping, but landing both PRs simultaneously can produce near-miss merge conflicts during rebase. Sequence or merge these PRs deliberately — review both diff hunks together before landing.
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-18): This issue modifies `host_runner.py` in the `CodexRunner` region (lines 343–581) and adds a new `_sandbox_args()` module-level helper. FEAT-1480 also modifies `host_runner.py` to wire `PiRunner` (lines 653+). The two changes target different class regions and are non-overlapping, but landing both PRs simultaneously can produce near-miss merge conflicts during rebase. Sequence or merge these PRs deliberately — review both diff hunks together before landing.
 
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T17:50:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0e276a3-13b8-43b1-8581-1cb2cbdbf771.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`
 - `/ll:confidence-check` - 2026-05-16T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b12ed97-216f-4ef4-a15b-b3a885a9ca71.jsonl`
 - `/ll:wire-issue` - 2026-05-16T22:08:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f37cba0-e05a-4523-b0f7-0e74784e29ae.jsonl`

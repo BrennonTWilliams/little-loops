@@ -67,7 +67,28 @@ Users iterate on research topics (refine the question, re-run after new events).
 
 4. Optionally add slug truncation (`${SLUG:0:40}`) before appending the timestamp to bound path length for very long topics.
 
-## Out of Scope
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/deep-research.yaml` - `init` state: append `$(date +%Y-%m-%dT%H%M%S)` to `SLUG` before building `DIR`
+
+### Dependent Files (Callers/Importers)
+- N/A - YAML loop configs are invoked by `ll-loop run`, not imported by Python modules
+
+### Similar Patterns
+- `scripts/little_loops/loops/deep-research-arxiv.yaml` - same `init` overwrite pattern; may warrant the same fix for consistency
+
+### Tests
+- `scripts/tests/test_deep_research.py` - update any assertions that check run directory path format
+- `scripts/tests/test_builtin_loops.py` - check for hardcoded path assertions against old directory naming
+
+### Documentation
+- N/A - no documentation references deep-research directory structure
+
+### Configuration
+- N/A - no config file changes needed
+
+## Scope Boundaries
 
 - "Latest" symlink (Option B) — adds complexity not warranted for this fix.
 - Date-scoped hierarchy (Option D) — topic browsing would require scanning subdirs.
@@ -80,5 +101,21 @@ Users iterate on research topics (refine the question, re-run after new events).
 - [ ] The timestamp format is `YYYY-MM-DDTHHMMSS` (no colons, filesystem-safe).
 - [ ] `ll-loop validate deep-research` still exits 0.
 
+## Impact
+
+- **Priority**: P4 - Convenience fix; no blocking impact, affects only users who re-run the same research topic
+- **Effort**: Small - Two-line change in a single YAML file (`deep-research.yaml` init state)
+- **Risk**: Low - Purely additive; creates new directories rather than modifying existing ones; no breaking changes
+- **Breaking Change**: No
+
+## Labels
+
+`loops`, `deep-research`, `data-safety`
+
+## Status
+
+**Open** | Created: 2026-05-24 | Priority: P4
+
 ## Session Log
+- `/ll:format-issue` - 2026-05-24T18:21:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4325e6e5-9429-4076-81be-bf8b68495fdf.jsonl`
 - `/ll:capture-issue` - 2026-05-24T18:14:01Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63b24a19-04df-472a-86c8-b45901270f93.jsonl`

@@ -282,7 +282,7 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 **Outcome Confidence**: 64/100 → MODERATE
 
 ### Concerns
-- **FEAT-1156 is open and blocked**: `precompact-handoff.sh` (FEAT-1156) is the producer of `ll-continue-prompt.md`. The hook is implementable and unit-testable in isolation, but functional E2E delivery depends on FEAT-1156 (which is itself blocked by FEAT-1112+FEAT-1116).
+- **FEAT-1156 is open and blocked**: `precompact-handoff.sh` (FEAT-1156) is the producer of `ll-continue-prompt.md`. The hook is implementable and unit-testable in isolation, but functional E2E delivery depends on FEAT-1156 (which was blocked by FEAT-1112+FEAT-1116; FEAT-1112 is now `done`).
 
 ### Outcome Risk Factors
 - **Doc surface is wide**: 6 documentation touchpoints — easy to miss one; recommend a final doc sweep pass after implementation.

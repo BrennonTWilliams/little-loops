@@ -129,7 +129,7 @@ grep -n "Authorize all 25" scripts/tests/test_feat1504_doc_wiring.py
 
 ## Risks / Notes
 
-- **No longer blocked.** FEAT-1112 landed in commit `844d7edf`; the `ll-session` CLI, `SQLiteTransport`, and `events.sqlite` config block all exist, so every reference this issue adds is now accurate. `blocked_by` has been cleared from the frontmatter. (FEAT-1112 itself remains `in_progress` pending ENH-1621, but that residual work does not affect ENH-1619 — see Scope Boundaries.)
+- **No longer blocked.** FEAT-1112 landed in commit `844d7edf`; the `ll-session` CLI, `SQLiteTransport`, and `events.sqlite` config block all exist, so every reference this issue adds is now accurate. `blocked_by` has been cleared from the frontmatter. (FEAT-1112 is now `done`; ENH-1621 tracks the remaining DB-migration work for `ll-workflows`/`ll-history`, which does not affect ENH-1619 — see Scope Boundaries.)
 - `test_feat1504_doc_wiring.py` will fail the moment `areas.md` is updated — bundle the assertion update in the same commit as the `areas.md` edit.
 - Three surfaces originally listed here (`WORKFLOW_ANALYSIS_GUIDE.md`, `update-docs/SKILL.md`, `analyze-workflows.md`) were removed from scope: they describe `ll-workflows`/`ll-history` data sources, and FEAT-1112 deferred the DB migration of those CLIs to ENH-1621. Editing them now would document non-existent behavior.
 

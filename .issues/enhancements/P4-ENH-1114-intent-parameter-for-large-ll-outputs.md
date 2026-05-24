@@ -16,6 +16,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+milestone: refined-ready
 ---
 
 # ENH-1114: Intent Parameter for Large ll-* CLI Outputs
@@ -151,7 +152,7 @@ _Added by `/ll:confidence-check` on 2026-05-18_
 **Outcome Confidence**: 79/100 → MODERATE
 
 ### Concerns
-- FEAT-1112 is still `open` — Step 1 (no-op flag wire-up) is immediately implementable and does not require FEAT-1112, but the acceptance criteria integration test (`ll-history --intent "rate limit" | wc -l` < `ll-history | wc -l`) and Step 2 ranking implementation are blocked until FEAT-1112 ships. Consider scoping the current implementation to Step 1 only and re-evaluating after FEAT-1112 closes.
+- FEAT-1112 is `done` — the `ll-session` CLI and SQLiteTransport have landed. Both Step 1 and Step 2 are now unblocked.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
