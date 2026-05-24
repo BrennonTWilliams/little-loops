@@ -1,9 +1,16 @@
 ---
-captured_at: "2026-05-23T16:40:11Z"
+captured_at: '2026-05-23T16:40:11Z'
+completed_at: '2026-05-24T14:36:50Z'
 discovered_date: 2026-05-23
 discovered_by: capture-issue
-status: open
+status: done
 depends_on: BUG-1628
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1658: Replace general-task `check_done` LLM evaluator with a shell counter
@@ -227,6 +234,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `general-task`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T14:32:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9da95fef-279b-4b75-b5d2-235fbabe5315.jsonl`
+- `/ll:confidence-check` - 2026-05-24T15:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/606cff41-42fc-4284-8565-e62f63b8909b.jsonl`
 - `/ll:wire-issue` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/claude-session.jsonl`
 - `/ll:refine-issue` - 2026-05-24T14:11:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/606cff41-42fc-4284-8565-e62f63b8909b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53f5ce8a-8802-4e4f-a82f-cb8f836c6b67.jsonl`
@@ -235,7 +244,16 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-05-23 | Priority: P3
+**Done** | Created: 2026-05-23 | Completed: 2026-05-24 | Priority: P3
+
+## Resolution
+
+- Split `check_done` in `general-task.yaml`: removed `evaluate: llm_structured` block, added `next: count_done`.
+- Added `count_done` shell state that parses both DoD and plan files and emits `{unchecked_dod, unchecked_plan, failed_samples, total}` JSON, with `evaluate: output_json` routing `total == 0` → `done`, `total > 0` → `continue_work`, missing file → `diagnose`.
+- Used flag-based awk (`in_section` variable) instead of range patterns to avoid the BSD awk issue where `## Verification Criteria` also matches `/^## /` and immediately closes the range.
+- Renamed `TestChange4CheckDoneEvaluatorStructural` → `TestChange7CountDoneShellGate` in `test_general_task_loop.py`, retargeted assertions to `count_done`, added `count_done` to expected states, and added `TestCountDoneShellScript` with four shell-execution scenarios.
+- Updated `docs/guides/LOOPS_GUIDE.md` general-task section to document the two-state gate and JSON output schema.
+- BUG-794 was already `done` prior to this change; ENH-1658 makes the underlying class of bugs (llm_structured JSON parse failures on `check_done`) permanently moot.
 
 ---
 

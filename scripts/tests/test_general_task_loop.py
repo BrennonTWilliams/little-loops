@@ -11,6 +11,7 @@ against regression via prompt-content assertions:
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -55,6 +56,7 @@ class TestGeneralTaskLoopFile:
             "plan",
             "execute",
             "check_done",
+            "count_done",
             "continue_work",
             "done",
             "diagnose",
@@ -141,36 +143,53 @@ class TestChange3ContinueWorkDodFallback:
         )
 
 
-class TestChange4CheckDoneEvaluatorStructural:
-    """Change 4: check_done.evaluate.prompt confirms three structural conditions."""
+class TestChange7CountDoneShellGate:
+    """Change 7 (ENH-1658): check_done routes to count_done shell gate; no llm_structured evaluator."""
 
-    def test_evaluator_is_llm_structured(self, raw_data: dict) -> None:
-        evaluate = raw_data["states"]["check_done"]["evaluate"]
-        assert evaluate["type"] == "llm_structured"
-
-    def test_evaluator_prompt_references_three_conditions(self, raw_data: dict) -> None:
-        prompt = raw_data["states"]["check_done"]["evaluate"]["prompt"]
-        # Three structural conditions: DoD all [x], plan all [x], sample-verify clean.
-        assert "(1)" in prompt and "(2)" in prompt and "(3)" in prompt, (
-            "evaluator prompt must enumerate three structural conditions"
-        )
-        # DoD condition
-        assert "DoD" in prompt or "Verification Criteria" in prompt, (
-            "evaluator prompt must check the DoD"
-        )
-        # Plan condition
-        assert "plan" in prompt.lower() and "[x]" in prompt, (
-            "evaluator prompt must check that plan steps are [x]"
-        )
-        # Sample Verification condition
-        assert "Sample Verification" in prompt, (
-            "evaluator prompt must check the `## Sample Verification` section"
-        )
-
-    def test_evaluator_routes_yes_to_done_no_to_continue(self, raw_data: dict) -> None:
+    def test_check_done_has_no_evaluate_block(self, raw_data: dict) -> None:
         check_done = raw_data["states"]["check_done"]
-        assert check_done["on_yes"] == "done"
-        assert check_done["on_no"] == "continue_work"
+        assert "evaluate" not in check_done, (
+            "check_done must not have an evaluate block; the gate moved to count_done"
+        )
+
+    def test_check_done_routes_to_count_done(self, raw_data: dict) -> None:
+        check_done = raw_data["states"]["check_done"]
+        assert check_done.get("next") == "count_done", (
+            "check_done must route unconditionally to count_done"
+        )
+
+    def test_count_done_action_type_is_shell(self, raw_data: dict) -> None:
+        count_done = raw_data["states"]["count_done"]
+        assert count_done["action_type"] == "shell"
+
+    def test_count_done_evaluate_is_output_json(self, raw_data: dict) -> None:
+        evaluate = raw_data["states"]["count_done"]["evaluate"]
+        assert evaluate["type"] == "output_json"
+
+    def test_count_done_evaluate_path_is_total(self, raw_data: dict) -> None:
+        evaluate = raw_data["states"]["count_done"]["evaluate"]
+        assert evaluate["path"] == ".total"
+
+    def test_count_done_evaluate_operator_eq_zero(self, raw_data: dict) -> None:
+        evaluate = raw_data["states"]["count_done"]["evaluate"]
+        assert evaluate["operator"] == "eq"
+        assert evaluate["target"] == 0
+
+    def test_count_done_routes_yes_to_done(self, raw_data: dict) -> None:
+        count_done = raw_data["states"]["count_done"]
+        assert count_done["on_yes"] == "done"
+
+    def test_count_done_routes_no_to_continue_work(self, raw_data: dict) -> None:
+        count_done = raw_data["states"]["count_done"]
+        assert count_done["on_no"] == "continue_work"
+
+    def test_count_done_routes_error_to_diagnose(self, raw_data: dict) -> None:
+        count_done = raw_data["states"]["count_done"]
+        assert count_done["on_error"] == "diagnose"
+
+    def test_count_done_captures_done_counts(self, raw_data: dict) -> None:
+        count_done = raw_data["states"]["count_done"]
+        assert count_done.get("capture") == "done_counts"
 
 
 class TestChange5ExecuteCapture:
@@ -237,3 +256,112 @@ class TestChange6SampleVerificationPreserved:
         assert "min(3" in action or "up to 3" in action.lower(), (
             "check_done.action must still sample up to min(3, total_checked) criteria"
         )
+
+
+# ---------------------------------------------------------------------------
+# Helpers for shell execution tests (modeled on test_loops_recursive_refine.py)
+# ---------------------------------------------------------------------------
+
+def _bash(script: str, cwd: Path) -> "subprocess.CompletedProcess[str]":
+    return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True)
+
+
+def _load_count_done_script() -> str:
+    """Extract the shell action from count_done in general-task.yaml."""
+    with open(LOOP_FILE) as f:
+        data = yaml.safe_load(f)
+    return data["states"]["count_done"]["action"]
+
+
+def _setup_dod_plan(
+    tmp_path: Path,
+    *,
+    dod_content: str,
+    plan_content: str,
+) -> None:
+    loops_tmp = tmp_path / ".loops" / "tmp"
+    loops_tmp.mkdir(parents=True, exist_ok=True)
+    (loops_tmp / "general-task-dod.md").write_text(dod_content)
+    (loops_tmp / "general-task-plan.md").write_text(plan_content)
+
+
+_ALL_DONE_DOD = """\
+# Definition of Done
+## Verification Criteria
+- [x] Tests pass
+- [x] File exists
+## Sample Verification
+- [x] Tests pass: ran pytest, all green
+"""
+
+_ALL_DONE_PLAN = """\
+# Task Plan
+- [x] Step 1: write code
+- [x] Step 2: run tests
+"""
+
+_UNCHECKED_DOD = """\
+# Definition of Done
+## Verification Criteria
+- [x] Tests pass
+- [ ] File exists
+"""
+
+_UNCHECKED_PLAN = """\
+# Task Plan
+- [x] Step 1: write code
+- [ ] Step 2: run tests
+"""
+
+
+class TestCountDoneShellScript:
+    """Shell execution tests for the count_done action (ENH-1658)."""
+
+    def test_all_done_emits_total_zero(self, tmp_path: Path) -> None:
+        _setup_dod_plan(tmp_path, dod_content=_ALL_DONE_DOD, plan_content=_ALL_DONE_PLAN)
+        script = _load_count_done_script()
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+        data = json.loads(result.stdout.strip())
+        assert data["total"] == 0
+        assert data["unchecked_dod"] == 0
+        assert data["unchecked_plan"] == 0
+        assert data["failed_samples"] == 0
+
+    def test_unchecked_criterion_emits_nonzero_total(self, tmp_path: Path) -> None:
+        _setup_dod_plan(tmp_path, dod_content=_UNCHECKED_DOD, plan_content=_UNCHECKED_PLAN)
+        script = _load_count_done_script()
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+        data = json.loads(result.stdout.strip())
+        assert data["total"] > 0
+        assert data["unchecked_dod"] >= 1
+        assert data["unchecked_plan"] >= 1
+
+    def test_missing_dod_exits_nonzero(self, tmp_path: Path) -> None:
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True, exist_ok=True)
+        # Only create plan, not DoD
+        (loops_tmp / "general-task-plan.md").write_text(_ALL_DONE_PLAN)
+        script = _load_count_done_script()
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode != 0, "Script must exit non-zero when DoD file is missing"
+
+    def test_failed_sample_emits_nonzero_total(self, tmp_path: Path) -> None:
+        dod_with_failed = """\
+# Definition of Done
+## Verification Criteria
+- [x] Tests pass
+## Sample Verification
+- [ ] Tests pass: FAILED — pytest returned exit 1
+"""
+        _setup_dod_plan(tmp_path, dod_content=dod_with_failed, plan_content=_ALL_DONE_PLAN)
+        script = _load_count_done_script()
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+        data = json.loads(result.stdout.strip())
+        assert data["failed_samples"] >= 1
+        assert data["total"] >= 1

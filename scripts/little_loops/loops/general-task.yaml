@@ -125,18 +125,39 @@ states:
       Print the final contents of the DoD file (including the new Sample Verification
       section) and the plan file to stdout so the evaluator can confirm completeness.
     action_type: prompt
+    next: count_done
+    on_error: diagnose
+
+  count_done:
+    action: |
+      DOD=".loops/tmp/general-task-dod.md"
+      PLAN=".loops/tmp/general-task-plan.md"
+      if [ ! -f "$DOD" ] || [ ! -f "$PLAN" ]; then
+        echo '{"error": "missing artifact"}'
+        exit 1
+      fi
+      UNCHECKED_DOD=$(awk '
+        /^## Verification Criteria/ { in_section=1; next }
+        /^## / { in_section=0 }
+        in_section && /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ { count++ }
+        END { print count+0 }
+      ' "$DOD")
+      UNCHECKED_PLAN=$(grep -c '^[[:space:]]*-[[:space:]]*\[[[:space:]]\]' "$PLAN" || true)
+      FAILED_SAMPLES=$(awk '
+        /^## Sample Verification/ { in_section=1; next }
+        in_section && /FAILED/ { count++ }
+        END { print count+0 }
+      ' "$DOD")
+      TOTAL=$((UNCHECKED_DOD + UNCHECKED_PLAN + FAILED_SAMPLES))
+      printf '{"unchecked_dod": %d, "unchecked_plan": %d, "failed_samples": %d, "total": %d}\n' \
+        "$UNCHECKED_DOD" "$UNCHECKED_PLAN" "$FAILED_SAMPLES" "$TOTAL"
+    action_type: shell
+    capture: done_counts
     evaluate:
-      type: llm_structured
-      prompt: |
-        The check_done action wrote a sample-verification report and updated both the
-        DoD and plan files. From the action output below, answer YES only if ALL of
-        the following are true:
-        (1) The DoD file shows ALL Verification Criteria marked [x]
-        (2) The plan file shows ALL plan steps marked [x]
-        (3) The `## Sample Verification` section reports every sampled criterion as [x]
-            with passing evidence (no FAILED entries)
-        Answer NO and specify which condition(s) were not met if any criterion or plan
-        step remains [ ], or if any sampled criterion is reported as FAILED.
+      type: output_json
+      path: ".total"
+      operator: eq
+      target: 0
     on_yes: done
     on_no: continue_work
     on_error: diagnose
