@@ -262,15 +262,19 @@ class TestChange6SampleVerificationPreserved:
 # Helpers for shell execution tests (modeled on test_loops_recursive_refine.py)
 # ---------------------------------------------------------------------------
 
-def _bash(script: str, cwd: Path) -> "subprocess.CompletedProcess[str]":
+def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True)
 
 
-def _load_count_done_script() -> str:
-    """Extract the shell action from count_done in general-task.yaml."""
+def _load_count_done_script(context_overrides: dict | None = None) -> str:
+    """Extract the shell action from count_done, with context variables interpolated."""
     with open(LOOP_FILE) as f:
         data = yaml.safe_load(f)
-    return data["states"]["count_done"]["action"]
+    script = data["states"]["count_done"]["action"]
+    ctx = {**data.get("context", {}), **(context_overrides or {})}
+    for key, val in ctx.items():
+        script = script.replace(f"${{context.{key}}}", str(val))
+    return script
 
 
 def _setup_dod_plan(
@@ -313,6 +317,45 @@ _UNCHECKED_PLAN = """\
 - [ ] Step 2: run tests
 """
 
+# Fixture with one hard criterion unchecked — hard criteria always block.
+_HARD_UNCHECKED_DOD = """\
+# Definition of Done
+## Verification Criteria
+- [ ] Tests pass [hard]
+- [x] File exists
+## Sample Verification
+- [x] File exists: file found at expected path
+"""
+
+# Fixture for scenario: all hard done, 1 soft unchecked, pass rate == 95% (19/20).
+# This verifies that soft criteria are non-blocking when pass rate meets threshold.
+_SOFT_UNCHECKED_PASS_RATE_OK_DOD = """\
+# Definition of Done
+## Verification Criteria
+- [x] Tests pass [hard]
+- [x] File exists
+- [x] Build succeeds
+- [x] Lint passes
+- [x] Type checks pass
+- [x] Docs updated
+- [x] Coverage meets target
+- [x] API unchanged
+- [x] PR reviewed
+- [x] Deploy tested
+- [x] Integration tests pass
+- [x] Security scan clear
+- [x] Performance baseline met
+- [x] Stakeholder notified
+- [x] Release notes drafted
+- [x] Changelog updated
+- [x] Version bumped
+- [x] CI pipeline green
+- [x] Environment verified
+- [ ] Working tree is clean
+## Sample Verification
+- [x] Tests pass: ran pytest, all green
+"""
+
 
 class TestCountDoneShellScript:
     """Shell execution tests for the count_done action (ENH-1658)."""
@@ -325,7 +368,8 @@ class TestCountDoneShellScript:
         import json
         data = json.loads(result.stdout.strip())
         assert data["total"] == 0
-        assert data["unchecked_dod"] == 0
+        assert data["hard_unchecked_dod"] == 0
+        assert data["soft_unchecked_dod"] == 0
         assert data["unchecked_plan"] == 0
         assert data["failed_samples"] == 0
 
@@ -337,7 +381,8 @@ class TestCountDoneShellScript:
         import json
         data = json.loads(result.stdout.strip())
         assert data["total"] > 0
-        assert data["unchecked_dod"] >= 1
+        assert data["hard_unchecked_dod"] == 0  # no [hard] tags in fixture
+        assert data["soft_unchecked_dod"] >= 1  # unchecked criterion is soft (no [hard] tag)
         assert data["unchecked_plan"] >= 1
 
     def test_missing_dod_exits_nonzero(self, tmp_path: Path) -> None:
@@ -365,3 +410,52 @@ class TestCountDoneShellScript:
         data = json.loads(result.stdout.strip())
         assert data["failed_samples"] >= 1
         assert data["total"] >= 1
+
+
+class TestENH1676PartialDoDThreshold:
+    """ENH-1676: two-tier hard/soft DoD threshold in count_done shell script."""
+
+    def test_context_has_min_pass_rate_and_hard_criteria_tags(self) -> None:
+        with open(LOOP_FILE) as f:
+            raw_data = yaml.safe_load(f)
+        ctx = raw_data.get("context", {})
+        assert "min_pass_rate" in ctx, "context must define min_pass_rate"
+        assert "hard_criteria_tags" in ctx, "context must define hard_criteria_tags"
+
+    def test_hard_criteria_unchecked_blocks_when_plan_done(self, tmp_path: Path) -> None:
+        _setup_dod_plan(tmp_path, dod_content=_HARD_UNCHECKED_DOD, plan_content=_ALL_DONE_PLAN)
+        script = _load_count_done_script()
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+        data = json.loads(result.stdout.strip())
+        assert data["hard_unchecked_dod"] >= 1
+        assert data["total"] > 0, "unmet hard criterion must block routing to done"
+
+    def test_all_hard_done_routes_done(self, tmp_path: Path) -> None:
+        _setup_dod_plan(tmp_path, dod_content=_ALL_DONE_DOD, plan_content=_ALL_DONE_PLAN)
+        script = _load_count_done_script()
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+        data = json.loads(result.stdout.strip())
+        assert data["hard_unchecked_dod"] == 0
+        assert data["total"] == 0, "all criteria checked → total must be 0"
+
+    def test_all_hard_done_with_soft_unchecked_routes_done_when_pass_rate_met(
+        self, tmp_path: Path
+    ) -> None:
+        # 19 of 20 criteria checked → 95% pass rate == min_pass_rate; soft criterion is non-blocking.
+        _setup_dod_plan(
+            tmp_path,
+            dod_content=_SOFT_UNCHECKED_PASS_RATE_OK_DOD,
+            plan_content=_ALL_DONE_PLAN,
+        )
+        script = _load_count_done_script()
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+        data = json.loads(result.stdout.strip())
+        assert data["hard_unchecked_dod"] == 0
+        assert data["soft_unchecked_dod"] >= 1
+        assert data["total"] == 0, "soft criterion is non-blocking when pass rate meets threshold"

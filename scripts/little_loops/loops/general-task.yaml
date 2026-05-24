@@ -5,6 +5,10 @@ initial: define_done
 max_iterations: 100
 on_handoff: spawn
 
+context:
+  min_pass_rate: 0.95
+  hard_criteria_tags: "hard"
+
 circuit:
   repeated_failure:
     window: 3
@@ -23,9 +27,16 @@ states:
       ```
       # Definition of Done
       ## Verification Criteria
-      - [ ] <Specific, verifiable criterion>
-      - [ ] <Another criterion — e.g., "File X exists", "Tests pass", "Output contains Y">
+      - [ ] <Hard criterion — must be satisfied for done> [hard]
+      - [ ] <Another hard criterion — e.g., "Tests pass", "File X exists"> [hard]
+      - [ ] <Soft criterion — desirable but non-blocking if pass rate is met>
       ```
+
+      Tag each criterion that MUST be verified (technical correctness, tests, file existence)
+      with `[hard]` at the end of the line. Leave criteria that depend on human decisions or
+      pre-existing environment state (e.g., "Working tree is clean") untagged — these are
+      soft criteria and are non-blocking once all hard criteria and the pass rate threshold
+      (${context.min_pass_rate}) are met.
 
       Each criterion must be independently verifiable by checking files, running commands,
       or reading outputs.
@@ -136,10 +147,29 @@ states:
         echo '{"error": "missing artifact"}'
         exit 1
       fi
-      UNCHECKED_DOD=$(awk '
+      TAG="${context.hard_criteria_tags}"
+      HARD_UNCHECKED_DOD=$(awk -v tag="$TAG" '
         /^## Verification Criteria/ { in_section=1; next }
         /^## / { in_section=0 }
-        in_section && /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ { count++ }
+        in_section && /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ {
+          line = $0
+          if (index(line, "[" tag "]") > 0) count++
+        }
+        END { print count+0 }
+      ' "$DOD")
+      SOFT_UNCHECKED_DOD=$(awk -v tag="$TAG" '
+        /^## Verification Criteria/ { in_section=1; next }
+        /^## / { in_section=0 }
+        in_section && /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ {
+          line = $0
+          if (index(line, "[" tag "]") == 0) count++
+        }
+        END { print count+0 }
+      ' "$DOD")
+      TOTAL_DOD=$(awk '
+        /^## Verification Criteria/ { in_section=1; next }
+        /^## / { in_section=0 }
+        in_section && /^[[:space:]]*-[[:space:]]*\[/ { count++ }
         END { print count+0 }
       ' "$DOD")
       UNCHECKED_PLAN=$(grep -c '^[[:space:]]*-[[:space:]]*\[[[:space:]]\]' "$PLAN" || true)
@@ -148,9 +178,21 @@ states:
         in_section && /FAILED/ { count++ }
         END { print count+0 }
       ' "$DOD")
-      TOTAL=$((UNCHECKED_DOD + UNCHECKED_PLAN + FAILED_SAMPLES))
-      printf '{"unchecked_dod": %d, "unchecked_plan": %d, "failed_samples": %d, "total": %d}\n' \
-        "$UNCHECKED_DOD" "$UNCHECKED_PLAN" "$FAILED_SAMPLES" "$TOTAL"
+      MIN_PASS_PCT=$(awk 'BEGIN { printf "%d", ${context.min_pass_rate} * 100 }')
+      if [ "$TOTAL_DOD" -gt 0 ]; then
+        UNCHECKED_ALL=$(($HARD_UNCHECKED_DOD + $SOFT_UNCHECKED_DOD))
+        CHECKED_DOD=$(($TOTAL_DOD - $UNCHECKED_ALL))
+        PASS_PCT=$(awk "BEGIN { printf \"%d\", 100 * $CHECKED_DOD / $TOTAL_DOD }")
+      else
+        PASS_PCT=100
+      fi
+      BLOCKING_DOD=$HARD_UNCHECKED_DOD
+      if [ "$PASS_PCT" -lt "$MIN_PASS_PCT" ]; then
+        BLOCKING_DOD=$(($BLOCKING_DOD + $SOFT_UNCHECKED_DOD))
+      fi
+      TOTAL=$(($BLOCKING_DOD + $UNCHECKED_PLAN + $FAILED_SAMPLES))
+      printf '{"hard_unchecked_dod": %d, "soft_unchecked_dod": %d, "unchecked_plan": %d, "failed_samples": %d, "total": %d}\n' \
+        "$HARD_UNCHECKED_DOD" "$SOFT_UNCHECKED_DOD" "$UNCHECKED_PLAN" "$FAILED_SAMPLES" "$TOTAL"
     action_type: shell
     capture: done_counts
     evaluate:

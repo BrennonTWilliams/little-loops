@@ -920,6 +920,34 @@ check_stall:
 
 ---
 
+**Partial DoD Satisfaction Threshold (`general-task` loops)**
+
+By default the `general-task` loop requires 100% of all Definition of Done criteria to be checked before routing to `done`. For tasks where some criteria depend on human decisions or environment state (e.g., "Working tree is clean", "PR approved"), add `min_pass_rate` and `hard_criteria_tags` to `context:` to enable a two-tier gate:
+
+```yaml
+context:
+  min_pass_rate: 0.95        # overall % of criteria that must be checked
+  hard_criteria_tags: "hard"  # tag suffix marking mandatory criteria
+```
+
+In the DoD file, tag each criterion that must be technically verified with `[hard]`:
+
+```markdown
+## Verification Criteria
+- [ ] Tests pass [hard]
+- [ ] File exists at expected path [hard]
+- [ ] Working tree is clean       ← soft (untagged); non-blocking when pass rate is met
+```
+
+The `count_done` shell gate applies the following logic:
+- **Hard criteria** (tagged `[hard]`) — always blocking; the loop cannot reach `done` until all are `[x]`.
+- **Soft criteria** (untagged) — only blocking when the overall pass rate (checked ÷ total) falls below `min_pass_rate`. Once the pass rate threshold is met, remaining soft criteria are logged as non-blocking.
+- **`.total` routing field** — `total == 0` routes to `done`; `total > 0` routes to `continue_work`.
+
+Override `min_pass_rate` per run to require 100% satisfaction: `ll-loop run general-task --context min_pass_rate=1.0`. Loops that omit `min_pass_rate` from `context:` default to 0.95.
+
+---
+
 **Example: Harness `refine-issue` over all active issues**
 
 ```yaml

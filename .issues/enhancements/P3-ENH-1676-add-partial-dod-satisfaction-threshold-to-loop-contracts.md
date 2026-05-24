@@ -1,8 +1,9 @@
 ---
 captured_at: '2026-05-24T13:15:53Z'
+completed_at: '2026-05-24T21:02:22Z'
 discovered_date: 2026-05-24
 discovered_by: capture-issue
-status: open
+status: done
 depends_on:
 - ENH-1658
 decision_needed: false
@@ -192,6 +193,7 @@ and routes `done` when `.total == 0`. ENH-1676 must split `unchecked_dod` into `
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T20:50:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c45ae03d-5b5b-437f-b1fc-ade691acba64.jsonl`
 - `/ll:wire-issue` - 2026-05-24T20:32:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b92c2500-75a5-45eb-9f0c-cb00ad0d148c.jsonl`
 - `/ll:refine-issue` - 2026-05-24T20:23:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4127329-5a5e-420f-b172-2383e64684bd.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
