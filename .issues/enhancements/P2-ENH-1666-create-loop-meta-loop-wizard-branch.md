@@ -5,11 +5,26 @@ status: open
 priority: P2
 discovered_date: 2026-05-23
 discovered_by: manual
-labels: [create-loop, wizard, loops, meta-loop, harness, shor]
+labels:
+- create-loop
+- wizard
+- loops
+- meta-loop
+- harness
+- shor
 parent: EPIC-1663
-relates_to: [ENH-1664, ENH-1665]
-depends_on: [ENH-1665]
+relates_to:
+- ENH-1664
+- ENH-1665
+depends_on:
+- ENH-1665
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 10
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1666: `create-loop` wizard branch — "Optimize a harness (meta-loop)"
@@ -338,5 +353,7 @@ block). Ready to implement.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c74fe13-a75b-4713-911f-502cf9b5e015.jsonl`
 - `/ll:refine-issue` - 2026-05-24T13:49:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28bd77b9-9805-4ea8-8f7b-b71214070553.jsonl`
 - `/ll:verify-issues` - 2026-05-24T07:01:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08ba673b-967b-4af4-a548-692288b5485d.jsonl`
+- `/ll:confidence-check` - 2026-05-24T14:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68308df8-d2af-4e2a-9ef6-be8a8320ae61.jsonl`

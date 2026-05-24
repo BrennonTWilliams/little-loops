@@ -112,7 +112,26 @@ Recommend Option A first (no framework changes), with Option B as a follow-up if
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-24): This issue's Option A (loop-level context fields + LLM evaluator prompt parameterization) targets the `check_done` LLM evaluator. ENH-1658 removes that LLM evaluator entirely, replacing it with a shell counter. If ENH-1658 lands before this issue, Option A would target deleted code. After ENH-1658, adopt **Option B** (contract-level schema fields in `fsm-loop-schema.json`) or adapt Option A to parameterize the shell counter script rather than the LLM prompt. `depends_on: [ENH-1658]` has been added to sequence this correctly.
 
+## Tradeoff Review Note
+
+**Reviewed**: 2026-05-24 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | LOW |
+| Complexity added | LOW |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first — needs scope decision on Option A vs Option B after ENH-1658 lands. Option A (loop-level context fields + LLM evaluator prompt parameterization) targets the `check_done` LLM evaluator that ENH-1658 will delete. After ENH-1658, update this issue to target Option B (contract-level schema fields + shell counter parameterization) before implementation begins.
+
+---
+
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
 - `/ll:format-issue` - 2026-05-24T13:19:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/765fa3c6-1a05-4cb7-8170-c01366684b4e.jsonl`
 - `/ll:capture-issue` - 2026-05-24T13:15:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bfd5e964-4cba-4f63-8354-255b3fbb9f18.jsonl`
+- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`

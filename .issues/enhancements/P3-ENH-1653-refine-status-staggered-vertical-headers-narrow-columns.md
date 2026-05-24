@@ -3,7 +3,7 @@ id: ENH-1653
 title: "ll-issues refine-status: staggered vertical headers with leader lines and narrow columns"
 priority: P3
 type: ENH
-status: open
+status: deferred
 captured_at: "2026-05-24T02:27:32Z"
 discovered_date: "2026-05-23"
 discovered_by: capture-issue
@@ -137,3 +137,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 - `/ll:format-issue` - 2026-05-24T02:31:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a831c57a-345e-49ef-a2f5-c7cd4051eace.jsonl`
 - `/ll:capture-issue` - 2026-05-24T02:27:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b82659fb-64be-4c97-9770-57964db516aa.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Deferred - Tradeoff Review
+- **Completed**: 2026-05-24
+- **Reason**: Niche UX polish with ANSI/stagger complexity disproportionate to the narrow-terminal problem; ENH-750 column elision already mitigates the core issue.
+
+### Tradeoff Review Scores
+- Utility: LOW
+- Implementation Effort: MEDIUM
+- Complexity Added: MEDIUM
+- Technical Debt Risk: MEDIUM
+- Maintenance Overhead: MEDIUM
+
+### Rationale
+Staggered vertical headers add significant ANSI rendering complexity (per-character wrapping, stagger offsets, connector rows) with high regression risk for every `refine-status` user. ENH-750's column elision already handles narrow terminals. Re-evaluate if `refine-status` table rendering becomes a priority focus.
+- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`

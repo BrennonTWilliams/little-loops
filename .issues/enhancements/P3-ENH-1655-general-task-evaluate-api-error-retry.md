@@ -65,3 +65,22 @@ Broader fix: consider making this the default behavior for all `llm_structured` 
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-05-24 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | HIGH |
+| Implementation effort | LOW |
+| Complexity added | LOW |
+| Technical debt risk | LOW |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Update first — retarget after ENH-1658 lands. The current scope targets the `llm_structured` evaluator in `check_done`, which ENH-1658 will replace with a shell counter. Implementing as-written would immediately become dead code. After ENH-1658 lands, retarget the retry mechanism to remaining LLM-evaluated states (e.g. `diagnose`).
+- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`

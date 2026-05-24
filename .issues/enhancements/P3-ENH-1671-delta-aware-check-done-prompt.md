@@ -7,9 +7,13 @@ discovered_date: 2026-05-24
 discovered_by: audit-loop-run
 depends_on: ENH-1658
 supersedes: ENH-1656
-confidence_score: 70
-outcome_confidence: 60
+confidence_score: 95
+outcome_confidence: 96
 decision_needed: false
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1671: Delta-aware `check_done` prompt to scope re-verification to the most recent step
@@ -174,6 +178,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   - Sample re-verification fails on a criterion → that criterion flips back to `[ ]`.
 - Smoke test: `ll-loop validate` on the modified YAML.
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Tests that will break — must update:**
+- `scripts/tests/test_general_task_loop.py::TestChange2CheckDoneReconcileAndSampleVerify.test_check_done_does_plan_vs_dod_coverage` — asserts `"coverage"` or `"covers"` AND `"ADD a new criterion"` are present in `check_done.action`. The delta-aware rewrite (Implementation Step 3) will likely drop these phrases unless explicitly preserved. Implementer must either (a) retain these phrases verbatim in the new prompt, or (b) update this test to assert the delta-scoping vocabulary instead (e.g., `"LAST_STEP"`, `"LAST_FILES"`, `"plausibly affected"`).
+
+**Pattern reference for new `execute.capture` assertion (Implementation Step 5a):**
+- `scripts/tests/test_builtin_loops.py::TestHarnessCapture.test_execute_state_has_capture_execute_result` — follow this pattern for the new execute-capture test class in `test_general_task_loop.py`; it asserts `execute_state.get("capture") == "execute_result"` on parametrized harness files and is the established convention for this check.
+
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md` — describe the delta input, the verification-scoping policy, and the preserved sample re-verification safety net.
 
@@ -214,6 +226,12 @@ _Confirmed by:_ `scripts/little_loops/fsm/executor.py:985–992` (capture storag
 6. Run `ll-loop validate scripts/little_loops/loops/general-task.yaml` and `python -m pytest scripts/tests/test_general_task_loop.py -v`.
 7. Run a representative `general-task` loop end-to-end and compare mean `check_done` duration vs. the pre-change baseline. Record numbers in the PR description.
 8. Update `docs/guides/LOOPS_GUIDE.md` to document the delta-scoped verification policy.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+9. Update `test_check_done_does_plan_vs_dod_coverage` in `scripts/tests/test_general_task_loop.py` — this existing test asserts `"coverage"`/`"covers"` and `"ADD a new criterion"` in `check_done.action`; it will fail against the rewritten prompt unless those phrases are preserved or the assertion is updated to reflect delta-scoping vocabulary.
 
 ## Scope Boundaries
 
@@ -261,8 +279,30 @@ Promoted from [[ENH-1656]]'s problem statement and audit data on 2026-05-24. ENH
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-24): ENH-1671 and ENH-1655 are complementary halves of the same root failure (the 510s `check_done` session at iteration 14 of the `2026-05-23T224029` run that terminated on an API error). ENH-1671 reduces session duration so the failure probability drops; ENH-1655 retries gracefully when failures still occur. Neither provides complete coverage alone. When planning sprint work, schedule both.
 
+## Tradeoff Review Note
+
+**Reviewed**: 2026-05-24 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | HIGH |
+| Implementation effort | MEDIUM |
+| Complexity added | MEDIUM |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first — wait for ENH-1658 to land, then confirm `next:` routing to `count_done` per Implementation Step 4. Note: at time of review the issue was incorrectly flagged as `decision_needed: true` externally, but the file itself shows `decision_needed: false` with a full scoring table (Option 1 selected, 12/12, confidence 95/96). The implementation plan is complete and well-researched. The one remaining pre-condition is ENH-1658's `count_done` state.
+
+---
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T13:59:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60831cc8-469a-4367-b84d-0ade73d9a986.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`
+- `/ll:wire-issue` - 2026-05-24T13:51:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d39e014b-4c8d-4ba2-8b69-47760f1c3687.jsonl`
 - `/ll:decide-issue` - 2026-05-24T13:45:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c10f6d15-52d0-417a-a7da-e6f624facae2.jsonl`
 - `/ll:refine-issue` - 2026-05-24T13:38:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f14fda9-d560-46f6-992c-b2274de5ed68.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
 - `/ll:format-issue` - 2026-05-24T13:23:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/101e364c-669a-4add-9c9a-d2fd416d3171.jsonl`
+- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`

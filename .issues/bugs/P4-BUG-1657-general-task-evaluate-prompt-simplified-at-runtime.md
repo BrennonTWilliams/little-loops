@@ -2,7 +2,7 @@
 id: BUG-1657
 type: BUG
 priority: P4
-status: open
+status: done
 discovered_date: 2026-05-23
 discovered_by: audit-loop-run
 confidence_score: 80
@@ -57,3 +57,22 @@ The evaluate prompt should at minimum check plan step completeness (condition 2)
 
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Closed - Tradeoff Review
+- **Completed**: 2026-05-24
+- **Reason**: Superseded by ENH-1658 — fixing the prompt divergence now risks being discarded when ENH-1658 replaces the `llm_structured` evaluator with a shell counter entirely.
+
+### Tradeoff Review Scores
+- Utility: LOW
+- Implementation Effort: MEDIUM
+- Complexity Added: MEDIUM
+- Technical Debt Risk: MEDIUM
+- Maintenance Overhead: LOW
+
+### Rationale
+ENH-1658 (replace the LLM evaluator with a shell counter) is open and would make this bug structurally moot — the `check_done` evaluate prompt won't exist after that change. Fixing the prompt divergence now risks being immediately thrown away.
+- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`

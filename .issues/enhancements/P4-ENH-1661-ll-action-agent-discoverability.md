@@ -2,7 +2,7 @@
 id: ENH-1661
 type: ENH
 priority: P4
-status: open
+status: deferred
 discovered_date: 2026-05-23
 discovered_by: conversation
 confidence_score: 60
@@ -51,3 +51,22 @@ Recommend starting with #2 — single-file change, zero new surface area, immedi
 
 - [[ENH-1660]] — companion issue, adds the per-skill `args` hint that the discovered agent then needs
 - docs/research/HarnessAPI-A-Skill-First-Framework.md — source of the framing
+
+---
+
+## Resolution
+
+- **Status**: Deferred - Tradeoff Review
+- **Completed**: 2026-05-24
+- **Reason**: Speculative — confidence 60/55; no evidence of real friction from non-Claude-Code hosts; ENH-1660 (expose skill input schema) is the more actionable prerequisite.
+
+### Tradeoff Review Scores
+- Utility: LOW
+- Implementation Effort: LOW
+- Complexity Added: LOW
+- Technical Debt Risk: LOW
+- Maintenance Overhead: LOW
+
+### Rationale
+No evidence this gap is causing real friction. ENH-1660 (typed skill schemas) is the prerequisite that makes ll-action discovery actionable — defer until ENH-1660 lands and non-Claude-Code host usage patterns are better understood.
+- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`
