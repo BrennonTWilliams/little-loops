@@ -29,10 +29,11 @@ In a single `harness-exploratory-user-eval` run, `UnixSocketTransport` logged ~1
 ## Root Cause
 
 - **File**: `scripts/little_loops/transport.py`
-- **Anchor**: `UnixSocketTransport`, around lines 114–203
-- The cap `max_clients=8` is a hard-coded dataclass default (around line 136). It is configurable via `config.socket.max_clients` (line ~618) but the default is too low.
-- The accept-rejection log path (around lines 183–186) has no rate limiting, unlike the slow-client drop path which already uses `_DROP_LOG_INTERVAL_SEC` (lines ~248–254).
-- No metric/counter on `LoopMetrics` for client rejections.
+- **Anchor**: `UnixSocketTransport.__init__`, line 136 (constructor parameter default, not a dataclass field)
+- The cap `max_clients=8` is the default for the `__init__` parameter. The **config-layer default** also lives in `scripts/little_loops/config/features.py:SocketEventsConfig.max_clients` (line 415) and in `SocketEventsConfig.from_dict()` (line ~420 fallback). Both must be bumped.
+- At runtime, `wire_transports()` (transport.py line 619) passes `config.socket.max_clients` to the constructor, so the `SocketEventsConfig` default governs unconfigured deployments.
+- The accept-rejection log path (lines 183–190, in `_accept_loop`) has no rate limiting, unlike the slow-client drop path which uses `_DROP_LOG_INTERVAL_SEC = 5.0` (line 48) via `_record_drop()` (lines 235–254).
+- There is no `LoopMetrics` class in the codebase. Per-client counters (`dropped_total`, `dropped_since_log`) are plain int attributes on `_SocketClient`. A transport-level stats dict/property on `UnixSocketTransport` would need to be added.
 
 ## Current Behavior
 
@@ -52,26 +53,39 @@ In a single `harness-exploratory-user-eval` run, `UnixSocketTransport` logged ~1
 
 ## Implementation Steps
 
-1. Change default `max_clients` to 32 in the `UnixSocketTransport` config dataclass.
-2. Introduce `_REJECT_LOG_INTERVAL_SEC` (or reuse `_DROP_LOG_INTERVAL_SEC`) and a `_rejections_since_last_log` counter; emit one log per interval with the suppressed count.
-3. Add `client_rejections` to the transport's stats and surface it in the loop runner summary.
-4. Load-test with 16 concurrent connect attempts under the new default; confirm only one warning per rate-limit window and the counter reflects the rejections.
+1. **Bump config default (two locations)**:
+   - `scripts/little_loops/config/features.py:SocketEventsConfig` — change `max_clients: int = 8` field default (line 415) and `from_dict()` fallback (line ~420) to `32`.
+   - `scripts/little_loops/transport.py:UnixSocketTransport.__init__` — change `max_clients: int = 8` parameter default (line 136) to `32` for callers that construct directly rather than via `wire_transports`.
+2. **Add rejection rate-limiting to `transport.py`**:
+   - Add `_REJECT_LOG_INTERVAL_SEC = 5.0` module-level constant (alongside `_DROP_LOG_INTERVAL_SEC` at line 48).
+   - Add `self._rejections_total: int = 0`, `self._rejections_since_log: int = 0`, `self._last_reject_log_ts: float = 0.0`, `self._first_reject_logged: bool = False` to `UnixSocketTransport.__init__`.
+   - Replace the bare `logger.warning(...)` in `_accept_loop` (lines 183–190) with a rate-limited gate mirroring `_record_drop`: fire immediately on first rejection, then suppress and batch until `_REJECT_LOG_INTERVAL_SEC` elapses.
+3. **Expose transport stats**:
+   - Add `def get_stats(self) -> dict[str, int]: return {"client_rejections": self._rejections_total}` to `UnixSocketTransport`.
+   - In `scripts/little_loops/cli/loop/_helpers.py:run_foreground()` (lines 986–1002): after the result is returned, call `transport.get_stats()` (transport is accessible as a local in `run_foreground` or can be returned from `wire_transports`) and append `", {N} client rejections"` to the completion line if `client_rejections > 0`.
+4. **Test**: Augment `test_max_clients_cap_rejects_extra_connection` in `scripts/tests/test_transport.py` to assert rate-limited logging (one `caplog` WARNING per window) and `transport.get_stats()["client_rejections"]` equals total rejected count.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/transport.py` — bump `max_clients` default, add reject-log rate limiting, expose `client_rejections` counter on `UnixSocketTransport` stats.
-- `scripts/little_loops/fsm/executor.py` — surface `client_rejections` in the loop run summary.
+- `scripts/little_loops/transport.py` — bump `__init__` parameter default for `max_clients` (line 136), add module-level `_REJECT_LOG_INTERVAL_SEC` constant (mirror of `_DROP_LOG_INTERVAL_SEC` at line 48), add transport-level `_rejections_total`/`_rejections_since_log`/`_last_reject_log_ts` fields to `UnixSocketTransport.__init__`, rate-limit the rejection warning in `_accept_loop` (lines 183–190), add `get_stats()` method returning `{"client_rejections": int}`.
+- `scripts/little_loops/config/features.py` — bump `max_clients` default in `SocketEventsConfig` (field default at line 415 AND `from_dict` fallback at line ~420) from 8 to 32.
+- `scripts/little_loops/cli/loop/_helpers.py` — surface `client_rejections` in the loop completion summary printed by `run_foreground()` (lines 986–1002); call `transport.get_stats()` if the transport is accessible, or thread the count through the result.
+
+Note: `scripts/little_loops/fsm/executor.py` is NOT where the run summary is printed. The terminal output comes from `run_foreground()` in `_helpers.py`; `executor.py:FSMExecutor._finish()` only emits the `loop_complete` event and returns `ExecutionResult` (fields: `final_state`, `iterations`, `terminated_by`, `duration_ms`, `captured`, `error`). Adding a transport-stats field to `ExecutionResult` is optional; printing from `run_foreground()` after checking the transport directly is simpler.
 
 ### Dependent Files (Callers/Importers)
 - Any module constructing `UnixSocketTransport` or reading its stats — grep `UnixSocketTransport` and `max_clients` to confirm.
 
 ### Similar Patterns
-- `_DROP_LOG_INTERVAL_SEC` rate-limit pattern in `transport.py` (lines ~248–254) — mirror this for the new reject-log path.
-- `LoopMetrics` counter pattern — extend with `client_rejections` consistently with sibling counters.
+- `_DROP_LOG_INTERVAL_SEC = 5.0` (transport.py line 48) + `_record_drop()` (lines 235–254) — the exact pattern to mirror for the rejection-log path. Key: `first_drop_logged` boolean fires immediately on first event; subsequent logs are gate-checked with `now - last_log_ts >= _DROP_LOG_INTERVAL_SEC`; batched count resets to 0 after each timed log.
+- `_SocketClient.dropped_total` / `dropped_since_log` / `last_drop_log_ts` / `first_drop_logged` — per-client int attributes (lines 108–111) showing the counter field pattern; add analogous transport-level fields (`_rejections_total`, `_rejections_since_log`, `_last_reject_log_ts`) directly to `UnixSocketTransport` (not `_SocketClient`, since rejections are transport-level not client-level).
+- `parallel/orchestrator.py:_maybe_report_status()` (lines 672–683) — simpler `time.time()` throttle pattern without a `first_logged` flag, useful reference for the `get_stats()` aggregation approach.
 
 ### Tests
-- `scripts/tests/` — add a transport load test that opens >cap connections and asserts (a) the rate-limit window emits one log, (b) the counter increments per rejection.
+- `scripts/tests/test_transport.py` — existing `test_max_clients_cap_rejects_extra_connection` (lines 459–485) already exercises the rejection path but does not assert on logging or counter value. Augment this test (or add a companion) to assert: (a) only one `WARNING` log matching `"max_clients"` is emitted per rate-limit window when multiple connections are rejected rapidly, and (b) transport `get_stats()["client_rejections"]` reflects the total rejection count.
+- Test fixture: use `short_tmp_path` (lines 49–61) not `tmp_path` — required on macOS where `/private/var/folders/...` exceeds AF_UNIX 104-char `sun_path` limit.
+- Class guard: `@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="AF_UNIX not available")` (line 345) — apply to any new test class or inherit via `TestUnixSocketTransport`.
 
 ### Documentation
 - `docs/reference/API.md` (if `UnixSocketTransport` stats are documented) — mention `client_rejections`.
@@ -113,6 +127,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `transport`, `logging`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-24T15:30:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2e7bf37-f8f2-40f5-a049-b975a301f9c6.jsonl`
 - `/ll:verify-issues` - 2026-05-24T03:55:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86b55377-f187-4e58-9c10-c40043e89408.jsonl`
 - `/ll:format-issue` - 2026-05-23T19:20:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76e6c26b-1969-49d5-91a6-84282f7c1ac2.jsonl`
 

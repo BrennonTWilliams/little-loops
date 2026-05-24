@@ -1,8 +1,14 @@
 ---
-captured_at: "2026-05-23T22:10:27Z"
-discovered_date: "2026-05-23"
+captured_at: '2026-05-23T22:10:27Z'
+discovered_date: '2026-05-23'
 discovered_by: capture-issue
 status: open
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1646: Add remaining-count progress log to prompt-across-issues advance state
@@ -81,6 +87,18 @@ Notes:
 ### Tests
 - N/A — no existing test exercises the `advance` echo output; manual verification via `ll-loop run prompt-across-issues "<noop-prompt> {issue_id}"` is sufficient
 
+#### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/tests/test_builtin_loops.py:TestPromptAcrossIssuesLoop` (lines 924–1010) — structural test class for this loop that asserts on state presence and action body content; add an assertion that `advance` action body includes `REMAINING` variable and `"remaining"` echo
+- Reference pattern for shell-script assertions: `scripts/tests/test_loops_recursive_refine.py:TestDequeueProgressLine` — extracts the shell snippet verbatim into a raw string constant, runs it with `subprocess.run(["bash", "-c", script], cwd=tmp_path)`, and asserts on `result.stdout`/`result.stderr`; use as template if a full execution test is warranted
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_fragments.py` — loads and validates all built-in loop YAMLs (including `prompt-across-issues.yaml`) via `load_and_validate()`; this implicit safety net will catch any YAML syntax error in the new lines without requiring test changes
+- **Optional shell-execution test** (pattern from `TestDequeueProgressLine`): if a runtime-level test is warranted, create a module-level `_ADVANCE_SCRIPT` raw-string constant (verbatim copy of the `advance` action body with `${captured.current_item.output}` replaced by a literal value), set up `.loops/tmp/prompt-across-issues-pending.txt` with N lines via `tmp_path`, run with `subprocess.run(["bash", "-c", _ADVANCE_SCRIPT], cwd=tmp_path)`, and assert `"N" in result.stdout` and the pending file has one fewer line
+- **Interpolation safety note**: `$REMAINING` uses no curly braces, so the FSM interpolation engine (`VARIABLE_PATTERN = re.compile(r"\$\{([^}]+)\}")`) does not match it — no `$$` prefix required (contrast with `$${COUNT}` at `init` line 39 which uses braces)
+
 ### Documentation
 - N/A — the in-YAML `description` block already documents loop usage; remaining-count is self-explanatory in logs
 
@@ -91,7 +109,9 @@ Notes:
 
 1. Edit `scripts/little_loops/loops/prompt-across-issues.yaml` `advance` action to add the `REMAINING=...` line and the second `echo`.
 2. Validate the YAML still parses: `ll-loop validate prompt-across-issues`.
-3. Manual smoke-test: run the loop with a trivial prompt (e.g. `"echo touched {issue_id}"`) against a small subset and confirm logs show the new progress line.
+3. Add a structural assertion to `scripts/tests/test_builtin_loops.py:TestPromptAcrossIssuesLoop` confirming that the `advance` action body contains `REMAINING` and `remaining` (the progress echo); follow the existing assertion style in that class.
+4. Run `python -m pytest scripts/tests/test_builtin_loops.py -k TestPromptAcrossIssuesLoop -v` to confirm the new assertion passes.
+5. Manual smoke-test: run the loop with a trivial prompt (e.g. `"echo touched {issue_id}"`) against a small subset and confirm logs show the new progress line.
 
 ## Impact
 
@@ -116,8 +136,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `observability`, `captured`
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-24T15:13:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/847e0ce1-8815-443b-b5e6-c534c63a9949.jsonl`
+- `/ll:refine-issue` - 2026-05-24T15:09:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f05cec5c-4ab5-4f6b-84dc-9ddd8140f4b1.jsonl`
 - `/ll:format-issue` - 2026-05-23T22:12:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc1fd6ed-dcdc-4bc4-b6c1-4c76f8056fd9.jsonl`
 
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2e7bf37-f8f2-40f5-a049-b975a301f9c6.jsonl`
 - `/ll:capture-issue` - 2026-05-23T22:10:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/220a4517-38ba-4722-a76b-94bd2d986f30.jsonl`
 
 ---

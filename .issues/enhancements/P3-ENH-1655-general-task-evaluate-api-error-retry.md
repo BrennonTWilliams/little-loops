@@ -8,14 +8,14 @@ discovered_by: audit-loop-run
 confidence_score: 85
 outcome_confidence: 80
 relates_to: [ENH-1650, BUG-1657]
-depends_on: [ENH-1658]
+depends_on: []
 ---
 
-# ENH-1655: Evaluate API errors should retry instead of terminating the loop
+# ENH-1655: Action API errors should retry instead of terminating the loop
 
 ## Summary
 
-The `general-task` loop's `check_done` state routes evaluate errors to `diagnose → failed` via `on_error`, which means any transient Claude CLI API failure kills the entire loop. A 34-minute run making steady forward progress (5 complete `continue_work → check_done` cycles) was terminated by a single empty API error in the evaluate step.
+Transient Claude CLI API failures in `general-task` prompt-action states still route `on_error: diagnose → failed`, killing long-running loops on ephemeral infra errors. The original trigger was an `llm_structured` evaluator in `check_done`, but ENH-1658 replaced that evaluator with a shell counter (`count_done`). No `llm_structured` evaluators remain in `general-task.yaml`. The surviving risk is now in the five prompt-action states (`define_done`, `plan`, `execute`, `check_done`, `continue_work`) — any one of which can fail with a transient API error and immediately route to `diagnose → failed`.
 
 ## Problem
 
@@ -26,24 +26,29 @@ During the `2026-05-23T224029` run of `general-task`, iteration 14's `check_done
 
 This was a transient API/infra failure (empty error string, no underlying logic issue). The `on_error: diagnose` routing immediately moved to `diagnose → failed`, discarding 34 minutes of forward progress. The loop had successfully completed 5 prior evaluate calls without issues.
 
-The root cause is structural: `evaluate` errors are treated identically to `action` errors — both route to `on_error`. But evaluate failures are fundamentally different: they are read-only judgments that can be safely retried, unlike action failures that may have left side effects.
+After ENH-1658, the `llm_structured` evaluator path is gone, but the same failure mode survives via prompt-action errors: `define_done`, `plan`, `execute`, `check_done`, and `continue_work` all use `action_type: prompt` and route `on_error: diagnose`. A transient API error on any of these states terminates the run identically.
 
 ## Proposal
 
-Add retry-on-API-error semantics to the evaluate step, or treat API errors as soft failures that route to `on_no` (or a dedicated retry path) rather than `on_error`.
+Add `retry_on_api_error: true` to prompt-action states so the harness retries the Claude CLI call before escalating to `on_error`. The highest-impact states are `execute` and `continue_work` (the hot path for long runs); `define_done` and `plan` are one-shot setup states where retry is less critical but still beneficial.
 
-Minimal fix for `general-task`:
+Minimal fix for the hot-path states in `general-task`:
 ```yaml
 states:
-  check_done:
-    evaluate:
-      type: llm_structured
-      prompt: "..."
-      retry_on_api_error: true
-      max_retries: 2
+  execute:
+    action_type: prompt
+    retry_on_api_error: true
+    max_retries: 2
+    # ... existing action/next/on_error unchanged
+
+  continue_work:
+    action_type: prompt
+    retry_on_api_error: true
+    max_retries: 2
+    # ... existing action/next/on_error unchanged
 ```
 
-Broader fix: consider making this the default behavior for all `llm_structured` evaluators across all loops, since evaluate calls are idempotent reads.
+Broader fix: consider making `retry_on_api_error: true` the harness default for all `action_type: prompt` states across all loops, since prompt actions that fail due to API errors leave no side effects and are safe to retry.
 
 ## Impact
 
@@ -55,9 +60,9 @@ Broader fix: consider making this the default behavior for all `llm_structured` 
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): ENH-1650 (debug-loop-run signal for single evaluate-error termination) remains valid even after this issue ships — it targets exhausted-retry and non-retryable paths. Coordinate edits with BUG-1657: both touch `general-task.check_done.evaluate` in `loops/general-task.yaml` — this issue modifies `on_error` routing, BUG-1657 modifies `prompt` content. Implement in the same PR or sequential commits to avoid merge conflicts on the same YAML block.
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-1650 (debug-loop-run signal for single evaluate-error termination) remains valid even after this issue ships — it targets exhausted-retry and non-retryable paths. BUG-1657 touches `general-task.check_done` prompt content; this issue adds `retry_on_api_error` keys to prompt-action states. No conflict expected, but implement in sequential commits to keep the YAML diffs readable.
 
-**Sequencing note** (added by `/ll:audit-issue-conflicts` 2026-05-24): This issue must be implemented **after** ENH-1658. ENH-1658 removes the `llm_structured` evaluator from `check_done` and replaces it with a shell counter — meaning the evaluate retry logic proposed here has no target in `check_done` after that change. After ENH-1658 lands, retarget this issue's retry mechanism to the remaining LLM-evaluated states (e.g., `diagnose`) rather than `check_done`.
+**Retargeted 2026-05-24**: ENH-1658 has landed (`42cf8529`) — `check_done`'s `llm_structured` evaluator is replaced by the `count_done` shell counter. No `llm_structured` evaluators remain in `general-task.yaml`. This issue is now retargeted to prompt-action states (`execute`, `continue_work`, and optionally `define_done`/`plan`) where transient API errors still route directly to `diagnose → failed`. The `depends_on: [ENH-1658]` dependency is satisfied and removed.
 
 **Complementary issue**: ENH-1671 (delta-aware `check_done` prompt) reduces per-iteration session duration, which in turn reduces API-failure exposure. Neither ENH-1655 nor ENH-1671 is complete alone: shorter sessions reduce failure probability; retry handles failures when they still occur. Implement both for complete coverage.
 
