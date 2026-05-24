@@ -44,6 +44,7 @@ class TestCmdStatus:
         mock_state.started_at = "2026-02-14T10:00:00"
         mock_state.updated_at = "2026-02-14T10:05:00"
         mock_state.continuation_prompt = None
+        mock_state.pid = None
 
         with (
             patch(
@@ -1052,6 +1053,7 @@ class TestCmdStatusLogFile:
         mock_state.started_at = "2026-03-31T10:00:00"
         mock_state.updated_at = "2026-03-31T10:05:00"
         mock_state.continuation_prompt = None
+        mock_state.pid = None
         return mock_state
 
     def test_status_shows_log_file_details(self, tmp_path: Path) -> None:
@@ -1766,6 +1768,7 @@ class TestCmdStatusMultiInstance:
         state1.current_state = "implement"
         state1.iteration = 12
         state1.continuation_prompt = None
+        state1.pid = None
 
         state2 = MagicMock()
         state2.loop_name = "autodev"
@@ -1773,6 +1776,7 @@ class TestCmdStatusMultiInstance:
         state2.current_state = "refine_current"
         state2.iteration = 3
         state2.continuation_prompt = None
+        state2.pid = None
 
         instances = [
             ("autodev-20260503T122306", state1),
@@ -1798,9 +1802,11 @@ class TestCmdStatusMultiInstance:
         state1 = MagicMock()
         state1.status = "running"
         state1.continuation_prompt = None
+        state1.pid = None
         state2 = MagicMock()
         state2.status = "running"
         state2.continuation_prompt = None
+        state2.pid = None
 
         with (
             patch(
