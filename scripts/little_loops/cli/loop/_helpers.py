@@ -991,6 +991,30 @@ def run_foreground(
         else:
             executor._on_event = display_progress
 
+    # Wire follow mode — streams history-formatted events independently of quiet
+    if getattr(args, "follow", False):
+        from little_loops.cli.loop.info import _format_history_event
+
+        tw = terminal_width()
+        _verbose = verbose
+
+        def _follow_callback(event: dict[str, Any]) -> None:
+            line = _format_history_event(event, verbose=_verbose, width=tw)
+            if line is not None:
+                print(line, flush=True)
+
+        if hasattr(executor, "event_bus"):
+            executor.event_bus.register(_follow_callback)
+        else:
+            _prev_on_event = executor._on_event
+
+            def _chained(event: dict[str, Any]) -> None:
+                if _prev_on_event:
+                    _prev_on_event(event)
+                _follow_callback(event)
+
+            executor._on_event = _chained
+
     # Enter alternate screen buffer when showing diagrams with clear to prevent
     # scrollback contamination from diagrams taller than the terminal height.
     global _using_alt_screen

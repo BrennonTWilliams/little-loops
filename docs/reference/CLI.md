@@ -382,6 +382,7 @@ Run a loop.
 | `--llm-model` | | Override LLM model |
 | `--dry-run` | | Show execution plan without running |
 | `--background` | `-b` | Run as background daemon |
+| `--follow` | `-f` | Stream FSM state transitions to stdout as they fire, in `ll-loop history` format. **Cannot be combined with `--background`** — passing both exits with an error; use `ll-logs tail` to watch a background loop instead. |
 | `--quiet` | `-q` | Suppress progress output |
 | `--verbose` | `-v` | Stream all action output live; default shows a short response head preview |
 | `--queue` | | Wait for conflicting loops to finish; writes a queue entry to `<loops_dir>/.queue/<uuid>.json` while waiting (see [Queue entries](#queue-entries-loopsqueue)) |

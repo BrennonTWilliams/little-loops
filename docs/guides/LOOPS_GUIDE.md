@@ -2557,6 +2557,7 @@ For full details on evaluation phases, MCP gates, skill-as-judge, stall detectio
 | `--queue` | Wait for conflicting scoped loops instead of erroring |
 | `-q` / `--queue` | Wait for conflicting scoped loops instead of erroring (shorthand for `--queue`) |
 | `--quiet` | Suppress progress output |
+| `-f` / `--follow` | Stream FSM state transitions to stdout as they fire, in `ll-loop history` format. Combine with `--quiet` to see only the structured history output. Cannot be combined with `--background`. |
 | `-v` / `--verbose` | Stream all action output live; default shows a short response head preview |
 | `-b` / `--background` | Run as a background daemon |
 | `--show-diagrams[=MODE]` | Display FSM diagram after each step. `MODE` is a **topology** (`layered`\|`neighborhood`\|`inline`) or a **preset** (`detailed`\|`summary`\|`clean`\|`local`\|`oneline`). Bare flag selects the `summary` preset (layered, main-path scope). Use `--diagram-edge-labels=on\|off`, `--diagram-state-detail=title\|full`, and `--diagram-scope=main\|full` to override individual preset facets. **Breaking:** `main`/`full`/`mini` are no longer valid — use `summary`/`detailed`/`clean` respectively. |

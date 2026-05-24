@@ -198,6 +198,10 @@ def cmd_run(
     if getattr(args, "background", False):
         if getattr(args, "worktree", False):
             raise SystemExit("--worktree and --background cannot be combined")
+        if getattr(args, "follow", False):
+            raise SystemExit(
+                "--follow and --background cannot be combined; use 'll-logs tail' to watch a background loop"
+            )
         return run_background(loop_name, args, loops_dir)
 
     # Register PID file for all foreground runs so cmd_stop can send SIGTERM (BUG-639).

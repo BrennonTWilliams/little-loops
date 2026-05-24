@@ -36,6 +36,7 @@ class TestLoopArgumentParsing:
         parser.add_argument("--delay", type=float, default=None, metavar="SECONDS")
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--quiet", "-q", action="store_true")
+        parser.add_argument("--follow", "-f", action="store_true")
         parser.add_argument("--no-llm", action="store_true")
         parser.add_argument("--llm-model", type=str)
         parser.add_argument("--context", action="append", default=[], metavar="KEY=VALUE")
@@ -277,6 +278,45 @@ class TestLoopArgumentParsing:
         mock_run.assert_called_once()
         run_args = mock_run.call_args[0][1]
         assert getattr(run_args, "handoff_threshold", None) == 55
+
+    def test_follow_flag_default_is_false(self) -> None:
+        """--follow defaults to False when not specified."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop"])
+        assert args.follow is False
+
+    def test_follow_long_flag(self) -> None:
+        """--follow sets follow=True."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop", "--follow"])
+        assert args.follow is True
+
+    def test_follow_short_flag(self) -> None:
+        """-f sets follow=True (short alias)."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop", "-f"])
+        assert args.follow is True
+
+    def test_follow_registered_on_real_run_parser(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--follow is accepted by the actual ll-loop run parser."""
+        import sys
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(sys, "argv", ["ll-loop", "run", "my-loop", "--follow"]),
+            patch("little_loops.cli.loop.run.cmd_run", return_value=0) as mock_run,
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        mock_run.assert_called_once()
+        run_args = mock_run.call_args[0][1]
+        assert getattr(run_args, "follow", None) is True
 
     def test_handoff_threshold_registered_on_real_resume_parser(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

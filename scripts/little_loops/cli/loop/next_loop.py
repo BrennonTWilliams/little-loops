@@ -321,6 +321,7 @@ def cmd_next_loop(
             diagram_scope=None,
             clear=False,
             queue=False,
+            follow=False,
             context=[f"{k}={v}" for k, v in top_candidate.context.items()],
             program_md=None,
             builtin=False,

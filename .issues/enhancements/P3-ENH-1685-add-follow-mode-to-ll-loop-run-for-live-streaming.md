@@ -1,10 +1,11 @@
 ---
 captured_at: '2026-05-24T21:32:58Z'
+completed_at: '2026-05-24T23:02:50Z'
 discovered_date: 2026-05-24
 discovered_by: capture-issue
-status: open
-decision_needed: true
-confidence_score: 95
+status: done
+decision_needed: false
+confidence_score: 100
 outcome_confidence: 68
 score_complexity: 14
 score_test_coverage: 18
@@ -62,7 +63,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    )
    ```
 
-2. **Register the follow callback in `run_foreground()`** in `scripts/little_loops/cli/loop/_helpers.py` at lines 951-956 — add after the existing `display_progress` registration:
+2. **Register the follow callback in `run_foreground()`** in `scripts/little_loops/cli/loop/_helpers.py` at lines 988-990 — add after the existing `display_progress` registration:
    ```python
    follow = getattr(args, "follow", False)
    if follow:
@@ -88,7 +89,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-7. Update `run_background()` in `scripts/little_loops/cli/loop/_helpers.py` (lines 556–587) — decide whether `--follow --background` is supported; if yes, add `follow` to the forwarded-flag block; if no, document/warn that the combination silently drops `--follow`
+7. Update `run_background()` in `scripts/little_loops/cli/loop/_helpers.py` (line 540+) — decide whether `--follow --background` is supported; if yes, add `follow` to the forwarded-flag block; if no, document/warn that the combination silently drops `--follow`
 8. Update `docs/reference/CLI.md` — add `--follow` / `-f` row to the flags table at lines 375–395
 9. Update `docs/guides/LOOPS_GUIDE.md` — add `--follow` / `-f` row to the run flags table at lines 2550–2565
 10. Add `follow=False` to `_make_args()` helpers in: `test_cli_loop_lifecycle.py` (lines 840, 928), `test_cli_loop_queue.py` (line 12), `test_cli_loop_worktree.py` (line 562)
@@ -122,7 +123,7 @@ Fields: transition label (`[from → to]`), active state variables as `key=value
 - `scripts/little_loops/fsm/executor.py` — register a stdout-formatter callback via the existing `event_callback` interface when follow mode is active
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/cli/loop/_helpers.py` — primary implementation file (per refinement research); register follow callback in `run_foreground()` via `executor.event_bus.register()`; also update `run_background()` (lines 556–587) to decide whether `--follow` should be forwarded to re-exec subprocess (currently absent from forwarded-flag block, so `--follow --background` silently drops the flag)
+- `scripts/little_loops/cli/loop/_helpers.py` — primary implementation file (per refinement research); register follow callback in `run_foreground()` via `executor.event_bus.register()`; also update `run_background()` (line 540+) to decide whether `--follow` should be forwarded to re-exec subprocess (currently absent from forwarded-flag block, so `--follow --background` silently drops the flag)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/__init__.py` — already imports `cmd_run` from `run.py`
@@ -139,8 +140,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_ll_loop_parsing.py` — add parser registration test: assert `args.follow` defaults to `False` and is `True` with `--follow` (follow `test_handoff_threshold_registered_on_real_run_parser` pattern at line 260) — **new test to write**
-- `scripts/tests/test_ll_loop_display.py` — add `follow=False` to `_make_args()` at lines 1648, 2586, 2638; write new follow callback tests using `MockExecutorWithEventBus` variant (real `event_bus` with `.register()`) — **update + new tests**
-- `scripts/tests/test_cli_loop_lifecycle.py` — `_make_args()` at lines 840 and 928 need `follow=False` added for structural completeness — **update existing helpers**
+- `scripts/tests/test_ll_loop_display.py` — add `follow=False` to `_make_args()` at lines 1648, 2606, 2658; write new follow callback tests using `MockExecutorWithEventBus` variant (real `event_bus` with `.register()`) — **update + new tests**
+- `scripts/tests/test_cli_loop_lifecycle.py` — `_make_args()` at lines 840 and 931 need `follow=False` added for structural completeness — **update existing helpers**
 - `scripts/tests/test_cli_loop_queue.py` — module-level `_make_args()` at line 12 needs `follow=False` — **update existing helper**
 - `scripts/tests/test_cli_loop_worktree.py` — `TestCmdRunWorktree._make_args()` at line 562 needs `follow=False` — **update existing helper**
 
@@ -160,7 +161,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Critical correction — primary modification point is `_helpers.py`, not `executor.py`:**
 
-The follow callback should be registered in `_helpers.py:run_foreground()` at lines 951-956, alongside the existing `display_progress` registration:
+The follow callback should be registered in `_helpers.py:run_foreground()` at lines 988-990, alongside the existing `display_progress` registration:
 
 ```python
 # existing pattern (lines 952-956):
@@ -173,7 +174,7 @@ A `--follow` callback would be registered the same way: `executor.event_bus.regi
 
 **Corrected files-to-modify list:**
 - `scripts/little_loops/cli/loop/__init__.py:100-192` — add `--follow` to `run_parser` (all other flags are registered here)
-- `scripts/little_loops/cli/loop/_helpers.py:run_foreground()` (lines 951-956) — register follow callback on `executor.event_bus` when `args.follow` is set; this is THE key file, currently absent from this integration map
+- `scripts/little_loops/cli/loop/_helpers.py:run_foreground()` (lines 988-990) — register follow callback on `executor.event_bus` when `args.follow` is set; this is THE key file, currently absent from this integration map
 - `scripts/little_loops/cli/loop/info.py` — import `_format_history_event()` for rendering (read-only, no modifications)
 - `scripts/little_loops/cli/loop/run.py` — no change needed beyond what `args` already carries
 
@@ -222,20 +223,37 @@ Returns `None` for events that should be skipped (e.g., `action_output` in non-v
 
 **Open** | Created: 2026-05-24 | Priority: P3
 
+## Additional Context
+
+- **Date**: 2026-05-24
+- **Source**: capture-issue (decision resolved)
+
+**Decision: `--follow --background` is explicitly unsupported — error out.**
+
+Following the existing `--worktree --background` precedent (CLI.md line 393: "Cannot be combined with `--background` — passing both exits with an error"), `--follow --background` should exit with an error rather than silently drop `--follow` or attempt to attach to the subprocess's log file.
+
+**Rationale**: `--follow` and `--background` express contradictory intents ("show me everything live" vs. "run invisibly and detach"). Silently dropping `--follow` discards user intent without feedback; supporting it as "attach mode" would duplicate `ll-logs tail`. Erroring out is unambiguous and consistent with the existing pattern.
+
+**Implementation note for `run_background()`** (`_helpers.py` lines 520–598): add a guard at the top of `run_background()` (or in `cmd_run()` before dispatch) that checks `getattr(args, "follow", False)` and exits with a descriptive error pointing to `ll-logs tail` as the alternative for watching a background loop. No changes to the forwarded-flag block are needed since the combination is rejected before that code is reached.
+
+---
+
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-05-24_
+_Updated by `/ll:confidence-check` on 2026-05-24_
 
-**Readiness Score**: 95/100 → PROCEED
+**Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 68/100 → MODERATE
 
 ### Outcome Risk Factors
 
-- **Open decision: `--follow --background` combination** — `run_background()` lines 556–587 enumerate forwarded flags; `--follow` is currently absent from that block. Decide whether `--follow --background` is supported (forward the flag to re-exec) or unsupported (document/warn). This open decision should be resolved before starting implementation to avoid rework in `run_background()` and test assertions.
-- **Wide file surface (9 sites)** — 5 test helper updates needed (`test_cli_loop_lifecycle.py`, `test_cli_loop_queue.py`, `test_cli_loop_worktree.py`, `test_ll_loop_display.py`, `test_ll_loop_parsing.py`); tests are co-deliverables of the --follow implementation and should be updated alongside the core changes to avoid test suite breakage mid-implementation.
-- **Context variable snapshot format** — API interface shows `var_a=1  var_b=hello` but `state_enter` events carry only `{state, iteration}`; format will diverge from `_format_history_event()` output unless callback reads `executor.fsm.context` directly; the issue acknowledges this but leaves the resolution implicit.
+- **Wide file surface (9 sites)** — 5 test helper updates needed (`test_cli_loop_lifecycle.py`, `test_cli_loop_queue.py`, `test_cli_loop_worktree.py`, `test_ll_loop_display.py`, `test_ll_loop_parsing.py`); tests are co-deliverables of the `--follow` implementation and should be updated alongside core changes to avoid test suite breakage mid-implementation.
+- **Context variable snapshot format** — API interface shows `var_a=1  var_b=hello` but `state_enter` events carry only `{state, iteration}`; align callback output with `_format_history_event()` rendering (which handles `route`, `evaluate` events) rather than adding custom `executor.fsm.context` reads unless variable snapshots are explicitly desired.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T22:32:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f53c3dee-9e45-497b-a719-45102bcb9083.jsonl`
+- `/ll:confidence-check` - 2026-05-24T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7f2a1ff-6ab8-498b-a8bf-37c6705ab902.jsonl`
+- `/ll:capture-issue` - 2026-05-24T22:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51fa1ae1-7bfb-419b-874a-53047c48bfa8.jsonl`
 - `/ll:confidence-check` - 2026-05-24T22:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51fa1ae1-7bfb-419b-874a-53047c48bfa8.jsonl`
 - `/ll:wire-issue` - 2026-05-24T21:54:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6610c4b9-00d0-4e04-aeda-b66222aa4c9b.jsonl`
 - `/ll:refine-issue` - 2026-05-24T21:43:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa77648f-bc3c-435e-907c-c7c75f43ac5c.jsonl`

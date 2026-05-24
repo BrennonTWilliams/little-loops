@@ -131,6 +131,12 @@ Examples:
     run_parser.add_argument("--instance-id", type=str, default=None, help=argparse.SUPPRESS)
     run_parser.add_argument("--quiet", "--qt", action="store_true", help="Suppress progress output")
     run_parser.add_argument(
+        "--follow",
+        "-f",
+        action="store_true",
+        help="Stream FSM state transitions to stdout as they fire (mirrors 'll-loop history' format)",
+    )
+    run_parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",

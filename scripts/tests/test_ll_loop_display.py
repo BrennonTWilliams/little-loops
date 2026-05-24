@@ -1649,6 +1649,7 @@ class TestDisplayProgressEvents:
         self,
         quiet: bool = False,
         verbose: bool = False,
+        follow: bool = False,
         show_diagrams: bool | str | None = None,
         clear: bool = False,
         diagram_edge_labels: str | None = None,
@@ -1661,6 +1662,7 @@ class TestDisplayProgressEvents:
         return argparse.Namespace(
             quiet=quiet,
             verbose=verbose,
+            follow=follow,
             show_diagrams=show_diagrams,
             diagram_edge_labels=diagram_edge_labels,
             diagram_state_detail=diagram_state_detail,
@@ -2604,7 +2606,7 @@ class TestRunForegroundExitCodes:
     """Tests for run_foreground exit code mapping (BUG-605)."""
 
     def _make_args(self) -> argparse.Namespace:
-        return argparse.Namespace(quiet=False, verbose=False, show_diagrams=None, diagram_edge_labels=None, diagram_state_detail=None, diagram_scope=None, clear=False)
+        return argparse.Namespace(quiet=False, verbose=False, follow=False, show_diagrams=None, diagram_edge_labels=None, diagram_state_detail=None, diagram_scope=None, clear=False)
 
     def _make_fsm(self) -> FSMLoop:
         return make_test_fsm()
@@ -2656,7 +2658,7 @@ class TestRunForegroundResumeMode:
     """Tests for run_foreground(mode='resume') wiring (BUG-1645)."""
 
     def _make_args(self) -> argparse.Namespace:
-        return argparse.Namespace(quiet=False, verbose=False, show_diagrams=None, diagram_edge_labels=None, diagram_state_detail=None, diagram_scope=None, clear=False)
+        return argparse.Namespace(quiet=False, verbose=False, follow=False, show_diagrams=None, diagram_edge_labels=None, diagram_state_detail=None, diagram_scope=None, clear=False)
 
     def _make_fsm(self) -> FSMLoop:
         return make_test_fsm()
@@ -3850,3 +3852,108 @@ class TestRenderNeighborhoodDiagram:
         assert "\x1b[97;46;1m" in out, (
             f"expected bright-white-fg+bg+bold name code; output:\n{ansi_re.sub('', out)}"
         )
+
+
+class MockExecutorWithEventBus:
+    """Mock executor that emits events through a real EventBus (tests event_bus.register path)."""
+
+    def __init__(self, events: list[dict[str, Any]]) -> None:
+        from little_loops.events import EventBus
+
+        self._events = events
+        self.event_bus = EventBus()
+        self.loops_dir = Path(".")
+
+    def run(self) -> ExecutionResult:
+        for event in self._events:
+            self.event_bus.emit(event)
+        return ExecutionResult(
+            final_state="done",
+            iterations=1,
+            terminated_by="terminal",
+            duration_ms=100,
+            captured={},
+        )
+
+
+class TestFollowMode:
+    """Tests for --follow streaming mode in run_foreground (ENH-1685)."""
+
+    def _make_fsm(self) -> FSMLoop:
+        return make_test_fsm()
+
+    def _args(self, follow: bool = False, quiet: bool = False, verbose: bool = False) -> argparse.Namespace:
+        return argparse.Namespace(
+            follow=follow,
+            quiet=quiet,
+            verbose=verbose,
+            show_diagrams=None,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+            clear=False,
+        )
+
+    def test_follow_true_emits_history_formatted_events(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--follow outputs _format_history_event lines to stdout as events fire."""
+        events = [
+            {"event": "state_enter", "state": "diagnose", "iteration": 1, "ts": "2026-01-01T00:00:00"},
+        ]
+        executor = MockExecutorWithEventBus(events)
+        run_foreground(executor, self._make_fsm(), self._args(follow=True))
+        captured = capsys.readouterr()
+        assert "state_enter" in captured.out
+        assert "diagnose" in captured.out
+
+    def test_follow_false_does_not_emit_history_formatted_events(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Without --follow, _format_history_event lines are not written to stdout."""
+        events = [
+            {"event": "state_enter", "state": "diagnose", "iteration": 1, "ts": "2026-01-01T00:00:00"},
+        ]
+        executor = MockExecutorWithEventBus(events)
+        run_foreground(executor, self._make_fsm(), self._args(follow=False))
+        captured = capsys.readouterr()
+        # Normal display_progress output does not use _format_history_event timestamp format
+        assert "state_enter" not in captured.out
+
+    def test_follow_quiet_shows_only_history_lines(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--follow --quiet outputs history-formatted lines without display_progress output."""
+        events = [
+            {"event": "state_enter", "state": "propose", "iteration": 2, "ts": "2026-01-01T00:00:01"},
+        ]
+        executor = MockExecutorWithEventBus(events)
+        run_foreground(executor, self._make_fsm(), self._args(follow=True, quiet=True))
+        captured = capsys.readouterr()
+        assert "state_enter" in captured.out
+        assert "propose" in captured.out
+
+    def test_follow_route_event_rendered(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--follow renders route events (from → to transitions)."""
+        events = [
+            {"event": "route", "from": "diagnose", "to": "propose", "ts": "2026-01-01T00:00:01"},
+        ]
+        executor = MockExecutorWithEventBus(events)
+        run_foreground(executor, self._make_fsm(), self._args(follow=True))
+        captured = capsys.readouterr()
+        assert "route" in captured.out
+
+    def test_follow_via_on_event_fallback(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--follow wires callback via _on_event when executor has no event_bus."""
+        events = [
+            {"event": "state_enter", "state": "fallback_state", "iteration": 1, "ts": "2026-01-01T00:00:00"},
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._args(follow=True, quiet=True))
+        captured = capsys.readouterr()
+        assert "state_enter" in captured.out
+        assert "fallback_state" in captured.out

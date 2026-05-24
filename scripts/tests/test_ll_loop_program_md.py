@@ -156,6 +156,7 @@ class TestCmdRunProgramMdInjection:
             "foreground_internal": False,
             "quiet": False,
             "verbose": False,
+            "follow": False,
             "show_diagrams": None,
             "diagram_edge_labels": None,
             "diagram_state_detail": None,
