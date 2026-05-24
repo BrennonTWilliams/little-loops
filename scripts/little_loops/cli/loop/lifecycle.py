@@ -16,7 +16,7 @@ from little_loops.cli.loop._helpers import (
     run_background,
 )
 from little_loops.fsm.concurrency import _process_alive
-from little_loops.fsm.persistence import LoopState, _find_instances
+from little_loops.fsm.persistence import LoopState, StatePersistence, _find_instances
 from little_loops.logger import Logger
 
 
@@ -90,6 +90,53 @@ def _read_pid_file(pid_file: Path) -> int | None:
         return None
 
 
+def _resolve_live_pid(running_dir: Path, stem: str, state: LoopState) -> int | None:
+    """Return the canonical PID for an instance via .pid → .lock → state.pid chain.
+
+    Returns None when no PID can be resolved from any source.
+    """
+    pid = _read_pid_file(running_dir / f"{stem}.pid")
+    if pid is not None:
+        return pid
+    lock_file = running_dir / f"{stem}.lock"
+    if lock_file.exists():
+        try:
+            with open(lock_file) as _lf:
+                lock_data = json.load(_lf)
+            pid = lock_data.get("pid")
+            if pid is not None:
+                return pid
+        except (json.JSONDecodeError, KeyError, OSError):
+            pass
+    return state.pid
+
+
+def _reconcile_stale_running(
+    state: LoopState,
+    persistence: StatePersistence,
+    running_dir: Path,
+    stem: str,
+) -> LoopState:
+    """Flip a running-state entry to interrupted when its PID is provably dead.
+
+    Called on the read path in cmd_status so orphaned foreground-crash entries
+    self-heal without requiring manual cleanup-loops intervention.
+    """
+    if state.status != "running":
+        return state
+    pid = _resolve_live_pid(running_dir, stem, state)
+    if pid is None:
+        return state  # no PID resolvable — cannot determine liveness, leave alone
+    if _process_alive(pid):
+        return state
+    from datetime import UTC, datetime
+
+    state.status = "interrupted"
+    state.reconciled_at = datetime.now(UTC).isoformat()
+    persistence.save_state(state)
+    return state
+
+
 def _kill_with_timeout(pid: int, label: str, logger: Logger) -> None:
     """Send SIGTERM to pid; escalate to SIGKILL after 10 s if still alive."""
     os.kill(pid, signal.SIGTERM)
@@ -115,6 +162,9 @@ def _status_single(
     from little_loops.cli.output import print_json
 
     stem = instance_id or loop_name
+    persistence = StatePersistence(loop_name, running_dir.parent, instance_id=instance_id)
+    state = _reconcile_stale_running(state, persistence, running_dir, stem)
+
     pid_file = running_dir / f"{stem}.pid"
     pid = _read_pid_file(pid_file)
     pid_source: str | None = "pid_file" if pid is not None else None
@@ -215,6 +265,8 @@ def cmd_status(
         result_list = []
         for instance_id, state in instances:
             stem = instance_id or loop_name
+            persistence = StatePersistence(loop_name, loops_dir, instance_id=instance_id)
+            state = _reconcile_stale_running(state, persistence, running_dir, stem)
             pid_file = running_dir / f"{stem}.pid"
             pid = _read_pid_file(pid_file)
             pid_source: str | None = "pid_file" if pid is not None else None
@@ -249,6 +301,8 @@ def cmd_status(
     print(f"{len(instances)} instances of '{loop_name}':")
     for i, (instance_id, state) in enumerate(instances, 1):
         stem = instance_id or loop_name
+        persistence = StatePersistence(loop_name, loops_dir, instance_id=instance_id)
+        state = _reconcile_stale_running(state, persistence, running_dir, stem)
         pid_file = running_dir / f"{stem}.pid"
         pid = _read_pid_file(pid_file)
         if pid is None:
@@ -289,7 +343,7 @@ def cmd_stop(
     logger: Logger,
 ) -> int:
     """Stop a running loop."""
-    from little_loops.fsm.persistence import StatePersistence
+    from little_loops.fsm.persistence import StatePersistence  # noqa: PLC0415
 
     running_dir = loops_dir / ".running"
     instances = _find_instances(loop_name, running_dir)

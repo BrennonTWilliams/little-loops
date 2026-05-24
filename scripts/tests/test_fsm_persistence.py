@@ -134,6 +134,54 @@ class TestLoopState:
         d = state.to_dict()
         assert "active_sub_loop" not in d
 
+    def test_reconciled_at_field_roundtrip(self) -> None:
+        """reconciled_at round-trips through to_dict/from_dict (ENH-1669)."""
+        state = LoopState(
+            loop_name="test",
+            current_state="check",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-05-24T10:00:00Z",
+            updated_at="2026-05-24T10:05:00Z",
+            status="interrupted",
+            reconciled_at="2026-05-24T10:06:00Z",
+        )
+        d = state.to_dict()
+        assert d["reconciled_at"] == "2026-05-24T10:06:00Z"
+
+        restored = LoopState.from_dict(d)
+        assert restored.reconciled_at == "2026-05-24T10:06:00Z"
+
+    def test_reconciled_at_defaults_to_none(self) -> None:
+        """reconciled_at defaults to None when not present in data (ENH-1669)."""
+        data = {
+            "loop_name": "test",
+            "current_state": "check",
+            "iteration": 1,
+            "started_at": "2026-05-24T10:00:00Z",
+            "status": "interrupted",
+        }
+        state = LoopState.from_dict(data)
+        assert state.reconciled_at is None
+
+    def test_reconciled_at_omitted_when_none(self) -> None:
+        """to_dict omits reconciled_at when None (ENH-1669)."""
+        state = LoopState(
+            loop_name="test",
+            current_state="check",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-05-24T10:00:00Z",
+            updated_at="",
+            status="running",
+        )
+        d = state.to_dict()
+        assert "reconciled_at" not in d
+
 
 class TestStatePersistence:
     """Tests for StatePersistence class."""

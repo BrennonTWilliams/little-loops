@@ -116,6 +116,7 @@ class LoopState:
     edge_revisit_counts: dict[str, int] = field(default_factory=dict)
     active_sub_loop: str | None = None  # name of currently executing sub-loop (observability)
     pid: int | None = None  # OS PID of the process that started this run (for reconciliation sweep)
+    reconciled_at: str | None = None  # ISO timestamp when orphaned-running state was auto-flipped
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -145,6 +146,8 @@ class LoopState:
             result["active_sub_loop"] = self.active_sub_loop
         if self.pid is not None:
             result["pid"] = self.pid
+        if self.reconciled_at is not None:
+            result["reconciled_at"] = self.reconciled_at
         return result
 
     @classmethod
@@ -192,6 +195,7 @@ class LoopState:
             edge_revisit_counts=data.get("edge_revisit_counts", {}),
             active_sub_loop=data.get("active_sub_loop"),
             pid=data.get("pid"),
+            reconciled_at=data.get("reconciled_at"),
         )
 
 

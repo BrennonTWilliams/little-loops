@@ -759,6 +759,43 @@ class TestCmdStatusWithPid:
         print_text = " ".join(print_calls)
         assert "PID" not in print_text
 
+    def test_no_reconcile_live_background_pid(self, tmp_path: Path) -> None:
+        """Live background PID is never wrongly reconciled to interrupted (ENH-1669)."""
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.loop_name = "test-loop"
+        mock_state.status = "running"
+        mock_state.current_state = "check"
+        mock_state.iteration = 5
+        mock_state.started_at = "2026-02-27T10:00:00"
+        mock_state.updated_at = "2026-02-27T10:05:00"
+        mock_state.continuation_prompt = None
+        mock_state.pid = None
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("55555")
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("little_loops.fsm.persistence.StatePersistence.save_state") as mock_save,
+            patch("builtins.print") as mock_print,
+        ):
+            from little_loops.cli.loop.lifecycle import cmd_status
+
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        mock_save.assert_not_called()
+        print_calls = [str(c) for c in mock_print.call_args_list]
+        print_text = " ".join(print_calls)
+        assert "55555" in print_text
+        assert "running" in print_text
+
 
 class TestMainModuleEntryPoint:
     """Tests that __main__.py enables `python -m little_loops.cli.loop` invocation (BUG-891)."""

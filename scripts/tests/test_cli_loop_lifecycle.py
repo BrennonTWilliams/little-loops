@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import signal
 import time
@@ -17,6 +18,7 @@ from little_loops.cli.loop.lifecycle import (
     cmd_status,
     cmd_stop,
 )
+from little_loops.fsm.persistence import LoopState
 
 
 class TestCmdStatus:
@@ -1126,6 +1128,7 @@ class TestCmdStatusLogFile:
             patch(
                 "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
             ),
+            patch("little_loops.fsm.persistence.StatePersistence.save_state"),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_status("test-loop", tmp_path, logger)
@@ -2009,3 +2012,171 @@ class TestCmdListMultiInstance:
         assert result == 0
         out = capsys.readouterr().out
         assert out.count("autodev") == 1
+
+
+class TestReconcileStaleRunning:
+    """Tests for ENH-1669: auto-flip orphaned running state on cmd_status read path."""
+
+    def _make_state(
+        self,
+        status: str = "running",
+        pid: int | None = None,
+    ) -> LoopState:
+        return LoopState(
+            loop_name="test-loop",
+            current_state="check",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-05-24T10:00:00Z",
+            updated_at="2026-05-24T10:05:00Z",
+            status=status,
+            pid=pid,
+        )
+
+    def _write_state(self, running_dir: Path, stem: str, state: LoopState) -> Path:
+        running_dir.mkdir(parents=True, exist_ok=True)
+        state_file = running_dir / f"{stem}.state.json"
+        state_file.write_text(json.dumps(state.to_dict()))
+        return state_file
+
+    def test_reconciles_dead_state_pid_no_pid_file(self, tmp_path: Path) -> None:
+        """Flips running→interrupted when only state.pid exists and it's dead."""
+        logger = MagicMock()
+        running_dir = tmp_path / ".running"
+        state = self._make_state(status="running", pid=40692)
+        self._write_state(running_dir, "test-loop", state)
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[(None, state)],
+            ),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
+            patch("builtins.print"),
+        ):
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        assert state.status == "interrupted"
+        assert state.reconciled_at is not None
+        written = json.loads((running_dir / "test-loop.state.json").read_text())
+        assert written["status"] == "interrupted"
+        assert "reconciled_at" in written
+
+    def test_reconciles_dead_pid_file(self, tmp_path: Path) -> None:
+        """Flips running→interrupted when .pid file has dead PID (state.pid absent)."""
+        logger = MagicMock()
+        running_dir = tmp_path / ".running"
+        state = self._make_state(status="running", pid=None)
+        self._write_state(running_dir, "test-loop", state)
+        (running_dir / "test-loop.pid").write_text("88888")
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[(None, state)],
+            ),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
+            patch("builtins.print"),
+        ):
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        assert state.status == "interrupted"
+        assert state.reconciled_at is not None
+
+    def test_no_reconcile_live_lock_pid(self, tmp_path: Path) -> None:
+        """Does NOT reconcile when .lock file holds a live PID."""
+        logger = MagicMock()
+        running_dir = tmp_path / ".running"
+        state = self._make_state(status="running", pid=None)
+        self._write_state(running_dir, "test-loop", state)
+        (running_dir / "test-loop.lock").write_text(
+            json.dumps({"pid": 77777, "loop_name": "test-loop", "scope": "test", "started_at": ""})
+        )
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[(None, state)],
+            ),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("builtins.print"),
+        ):
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        assert state.status == "running"
+        assert state.reconciled_at is None
+
+    def test_no_reconcile_already_interrupted(self, tmp_path: Path) -> None:
+        """Does NOT change state when already interrupted (non-running status)."""
+        logger = MagicMock()
+        running_dir = tmp_path / ".running"
+        state = self._make_state(status="interrupted", pid=40692)
+        self._write_state(running_dir, "test-loop", state)
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[(None, state)],
+            ),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
+            patch("builtins.print"),
+        ):
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        assert state.status == "interrupted"
+        assert state.reconciled_at is None
+
+    def test_no_reconcile_no_pid_anywhere(self, tmp_path: Path) -> None:
+        """Does NOT reconcile when no PID is resolvable from any source."""
+        logger = MagicMock()
+        running_dir = tmp_path / ".running"
+        state = self._make_state(status="running", pid=None)
+        self._write_state(running_dir, "test-loop", state)
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[(None, state)],
+            ),
+            patch("builtins.print"),
+        ):
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        assert state.status == "running"
+        assert state.reconciled_at is None
+
+    def test_reconciles_in_multi_instance_human_readable(self, tmp_path: Path) -> None:
+        """Multi-instance human-readable path reconciles dead-PID running entries."""
+        logger = MagicMock()
+        running_dir = tmp_path / ".running"
+        state1 = self._make_state(status="running", pid=11111)
+        state2 = self._make_state(status="running", pid=22222)
+        self._write_state(running_dir, "test-loop-inst1", state1)
+        self._write_state(running_dir, "test-loop-inst2", state2)
+        instances = [
+            ("test-loop-inst1", state1),
+            ("test-loop-inst2", state2),
+        ]
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=instances,
+            ),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
+            patch("builtins.print"),
+        ):
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        assert state1.status == "interrupted"
+        assert state2.status == "interrupted"
+        assert state1.reconciled_at is not None
+        assert state2.reconciled_at is not None
