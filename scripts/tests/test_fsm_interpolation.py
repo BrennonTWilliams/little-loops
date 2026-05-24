@@ -407,6 +407,16 @@ class TestInterpolateEdgeCases:
         result = interpolate("DEPTH_STR=$${DEPTH:+' (depth: $DEPTH)'}", ctx)
         assert result == "DEPTH_STR=${DEPTH:+' (depth: $DEPTH)'}"
 
+    def test_escape_bare_bash_variable_no_operator(self) -> None:
+        """$${VAR} (no bash operator) passes through as literal ${VAR} without error.
+
+        Regression test for BUG-1675: bare variable names (no :-, :+, [@] etc.)
+        must be escapable with $${} just like operator forms.
+        """
+        ctx = InterpolationContext()
+        result = interpolate('"$${HEAD_PART}"$\'\\n...\\n\'"$${TAIL_PART}"', ctx)
+        assert result == '"${HEAD_PART}"$\'\\n...\\n\'"${TAIL_PART}"'
+
 
 class TestFormatDuration:
     """Tests for the _format_duration helper."""

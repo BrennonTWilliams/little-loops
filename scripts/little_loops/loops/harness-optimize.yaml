@@ -25,7 +25,7 @@ states:
     action_type: shell
     action: |
       RUN_ID=$(date +%s%N)
-      TRAJ=".ll/runs/harness-optimize/${RUN_ID}/states/whole-file/trajectory.jsonl"
+      TRAJ=".ll/runs/harness-optimize/$${RUN_ID}/states/whole-file/trajectory.jsonl"
       mkdir -p "$(dirname "$TRAJ")"
       echo "$TRAJ"
     capture: traj_path
@@ -43,7 +43,7 @@ states:
       # Branch trajectory find path by current STATE_NAME (set by dequeue_state)
       STATE_NAME=$(cat .loops/tmp/harness-optimize-state-name.txt 2>/dev/null || echo "")
       if [ -n "$STATE_NAME" ]; then
-        TRAJ_PATH="*/states/${STATE_NAME}/*"
+        TRAJ_PATH="*/states/$${STATE_NAME}/*"
       else
         TRAJ_PATH="*/states/whole-file/*"
       fi
@@ -211,7 +211,7 @@ states:
       STATE_NAME=$(cat .loops/tmp/harness-optimize-state-name.txt 2>/dev/null || echo "")
       if [ -n "$STATE_NAME" ]; then
         RUN_ID=$(echo "${captured.traj_path.output}" | sed 's|.*/harness-optimize/\([^/]*\)/.*|\1|')
-        TRAJ=".ll/runs/harness-optimize/${RUN_ID}/states/${STATE_NAME}/trajectory.jsonl"
+        TRAJ=".ll/runs/harness-optimize/$${RUN_ID}/states/$${STATE_NAME}/trajectory.jsonl"
         mkdir -p "$(dirname "$TRAJ")"
       else
         TRAJ="${captured.traj_path.output}"
@@ -234,7 +234,7 @@ states:
       STATE_NAME=$(cat .loops/tmp/harness-optimize-state-name.txt 2>/dev/null || echo "")
       if [ -n "$STATE_NAME" ]; then
         RUN_ID=$(echo "${captured.traj_path.output}" | sed 's|.*/harness-optimize/\([^/]*\)/.*|\1|')
-        TRAJ=".ll/runs/harness-optimize/${RUN_ID}/states/${STATE_NAME}/trajectory.jsonl"
+        TRAJ=".ll/runs/harness-optimize/$${RUN_ID}/states/$${STATE_NAME}/trajectory.jsonl"
         mkdir -p "$(dirname "$TRAJ")"
       else
         TRAJ="${captured.traj_path.output}"

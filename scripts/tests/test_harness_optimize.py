@@ -205,17 +205,15 @@ class TestHarnessOptimizeStates:
         assert state.get("capture") == "traj_path"
         assert state.get("next") == "load_directive"
 
-    def test_init_run_shell_creates_trajectory_directory(self, tmp_path: Path) -> None:
+    def test_init_run_shell_creates_trajectory_directory(self, loop_data: dict, tmp_path: Path) -> None:
         import subprocess
 
-        state_yaml_action = (
-            "RUN_ID=$(date +%s%N)\n"
-            'TRAJ=".ll/runs/harness-optimize/${RUN_ID}/states/whole-file/trajectory.jsonl"\n'
-            'mkdir -p "$(dirname "$TRAJ")"\n'
-            'echo "$TRAJ"\n'
-        )
+        from little_loops.fsm.interpolation import InterpolationContext, interpolate
+
+        raw_action = loop_data["states"]["init_run"]["action"]
+        bash_script = interpolate(raw_action, InterpolationContext())
         result = subprocess.run(
-            ["bash", "-c", state_yaml_action],
+            ["bash", "-c", bash_script],
             capture_output=True,
             text=True,
             cwd=tmp_path,

@@ -22,7 +22,7 @@ states:
       echo ""
       echo "=== Priority Distribution ==="
       for P in P0 P1 P2 P3 P4 P5; do
-        COUNT=$(ls .issues/bugs/${P}-* .issues/features/${P}-* .issues/enhancements/${P}-* 2>/dev/null | wc -l | tr -d ' ')
+        COUNT=$(ls .issues/bugs/$${P}-* .issues/features/$${P}-* .issues/enhancements/$${P}-* 2>/dev/null | wc -l | tr -d ' ')
         echo "$P: $COUNT"
       done
       echo ""
