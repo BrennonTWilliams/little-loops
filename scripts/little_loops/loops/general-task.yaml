@@ -7,7 +7,11 @@ on_handoff: spawn
 
 circuit:
   repeated_failure:
-    window: 3
+    # Window=7 buys runway for the check_done ↔ continue_work ping-pong on
+    # tasks with large DoDs (one DoD criterion can close per cycle, and the
+    # detector is blind to continue_work's progress — see BUG-1674).
+    # max_iterations is the real safety net.
+    window: 7
     on_repeated_failure: diagnose
 
 states:
