@@ -106,3 +106,9 @@ Findings from `~/.claude/plans/we-are-running-little-loops-glistening-kitten.md`
 
 ---
 **Status**: Open | Created: 2026-05-23 | Priority: P4
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue adds content to `skills/create-loop/SKILL.md`. ENH-494 enforces a 500-line limit on all `SKILL.md` files. `create-loop/SKILL.md` is currently 324 lines — well under the cap — but implementors should run `wc -l skills/create-loop/SKILL.md` after changes to confirm it remains under 500 lines.

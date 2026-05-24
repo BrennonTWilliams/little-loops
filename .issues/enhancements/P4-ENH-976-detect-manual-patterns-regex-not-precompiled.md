@@ -135,3 +135,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-04-06 | Priority: P4
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue is thematically related to ENH-974 (deduplicate code-fence regex) and ENH-975 (eliminate double session-log scan in `IssueParser.parse_file`) — all three address the same "regex compiled on every call" class in non-overlapping files. Consider batching ENH-974 + ENH-976 into a single "regex hygiene" PR.

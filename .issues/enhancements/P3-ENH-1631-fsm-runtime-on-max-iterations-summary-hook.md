@@ -3,7 +3,7 @@ captured_at: "2026-05-23T16:40:11Z"
 discovered_date: 2026-05-23
 discovered_by: capture-issue
 status: open
-depends_on: BUG-1628
+depends_on: [BUG-1628, ENH-1629]
 ---
 
 # ENH-1631: Add `on_max_iterations` summary hook to FSM runtime + general-task loop

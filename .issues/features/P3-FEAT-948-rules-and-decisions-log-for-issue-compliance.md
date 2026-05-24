@@ -2,6 +2,7 @@
 discovered_date: 2026-04-04
 discovered_by: capture-issue
 blocked_by: []
+depends_on: FEAT-1479
 ---
 
 # FEAT-948: Rules and Decisions Log for Issue Compliance

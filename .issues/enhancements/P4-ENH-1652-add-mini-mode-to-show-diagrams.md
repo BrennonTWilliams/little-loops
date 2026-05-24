@@ -176,6 +176,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    to further reduce visual weight, or keep the existing box style? Default
    recommendation: keep existing border to preserve active-state highlight
    semantics already wired in.
+3. **Neighborhood-diagram mode propagation** — `_render_neighborhood_diagram`
+   (`layout.py:1707-1708`) has its own `if mode == "main":` branch and is reached
+   when `_build_pinned_pane` (`_helpers.py:292`) falls back because the active
+   state is unreachable under `main`'s filter. Should `mini` also be wired
+   through the neighborhood path (suppressing labels + body lines there too), or
+   should the neighborhood path always render `full`-style detail since it's
+   already a zoomed-in fallback? Default recommendation: treat the neighborhood
+   path as full-detail (it's already focused on a small subgraph), and document
+   this limitation in `mini`'s help text. _(Discovered during refinement; not
+   in original capture.)_
 
 ## Impact
 
@@ -273,6 +283,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `docs/ARCHITECTURE.md` — system design context for the loop runtime.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-24T02:43:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9eaefb33-d00d-4955-9bd3-f90c748f44ef.jsonl`
 - `/ll:format-issue` - 2026-05-24T02:24:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d11a32bd-ee0b-4bc3-aa81-bbd2c70eaca5.jsonl`
 - `/ll:capture-issue` - 2026-05-24T02:16:50Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/facffb2c-69ed-4e7f-9785-031798b54171.jsonl`
 

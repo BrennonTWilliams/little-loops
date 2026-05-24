@@ -137,3 +137,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-04-06 | Priority: P4
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue is thematically related to ENH-976 (pre-compile `_MANUAL_PATTERNS` regex) and ENH-975 (eliminate double regex scan in `IssueParser.parse_file`) — all three address the same "regex compiled on every call" problem class in non-overlapping files. Consider batching ENH-974 + ENH-976 into a single "regex hygiene" PR for reviewer clarity.

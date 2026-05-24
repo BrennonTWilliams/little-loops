@@ -3,6 +3,7 @@ captured_at: "2026-05-23T23:10:18Z"
 discovered_date: 2026-05-23
 discovered_by: capture-issue
 status: open
+depends_on: BUG-1648
 labels:
 - skills
 - sprint

@@ -162,3 +162,9 @@ The redundancy is real and the fix is conceptually sound, but the proposed `pars
 ## Status
 
 **Open** | Created: 2026-04-06 | Priority: P4
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue is thematically related to ENH-976 (pre-compile `_MANUAL_PATTERNS` regex) — both reduce redundant regex work in the issue-parsing hot path (disjoint files). No sequencing constraint is required, but noting here so sprint planners can optionally co-batch them.

@@ -3,6 +3,7 @@ id: FEAT-1476
 type: FEAT
 priority: P5
 status: open
+depends_on: [FEAT-1475, FEAT-1478, FEAT-1479]
 parent: EPIC-1622
 size: Small
 ---

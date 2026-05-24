@@ -3,7 +3,7 @@ captured_at: '2026-05-22T19:19:39Z'
 discovered_date: 2026-05-22
 discovered_by: capture-issue
 status: open
-depends_on: ENH-1618
+depends_on: [ENH-1618, ENH-1615]
 ---
 
 # ENH-1617: Add negative routing instructions to Tier 1 skill descriptions
@@ -33,6 +33,52 @@ description: Use when asked for an adversarial go/no-go review. Do NOT use for c
 
 This adds ~20-40 chars per affected description while dramatically improving routing precision.
 
+## Motivation
+
+Adjacent Tier 1 skills share overlapping trigger language, causing routing collisions when users phrase requests ambiguously. The SEO plugin case study found that adding "Do NOT use for X — use Y instead" clauses reduced misrouting by ~90%. Without this, the 14 Tier 1 skill listing wastes resolution capacity on disambiguation that the description layer should handle.
+
+## Proposed Solution
+
+For each of the 14 Tier 1 skills, identify adjacent skills in the issue lifecycle pipeline, then add explicit "Do NOT use for X — use Y instead" clauses to the `description:` field in each `skills/*/SKILL.md`.
+
+**Adjacency clusters to resolve:**
+- Pre-implementation gate: `go-no-go` ↔ `confidence-check` ↔ `issue-size-review`
+- Decision/selection: `decide-issue` ↔ `go-no-go` ↔ `ready-issue`
+- Validation: `verify-issues` ↔ `ready-issue` ↔ `confidence-check`
+
+Each disambiguation adds ~20-40 chars; verify total description stays within budget using `ll-verify-skill-budget` after each update.
+
+**Note**: Complete ENH-1618 first — the audit skill consolidation determines which audit sub-skills remain Tier 1 and need routing disambiguation here.
+
+## Implementation Steps
+
+1. After ENH-1618 resolves, list the final set of Tier 1 skills and their current descriptions
+2. Map adjacency clusters (which skills are most likely to be confused for each other)
+3. Draft "Do NOT use for X — use Y instead" clauses for each skill in each cluster
+4. Update `description:` in each affected `skills/*/SKILL.md`
+5. Run `ll-verify-skill-budget` to confirm token budget compliance
+6. Spot-check routing with 3-5 ambiguous sample prompts
+
+## Integration Map
+
+### Files to Modify
+- `skills/*/SKILL.md` — `description:` field for each of the ~14 Tier 1 skills (exact list determined after ENH-1618)
+
+### Dependent Files (Callers/Importers)
+- `ll-verify-skill-budget` — verifies description token budget after edits
+
+### Similar Patterns
+- SEO plugin case study (referenced in Summary) — same "Do NOT use for X" pattern
+
+### Tests
+- Manual: send 3-5 ambiguous prompts to Claude and verify correct skill routing
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Impact
 
 - **Priority**: P3 — routing accuracy improvement, no current bug
@@ -45,6 +91,7 @@ This adds ~20-40 chars per affected description while dramatically improving rou
 `enhancement`, `skills`, `context-engineering`, `routing`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-24T02:22:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2328e8ba-c60a-43cf-b563-f9a69957b379.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
 - `/ll:capture-issue` - 2026-05-22T19:19:39Z - conversation analysis
 
@@ -54,6 +101,6 @@ This adds ~20-40 chars per affected description while dramatically improving rou
 
 ---
 
-## Scope Boundary
+## Scope Boundaries
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue adds negative routing instructions to the 14 Tier 1 skill descriptions, including the 5 audit skills. ENH-1618 plans to consolidate those 5 audit skills into a single meta-skill entry point (demoting 4 audit sub-skills from Tier 1). Adding routing disambiguation to audit skills before ENH-1618 resolves their Tier 1 status risks wasted work. This issue `depends_on: ENH-1618` — complete the audit consolidation decision first, then apply routing instructions only to the audit skills that remain Tier 1.

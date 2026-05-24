@@ -31,6 +31,57 @@ The body routes to the appropriate specialized skill:
 
 The existing sub-skills remain functional and user-invocable. Only the routing entry point changes.
 
+## Motivation
+
+Five separate `audit-*` Tier 1 entries fragment what users perceive as a single concept, consuming 5× the listing budget and requiring Claude to pick among 5 candidates for any "audit" prompt. A unified `audit` entry point reduces routing ambiguity, lowers Tier 1 count, and makes the skill surface feel coherent to users. The meta-skill pattern is validated by the SEO plugin case study (referenced in ENH-1617).
+
+## Proposed Solution
+
+Create `skills/audit/SKILL.md` as a new Tier 1 meta-skill. Its body reads the user's request to determine audit scope (config, docs, architecture, issues, loops) and delegates to the appropriate sub-skill:
+
+```
+/ll:audit-claude-config  → plugin/config validation
+/ll:audit-docs           → documentation accuracy and coverage
+/ll:audit-architecture   → codebase structural patterns
+/ll:audit-issue-conflicts → conflicting requirements across issues
+/ll:audit-loop-run       → loop execution analysis
+```
+
+Optionally set `llm_discoverable: false` on the 4 sub-skills to demote them to Tier 2 (user-invocable directly but not auto-discovered). Keep sub-skills independently invocable via `/ll:<name>`.
+
+## Implementation Steps
+
+1. Audit current trigger patterns for the 5 audit skills to identify routing overlap and distinct triggers
+2. Create `skills/audit/SKILL.md` with dispatching logic (reads scope from request, routes to sub-skill)
+3. Decide demote vs. keep for each sub-skill (audit-claude-config may have distinct enough triggers to stay Tier 1)
+4. Update `llm_discoverable: false` on demoted sub-skills
+5. Run `ll-verify-skill-budget` to confirm reduced Tier 1 count is within budget
+6. Test routing: "audit architecture", "audit my config", "audit the loop", "check for issue conflicts"
+
+## Integration Map
+
+### Files to Modify
+- `skills/audit-claude-config/SKILL.md` — optionally set `llm_discoverable: false`
+- `skills/audit-docs/SKILL.md` — optionally set `llm_discoverable: false`
+- `skills/audit-issue-conflicts/SKILL.md` — optionally set `llm_discoverable: false`
+- `skills/audit-loop-run/SKILL.md` — optionally set `llm_discoverable: false`
+- `skills/ll-audit-architecture/SKILL.md` — optionally set `llm_discoverable: false`
+
+### Dependent Files (Callers/Importers)
+- `ll-verify-skill-budget` — verifies Tier 1 count after demotion
+
+### Similar Patterns
+- N/A — new meta-skill pattern for this project; SEO plugin case study is external reference
+
+### Tests
+- Manual: 5-6 routing prompts covering each audit sub-skill ("audit my loops", "audit the docs", etc.)
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Impact
 
 - **Priority**: P4 — architectural improvement, not blocking; ENH-1394 and ENH-1615 address immediate budget pressure
@@ -43,6 +94,7 @@ The existing sub-skills remain functional and user-invocable. Only the routing e
 `enhancement`, `skills`, `architecture`, `context-engineering`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-24T02:22:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2328e8ba-c60a-43cf-b563-f9a69957b379.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
 - `/ll:capture-issue` - 2026-05-22T19:19:39Z - conversation analysis
 
@@ -52,6 +104,6 @@ The existing sub-skills remain functional and user-invocable. Only the routing e
 
 ---
 
-## Scope Boundary
+## Scope Boundaries
 
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-1617 (negative routing instructions for Tier 1 skill descriptions) has been made to depend on this issue. Resolve the audit-skill consolidation in ENH-1618 first so ENH-1617 knows which audit skills remain Tier 1 and actually need routing disambiguation. If this issue is deferred or cancelled, remove the `depends_on: ENH-1618` from ENH-1617 and unblock it.
