@@ -601,7 +601,11 @@ def _draw_box(
         bg_code = None
 
     def _bc(ch: str) -> str:
-        return colorize(ch, highlight_color) if is_highlighted else ch
+        if not is_highlighted:
+            return ch
+        if bg_code:
+            return colorize(ch, f"{highlight_color};{bg_code}")
+        return colorize(ch, highlight_color)
 
     # Top border: ┌ ─ ─ … ─ ┐
     if col < total_width:
@@ -654,7 +658,7 @@ def _draw_box(
         if col + width - 1 < total_width:
             grid[r][col + width - 1] = _bc("\u2502")
         if is_highlighted and i == 0:
-            name_code = f"30;{bg_code};1" if bg_code else f"{highlight_color};1"
+            name_code = f"97;{bg_code};1" if bg_code else f"{highlight_color};1"
             colored_line = colorize(line, name_code)
             if col + 2 < total_width:
                 grid[r][col + 2] = colored_line
@@ -672,7 +676,7 @@ def _draw_box(
             for j, ch in enumerate(line):
                 if col + 2 + j < col + width - 1:
                     if is_highlighted and bg_code:
-                        grid[r][col + 2 + j] = colorize(ch, f"30;{bg_code}")
+                        grid[r][col + 2 + j] = colorize(ch, f"97;{bg_code}")
                     else:
                         grid[r][col + 2 + j] = ch
 
@@ -1775,23 +1779,24 @@ def _render_neighborhood_diagram(
         bot = "└" + "─" * (inner_w + 2) + "┘"
         padded = label.ljust(inner_w)
         if highlighted:
-            top = colorize(top, highlight_color)
-            bot = colorize(bot, highlight_color)
+            border_code = f"{highlight_color};{nd_bg_code}" if nd_bg_code else highlight_color
+            top = colorize(top, border_code)
+            bot = colorize(bot, border_code)
             if nd_bg_code:
                 mid = (
-                    colorize("│", highlight_color)
+                    colorize("│", border_code)
                     + colorize(" ", nd_bg_code)
-                    + colorize(padded, f"30;{nd_bg_code};1")
+                    + colorize(padded, f"97;{nd_bg_code};1")
                     + colorize(" ", nd_bg_code)
-                    + colorize("│", highlight_color)
+                    + colorize("│", border_code)
                 )
             else:
                 mid = (
-                    colorize("│", highlight_color)
+                    colorize("│", border_code)
                     + " "
                     + colorize(padded, f"{highlight_color};1")
                     + " "
-                    + colorize("│", highlight_color)
+                    + colorize("│", border_code)
                 )
         elif border_color is not None:
             top = colorize(top, border_color)

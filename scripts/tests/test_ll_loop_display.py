@@ -1267,10 +1267,10 @@ class TestRenderFsmDiagram:
         with patch.object(output_mod, "_USE_COLOR", True):
             result = _render_fsm_diagram(fsm, highlight_state="a", highlight_color="36")
 
-        # Highlighted state box has the color code (borders use fg color)
-        assert "\033[36m" in result
-        # State name uses dark fg + bg color + bold
-        assert "\033[30;46;1m" in result
+        # Highlighted state box borders carry both fg and bg fill (no gap)
+        assert "\033[36;46m" in result
+        # State name uses bright-white fg + bg color + bold
+        assert "\033[97;46;1m" in result
         # Interior cells filled with bg color
         assert "\033[46m " in result
 
@@ -1285,7 +1285,7 @@ class TestRenderFsmDiagram:
         with patch.object(output_mod, "_USE_COLOR", True):
             result = _render_fsm_diagram(fsm, highlight_state="start")
 
-        assert "\033[32m" in result
+        assert "\033[32;42m" in result
         assert "\033[42m " in result
 
     def test_no_highlight_state_unchanged(self) -> None:
@@ -2830,7 +2830,7 @@ class TestStateBadges:
         with patch.object(output_mod, "_USE_COLOR", True):
             result = _render_fsm_diagram(fsm, highlight_state="start", highlight_color="36")
         # The badge ✦ must appear wrapped in the highlight color
-        assert "\033[36m\u2726" in result
+        assert "\033[36;46m\u2726" in result
 
     def test_route_badge_constant(self) -> None:
         """_ROUTE_BADGE is the dedicated branching/routing unicode character."""
@@ -3282,7 +3282,7 @@ class TestShowDiagramsMiniMode:
             result = _render_fsm_diagram(fsm, highlight_state="start", mode="mini")
         # Green border (ANSI 32) + green background fill (ANSI 42) — same
         # highlighting pipeline as main/full modes.
-        assert "\033[32m" in result
+        assert "\033[32;42m" in result
         assert "\033[42m " in result
 
     def test_show_diagrams_mini_inherits_main_edge_filter(self) -> None:
@@ -3625,8 +3625,8 @@ class TestRenderNeighborhoodDiagram:
 
         # bg cyan fill (\033[46m) should appear in interior cells of the active box
         assert "\x1b[46m " in out, f"expected bg fill in neighborhood active box; output:\n{out}"
-        # state name uses dark fg + bg + bold
+        # state name uses bright-white fg + bg + bold
         ansi_re = re.compile(r"\x1b\[[0-9;]*m")
-        assert "\x1b[30;46;1m" in out, (
-            f"expected dark-fg+bg+bold name code; output:\n{ansi_re.sub('', out)}"
+        assert "\x1b[97;46;1m" in out, (
+            f"expected bright-white-fg+bg+bold name code; output:\n{ansi_re.sub('', out)}"
         )
