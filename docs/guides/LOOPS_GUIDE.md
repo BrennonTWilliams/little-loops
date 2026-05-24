@@ -2487,7 +2487,7 @@ For full details on evaluation phases, MCP gates, skill-as-judge, stall detectio
 | `--quiet` | Suppress progress output |
 | `-v` / `--verbose` | Stream all action output live; default shows a short response head preview |
 | `-b` / `--background` | Run as a background daemon |
-| `--show-diagrams[=main\|full]` | Display FSM box diagram with active state highlighted after each step. Bare flag defaults to `main` (hides `error`/`partial`/`blocked`/`retry_exhausted`/`rate_limit_exhausted`/`throttle_hard` edges and states only reachable through them); pass `=full` for the legacy all-edges view |
+| `--show-diagrams[=main\|full\|mini]` | Display FSM box diagram with active state highlighted after each step. Bare flag defaults to `main` (hides `error`/`partial`/`blocked`/`retry_exhausted`/`rate_limit_exhausted`/`throttle_hard` edges and states only reachable through them); pass `=full` for the legacy all-edges view; pass `=mini` for a skeleton view (title-only boxes, unlabeled edges; inherits `main`'s filter) |
 | `--clear` | Clear terminal before each iteration; combine with `--show-diagrams` for a live in-place dashboard. When combined on a tty, the screen splits into a pinned FSM diagram (top) and a scrolling action-output region (bottom). On terminals too short for the full diagram, the pinned pane falls back to a 1-hop neighborhood view, then to a single-line `fsm:` status. |
 | `--delay <SECONDS>` | Sleep N seconds between iterations; overrides `backoff:` from YAML |
 | `--context KEY=VALUE` | Override a context variable at runtime (repeatable) |

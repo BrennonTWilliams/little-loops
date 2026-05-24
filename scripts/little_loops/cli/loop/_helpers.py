@@ -288,7 +288,7 @@ def _build_pinned_pane(
             )
         # "full"
         mode = show_diagrams_mode
-        if mode == "main" and highlight is not None:
+        if mode in ("main", "mini") and highlight is not None:
             _filtered_edges, reachable = _filter_main_path_graph(target, _collect_edges(target))
             if highlight not in reachable:
                 mode = "full"
@@ -634,11 +634,11 @@ def run_foreground(
         raise ValueError(f"run_foreground: invalid mode {mode!r}; expected 'run' or 'resume'")
     quiet = getattr(args, "quiet", False)
     verbose = getattr(args, "verbose", False)
-    # Tri-state: None (disabled), "main", or "full". Legacy boolean True maps to "main".
+    # Tri-state: None (disabled), "main", "full", or "mini". Legacy boolean True maps to "main".
     raw_show_diagrams = getattr(args, "show_diagrams", None)
     if raw_show_diagrams is True:
         show_diagrams_mode: str | None = "main"
-    elif raw_show_diagrams in ("main", "full"):
+    elif raw_show_diagrams in ("main", "full", "mini"):
         show_diagrams_mode = raw_show_diagrams
     else:
         show_diagrams_mode = None
@@ -758,7 +758,7 @@ def run_foreground(
                 # Fall back to full when the highlighted state is hidden in main mode.
                 parent_mode = show_diagrams_mode
                 fallback_note: str | None = None
-                if parent_mode == "main" and parent_highlight is not None:
+                if parent_mode in ("main", "mini") and parent_highlight is not None:
                     _filtered_edges, parent_reachable = _filter_main_path_graph(
                         fsm, _collect_edges(fsm)
                     )
@@ -791,7 +791,7 @@ def run_foreground(
                         child_highlight = last_state_at_depth.get(d + 1)
                         child_mode = show_diagrams_mode
                         child_note: str | None = None
-                        if child_mode == "main" and child_highlight is not None:
+                        if child_mode in ("main", "mini") and child_highlight is not None:
                             _ce, child_reachable = _filter_main_path_graph(
                                 child_fsm_at_d, _collect_edges(child_fsm_at_d)
                             )

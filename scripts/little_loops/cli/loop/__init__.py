@@ -140,15 +140,17 @@ Examples:
         nargs="?",
         const="main",
         default=None,
-        choices=["main", "full"],
+        choices=["main", "full", "mini"],
         metavar="MODE",
         help=(
             "Display the FSM box diagram after each step with the active state "
             "highlighted. MODE=main (default with bare flag) hides off-happy-path "
             "edges (error, partial, blocked, retry_exhausted, rate_limit_exhausted, "
             "throttle_hard) and the states only reachable through them. MODE=full "
-            "renders every edge and state. If the active state is hidden in main, "
-            "the renderer falls back to full for that iteration."
+            "renders every edge and state. MODE=mini is a skeleton view: each "
+            "state box shows only its title (no body lines) and edges render "
+            "without labels; inherits main's edge filter. If the active state is "
+            "hidden in main/mini, the renderer falls back to full for that iteration."
         ),
     )
     run_parser.add_argument(
@@ -259,15 +261,17 @@ Examples:
         nargs="?",
         const="main",
         default=None,
-        choices=["main", "full"],
+        choices=["main", "full", "mini"],
         metavar="MODE",
         help=(
             "Display the FSM box diagram after each step with the active state "
             "highlighted. MODE=main (default with bare flag) hides off-happy-path "
             "edges (error, partial, blocked, retry_exhausted, rate_limit_exhausted, "
             "throttle_hard) and the states only reachable through them. MODE=full "
-            "renders every edge and state. If the active state is hidden in main, "
-            "the renderer falls back to full for that iteration."
+            "renders every edge and state. MODE=mini is a skeleton view: each "
+            "state box shows only its title (no body lines) and edges render "
+            "without labels; inherits main's edge filter. If the active state is "
+            "hidden in main/mini, the renderer falls back to full for that iteration."
         ),
     )
     resume_parser.add_argument(

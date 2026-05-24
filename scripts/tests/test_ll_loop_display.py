@@ -1969,6 +1969,33 @@ class TestDisplayProgressEvents:
         # Diagram contains box drawing characters
         assert "\u250c" in out
 
+    def test_show_diagrams_mini_forwarded_to_render(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--show-diagrams=mini forwards mode='mini' to _render_fsm_diagram."""
+        from unittest.mock import patch
+
+        from little_loops.cli.loop import layout as layout_mod
+
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        with patch.object(
+            layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
+        ) as mock_render:
+            run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams="mini"))
+            mock_render.assert_called_once_with(
+                self._make_fsm(),
+                highlight_state="start",
+                highlight_color="32",
+                edge_label_colors=None,
+                badges=None,
+                mode="mini",
+            )
+        out = capsys.readouterr().out
+        assert "\u250c" in out
+
     def test_verbose_without_show_diagrams_no_diagram(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -3185,6 +3212,107 @@ class TestShowDiagramsMode:
         assert "fail_terminal" in out
 
 
+class TestShowDiagramsMiniMode:
+    """Renderer-level tests for ``mode='mini'`` on ``_render_fsm_diagram``.
+
+    ``mini`` is a skeleton view: state boxes show only the title (no body
+    lines), edges render without label text, and the edge set inherits
+    ``main``'s happy-path filter.
+    """
+
+    def _strip_ansi(self, s: str) -> str:
+        import re as _re
+
+        return _re.compile(r"\033\[[0-9;]*m").sub("", s)
+
+    def _fsm_with_action(self) -> FSMLoop:
+        return FSMLoop(
+            name="test-mini",
+            initial="start",
+            states={
+                "start": StateConfig(
+                    action="echo first-action-line\nsecond-action-line",
+                    on_yes="done",
+                    on_no="retry",
+                ),
+                "retry": StateConfig(action="echo retry-action", next="start"),
+                "done": StateConfig(terminal=True),
+            },
+            max_iterations=5,
+        )
+
+    def test_show_diagrams_mini_box_contains_only_state_title(self) -> None:
+        """mini mode suppresses per-state action body lines."""
+        from little_loops.cli.loop.layout import _render_fsm_diagram
+
+        fsm = self._fsm_with_action()
+        result = _render_fsm_diagram(fsm, mode="mini")
+        plain = self._strip_ansi(result)
+        # Action body content must NOT appear inside boxes
+        assert "first-action-line" not in plain
+        assert "second-action-line" not in plain
+        assert "retry-action" not in plain
+        # State names DO appear
+        assert "start" in plain
+        assert "retry" in plain
+        assert "done" in plain
+
+    def test_show_diagrams_mini_edges_have_no_labels(self) -> None:
+        """mini mode suppresses edge labels (no 'yes', 'no', 'next' text)."""
+        from little_loops.cli.loop.layout import _render_fsm_diagram
+
+        fsm = self._fsm_with_action()
+        result = _render_fsm_diagram(fsm, mode="mini")
+        plain = self._strip_ansi(result)
+        # State names still present
+        assert "start" in plain
+        assert "done" in plain
+        # Edge labels suppressed
+        assert "yes" not in plain
+        assert "no" not in plain
+        assert "next" not in plain
+
+    def test_show_diagrams_mini_active_state_still_highlighted(self) -> None:
+        """Active-state highlighting still applies in mini mode."""
+        import little_loops.cli.output as output_mod
+        from little_loops.cli.loop.layout import _render_fsm_diagram
+
+        fsm = self._fsm_with_action()
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = _render_fsm_diagram(fsm, highlight_state="start", mode="mini")
+        # Green border (ANSI 32) + green background fill (ANSI 42) — same
+        # highlighting pipeline as main/full modes.
+        assert "\033[32m" in result
+        assert "\033[42m " in result
+
+    def test_show_diagrams_mini_inherits_main_edge_filter(self) -> None:
+        """mini mode hides off-happy-path edges (inherits main's filter)."""
+        from little_loops.cli.loop.layout import _render_fsm_diagram
+
+        fsm = FSMLoop(
+            name="test-mini-filter",
+            initial="start",
+            states={
+                "start": StateConfig(
+                    action="echo start",
+                    on_yes="done",
+                    on_error="fail_terminal",
+                ),
+                "done": StateConfig(terminal=True),
+                "fail_terminal": StateConfig(terminal=True),
+            },
+            max_iterations=5,
+        )
+        result = _render_fsm_diagram(fsm, mode="mini")
+        plain = self._strip_ansi(result)
+        # Off-happy-path state and edge filtered out
+        assert "fail_terminal" not in plain
+        assert "error" not in plain
+        # Happy-path states still appear
+        assert "start" in plain
+        assert "done" in plain
+
+
 class TestShowDiagramsArgparse:
     """Argparse parsing tests for the tri-state ``--show-diagrams`` flag."""
 
@@ -3215,6 +3343,10 @@ class TestShowDiagramsArgparse:
     def test_show_diagrams_equals_full(self) -> None:
         args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=full"])
         assert args.show_diagrams == "full"
+
+    def test_show_diagrams_equals_mini(self) -> None:
+        args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=mini"])
+        assert args.show_diagrams == "mini"
 
     def test_show_diagrams_absent_is_none(self) -> None:
         args = self._parse_run_args(["ll-loop", "run", "my-loop"])
@@ -3269,6 +3401,12 @@ class TestShowDiagramsSubprocessReemit:
         assert "--show-diagrams" in cmd
         idx = cmd.index("--show-diagrams")
         assert cmd[idx + 1] == "full"
+
+    def test_show_diagrams_mini_reemitted_to_subprocess_cmd(self) -> None:
+        cmd = self._capture_cmd("mini")
+        assert "--show-diagrams" in cmd
+        idx = cmd.index("--show-diagrams")
+        assert cmd[idx + 1] == "mini"
 
     def test_none_mode_suppresses_flag_from_cmd(self) -> None:
         cmd = self._capture_cmd(None)

@@ -3,8 +3,16 @@ discovered_commit: a91f22d573a72b5bb9b0aeff14de3102ab3dfdd8
 discovered_branch: main
 discovered_date: 2026-05-23
 captured_at: '2026-05-24T02:16:50Z'
+completed_at: '2026-05-24T03:23:39Z'
 discovered_by: capture-issue
-status: open
+status: done
+decision_needed: false
+confidence_score: 95
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-1652: Add `mini` Mode to `--show-diagrams`
@@ -63,16 +71,16 @@ ll-loop run big-loop.yaml --show-diagrams=mini
 
 ## Acceptance Criteria
 
-- [ ] `--show-diagrams=mini` is accepted on both `run` and `resume`
+- [x] `--show-diagrams=mini` is accepted on both `run` and `resume`
       subparsers (added to argparse `choices`)
-- [ ] In `mini`, each rendered FSM state box shows only the state title
+- [x] In `mini`, each rendered FSM state box shows only the state title
       (no body lines / verdict listings)
-- [ ] In `mini`, edges render without label text (just connectors/arrows)
-- [ ] Active-state highlight still applies in `mini`
-- [ ] `main` and `full` outputs are unchanged
-- [ ] Help text on `--show-diagrams` lists `mini` alongside `main`/`full`
-- [ ] CHANGELOG entry under the next release notes the new mode
-- [ ] Tests cover: mini argparse parse, mini state-box title-only render,
+- [x] In `mini`, edges render without label text (just connectors/arrows)
+- [x] Active-state highlight still applies in `mini`
+- [x] `main` and `full` outputs are unchanged
+- [x] Help text on `--show-diagrams` lists `mini` alongside `main`/`full`
+- [x] CHANGELOG entry under the next release notes the new mode
+- [x] Tests cover: mini argparse parse, mini state-box title-only render,
       mini edges-without-labels render, mini active-state highlight
 
 ## API/Interface
@@ -110,6 +118,20 @@ ll-loop resume <config> [--show-diagrams[=main|full|mini]] ...
    - `test_show_diagrams_mini_edges_have_no_labels`
    - `test_show_diagrams_mini_active_state_still_highlighted`
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Add `TestShowDiagramsSubprocessReemit.test_show_diagrams_mini_reemitted_to_subprocess_cmd`
+   in `test_ll_loop_display.py` — verify `run_background` (lines 567–569 of `_helpers.py`)
+   forwards `"mini"` verbatim to subprocess argv (no code change; gap in test coverage only).
+8. Add a `TestDisplayProgressEvents` test with `show_diagrams="mini"` calling `run_foreground`
+   and asserting `mock_render` was called with `mode="mini"` — validates the line 641 whitelist
+   change; mirror `test_show_diagrams_state_enter_prints_diagram` (line 1944).
+9. After implementation, run `pytest scripts/tests/test_cli_loop_lifecycle.py -k show_diagrams`
+   and `pytest scripts/tests/test_ll_loop_commands.py -k show_diagrams` to confirm no
+   regressions in resume/cmd_run paths (no edits expected, verification only).
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -129,9 +151,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
      is appended for `mini`.
   3. **Label suppression** — in `_render_layered_diagram`, guard the two label grid-writes at
      `:1147-1154` (forward arrows) and `:1370-1374` (back-edge margin) on `mode != "mini"`.
-     Audit `_render_horizontal_simple` (`:1611+`) for an equivalent grid-write site and suppress
-     there too. `_colorize_diagram_labels` (`:1512`) needs no change — it's a no-op on absent
-     labels.
+     Audit `_render_horizontal_simple` (definition at `:1845`, not call site `:1611`) for an
+     equivalent label-write site: it has no forward-edge label grid-writes, but does have a
+     self-loop label/marker block at `:1912-1924` (`self_labels` / `marker` logic) that must be
+     gated on `mode != "mini"` for full label suppression. `_colorize_diagram_labels` (`:1512` /
+     `:1930`) needs no change — it's a no-op on absent labels.
 - **Step 3** (`_helpers.py`) — **logic change IS required**. At `_helpers.py:638-644`, extend the
   whitelist tuple in `run_foreground` from `("main", "full")` to `("main", "full", "mini")`,
   otherwise `mini` is silently coerced to `None`. The `verbose = show_diagrams_mode == "full"`
@@ -178,7 +202,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    semantics already wired in.
 3. **Neighborhood-diagram mode propagation** — `_render_neighborhood_diagram`
    (`layout.py:1707-1708`) has its own `if mode == "main":` branch and is reached
-   when `_build_pinned_pane` (`_helpers.py:292`) falls back because the active
+   when `_build_pinned_pane` (`_helpers.py:243`) falls back because the active
    state is unreachable under `main`'s filter. Should `mini` also be wired
    through the neighborhood path (suppressing labels + body lines there too), or
    should the neighborhood path always render `full`-style detail since it's
@@ -209,6 +233,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/cli/loop/_helpers.py` — forwards raw mode string verbatim;
   no logic change needed (noted in Implementation Steps).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/info.py` — calls `_render_fsm_diagram(fsm, verbose=verbose, badges=badges)` in `cmd_info` (line 823); omits `mode=` so defaults to `"full"` — **unaffected** by `mini` change, no edit needed.
+
 ### Similar Patterns
 - `main` / `full` mode branches already in `_render_fsm_diagram` — `mini` follows
   the same conditional structure using `_filter_main_path_graph` for edge selection.
@@ -216,6 +243,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Tests
 - `scripts/tests/test_ll_loop_display.py` — new `TestShowDiagramsMiniMode`
   class with the four tests listed in Implementation Steps.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_loop_lifecycle.py` — tests `resume` subcommand with
+  `show_diagrams` parameter (lines 852, 940); verify no break after argparse `choices`
+  extension; no edit expected.
+- `scripts/tests/test_ll_loop_commands.py` — tests `cmd_run` with `show_diagrams`
+  parameter (line 2641); verify no break; no edit expected.
+- **Missing test method** — `TestShowDiagramsSubprocessReemit.test_show_diagrams_mini_reemitted_to_subprocess_cmd`
+  in `test_ll_loop_display.py`: verify `run_background` forwards `"mini"` verbatim
+  to the subprocess command line (follow pattern of `test_full_mode_reemitted_to_cmd`
+  at line 3267).
+- **Missing test method** — a `TestDisplayProgressEvents` test passing
+  `show_diagrams="mini"` to `run_foreground` and asserting `mode="mini"` is forwarded
+  to `_render_fsm_diagram`; validates the line 641 whitelist change in `_helpers.py`.
 
 ### Documentation
 - `CHANGELOG.md` — "Added" entry.
@@ -259,12 +300,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   without any change. (The recent `dd99eeda` background-fill commit hooks into the same path.)
 - **`verbose` is already correctly coupled** — `_helpers.py:274` sets `verbose = show_diagrams_mode == "full"`,
   so `mini` (and `main`) will already evaluate to `verbose=False`. No change needed here.
-- **Second render path** — `_render_horizontal_simple` (`layout.py:1611+`) is the alternate renderer
-  used for small/horizontal layouts. It shares `_compute_box_sizes` (so body-line suppression carries
-  over) but its label-drawing path is separate from the layered renderer and must also be audited
-  for `mini` label suppression.
+- **Second render path** — `_render_horizontal_simple` (defined at `layout.py:1845`; called from
+  `_render_fsm_diagram:1611`) is the alternate renderer used for small/horizontal layouts. It shares
+  `_compute_box_sizes` (so body-line suppression carries over). It has **no forward-edge label
+  grid-writes** — labels there are only self-loop markers, at `:1912-1924` (the `self_labels` /
+  `marker` block). For `mini`, that block is the only label-suppression point in this renderer.
 - **`_render_neighborhood_diagram` also has a `mode == "main"` branch** at `layout.py:1707-1708`. The
-  issue does not mention this. It's reached when `_build_pinned_pane` (`_helpers.py:292`) falls back
+  issue does not mention this. It's reached when `_build_pinned_pane` (`_helpers.py:243`) falls back
   because the active state is unreachable under `main`'s filter. See new Open Question #3.
 
 ## Labels
@@ -283,10 +325,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `docs/ARCHITECTURE.md` — system design context for the loop runtime.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-24T03:23:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63dce85f-0d2f-440f-b9da-c565783c6e52.jsonl`
+- `/ll:ready-issue` - 2026-05-24T03:12:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c8e2614-3a50-4a38-b563-453afa6d8387.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/878d2895-1ff5-4c50-9f87-68cfeff2a885.jsonl`
+- `/ll:wire-issue` - 2026-05-24T03:07:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/318cb2d7-a132-4b82-8cc9-89275534f290.jsonl`
+- `/ll:refine-issue` - 2026-05-24T02:59:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a113d99-eb5c-413d-a55a-065ab944490c.jsonl`
 - `/ll:refine-issue` - 2026-05-24T02:43:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9eaefb33-d00d-4955-9bd3-f90c748f44ef.jsonl`
 - `/ll:format-issue` - 2026-05-24T02:24:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d11a32bd-ee0b-4bc3-aa81-bbd2c70eaca5.jsonl`
 - `/ll:capture-issue` - 2026-05-24T02:16:50Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/facffb2c-69ed-4e7f-9785-031798b54171.jsonl`
 
 ---
 
-**Status**: open | Created: 2026-05-23 | Priority: P4
+**Status**: done | Created: 2026-05-23 | Completed: 2026-05-24 | Priority: P4

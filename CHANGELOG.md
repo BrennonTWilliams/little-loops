@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--show-diagrams=mini` skeleton mode** — `ll-loop run --show-diagrams=mini` and `ll-loop resume --show-diagrams=mini` render each FSM state box as title-only (no body lines / verdict listings) with unlabeled connector edges. Inherits `main`'s happy-path edge filter; active-state highlighting still applies; falls back to `full` if the active state is off the main path. Useful as a "map view" for large loops where `main` is still too dense. (ENH-1652)
 - **Unified Session Store (SQLite + FTS5)** — New `ll-session` CLI and `.ll/session.db` provide a queryable, full-text-indexed store of Claude Code session events; supports `search --fts`, `recent --kind`, and `backfill` subcommands. (FEAT-1112)
 - **Context Window Analytics (`ll-ctx-stats`)** — New CLI command and PostToolUse hook capture per-tool byte vs. context savings from the session DB, giving visibility into context consumption across tools. (FEAT-1160, FEAT-1623, FEAT-1624, FEAT-1625, EPIC-1626)
 - **`ll-history` and `analyze-workflows` query session DB** — Both commands now read from the unified session store instead of re-parsing raw log files. (ENH-1621)

@@ -152,17 +152,24 @@ def _box_inner_lines(
     display_label: str,
     verbose: bool,
     inner_width: int,
+    title_only: bool = False,
 ) -> list[str]:
     """Return interior lines for a state box (between top and bottom borders).
 
     The first line is always ``display_label`` + type badge (if any).
     Subsequent lines are action content lines.  All lines fit within
     ``inner_width`` characters (content is truncated or wrapped accordingly).
+
+    When ``title_only`` is True, only the name row is returned (used by
+    ``--show-diagrams=mini`` for skeleton rendering).
     """
     # Badge is now rendered in the top-right corner by _draw_box; name row is label only
     name_line = display_label[:inner_width]
 
     lines: list[str] = [name_line]
+
+    if title_only:
+        return lines
 
     # Action lines
     if state and state.action:
@@ -522,10 +529,15 @@ def _compute_box_sizes(
     verbose: bool,
     max_box_inner: int,
     badges: dict[str, str] | None = None,
+    title_only: bool = False,
 ) -> tuple[dict[str, list[str]], dict[str, int], dict[str, int], dict[str, str]]:
     """Compute box content, widths, and heights for all states.
 
     Returns (box_inner, box_width, box_height, box_badge).
+
+    When ``title_only`` is True, action body lines are suppressed (used by
+    ``--show-diagrams=mini`` for skeleton rendering); box widths are computed
+    from the name label / badge only.
     """
     box_inner: dict[str, list[str]] = {}
     box_width: dict[str, int] = {}
@@ -543,7 +555,7 @@ def _compute_box_sizes(
         base_w = max(len(display_label[s]), badge_w + 2 if badge_w else 0)
 
         inner_w = base_w
-        if state_obj and state_obj.action and max_box_inner > 0:
+        if not title_only and state_obj and state_obj.action and max_box_inner > 0:
             action_lines = state_obj.action.strip().splitlines()
             if verbose:
                 max_action_w = max(
@@ -554,7 +566,9 @@ def _compute_box_sizes(
                 first_action = next((ln.rstrip() for ln in action_lines if ln.rstrip()), "")
                 inner_w = max(base_w, min(len(first_action), max_box_inner))
 
-        content = _box_inner_lines(state_obj, display_label[s], verbose, inner_w)
+        content = _box_inner_lines(
+            state_obj, display_label[s], verbose, inner_w, title_only=title_only
+        )
         actual_w = max(len(ln) for ln in content)
         inner_w = max(inner_w, actual_w)
         box_inner[s] = content
@@ -703,11 +717,17 @@ def _render_layered_diagram(
     highlight_color: str,
     edge_label_colors: dict[str, str] | None = None,
     badges: dict[str, str] | None = None,
+    mode: str = "full",
 ) -> str:
-    """Render FSM using layered (Sugiyama-style) vertical layout."""
+    """Render FSM using layered (Sugiyama-style) vertical layout.
+
+    When ``mode == "mini"``, per-state body lines are suppressed and inter-state
+    edges render without labels (skeleton view for ``--show-diagrams=mini``).
+    """
     terminal_states = terminal_states or set()
     fsm_states = fsm_states or {}
     tw = terminal_width()
+    title_only = mode == "mini"
 
     # Flatten layers to get all states
     all_states = [s for layer in layers for s in layer]
@@ -724,7 +744,8 @@ def _render_layered_diagram(
         max_box_inner = max(20, min(40, (tw - 4) // max(1, max_layer_size) - 6))
 
     box_inner, box_width, box_height, box_badge = _compute_box_sizes(
-        all_states, display_label, fsm_states, verbose, max_box_inner, badges
+        all_states, display_label, fsm_states, verbose, max_box_inner, badges,
+        title_only=title_only,
     )
 
     # Post-hoc layer merge: re-merge adjacent single-state layers that were
@@ -1044,7 +1065,7 @@ def _render_layered_diagram(
 
     # Draw self-loop markers immediately below their boxes
     for sname, labels in self_loops.items():
-        marker = "\u21ba " + ", ".join(labels)
+        marker = "\u21ba" if title_only else "\u21ba " + ", ".join(labels)
         r = row_start[sname] + box_height[sname]
         if r < total_height:
             cx = col_center[sname]
@@ -1142,7 +1163,7 @@ def _render_layered_diagram(
                     if _cand not in used_label_rows:
                         label_row = _cand
                         break
-            if label_row < total_height:
+            if label_row < total_height and not title_only:
                 used_label_rows.add(label_row)
                 label_start = dst_cc + 2
                 max_col = total_content_w if skip_forward_edges else total_width
@@ -1200,6 +1221,8 @@ def _render_layered_diagram(
     for src, dst, label in all_same_layer:
         if src not in col_start or dst not in col_start:
             continue
+        if title_only:
+            label = ""
         name_row = row_start[src] + 1
         src_right = col_start[src] + box_width[src]
         dst_right = col_start[dst] + box_width[dst]
@@ -1367,7 +1390,7 @@ def _render_layered_diagram(
                 if not found:
                     label_row_pos = top_row + 1
             used_label_rows.add(label_row_pos)
-            if 0 <= label_row_pos < total_height:
+            if 0 <= label_row_pos < total_height and not title_only:
                 label_start = rightmost_pipe_col + 2
                 for j, ch in enumerate(label):
                     if label_start + j < content_left - 1 and label_start + j < total_width:
@@ -1487,7 +1510,7 @@ def _render_layered_diagram(
                 if not found:
                     label_row_pos = top_row + 1
             used_label_rows.add(label_row_pos)
-            if 0 <= label_row_pos < total_height:
+            if 0 <= label_row_pos < total_height and not title_only:
                 label_start = rightmost_fwd_pipe_col + 2
                 max_label = total_width - label_start
                 if 0 < max_label < len(label):
@@ -1579,7 +1602,7 @@ def _render_fsm_diagram(
             info``) keep the default.
     """
     edges = _collect_edges(fsm)
-    if mode == "main":
+    if mode in ("main", "mini"):
         edges, _reachable = _filter_main_path_graph(fsm, edges)
     bfs_order_list, bfs_depth = _bfs_order(fsm.initial, edges)
     main_path, main_edge_set = _trace_main_path(fsm, edges)
@@ -1623,6 +1646,7 @@ def _render_fsm_diagram(
             highlight_color,
             edge_label_colors,
             badges,
+            mode=mode,
         )
 
     # Compute max node width to determine width constraint
@@ -1664,6 +1688,7 @@ def _render_fsm_diagram(
         highlight_color,
         edge_label_colors,
         badges,
+        mode=mode,
     )
 
 
@@ -1857,11 +1882,17 @@ def _render_horizontal_simple(
     highlight_color: str,
     edge_label_colors: dict[str, str] | None = None,
     badges: dict[str, str] | None = None,
+    mode: str = "full",
 ) -> str:
-    """Simple horizontal rendering for single-state or very simple FSMs."""
+    """Simple horizontal rendering for single-state or very simple FSMs.
+
+    When ``mode == "mini"``, per-state body lines are suppressed and self-loop
+    marker rows are omitted (skeleton view for ``--show-diagrams=mini``).
+    """
     if not main_path:
         return ""
 
+    title_only = mode == "mini"
     all_states = list(main_path)
     display_label = _compute_display_labels(all_states, initial, terminal_states)
 
@@ -1873,7 +1904,8 @@ def _render_horizontal_simple(
         max_box_inner = max(20, min(40, (tw - 4) // num_main - 6))
 
     box_inner, box_width, box_height, box_badge = _compute_box_sizes(
-        all_states, display_label, fsm_states, verbose, max_box_inner, badges
+        all_states, display_label, fsm_states, verbose, max_box_inner, badges,
+        title_only=title_only,
     )
 
     main_height = max((box_height[s] for s in main_path), default=3)
@@ -1914,7 +1946,7 @@ def _render_horizontal_simple(
         for src, _, label in self_loops_list:
             self_labels.setdefault(src, []).append(label)
         for sname, labels in self_labels.items():
-            marker = "\u21ba " + ", ".join(labels)
+            marker = "\u21ba" if title_only else "\u21ba " + ", ".join(labels)
             self_row = [" "] * total_width
             cx = col_center.get(sname, 0)
             pos = max(0, cx - len(marker) // 2)
