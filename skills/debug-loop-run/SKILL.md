@@ -179,10 +179,20 @@ Scan the event list and classify signals using the rules below. Group events by 
 - Include: `final_state`, `iterations`, last 5 events before termination
 
 #### BUG — FATAL_ERROR termination
-- Trigger: `loop_complete` with `terminated_by == "error"`
+- Trigger: `loop_complete` with `terminated_by == "error"` AND no `evaluate.verdict == "error"` event exists in the run (see de-duplication note under "Multiple signals on same state")
 - Priority: P2
 - Title: `"<loop_name> loop terminated with error in <final_state> state"`
 - Include: `final_state`, `iterations`, last 5 events before termination
+
+#### BUG — Evaluate error terminated the loop
+- **Class**: Fault signal (terminal-event handler).
+- **Trigger**: The last `evaluate` event before `loop_complete` has `verdict == "error"` — fire on the **first occurrence** (no occurrence threshold). Also fires when `terminated_by == "error"` AND any `evaluate.verdict == "error"` event exists in the run, attributing the termination to that evaluator.
+  - Practical detection: scan events in reverse from `loop_complete`; if the last `evaluate` event has `verdict == "error"`, fire this rule.
+  - De-duplication: if this rule fires AND `terminated_by == "error"` (which would also trigger FATAL_ERROR), emit **only this rule** — it is strictly more informative. FATAL_ERROR remains the catch-all for non-evaluator terminations.
+- **Priority**: P2
+- **Title**: `"<state> evaluator returned error and terminated <loop_name> loop (verdict=error)"`
+- **Include**: state name, `error` field from the failing `evaluate` event (fall back to `reason` if `error` is absent), `final_state`, `iterations`, last 5 events before `loop_complete`
+- **Rationale**: a single evaluator error on its first attempt is high-signal — it represents either a bug in the evaluator (script crash, schema mismatch) or malformed action output. It must not be silenced by an occurrence threshold.
 
 #### BUG — Stall detector aborted the run
 - Trigger: `loop_complete` with `terminated_by == "stall_detected"` (FEAT-1637). Also surfaces as a preceding `stall_detected` event carrying `state`, `exit_code`, `verdict`, `consecutive`, and `action` fields.
@@ -299,6 +309,8 @@ Scan the event list and classify signals using the rules below. Group events by 
 
 ### Multiple signals on same state
 If a state triggers both an action failure and an evaluate failure BUG, emit only the action failure (higher severity signal takes priority). Emit all distinct signals from different states.
+
+When both `BUG — Evaluate error terminated the loop` and `BUG — FATAL_ERROR termination` would fire on the same `loop_complete` (i.e. `terminated_by == "error"` AND `evaluate.verdict == "error"` both hold), emit only `BUG — Evaluate error terminated the loop` — it is strictly more informative and supersedes the generic FATAL_ERROR signal.
 
 Proceed to Step 3b regardless of signal count.
 
@@ -421,7 +433,7 @@ If all signals are duplicates, report: "All <N> signals already have active issu
 
 ## Step 5: Present Proposals and Confirm
 
-Display the analysis output, always starting with the Execution Summary from Step 3b. Signals are grouped into two markdown-heading buckets — **Fault Signals** (BUG-class anomalies that broke the run: action failure, SIGKILL, FATAL_ERROR, evaluate failure, sub-loop verdict discarded, rate-limit exhaustion) and **Effectiveness Signals** (ENH-class observations that the run completed but did not do useful work: stub action from the Step 2 `static_issues` list, retry flood, slow state, iter-1 convergence without apply, degenerate gate, capture vacuum, numeric trajectory stall). Omit either heading when its count is zero.
+Display the analysis output, always starting with the Execution Summary from Step 3b. Signals are grouped into two markdown-heading buckets — **Fault Signals** (BUG-class anomalies that broke the run: action failure, SIGKILL, FATAL_ERROR, evaluate error termination, evaluate failure, sub-loop verdict discarded, rate-limit exhaustion) and **Effectiveness Signals** (ENH-class observations that the run completed but did not do useful work: stub action from the Step 2 `static_issues` list, retry flood, slow state, iter-1 convergence without apply, degenerate gate, capture vacuum, numeric trajectory stall). Omit either heading when its count is zero.
 
 ```
 Analyzing loop: <loop_name> (last updated: <updated_at>)
@@ -481,7 +493,7 @@ This prints a 3-digit zero-padded number, e.g. `728`. Capture it for the filenam
 
 | Signal type | Issue type | Category dir |
 |---|---|---|
-| Action failure, SIGKILL, FATAL_ERROR, Evaluate failure | `BUG` | `.issues/bugs/` |
+| Action failure, SIGKILL, FATAL_ERROR, Evaluate error termination, Evaluate failure | `BUG` | `.issues/bugs/` |
 | Retry flood, Slow state | `ENH` | `.issues/enhancements/` |
 
 ### 6c. Write the issue file
@@ -512,7 +524,7 @@ source_state: <state_name>
 
 - **Loop**: `<loop_name>`
 - **State**: `<state_name>`
-- **Signal type**: <action_failure | sigkill | fatal_error | retry_flood | slow_state | eval_failure>
+- **Signal type**: <action_failure | sigkill | fatal_error | eval_error_termination | retry_flood | slow_state | eval_failure>
 - **Occurrences**: <N>
 - **Last observed**: <ts of most recent relevant event>
 

@@ -148,8 +148,9 @@ Re-use the history loaded in Step 2 to identify fault signals using the **fault-
 Key signals to flag (fault subset only):
 - Action failures (`exit_code != 0`, non-intentional)
 - SIGKILL / FATAL_ERROR termination
+- Evaluate error termination (`evaluate.verdict == "error"` on the last evaluate before `loop_complete`) — single-occurrence terminating evaluator error (`eval_error_termination`); distinct from "Evaluate failures" which covers `verdict == "fail"` 3+ times
 - Retry floods
-- Evaluate failures
+- Evaluate failures (`verdict == "fail"`, 3+ occurrences on the same state)
 - Sub-loop verdict discarded
 - Throttle hard stop / hard transition (`throttle_stop` = loop halted; `throttle_hard` = loop redirected via `on_throttle_hard`)
 

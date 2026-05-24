@@ -8,6 +8,7 @@ discovered_by: audit-loop-run
 confidence_score: 85
 outcome_confidence: 80
 relates_to: [ENH-1650, BUG-1657]
+depends_on: [ENH-1658]
 ---
 
 # ENH-1655: Evaluate API errors should retry instead of terminating the loop
@@ -56,6 +57,11 @@ Broader fix: consider making this the default behavior for all `llm_structured` 
 
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-1650 (debug-loop-run signal for single evaluate-error termination) remains valid even after this issue ships — it targets exhausted-retry and non-retryable paths. Coordinate edits with BUG-1657: both touch `general-task.check_done.evaluate` in `loops/general-task.yaml` — this issue modifies `on_error` routing, BUG-1657 modifies `prompt` content. Implement in the same PR or sequential commits to avoid merge conflicts on the same YAML block.
 
+**Sequencing note** (added by `/ll:audit-issue-conflicts` 2026-05-24): This issue must be implemented **after** ENH-1658. ENH-1658 removes the `llm_structured` evaluator from `check_done` and replaces it with a shell counter — meaning the evaluate retry logic proposed here has no target in `check_done` after that change. After ENH-1658 lands, retarget this issue's retry mechanism to the remaining LLM-evaluated states (e.g., `diagnose`) rather than `check_done`.
+
+**Complementary issue**: ENH-1671 (delta-aware `check_done` prompt) reduces per-iteration session duration, which in turn reduces API-failure exposure. Neither ENH-1655 nor ENH-1671 is complete alone: shorter sessions reduce failure probability; retry handles failures when they still occur. Implement both for complete coverage.
+
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`

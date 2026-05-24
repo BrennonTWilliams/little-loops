@@ -561,6 +561,7 @@ class TestAnalyzeLoopSynthesis:
             "action_failure",
             "sigkill",
             "fatal_error",
+            "eval_error_termination",
             "evaluate_failure",
             "subloop_verdict_discarded",
             "rate_limit_exhaustion",
@@ -582,3 +583,22 @@ class TestAnalyzeLoopSynthesis:
         assert "degenerate_gate" in effectiveness_signals
         assert "capture_vacuum" in effectiveness_signals
         assert "numeric_stall" in effectiveness_signals
+
+    # ------------------------------------------------------------------
+    # Step 3 BUG — eval_error_termination signal
+    # ------------------------------------------------------------------
+
+    def test_eval_error_termination_inline_fires_on_last_eval_error(self) -> None:
+        """Scenario (a): last evaluate before loop_complete has verdict=='error' → new signal fires."""
+        events = [
+            {"event": "evaluate", "state": "check", "verdict": "error", "error": "parse failed"},
+            {"event": "loop_complete", "terminated_by": "terminal"},
+        ]
+        last_eval = next((e for e in reversed(events) if e.get("event") == "evaluate"), None)
+        assert last_eval is not None and last_eval.get("verdict") == "error"
+
+    def test_eval_error_termination_inline_no_eval_no_new_signal(self) -> None:
+        """Scenario (b): terminated_by='error' with no evaluate event → FATAL_ERROR path, new signal absent."""
+        events = [{"event": "loop_complete", "terminated_by": "error"}]
+        last_eval = next((e for e in reversed(events) if e.get("event") == "evaluate"), None)
+        assert last_eval is None  # FATAL_ERROR catches this; eval_error_termination does not fire

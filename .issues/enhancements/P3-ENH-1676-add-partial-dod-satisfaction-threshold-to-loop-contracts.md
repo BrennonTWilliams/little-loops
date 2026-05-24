@@ -1,0 +1,118 @@
+---
+captured_at: "2026-05-24T13:15:53Z"
+discovered_date: 2026-05-24
+discovered_by: capture-issue
+status: open
+depends_on: [ENH-1658]
+---
+
+# ENH-1676: Add partial DoD satisfaction threshold to loop contracts
+
+## Summary
+
+Add `min_pass_rate` and `hard_criteria_tags` fields to the loop contract schema so that `check_done`-style evaluators can route to `done` when all hard criteria are met and the overall pass rate exceeds a configurable threshold — rather than requiring 100% satisfaction of every criterion including those that involve human decisions or pre-existing environmental conditions.
+
+## Current Behavior
+
+The `check_done` evaluator in `general-task.yaml` requires 100% satisfaction of all DoD criteria before routing to `done`. When any criterion — including human-decision criteria like "Working tree is clean" — remains unchecked, the loop cannot terminate even if all substantive technical work is complete. This creates circular dependencies where the loop stalls indefinitely on criteria outside the agent's control.
+
+## Motivation
+
+The `general-task` loop's `check_done` evaluator demands 100% DoD criterion satisfaction. In the audit of run `2026-05-24T093122`, criterion "Working tree is clean" created a circular dependency: it can only be satisfied by a human deciding whether to commit or discard pre-existing artifacts unrelated to the task. The loop could not terminate `done` even though all substantive work was complete. A configurable threshold with hard/soft criterion distinction would let loops reach `done` while leaving documented non-blocking criteria to the operator.
+
+## Expected Behavior
+
+Loop YAML gains two optional contract fields:
+
+```yaml
+context:
+  min_pass_rate: 0.95
+  hard_criteria_tags: ["code", "render", "verify"]
+```
+
+The `check_done` evaluator prompt (and its LLM evaluator) is updated to:
+- Require **all hard criteria** (tagged with any label in `hard_criteria_tags`) to be `[x]`
+- Require overall pass rate ≥ `min_pass_rate` across all criteria
+- Route `on_yes` when both conditions hold (instead of requiring 100%)
+- Log which soft criteria remain `[ ]` and why they are non-blocking
+
+## Proposed Solution
+
+**Option A (Recommended): Loop-level context fields + evaluator prompt parameterization**
+
+1. The loop YAML exposes `min_pass_rate` and `hard_criteria_tags` in `context:`.
+2. The `check_done` evaluator prompt template interpolates these values: `${context.min_pass_rate}`, `${context.hard_criteria_tags}`.
+3. The LLM evaluator instructions are updated to apply the two-tier check instead of 100%.
+
+This requires only loop YAML and prompt changes — no executor or schema changes.
+
+**Option B: Contract-level schema fields (framework change)**
+
+Add `min_pass_rate` and `hard_criteria_tags` as first-class fields on a `contract:` block in `fsm-loop-schema.json`. The executor passes them into the evaluator context automatically. More structured but requires schema and executor changes.
+
+Recommend Option A first (no framework changes), with Option B as a follow-up if multiple loops need the same contract.
+
+## Implementation Steps
+
+1. Add `min_pass_rate: 0.95` and `hard_criteria_tags: ["code", "render", "verify"]` to the `context:` block in `scripts/little_loops/loops/general-task.yaml`.
+2. Update the `check_done` evaluator prompt to incorporate the two-tier check:
+   - Parse any DoD criterion that carries a tag matching `hard_criteria_tags` as a hard criterion.
+   - Count total criteria and checked criteria; compute pass rate.
+   - Route YES only if all hard criteria are `[x]` **and** pass rate ≥ `min_pass_rate`.
+   - When routing NO, distinguish "hard criterion unmet" from "soft criterion unmet — non-blocking".
+3. Add a `## Non-blocking Criteria` section convention to the DoD template in `define_done`'s action prompt so loop authors can explicitly tag soft criteria upfront.
+4. Update `skills/create-loop/loop-types.md` to document the threshold pattern for harness loops.
+5. (Optional) Add `contract.min_pass_rate` and `contract.hard_criteria_tags` as first-class fields to `fsm-loop-schema.json` for future loops.
+
+## Scope Boundaries
+
+- **In scope**: Adding `min_pass_rate` and `hard_criteria_tags` context fields to `general-task.yaml`; updating the `check_done` evaluator prompt to apply a two-tier hard/soft criterion check
+- **Out of scope**: Modifying the FSM executor or JSON schema (Option B); changing behavior of any loop other than `general-task`; auto-tagging existing DoD criteria (loop authors must opt in by adding tags to their DoD template)
+
+## Success Metrics
+
+- A `general-task` loop run reaches `done` state when all hard-tagged criteria are `[x]` and overall pass rate ≥ `min_pass_rate`, even when soft criteria remain unchecked
+- Loops that do not set `min_pass_rate` or `hard_criteria_tags` in context behave identically to current 100%-pass behavior (no regression)
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/general-task.yaml` — add context fields + update `check_done` evaluator prompt
+- `skills/create-loop/loop-types.md` — document threshold pattern
+
+### Optional (Option B)
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — add `contract:` block fields
+- `scripts/little_loops/fsm/schema.py` — add `LoopContract` dataclass
+
+### Tests
+- No executor tests needed for Option A (prompt-only change)
+- Add an integration test or fixture that verifies the evaluator prompt correctly applies the threshold when the DoD file has mixed hard/soft criteria
+
+### Documentation
+- `docs/guides/LOOPS_GUIDE.md` — add a note on partial DoD satisfaction for harness loops
+
+## Impact
+
+- **Priority**: P3
+- **Effort**: Small (Option A: prompt + YAML changes only)
+- **Risk**: Low — purely additive; existing loops unaffected
+- **Breaking Change**: No
+
+## Labels
+
+`fsm-loops`, `general-task`, `contracts`, `evaluator`
+
+## Status
+
+**Open** | Created: 2026-05-24 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-24): This issue's Option A (loop-level context fields + LLM evaluator prompt parameterization) targets the `check_done` LLM evaluator. ENH-1658 removes that LLM evaluator entirely, replacing it with a shell counter. If ENH-1658 lands before this issue, Option A would target deleted code. After ENH-1658, adopt **Option B** (contract-level schema fields in `fsm-loop-schema.json`) or adapt Option A to parameterize the shell counter script rather than the LLM prompt. `depends_on: [ENH-1658]` has been added to sequence this correctly.
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
+- `/ll:format-issue` - 2026-05-24T13:19:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/765fa3c6-1a05-4cb7-8170-c01366684b4e.jsonl`
+- `/ll:capture-issue` - 2026-05-24T13:15:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bfd5e964-4cba-4f63-8354-255b3fbb9f18.jsonl`

@@ -123,8 +123,18 @@ Track which criteria were verified in previous iterations and the mtime of every
 - `scripts/little_loops/loops/general-task.yaml` — add delta capture in `execute`, rewrite `check_done` prompt to consume it, preserve sample re-verification.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/fsm/` — confirm the captured-state interpolation (`${captured.last_step}`) is supported by the prompt action's templating; no runtime changes expected. Verify by reading whichever module handles `action:` interpolation.
+- `scripts/little_loops/fsm/interpolation.py` — `InterpolationContext.resolve()` + `_get_nested()` handle `${captured.<varname>.<field>}` expansion. The `<field>` segment (`output`, `stderr`, `exit_code`, `duration_ms`) is **required** — `${captured.X}` without a field suffix returns the raw dict repr, not the string. Confirmed: no FSM changes needed to support this pattern.
+- `scripts/little_loops/fsm/executor.py:985–992` — `FSMExecutor._run_action()` stores capture after action execution: `self.captured[state.capture] = {"output": result.output.rstrip(...), ...}`. The `capture:` YAML field is `str | None` (see `schema.py:374`) — **one capture slot per state only**.
 - `/ll:audit-loop-run` — readers should still find the `## Sample Verification` section; format is preserved.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/fsm/schema.py:374` — `StateConfig.capture: str | None` — single string, one capture key per state. The two-key API (`captured.last_step` + `captured.last_files`) in the Proposed Solution requires either (a) a single unified capture key containing both values, or (b) a two-state split (not practical here). **Recommended**: one `capture: execute_result` on `execute`; `check_done` reads `${captured.execute_result.output}` which contains the full LLM output including the structured trailing lines.
+- `scripts/little_loops/loops/general-task.yaml:64–75` — `execute` state currently has **no `capture:` field** — confirmed by reading the YAML. Adding `capture: execute_result` here is the only required schema change.
+- `scripts/little_loops/loops/dead-code-cleanup.yaml:26,52` — canonical capture-then-consume pattern: `scan` uses `capture: scan_results`; `remove_code` reads `${captured.scan_results.output}`. Direct template for this issue.
+- `scripts/tests/test_general_task_loop.py` — fixture test pattern: YAML loaded via `yaml.safe_load`, assertions on `raw_data["states"]["check_done"]["action"]` string content. New tests for delta behavior should follow this class-per-change structure (see `TestChange2CheckDoneReconcileAndSampleVerify` for the model).
 
 ### Similar Patterns
 - `scripts/little_loops/loops/general-task.yaml:61-72` — the `execute` state already produces step-completion text; this issue formalizes the contract so `check_done` can consume it.
@@ -142,6 +152,30 @@ Track which criteria were verified in previous iterations and the mtime of every
 
 ### Configuration
 - N/A.
+
+## API/Interface
+
+N/A — No public Python API changes.
+
+**Internal FSM captured-state contract (new key emitted by `execute` and consumed by `check_done`):**
+
+> **Implementation note** (from codebase research): `capture:` in `StateConfig` is `str | None` — one slot per state. Both `last_step` and `last_files` must travel in a single capture key. The correct interpolation path is always `${captured.<varname>.output}` (the `.output` field suffix is required; omitting it returns a raw dict repr). The `captured.last_step` / `captured.last_files` shorthand in the Proposed Solution YAML snippet is illustrative — the actual YAML and prompt must use the pattern below.
+
+```yaml
+# In general-task.yaml execute state:
+capture: execute_result   # single key; stores full LLM output as .output
+```
+
+`execute`'s prompt must emit structured trailing lines (the FSM stores the entire stdout verbatim — no auto-extraction):
+
+```
+LAST_STEP: <step text>
+LAST_FILES: <path1> <path2> ...
+```
+
+`check_done` consumes the full output via `${captured.execute_result.output}`, which inlines the complete `execute` LLM response (including those structured lines) into the prompt. The model is then instructed to parse `LAST_STEP:` / `LAST_FILES:` from that inlined context.
+
+_Confirmed by:_ `scripts/little_loops/fsm/executor.py:985–992` (capture storage), `scripts/little_loops/fsm/interpolation.py:80–81` + `_get_nested()` (resolution), `scripts/little_loops/fsm/schema.py:374` (`capture: str | None`).
 
 ## Implementation Steps
 
@@ -187,3 +221,18 @@ Promoted from [[ENH-1656]]'s problem statement and audit data on 2026-05-24. ENH
 ## Labels
 
 `enhancement`, `loops`, `general-task`, `cost`, `reliability`
+
+## Status
+
+**Open** | Created: 2026-05-24 | Priority: P3
+
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-24): ENH-1671 and ENH-1655 are complementary halves of the same root failure (the 510s `check_done` session at iteration 14 of the `2026-05-23T224029` run that terminated on an API error). ENH-1671 reduces session duration so the failure probability drops; ENH-1655 retries gracefully when failures still occur. Neither provides complete coverage alone. When planning sprint work, schedule both.
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
+- `/ll:format-issue` - 2026-05-24T13:23:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/101e364c-669a-4add-9c9a-d2fd416d3171.jsonl`
