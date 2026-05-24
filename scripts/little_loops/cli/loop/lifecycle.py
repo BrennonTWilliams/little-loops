@@ -30,6 +30,52 @@ def _format_relative_time(seconds: float) -> str:
     return format_relative_time(seconds)
 
 
+def _format_log_label(running_dir: Path, stem: str) -> str:
+    """Return one of three Log: labels based on run-mode signals.
+
+    - log exists → path string (background run, normal)
+    - no log, no pid → foreground run (output went to terminal)
+    - no log, pid exists → background run whose log was deleted (something wrong)
+    """
+    log_file = running_dir / f"{stem}.log"
+    if log_file.exists():
+        return str(log_file)
+    pid_file = running_dir / f"{stem}.pid"
+    if pid_file.exists():
+        return f"(expected {log_file}, missing)"
+    return "(foreground run — output went to terminal)"
+
+
+def _get_events_info(running_dir: Path, stem: str) -> tuple[str | None, str | None]:
+    """Return (events_file_str, formatted_detail_line) for the events.jsonl file.
+
+    Returns (None, None) if the file doesn't exist.
+    Detail line format: 'Events: <path>  (N events, last Xm ago)'
+    """
+    events_file = running_dir / f"{stem}.events.jsonl"
+    if not events_file.exists():
+        return None, None
+    try:
+        lines = [ln for ln in events_file.read_text().splitlines() if ln.strip()]
+        count = len(lines)
+        detail = f"({count} events)"
+        if lines:
+            try:
+                last_entry = json.loads(lines[-1])
+                last_ts = last_entry.get("ts")
+                if last_ts is not None:
+                    from datetime import UTC, datetime
+
+                    dt = datetime.fromisoformat(last_ts)
+                    age = (datetime.now(tz=UTC) - dt).total_seconds()
+                    detail = f"({count} events, last {_format_relative_time(age)})"
+            except (json.JSONDecodeError, AttributeError, ValueError, OverflowError):
+                pass
+        return str(events_file), f"Events: {events_file}  {detail}"
+    except OSError:
+        return str(events_file), f"Events: {events_file}"
+
+
 def _read_pid_file(pid_file: Path) -> int | None:
     """Read and validate a PID file.
 
@@ -100,6 +146,8 @@ def _status_single(
         except OSError:
             last_event = None
 
+    events_file_str, events_detail_line = _get_events_info(running_dir, stem)
+
     if getattr(args, "json", False):
         d = state.to_dict()
         d["pid"] = pid
@@ -107,6 +155,7 @@ def _status_single(
         d["log_file"] = log_file_str
         d["log_updated_ago"] = log_updated_ago
         d["last_event"] = last_event
+        d["events_file"] = events_file_str
         print_json(d)
         return 0
 
@@ -123,13 +172,15 @@ def _status_single(
         else:
             print(f"PID: {pid} (not running - stale PID file)")
 
+    log_label = _format_log_label(running_dir, stem)
+    print(f"Log: {log_label}")
     if log_file_str is not None:
-        print(f"Log: {log_file_str}")
         print(f"Log updated: {log_updated_ago}")
         if last_event:
             print(f"Last event: {last_event}")
-    else:
-        print("Log: (not found)")
+
+    if events_detail_line is not None:
+        print(events_detail_line)
 
     if state.continuation_prompt:
         prompt_preview = state.continuation_prompt[:200]
@@ -189,6 +240,8 @@ def cmd_status(
             else:
                 d["log_file"] = None
                 d["log_updated_ago"] = None
+            events_file_str, _ = _get_events_info(running_dir, stem)
+            d["events_file"] = events_file_str
             result_list.append(d)
         print_json(result_list)
         return 0
@@ -219,12 +272,14 @@ def cmd_status(
                 print(f"  PID: {pid} (running)")
             else:
                 print(f"  PID: {pid} (not running - stale PID file)")
+        log_label = _format_log_label(running_dir, stem)
+        print(f"  Log: {log_label}")
         if log_file.exists():
             age_seconds = time.time() - log_file.stat().st_mtime
-            print(f"  Log: {log_file}")
             print(f"  Log updated: {_format_relative_time(age_seconds)}")
-        else:
-            print("  Log: (not found)")
+        _, events_detail_line = _get_events_info(running_dir, stem)
+        if events_detail_line is not None:
+            print(f"  {events_detail_line}")
     return 0
 
 

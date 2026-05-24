@@ -2868,6 +2868,7 @@ class TestCmdStatusJson:
         assert data["status"] == "running"
         assert "pid" in data
         assert "pid_source" in data
+        assert "events_file" in data
 
     def test_status_json_no_state(
         self,

@@ -1689,11 +1689,14 @@ Loop my-scan started in background (PID: 12345)
 # Check whether the process is alive and what state the loop is in
 ll-loop status my-scan
 
-# Stream live output (get the exact log path from status --json)
-tail -f $(ll-loop status my-scan --json | python3 -c "import sys,json; print(json.load(sys.stdin).get('log_file',''))")
+# Stream live output for a background run (log_file is null for foreground runs)
+tail -f $(ll-loop status my-scan --json | python3 -c "import sys,json; print(json.load(sys.stdin).get('log_file') or '')")
+
+# For foreground runs, inspect the always-present events file instead
+ll-loop status my-scan --json | python3 -c "import sys,json; print(json.load(sys.stdin).get('events_file') or '')"
 ```
 
-All stdout and stderr from the background process are written to `.loops/.running/<instance-id>.log`. The PID may be stored in `.loops/.running/<instance-id>.pid` (background-mode processes) or in `.loops/.running/<instance-id>.lock` (foreground runs); `ll-loop status` checks both, preferring the `.pid` file and falling back to the `.lock` file. The `pid_source` field in `--json` output indicates which file the PID came from. The `instance-id` is `<loop-name>-<YYYYMMDDTHHMMSS>` (e.g. `my-scan-20260503T122306`); use `ll-loop status <loop-name> --json` to retrieve the exact log path for a running instance.
+Background runs write stdout and stderr to `.loops/.running/<instance-id>.log`. Foreground runs send output directly to the terminal and never create a `.log` file — `log_file` is `null` in `--json` output for these runs. All runs (foreground and background) write structured events to `.loops/.running/<instance-id>.events.jsonl`; use the `events_file` field from `--json` output to locate it. The PID may be stored in `.loops/.running/<instance-id>.pid` (background-mode processes) or in `.loops/.running/<instance-id>.lock` (foreground runs); `ll-loop status` checks both, preferring the `.pid` file and falling back to the `.lock` file. The `pid_source` field in `--json` output indicates which file the PID came from. The `instance-id` is `<loop-name>-<YYYYMMDDTHHMMSS>` (e.g. `my-scan-20260503T122306`); use `ll-loop status <loop-name> --json` to retrieve the exact log or events path for a running instance.
 
 ### Stopping a background loop
 

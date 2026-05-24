@@ -73,7 +73,7 @@ This outputs a JSON array of `LoopState` objects. Each object contains:
   [2] <loop_name_2> — <status> — last updated <updated_at>
   ...
   ```
-- **Two or more candidates sharing the same `loop_name`** (multiple instances): follow up with `ll-loop status <loop_name> --json` to retrieve per-instance detail (`instance_id`, `pid`, `log_file`), then use `AskUserQuestion` to present instance-level disambiguation:
+- **Two or more candidates sharing the same `loop_name`** (multiple instances): follow up with `ll-loop status <loop_name> --json` to retrieve per-instance detail (`instance_id`, `pid`, `log_file`, `events_file`), then use `AskUserQuestion` to present instance-level disambiguation:
   ```
   Multiple instances of '<loop_name>' found. Select one to analyze:
 

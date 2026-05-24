@@ -1087,12 +1087,11 @@ class TestCmdStatusLogFile:
         assert "Last event:" in print_text
         assert "run_eval" in print_text
 
-    def test_status_shows_log_not_found(self, tmp_path: Path) -> None:
-        """Shows 'Log: (not found)' when no log file exists."""
+    def test_status_foreground_run_no_pid_no_log(self, tmp_path: Path) -> None:
+        """Shows foreground-run label when no .pid and no .log file exist."""
         logger = MagicMock()
         mock_state = self._make_state()
 
-        # Ensure running dir exists but no log file
         running_dir = tmp_path / ".running"
         running_dir.mkdir(parents=True)
 
@@ -1107,7 +1106,67 @@ class TestCmdStatusLogFile:
         assert result == 0
         print_calls = [str(c) for c in mock_print.call_args_list]
         print_text = "\n".join(print_calls)
-        assert "Log: (not found)" in print_text
+        assert "Log: (foreground run — output went to terminal)" in print_text
+        assert "Log: (not found)" not in print_text
+
+    def test_status_background_run_log_missing(self, tmp_path: Path) -> None:
+        """Shows 'expected … missing' label when .pid exists but .log was deleted."""
+        logger = MagicMock()
+        mock_state = self._make_state()
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        # .pid exists (background run) but no .log
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("99999")
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        print_calls = [str(c) for c in mock_print.call_args_list]
+        print_text = "\n".join(print_calls)
+        assert "expected" in print_text
+        assert "missing" in print_text
+        assert "Log: (foreground run" not in print_text
+
+    def test_status_shows_events_line(self, tmp_path: Path) -> None:
+        """Shows Events: line when .events.jsonl file exists."""
+        import json as _json
+
+        logger = MagicMock()
+        mock_state = self._make_state()
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        events_file = running_dir / "test-loop.events.jsonl"
+        # Write two events with a recent timestamp
+        from datetime import datetime, timezone
+
+        ts = datetime.now(tz=timezone.utc).isoformat()
+        events_file.write_text(
+            _json.dumps({"ts": ts, "type": "state_enter"}) + "\n"
+            + _json.dumps({"ts": ts, "type": "evaluate"}) + "\n"
+        )
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        print_calls = [str(c) for c in mock_print.call_args_list]
+        print_text = "\n".join(print_calls)
+        assert "Events:" in print_text
+        assert "2 events" in print_text
 
     def test_status_json_includes_log_fields(self, tmp_path: Path) -> None:
         """JSON output includes log_file, log_updated_ago, and last_event."""
@@ -1148,6 +1207,7 @@ class TestCmdStatusLogFile:
         assert "log_updated_ago" in data
         assert "last_event" in data
         assert "pid_source" in data
+        assert "events_file" in data
 
     def test_status_json_log_not_found(self, tmp_path: Path) -> None:
         """JSON output includes null log fields when no log file."""
@@ -1183,6 +1243,8 @@ class TestCmdStatusLogFile:
         assert data["log_file"] is None
         assert data["log_updated_ago"] is None
         assert data["last_event"] is None
+        assert "events_file" in data
+        assert data["events_file"] is None
 
 
 class TestCmdStatusLockFilePid:
