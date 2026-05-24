@@ -200,6 +200,57 @@ states:
       path: ".total"
       operator: eq
       target: 0
+    on_yes: final_verify
+    on_no: continue_work
+    on_error: diagnose
+
+  final_verify:
+    action: |
+      Your task is: ${context.input}
+
+      Read ${env.PWD}/.loops/tmp/general-task-dod.md.
+
+      For EVERY criterion in the Verification Criteria section, independently
+      re-verify it now by reading files / running commands / checking filesystem
+      state. Do NOT trust the existing [x] mark — verify from evidence.
+
+      Append a new section to the DoD file in this exact format:
+      ```
+      ## Final Verification
+      - [x] <criterion>: <evidence>
+      - [x] <criterion>: <evidence>
+      - [ ] <criterion>: FAILED — <what happened>
+      ```
+
+      For any criterion that fails re-verification, flip its mark in the
+      Verification Criteria list from [x] back to [ ] with a one-line note
+      "(final_verify: failed — <reason>)".
+
+      Print the full DoD file to stdout.
+    action_type: prompt
+    next: count_final
+    on_error: diagnose
+
+  count_final:
+    action: |
+      DOD=".loops/tmp/general-task-dod.md"
+      if [ ! -f "$DOD" ]; then
+        echo '{"error": "missing artifact"}'
+        exit 1
+      fi
+      FAILED=$(awk '
+        /^## Final Verification/ { in_section=1; count=0; next }
+        in_section && /FAILED/ { count++ }
+        END { print count+0 }
+      ' "$DOD")
+      printf '{"failed_finals": %d}\n' "$FAILED"
+    action_type: shell
+    capture: final_counts
+    evaluate:
+      type: output_json
+      path: ".failed_finals"
+      operator: eq
+      target: 0
     on_yes: done
     on_no: continue_work
     on_error: diagnose
@@ -241,7 +292,7 @@ states:
       Diagnose what happened:
       - If ${env.PWD}/.loops/tmp/general-task-plan.md exists, read it and summarize completed steps.
       - If ${env.PWD}/.loops/tmp/general-task-dod.md exists, report which done-criteria were met.
-      - Identify the most likely failure cause and which state failed (define_done, plan, execute, check_done, or continue_work).
+      - Identify the most likely failure cause and which state failed (define_done, plan, execute, check_done, count_done, final_verify, count_final, or continue_work).
 
       Write a one-paragraph diagnostic summary the operator can use to re-run or adjust the task description.
     next: failed

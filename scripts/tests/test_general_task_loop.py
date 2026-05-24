@@ -57,6 +57,8 @@ class TestGeneralTaskLoopFile:
             "execute",
             "check_done",
             "count_done",
+            "final_verify",
+            "count_final",
             "continue_work",
             "done",
             "diagnose",
@@ -177,7 +179,7 @@ class TestChange7CountDoneShellGate:
 
     def test_count_done_routes_yes_to_done(self, raw_data: dict) -> None:
         count_done = raw_data["states"]["count_done"]
-        assert count_done["on_yes"] == "done"
+        assert count_done["on_yes"] == "final_verify"
 
     def test_count_done_routes_no_to_continue_work(self, raw_data: dict) -> None:
         count_done = raw_data["states"]["count_done"]
@@ -459,3 +461,141 @@ class TestENH1676PartialDoDThreshold:
         assert data["hard_unchecked_dod"] == 0
         assert data["soft_unchecked_dod"] >= 1
         assert data["total"] == 0, "soft criterion is non-blocking when pass rate meets threshold"
+
+
+# ---------------------------------------------------------------------------
+# ENH-1681: final_verify + count_final terminal gate
+# ---------------------------------------------------------------------------
+
+def _load_count_final_script() -> str:
+    """Extract the shell action from count_final."""
+    with open(LOOP_FILE) as f:
+        data = yaml.safe_load(f)
+    return data["states"]["count_final"]["action"]
+
+
+class TestChange8FinalVerifyGate:
+    """Change 8 (ENH-1681): final_verify + count_final terminal gate between count_done and done."""
+
+    def test_count_done_routes_yes_to_final_verify(self, raw_data: dict) -> None:
+        assert raw_data["states"]["count_done"]["on_yes"] == "final_verify"
+
+    def test_final_verify_action_type_is_prompt(self, raw_data: dict) -> None:
+        assert raw_data["states"]["final_verify"]["action_type"] == "prompt"
+
+    def test_final_verify_routes_next_to_count_final(self, raw_data: dict) -> None:
+        assert raw_data["states"]["final_verify"]["next"] == "count_final"
+
+    def test_final_verify_routes_error_to_diagnose(self, raw_data: dict) -> None:
+        assert raw_data["states"]["final_verify"]["on_error"] == "diagnose"
+
+    def test_final_verify_action_references_dod_file(self, raw_data: dict) -> None:
+        action = raw_data["states"]["final_verify"]["action"]
+        assert "general-task-dod.md" in action
+
+    def test_final_verify_action_has_final_verification_section(self, raw_data: dict) -> None:
+        action = raw_data["states"]["final_verify"]["action"]
+        assert "## Final Verification" in action
+
+    def test_count_final_action_type_is_shell(self, raw_data: dict) -> None:
+        assert raw_data["states"]["count_final"]["action_type"] == "shell"
+
+    def test_count_final_evaluate_type_is_output_json(self, raw_data: dict) -> None:
+        evaluate = raw_data["states"]["count_final"]["evaluate"]
+        assert evaluate["type"] == "output_json"
+
+    def test_count_final_evaluate_path_is_failed_finals(self, raw_data: dict) -> None:
+        evaluate = raw_data["states"]["count_final"]["evaluate"]
+        assert evaluate["path"] == ".failed_finals"
+
+    def test_count_final_evaluate_operator_eq_zero(self, raw_data: dict) -> None:
+        evaluate = raw_data["states"]["count_final"]["evaluate"]
+        assert evaluate["operator"] == "eq"
+        assert evaluate["target"] == 0
+
+    def test_count_final_routes_yes_to_done(self, raw_data: dict) -> None:
+        assert raw_data["states"]["count_final"]["on_yes"] == "done"
+
+    def test_count_final_routes_no_to_continue_work(self, raw_data: dict) -> None:
+        assert raw_data["states"]["count_final"]["on_no"] == "continue_work"
+
+    def test_count_final_routes_error_to_diagnose(self, raw_data: dict) -> None:
+        assert raw_data["states"]["count_final"]["on_error"] == "diagnose"
+
+    def test_count_final_captures_final_counts(self, raw_data: dict) -> None:
+        assert raw_data["states"]["count_final"]["capture"] == "final_counts"
+
+
+_CLEAN_FINAL_DOD = """\
+# Definition of Done
+## Verification Criteria
+- [x] Tests pass
+- [x] File exists
+## Final Verification
+- [x] Tests pass: ran pytest, all green
+- [x] File exists: confirmed at expected path
+"""
+
+_ONE_FAILED_FINAL_DOD = """\
+# Definition of Done
+## Verification Criteria
+- [x] Tests pass
+- [ ] File exists (final_verify: failed — file was deleted)
+## Final Verification
+- [x] Tests pass: ran pytest, all green
+- [ ] File exists: FAILED — file not found at expected path
+"""
+
+_TWO_SECTIONS_FINAL_DOD = """\
+# Definition of Done
+## Verification Criteria
+- [x] Tests pass
+- [x] File exists
+## Final Verification
+- [x] Tests pass: ran pytest, all green
+- [ ] File exists: FAILED — old failure from prior pass
+## Final Verification
+- [x] Tests pass: ran pytest, all green
+- [x] File exists: confirmed at expected path
+"""
+
+
+class TestCountFinalShellScript:
+    """Shell execution tests for the count_final action (ENH-1681)."""
+
+    def test_clean_final_verification_emits_zero_failed(self, tmp_path: Path) -> None:
+        _setup_dod_plan(tmp_path, dod_content=_CLEAN_FINAL_DOD, plan_content=_ALL_DONE_PLAN)
+        script = _load_count_final_script()
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+        data = json.loads(result.stdout.strip())
+        assert data["failed_finals"] == 0
+
+    def test_one_failed_entry_emits_nonzero(self, tmp_path: Path) -> None:
+        _setup_dod_plan(tmp_path, dod_content=_ONE_FAILED_FINAL_DOD, plan_content=_ALL_DONE_PLAN)
+        script = _load_count_final_script()
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+        data = json.loads(result.stdout.strip())
+        assert data["failed_finals"] == 1
+
+    def test_two_sections_only_counts_most_recent(self, tmp_path: Path) -> None:
+        # Two accumulated ## Final Verification sections; only the last one is clean.
+        _setup_dod_plan(tmp_path, dod_content=_TWO_SECTIONS_FINAL_DOD, plan_content=_ALL_DONE_PLAN)
+        script = _load_count_final_script()
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+        data = json.loads(result.stdout.strip())
+        assert data["failed_finals"] == 0, (
+            "awk count reset must ensure only the most-recent Final Verification section is tallied"
+        )
+
+    def test_missing_dod_exits_nonzero(self, tmp_path: Path) -> None:
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True, exist_ok=True)
+        script = _load_count_final_script()
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode != 0, "Script must exit non-zero when DoD file is missing"

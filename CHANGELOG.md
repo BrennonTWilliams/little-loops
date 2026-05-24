@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.107.0] - 2026-05-24
+
+### Added
+
+- **Final verify-and-close gate in `general-task` loop** — Added `final_verify` (prompt) and `count_final` (shell) states between `count_done` and `done`. On every successful completion `final_verify` re-verifies **every** DoD criterion from evidence (not just the per-iteration 3-item sample), appending a `## Final Verification` section. `count_final` counts failures in the most-recent section and routes to `done` on zero or back to `continue_work` if any criterion fails. Structurally prevents false-positive completion: reaching `done` now always implies full end-to-end re-verification in the same iteration. (ENH-1681)
+
 ## [1.106.0] - 2026-05-23
 
 ### Added

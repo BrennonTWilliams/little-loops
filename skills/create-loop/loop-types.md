@@ -942,7 +942,7 @@ In the DoD file, tag each criterion that must be technically verified with `[har
 The `count_done` shell gate applies the following logic:
 - **Hard criteria** (tagged `[hard]`) — always blocking; the loop cannot reach `done` until all are `[x]`.
 - **Soft criteria** (untagged) — only blocking when the overall pass rate (checked ÷ total) falls below `min_pass_rate`. Once the pass rate threshold is met, remaining soft criteria are logged as non-blocking.
-- **`.total` routing field** — `total == 0` routes to `done`; `total > 0` routes to `continue_work`.
+- **`.total` routing field** — `total == 0` routes to `final_verify` (terminal gate); `total > 0` routes to `continue_work`.
 
 Override `min_pass_rate` per run to require 100% satisfaction: `ll-loop run general-task --context min_pass_rate=1.0`. Loops that omit `min_pass_rate` from `context:` default to 0.95.
 

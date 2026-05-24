@@ -1,13 +1,21 @@
 ---
-captured_at: "2026-05-24T17:30:41Z"
+captured_at: '2026-05-24T17:30:41Z'
+completed_at: '2026-05-24T21:42:46Z'
 discovered_date: 2026-05-24
 discovered_by: capture-issue
-status: open
+status: done
+decision_needed: false
 relates_to:
-  - ENH-1644
-  - ENH-1671
-  - ENH-1656
-  - ENH-1676
+- ENH-1644
+- ENH-1671
+- ENH-1656
+- ENH-1676
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-1681: Add final verify-and-close gate to general-task loop
@@ -90,7 +98,7 @@ count_final:
   action: |
     DOD=".loops/tmp/general-task-dod.md"
     FAILED=$(awk '
-      /^## Final Verification/ { in_section=1; next }
+      /^## Final Verification/ { in_section=1; count=0; next }
       in_section && /FAILED/ { count++ }
       END { print count+0 }
     ' "$DOD")
@@ -107,6 +115,10 @@ count_final:
   on_error: diagnose
 ```
 
+### Note on `count_final` awk correctness
+
+The awk resets `count=0` each time it matches `## Final Verification`, not just `in_section=1`. This is intentional: if the loop passes through `final_verify` more than once (a prior pass failed, work continued, a second pass ran), the DoD file accumulates multiple `## Final Verification` sections. Without resetting `count`, old failures from earlier passes would compound into the final tally, permanently routing back to `continue_work` even after a clean second sweep. Resetting on the header ensures only the **most recent** section is evaluated.
+
 ### Rationale for two states (action + counter) rather than one
 
 Mirrors the existing `check_done` / `count_done` split. The action is a prompt with tools; the counter is a non-LLM shell evaluator. Keeps the same trust pattern: LLM gathers evidence, shell decides routing. Avoids re-introducing the LLM-self-grade bias the project deliberately removed from `check_done` (ENH-1658).
@@ -118,9 +130,15 @@ Mirrors the existing `check_done` / `count_done` split. The action is a prompt w
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/general-task.yaml` — change `count_done.on_yes` from `done` to `final_verify`; add `final_verify` (prompt action) and `count_final` (shell evaluator) states.
-- `scripts/tests/test_general_task_loop.py` — add tests asserting: (a) FSM still validates, (b) terminal `done` is now reachable only through `final_verify` → `count_final`, (c) `final_verify.action` prompt contains "every criterion" / "do not trust" language, (d) `count_final` shell counts the `## Final Verification` FAILED entries, (e) failed final routes back to `continue_work`.
-- `docs/guides/LOOPS_GUIDE.md` — extend the general-task section to describe the new terminal gate (one paragraph after the existing "Verify" / "Continue" steps).
+- `scripts/little_loops/loops/general-task.yaml` — change `count_done.on_yes` from `done` to `final_verify` (line 203); add `final_verify` (prompt action) and `count_final` (shell evaluator) states after `count_done`. Also update `diagnose.action` text (line ~244) which lists states by name (`"define_done, plan, execute, check_done, or continue_work"`) — add `final_verify` and `count_final` to that list so the diagnose prompt is accurate.
+- `scripts/tests/test_general_task_loop.py` — four targeted changes:
+  1. `TestGeneralTaskLoopFile.test_expected_states_present` (lines 53–67): add `"final_verify"` and `"count_final"` to the `expected` set.
+  2. `TestChange7CountDoneShellGate.test_count_done_routes_yes_to_done` (lines 178–180): update assertion from `== "done"` to `== "final_verify"`.
+  3. Add new class `TestChange8FinalVerifyGate` with state-shape assertions mirroring `TestChange7CountDoneShellGate`: `final_verify` is `action_type: prompt`, routes `next: count_final`; `count_final` is `action_type: shell`, `evaluate.type: output_json`, `evaluate.path: ".failed_finals"`, `evaluate.operator: eq`, `evaluate.target: 0`, `on_yes: done`, `on_no: continue_work`, `on_error: diagnose`, `capture: final_counts`.
+  4. Add new class `TestCountFinalShellScript` mirroring `TestCountDoneShellScript` (lines 360–411): extract shell body via a `_load_count_final_script()` helper (same pattern as `_load_count_done_script()` at lines 269–277), use `_setup_dod_plan()` fixtures; test cases: clean Final Verification section → `failed_finals == 0`; one FAILED entry → `failed_finals == 1`; two accumulated sections → only most-recent section counted (verifying `count=0` reset); missing DoD → non-zero exit.
+- `docs/guides/LOOPS_GUIDE.md` — two changes: (a) update the sentence at line ~340 that says "`total == 0` → `done`" — this routing now goes to `final_verify`, not `done`; (b) append a paragraph after the current step 5 / closing paragraph (lines 343–345) describing the terminal gate: `final_verify` re-verifies every criterion, `count_final` routes to `done` on zero failures or back to `continue_work` on any failure.
+- `skills/create-loop/loop-types.md` — "Partial DoD Satisfaction Threshold" section (line ~945) contains "`total == 0` routes to `done`" — update routing description to `final_verify`. [Wiring pass added by `/ll:wire-issue`]
+- `CHANGELOG.md` — add new entry for ENH-1681 under the current release section, following the pattern of prior `general-task` enhancement entries. [Wiring pass added by `/ll:wire-issue`]
 
 ### Dependent Files (Callers/Importers)
 - N/A — `general-task.yaml` is loaded by the FSM runtime via path resolution; no direct imports.
@@ -134,19 +152,38 @@ Mirrors the existing `check_done` / `count_done` split. The action is a prompt w
 - `scripts/tests/test_builtin_loops.py` — generic validation should pass unchanged (one more state, two more transitions).
 
 ### Documentation
-- `docs/guides/LOOPS_GUIDE.md` general-task section.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — general-task section; two changes needed (see Files to Modify above).
+- `skills/create-loop/loop-types.md` — "Partial DoD Satisfaction Threshold (`general-task` loops)" section says `total == 0 → done`; stale after ENH-1681, must reflect `final_verify` routing.
+- `CHANGELOG.md` — new entry for ENH-1681 following the pattern of prior general-task enhancement entries (e.g., ENH-1644, ENH-1658, ENH-1671 entries).
 
 ### Configuration
 - N/A — no `.ll/ll-config.json` keys added.
 
 ## Implementation Steps
 
-1. Edit `scripts/little_loops/loops/general-task.yaml`: add `final_verify` and `count_final` states; rewire `count_done.on_yes` to `final_verify`.
+1. Edit `scripts/little_loops/loops/general-task.yaml`:
+   - Change `count_done.on_yes` from `done` to `final_verify` (line 203).
+   - Append `final_verify` (prompt, `action_type: prompt`, `next: count_final`, `on_error: diagnose`) and `count_final` (shell, `action_type: shell`, `capture: final_counts`, `evaluate.type: output_json`, `evaluate.path: ".failed_finals"`, `on_yes: done`, `on_no: continue_work`, `on_error: diagnose`) after the `count_done` block.
 2. Run `ll-loop validate general-task` and `ll-loop show general-task` to confirm parse and transition diagram.
-3. Extend `scripts/tests/test_general_task_loop.py` with state-shape, prompt-content, and routing tests for both new states.
-4. Update `docs/guides/LOOPS_GUIDE.md` general-task section with a one-paragraph description of the terminal gate.
+3. Extend `scripts/tests/test_general_task_loop.py`:
+   - `TestGeneralTaskLoopFile.test_expected_states_present` (lines 53–67): add `"final_verify"` and `"count_final"` to the expected set.
+   - `TestChange7CountDoneShellGate.test_count_done_routes_yes_to_done` (lines 178–180): update assertion from `== "done"` to `== "final_verify"`.
+   - Add `TestChange8FinalVerifyGate` class with per-attribute assertions for both new states.
+   - Add `TestCountFinalShellScript` class with shell-execution tests using `_setup_dod_plan()` and a new `_load_count_final_script()` helper (same extraction pattern as `_load_count_done_script()`, lines 269–277).
+4. Update `docs/guides/LOOPS_GUIDE.md` general-task section (insert after lines 343–345) with a one-paragraph description of the terminal gate.
 5. Live re-run on a small file-only task — confirm `## Final Verification` section is appended and loop reaches `done`.
-6. Contrived failure test: hand-edit DoD between `count_done` and `final_verify` (or seed an unverifiable criterion that initially marks `[x]`) — confirm `final_verify` flips it back, `count_final` routes to `continue_work`, and the loop resumes.
+6. Contrived failure test: seed an unverifiable criterion that initially marks `[x]` — confirm `final_verify` flips it back, `count_final` routes to `continue_work`, and the loop resumes.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. In the same YAML edit as step 1: update `diagnose.action` prompt text (line ~244 of `general-task.yaml`) which names states as `"define_done, plan, execute, check_done, or continue_work"` — append `final_verify` and `count_final` so the diagnose prompt accurately reflects all states that can route there.
+8. In the LOOPS_GUIDE.md edit (step 4): update the sentence at line ~340 that currently says "`total == 0` → `done`" to say "`total == 0` → `final_verify`" — this sentence describes the `count_done` routing contract and is factually stale after the rewire.
+9. Update `skills/create-loop/loop-types.md` — "Partial DoD Satisfaction Threshold (`general-task` loops)" section: change the routing description "`total == 0` routes to `done`" to "`total == 0` routes to `final_verify`".
+10. Add `CHANGELOG.md` entry for ENH-1681 under the current release section, following the pattern of prior `general-task` enhancement entries.
 
 ## Scope Boundaries
 
@@ -178,7 +215,16 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `loops`, `general-task`, `correctness`, `captured`
 
+## Resolution
+
+Implemented in `scripts/little_loops/loops/general-task.yaml`: changed `count_done.on_yes` from `done` to `final_verify`, added `final_verify` (prompt) and `count_final` (shell) states, updated `diagnose.action` state list. Extended `scripts/tests/test_general_task_loop.py` with `TestChange8FinalVerifyGate` and `TestCountFinalShellScript` classes (12 new tests). Updated `docs/guides/LOOPS_GUIDE.md` routing description and added terminal-gate paragraph. Updated `skills/create-loop/loop-types.md` routing description. Added CHANGELOG entry.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-24T21:42:46Z - active session
+- `/ll:ready-issue` - 2026-05-24T21:39:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50341109-15ff-4471-88eb-e57b32140fc3.jsonl`
+- `/ll:confidence-check` - 2026-05-24T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba5b7ded-8a4a-4c0f-95e1-c82128f42267.jsonl`
+- `/ll:wire-issue` - 2026-05-24T21:36:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b7b6432-0e31-4d2b-af37-875c0d05728f.jsonl`
+- `/ll:refine-issue` - 2026-05-24T21:29:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2d89ce4-36c3-4dc3-a3b0-5dfc218f3013.jsonl`
 - `/ll:format-issue` - 2026-05-24T17:35:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea088c92-461b-4afc-98b8-32abc1e0bf8d.jsonl`
 - `/ll:capture-issue` - 2026-05-24T17:30:41Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49190dcc-d6e4-4353-bf0c-cce367d61a96.jsonl`
 
