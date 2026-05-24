@@ -88,6 +88,33 @@ ruff format scripts/
 
 - **Prefer Skills over Agents**: When adding new functionality, create a Skill instead of a new Agent. Skills are simpler, more composable, and can be invoked directly by users or other components. Reserve Agents for complex, autonomous multi-step tasks that require specialized capabilities.
 
+## Loop Authoring
+
+Loops that modify other harness artifacts (loop YAMLs, skill files, agent
+definitions, commands, or `.claude/CLAUDE.md` itself) are **meta-loops** and
+follow stricter design rules than data-operating loops:
+
+1. **Diagnosis-first scaffolding.** Meta-loops should follow a
+   `diagnose → propose → apply → measure-externally` shape, not the generic
+   harness 5-phase pipeline. The `create-loop` wizard's "Optimize a harness"
+   branch generates this template; do not adapt the standard "Harness a skill"
+   template for meta-loops.
+2. **Non-LLM evaluator required.** Every `check_semantic` (`llm_structured`)
+   state in a meta-loop MUST be paired with at least one non-LLM evaluator
+   in the routing chain: `exit_code`, `output_numeric`, `convergence`,
+   `diff_stall`, or `mcp_result`. LLM self-grades on harness updates are
+   ~33–55% accurate (SHOR Table 1; Sonnet 4.6 = 33.4%) — pair with
+   measurable external evidence or the loop will optimize for what the
+   judge prompt rewards, not what users observe.
+
+`ll-loop validate` enforces rule 2 as ERROR severity (rule MR-1). Use
+`meta_self_eval_ok: true` at the loop top-level to suppress the check in
+the rare case where you have a justified reason. See ENH-1665.
+
+The `loop-specialist` agent diagnoses violations post-hoc as
+`self-evaluation bias` / `feature-stubbing` failure modes
+(`agents/loop-specialist.md`); this section shifts the gate left.
+
 ## Issue File Format
 
 Files in `.issues/` follow: `P[0-5]-[TYPE]-[NNN]-description.md`
