@@ -2,7 +2,8 @@
 id: ENH-654
 type: ENH
 priority: P4
-status: open
+status: done
+completed_at: 2026-05-24T01:09:23Z
 discovered_date: 2026-03-08
 discovered_by: capture-issue
 confidence_score: 95
@@ -44,7 +45,7 @@ The active state box renders with:
 Changes are isolated to `scripts/little_loops/cli/loop/layout.py`:
 
 - **`_draw_box()` at `layout.py:567`**: add a pre-fill pass over all interior cells (content + padding rows, cols `col+1..col+width-2`) when `is_highlighted and bg_code`; update the name-row ANSI code to `f"30;{bg_code};1"` (dark fg + bg + bold) and content chars to `f"30;{bg_code}"`
-- **`_render_neighborhood_diagram()` inline `_make_box()` at `layout.py:1702`**: update the two flanking space cells and the state name to use `bg_code` when highlighted
+- **`_render_neighborhood_diagram()` inline `_make_box()` at `layout.py:1721`**: update the two flanking space cells and the state name to use `bg_code` when highlighted
 
 No config schema changes are strictly required if `highlight_color` is automatically converted from fg→bg (e.g., `"32"` → `"42"`). A separate `highlight_bg_color` config field could be added to `config-schema.json` for explicit control.
 
@@ -61,7 +62,7 @@ No config schema changes are strictly required if `highlight_color` is automatic
 3. **Add interior pre-fill pass** (`layout.py:~620`, before the content-rows loop): when `is_highlighted and bg_code`, iterate rows `row+1..row+height-2` and cols `col+1..col+width-2`, setting each to `colorize(" ", bg_code)` — covers interior of all content + padding rows; must run **before** content writes so subsequent char writes overwrite the spaces correctly
 4. **Update name row rendering** (`layout.py:629-635`): for `is_highlighted and i == 0`, change `colorize(line, f"{highlight_color};1")` → `colorize(line, f"30;{bg_code};1")` (dark fg + bg + bold); the empty-string trick at col+3..col+2+len-1 still applies and overwrites the pre-filled cells, which is correct — those visual positions are occupied by the name's ANSI characters
 5. **Update remaining content row rendering** (`layout.py:643-646`): for `is_highlighted and i > 0`, change `grid[r][col + 2 + j] = ch` → `grid[r][col + 2 + j] = colorize(ch, f"30;{bg_code}")` (individual chars get dark fg + bg)
-6. **Update `_render_neighborhood_diagram()` `_make_box()` closure** (`layout.py:1702-1718`): add `bg_code` computation in the outer `_render_neighborhood_diagram()` scope (same `try/except` pattern); in the highlighted branch (line 1706), change the two flanking `" "` to `colorize(" ", bg_code)` (lines 1711 and 1713) and change the name to `colorize(padded, f"30;{bg_code};1")` (line 1712)
+6. **Update `_render_neighborhood_diagram()` `_make_box()` closure** (`layout.py:1721-1753`): add `bg_code` computation in the outer `_render_neighborhood_diagram()` scope (same `try/except` pattern); in the highlighted branch (line 1731), change the two flanking `" "` to `colorize(" ", bg_code)` (lines 1736 and 1738) and change the name to `colorize(padded, f"30;{bg_code};1")` (line 1737)
 7. **Add test assertions** in `scripts/tests/test_ll_loop_display.py` (extend `test_highlighted_state_uses_configured_color` at line 1256 which uses `highlight_color="36"`): assert `"\033[46m "` (bg cyan fill) appears in the result for interior cells of the highlighted state
 8. **Verify visually** with `ll-loop run <any-loop> --show-diagrams`
 
@@ -80,20 +81,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/layout.py` — `_draw_box()` (lines 567–668): add `bg_code` computation + pre-fill pass + update name and content char rendering; `_render_neighborhood_diagram()` `_make_box()` closure (lines 1702–1718): add `bg_code` computation and update interior cells
+- `scripts/little_loops/cli/loop/layout.py` — `_draw_box()` (lines 567–668): add `bg_code` computation + pre-fill pass + update name and content char rendering; `_render_neighborhood_diagram()` `_make_box()` closure (lines 1721–1753): add `bg_code` computation and update interior cells
 
 ### Dependent Files (Callers/Importers)
 
 _Codebase Research: full call chain with line refs:_
 - `scripts/little_loops/cli/loop/run.py:169` — reads `fsm_active_state` color from config as `_highlight_color`; passes to `run_foreground()` at line 356
-- `scripts/little_loops/cli/loop/_helpers.py:601` — `run_foreground()` signature: `highlight_color: str = "32"`; calls `_render_fsm_diagram()` at lines 283, 295, 660, 746, 781
+- `scripts/little_loops/cli/loop/_helpers.py:608` — `run_foreground()` signature: `highlight_color: str = "32"`; calls `_render_fsm_diagram()` at lines 283, 295, 660, 746, 781
 - `scripts/little_loops/cli/loop/layout.py:1534` — `_render_fsm_diagram()` dispatches to `_render_layered_diagram()`, `_render_horizontal_simple()`, or `_render_neighborhood_diagram()`
 - `scripts/little_loops/cli/loop/layout.py:1008–1018` — `_render_layered_diagram()` calls `_draw_box()`
-- `scripts/little_loops/cli/loop/layout.py:1812–1822` — `_render_horizontal_simple()` calls `_draw_box()`
+- `scripts/little_loops/cli/loop/layout.py:1867` — `_render_horizontal_simple()` calls `_draw_box()`
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/issues/clusters.py:137` — calls `_draw_box(grid, row, _BOX_MARGIN, box_width, _BOX_HEIGHT, content, False, "0")` in `_render_cluster_diagram()`; always passes `is_highlighted=False` so the bg_code guard is safe — verify the non-highlighted path remains unaffected after changes
 - `scripts/little_loops/cli/loop/info.py:823` — calls `_render_fsm_diagram(fsm, verbose)` without `highlight_state`/`highlight_color` in `cmd_show()`; uses defaults — verify signature remains compatible
+
+_Wiring pass updated by `/ll:ready-issue` (2026-05-23): corrected `_render_neighborhood_diagram()` to line 1656 (was 1653)._
 
 ### Similar Patterns
 - `scripts/little_loops/cli/loop/layout.py:585–586` — `_bc()` helper closure inside `_draw_box()`: `return colorize(ch, highlight_color) if is_highlighted else ch`; follow the same pattern for `bg_code` guard before the closure
@@ -128,11 +131,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] Active state box in main-path has background-filled interior cells in the highlight color
-- [ ] State name and content text render with contrasting dark foreground over colored background
-- [ ] Non-highlighted boxes are unaffected
-- [ ] Off-path active state box also fills (after ENH-638 is merged)
-- [ ] `python -m pytest scripts/tests/test_fsm_executor.py scripts/tests/test_sprint_integration.py -v` passes
+- [x] Active state box in main-path has background-filled interior cells in the highlight color
+- [x] State name and content text render with contrasting dark foreground over colored background
+- [x] Non-highlighted boxes are unaffected
+- [x] Off-path active state box also fills (neighborhood diagram `_make_box` updated; ENH-638 not yet merged but independent fix applied)
+- [x] `python -m pytest scripts/tests/test_fsm_executor.py scripts/tests/test_sprint_integration.py -v` passes
 
 ## Impact
 
@@ -172,7 +175,20 @@ _Added by `/ll:confidence-check` on 2026-05-23_
 - **Optional config field decision deferred**: "highlight_bg_color could be added" — resolve explicitly during implementation (auto-derive fg→bg or add field) to avoid revisiting
 - **Grid model complexity**: the empty-string cell trick for wide ANSI strings must be respected in the pre-fill pass (pre-fill runs before content writes, which is correct per step 3)
 
+## Resolution
+
+Implemented background fill highlight for active state boxes in FSM diagrams:
+
+- `_draw_box()` (`layout.py`): added `bg_code` computation (fg→bg via `+10`), pre-fill pass over all interior cells before content rows, dark-fg name-row code (`30;{bg_code};1`), per-char dark-fg coloring for content rows when highlighted.
+- `_render_neighborhood_diagram()` `_make_box()` (`layout.py`): added `nd_bg_code` computation; updated highlighted branch to fill the two flanking spaces and use dark-fg+bg+bold for the state name.
+- Updated `test_highlighted_state_uses_configured_color` (assert `30;46;1m` + `46m `) and `test_highlighted_state_default_green` (assert `42m `).
+- Added `test_highlighted_active_state_uses_bg_fill` to `TestRenderNeighborhoodDiagram`.
+- Updated `docs/reference/OUTPUT_STYLING.md` and `docs/reference/CONFIGURATION.md` to describe bg fill behavior and fg→bg auto-derivation.
+- All 177 display tests + 256 fsm_executor/sprint_integration tests pass.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-24T01:09:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb89b759-5a6d-4254-ad99-4e58a219cc17.jsonl`
+- `/ll:ready-issue` - 2026-05-24T01:04:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c4a6baba-3f38-41a5-9767-fd61fc1139fc.jsonl`
 - `/ll:confidence-check` - 2026-05-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/94d3a774-727b-48c4-982b-4324047ede61.jsonl`
 - `/ll:wire-issue` - 2026-05-24T00:45:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8177277-27a8-4514-86b4-2e9d9e6a5787.jsonl`
 - `/ll:refine-issue` - 2026-05-24T00:28:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ba7a251-01eb-435c-ba22-90efa9dacf11.jsonl`

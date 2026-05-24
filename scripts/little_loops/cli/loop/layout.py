@@ -581,6 +581,10 @@ def _draw_box(
     one space of padding on each side (``─ badge ┐``), colorized via ``_bc()``.
     """
     total_width = len(grid[0]) if grid else 0
+    try:
+        bg_code: str | None = str(int(highlight_color) + 10)
+    except (ValueError, TypeError):
+        bg_code = None
 
     def _bc(ch: str) -> str:
         return colorize(ch, highlight_color) if is_highlighted else ch
@@ -617,6 +621,15 @@ def _draw_box(
                     grid[row][pos + 1] = ""
             pos += ch_w
 
+    # Pre-fill all interior cells with bg color so padding rows and gaps are filled
+    if is_highlighted and bg_code:
+        for ri in range(row + 1, row + height - 1):
+            if ri >= len(grid):
+                break
+            for ci in range(col + 1, col + width - 1):
+                if ci < total_width:
+                    grid[ri][ci] = colorize(" ", bg_code)
+
     # Content rows
     for i, line in enumerate(content):
         r = row + i + 1
@@ -627,7 +640,8 @@ def _draw_box(
         if col + width - 1 < total_width:
             grid[r][col + width - 1] = _bc("\u2502")
         if is_highlighted and i == 0:
-            colored_line = colorize(line, f"{highlight_color};1")
+            name_code = f"30;{bg_code};1" if bg_code else f"{highlight_color};1"
+            colored_line = colorize(line, name_code)
             if col + 2 < total_width:
                 grid[r][col + 2] = colored_line
             for j in range(1, len(line)):
@@ -643,7 +657,10 @@ def _draw_box(
         else:
             for j, ch in enumerate(line):
                 if col + 2 + j < col + width - 1:
-                    grid[r][col + 2 + j] = ch
+                    if is_highlighted and bg_code:
+                        grid[r][col + 2 + j] = colorize(ch, f"30;{bg_code}")
+                    else:
+                        grid[r][col + 2 + j] = ch
 
     # Padding rows between content and bottom border
     for i in range(len(content) + 1, height - 1):
@@ -1717,6 +1734,10 @@ def _render_neighborhood_diagram(
     box_w_succ = inner_succ + 4 if succ_labels else 0
 
     n_rows = max(len(pred_labels), len(succ_labels), 1)
+    try:
+        nd_bg_code: str | None = str(int(highlight_color) + 10)
+    except (ValueError, TypeError):
+        nd_bg_code = None
 
     def _make_box(
         label: str,
@@ -1731,13 +1752,22 @@ def _render_neighborhood_diagram(
         if highlighted:
             top = colorize(top, highlight_color)
             bot = colorize(bot, highlight_color)
-            mid = (
-                colorize("│", highlight_color)
-                + " "
-                + colorize(padded, f"{highlight_color};1")
-                + " "
-                + colorize("│", highlight_color)
-            )
+            if nd_bg_code:
+                mid = (
+                    colorize("│", highlight_color)
+                    + colorize(" ", nd_bg_code)
+                    + colorize(padded, f"30;{nd_bg_code};1")
+                    + colorize(" ", nd_bg_code)
+                    + colorize("│", highlight_color)
+                )
+            else:
+                mid = (
+                    colorize("│", highlight_color)
+                    + " "
+                    + colorize(padded, f"{highlight_color};1")
+                    + " "
+                    + colorize("│", highlight_color)
+                )
         elif border_color is not None:
             top = colorize(top, border_color)
             bot = colorize(bot, border_color)

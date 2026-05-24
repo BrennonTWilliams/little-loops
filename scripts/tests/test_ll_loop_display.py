@@ -1267,10 +1267,12 @@ class TestRenderFsmDiagram:
         with patch.object(output_mod, "_USE_COLOR", True):
             result = _render_fsm_diagram(fsm, highlight_state="a", highlight_color="36")
 
-        # Highlighted state box has the color code
+        # Highlighted state box has the color code (borders use fg color)
         assert "\033[36m" in result
-        # Bold variant used for state name
-        assert "\033[36;1m" in result
+        # State name uses dark fg + bg color + bold
+        assert "\033[30;46;1m" in result
+        # Interior cells filled with bg color
+        assert "\033[46m " in result
 
     def test_highlighted_state_default_green(self) -> None:
         """highlight_state defaults to color code '32' (green)."""
@@ -1284,6 +1286,7 @@ class TestRenderFsmDiagram:
             result = _render_fsm_diagram(fsm, highlight_state="start")
 
         assert "\033[32m" in result
+        assert "\033[42m " in result
 
     def test_no_highlight_state_unchanged(self) -> None:
         """Without highlight_state, output contains no ANSI codes from box drawing."""
@@ -3357,3 +3360,29 @@ class TestRenderNeighborhoodDiagram:
 
         orange = f"\x1b[{layout_mod._PREV_STATE_COLOR}m"
         assert orange not in out, f"unexpected orange border; output:\n{out}"
+
+    def test_highlighted_active_state_uses_bg_fill(self) -> None:
+        """Active state box in neighborhood diagram has background fill on interior cells."""
+        import re
+
+        from little_loops.cli import output as output_mod
+        from little_loops.cli.loop.layout import _render_neighborhood_diagram
+
+        fsm = make_test_fsm(
+            initial="a",
+            states={
+                "a": make_test_state(action="...", on_yes="target"),
+                "target": make_test_state(action="...", on_yes="end"),
+                "end": make_test_state(terminal=True),
+            },
+        )
+        with patch.object(output_mod, "_USE_COLOR", True):
+            out = _render_neighborhood_diagram(fsm, "target", highlight_color="36")
+
+        # bg cyan fill (\033[46m) should appear in interior cells of the active box
+        assert "\x1b[46m " in out, f"expected bg fill in neighborhood active box; output:\n{out}"
+        # state name uses dark fg + bg + bold
+        ansi_re = re.compile(r"\x1b\[[0-9;]*m")
+        assert "\x1b[30;46;1m" in out, (
+            f"expected dark-fg+bg+bold name code; output:\n{ansi_re.sub('', out)}"
+        )

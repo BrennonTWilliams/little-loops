@@ -668,11 +668,13 @@ Override ANSI color codes for issue type labels in list and card output.
 
 ### `cli.colors.fsm_active_state`
 
-ANSI color code for the currently active state box highlight in FSM diagrams (shown with `--show-diagrams`).
+ANSI foreground color code for the currently active state box in FSM diagrams (shown with `--show-diagrams`). This value controls both the **border color** and the **interior background fill**: the fg code is automatically converted to its bg equivalent (e.g. `"32"` → `"42"`) so all interior cells are filled with the highlight color. The state name renders with a contrasting dark foreground (`30`) over the filled background.
+
+Compound ANSI codes (e.g. `"38;5;208"`) cannot be auto-converted to a bg code and fall back to border-only coloring with no interior fill.
 
 | Key | Default ANSI | Appearance |
 |-----|-------------|------------|
-| `fsm_active_state` | `32` | Green |
+| `fsm_active_state` | `32` | Green border + green background fill |
 
 **Example** — use blue for the active state:
 

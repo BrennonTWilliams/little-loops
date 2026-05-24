@@ -237,7 +237,7 @@ Edge label colors are **user-configurable** via `cli.colors.fsm_edge_labels` in 
 > - The `✓`/`✗` verdict symbol colors in `display_progress()` (the `yes`, `no`, and `error` keys map to checkmark and x-mark colors during evaluate events)
 > - The `[TERMINAL]` marker color in `print_execution_plan()` (uses the `yes` key, defaulting to green)
 
-The active state highlight color is configurable via `cli.colors.fsm_active_state` (default: green `32`). See [`CONFIGURATION.md → cli.colors.fsm_active_state`](CONFIGURATION.md#clicolorsfsm_active_state).
+The active state highlight color is configurable via `cli.colors.fsm_active_state` (default: green `32`). The same value drives both border coloring and interior background fill: the fg color code is automatically converted to its bg equivalent (e.g. `"32"` → bg `"42"`) so all interior cells are filled with the highlight color. The state name renders with a contrasting dark foreground (`30`) over the colored background. Compound ANSI codes (e.g. `"38;5;208"`) cannot be auto-converted and fall back to border-only coloring. See [`CONFIGURATION.md → cli.colors.fsm_active_state`](CONFIGURATION.md#clicolorsfsm_active_state).
 
 ### State overview table
 
