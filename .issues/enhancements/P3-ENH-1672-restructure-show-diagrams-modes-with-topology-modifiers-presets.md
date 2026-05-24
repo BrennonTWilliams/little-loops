@@ -327,6 +327,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `cli`, `breaking-change`, `ux`, `diagrams`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-24T07:12:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0356f6a-4e5b-45ac-bc51-6d6bd837e3ee.jsonl`
 
 - `/ll:capture-issue` - 2026-05-24T07:08:02Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36dab78b-8ea5-4759-9747-53b92e93a9f7.jsonl`
 

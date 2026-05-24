@@ -85,7 +85,7 @@ Unchanged states (verbatim copies): `init`, `score_coverage`, `plan_next` (struc
 
 - **Create** `scripts/little_loops/loops/deep-research-arxiv.yaml` — the new sibling loop (~290 lines, paralleling `deep-research.yaml`)
 - `scripts/tests/test_builtin_loops.py` — add `"deep-research-arxiv"` to the `expected` set in `TestBuiltinLoopFiles::test_expected_loops_exist` (~line 65). The auto-discovery scan picks the file up, but this hardcoded set is the canary that fails CI if a new loop is forgotten.
-- `scripts/little_loops/loops/README.md` — add a bullet/row for `deep-research-arxiv` in the "Research & Knowledge" section adjacent to the existing `deep-research` entry (around line 58)
+- `scripts/little_loops/loops/README.md` — add a **table row** for `deep-research-arxiv` in the "Research & Knowledge" section adjacent to the existing `deep-research` entry. The section is a 3-column markdown table with header `| Loop | Description | Primary Inputs |`; the existing `deep-research` row is at line 58 (insert the new row at line 59).
 
 No code changes outside these three files.
 
@@ -93,7 +93,8 @@ No code changes outside these three files.
 
 This is a **new built-in loop** with no callers at v1. Discovery happens automatically — the file is found at runtime by:
 
-- `scripts/little_loops/cli/loop/info.py:127` — auto-discovery via `rglob("*.yaml")`
+- `scripts/little_loops/cli/loop/info.py:127,137` — auto-discovery via `rglob("*.yaml")` filtered by `is_runnable_loop()`
+- `scripts/little_loops/cli/loop/_helpers.py:395` — `get_builtin_loops_dir()` returns `Path(__file__).parent.parent.parent / "loops"`, so top-level placement at `scripts/little_loops/loops/deep-research-arxiv.yaml` is sufficient
 - `scripts/little_loops/fsm/validation.py:897` — accepts any YAML with `name`, `initial`, `states`
 
 No code changes required for registration.
@@ -104,12 +105,26 @@ No code changes required for registration.
 - `scripts/little_loops/loops/deep-research.yaml` (FEAT-1540) — same structural pattern: shell `init` captures `run_dir`, prompt states cycle through query generation → web search → evaluation → coverage scoring → planning → synthesis with sentinel-based convergence.
 
 **Convergence pattern (preserved verbatim):**
-- `scripts/little_loops/loops/rn-plan.yaml:228-266` — inline sentinel convergence via `output_contains` (Option A from FEAT-1540)
+- `scripts/little_loops/loops/rn-plan.yaml:231-268` (state `score`) — inline sentinel convergence via `output_contains` (Option A from FEAT-1540). In `deep-research.yaml`, this same pattern lives in the `score_coverage` state at lines 135–177: the prompt instructs the LLM to emit exactly `COVERAGE_SUFFICIENT` or `NEED_MORE`, and the state routes via `evaluate.type: output_contains` / `pattern: "COVERAGE_SUFFICIENT"` / `on_yes: synthesize` / `on_no: plan_next` / `on_error: synthesize`. **Both sentinel tokens and the routing block must be preserved verbatim** in the arxiv sibling — only the surrounding prompt text changes.
+
+**Existing sibling-loop pairs (precedent for the FEAT-1673 pattern):**
+- `rn-plan` / `rn-plan-apo` — base planner + APO variant
+- `harness-single-shot` / `harness-multi-item` / `harness-optimize` — harness family
+- `apo-feedback-refinement` / `apo-contrastive` / `apo-opro` / `apo-beam` / `apo-textgrad` — APO family
+- `issue-refinement` / `refine-to-ready-issue` / `recursive-refine` — refinement family
+
+The "sibling loop that specializes a few prompts of a parent" pattern is established convention here, not novel.
 
 ### Tests
 
-- **Update** `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles::test_expected_loops_exist` — add `"deep-research-arxiv"` to the `expected` set. This file also exercises the bare-`PASS` check, `description:` presence, and pre-terminal `diagnose` validation against any new loop file, so adding the loop YAML automatically gets it covered by those generic structural checks.
-- **No new dedicated test file required** — the sibling shares structure with `deep-research`, and dedicated `test_deep_research.py` tests already cover the FSM skeleton. Author may opt to add a small `test_deep_research_arxiv.py` later if the BibTeX synthesis output needs structural assertions; out of scope for v1.
+- **Update** `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles::test_expected_loops_exist` — add `"deep-research-arxiv"` to the `expected` set (unordered Python set literal, currently 51 entries; this is the 52nd). The `expected` set's matching `actual` comes from `{f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}`, so dropping the YAML without updating the set fails the assertion.
+- **Auto-coverage from generic structural tests** — adding the new loop YAML automatically gets it covered by these tests in the same file (no edits needed):
+  - `test_all_parse_as_yaml` (line 29) — YAML parsing
+  - `test_all_validate_as_valid_fsm` (line 36) — FSM schema validation
+  - `test_all_have_description_field` (line 46) — `description:` field presence
+  - `test_no_bare_pass_token_in_output_contains` (line 124) — guards against bare `PASS` sentinels
+  - `test_all_failure_terminals_have_diagnostic_action` (line 144) — pre-terminal `diagnose` validation
+- **No new dedicated test file required** — the sibling shares structure with `deep-research`, and dedicated `scripts/tests/test_deep_research.py` tests already cover the FSM skeleton. Author may opt to add a small `test_deep_research_arxiv.py` later if the BibTeX synthesis output needs structural assertions; out of scope for v1.
 
 ### Documentation
 
@@ -127,7 +142,7 @@ No code changes required for registration.
 4. **Specialize `generate_queries`** — minor wording: instruct LLM to phrase queries in academic terminology (method names, problem formulations) rather than informal/how-to phrasing. No structural change.
 5. **Specialize `search_web`** — instruct LLM to constrain every `WebSearch` query with `site:arxiv.org` (preferring `arxiv.org/abs/` pages), and to `WebFetch` abstract pages for arxiv ID, authors, submission date, optional Journal-ref. Drop "blog posts, official documentation" language from the original.
 6. **Specialize `evaluate_sources`** — replace credibility axis with recency on a 1–5 scale derived from arxiv submission date (5 = within 6 months of today, 4 = ≤1yr, 3 = ≤2yr, 2 = ≤5yr, 1 = >5yr). Keep relevance axis unchanged. Annotation format: `[Source: <arxiv-url>] (relevance: N/5, recency: N/5, arxiv-id: YYMM.NNNNN)`.
-7. **Preserve `score_coverage` verbatim** — convergence rule and sentinel tokens unchanged.
+7. **Preserve `score_coverage` verbatim** — convergence rule and sentinel tokens unchanged. Specifically, keep the `evaluate.type: output_contains` / `pattern: "COVERAGE_SUFFICIENT"` / `on_yes: synthesize` / `on_no: plan_next` / `on_error: synthesize` routing block, and keep the prompt instruction that the LLM must output exactly `COVERAGE_SUFFICIENT` or `NEED_MORE` (lines 135–177 of the parent loop, with the routing block at the tail).
 8. **Specialize `plan_next`** — minor wording tweak for academic terminology; structure unchanged.
 9. **Specialize `synthesize`** — replace sources table columns with `| # | arXiv ID | Title | Authors | Year | Relevance | Recency | Facet |`. Emit a `## BibTeX` section at the end with `@misc{...}` entries keyed by arxiv ID.
 10. **Preserve `done` state verbatim** — `terminal: true`.
@@ -177,4 +192,6 @@ context:
 **Open** | Created: 2026-05-24 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-24T07:23:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a811c0d3-136c-4394-b80a-ab4435a7e6a2.jsonl`
+- `/ll:format-issue` - 2026-05-24T07:12:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faf9a9a-9e72-4c6e-95c6-08c2d631638f.jsonl`
 - `/ll:capture-issue` - 2026-05-24T07:09:02Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e118fada-be27-4510-9c7c-e66238684c9d.jsonl`
