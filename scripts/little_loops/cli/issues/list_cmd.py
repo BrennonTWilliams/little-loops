@@ -73,7 +73,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                 content = ""
         if need_content:
             if sort_field == "created":
-                disc_date = _parse_discovered_date(content)
+                disc_date = _parse_discovered_date(content, issue.path)
             elif sort_field == "completed":
                 from little_loops.issue_history.parsing import _parse_completion_date
 

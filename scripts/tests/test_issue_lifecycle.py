@@ -516,6 +516,32 @@ class TestCreateIssueFromFailure:
         assert result is not None
         assert "P1-BUG-" in result.name
 
+    def test_has_frontmatter_with_captured_at_and_status(
+        self,
+        tmp_path: Path,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Failure-created issues have YAML frontmatter with captured_at and status: open (BUG-1647)."""
+        from datetime import datetime
+
+        from little_loops.frontmatter import parse_frontmatter
+
+        result = create_issue_from_failure(
+            "ValueError: test", sample_issue_info, sample_config, mock_logger
+        )
+
+        assert result is not None
+        content = result.read_text()
+        fm = parse_frontmatter(content)
+        assert "captured_at" in fm, f"captured_at missing from frontmatter: {fm}"
+        assert fm.get("status") == "open", f"status not 'open': {fm}"
+        # captured_at should be a parseable ISO datetime
+        captured = str(fm["captured_at"])
+        dt = datetime.fromisoformat(captured.rstrip("Z").replace("+00:00", ""))
+        assert dt.year >= 2026
+
 
 # =============================================================================
 # Tests: Failure Classification

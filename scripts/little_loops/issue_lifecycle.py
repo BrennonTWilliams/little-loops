@@ -444,7 +444,16 @@ def create_issue_from_failure(
     bugs_dir = config.get_issue_dir("bugs")
     new_issue_path = bugs_dir / filename
 
-    content = f"""# {bug_id}: Implementation Failure - {parent_info.issue_id}
+    content = f"""---
+id: {bug_id}
+type: BUG
+priority: P1
+status: open
+captured_at: {_completed_at_now()}
+discovered_by: auto-generated
+---
+
+# {bug_id}: Implementation Failure - {parent_info.issue_id}
 
 ## Summary
 Issue encountered during automated implementation of {parent_info.issue_id}.

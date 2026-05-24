@@ -18,13 +18,14 @@ if TYPE_CHECKING:
     from little_loops.issue_parser import IssueInfo
 
 
-def _parse_discovered_date(content: str) -> datetime | None:
+def _parse_discovered_date(content: str, file_path: Path | None = None) -> datetime | None:
     """Extract creation datetime from YAML frontmatter.
 
     Prefers ``captured_at`` (ISO datetime, sub-day resolution) when present,
-    falling back to ``discovered_date`` (date-granular). Always returns a
-    ``datetime`` — regex-only results are normalized to midnight — so sort
-    comparisons never mix ``date`` and ``datetime``.
+    falling back to ``discovered_date`` (date-granular), then to file mtime
+    when ``file_path`` is provided and both frontmatter fields are absent.
+    Always returns a ``datetime`` so sort comparisons never mix ``date`` and
+    ``datetime``.
     """
     from little_loops.frontmatter import parse_frontmatter
 
@@ -37,17 +38,23 @@ def _parse_discovered_date(content: str) -> datetime | None:
             pass
 
     match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
-    if not match:
-        return None
-    date_match = re.search(r"discovered_date:\s*(\S+)", match.group(1))
-    if not date_match:
-        return None
-    date_str = date_match.group(1).strip("\"'")
-    try:
-        d = date.fromisoformat(date_str[:10])
-    except ValueError:
-        return None
-    return datetime.combine(d, datetime.min.time())
+    if match:
+        date_match = re.search(r"discovered_date:\s*(\S+)", match.group(1))
+        if date_match:
+            date_str = date_match.group(1).strip("\"'")
+            try:
+                d = date.fromisoformat(date_str[:10])
+                return datetime.combine(d, datetime.min.time())
+            except ValueError:
+                pass
+
+    if file_path is not None:
+        try:
+            return datetime.fromtimestamp(file_path.stat().st_mtime)
+        except OSError:
+            pass
+
+    return None
 
 
 def _parse_updated_date(content: str, file_path: Path) -> date | None:
@@ -228,18 +235,20 @@ def _sort_issues(
             num = int(m.group(1)) if m else 0
             return (issue.issue_id.split("-", 1)[0], num)
         if sort_field in ("date", "created"):
-            return (disc_date or datetime.max,)
+            sentinel = datetime.min if descending else datetime.max
+            return (disc_date if disc_date is not None else sentinel,)
         if sort_field == "completed":
-            return (comp_date or date.max,)
+            sentinel_d = date.min if descending else date.max
+            return (comp_date if comp_date is not None else sentinel_d,)
         if sort_field == "type":
             return (issue.issue_id.split("-", 1)[0], issue.priority_int, issue.issue_id)
         if sort_field == "title":
             return (issue.title.lower(),)
         if sort_field == "confidence":
-            score = issue.confidence_score if issue.confidence_score is not None else 9999
+            score = issue.confidence_score if issue.confidence_score is not None else (-1 if descending else 9999)
             return (score,)
         if sort_field == "outcome":
-            score = issue.outcome_confidence if issue.outcome_confidence is not None else 9999
+            score = issue.outcome_confidence if issue.outcome_confidence is not None else (-1 if descending else 9999)
             return (score,)
         if sort_field == "refinement":
             refinement_commands = {
@@ -316,7 +325,7 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
                 content = issue.path.read_text(encoding="utf-8")
             except Exception:
                 content = ""
-            disc_date = _parse_discovered_date(content)
+            disc_date = _parse_discovered_date(content, issue.path)
             labels = _parse_labels_from_content(content)
         else:
             content = ""

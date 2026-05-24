@@ -713,6 +713,7 @@ class GitHubSyncManager:
         frontmatter = {
             "github_issue": gh_number,
             "github_url": gh_url,
+            "captured_at": now,
             "last_synced": now,
             "discovered_by": "github_sync",
             "discovered_date": today,

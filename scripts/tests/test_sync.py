@@ -776,6 +776,38 @@ github_issue: 1
         assert "`enhancement`" in content
         assert "`testing`" in content
 
+    def test_create_local_issue_has_captured_at(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Issues pulled from GitHub include captured_at in frontmatter (BUG-1647)."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        result = SyncResult(action="pull", success=True)
+        gh_issue = {
+            "number": 13,
+            "title": "Test captured_at",
+            "body": "Verify captured_at is written.",
+            "url": "https://github.com/test/repo/issues/13",
+            "labels": [{"name": "bug"}],
+        }
+
+        manager._create_local_issue(gh_issue, "BUG", result)
+
+        created = list((tmp_path / ".issues" / "bugs").glob("*BUG-*13*.md"))
+        if not created:
+            created = list((tmp_path / ".issues" / "bugs").glob("*.md"))
+        assert len(created) >= 1
+        content = created[-1].read_text()
+        fm = parse_frontmatter(content)
+        assert "captured_at" in fm, f"captured_at missing from frontmatter: {fm}"
+        # Should be parseable as ISO datetime
+        from datetime import datetime
+
+        captured = str(fm["captured_at"])
+        dt = datetime.fromisoformat(captured.rstrip("Z").replace("+00:00", ""))
+        assert dt.year >= 2026
+
     def test_push_single_issue_creates_new(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:

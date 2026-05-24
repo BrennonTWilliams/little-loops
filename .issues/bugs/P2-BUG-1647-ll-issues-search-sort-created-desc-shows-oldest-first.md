@@ -2,8 +2,9 @@
 id: BUG-1647
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: 2026-05-23 22:24:46+00:00
+completed_at: 2026-05-24T08:56:03Z
 discovered_date: 2026-05-23
 discovered_by: capture-issue
 confidence_score: 100
@@ -207,6 +208,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `cli`, `sorting`, `ll-issues`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T08:51:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/408a5dfa-b5af-4e74-8bf6-5733d59933a7.jsonl`
 - `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c211824-04f2-4a82-9d94-aa93502d82f0.jsonl`
 - `/ll:wire-issue` - 2026-05-24T07:39:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4140adee-1c76-4a3e-8774-05db6094b7de.jsonl`
 - `/ll:refine-issue` - 2026-05-24T07:33:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2345830b-0a2d-4cf9-8ce2-c8909925173d.jsonl`
