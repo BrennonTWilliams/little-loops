@@ -1,8 +1,9 @@
 ---
 captured_at: '2026-05-23T23:10:18Z'
+completed_at: '2026-05-24T08:48:24Z'
 discovered_date: 2026-05-23
 discovered_by: capture-issue
-status: open
+status: done
 depends_on: BUG-1648
 labels:
 - skills
@@ -144,7 +145,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_issues_search.py` — `_load_issues_with_status` tests; fixture at line 64 creates a `done` issue and asserts it is excluded from the active set.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_sprint.py` — primary SprintManager test suite; `TestEdgeCases.test_completed_issues_excluded_from_waves` (line 1708) and `test_all_completed_issues_returns_zero` (line 1793) cover status-filtering on the execution side; regression check that the underlying contract holds after the fix [Agent 1 + 3 finding]
+- `scripts/tests/test_sprint.py` — primary SprintManager test suite; `TestSprintEdit.test_edit_prune_removes_completed` (line 1690) and `TestSprintEdit.test_edit_prune_nothing_to_prune` (line 1771) cover `status: done` frontmatter recognition in sprint edit/prune operations; regression check that the underlying contract holds after the fix [Agent 1 + 3 finding]
 - `scripts/tests/test_sprint_integration.py` — integration tests for sprint lifecycle; `TestDependencyHandling.test_sprint_completed_dependencies_satisfied` (line 1267) tests `status: done` recognition in the dependency graph [Agent 1 + 3 finding]
 - `scripts/tests/test_bug1649_doc_wiring.py` — **new file to write** — doc-wiring test asserting `ll-issues list --json` is present in Step 1.5.1 and raw type-dir Glob patterns are absent; follow the pattern in `scripts/tests/test_enh1130_doc_wiring.py` (assert on `Path("commands/create-sprint.md").read_text()`) [Agent 3 finding]
 
@@ -165,7 +166,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 | `.claude/CLAUDE.md` § Issue File Format | Canonical status enum (`open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled`) the fix must respect |
 | `commands/create-sprint.md` | The file being changed; Step 1.5.1 is the broken path, Step 3 Option B is the correct pattern to align with |
 
+## Resolution
+
+- Replaced Step 1.5.1's raw Glob patterns in `commands/create-sprint.md` with a `ll-issues list --json` call — the canonical active-issue source that filters by frontmatter status.
+- Retained a status-filtered Glob fallback (for environments without `ll-issues`) with an explicit note to skip non-active statuses.
+- Tightened Step 3 Option B to remove the raw-Glob alternative path.
+- Added `scripts/tests/test_bug1649_doc_wiring.py` asserting `ll-issues list --json` is present in the Step 1.5.1 region and raw type-dir Glob patterns are absent as the primary path.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T08:46:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5233105-9101-4433-89af-4dc5fefd739a.jsonl`
 - `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fcaf8e82-e9b0-459c-b420-b2d6516dcebf.jsonl`
 - `/ll:wire-issue` - 2026-05-24T07:37:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76307c23-ef5c-42f1-98e8-10d70af3ea53.jsonl`
 - `/ll:refine-issue` - 2026-05-24T07:28:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad2cb799-0357-40ae-ae3b-03344aed447c.jsonl`

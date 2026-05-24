@@ -129,12 +129,14 @@ When no issues are specified, analyze active issues and suggest natural sprint g
 
 #### Step 1.5.1: Scan Active Issues
 
-Use Glob to find all active issues:
-- Pattern: `{issues.base_dir}/bugs/*.md`
-- Pattern: `{issues.base_dir}/features/*.md`
-- Pattern: `{issues.base_dir}/enhancements/*.md`
+Run `ll-issues list --json` to get the canonical set of active issues
+(frontmatter `status` in `{open, in_progress, blocked}`):
 
-For each issue file found, extract:
+```bash
+ll-issues list --json
+```
+
+For each entry in the JSON output, extract:
 - **Priority**: From filename prefix (P0, P1, P2, P3, P4, P5)
 - **Type**: From directory (bugs, features, enhancements)
 - **ID**: From filename (e.g., BUG-001, FEAT-042)
@@ -146,6 +148,12 @@ For each issue file found, extract:
 - **Confidence Score**: From frontmatter `confidence_score` field (integer or null if absent)
 - **Outcome Confidence**: From frontmatter `outcome_confidence` field (integer or null if absent)
 - **Is Normalized**: Derived from filename — `true` if filename matches `^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9-]+\.md$`, otherwise `false`
+
+**Fallback** (only if `ll-issues` is not installed): Use Glob on the type dirs
+(`{issues.base_dir}/bugs/*.md`, `{issues.base_dir}/features/*.md`,
+`{issues.base_dir}/enhancements/*.md`) AND read each file's frontmatter —
+**skip any entry whose `status` is not in `{open, in_progress, blocked}`**.
+Never include `done`, `cancelled`, or `deferred` issues as active.
 
 Store parsed issues in a list for analysis.
 
@@ -336,9 +344,7 @@ Use AskUserQuestion to present selection options:
 #### Option B: Interactive Category Selection
 
 If selecting from active issues:
-1. Use the Glob tool to find active issues:
-   - Use `ll-issues list --json` to get all active issues (frontmatter status: open/in_progress/blocked)
-   - Or use Glob on type dirs: `{issues.base_dir}/bugs/**/*.md`, `{issues.base_dir}/features/**/*.md`, etc.
+1. Run `ll-issues list --json` to get all active issues (frontmatter status: open/in_progress/blocked).
 2. Parse and group by category/priority
 3. Present organized list for selection
 
