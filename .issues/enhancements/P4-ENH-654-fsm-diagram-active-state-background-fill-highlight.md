@@ -2,11 +2,12 @@
 id: ENH-654
 type: ENH
 priority: P4
-status: deferred
+status: open
 discovered_date: 2026-03-08
 discovered_by: capture-issue
 confidence_score: 85
 outcome_confidence: 78
+decision_needed: false
 ---
 
 # ENH-654: FSM Diagram Active State Background Fill Highlight
@@ -36,10 +37,10 @@ The active state box renders with:
 
 ## Scope Boundaries
 
-Changes are isolated to `scripts/little_loops/cli/loop/info.py`, in the `_render_2d_diagram()` function:
+Changes are isolated to `scripts/little_loops/cli/loop/layout.py`:
 
-- **Main-path box rendering** (main highlighted-box block in `_render_2d_diagram()`): add a fill pass over interior cells for highlighted boxes
-- **Off-path box rendering** (off-path block in `_render_2d_diagram()`): same fill pass (currently no highlighting at all — see ENH-638 for border fix first)
+- **`_draw_box()` at `layout.py:567`**: add a pre-fill pass over all interior cells (content + padding rows, cols `col+1..col+width-2`) when `is_highlighted and bg_code`; update the name-row ANSI code to `f"30;{bg_code};1"` (dark fg + bg + bold) and content chars to `f"30;{bg_code}"`
+- **`_render_neighborhood_diagram()` inline `_make_box()` at `layout.py:1702`**: update the two flanking space cells and the state name to use `bg_code` when highlighted
 
 No config schema changes are strictly required if `highlight_color` is automatically converted from fg→bg (e.g., `"32"` → `"42"`). A separate `highlight_bg_color` config field could be added to `config-schema.json` for explicit control.
 

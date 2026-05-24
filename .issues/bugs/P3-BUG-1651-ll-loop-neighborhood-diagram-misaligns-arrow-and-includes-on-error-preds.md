@@ -4,6 +4,12 @@ discovered_date: 2026-05-23
 discovered_by: capture-issue
 relates_to:
 - ENH-1642
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-1651: `ll-loop --show-diagrams` neighborhood view misaligns succ arrow, includes on_error preds, and lacks prev-state marker
@@ -289,6 +295,8 @@ _Added by `/ll:refine-issue` — verified against current source:_
 **Open** | Created: 2026-05-23 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T00:26:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27289f74-cb45-483a-9d52-9268dd9c6cb2.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8311c047-8810-418e-b17f-3b5114a82646.jsonl`
 - `/ll:wire-issue` - 2026-05-24T00:21:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f27164c8-4912-4ca8-a0c5-2f5e2455ff40.jsonl`
 - `/ll:refine-issue` - 2026-05-24T00:15:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39fbfb52-75b3-4f11-80a3-7cf258630615.jsonl`
 - `/ll:format-issue` - 2026-05-23T23:56:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d1880bf-1a07-4c5c-960e-3a80cb77af53.jsonl`
