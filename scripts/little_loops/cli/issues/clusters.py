@@ -10,15 +10,16 @@ from little_loops.cli.output import colorize, print_json
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
-    from little_loops.dependency_graph import DependencyGraph
     from little_loops.issue_parser import IssueInfo
 
 # ANSI color codes per relationship type
 EDGE_COLOR: dict[str, str] = {
-    "blocks": "31",  # red
-    "blocked_by": "33",  # yellow
-    "parent": "34",  # blue
-    "sibling": "36",  # cyan
+    "blocks": "31",       # red
+    "blocked_by": "33",   # yellow
+    "parent": "34",       # blue
+    "sibling": "36",      # cyan
+    "depends_on": "35",   # magenta
+    "relates_to": "37",   # white/dim
 }
 
 _BOX_HEIGHT = 4  # top border + 2 content lines + bottom border
@@ -26,16 +27,86 @@ _GAP_HEIGHT = 2  # rows between boxes for arrow drawing
 _BOX_MARGIN = 2  # left-margin column offset
 _MAX_BOX_WIDTH = 60
 
+# Edge type sets for --edges aliases
+_ALL_EDGE_TYPES = frozenset({"blocked_by", "blocks", "depends_on", "relates_to", "parent"})
+_BLOCKING_EDGE_TYPES = frozenset({"blocked_by", "blocks"})
+_HARD_EDGE_TYPES = frozenset({"blocked_by", "blocks", "depends_on"})
 
-def _get_connected_components(graph: DependencyGraph, all_ids: set[str]) -> list[list[str]]:
-    """BFS over undirected dependency graph to find connected components.
+# Active status set for --status=active default
+_ACTIVE_STATUSES = frozenset({"open", "in_progress", "blocked"})
+
+# Priority order when two relationships describe the same pair (lower = higher priority)
+_EDGE_PRIORITY: dict[str, int] = {
+    "blocked_by": 0,
+    "blocks": 1,
+    "parent": 2,
+    "depends_on": 3,
+    "relates_to": 4,
+}
+
+
+def _resolve_edge_types(edges_arg: str) -> set[str]:
+    """Resolve --edges argument to a set of edge type strings."""
+    if edges_arg == "all":
+        return set(_ALL_EDGE_TYPES)
+    if edges_arg == "blocking":
+        return set(_BLOCKING_EDGE_TYPES)
+    if edges_arg == "hard":
+        return set(_HARD_EDGE_TYPES)
+    return set(edges_arg.split(","))
+
+
+def _resolve_status_set(status_arg: str) -> set[str]:
+    """Resolve --status argument to a set of canonical status strings."""
+    if status_arg == "active":
+        return set(_ACTIVE_STATUSES)
+    if status_arg == "+deferred":
+        return set(_ACTIVE_STATUSES) | {"deferred"}
+    if status_arg == "all":
+        return {"open", "in_progress", "blocked", "done", "deferred"}
+    return set(status_arg.split(","))
+
+
+def _build_neighbour_map(issues: list[IssueInfo], edge_types: set[str]) -> dict[str, set[str]]:
+    """Build undirected neighbour map from IssueInfo for connectivity BFS.
+
+    Only connects issues to other issues present in the loaded list.
+    """
+    issue_ids = {i.issue_id for i in issues}
+    neighbours: dict[str, set[str]] = {i.issue_id: set() for i in issues}
+
+    for issue in issues:
+        iid = issue.issue_id
+        targets: list[str] = []
+
+        if "blocked_by" in edge_types:
+            targets.extend(issue.blocked_by)
+        if "blocks" in edge_types:
+            targets.extend(issue.blocks)
+        if "depends_on" in edge_types:
+            targets.extend(issue.depends_on)
+        if "relates_to" in edge_types:
+            targets.extend(issue.relates_to)
+        if "parent" in edge_types and issue.parent:
+            targets.append(issue.parent)
+
+        for target in targets:
+            if target in issue_ids:
+                neighbours[iid].add(target)
+                neighbours[target].add(iid)
+
+    return neighbours
+
+
+def _get_components(neighbours: dict[str, set[str]]) -> list[list[str]]:
+    """BFS over undirected neighbour map to find connected components.
 
     Returns components sorted by size descending.
     """
     visited: set[str] = set()
     components: list[list[str]] = []
 
-    for node in sorted(all_ids):
+    for node in sorted(neighbours):
         if node in visited:
             continue
         component: list[str] = []
@@ -46,10 +117,7 @@ def _get_connected_components(graph: DependencyGraph, all_ids: set[str]) -> list
                 continue
             visited.add(current)
             component.append(current)
-            neighbors = (
-                graph.blocked_by.get(current, set()) | graph.blocks.get(current, set())
-            ) & all_ids
-            for neighbor in sorted(neighbors):
+            for neighbor in sorted(neighbours.get(current, set())):
                 if neighbor not in visited:
                     queue.append(neighbor)
         components.append(component)
@@ -94,14 +162,52 @@ def _topo_sort_cluster(
     return result, has_cycle
 
 
-def _cluster_edges(cluster_ids: set[str], graph: DependencyGraph) -> list[tuple[str, str, str]]:
-    """Return directed edges within a cluster as (from_id, to_id, relationship)."""
-    edges: list[tuple[str, str, str]] = []
-    for id_ in sorted(cluster_ids):
-        for blocked_id in sorted(graph.blocks.get(id_, set())):
-            if blocked_id in cluster_ids:
-                edges.append((id_, blocked_id, "blocks"))
-    return edges
+def _cluster_edges(
+    cluster_ids: set[str],
+    issues: list[IssueInfo],
+    edge_types: set[str],
+) -> list[tuple[str, str, str]]:
+    """Return directed edges within a cluster as (from_id, to_id, relationship).
+
+    Deduplicates edges between the same pair, keeping the highest-priority
+    relationship type (blocked_by > blocks > parent > depends_on > relates_to).
+    """
+    issues_in_cluster = {i.issue_id: i for i in issues if i.issue_id in cluster_ids}
+    # frozenset key → (from_id, to_id, rel) for deduplication
+    best: dict[frozenset[str], tuple[str, str, str]] = {}
+
+    for iid in sorted(cluster_ids):
+        issue = issues_in_cluster.get(iid)
+        if not issue:
+            continue
+
+        candidates: list[tuple[str, str, str]] = []
+        if "blocked_by" in edge_types:
+            for t in sorted(issue.blocked_by):
+                if t in cluster_ids:
+                    candidates.append((iid, t, "blocked_by"))
+        if "blocks" in edge_types:
+            for t in sorted(issue.blocks):
+                if t in cluster_ids:
+                    candidates.append((iid, t, "blocks"))
+        if "depends_on" in edge_types:
+            for t in sorted(issue.depends_on):
+                if t in cluster_ids:
+                    candidates.append((iid, t, "depends_on"))
+        if "relates_to" in edge_types:
+            for t in sorted(issue.relates_to):
+                if t in cluster_ids:
+                    candidates.append((iid, t, "relates_to"))
+        if "parent" in edge_types and issue.parent and issue.parent in cluster_ids:
+            candidates.append((iid, issue.parent, "parent"))
+
+        for from_id, to_id, rel in candidates:
+            key: frozenset[str] = frozenset({from_id, to_id})
+            existing = best.get(key)
+            if existing is None or _EDGE_PRIORITY.get(rel, 99) < _EDGE_PRIORITY.get(existing[2], 99):
+                best[key] = (from_id, to_id, rel)
+
+    return list(best.values())
 
 
 def _render_cluster_diagram(
@@ -167,7 +273,7 @@ def _render_cluster_diagram(
 
     # Append annotations for skip-level edges (non-consecutive in topo order).
     pos = {id_: i for i, id_ in enumerate(ordered_ids)}
-    skip_edges = [(f, t, r) for (f, t), r in sorted(edge_map.items()) if pos[t] - pos[f] > 1]
+    skip_edges = [(f, t, r) for (f, t), r in sorted(edge_map.items()) if abs(pos[t] - pos[f]) > 1]
     if skip_edges:
         lines.append("")
         for src, dst, rel in skip_edges:
@@ -182,26 +288,28 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
 
     Args:
         config: Project configuration (provides issue directories and CLI settings)
-        args: Parsed CLI args (include_orphans: bool, min_connections: int, json: bool)
+        args: Parsed CLI args (include_orphans, min_connections, json, edges, status)
 
     Returns:
         Exit code (0 = success)
     """
     from little_loops.cli.output import terminal_width
-    from little_loops.dependency_graph import DependencyGraph
-    from little_loops.dependency_mapper.operations import gather_all_issue_ids
     from little_loops.issue_parser import find_issues
 
-    issues = find_issues(config)
+    edges_arg: str = getattr(args, "edges", "all")
+    status_arg: str = getattr(args, "status", "active")
+
+    edge_types = _resolve_edge_types(edges_arg)
+    status_set = _resolve_status_set(status_arg)
+
+    issues = find_issues(config, status_filter=status_set)
     if not issues:
         print("No active issues found.")
         return 0
 
-    issues_dir = config.project_root / config.issues.base_dir
-    all_known_ids = gather_all_issue_ids(issues_dir, config=config)
-    graph = DependencyGraph.from_issues(issues, all_known_ids=all_known_ids)
-    all_ids = set(graph.issues.keys())
-    components = _get_connected_components(graph, all_ids)
+    neighbours = _build_neighbour_map(issues, edge_types)
+    issues_map = {issue.issue_id: issue for issue in issues}
+    components = _get_components(neighbours)
 
     include_orphans: bool = getattr(args, "include_orphans", False)
     if not include_orphans:
@@ -211,14 +319,12 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
     if min_conn > 0:
 
         def _max_degree(comp: list[str]) -> int:
-            return max(
-                len(graph.blocked_by.get(id_, set()) | graph.blocks.get(id_, set())) for id_ in comp
-            )
+            return max(len(neighbours.get(id_, set())) for id_ in comp)
 
         components = [c for c in components if _max_degree(c) >= min_conn]
 
     if not components:
-        all_components = _get_connected_components(graph, all_ids)
+        all_components = _get_components(neighbours)
         if all(len(c) == 1 for c in all_components):
             print("No issue relationships found. Use --include-orphans to show isolated issues.")
         else:
@@ -230,7 +336,7 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
         output = []
         for idx, comp in enumerate(components, 1):
             comp_set = set(comp)
-            edges = _cluster_edges(comp_set, graph)
+            edges = _cluster_edges(comp_set, issues, edge_types)
             output.append(
                 {
                     "cluster_index": idx,
@@ -238,8 +344,8 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
                     "issues": [
                         {
                             "id": id_,
-                            "priority": graph.issues[id_].priority,
-                            "title": graph.issues[id_].title,
+                            "priority": issues_map[id_].priority,
+                            "title": issues_map[id_].title,
                         }
                         for id_ in sorted(comp)
                     ],
@@ -252,15 +358,19 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
     # Text rendering
     width = terminal_width()
     box_w = max(20, min(_MAX_BOX_WIDTH, width - _BOX_MARGIN * 2 - 4))
-    issues_map = graph.issues
     total_issues = sum(len(c) for c in components)
+
+    # Build blocked_by map from IssueInfo for topo sort ordering
+    blocked_by_map: dict[str, set[str]] = {
+        issue.issue_id: set(issue.blocked_by) for issue in issues
+    }
 
     for idx, comp in enumerate(components, 1):
         comp_set = set(comp)
-        edges = _cluster_edges(comp_set, graph)
+        edges = _cluster_edges(comp_set, issues, edge_types)
         edge_map: dict[tuple[str, str], str] = {(f, t): r for f, t, r in edges}
 
-        ordered, has_cycle = _topo_sort_cluster(comp, graph.blocked_by)
+        ordered, has_cycle = _topo_sort_cluster(comp, blocked_by_map)
 
         sep = "─" * 3
         n_issues = len(comp)

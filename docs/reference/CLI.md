@@ -838,6 +838,33 @@ ll-issues asw --dry-run                          # Alias: asw
 
 ---
 
+#### `ll-issues clusters` / `ll-issues cl`
+
+Visualize issue dependency clusters as box diagrams. Walks all relationship types across active issues by default and renders each connected component as a vertically stacked box diagram with arrows.
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--edges SET` | `all` | Relationship types to follow. Aliases: `all` (all types), `blocking` (`blocked_by`+`blocks` only — legacy behaviour), `hard` (`blocked_by`+`blocks`+`depends_on`). Or a comma-separated list of: `blocked_by,blocks,depends_on,relates_to,parent`. |
+| `--status SET` | `active` | Issue statuses to include. Aliases: `active` (`open`/`in_progress`/`blocked`), `+deferred` (active + deferred), `all` (everything except cancelled). Or a comma-separated list of canonical status values. |
+| `--include-orphans` | off | Include 1-issue clusters (isolated issues with no relationships). |
+| `--min-connections N` | 0 | Only show clusters where at least one issue has N or more connections. |
+| `--json` / `-j` | off | Output as JSON array. Each element has `cluster_index`, `issue_count`, `issues`, and `edges` (with `relationship` values: `blocked_by`, `blocks`, `depends_on`, `relates_to`, `parent`). |
+
+**Examples:**
+
+```bash
+ll-issues clusters                          # All relationship types, active issues
+ll-issues clusters --edges=blocking         # Legacy view: blocked_by/blocks only
+ll-issues clusters --status=+deferred       # Include deferred issues
+ll-issues clusters --status=all             # All statuses except cancelled
+ll-issues clusters --json | jq '[.[] | {n: .issue_count, types: [.edges[].relationship] | unique}]'
+ll-issues cl --include-orphans              # Show isolated issues too
+```
+
+---
+
 #### `ll-issues anchor-sweep` / `ll-issues asw`
 
 Scan all active issue files (`bugs/`, `features/`, `enhancements/`, `epics/`) for bare `file:line` references outside code fences and rewrite them to enclosing function/class/section anchors. Uses a language-agnostic regex backwards-scan (no AST) covering Python, TypeScript, JavaScript, Go, Rust, Ruby, Java, C#, and Markdown.

@@ -3879,6 +3879,159 @@ class TestIssuesCLIClusters:
             "False arrow drawn between independent roots BUG-010 and BUG-011"
         )
 
+    def test_clusters_depends_on_edges_under_default(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_soft_edges: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Default --edges=all surfaces depends_on pairs as clusters."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        all_ids = {item["id"] for c in data for item in c["issues"]}
+        assert "ENH-001" in all_ids
+        assert "ENH-002" in all_ids
+        # ENH-001 and ENH-002 must be in the same cluster
+        enh_cluster = next((c for c in data if any(i["id"] == "ENH-001" for i in c["issues"])), None)
+        assert enh_cluster is not None
+        assert any(i["id"] == "ENH-002" for i in enh_cluster["issues"])
+
+    def test_clusters_relates_to_and_parent_edges(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_soft_edges: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Default --edges=all surfaces relates_to and parent edges as clusters."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        all_ids = {item["id"] for c in data for item in c["issues"]}
+        # relates_to pair must be clustered
+        assert "BUG-020" in all_ids
+        assert "BUG-021" in all_ids
+        bug_cluster = next((c for c in data if any(i["id"] == "BUG-020" for i in c["issues"])), None)
+        assert bug_cluster is not None
+        assert any(i["id"] == "BUG-021" for i in bug_cluster["issues"])
+        # parent family must be clustered
+        assert "EPIC-001" in all_ids
+        epic_cluster = next((c for c in data if any(i["id"] == "EPIC-001" for i in c["issues"])), None)
+        assert epic_cluster is not None
+        assert any(i["id"] == "FEAT-010" for i in epic_cluster["issues"])
+        assert any(i["id"] == "FEAT-011" for i in epic_cluster["issues"])
+
+    def test_clusters_edges_blocking_regression(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_soft_edges: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--edges=blocking suppresses depends_on/relates_to/parent clusters (no hard edges = no clusters)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--edges=blocking", "--json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # No blocked_by/blocks in this fixture → no clusters under blocking-only mode
+        assert captured.out.strip() in (
+            "No issue relationships found. Use --include-orphans to show isolated issues.",
+            "[]",
+        )
+
+    def test_clusters_status_plus_deferred(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_soft_edges: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--status=+deferred surfaces deferred issues that share edges with active ones."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "clusters",
+                "--status=+deferred",
+                "--json",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        all_ids = {item["id"] for c in data for item in c["issues"]}
+        # BUG-030 is deferred with depends_on: BUG-020; must appear under +deferred
+        assert "BUG-030" in all_ids
+
+    def test_clusters_json_new_relationship_types(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_soft_edges: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """JSON output emits depends_on, relates_to, parent as valid relationship values."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        relationship_types = {e["relationship"] for c in data for e in c["edges"]}
+        # At least depends_on and relates_to and parent should appear
+        assert relationship_types & {"depends_on", "relates_to", "parent"}, (
+            f"Expected new relationship types in JSON output, got: {relationship_types}"
+        )
+
     def test_clusters_renders_skip_level_edges_for_fan_out(
         self,
         temp_project_dir: Path,
@@ -3917,6 +4070,52 @@ class TestIssuesCLIClusters:
             "No annotation line found containing both BUG-020 and BUG-022 "
             "(skip-level edge BUG-020→BUG-022 must appear as annotation)"
         )
+
+
+@pytest.fixture
+def issues_dir_with_soft_edges(temp_project_dir: Path) -> Path:
+    """Issue directories with depends_on, relates_to, and parent edges for cluster tests."""
+    issues_base = temp_project_dir / ".issues"
+    bugs_dir = issues_base / "bugs"
+    features_dir = issues_base / "features"
+    (issues_base / "completed").mkdir(parents=True)
+    (issues_base / "deferred").mkdir(parents=True)
+    bugs_dir.mkdir(parents=True, exist_ok=True)
+    features_dir.mkdir(parents=True, exist_ok=True)
+
+    # depends_on cluster: ENH-001 depends_on ENH-002
+    (features_dir / "P1-ENH-001-depends-a.md").write_text(
+        "---\ndepends_on:\n  - ENH-002\n---\n\n# ENH-001: Depends on ENH-002\n"
+    )
+    (features_dir / "P2-ENH-002-depends-b.md").write_text(
+        "# ENH-002: Base feature\n\n## Summary\nBase.\n"
+    )
+
+    # parent/sibling cluster: FEAT-010/FEAT-011 share parent EPIC-001
+    (features_dir / "P1-FEAT-010-child-a.md").write_text(
+        "---\nparent: EPIC-001\n---\n\n# FEAT-010: Child A\n"
+    )
+    (features_dir / "P1-FEAT-011-child-b.md").write_text(
+        "---\nparent: EPIC-001\n---\n\n# FEAT-011: Child B\n"
+    )
+    (features_dir / "P0-EPIC-001-parent.md").write_text(
+        "# EPIC-001: Parent epic\n\n## Summary\nParent.\n"
+    )
+
+    # relates_to pair: BUG-020 relates_to BUG-021
+    (bugs_dir / "P2-BUG-020-relates-a.md").write_text(
+        "---\nrelates_to:\n  - BUG-021\n---\n\n# BUG-020: Related A\n"
+    )
+    (bugs_dir / "P3-BUG-021-relates-b.md").write_text(
+        "# BUG-021: Related B\n\n## Summary\nRelated.\n"
+    )
+
+    # Deferred issue with depends_on (for --status=+deferred test)
+    (bugs_dir / "P2-BUG-030-deferred.md").write_text(
+        "---\nstatus: deferred\ndepends_on:\n  - BUG-020\n---\n\n# BUG-030: Deferred with dep\n"
+    )
+
+    return issues_base
 
 
 class TestIssuesCLIAnchorSweep:

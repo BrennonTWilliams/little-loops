@@ -1,8 +1,9 @@
 ---
 captured_at: '2026-05-23T22:59:14Z'
+completed_at: '2026-05-24T09:09:36Z'
 discovered_date: 2026-05-23
 discovered_by: capture-issue
-status: open
+status: done
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 82
@@ -201,6 +202,7 @@ Related (all `done`): BUG-1297 (skip-level edges in rendering + one-sided `block
 `bug`, `ll-issues`, `clusters`, `dependency-graph`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T08:58:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6e17c926-18e1-4f26-bebc-158795ce2275.jsonl`
 - `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c3f102e7-8b1c-40a0-92c7-9fea7bc9a310.jsonl`
 - `/ll:wire-issue` - 2026-05-24T07:41:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2345830b-0a2d-4cf9-8ce2-c8909925173d.jsonl`
 - `/ll:refine-issue` - 2026-05-24T07:32:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/995aa695-3c58-4826-8afa-21cb7bcdc032.jsonl`
@@ -208,7 +210,20 @@ Related (all `done`): BUG-1297 (skip-level edges in rendering + one-sided `block
 - `/ll:format-issue` - 2026-05-23T23:06:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b11d6a79-dbf6-4df8-88d4-640a18cdec70.jsonl`
 
 - `/ll:capture-issue` - 2026-05-23T22:59:14Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97f3f20e-c2e8-4f2d-bf70-a8aa3f33ad7b.jsonl`
+- `/ll:manage-issue` - 2026-05-24T09:09:36Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+
+## Resolution
+
+Fixed in three coordinated changes:
+
+1. **`scripts/little_loops/cli/issues/clusters.py`** — Replaced `_get_connected_components(graph)` with `_build_neighbour_map(issues, edge_types)` + `_get_components(neighbours)`. The new neighbour-map builder walks all five relationship types (`blocked_by`, `blocks`, `depends_on`, `relates_to`, `parent`) from `IssueInfo` directly, bypassing `DependencyGraph`. Added `_resolve_edge_types()` and `_resolve_status_set()` helpers, updated `EDGE_COLOR` with `depends_on`/`relates_to` entries, rewrote `_cluster_edges` with deduplication (highest-priority relationship wins per pair), and updated `cmd_clusters` to accept `--edges`/`--status` args. Fixed skip-level edge detection to use `abs()` so reversed-direction edges (e.g., `blocked_by`) are still annotated.
+
+2. **`scripts/little_loops/cli/issues/__init__.py`** — Added `--edges` (default `all`) and `--status` (default `active`) arguments to the `clusters` subparser.
+
+3. **`scripts/little_loops/issue_parser.py`** — Added optional `status_filter: set[str] | None = None` to `find_issues()`. When `None`, preserves existing behaviour (skips `done`/`cancelled`/`deferred`). When provided, includes only issues whose status is in the set.
+
+All 7560 tests pass; 9 new cluster tests added covering `depends_on`, `relates_to`, `parent`, `--edges=blocking` regression guard, `--status=+deferred`, JSON relationship types, and `status_filter` parameter variations.
 
 ---
 
-**Open** | Created: 2026-05-23 | Priority: P2
+**Done** | Created: 2026-05-23 | Priority: P2

@@ -737,8 +737,9 @@ def find_issues(
     config: BRConfig,
     category: str | None = None,
     skip_ids: set[str] | None = None,
-    only_ids: set[str] | None = None,
+    only_ids: list[str] | set[str] | None = None,
     type_prefixes: set[str] | None = None,
+    status_filter: set[str] | None = None,
 ) -> list[IssueInfo]
 ```
 
@@ -748,8 +749,9 @@ Find all issues matching criteria, sorted by priority.
 - `config` - Project configuration
 - `category` - Optional category to filter (e.g., `"bugs"`)
 - `skip_ids` - Issue IDs to skip
-- `only_ids` - If provided, only include these issue IDs
+- `only_ids` - If provided, only include these issue IDs. When a list, results are returned in list order; when a set, results are sorted by priority.
 - `type_prefixes` - If provided, only include issues whose ID starts with one of these prefixes (e.g., `{"BUG", "ENH"}`)
+- `status_filter` - If provided, only include issues whose status is in this set. When `None` (default), skips `done`/`cancelled`/`deferred` issues, preserving all existing caller behaviour.
 
 **Returns:** List of `IssueInfo` sorted by priority
 
@@ -3059,7 +3061,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `next-issue` | Single highest-confidence issue ID (alias: `nx`) |
 | `next-issues` | All active issues in ranked order (alias: `nxs`); optional count argument |
 | `append-log` | Append a session log entry to an issue file |
-| `clusters` | Visualize issue dependency clusters as box diagrams (`--include-orphans`, `--min-connections N`, `--json`) |
+| `clusters` | Visualize issue dependency clusters as box diagrams (`--include-orphans`, `--min-connections N`, `--json`, `--edges SET`, `--status SET`) |
 | `anchor-sweep` | Rewrite bare `file:line` references in active issue files to enclosing anchor form (`--dry-run`, `--issues-dir DIR`) |
 | `check-flag` | Exit 0 if a named boolean frontmatter field equals `true`; takes `issue_id` and `field` positional args |
 | `check-readiness` | Exit 0 if `confidence_score` and `outcome_confidence` meet thresholds; reads from `ll-config.json` or `--readiness`/`--outcome` flags |

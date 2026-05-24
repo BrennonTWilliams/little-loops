@@ -339,6 +339,27 @@ Examples:
         help="Only show clusters where at least one issue has N or more connections",
     )
     cl.add_argument("--json", "-j", action="store_true", help="Output as JSON array")
+    cl.add_argument(
+        "--edges",
+        default="all",
+        metavar="SET",
+        help=(
+            "Edge types to include. Aliases: all (default, all relationship types), "
+            "blocking (blocked_by+blocks only, reproduces legacy behaviour), "
+            "hard (blocked_by+blocks+depends_on). "
+            "Or a comma-separated list of: blocked_by,blocks,depends_on,relates_to,parent."
+        ),
+    )
+    cl.add_argument(
+        "--status",
+        default="active",
+        metavar="SET",
+        help=(
+            "Issue statuses to include. Aliases: active (default, open/in_progress/blocked), "
+            "+deferred (active + deferred), all (everything except cancelled). "
+            "Or a comma-separated list of canonical status values."
+        ),
+    )
     add_config_arg(cl)
 
     refine_s = subs.add_parser(

@@ -17,6 +17,8 @@ def make_issue(
     blocked_by: list[str] | None = None,
     blocks: list[str] | None = None,
     depends_on: list[str] | None = None,
+    relates_to: list[str] | None = None,
+    parent: str | None = None,
 ) -> IssueInfo:
     """Helper to create test IssueInfo objects."""
     return IssueInfo(
@@ -28,6 +30,8 @@ def make_issue(
         blocked_by=blocked_by or [],
         blocks=blocks or [],
         depends_on=depends_on or [],
+        relates_to=relates_to or [],
+        parent=parent,
     )
 
 

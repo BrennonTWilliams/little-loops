@@ -834,6 +834,7 @@ def find_issues(
     skip_ids: set[str] | None = None,
     only_ids: list[str] | set[str] | None = None,
     type_prefixes: set[str] | None = None,
+    status_filter: set[str] | None = None,
 ) -> list[IssueInfo]:
     """Find all issues matching criteria.
 
@@ -846,6 +847,9 @@ def find_issues(
             When a set, results are sorted by priority as usual.
         type_prefixes: If provided, only include issues whose ID starts with
             one of these prefixes (e.g., {"BUG", "ENH"})
+        status_filter: If provided, only include issues whose status is in this
+            set. When None (default), skips done/cancelled/deferred issues
+            (preserves all existing caller behaviour).
 
     Returns:
         List of IssueInfo sorted by priority, or in only_ids list order when
@@ -868,8 +872,11 @@ def find_issues(
 
         for issue_file in issue_dir.glob("*.md"):
             info = parser.parse_file(issue_file)
-            # Status-based filter: skip done/cancelled/deferred regardless of dir
-            if info.status in ("done", "cancelled", "deferred"):
+            # Status-based filter
+            if status_filter is None:
+                if info.status in ("done", "cancelled", "deferred"):
+                    continue
+            elif info.status not in status_filter:
                 continue
             # Apply skip filter
             if info.issue_id in skip_ids:

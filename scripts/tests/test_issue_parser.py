@@ -1128,6 +1128,60 @@ class TestFindIssues:
         assert "BUG-201" in issue_ids
         assert len(issues) == 1
 
+    def test_find_issues_status_filter_includes_deferred(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """status_filter={'open','in_progress','blocked','deferred'} includes deferred issues."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        (bugs_dir / "P0-BUG-300-deferred.md").write_text(
+            "---\nstatus: deferred\n---\n\n# BUG-300: Parked\n\nContent."
+        )
+        (bugs_dir / "P1-BUG-301-active.md").write_text(
+            "---\nstatus: open\n---\n\n# BUG-301: Active\n\nContent."
+        )
+        (bugs_dir / "P2-BUG-302-done.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-302: Done\n\nContent."
+        )
+
+        issues = find_issues(
+            config,
+            category="bugs",
+            status_filter={"open", "in_progress", "blocked", "deferred"},
+        )
+
+        issue_ids = [i.issue_id for i in issues]
+        assert "BUG-300" in issue_ids  # deferred now included
+        assert "BUG-301" in issue_ids
+        assert "BUG-302" not in issue_ids  # done still excluded
+
+    def test_find_issues_status_filter_none_preserves_default(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """status_filter=None (default) must preserve deferred-exclusion behaviour."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        (bugs_dir / "P0-BUG-400-deferred.md").write_text(
+            "---\nstatus: deferred\n---\n\n# BUG-400: Parked\n\nContent."
+        )
+        (bugs_dir / "P1-BUG-401-open.md").write_text("# BUG-401: Open\n\nContent.")
+
+        issues = find_issues(config, category="bugs")  # status_filter=None (default)
+
+        issue_ids = [i.issue_id for i in issues]
+        assert "BUG-400" not in issue_ids
+        assert "BUG-401" in issue_ids
+
     def test_find_issues_only_ids_ordered(
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:
