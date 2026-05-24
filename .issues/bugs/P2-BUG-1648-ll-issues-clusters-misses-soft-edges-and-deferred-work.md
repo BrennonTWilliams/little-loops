@@ -37,9 +37,9 @@ Default invocation walks **all relationship types across active status** (`open`
 
 Three independent narrowings compose:
 
-1. **Edge filter** — `scripts/little_loops/cli/issues/clusters.py:49-51` `_get_connected_components()` walks only `graph.blocked_by ∪ graph.blocks`. The four active `depends_on` pairs are invisible. The single visible cluster is ENH-977 blocked_by ENH-494.
+1. **Edge filter** — `scripts/little_loops/cli/issues/clusters.py:30` `_get_connected_components()` walks only `graph.blocked_by ∪ graph.blocks` (neighbor expression at line 49-51). The four active `depends_on` pairs are invisible. The single visible cluster is ENH-977 blocked_by ENH-494.
 
-2. **Status filter** — `scripts/little_loops/issue_parser.py:872` `find_issues()` unconditionally drops `done`/`cancelled`/`deferred`. Every deferred cluster (verified: ENH-1073, FEAT-1156 both `status: deferred`) is excluded before the graph is built.
+2. **Status filter** — `scripts/little_loops/issue_parser.py:831` `find_issues()` unconditionally drops `done`/`cancelled`/`deferred` at lines 871-872. Every deferred cluster (verified: ENH-1073, FEAT-1156 both `status: deferred`) is excluded before the graph is built.
 
 3. **Graph representation gap** — `scripts/little_loops/dependency_graph.py` `DependencyGraph` models `blocked_by`/`blocks`/`depends_on_edges` only. `relates_to` and `parent` are not stored. EPIC-1622's 5-issue family and soft `relates_to` links cannot be surfaced at all.
 
@@ -65,7 +65,7 @@ Instead, build the clusters command's graph directly from already-parsed `IssueI
    - `--status <set>` default `active`. Comma list of canonical statuses or aliases `active` (`open`/`in_progress`/`blocked`) / `all` (everything except `cancelled`) / `+deferred`.
    - Existing `--include-orphans`, `--min-connections`, `--json` unchanged.
 
-3. **Status-scoped issue loading** — `find_issues()` (`scripts/little_loops/issue_parser.py:868-897`) gains optional `status_filter: set[str] | None = None`. When `None`, current behaviour preserved. `cmd_clusters` passes the resolved status set explicitly.
+3. **Status-scoped issue loading** — `find_issues()` (`scripts/little_loops/issue_parser.py:831`) gains optional `status_filter: set[str] | None = None`. When `None`, current behaviour preserved. `cmd_clusters` passes the resolved status set explicitly.
 
 4. **Renderer updates** — `scripts/little_loops/cli/issues/clusters.py`:
    - `EDGE_COLOR` (line 17-22): add `depends_on` → `35` (magenta), `relates_to` → `37` (white/dim); keep existing `blocks`/`blocked_by`/`parent`/`sibling`.
@@ -160,6 +160,7 @@ Related (all `done`): BUG-1297 (skip-level edges in rendering + one-sided `block
 `bug`, `ll-issues`, `clusters`, `dependency-graph`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-24T03:55:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86b55377-f187-4e58-9c10-c40043e89408.jsonl`
 - `/ll:format-issue` - 2026-05-23T23:06:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b11d6a79-dbf6-4df8-88d4-640a18cdec70.jsonl`
 
 - `/ll:capture-issue` - 2026-05-23T22:59:14Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97f3f20e-c2e8-4f2d-bf70-a8aa3f33ad7b.jsonl`

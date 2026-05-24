@@ -31,7 +31,7 @@ In a single `harness-exploratory-user-eval` run, `UnixSocketTransport` logged ~1
 - **File**: `scripts/little_loops/transport.py`
 - **Anchor**: `UnixSocketTransport`, around lines 114–203
 - The cap `max_clients=8` is a hard-coded dataclass default (around line 136). It is configurable via `config.socket.max_clients` (line ~618) but the default is too low.
-- The accept-rejection log path (around lines 183–191) has no rate limiting, unlike the slow-client drop path which already uses `_DROP_LOG_INTERVAL_SEC` (lines ~248–254).
+- The accept-rejection log path (around lines 183–186) has no rate limiting, unlike the slow-client drop path which already uses `_DROP_LOG_INTERVAL_SEC` (lines ~248–254).
 - No metric/counter on `LoopMetrics` for client rejections.
 
 ## Current Behavior
@@ -47,7 +47,7 @@ In a single `harness-exploratory-user-eval` run, `UnixSocketTransport` logged ~1
 ## Proposed Solution
 
 1. Bump the dataclass default for `max_clients` from 8 to 32 in `transport.py` (around line 136).
-2. Add rate-limiting to the accept-rejection log path mirroring the existing `_DROP_LOG_INTERVAL_SEC` pattern at lines 248–254.
+2. Add rate-limiting to the accept-rejection log path (around lines 183–186) mirroring the existing `_DROP_LOG_INTERVAL_SEC` pattern at lines 248–254.
 3. Expose a `client_rejections` counter on the transport stats / `LoopMetrics` so the loop runner can include "client cap hit N times" in the run summary.
 
 ## Implementation Steps
@@ -113,6 +113,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `transport`, `logging`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-24T03:55:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86b55377-f187-4e58-9c10-c40043e89408.jsonl`
 - `/ll:format-issue` - 2026-05-23T19:20:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76e6c26b-1969-49d5-91a6-84282f7c1ac2.jsonl`
 
 - `/ll:capture-issue` — 2026-05-23T12:00:00Z
