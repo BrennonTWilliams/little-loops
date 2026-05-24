@@ -330,6 +330,19 @@ def cmd_resume(
     from little_loops.fsm.persistence import RESUMABLE_STATUSES
 
     resumable = [(iid, s) for iid, s in instances if s.status in RESUMABLE_STATUSES]
+
+    explicit_instance_id = getattr(args, "instance_id", None)
+    if explicit_instance_id:
+        filtered = [(iid, s) for iid, s in resumable if iid == explicit_instance_id]
+        if not filtered:
+            print(f"Instance '{explicit_instance_id}' not found among resumable instances of '{loop_name}'.")
+            if resumable:
+                print("Resumable instances:")
+                for iid, _ in resumable:
+                    print(f"  {iid or loop_name}")
+            return 1
+        resumable = filtered
+
     if len(resumable) > 1:
         print(f"Multiple instances of '{loop_name}' are resumable:")
         for iid, _ in resumable:
