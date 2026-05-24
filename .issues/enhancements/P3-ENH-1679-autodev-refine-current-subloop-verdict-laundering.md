@@ -1,7 +1,7 @@
 ---
 discovered_date: 2026-05-24
 discovered_by: audit-loop-run
-status: open
+status: done
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 96
@@ -9,6 +9,7 @@ score_complexity: 21
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+completed_at: 2026-05-24T20:52:39Z
 ---
 
 # ENH-1679: Fix sub-loop verdict laundering in autodev `refine_current` state
@@ -254,6 +255,8 @@ _Added by `/ll:refine-issue` — concrete implementation references:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-24T20:52:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:ready-issue` - 2026-05-24T20:49:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e16c4fca-3245-4039-9073-2b4646700758.jsonl`
 - `/ll:confidence-check` - 2026-05-24T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e418c46-c569-4a21-b915-a182722191d8.jsonl`
 - `/ll:decide-issue` - 2026-05-24T20:44:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebfda8b1-7c6f-4402-a680-0e45fdae0827.jsonl`
 - `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/30e56638-d3ca-460d-97df-a2c95bf21e50.jsonl`

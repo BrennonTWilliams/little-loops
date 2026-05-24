@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -1373,18 +1374,79 @@ class TestAutodevLoop:
         assert state.get("context_passthrough") is True
 
     def test_refine_current_has_success_and_failure_routes(self, data: dict) -> None:
-        """refine_current must define on_success and on_failure routes."""
+        """refine_current must define on_success and on_failure routes, and they must differ
+        (ENH-1679: failure should not silently reuse the success path)."""
         state = data["states"].get("refine_current", {})
         assert "on_success" in state
         assert "on_failure" in state
+        assert state["on_success"] != state["on_failure"], (
+            "refine_current.on_success and on_failure must differ — "
+            "routing both to the same state launders the sub-loop verdict (ENH-1679)"
+        )
 
-    def test_refine_current_has_on_no_route(self, data: dict) -> None:
-        """refine_current must define on_no so that signal/timeout/max_iterations termination
-        of the inner sub-loop routes to copy_broke_down instead of returning None → 'No valid
-        transition' error that terminates the outer autodev loop."""
+    def test_refine_current_failure_routes_to_skip_inflight(self, data: dict) -> None:
+        """refine_current.on_failure must route to skip_inflight, not copy_broke_down (ENH-1679).
+        A sub-loop that exits via its failed terminal (e.g. diagnose → failed) should skip
+        the issue, not proceed to implement_current as if refinement succeeded."""
         state = data["states"].get("refine_current", {})
-        assert state.get("on_no") == "copy_broke_down", (
-            f"refine_current.on_no should be 'copy_broke_down', got {state.get('on_no')!r}"
+        assert state.get("on_failure") == "skip_inflight", (
+            f"refine_current.on_failure should be 'skip_inflight', got {state.get('on_failure')!r}"
+        )
+
+    def test_refine_current_error_routes_to_skip_inflight(self, data: dict) -> None:
+        """refine_current.on_error must route to skip_inflight (ENH-1679).
+        A signal or executor crash during refinement should skip the issue."""
+        state = data["states"].get("refine_current", {})
+        assert state.get("on_error") == "skip_inflight", (
+            f"refine_current.on_error should be 'skip_inflight', got {state.get('on_error')!r}"
+        )
+
+    def test_refine_current_on_no_routes_to_dequeue_next(self, data: dict) -> None:
+        """refine_current.on_no (sub-loop queue empty / never started) must route to dequeue_next."""
+        state = data["states"].get("refine_current", {})
+        assert state.get("on_no") == "dequeue_next", (
+            f"refine_current.on_no should be 'dequeue_next', got {state.get('on_no')!r}"
+        )
+
+    def test_skip_inflight_state_exists(self, data: dict) -> None:
+        """skip_inflight state must be declared in autodev (ENH-1679)."""
+        assert "skip_inflight" in data["states"], (
+            "skip_inflight state not found — add it as the on_failure/on_error target "
+            "for refine_current (ENH-1679)"
+        )
+
+    def test_skip_inflight_is_shell_action(self, data: dict) -> None:
+        """skip_inflight must use action_type: shell (ENH-1679)."""
+        state = data["states"].get("skip_inflight", {})
+        assert state.get("action_type") == "shell", (
+            f"skip_inflight.action_type should be 'shell', got {state.get('action_type')!r}"
+        )
+
+    def test_skip_inflight_writes_skipped_file(self, data: dict) -> None:
+        """skip_inflight must append to autodev-skipped.txt (ENH-1679)."""
+        state = data["states"].get("skip_inflight", {})
+        action = state.get("action", "")
+        assert "autodev-skipped.txt" in action, (
+            "skip_inflight must record the skipped issue ID in autodev-skipped.txt"
+        )
+
+    def test_skip_inflight_clears_autodev_inflight(self, data: dict) -> None:
+        """skip_inflight must clear autodev-inflight so done does not surface a stale warning (ENH-1679)."""
+        state = data["states"].get("skip_inflight", {})
+        action = state.get("action", "")
+        assert "autodev-inflight" in action, (
+            "skip_inflight must clear autodev-inflight so BUG-1226 done-state "
+            "warning is not triggered for a cleanly-skipped issue"
+        )
+
+    def test_skip_inflight_routes_to_dequeue_next(self, data: dict) -> None:
+        """skip_inflight must route to dequeue_next on success and on_error (ENH-1679)."""
+        state = data["states"].get("skip_inflight", {})
+        assert state.get("next") == "dequeue_next", (
+            f"skip_inflight.next should be 'dequeue_next', got {state.get('next')!r}"
+        )
+        assert state.get("on_error") == "dequeue_next", (
+            f"skip_inflight.on_error should be 'dequeue_next', got {state.get('on_error')!r}"
         )
 
     def test_implement_current_uses_shell_exit_fragment(self, data: dict) -> None:
@@ -2030,6 +2092,30 @@ class TestAutodevLoop:
         state = data["states"].get("rerun_confidence_after_wire", {})
         assert state.get("on_rate_limit_exhausted") == "done", (
             f"rerun_confidence_after_wire.on_rate_limit_exhausted should be 'done', got {state.get('on_rate_limit_exhausted')!r}"
+        )
+
+    def test_skip_inflight_shell_action_writes_skipped_and_clears_inflight(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """skip_inflight shell action must append the issue ID to autodev-skipped.txt and
+        remove autodev-inflight (ENH-1679).  Modelled on TestAutoRefineAndImplementLoop
+        shell-action tests and uses _bash() from test_loops_recursive_refine.py."""
+        state = data["states"].get("skip_inflight", {})
+        action = state.get("action", "")
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True)
+        (loops_tmp / "autodev-inflight").write_text("ENH-0001")
+        (loops_tmp / "autodev-skipped.txt").write_text("")
+        # Substitute the template variable with a concrete value before running
+        script = action.replace("${captured.input.output}", "ENH-0001")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"skip_inflight action failed: {result.stderr}"
+        skipped = (loops_tmp / "autodev-skipped.txt").read_text()
+        assert "ENH-0001" in skipped, "skip_inflight must write the issue ID to autodev-skipped.txt"
+        assert not (loops_tmp / "autodev-inflight").exists(), (
+            "skip_inflight must remove autodev-inflight so done does not surface a stale warning"
         )
 
 

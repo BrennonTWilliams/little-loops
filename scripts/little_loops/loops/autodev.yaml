@@ -94,16 +94,31 @@ states:
     # refine-to-ready-issue. context_passthrough forwards captured.input as
     # context.input to the sub-loop. on_success = sub-loop reached 'done' (true
     # confidence pass OR breakdown_issue path). on_failure = sub-loop reached
-    # 'failed' — still route through copy_broke_down so the rest of the state
-    # machine can detect children and update the queue consistently.
+    # 'failed' terminal (e.g. diagnose → failed) — route to skip_inflight so
+    # the issue is recorded as skipped and the queue advances without passing an
+    # unrefined issue to implement_current. on_error (signal/crash) takes the
+    # same skip path. on_no (queue empty / sub-loop never started) drains normally.
     fragment: with_rate_limit_handling
     loop: refine-to-ready-issue
     context_passthrough: true
     on_success: copy_broke_down
-    on_failure: copy_broke_down
-    on_error: copy_broke_down
-    on_no: copy_broke_down
+    on_failure: skip_inflight
+    on_error: skip_inflight
+    on_no: dequeue_next
     on_rate_limit_exhausted: dequeue_next
+
+  skip_inflight:
+    # ENH-1679: record the in-flight issue as skipped and clear the inflight
+    # sentinel so `done` does not surface a stale warning. Reached when
+    # refine-to-ready-issue exits via its `failed` terminal or the executor
+    # receives a signal/crash (on_error). Mirrors the skip_and_continue pattern
+    # in auto-refine-and-implement.yaml.
+    action: |
+      echo "${captured.input.output}" >> .loops/tmp/autodev-skipped.txt
+      rm -f .loops/tmp/autodev-inflight
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
 
   copy_broke_down:
     # Handshake: refine-to-ready-issue writes .loops/tmp/recursive-refine-broke-down
