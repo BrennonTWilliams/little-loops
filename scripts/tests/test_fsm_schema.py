@@ -784,6 +784,53 @@ class TestFSMLoop:
         assert restored.max_iterations == original.max_iterations
         assert restored.timeout == original.timeout
 
+    def test_roundtrip_on_max_iterations(self) -> None:
+        """on_max_iterations field survives to_dict/from_dict roundtrip."""
+        original = FSMLoop(
+            name="capped-loop",
+            initial="work",
+            on_max_iterations="summarize",
+            states={
+                "work": StateConfig(action="run.sh", on_yes="done", on_no="work"),
+                "summarize": StateConfig(action="summarize.sh", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        d = original.to_dict()
+        assert d["on_max_iterations"] == "summarize"
+
+        restored = FSMLoop.from_dict(d)
+        assert restored.on_max_iterations == "summarize"
+
+    def test_on_max_iterations_omitted_when_none(self) -> None:
+        """on_max_iterations is absent from to_dict when not set (default None)."""
+        fsm = FSMLoop(
+            name="basic",
+            initial="work",
+            states={
+                "work": StateConfig(action="run.sh", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        d = fsm.to_dict()
+        assert "on_max_iterations" not in d
+
+    def test_on_max_iterations_included_in_referenced_states(self) -> None:
+        """get_all_referenced_states includes the on_max_iterations target."""
+        fsm = FSMLoop(
+            name="capped-loop",
+            initial="work",
+            on_max_iterations="summarize",
+            states={
+                "work": StateConfig(action="run.sh", on_yes="done", on_no="work"),
+                "summarize": StateConfig(action="summarize.sh", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        refs = fsm.get_all_referenced_states()
+        assert "summarize" in refs
+
 
 class TestFSMValidation:
     """Tests for FSM validation logic."""

@@ -934,6 +934,13 @@ def run_foreground(
                 to_state = event.get("to", "")
                 print(f"{indent}       {colorize('->', '2')} {colorize(to_state, '1')}", flush=True)
 
+        elif event_type == "max_iterations_summary":
+            if not quiet:
+                summary_state = event.get("summary_state", "")
+                iters = event.get("iterations", 0)
+                msg = f"iteration cap reached ({iters}); running summary state '{summary_state}'"
+                print(f"{indent}       {colorize(msg, '38;5;208')}", flush=True)
+
         elif event_type == "stall_detected":
             if not quiet:
                 state = event.get("state", "")

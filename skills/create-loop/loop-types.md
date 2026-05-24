@@ -946,6 +946,19 @@ The `count_done` shell gate applies the following logic:
 
 Override `min_pass_rate` per run to require 100% satisfaction: `ll-loop run general-task --context min_pass_rate=1.0`. Loops that omit `min_pass_rate` from `context:` default to 0.95.
 
+**Iteration-Cap Summary Hook (`on_max_iterations` — ENH-1631)**
+
+When a `general-task` run exhausts its 100-iteration budget before all DoD criteria are satisfied, the `on_max_iterations: summarize_partial` hook fires. The `summarize_partial` state reads the DoD and plan artifacts, then writes a one-paragraph summary to `.loops/tmp/general-task-summary.md` covering: what was accomplished, which DoD criteria remain unmet, and recommended next actions. The loop then terminates with `terminated_by: max_iterations`.
+
+This field is available on any loop YAML:
+
+```yaml
+max_iterations: 100
+on_max_iterations: summarize_partial  # state to run once when cap fires
+```
+
+The named state runs **exactly once** (the iteration budget is not extended). Use it to write a handoff artifact so the next operator or session can pick up where the run left off without re-reading 100 iterations of JSONL. `/ll:audit-loop-run` surfaces runs with this hook as verdict `partial` (summary written).
+
 ---
 
 **Example: Harness `refine-issue` over all active issues**

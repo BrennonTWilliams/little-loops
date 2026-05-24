@@ -165,6 +165,7 @@ Determine the verdict using the terminal state from `loop_complete` event (`term
 | `met` | Terminal reached AND all threshold contracts verified AND all expected artifact mutations occurred |
 | `phantom` | Terminal reached AND (artifacts unchanged OR threshold unverified — only model self-reported via `llm_structured` evaluator) |
 | `partial` | Terminal reached AND some but not all contracts satisfied |
+| `partial` | `terminated_by == "max_iterations"` AND `max_iterations_summary` event present in JSONL (summary state ran; artifact written) |
 | `degraded` | Loop completed but metric trended downward vs baseline captured in `state.json` |
 
 Output the structured scorecard block:

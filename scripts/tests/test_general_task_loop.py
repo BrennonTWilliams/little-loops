@@ -63,6 +63,7 @@ class TestGeneralTaskLoopFile:
             "done",
             "diagnose",
             "failed",
+            "summarize_partial",
         }
         assert expected.issubset(set(states.keys())), (
             f"Missing states: {expected - set(states.keys())}"
@@ -599,3 +600,29 @@ class TestCountFinalShellScript:
         script = _load_count_final_script()
         result = _bash(script, cwd=tmp_path)
         assert result.returncode != 0, "Script must exit non-zero when DoD file is missing"
+
+
+class TestENH1631SummarizePartial:
+    """ENH-1631: on_max_iterations: summarize_partial wiring in general-task.yaml."""
+
+    def test_on_max_iterations_set_to_summarize_partial(self, raw_data: dict) -> None:
+        assert raw_data.get("on_max_iterations") == "summarize_partial"
+
+    def test_summarize_partial_state_exists(self, raw_data: dict) -> None:
+        assert "summarize_partial" in raw_data.get("states", {})
+
+    def test_summarize_partial_action_references_dod_artifact(self, raw_data: dict) -> None:
+        action = raw_data["states"]["summarize_partial"].get("action", "")
+        assert "general-task-dod.md" in action
+
+    def test_summarize_partial_action_references_plan_artifact(self, raw_data: dict) -> None:
+        action = raw_data["states"]["summarize_partial"].get("action", "")
+        assert "general-task-plan.md" in action
+
+    def test_summarize_partial_action_references_summary_artifact(self, raw_data: dict) -> None:
+        action = raw_data["states"]["summarize_partial"].get("action", "")
+        assert "general-task-summary.md" in action
+
+    def test_summarize_partial_routes_to_done(self, raw_data: dict) -> None:
+        state = raw_data["states"]["summarize_partial"]
+        assert state.get("next") == "done"

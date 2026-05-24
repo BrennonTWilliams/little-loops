@@ -4,6 +4,7 @@ category: harness
 initial: define_done
 max_iterations: 100
 on_handoff: spawn
+on_max_iterations: summarize_partial
 
 context:
   min_pass_rate: 0.95
@@ -280,6 +281,21 @@ states:
     action_type: prompt
     next: check_done
     on_error: diagnose
+
+  summarize_partial:
+    action_type: prompt
+    action: |
+      The general-task loop has reached its iteration limit before all
+      Definition of Done criteria were satisfied.
+
+      Read ${env.PWD}/.loops/tmp/general-task-dod.md and
+      ${env.PWD}/.loops/tmp/general-task-plan.md (if they exist).
+      Write a one-paragraph summary to
+      ${env.PWD}/.loops/tmp/general-task-summary.md covering:
+      (1) what was accomplished (list completed DoD criteria),
+      (2) which DoD criteria remain unmet,
+      (3) recommended next actions for a human operator.
+    next: done
 
   done:
     terminal: true

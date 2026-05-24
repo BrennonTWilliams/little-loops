@@ -3922,6 +3922,7 @@ class FSMLoop:
     context: dict[str, Any] = {}       # User-defined shared variables
     scope: list[str] = []              # Paths for concurrency control
     max_iterations: int = 50           # Safety limit
+    on_max_iterations: str | None = None  # State to run once when cap fires (ENH-1631)
     max_edge_revisits: int = 100       # Per-edge cycle detection limit (see below)
     backoff: float | None = None       # Seconds between iterations
     timeout: int | None = None         # Max runtime in seconds

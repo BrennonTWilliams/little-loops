@@ -766,6 +766,8 @@ def cmd_show(
     # Line 2: source · max: N iter · handoff: X [· optional fields]
     config_parts: list[str] = [str(path), f"max: {fsm.max_iterations} iter"]
     config_parts.append(f"handoff: {fsm.on_handoff}")
+    if fsm.on_max_iterations is not None:
+        config_parts.append(f"on_max_iterations: {fsm.on_max_iterations}")
     if fsm.timeout:
         config_parts.append(f"timeout: {fsm.timeout}s")
     if fsm.backoff:

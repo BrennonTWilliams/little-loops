@@ -78,6 +78,7 @@ Three loop-level fields guard against runaway loops:
 | Field | Default | Behavior |
 |-------|---------|----------|
 | `max_iterations` | `50` | Total state executions before the loop terminates with `terminated_by="max_iterations"` |
+| `on_max_iterations` | `null` | State to execute exactly once when the iteration cap fires. If set, the named state runs before the loop terminates. Emits `max_iterations_summary` event. `terminated_by` remains `"max_iterations"`. See [ENH-1631](#on_max_iterations-summary-hook). |
 | `max_edge_revisits` | `100` | Maximum times any single state→state edge may fire; terminates with `terminated_by="cycle_detected"` (exit code 1) when exceeded. Edge counts survive `--resume`. |
 | `circuit.repeated_failure` | unset | When configured, observes consecutive identical `(state, exit_code, verdict)` triples across iterations. Fires after `window` consecutive matches (default `3`) and either terminates with `terminated_by="stall_detected"` or routes to `on_repeated_failure: <state>`. See [stall detector](#stall-detector-circuit-repeated-failure) below. |
 

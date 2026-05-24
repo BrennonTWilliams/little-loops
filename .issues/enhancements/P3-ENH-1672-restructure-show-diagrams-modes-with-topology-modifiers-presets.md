@@ -1,10 +1,17 @@
 ---
-captured_at: "2026-05-24T07:08:02Z"
+captured_at: '2026-05-24T07:08:02Z'
 discovered_date: 2026-05-24
 discovered_by: capture-issue
 status: open
 priority: P3
 type: ENH
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # ENH-1672: Restructure --show-diagrams modes with topology + modifier flags + presets
@@ -210,6 +217,10 @@ Run `grep -rn "show_diagrams\|--show-diagrams" scripts/ docs/ loops/` to enumera
 - `scripts/little_loops/cli/loop/layout.py` (4 docstring references)
 - Loop YAMLs in `loops/` — check if any embed `--show-diagrams=main|full|mini` in their definitions (must be migrated or the hard rename breaks them)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/run.py` — `cmd_run()` calls `run_foreground(executor, fsm, args)` from `_helpers`; args flow through unmodified; no code change needed, but verify `resolve_facets()` uses `getattr` with defaults for the three new modifier attrs so this caller is not broken [Agent 1 finding]
+- `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_resume()` calls `run_foreground()`; modifier attrs arrive via the updated `resume` subparser in `__init__.py` — covered automatically once argparse is updated; no direct changes needed in `lifecycle.py` [Agent 1+2 finding]
+
 ### Similar Patterns
 
 - The existing `--verbose` flag on `ll-loop` is the closest precedent for an orthogonal density modifier
@@ -226,6 +237,21 @@ Run `grep -rn "show_diagrams\|--show-diagrams" scripts/ docs/ loops/` to enumera
   - Subprocess re-emission: new modifier flags are forwarded
 - `scripts/tests/test_ll_loop.py` — argparse smoke tests for new flags on both `run` and `resume`
 
+_Wiring pass added by `/ll:wire-issue` — additional test files with Namespace factories that need the three new modifier keys:_
+- `scripts/tests/test_cli_loop_lifecycle.py` — `_make_args()` at lines 855 and 943 have `show_diagrams=None` but lack `diagram_edge_labels`, `diagram_state_detail`, `diagram_scope`; add with defaults to both helpers [Agent 1+3 finding]
+- `scripts/tests/test_cli_loop_background.py` — Namespace factories have no `show_diagrams` field at all; will `AttributeError` if `run_background` reads new modifier attrs without `getattr` defaults — add all four diagram attrs defensively [Agent 3 finding]
+- `scripts/tests/test_ll_loop_commands.py` — inline `argparse.Namespace` at line 2641 has `show_diagrams=None` but missing modifier keys [Agent 1+3 finding]
+- `scripts/tests/test_ll_loop_program_md.py` — `_make_args()` at line 159 has `show_diagrams=None` but missing modifier keys [Agent 3 finding]
+- `scripts/tests/test_cli_loop_worktree.py` — `_make_args()` at line 575 missing modifier keys [Agent 1+3 finding]
+- `scripts/tests/test_cli_loop_queue.py` — `_make_args()` at line 25 missing modifier keys [Agent 3 finding]
+
+_Tests that will BREAK on the mode-string → DiagramFacets transition (must be updated, not deleted):_
+- `TestShowDiagramsMode` (lines 3125, 3154, 3167, 3178, 3187) — pass `mode="main"` / `mode="full"` directly to `_render_fsm_diagram`; replace with `DiagramFacets`-based kwargs [Agent 2+3 finding]
+- `TestShowDiagramsMiniMode` (lines 3244, 3260, 3275, 3288) — pass `mode="mini"`; replace with `DiagramFacets`-based kwargs [Agent 2+3 finding]
+- `TestShowDiagramsArgparse` (lines 3335, 3339, 3343, 3347) — assert on `"main"`, `"full"`, `"mini"` as parse results; convert to hard-rename `ArgumentTypeError` assertions [Agent 2+3 finding]
+- `TestShowDiagramsSubprocessReemit` (lines 3393, 3399, 3405) — assert legacy mode strings in subprocess cmd list; also `_capture_cmd` Namespace missing new modifier attrs [Agent 2+3 finding]
+- `_make_args()` shim at line 1648 in `TestDisplayProgressEvents` — `True → "main"` must become `True → "summary"` (or removed if `const=True` sentinel flows cleanly through `resolve_facets`) [Agent 3 finding]
+
 ### Documentation
 
 - `docs/guides/LOOPS_GUIDE.md` — update `--show-diagrams` section (currently references `main`/`full`/`mini`)
@@ -237,6 +263,59 @@ Run `grep -rn "show_diagrams\|--show-diagrams" scripts/ docs/ loops/` to enumera
 
 - N/A (no config schema changes)
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Files to Modify (additions/corrections to list above):**
+- `scripts/little_loops/cli/loop/layout.py:710` — `_render_layered_diagram(mode="full")` also computes `title_only = mode == "mini"` internally; needs separate `edge_labels` and `state_detail` params — **missing from original file list**
+- `scripts/little_loops/cli/loop/layout.py:1875` — `_render_horizontal_simple(mode="full")` same `title_only = mode == "mini"` pattern — **missing from original file list**
+- `scripts/little_loops/cli/loop/_helpers.py:637-645` — `run_foreground()` coercion block (`if raw_show_diagrams is True: show_diagrams_mode = "main"; elif raw_show_diagrams in ("main", "full", "mini"):`) must be replaced with `resolve_facets(args)` from `diagram_modes.py`
+
+**Additional callsite — non-pinned `display_progress()` branch:**
+`_helpers.py` contains a parallel fallback in `display_progress()` for the non-pinned path (`in_pinned_mode = False`): `if parent_mode in ("main", "mini") and active_state not in reachable: parent_mode = "full"`. This branch calls `_render_fsm_diagram(mode=parent_mode)` directly and must also be converted to use `DiagramFacets`. Not mentioned in the original file list.
+
+**Argparse `const` value — important implementation note:**
+With `nargs="?"`, bare `--show-diagrams` stores the `const` value *without* invoking `type=`. Current `const="main"` must change to `const=True` (sentinel boolean) so `resolve_facets()` can distinguish bare-flag (`raw is True`) from explicit `--show-diagrams=summary`. The `type=_parse_show_diagrams` function is only called on explicit values — `True` bypasses it.
+
+**Frozen dataclass model for `DiagramFacets`:**
+Follow the `HostInvocation` pattern from `scripts/little_loops/host_runner.py:90-108`, which includes the project's canonical rationale for `frozen=True` value objects in the codebase.
+
+**Subprocess re-emission exact block (`_helpers.py:567-569`):**
+```python
+show_diagrams_mode = getattr(args, "show_diagrams", None)
+if show_diagrams_mode is not None:
+    cmd.extend(["--show-diagrams", show_diagrams_mode])
+```
+New modifier flags follow the same `getattr(args, "<attr>", None) is not None → cmd.extend(...)` pattern used by every other forwarded flag in the block (lines 556-588).
+
+**Loop YAML audit — confirmed 0 matches:**
+`grep -rn "show-diagrams" loops/` returned 0 results. Step 6 of Implementation Steps (audit `loops/`) is N/A — no YAML migration needed.
+
+**Test helper `_make_args` in `test_ll_loop_display.py:1648`:**
+Contains `if show_diagrams is True: show_diagrams = "main"` legacy shim — must be updated to `"summary"` (or removed if bare-flag detection moves to `const=True` in argparse).
+
+**Test class anchors (existing — to extend, not replace):**
+- `TestShowDiagramsMode` — `test_ll_loop_display.py:3105` — covers `main`/`full`; convert to cover `summary`/`detailed` presets
+- `TestShowDiagramsMiniMode` — `test_ll_loop_display.py:3215` — covers `mini`; convert to cover `clean` preset
+- `TestShowDiagramsArgparse` — `test_ll_loop_display.py:3316` (6 methods) — extend for new presets/topologies/modifier flags and hard-rename error messages
+- `TestShowDiagramsSubprocessReemit` — `test_ll_loop_display.py:3356` — add 3 modifier flag forwarding assertions
+- `TestRenderNeighborhoodDiagram` — `test_ll_loop_display.py:3452` — add `local` preset end-to-end path
+
+**`info.py` — no changes needed:**
+`scripts/little_loops/cli/loop/info.py` references diagram rendering for the `ll-loop info` subcommand, which does not invoke `run_foreground()` or pass `show_diagrams` args. No changes required.
+
+**`display_progress()` child-FSM mode path (`_helpers.py:785–814`) — missing from original file list:**
+Mirrors the `parent_mode` logic for nested/child FSMs. `child_mode = show_diagrams_mode` (line 792), then `if child_mode in ("main", "mini") and ...` filters the main path, overriding `child_mode = "full"` with a `child_note` message when the active child state is off the main path (lines 799–803). Calls `_render_fsm_diagram(mode=child_mode)` at line 806. This block must be converted to `DiagramFacets` alongside the `parent_mode` path.
+
+**`_render_one()` inside `_build_pinned_pane()` (`_helpers.py:291–303`) — pinned-path equivalent:**
+The pinned-path parallel of the non-pinned main-path fallback: `mode` starts as `show_diagrams_mode` and is overridden to `"full"` when `highlight_state` is not in `reachable` (the main-path set). Must be converted to use `facets.scope` as the filtering trigger and pass `DiagramFacets` to the render call. Implementation Step 4 mentions `_build_pinned_pane` for fallback gating — this specific `_render_one()` block is the concrete location.
+
+**Confirmed function signatures (for implementer reference):**
+- `_render_fsm_diagram(fsm, verbose=False, highlight_state=None, highlight_color="32", edge_label_colors=None, badges=None, mode="full")` — `layout.py:1578`
+- `_render_neighborhood_diagram(fsm, active_state, *, edge_label_colors=None, badges=None, highlight_color="32", mode="full", prev_state=None)` — `layout.py:1702`
+- `_render_single_line_status(fsm, active_state)` — `_helpers.py:229` (no `mode` param; no changes needed)
+
 ## Implementation Steps
 
 1. **Add `DiagramFacets` dataclass and `PRESET_EXPANSIONS`** in new `cli/loop/diagram_modes.py`, plus `resolve_facets()` that reads argparse Namespace and returns the resolved facet object (with `source` field for fallback gating).
@@ -247,6 +326,14 @@ Run `grep -rn "show_diagrams\|--show-diagrams" scripts/ docs/ loops/` to enumera
 6. **Audit `loops/` directory** for any embedded `--show-diagrams=<legacy>` and migrate to new names (otherwise hard rename breaks existing loops).
 7. **Update docs** (LOOPS_GUIDE.md, CLI.md, CHANGELOG.md) and link from ENH-1652.
 8. **Write tests** per Integration Map → Tests above.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+9. **Update `next_loop.py` Namespace** (lines 306–328) — add `diagram_edge_labels="on"`, `diagram_state_detail="full"`, `diagram_scope="full"` to the manually-constructed `run_args` Namespace so `resolve_facets()` does not raise `AttributeError` if it uses direct attribute access instead of `getattr` with defaults [Agent 2 finding]
+10. **Update `_make_args()` shim** in `test_ll_loop_display.py` at line 1648 — change `True → "main"` to `True → "summary"` (or remove the shim once `const=True` sentinel is the canonical design) [Agent 3 finding]
+11. **Update Namespace factories in 6 additional test files** — add `diagram_edge_labels`, `diagram_state_detail`, `diagram_scope` with their defaults to every `_make_args()` or inline `argparse.Namespace` in: `test_cli_loop_lifecycle.py` (lines 855, 943), `test_cli_loop_background.py`, `test_ll_loop_commands.py` (line 2641), `test_ll_loop_program_md.py` (line 159), `test_cli_loop_worktree.py` (line 575), `test_cli_loop_queue.py` (line 25) [Agent 1+3 finding]
 
 ## API/Interface
 
@@ -326,7 +413,24 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `cli`, `breaking-change`, `ux`, `diagrams`, `captured`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-24_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 67/100 → MODERATE
+
+### Outcome Risk Factors
+- Wide blast radius across `_helpers.py` — `show_diagrams_mode` is used in 8+ distinct function bodies (`run_foreground`, `_build_pinned_pane`, `_choose_pinned_layout`, `display_progress`, subprocess re-emission, `parent_mode`/`child_mode` assignment blocks); each requires logic changes, not just a parameter rename — broad per-site rewiring across one large module.
+- Namespace factory updates required in 6 additional test files alongside the main change — the wire-issue pass has enumerated all 6 (lifecycle, background, commands, program_md, worktree, queue); missing any one will cause `AttributeError` at test time.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ceb512a0-0fa2-4aec-afc4-02a1e78ad108.jsonl`
+- `/ll:refine-issue` - 2026-05-24T22:01:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ceb512a0-0fa2-4aec-afc4-02a1e78ad108.jsonl`
+- `/ll:refine-issue` - 2026-05-24T21:57:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91a0ef70-685e-4909-a396-2d9a3ea31d5f.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f20bb894-da96-47c8-9052-e4eb484495b1.jsonl`
+- `/ll:wire-issue` - 2026-05-24T21:43:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0c7cf1b-4752-4dcb-a8c8-db15f836c539.jsonl`
+- `/ll:refine-issue` - 2026-05-24T21:29:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7ca89f4a-4af7-4703-a6e0-ea8057ea3364.jsonl`
 - `/ll:format-issue` - 2026-05-24T07:12:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0356f6a-4e5b-45ac-bc51-6d6bd837e3ee.jsonl`
 
 - `/ll:capture-issue` - 2026-05-24T07:08:02Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36dab78b-8ea5-4759-9747-53b92e93a9f7.jsonl`

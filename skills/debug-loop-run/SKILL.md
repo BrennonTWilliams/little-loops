@@ -152,6 +152,7 @@ For each match, emit a Signal 3 entry into `static_issues`:
 | `throttle_stop` | `state` (str), `count` (int), `hard_max` (int) |
 | `loop_complete` | `terminated_by` (str), `final_state` (str), `iterations` (int) |
 | `loop_resume` | `from_state` (str), `iteration` (int) |
+| `max_iterations_summary` | `summary_state` (str), `iterations` (int) |
 
 ---
 

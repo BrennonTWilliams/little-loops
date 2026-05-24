@@ -107,6 +107,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "parameters",
         "scope",
         "max_iterations",
+        "on_max_iterations",
         "max_edge_revisits",
         "backoff",
         "timeout",
@@ -847,6 +848,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_meta_loop_evaluation(fsm))
 
+    errors.extend(_validate_on_max_iterations(fsm, defined_states))
+
     errors.extend(_validate_circuit(fsm, defined_states))
 
     return errors
@@ -951,6 +954,27 @@ def _has_baseline_reference(fsm: FSMLoop, capture_names: set[str]) -> bool:
                 if f"captured.{name}" in field_val:
                     return True
     return False
+
+
+def _validate_on_max_iterations(fsm: FSMLoop, defined_states: set[str]) -> list[ValidationError]:
+    """Validate the top-level `on_max_iterations` field (ENH-1631).
+
+    Checks that the named state exists when `on_max_iterations` is set.
+    """
+    errors: list[ValidationError] = []
+    if fsm.on_max_iterations is None:
+        return errors
+    if fsm.on_max_iterations not in defined_states:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"on_max_iterations references unknown state "
+                    f"'{fsm.on_max_iterations}' (must be a declared state)"
+                ),
+                path="on_max_iterations",
+            )
+        )
+    return errors
 
 
 def _validate_circuit(fsm: FSMLoop, defined_states: set[str]) -> list[ValidationError]:

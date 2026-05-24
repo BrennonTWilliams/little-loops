@@ -904,3 +904,60 @@ class TestMetaLoopValidation:
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
+
+
+class TestOnMaxIterationsValidation:
+    """Tests for ENH-1631: on_max_iterations validation."""
+
+    _YAML_TEMPLATE = (
+        "name: test-loop\n"
+        "description: test\n"
+        "initial: work\n"
+        "states:\n"
+        "  work:\n"
+        "    action: run.sh\n"
+        "    on_yes: done\n"
+        "  done:\n"
+        "    terminal: true\n"
+        "  summarize:\n"
+        "    action: summarize.sh\n"
+        "    next: done\n"
+    )
+
+    def test_on_max_iterations_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level on_max_iterations produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(self._YAML_TEMPLATE + "on_max_iterations: summarize\n")
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
+
+    def test_on_max_iterations_unknown_state_rejected(self) -> None:
+        """on_max_iterations pointing to a non-existent state raises ValueError."""
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            on_max_iterations="ghost_state",
+            states={
+                "work": StateConfig(action="run.sh", on_yes="done", on_no="work"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        errors = [e for e in validate_fsm(fsm) if e.severity == ValidationSeverity.ERROR]
+        assert any("ghost_state" in e.message for e in errors)
+
+    def test_on_max_iterations_valid_state_passes(self) -> None:
+        """on_max_iterations pointing to a declared state produces no validation errors."""
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            on_max_iterations="summarize",
+            states={
+                "work": StateConfig(action="run.sh", on_yes="done", on_no="work"),
+                "summarize": StateConfig(action="summarize.sh", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        errors = [e for e in validate_fsm(fsm) if e.severity == ValidationSeverity.ERROR]
+        on_max_errors = [e for e in errors if "on_max_iterations" in (e.path or "")]
+        assert on_max_errors == []

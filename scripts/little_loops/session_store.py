@@ -61,6 +61,7 @@ _LOOP_EVENT_TYPES = frozenset(
         "route",
         "retry_exhausted",
         "cycle_detected",
+        "max_iterations_summary",
     }
 )
 

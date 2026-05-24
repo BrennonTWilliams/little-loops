@@ -550,6 +550,27 @@ Emitted once when the executor finishes, regardless of how it terminated.
 
 ---
 
+### `max_iterations_summary`
+
+Emitted when the iteration cap fires and `on_max_iterations` is set on the loop. Signals that the executor is about to run the summary state before terminating. Always immediately precedes the `state_enter` for the summary state. `loop_complete` fires after the summary state completes with `terminated_by="max_iterations"`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `summary_state` | `str` | Name of the state the executor will transition to |
+| `iterations` | `int` | Iteration count at which the cap fired |
+
+**Example:**
+```json
+{
+  "event": "max_iterations_summary",
+  "ts": "...",
+  "summary_state": "summarize_partial",
+  "iterations": 100
+}
+```
+
+---
+
 ## Subsystem: FSM Persistence
 
 **Source:** `little_loops.fsm.persistence.PersistentExecutor`  

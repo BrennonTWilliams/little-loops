@@ -6520,3 +6520,90 @@ class TestStallDetector:
         assert result.terminated_by == "stall_detected"
         stall_events = [e for e in events if e.get("event") == "stall_detected"]
         assert len(stall_events) == 1
+
+
+class TestMaxIterationsSummaryHook:
+    """Tests for ENH-1631: on_max_iterations summary hook."""
+
+    def _make_fsm(self, on_max_iterations: str | None = "summarize") -> FSMLoop:
+        return FSMLoop(
+            name="summary-hook-test",
+            initial="loop",
+            max_iterations=3,
+            on_max_iterations=on_max_iterations,
+            states={
+                "loop": StateConfig(action="work.sh", on_yes="done", on_no="loop"),
+                "summarize": StateConfig(action="summarize.sh", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_summary_state_runs_on_cap(self) -> None:
+        """Summary state executes when iteration cap fires."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)  # loop never succeeds → hits cap at iter 3
+
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert runner.calls.count("summarize.sh") == 1
+        assert result.terminated_by == "max_iterations"
+
+    def test_max_iterations_summary_event_emitted(self) -> None:
+        """max_iterations_summary event is emitted with correct payload when cap fires."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)
+
+        events: list[dict] = []
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        executor.run()
+
+        summary_events = [e for e in events if e.get("event") == "max_iterations_summary"]
+        assert len(summary_events) == 1
+        evt = summary_events[0]
+        assert evt["summary_state"] == "summarize"
+        assert evt["iterations"] == 3
+
+    def test_terminated_by_max_iterations_after_summary(self) -> None:
+        """loop_complete.terminated_by is 'max_iterations' even when summary state runs."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)
+
+        events: list[dict] = []
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.terminated_by == "max_iterations"
+        complete_events = [e for e in events if e.get("event") == "loop_complete"]
+        assert len(complete_events) == 1
+        assert complete_events[0]["terminated_by"] == "max_iterations"
+
+    def test_no_summary_state_without_on_max_iterations(self) -> None:
+        """When on_max_iterations is not set, cap terminates normally with no summary."""
+        fsm = self._make_fsm(on_max_iterations=None)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)
+
+        events: list[dict] = []
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.terminated_by == "max_iterations"
+        summary_events = [e for e in events if e.get("event") == "max_iterations_summary"]
+        assert summary_events == []
+
+    def test_summary_state_executes_only_once(self) -> None:
+        """The _summary_state_executed flag prevents the summary state from re-entering."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)
+
+        events: list[dict] = []
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        executor.run()
+
+        summary_events = [e for e in events if e.get("event") == "max_iterations_summary"]
+        assert len(summary_events) == 1

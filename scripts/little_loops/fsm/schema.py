@@ -873,6 +873,7 @@ class FSMLoop:
     parameters: dict[str, ParameterSpec] = field(default_factory=dict)
     scope: list[str] = field(default_factory=list)
     max_iterations: int = 50
+    on_max_iterations: str | None = None
     max_edge_revisits: int = 100
     backoff: float | None = None
     timeout: int | None = None
@@ -921,6 +922,8 @@ class FSMLoop:
             result["maintain"] = self.maintain
         if self.on_handoff != "pause":
             result["on_handoff"] = self.on_handoff
+        if self.on_max_iterations is not None:
+            result["on_max_iterations"] = self.on_max_iterations
         if self.input_key != "input":
             result["input_key"] = self.input_key
 
@@ -985,6 +988,7 @@ class FSMLoop:
             parameters=parameters,
             scope=data.get("scope", []),
             max_iterations=data.get("max_iterations", 50),
+            on_max_iterations=data.get("on_max_iterations"),
             max_edge_revisits=data.get("max_edge_revisits", 100),
             backoff=data.get("backoff"),
             timeout=data.get("timeout"),
@@ -1031,4 +1035,6 @@ class FSMLoop:
         refs: set[str] = {self.initial}
         for state in self.states.values():
             refs.update(state.get_referenced_states())
+        if self.on_max_iterations is not None:
+            refs.add(self.on_max_iterations)
         return refs

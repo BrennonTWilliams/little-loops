@@ -200,6 +200,11 @@ class FSMExecutor:
         # behavior so we only flush when there is actually a pending state.
         self._just_routed: bool = False
 
+        # ENH-1631: true once the on_max_iterations summary state has been
+        # dispatched. Prevents the cap guard from re-triggering before the
+        # summary state completes.
+        self._summary_state_executed: bool = False
+
         # Per-state rate-limit retry tracking (parallel to _retry_counts).
         # _rate_limit_retries[state_name] = dict-of-record:
         #   {
@@ -277,7 +282,24 @@ class FSMExecutor:
 
                 # Check iteration limit
                 if self.iteration >= self.fsm.max_iterations:
-                    return self._finish("max_iterations")
+                    if (
+                        self.fsm.on_max_iterations is not None
+                        and not self._summary_state_executed
+                    ):
+                        self._emit(
+                            "max_iterations_summary",
+                            {
+                                "summary_state": self.fsm.on_max_iterations,
+                                "iterations": self.iteration,
+                            },
+                        )
+                        self._summary_state_executed = True
+                        self.current_state = self.fsm.on_max_iterations
+                        # Fall through — let the summary state run in this iteration.
+                        # (do not `continue`; that would re-trigger the cap check
+                        # before the state executes since self.iteration is unchanged.)
+                    else:
+                        return self._finish("max_iterations")
 
                 # Check timeout
                 if self.fsm.timeout:
@@ -335,6 +357,11 @@ class FSMExecutor:
                         self.current_state = maintain_target
                         self._just_routed = True
                         continue
+                    # ENH-1631: if we arrived here via the on_max_iterations summary
+                    # state, preserve terminated_by="max_iterations" so audit tooling
+                    # and PersistentExecutor see "interrupted" rather than "completed".
+                    if self._summary_state_executed:
+                        return self._finish("max_iterations")
                     return self._finish("terminal")
 
                 # Check per-state retry limit. If the consecutive re-entry count exceeds
