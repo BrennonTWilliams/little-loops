@@ -1719,6 +1719,8 @@ ll-loop status my-scan --json | python3 -c "import sys,json; print(json.load(sys
 
 Background runs write stdout and stderr to `.loops/.running/<instance-id>.log`. Foreground runs send output directly to the terminal and never create a `.log` file — `log_file` is `null` in `--json` output for these runs. All runs (foreground and background) write structured events to `.loops/.running/<instance-id>.events.jsonl`; use the `events_file` field from `--json` output to locate it. The PID may be stored in `.loops/.running/<instance-id>.pid` (background-mode processes) or in `.loops/.running/<instance-id>.lock` (foreground runs); `ll-loop status` checks both, preferring the `.pid` file and falling back to the `.lock` file. The `pid_source` field in `--json` output indicates which file the PID came from. The `instance-id` is `<loop-name>-<YYYYMMDDTHHMMSS>` (e.g. `my-scan-20260503T122306`); use `ll-loop status <loop-name> --json` to retrieve the exact log or events path for a running instance.
 
+**Note**: `ll-loop status` may transparently rewrite orphaned state files. When a state file claims `status: running` but the PID (resolved via `.pid` → `.lock` → embedded `state.pid`) is provably dead, the file is updated in-place to `status: interrupted` and a `reconciled_at` timestamp is recorded. This is a no-op for live processes.
+
 ### Stopping a background loop
 
 ```bash

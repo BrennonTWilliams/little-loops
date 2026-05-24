@@ -63,6 +63,8 @@ For each loop returned in Step 1, run:
 ll-loop status <loop_name> --json 2>/dev/null
 ```
 
+> **Note**: `ll-loop status` performs first-pass reconciliation (ENH-1669). If a state file claims `running` but its PID is provably dead, it is automatically rewritten to `interrupted` with a `reconciled_at` timestamp. This means loops that were orphaned foreground crashes will already show `interrupted` by the time you reach Step 3, reducing the number of manual cleanup actions required.
+
 This produces the same fields as Step 1 plus two additional fields:
 
 | Field | Type | Description |

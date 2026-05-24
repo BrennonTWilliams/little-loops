@@ -109,12 +109,24 @@ If `output_json` only supports comparing a single scalar path (the dead-code pre
 - `scripts/little_loops/fsm/` — verify `action_type: shell` + `evaluate: output_json` path works the same way it does for `dead-code-cleanup.yaml`. No runtime changes expected.
 - `/ll:audit-loop-run` consumers — they currently look for the `check_done` evaluator output; update to read `count_done`'s captured JSON instead.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` — validates all built-in loops by name/structure including `general-task.yaml`; no direct state-name assertion but run after the change to confirm no unexpected failures in `TestBuiltinLoopFiles` [Agent 1 finding]
+- `skills/debug-loop-run/SKILL.md` — reads evaluate events from loop run history to detect failure patterns; after the change, evaluate events come from `count_done` (shell/output_json) instead of `check_done` (llm_structured) — behavioral shift in what the skill's signal detection sees [Agent 1 finding]
+- `skills/audit-loop-run/SKILL.md` _(expanded detail)_ — Step 3 scans `evaluate.prompt` (no `prompt` key on `output_json` evaluator → finds nothing on `count_done`); Step 6 phantom-success rubric explicitly names `llm_structured` as the phantom-risk vector (no longer applies); Step 7 iterates only `evaluate.type: llm_structured` states for rubric checks and will silently skip `count_done`. Net effect: audit-loop-run's rubric pass becomes a no-op for general-task's terminal gate. A follow-up issue is recommended after this lands. [Agent 2 finding]
+
 ### Similar Patterns
 - `scripts/little_loops/loops/dead-code-cleanup.yaml:28-46` — `count_findings` state: shell action emits `{"count": N}`, `output_json` evaluates `.count == 0`, routes to `done`/`remove_code`/`done` on yes/no/error. Direct model for this change.
 
 ### Tests
 - Add a fixture under `scripts/tests/` exercising `count_done` in three cases: all-clean (→ done), unchecked criterion (→ continue_work), missing DoD (→ diagnose).
 - `ll-loop validate` smoke test confirming the new YAML parses.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **File for new tests**: `scripts/tests/test_general_task_loop.py` — add new classes there (no new file); consistent with existing structure [Agent 3 finding]
+  - `TestChange7CountDoneShellGate` — structural YAML assertions: `count_done.action_type == "shell"`, `evaluate.type == "output_json"`, `evaluate.path == ".total"`, `evaluate.operator == "eq"`, `evaluate.target == 0`, `on_yes == "done"`, `on_no == "continue_work"`, `on_error == "diagnose"` [Agent 3 finding]
+  - `TestCountDoneShellScript` — shell execution via `_bash()` helper (model after `test_loops_recursive_refine.py:14`): 3 scenarios against tmp_path/.loops/tmp/ fixtures [Agent 3 finding]
+  - `ll-loop validate general-task` smoke test — follow pattern in `test_builtin_loops.py:177` or `test_create_loop.py:52` [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` — run after change; `TestBuiltinLoopFiles` validates all built-in loops and may surface unexpected failures [Agent 1 finding]
 
 #### Codebase Research Findings
 
@@ -147,6 +159,13 @@ assert result == 0
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md` — update the general-task section to describe the two-state gate, the JSON output, and that termination is deterministic.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `audit-general-task-2026-05-24.md` (repo root) — committed audit artifact; scorecard names `check_done` as the evaluator and timeline references `check_done → YES/NO` routing. Becomes factually stale. No code change required, but note this during implementation. [Agent 2 finding]
+
+### Cleanup
+_Wiring pass added by `/ll:wire-issue`:_
+- `.issues/bugs/P2-BUG-794-check-done-llm-evaluator-json-parse-failure-in-general-task-loop.md` — this bug is entirely premised on `check_done` using an `llm_structured` evaluator that can fail JSON parsing. Removing `llm_structured` from `check_done` makes BUG-794 obsolete. Close/cancel as part of this implementation. [Agent 2 finding]
+
 ### Configuration
 - N/A.
 
@@ -165,6 +184,14 @@ assert result == 0
 8. Run `ll-loop run general-task` against a small task that terminates in 2-3 iterations to confirm the new gate fires correctly in the happy path.
 9. Manually delete `.loops/tmp/general-task-dod.md` mid-run and confirm `count_done` routes to `diagnose`.
 10. Update `docs/guides/LOOPS_GUIDE.md` — general-task section (around lines 309-340) to describe the two-state gate and JSON output schema `{unchecked_dod, unchecked_plan, failed_samples, total}`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+11. Run `python -m pytest scripts/tests/test_builtin_loops.py -v` after the YAML change to confirm no unexpected failures in the built-in loop validation suite.
+12. Cancel `.issues/bugs/P2-BUG-794-check-done-llm-evaluator-json-parse-failure-in-general-task-loop.md` — the `llm_structured` evaluator being removed from `check_done` makes this bug obsolete. Update its status to `cancelled` with a note referencing ENH-1658.
+13. After landing, consider filing a follow-up issue for `skills/audit-loop-run/SKILL.md`: Steps 3/6/7 target `llm_structured` evaluators and will silently skip `count_done`'s `output_json` gate — the rubric-audit and phantom-success detection become no-ops for this state.
 
 ## Scope Boundaries
 
@@ -200,6 +227,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `general-task`, `captured`
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/claude-session.jsonl`
 - `/ll:refine-issue` - 2026-05-24T14:11:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/606cff41-42fc-4284-8565-e62f63b8909b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53f5ce8a-8802-4e4f-a82f-cb8f836c6b67.jsonl`
 - `/ll:format-issue` - 2026-05-23T16:43:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7684c915-f5a2-4b68-9ba1-d56622191296.jsonl`

@@ -459,6 +459,8 @@ The human-readable `Log:` line uses one of three labels:
 
 An `Events:` line follows whenever an `<instance-id>.events.jsonl` file is found, showing the event count and age of the most recent event regardless of run mode.
 
+> **Note**: `ll-loop status` is not a pure read — it may transparently rewrite orphaned state files. If a state file claims `status: running` but its PID (resolved via `.pid` → `.lock` → embedded `state.pid`) is provably dead, the file is updated in-place to `status: interrupted` with a `reconciled_at` timestamp. This is a no-op for live processes and is idempotent.
+
 #### `ll-loop stop <loop>`
 
 Stop a running loop. Terminates **all running instances** of the named loop (no `--instance-id` selector).
