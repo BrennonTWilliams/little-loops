@@ -6,6 +6,12 @@ Install a loop into your project for customization: `ll-loop install <name>`
 
 ---
 
+## Routing
+
+| Loop | Description |
+|---|---|
+| `loop-router` | Natural-language entry point — classifies a goal into the best-fit project or built-in loop (3-way: project / built-in / propose new), scores candidates, dispatches as a sub-loop, and summarises the result. Recommended starting point when you know *what* you want done but not *which loop* to run. |
+
 ## Issue Management
 
 | Loop | Description |

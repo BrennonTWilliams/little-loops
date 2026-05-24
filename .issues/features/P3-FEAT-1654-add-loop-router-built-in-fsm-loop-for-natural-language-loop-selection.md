@@ -2,10 +2,11 @@
 id: FEAT-1654
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: '2026-05-24'
 discovered_by: capture-issue
 captured_at: '2026-05-24T02:32:39Z'
+completed_at: '2026-05-24T06:32:05Z'
 confidence_score: 98
 outcome_confidence: 79
 score_complexity: 18
@@ -335,7 +336,26 @@ Output schema — branch C (propose_new):
 
 built-in-loop, fsm, routing, dispatch, sub-loop
 
+## Resolution
+
+Implemented `loop-router` as a 20-state built-in FSM loop at `scripts/little_loops/loops/loop-router.yaml`.
+
+**Files created/modified:**
+- `scripts/little_loops/loops/loop-router.yaml` — new built-in loop (20 states, validates cleanly)
+- `scripts/tests/test_loop_router.py` — 27 structural tests (file + state coverage)
+- `scripts/tests/test_builtin_loops.py` — added `"loop-router"` to `expected` set
+- `scripts/little_loops/loops/README.md` — new Routing section with catalog entry
+- `docs/guides/LOOPS_GUIDE.md` — new Routing section with usage examples and context-knob table
+
+**Design decisions:**
+- 3-way classification via two chained `route_branch_*` shell states (exit_code evaluator), since `llm_structured` doesn't support 3-way routing natively
+- File-based communication (`.loops/tmp/loop-router-*.txt`) for robust state-to-state data handoff
+- Python triple-quote heredocs (`python3 << 'PYEOF'`) for safely embedding LLM output in shell states
+- `dispatch` state uses the canonical `loop: "${captured.chosen.output}"` pattern from `outer-loop-eval.yaml`
+- Recursion guard: `discover_loops` explicitly excludes `loop-router` from the catalog
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T06:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d611ca18-ab9d-4e03-a8ec-22faf5278b1e.jsonl`
 - `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97139a79-dcef-4b4c-81a6-1f92ca838d7f.jsonl`
 - `/ll:refine-issue` - 2026-05-24T05:59:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a3ba6256-c98b-41f3-aa42-08b4d281735f.jsonl`
 - `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c95a88a-c371-475b-bf49-5d58dbcf7c25.jsonl`

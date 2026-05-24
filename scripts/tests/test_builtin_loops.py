@@ -116,6 +116,7 @@ class TestBuiltinLoopFiles:
             "hitl-compare",
             "hitl-md",
             "deep-research",
+            "loop-router",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual

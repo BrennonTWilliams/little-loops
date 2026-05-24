@@ -1,0 +1,478 @@
+name: loop-router
+description: |
+  Route a natural language goal to the best-fit FSM loop (project or built-in), or propose
+  a new loop when nothing fits. Use as the single entry point when you know what you want done
+  but not which loop to run. Dispatches the chosen loop as a sub-loop and summarises the result.
+category: routing
+input_key: goal
+initial: discover_loops
+max_iterations: 25
+timeout: 7200
+on_handoff: spawn
+
+context:
+  goal: ""                    # populated via input_key: the natural language task description
+  auto: "true"                # "true" = dispatch top candidate without HITL confirmation
+  auto_create: "false"        # "true" = invoke create-loop when branch C (propose_new) fires
+  confidence_threshold: "0.7" # minimum score to auto-dispatch without HITL
+  exclude: ""                 # comma-separated loop names to exclude from the catalog
+
+states:
+
+  # ─── Phase 1: Catalog Discovery ─────────────────────────────────────────────
+
+  discover_loops:
+    action_type: shell
+    timeout: 60
+    action: |
+      mkdir -p .loops/tmp
+      ll-loop list --json 2>/dev/null | python3 -c "
+      import json, sys, os
+      loops = json.load(sys.stdin)
+      exclude_raw = '${context.exclude}'
+      excludes = set(x.strip() for x in exclude_raw.split(',') if x.strip())
+      excludes.add('loop-router')
+      project = []
+      builtin = []
+      for loop in loops:
+          name = loop.get('name', '')
+          if name in excludes:
+              continue
+          entry = {
+              'name': name,
+              'description': str(loop.get('description', '') or '')[:200],
+              'category': loop.get('category', ''),
+          }
+          if loop.get('built_in'):
+              builtin.append(entry)
+          else:
+              project.append(entry)
+      catalog = {'project': project, 'builtin': builtin}
+      os.makedirs('.loops/tmp', exist_ok=True)
+      with open('.loops/tmp/loop-router-catalog.json', 'w') as f:
+          json.dump(catalog, f, indent=2)
+      print(json.dumps(catalog, indent=2))
+      "
+    capture: catalog
+    on_error: failed
+    next: classify_goal
+
+  # ─── Phase 2: 3-Way Classification ──────────────────────────────────────────
+
+  classify_goal:
+    action_type: prompt
+    timeout: 300
+    action: |
+      You are a loop router. Classify the goal into exactly one routing branch.
+
+      GOAL: ${context.goal}
+
+      LOOP CATALOG (JSON with project[] and builtin[] arrays):
+      ${captured.catalog.output}
+
+      Branch options (choose exactly one):
+      - "project"      — goal fits a loop in the project[] array (PREFER this when any project loop plausibly matches)
+      - "builtin"      — goal fits a loop in the builtin[] array
+      - "propose_new"  — no loop fits AND the goal is a re-usable recurring workflow, not a one-shot task
+
+      Preference order: project > builtin > propose_new.
+      If project[] is empty, consider only builtin and propose_new.
+      Do NOT select "loop-router" as a candidate.
+
+      Think briefly (1-2 sentences), then output your decision on the LAST LINE in this exact format:
+      BRANCH:<choice>
+
+      Where <choice> is exactly one of: project  builtin  propose_new
+    capture: classification
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response end with a BRANCH: line containing exactly one of: project, builtin, propose_new?"
+      min_confidence: 0.5
+    on_yes: route_branch_project
+    on_no: route_branch_project
+    on_error: failed
+
+  route_branch_project:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import sys
+      output = """${captured.classification.output}"""
+      sys.exit(0 if 'BRANCH:project' in output else 1)
+      PYEOF
+    evaluate:
+      type: exit_code
+    on_yes: score_project_loops
+    on_no: route_branch_builtin
+    on_error: score_builtin_loops
+
+  route_branch_builtin:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import sys
+      output = """${captured.classification.output}"""
+      sys.exit(0 if 'BRANCH:builtin' in output else 1)
+      PYEOF
+    evaluate:
+      type: exit_code
+    on_yes: score_builtin_loops
+    on_no: propose_new_loop
+    on_error: score_builtin_loops
+
+  # ─── Phase 3A: Score Project Loops ──────────────────────────────────────────
+
+  score_project_loops:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Score the project loops against the goal. Pick the single best match.
+
+      GOAL: ${context.goal}
+
+      CATALOG (JSON — score loops from the "project" array only):
+      ${captured.catalog.output}
+
+      Output ONLY these four lines (no other text):
+      CHOSEN_LOOP:<exact loop name, or NONE if nothing fits well>
+      CONFIDENCE:<decimal 0.0–1.0>
+      LOOP_INPUT:<derived input string to pass as the sub-loop's --input argument>
+      TOP_CANDIDATES:<comma-separated list of up to 3 loop names in descending fit order>
+    capture: project_score
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response contain CHOSEN_LOOP:, CONFIDENCE:, LOOP_INPUT:, and TOP_CANDIDATES: lines?"
+      min_confidence: 0.5
+    on_yes: parse_project_score
+    on_no: parse_project_score
+    on_error: parse_project_score
+
+  parse_project_score:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import re, sys
+      output = """${captured.project_score.output}"""
+      loop_m  = re.search(r'CHOSEN_LOOP:(\S+)', output)
+      conf_m  = re.search(r'CONFIDENCE:([\d.]+)', output)
+      input_m = re.search(r'LOOP_INPUT:(.*)', output)
+      top_m   = re.search(r'TOP_CANDIDATES:(.*)', output)
+      name  = loop_m.group(1) if loop_m else 'NONE'
+      conf  = float(conf_m.group(1)) if conf_m else 0.0
+      inp   = (input_m.group(1).strip() if input_m else '') or '${context.goal}'
+      tops  = (top_m.group(1).strip() if top_m else name)
+      with open('.loops/tmp/loop-router-chosen.txt', 'w') as f:
+          f.write(name)
+      with open('.loops/tmp/loop-router-input.txt', 'w') as f:
+          f.write(inp)
+      with open('.loops/tmp/loop-router-confidence.txt', 'w') as f:
+          f.write(str(conf))
+      with open('.loops/tmp/loop-router-branch.txt', 'w') as f:
+          f.write('project')
+      with open('.loops/tmp/loop-router-top.txt', 'w') as f:
+          f.write(tops)
+      print(name)
+      PYEOF
+    capture: chosen
+    on_error: failed
+    next: extract_input
+
+  # ─── Phase 3B: Score Builtin Loops ──────────────────────────────────────────
+
+  score_builtin_loops:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Score the built-in loops against the goal. Pick the single best match.
+
+      GOAL: ${context.goal}
+
+      CATALOG (JSON — score loops from the "builtin" array only):
+      ${captured.catalog.output}
+
+      Output ONLY these four lines (no other text):
+      CHOSEN_LOOP:<exact loop name, or NONE if nothing fits well>
+      CONFIDENCE:<decimal 0.0–1.0>
+      LOOP_INPUT:<derived input string to pass as the sub-loop's --input argument>
+      TOP_CANDIDATES:<comma-separated list of up to 3 loop names in descending fit order>
+    capture: builtin_score
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response contain CHOSEN_LOOP:, CONFIDENCE:, LOOP_INPUT:, and TOP_CANDIDATES: lines?"
+      min_confidence: 0.5
+    on_yes: parse_builtin_score
+    on_no: parse_builtin_score
+    on_error: parse_builtin_score
+
+  parse_builtin_score:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import re, sys
+      output = """${captured.builtin_score.output}"""
+      loop_m  = re.search(r'CHOSEN_LOOP:(\S+)', output)
+      conf_m  = re.search(r'CONFIDENCE:([\d.]+)', output)
+      input_m = re.search(r'LOOP_INPUT:(.*)', output)
+      top_m   = re.search(r'TOP_CANDIDATES:(.*)', output)
+      name  = loop_m.group(1) if loop_m else 'NONE'
+      conf  = float(conf_m.group(1)) if conf_m else 0.0
+      inp   = (input_m.group(1).strip() if input_m else '') or '${context.goal}'
+      tops  = (top_m.group(1).strip() if top_m else name)
+      with open('.loops/tmp/loop-router-chosen.txt', 'w') as f:
+          f.write(name)
+      with open('.loops/tmp/loop-router-input.txt', 'w') as f:
+          f.write(inp)
+      with open('.loops/tmp/loop-router-confidence.txt', 'w') as f:
+          f.write(str(conf))
+      with open('.loops/tmp/loop-router-branch.txt', 'w') as f:
+          f.write('builtin')
+      with open('.loops/tmp/loop-router-top.txt', 'w') as f:
+          f.write(tops)
+      print(name)
+      PYEOF
+    capture: chosen
+    on_error: failed
+    next: extract_input
+
+  # ─── Phase 4: Selection Gate ─────────────────────────────────────────────────
+
+  extract_input:
+    action_type: shell
+    action: |
+      cat .loops/tmp/loop-router-input.txt 2>/dev/null || echo "${context.goal}"
+    capture: derived_params
+    on_error: select_loop
+    next: select_loop
+
+  select_loop:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import sys
+      def _read(p, default=''):
+          try:
+              with open(p) as f: return f.read().strip()
+          except Exception: return default
+      name       = _read('.loops/tmp/loop-router-chosen.txt', 'NONE')
+      confidence = float(_read('.loops/tmp/loop-router-confidence.txt', '0') or '0')
+      tops       = _read('.loops/tmp/loop-router-top.txt', name)
+      threshold  = float('${context.confidence_threshold}')
+      auto       = '${context.auto}'.strip().lower() == 'true'
+      print(f'loop={name}  confidence={confidence:.2f}  threshold={threshold}  auto={auto}  top_candidates={tops}')
+      sys.exit(1 if (name == 'NONE' or confidence < threshold or not auto) else 0)
+      PYEOF
+    capture: select_loop
+    evaluate:
+      type: exit_code
+    on_yes: dispatch
+    on_no: present_choices
+    on_error: present_choices
+
+  # ─── Phase 4 (HITL): Human Confirmation ─────────────────────────────────────
+
+  present_choices:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Loop router needs your help selecting a loop.
+
+      GOAL: ${context.goal}
+
+      ROUTER ANALYSIS:
+      ${captured.select_loop.output}
+
+      TOP PROJECT CANDIDATES (if scored):
+      ${captured.project_score.output}
+
+      TOP BUILTIN CANDIDATES (if scored):
+      ${captured.builtin_score.output}
+
+      Type the exact name of the loop you want to run (e.g., "deep-research", "rn-plan").
+      To exit without running any loop, type: CANCEL
+    capture: user_choice
+    evaluate:
+      type: output_contains
+      pattern: "CANCEL"
+    on_yes: present_result
+    on_no: apply_user_choice
+    on_error: present_result
+
+  apply_user_choice:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import re
+      raw = """${captured.user_choice.output}""".strip()
+      m   = re.search(r'\b([a-z][a-z0-9-]+)\b', raw)
+      name = m.group(1) if m else 'NONE'
+      def _read(p, default=''):
+          try:
+              with open(p) as f: return f.read().strip()
+          except Exception: return default
+      inp = _read('.loops/tmp/loop-router-input.txt') or '${context.goal}'
+      with open('.loops/tmp/loop-router-chosen.txt', 'w') as f:
+          f.write(name)
+      with open('.loops/tmp/loop-router-input.txt', 'w') as f:
+          f.write(inp)
+      with open('.loops/tmp/loop-router-confidence.txt', 'w') as f:
+          f.write('1.0')
+      print(name)
+      PYEOF
+    capture: chosen
+    on_error: present_result
+    next: refresh_input
+
+  refresh_input:
+    action_type: shell
+    action: |
+      cat .loops/tmp/loop-router-input.txt 2>/dev/null || echo "${context.goal}"
+    capture: derived_params
+    on_error: dispatch
+    next: dispatch
+
+  # ─── Phase 5: Sub-Loop Dispatch ──────────────────────────────────────────────
+
+  dispatch:
+    loop: "${captured.chosen.output}"
+    timeout: 3600
+    with:
+      input: "${captured.derived_params.output}"
+    capture: sub_loop_output
+    on_yes: review
+    on_no: review
+    on_error: review
+
+  # ─── Phase 6: Review & Synthesise ────────────────────────────────────────────
+
+  review:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Summarise the sub-loop execution below.
+
+      ORIGINAL GOAL: ${context.goal}
+      CHOSEN LOOP: ${captured.chosen.output}
+
+      SUB-LOOP EVENT STREAM (JSONL, one event per line):
+      ${captured.sub_loop_output.output}
+
+      Summarise: (1) what the loop attempted, (2) what was produced, (3) whether it succeeded.
+
+      Output ONLY these two lines (no other text):
+      REVIEW_SUCCESS:<true or false>
+      REVIEW_SUMMARY:<one to two sentence summary>
+    capture: review_result
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response contain exactly REVIEW_SUCCESS: and REVIEW_SUMMARY: lines?"
+      min_confidence: 0.5
+    on_yes: present_result
+    on_no: present_result
+    on_error: present_result
+
+  # ─── Phase 3C: Propose New Loop ──────────────────────────────────────────────
+
+  propose_new_loop:
+    action_type: prompt
+    timeout: 300
+    action: |
+      No existing loop fits the goal. Draft a specification for a new project loop.
+
+      GOAL: ${context.goal}
+
+      EXISTING LOOPS (for reference — do not duplicate):
+      ${captured.catalog.output}
+
+      Output ONLY these six lines (no other text):
+      PROPOSED_NAME:<kebab-case-loop-name>
+      PROPOSED_DESC:<one sentence description>
+      PROPOSED_INPUT_KEY:<primary input variable name>
+      PROPOSED_INITIAL_STATE:<initial state name>
+      PROPOSED_STATES_SUMMARY:<comma-separated list of 3-6 state names>
+      PROPOSED_RATIONALE:<why this is a re-usable pattern, not a one-shot task>
+    capture: new_loop_proposal
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response include PROPOSED_NAME:, PROPOSED_DESC:, PROPOSED_INPUT_KEY:, PROPOSED_INITIAL_STATE:, PROPOSED_STATES_SUMMARY:, and PROPOSED_RATIONALE: lines?"
+      min_confidence: 0.5
+    on_yes: check_auto_create
+    on_no: present_result
+    on_error: present_result
+
+  check_auto_create:
+    action_type: shell
+    action: |
+      test "${context.auto_create}" = "true" && exit 0 || exit 1
+    evaluate:
+      type: exit_code
+    on_yes: invoke_create_loop
+    on_no: present_result
+    on_error: present_result
+
+  invoke_create_loop:
+    action_type: slash_command
+    timeout: 3600
+    action: "/ll:create-loop"
+    capture: create_loop_output
+    on_blocked: present_result
+    on_error: present_result
+    next: present_result
+
+  # ─── Terminal States ──────────────────────────────────────────────────────────
+
+  present_result:
+    action_type: shell
+    terminal: true
+    action: |
+      python3 << 'PYEOF'
+      import json, re
+      def _read(p, default=''):
+          try:
+              with open(p) as f: return f.read().strip()
+          except Exception: return default
+      branch         = _read('.loops/tmp/loop-router-branch.txt', 'unknown')
+      chosen         = _read('.loops/tmp/loop-router-chosen.txt', 'NONE')
+      conf_raw       = _read('.loops/tmp/loop-router-confidence.txt', '0')
+      confidence     = float(conf_raw) if conf_raw else 0.0
+      proposal_out   = """${captured.new_loop_proposal.output}"""
+      review_out     = """${captured.review_result.output}"""
+      has_proposal   = 'PROPOSED_NAME:' in proposal_out
+      if has_proposal:
+          def _field(key):
+              m = re.search(key + r':(.*)', proposal_out)
+              return m.group(1).strip() if m else ''
+          result = {
+              'branch': 'propose_new',
+              'confidence': confidence,
+              'proposed_loop_spec': {
+                  'name':          _field('PROPOSED_NAME'),
+                  'description':   _field('PROPOSED_DESC'),
+                  'input_key':     _field('PROPOSED_INPUT_KEY'),
+                  'initial':       _field('PROPOSED_INITIAL_STATE'),
+                  'states_summary': [s.strip() for s in _field('PROPOSED_STATES_SUMMARY').split(',') if s.strip()],
+                  'rationale':     _field('PROPOSED_RATIONALE'),
+              },
+              'success': False,
+              'summary': 'No existing loop fit. Loop spec drafted. Run /ll:create-loop or rerun with --context auto_create=true to author it.',
+          }
+      else:
+          succ_m = re.search(r'REVIEW_SUCCESS:(true|false)', review_out, re.IGNORECASE)
+          summ_m = re.search(r'REVIEW_SUMMARY:(.*)', review_out)
+          success = bool(succ_m) and succ_m.group(1).lower() == 'true'
+          summary = summ_m.group(1).strip() if summ_m else 'Sub-loop completed.'
+          result = {
+              'branch':     branch,
+              'loop_chosen': chosen,
+              'confidence': confidence,
+              'success':    success,
+              'summary':    summary,
+          }
+      print(json.dumps(result, indent=2))
+      PYEOF
+
+  failed:
+    action_type: shell
+    terminal: true
+    action: |
+      python3 -c "import json; print(json.dumps({'branch': 'error', 'success': False, 'summary': 'loop-router encountered a fatal error during catalog discovery or classification.'}, indent=2))"
+      exit 1

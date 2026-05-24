@@ -252,6 +252,39 @@ These loops ship with little-loops and cover common workflows. Install one to `.
 ll-loop install <name>       # Copies to .loops/ for editing
 ```
 
+**Routing**
+
+| Loop | Description |
+|------|-------------|
+| `loop-router` | Natural-language entry point — classifies a goal into the best-fit project or built-in loop (3-way branch: project / built-in / propose new), scores candidates, dispatches as a sub-loop, and summarises the result |
+
+`loop-router` is the recommended starting point when you know *what you want done* but not *which loop to run*:
+
+```bash
+ll-loop run loop-router "research how our auth middleware handles refresh tokens"
+# Router classifies → scores candidates → dispatches deep-research → summarises report
+
+ll-loop run loop-router "refine FEAT-1654 to ready" --context auto=false
+# auto=false → shows top candidates for human selection before dispatching
+
+ll-loop run loop-router "every Friday generate a PR digest and post it to Slack" --context auto_create=true
+# No existing loop fits → drafts a new project loop spec and invokes /ll:create-loop
+```
+
+Context knobs:
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `auto` | `"true"` | Skip HITL confirmation when top candidate meets threshold |
+| `auto_create` | `"false"` | When branch C fires (propose_new), invoke `/ll:create-loop` immediately |
+| `confidence_threshold` | `"0.7"` | Minimum score to auto-dispatch without HITL |
+| `exclude` | `""` | Comma-separated loop names to omit from the catalog |
+
+**Three routing branches:**
+- **A — project**: goal matches a project-specific loop in `.loops/*.yaml` (preferred)
+- **B — built-in**: goal matches a general-purpose built-in loop
+- **C — propose_new**: no loop fits; router drafts a structured spec for a new project loop
+
 **General-Purpose**
 
 | Loop | Description |
