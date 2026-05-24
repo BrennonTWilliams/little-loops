@@ -38,7 +38,17 @@ cleanup() {
         # All errors are suppressed and ignored
         WORKTREE_PATTERN=$(basename "$WORKTREE_BASE")
         git worktree list 2>/dev/null | grep "$WORKTREE_PATTERN" 2>/dev/null | awk '{print $1}' | while read -r w; do
-            [ -n "$w" ] && git worktree remove --force "$w" 2>/dev/null || true
+            if [ -n "$w" ]; then
+                # Skip if owned by a running process (BUG-1683)
+                MARKER=$(ls "${w}/.ll-session-"* 2>/dev/null | head -1)
+                if [ -n "$MARKER" ]; then
+                    PID=$(basename "$MARKER" | sed 's/^\.ll-session-//')
+                    if kill -0 "$PID" 2>/dev/null; then
+                        continue  # live sprint worker — skip
+                    fi
+                fi
+                git worktree remove --force "$w" 2>/dev/null || true
+            fi
         done || true
     fi
 

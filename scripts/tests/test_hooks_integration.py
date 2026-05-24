@@ -2125,3 +2125,93 @@ class TestContextHandoffSentinel:
 
         finally:
             os.chdir(original_dir)
+
+
+class TestSessionCleanupWorktrees:
+    """Per-worktree liveness-check in session-cleanup.sh (BUG-1683)."""
+
+    @pytest.fixture
+    def cleanup_script(self) -> Path:
+        return Path(__file__).parent.parent.parent / "hooks/scripts/session-cleanup.sh"
+
+    def _make_worktree(self, tmp_path: Path) -> Path:
+        """Init a git repo in tmp_path and add one worker worktree under .worktrees/."""
+        git = ["git", "-c", "user.email=t@t.com", "-c", "user.name=T"]
+        subprocess.run([*git, "init"], cwd=tmp_path, capture_output=True, check=True)
+        subprocess.run(
+            [*git, "commit", "--allow-empty", "-m", "init"],
+            cwd=tmp_path,
+            capture_output=True,
+            check=True,
+        )
+        worker_dir = tmp_path / ".worktrees" / "worker-test-20260524"
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "parallel/test-20260524", str(worker_dir)],
+            cwd=tmp_path,
+            capture_output=True,
+            check=True,
+        )
+        return worker_dir
+
+    def test_session_cleanup_skips_worktree_with_live_pid_marker(
+        self, cleanup_script: Path, tmp_path: Path
+    ) -> None:
+        """Worktree with live PID marker must not be removed by session-cleanup.sh."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            (tmp_path / ".ll").mkdir()
+            worker_dir = self._make_worktree(tmp_path)
+            (worker_dir / f".ll-session-{os.getpid()}").write_text("")
+
+            subprocess.run([str(cleanup_script)], capture_output=True, text=True, timeout=15)
+
+            assert worker_dir.exists(), (
+                "Worktree with live PID marker should not be removed by session-cleanup.sh"
+            )
+        finally:
+            os.chdir(original_dir)
+
+    def test_session_cleanup_removes_worktree_with_dead_pid_marker(
+        self, cleanup_script: Path, tmp_path: Path
+    ) -> None:
+        """Worktree with dead PID marker must be removed by session-cleanup.sh."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            (tmp_path / ".ll").mkdir()
+            worker_dir = self._make_worktree(tmp_path)
+            (worker_dir / ".ll-session-99999").write_text("")
+
+            subprocess.run([str(cleanup_script)], capture_output=True, text=True, timeout=15)
+
+            assert not worker_dir.exists(), (
+                "Worktree with dead PID marker should be removed by session-cleanup.sh"
+            )
+        finally:
+            os.chdir(original_dir)
+
+    def test_session_cleanup_removes_worktree_with_no_marker(
+        self, cleanup_script: Path, tmp_path: Path
+    ) -> None:
+        """Orphaned worktree (no .ll-session-* marker) must be removed by session-cleanup.sh."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            (tmp_path / ".ll").mkdir()
+            worker_dir = self._make_worktree(tmp_path)
+            # No marker — simulates an orphan from an interrupted run
+
+            subprocess.run([str(cleanup_script)], capture_output=True, text=True, timeout=15)
+
+            assert not worker_dir.exists(), (
+                "Orphaned worktree with no session marker should be removed by session-cleanup.sh"
+            )
+        finally:
+            os.chdir(original_dir)
