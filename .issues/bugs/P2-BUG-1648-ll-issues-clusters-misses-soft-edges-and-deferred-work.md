@@ -22,7 +22,7 @@ status: open
 
 `ll-issues clusters` prints exactly one cluster of 2 issues (ENH-977 ↔ ENH-494). Hidden:
 
-- **Active `depends_on` pairs** (4): ENH-1617→ENH-1618, ENH-1629→BUG-1628, ENH-1631→BUG-1628, FEAT-1475→FEAT-1478
+- **Active `depends_on` pairs** (4): ENH-1617→ENH-1618, ENH-1658→BUG-1628, ENH-1631→BUG-1628, FEAT-1475→FEAT-1478
 - **EPIC-1622 family** (5): FEAT-1475/1476/1478/1479/1480 share `parent: EPIC-1622`
 - **Deferred clusters**: frontend/UI (~13 issues), FEAT-1156 chain, FEAT-1315 chain, FEAT-1232 cluster
 
@@ -137,7 +137,7 @@ Manual spot-checks against enumerated clusters:
 - [ ] `ll-issues clusters --edges=blocking` reproduces today's single 2-issue cluster (regression guard)
 - [ ] `ll-issues clusters --status=+deferred` surfaces the frontend/UI deferred cluster
 - [ ] EPIC-1622 family appears as a cluster via `parent` edges under default flags
-- [ ] All four active `depends_on` pairs (ENH-1617→ENH-1618, ENH-1629→BUG-1628, ENH-1631→BUG-1628, FEAT-1475→FEAT-1478) appear in default output
+- [ ] All four active `depends_on` pairs (ENH-1617→ENH-1618, ENH-1658→BUG-1628, ENH-1631→BUG-1628, FEAT-1475→FEAT-1478) appear in default output
 - [ ] `find_issues()` callers without a `status_filter` argument observe identical behaviour to today (no regression in `ll-auto`/`ll-parallel`/`ll-sprint`)
 - [ ] JSON output includes `depends_on`, `relates_to`, `parent` as valid `relationship` values
 - [ ] Tests in `scripts/tests/` cover each new flag combination

@@ -301,8 +301,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Sibling Issue Ordering (added by `/ll:wire-issue` third pass)
 
-_ENH-1629 and ENH-1631 both also modify `general-task.yaml` — coordinate before merging:_
-- `ENH-1629` (`P3-ENH-1629-general-task-loop-explicit-threshold-keys-in-context.md`) — adds threshold context keys and modifies the `check_done` LLM evaluator prompt. Touches the same state BUG-1628 routes _into_ (`check_done`). Implement BUG-1628 first; ENH-1629 adds on top.
+_ENH-1658 and ENH-1631 both also modify `general-task.yaml` — coordinate before merging:_
+- `ENH-1658` (`P3-ENH-1658-general-task-check-done-shell-counter.md`, refiled from ENH-1629) — replaces the `check_done` LLM evaluator with a deterministic shell counter modeled on `dead-code-cleanup.yaml`. Touches the same state BUG-1628 routes _into_ (`check_done`). Implement BUG-1628 first; ENH-1658 swaps the gate on top of the updated structure.
 - `ENH-1631` (`P3-ENH-1631-fsm-runtime-on-max-iterations-summary-hook.md`) — proposes adding a `summarize_partial` state that reads `general-task-dod.md` and `general-task-plan.md`. Adds a new state to the same loop. No merge conflict with BUG-1628's `continue_work` changes, but review state count assertions in `TestGeneralTaskLoop` before landing ENH-1631.
 
 ### Codebase Research Findings
@@ -466,7 +466,7 @@ The replan branch — the only fix in scope per the Scope Boundary below — was
 **Out-of-scope (deferred elsewhere):**
 
 - Oscillation/stall guard — `depends_on: FEAT-1637` (FSM-level `StallDetector`, `status: done`). Hooking general-task into the stall detector, if not already wired by FEAT-1637's implementation, should be tracked as a new issue rather than reopening this one.
-- Explicit DoD/plan-coverage thresholds — `ENH-1629`.
+- Deterministic shell counter replacing the `check_done` LLM evaluator — `ENH-1658` (refiled from ENH-1629).
 - `max_iterations` partial-summary hook — `ENH-1631`.
 
 ## Scope Boundary

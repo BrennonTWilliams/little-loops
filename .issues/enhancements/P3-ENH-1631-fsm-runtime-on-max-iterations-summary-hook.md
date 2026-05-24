@@ -3,7 +3,7 @@ captured_at: "2026-05-23T16:40:11Z"
 discovered_date: 2026-05-23
 discovered_by: capture-issue
 status: open
-depends_on: [BUG-1628, ENH-1629]
+depends_on: [BUG-1628, ENH-1658]
 ---
 
 # ENH-1631: Add `on_max_iterations` summary hook to FSM runtime + general-task loop
@@ -86,7 +86,7 @@ Out of scope:
 ## Related
 
 - [[BUG-1628]] — partial fix overlaps: with replan + oscillation guard in place, `max_iterations` will fire less often, but the summary hook is still useful for genuinely large tasks.
-- [[ENH-1629]] — pairs naturally with explicit threshold keys; the summary can report against `target_pass_rate`.
+- [[ENH-1658]] (refiled from ENH-1629) — pairs naturally with the deterministic shell gate; the summary can report the captured `{unchecked_dod, unchecked_plan, failed_samples}` JSON directly rather than re-parsing artifacts.
 
 ## Source
 

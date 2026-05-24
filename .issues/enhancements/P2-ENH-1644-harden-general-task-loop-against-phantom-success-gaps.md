@@ -6,7 +6,7 @@ discovered_by: capture-issue
 status: done
 relates_to:
 - BUG-1628
-- ENH-1629
+- ENH-1658
 confidence_score: 100
 outcome_confidence: 78
 score_complexity: 18
@@ -35,7 +35,7 @@ The current loop's `check_done` *action* already says "verify by evidence" — s
 
 `evaluate_llm_structured` (`scripts/little_loops/fsm/evaluators.py:572`) is a `build_blocking_json` call with **no tool access**, and it only sees the last 4000 chars of the action's stdout (line 605). It cannot read files, run commands, or check filesystem state. Therefore sample-verify must execute inside the `check_done.action` body (which is a `prompt` action with full tools) and emit its results into the action output; the `evaluate` step is restricted to structural reasoning over text the action already produced.
 
-Adjacent to [[BUG-1628]] (plan exhaustion / oscillation) and [[ENH-1629]] (explicit thresholds). The changes here do not close either, but they harden the same surface and should not conflict.
+Adjacent to [[BUG-1628]] (plan exhaustion / oscillation) and [[ENH-1658]] (refiled from ENH-1629; replaces the `check_done` LLM evaluator with a shell counter). The changes here do not close either, but they harden the same surface and should not conflict.
 
 ## Current Behavior
 
@@ -193,7 +193,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Out of scope**: Adding a separate `verify` state — strengthening `check_done` in place avoids duplicating the action body and complicating routing.
 - **Out of scope**: External DoD/plan template files — inline prompts are consistent with the current loop and the rest of `loops/*.yaml`.
 - **Out of scope**: Runtime/evaluator changes in `scripts/little_loops/fsm/`. The existing `llm_structured` evaluator is sufficient *because* verification is being pushed into the `check_done` action body where tools are available.
-- **Out of scope**: Closing [[BUG-1628]] (plan exhaustion) or [[ENH-1629]] (explicit thresholds) — mention them in the commit body as adjacent.
+- **Out of scope**: Closing [[BUG-1628]] (plan exhaustion) or [[ENH-1658]] (refiled from ENH-1629; shell-counter gate) — mention them in the commit body as adjacent.
 - **Out of scope (this pass)**: Raising `min_confidence` and adding `uncertain_suffix: _uncertain` to `check_done.evaluate`. Tracked as an optional follow-up because it changes routing semantics.
 
 ## Success Metrics
@@ -254,4 +254,4 @@ Added `scripts/tests/test_general_task_loop.py` (15 tests, modeled after `test_r
 ### Scope notes
 - `--show-diagrams` mentioned in the original acceptance criteria is not the current `ll-loop` CLI flag — the equivalent is `ll-loop show general-task`. Confirmed transitions unchanged.
 - Live runtime re-run on a runtime-surface task is deferred to natural use of the loop — prompt-content changes are LLM-driven and the static assertions plus the structural evaluator constraints encode the prevention path.
-- Adjacent issues [[BUG-1628]] (plan exhaustion) and [[ENH-1629]] (explicit thresholds) remain open — this change hardens the same surface but does not close them.
+- Adjacent issues [[BUG-1628]] (plan exhaustion) and [[ENH-1658]] (refiled from ENH-1629; shell-counter gate) remain open — this change hardens the same surface but does not close them.

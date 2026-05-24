@@ -1,0 +1,182 @@
+---
+captured_at: "2026-05-23T16:40:11Z"
+discovered_date: 2026-05-23
+discovered_by: capture-issue
+status: open
+depends_on: BUG-1628
+---
+
+# ENH-1658: Replace general-task `check_done` LLM evaluator with a shell counter
+
+## Summary
+
+The `general-task` loop's `check_done` state currently uses an `llm_structured` evaluator to confirm a deterministic, mechanical property: "all DoD criteria are `[x]`, all plan steps are `[x]`, and the Sample Verification section has no FAILED entries." That is a checkbox-counting task — exactly the shape `dead-code-cleanup.yaml`'s `count_findings` state already solves with `action_type: shell` + `evaluate: output_json`. Replacing the LLM gate with a shell counter removes LLM judgment from the termination decision, eliminates one model call per iteration, and makes the success contract auditable from the loop YAML alone.
+
+## Current Behavior
+
+`scripts/little_loops/loops/general-task.yaml:74-122` defines `check_done` as a prompt-action followed by an `llm_structured` evaluator:
+
+- The prompt asks the model to re-read both files, verify each criterion by evidence, write a `## Sample Verification` section, and print the final DoD/plan to stdout.
+- The evaluator reads that stdout and answers YES iff (1) all DoD criteria are `[x]`, (2) all plan steps are `[x]`, (3) the Sample Verification section has no FAILED entries.
+
+All three of those checks are pure string parsing over two markdown files — no judgment required. The current LLM evaluator can drift, hallucinate a YES, or hallucinate a NO; it costs a model call per iteration; and the bar lives inside the prompt rather than in the YAML.
+
+## Expected Behavior
+
+`check_done` is split into two states:
+
+1. **`check_done`** (existing prompt action, lightly trimmed) — still asks the model to verify by evidence, mark criteria `[x]`/`[ ]`, and append the Sample Verification section. No `evaluate:` block; routes unconditionally to the new shell state.
+2. **`count_done`** (new shell state, modeled on `dead-code-cleanup.yaml`'s `count_findings`) — parses `.loops/tmp/general-task-dod.md` and `.loops/tmp/general-task-plan.md`, emits a single JSON object summarizing remaining work, and uses `evaluate: output_json` to route deterministically:
+   - `on_yes: done` when all criteria pass.
+   - `on_no: continue_work` when anything remains.
+   - `on_error: diagnose` if either file is missing or malformed.
+
+The contract becomes machine-readable: "zero unchecked DoD criteria, zero unchecked plan steps, zero FAILED sample-verification entries."
+
+## Motivation
+
+- **Removes LLM judgment from a deterministic gate.** The "is this checkbox `[x]`?" question doesn't benefit from a language model; it benefits from `grep -c`. The current evaluator can flip YES/NO based on prompt drift even when the underlying files are unchanged.
+- **One fewer model call per iteration.** Over a 100-iteration cap, that's 100 fewer calls. The shell state runs in milliseconds.
+- **Audit-friendly.** `/ll:audit-loop-run` can quote the JSON output (`{"unchecked_dod": 2, "unchecked_plan": 0, "failed_samples": 1}`) directly instead of inferring pass/fail from the evaluator's prose.
+- **Pairs with [[BUG-1628]].** Once the plan-exhaustion deadlock is fixed, the success contract still needs to be unambiguous — a shell counter is the clean way to express it.
+
+Precedent: `scripts/little_loops/loops/dead-code-cleanup.yaml:28-46` already uses this pattern (`grep -c` → JSON → `output_json` evaluator → terminate on count == 0). This issue applies the same pattern to general-task.
+
+## Proposed Solution
+
+Replace the `evaluate:` block on `check_done` with a routed transition to a new `count_done` shell state.
+
+```yaml
+check_done:
+  action_type: prompt
+  action: |
+    # unchanged — still writes DoD updates and the Sample Verification section
+    ...
+  next: count_done
+  on_error: diagnose
+
+count_done:
+  action_type: shell
+  action: |
+    DOD=".loops/tmp/general-task-dod.md"
+    PLAN=".loops/tmp/general-task-plan.md"
+    if [ ! -f "$DOD" ] || [ ! -f "$PLAN" ]; then
+      echo '{"error": "missing artifact"}'
+      exit 1
+    fi
+    # Count unchecked checkboxes in the Verification Criteria section
+    UNCHECKED_DOD=$(awk '/^## Verification Criteria/,/^## /' "$DOD" \
+      | grep -c '^[[:space:]]*-[[:space:]]*\[[[:space:]]\]' || true)
+    UNCHECKED_PLAN=$(grep -c '^[[:space:]]*-[[:space:]]*\[[[:space:]]\]' "$PLAN" || true)
+    # Count FAILED entries in the Sample Verification section (if present)
+    FAILED_SAMPLES=$(awk '/^## Sample Verification/,0' "$DOD" \
+      | grep -c 'FAILED' || true)
+    printf '{"unchecked_dod": %d, "unchecked_plan": %d, "failed_samples": %d}\n' \
+      "$UNCHECKED_DOD" "$UNCHECKED_PLAN" "$FAILED_SAMPLES"
+  capture: done_counts
+  evaluate:
+    type: output_json
+    # Pass only when all three counts are zero. If the FSM runtime supports
+    # a sum/all-zero operator, prefer that; otherwise add a tiny shell-side
+    # `total` field and compare `total == 0`.
+    path: ".total"
+    operator: eq
+    target: 0
+  on_yes: done
+  on_no: continue_work
+  on_error: diagnose
+```
+
+If `output_json` only supports comparing a single scalar path (the dead-code precedent uses `.count`), add `"total": UNCHECKED_DOD + UNCHECKED_PLAN + FAILED_SAMPLES` to the JSON and compare `.total == 0`. The individual fields still get captured for audit/diagnostics.
+
+## Acceptance Criteria
+
+- [ ] `check_done` state in `general-task.yaml` no longer has an `evaluate:` block; it routes unconditionally to `count_done`.
+- [ ] New `count_done` state uses `action_type: shell`, emits a JSON object with at least `{unchecked_dod, unchecked_plan, failed_samples, total}`, and routes via `evaluate: output_json` against `.total == 0`.
+- [ ] Existing routes (`on_no: continue_work`, `on_error: diagnose`, `on_yes: done`) are preserved on the new gate state, not on `check_done`.
+- [ ] A test loop run where all DoD/plan boxes are `[x]` and no sample is FAILED terminates with `success` via `count_done`.
+- [ ] A test loop run with one unchecked criterion routes to `continue_work` (not `done`).
+- [ ] A test loop run with `general-task-dod.md` missing routes to `diagnose` (not silent success).
+- [ ] `ll-loop validate scripts/little_loops/loops/general-task.yaml` passes.
+- [ ] `docs/guides/LOOPS_GUIDE.md` general-task section documents the new two-state gate and the JSON output schema.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/general-task.yaml` — split `check_done` into `check_done` (prompt) + `count_done` (shell), move routes to `count_done`.
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/` — verify `action_type: shell` + `evaluate: output_json` path works the same way it does for `dead-code-cleanup.yaml`. No runtime changes expected.
+- `/ll:audit-loop-run` consumers — they currently look for the `check_done` evaluator output; update to read `count_done`'s captured JSON instead.
+
+### Similar Patterns
+- `scripts/little_loops/loops/dead-code-cleanup.yaml:28-46` — `count_findings` state: shell action emits `{"count": N}`, `output_json` evaluates `.count == 0`, routes to `done`/`remove_code`/`done` on yes/no/error. Direct model for this change.
+
+### Tests
+- Add a fixture under `scripts/tests/` exercising `count_done` in three cases: all-clean (→ done), unchecked criterion (→ continue_work), missing DoD (→ diagnose).
+- `ll-loop validate` smoke test confirming the new YAML parses.
+
+### Documentation
+- `docs/guides/LOOPS_GUIDE.md` — update the general-task section to describe the two-state gate, the JSON output, and that termination is deterministic.
+
+### Configuration
+- N/A.
+
+## Implementation Steps
+
+1. Read `scripts/little_loops/loops/dead-code-cleanup.yaml`'s `count_findings` state and confirm the `output_json` evaluator's supported `path` / `operator` semantics in `scripts/little_loops/fsm/`.
+2. Add `count_done` state to `general-task.yaml` per the snippet above; emit `total` if `output_json` doesn't support multi-field comparison.
+3. Strip the `evaluate:` block from `check_done`; set `next: count_done`.
+4. Move `on_yes: done`, `on_no: continue_work`, `on_error: diagnose` onto `count_done`.
+5. Run `ll-loop validate scripts/little_loops/loops/general-task.yaml`.
+6. Run `ll-loop run general-task` against a small task that terminates in 2-3 iterations to confirm the new gate fires correctly in the happy path.
+7. Manually corrupt the DoD file (delete it) mid-run and confirm `count_done` routes to `diagnose` instead of crashing.
+8. Update `docs/guides/LOOPS_GUIDE.md`.
+
+## Scope Boundaries
+
+- **In scope**: Replacing the `llm_structured` evaluator on `check_done` with a deterministic shell counter modeled on `dead-code-cleanup.yaml`.
+- **In scope**: Preserving the existing `check_done` prompt action (the model still writes the DoD updates and Sample Verification section — only the *gate* changes).
+- **Out of scope**: Adding configurable `target_pass_rate` / `min_per_category` keys. The DoD contract is binary by design; partial-credit thresholds undermine the "Definition of Done" framing and were the wrong framing in this issue's original draft.
+- **Out of scope**: Generalizing the shell-counter pattern to other loops in `scripts/little_loops/loops/`. This issue is scoped to `general-task` only.
+- **Out of scope**: FSM runtime changes. If `output_json` lacks the operator we need, work around it in the shell (emit a pre-computed `total`) rather than extending the runtime here.
+
+## Success Metrics
+
+- A `general-task` run that completes all DoD criteria terminates via `count_done` in zero LLM calls (the shell action does the gate).
+- `/ll:audit-loop-run` can quote `{unchecked_dod, unchecked_plan, failed_samples}` directly from the run log without re-parsing the DoD file.
+- Zero observed cases of the gate flipping YES/NO between identical inputs (currently possible with the LLM evaluator).
+
+## Impact
+
+- **Priority**: P3 — quality and observability improvement; complements but does not block [[BUG-1628]].
+- **Effort**: Small — one YAML state added, one `evaluate:` block removed, three routes moved, plus docs. Mirrors an existing pattern.
+- **Risk**: Low — the prompt that writes the DoD updates is unchanged; only the gate parsing it changes. Failure mode is conservative (missing file → `diagnose`, not silent `done`).
+- **Breaking Change**: No — the loop's external contract (DoD format, plan format, terminal states) is unchanged.
+
+## Source
+
+`general-task-audit-proposals.md` (Proposal 2) — originally captured as ENH-1629 ("add configurable thresholds to `check_done`"). Rewritten on 2026-05-23 after review concluded that (a) the current evaluator already enforces a 100% bar implicitly, (b) configurable partial-credit thresholds undermine the Definition-of-Done contract, and (c) the genuinely valuable change is replacing the LLM gate with a deterministic shell counter (the original issue's "Phase 2"). Refiled under ID 1658 to avoid conceptual collision with the committed ENH-1629 description in git history (`e995aba1 chore(issues): file ENH-1629 and ENH-1631 from general-task loop audit`). The proposals file is a transient working doc; the durable record lives here and in [[BUG-1628]].
+
+## Related Key Documentation
+
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+## Labels
+
+`enhancement`, `loops`, `general-task`, `captured`
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53f5ce8a-8802-4e4f-a82f-cb8f836c6b67.jsonl`
+- `/ll:format-issue` - 2026-05-23T16:43:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7684c915-f5a2-4b68-9ba1-d56622191296.jsonl`
+- `/ll:capture-issue` - 2026-05-23T16:40:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
+
+---
+
+**Open** | Created: 2026-05-23 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue restructures the gate following `check_done` in general-task.yaml. BUG-1628 restructures the `execute`/`continue_work` state actions in the same file. This issue `depends_on: BUG-1628` — let the structural fix land first (it changes what states exist and how iteration proceeds), then swap the LLM gate for a shell counter on top of the updated structure.
