@@ -16,7 +16,7 @@ Update `continue_work` and `execute` states in `scripts/little_loops/loops/gener
 
 In run `2026-05-24T093122`, an API socket disconnect during `continue_work` (iteration 7, exit code 1) routed directly to `diagnose → failed` because `continue_work` has `on_error: diagnose`. The ENH-713 retry mechanism is already available but not wired into `general-task.yaml`. A lightweight YAML-only change makes the loop resilient to one-off infrastructure failures without requiring any framework changes.
 
-Note: ENH-1675 proposes a complementary `retryable_exit_codes` filter to limit retries to known-transient codes. This issue can be implemented independently using the existing unconditional retry mechanism.
+Note: ENH-1678 proposes a complementary `retryable_exit_codes` filter to limit retries to known-transient codes. This issue can be implemented independently using the existing unconditional retry mechanism.
 
 ## Expected Behavior
 
@@ -58,7 +58,7 @@ execute:
    - `max_retries: 2`
    - `on_retry_exhausted: continue_work`
 3. Run `ll-loop validate general-task` to confirm schema validity.
-4. (Optional) If ENH-1675 is also implemented, add `retryable_exit_codes: [1, 137]` to limit retries to known-transient codes.
+4. (Optional) If ENH-1678 is also implemented, add `retryable_exit_codes: [1, 137]` to limit retries to known-transient codes.
 
 ## Success Metrics
 
@@ -68,7 +68,7 @@ execute:
 ## Scope Boundaries
 
 - **In scope**: `continue_work` and `execute` states in `general-task.yaml`; YAML-only change using the existing retry mechanism from ENH-713
-- **Out of scope**: Framework or Python changes; other loop YAML files; the `retryable_exit_codes` filter (tracked in ENH-1675)
+- **Out of scope**: Framework or Python changes; other loop YAML files; the `retryable_exit_codes` filter (tracked in ENH-1678)
 
 ## Integration Map
 
@@ -90,7 +90,7 @@ execute:
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts` 2026-05-24): ENH-1677 (retry hardening for `continue_work` + `execute`) and ENH-1655 (retry hardening for `check_done` evaluate step) are complementary halves of a complete general-task retry-hardening effort — they target different states but the same class of infra failures in the same loop. Both should land together in a single sprint for full coverage. ENH-1677 explicitly acknowledges ENH-1675 (`retryable_exit_codes` filter) as a follow-up; ENH-1655 addresses the evaluate-specific path that ENH-1677 does not touch.
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-24): ENH-1677 (retry hardening for `continue_work` + `execute`) and ENH-1655 (retry hardening for `check_done` evaluate step) are complementary halves of a complete general-task retry-hardening effort — they target different states but the same class of infra failures in the same loop. Both should land together in a single sprint for full coverage. ENH-1677 explicitly acknowledges ENH-1678 (`retryable_exit_codes` filter) as a follow-up; ENH-1655 addresses the evaluate-specific path that ENH-1677 does not touch.
 
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e127-5f7b-421f-9734-c94217103bba.jsonl`

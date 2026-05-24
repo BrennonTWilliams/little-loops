@@ -9,6 +9,7 @@ depends_on: ENH-1658
 supersedes: ENH-1656
 confidence_score: 70
 outcome_confidence: 60
+decision_needed: false
 ---
 
 # ENH-1671: Delta-aware `check_done` prompt to scope re-verification to the most recent step
@@ -70,6 +71,8 @@ Pass the delta into the `check_done` prompt via captured state from `execute`, a
 
 **Option 1 — Delta-aware prompt (preferred, smallest change):**
 
+> **Selected:** Option 1 — Delta-aware prompt — The `capture: execute_result` → `${captured.execute_result.output}` pattern is already the canonical convention in harness-single-shot.yaml and harness-multi-item.yaml (same key name), with a direct prompt-inline precedent in dead-code-cleanup.yaml; requires only 2 YAML edits and 3 new test classes with no new Python infrastructure.
+
 The `execute` state already completes one plan step. Have `execute` capture the step text and the touched files (e.g., via the model echoing them in a structured tail of its output, captured to `last_step` / `last_files`). Then `check_done`'s prompt reads:
 
 ```yaml
@@ -106,6 +109,27 @@ Structure the DoD file with phase headers (`## Phase 1: Asset Loading`, `## Phas
 
 Track which criteria were verified in previous iterations and the mtime of every file they touched; only re-verify criteria whose underlying files have changed since their last `[x]`. Requires sidecar state and is probably overkill for the gain — listed for completeness, not recommended.
 
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-05-24.
+
+**Selected**: Option 1 — Delta-aware prompt (preferred, smallest change)
+
+**Reasoning**: Option 1 fits exactly into the existing FSM capture-then-consume convention — `capture: execute_result` on the `execute` state is already the established key name in both canonical harness templates, and inlining `${captured.execute_result.output}` into a downstream prompt body has a direct precedent in dead-code-cleanup.yaml. Option 2 requires breaking the flat `## Verification Criteria` DoD format that five existing test assertions lock in, plus the same capture infrastructure as Option 1 but with coarser scoping. Option 3 requires a net-new per-criterion identity and sidecar persistence layer with no existing analog in the FSM.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option 1 — Delta-aware prompt | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| Option 2 — Phased DoD | 0/3 | 0/3 | 1/3 | 0/3 | 1/12 |
+| Option 3 — mtime-based cached verification | 1/3 | 0/3 | 0/3 | 1/3 | 2/12 |
+
+**Key evidence**:
+- Option 1: `capture: execute_result` + `${captured.execute_result.output}` is used in 100+ capture sites and 150+ consume sites; harness-single-shot.yaml:36 and dead-code-cleanup.yaml:51–52 are direct structural precedents; no Python infrastructure changes needed.
+- Option 2: `define_done` prescribes a flat `## Verification Criteria` format (general-task.yaml:22–28) with 5 test assertions locked to it; phase headers in the codebase are comment-only, with zero runtime representation.
+- Option 3: `capture: str | None` (schema.py:374) is a single slot — cannot store a criteria-granularity mtime map; entire per-criterion tracking layer would be built from scratch.
+
 ## Acceptance Criteria
 
 - [ ] `execute` state in `general-task.yaml` captures the step text and touched files in a structured form readable by `check_done` (e.g., `captured.last_step`, `captured.last_files`).
@@ -139,6 +163,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Similar Patterns
 - `scripts/little_loops/loops/general-task.yaml:61-72` — the `execute` state already produces step-completion text; this issue formalizes the contract so `check_done` can consume it.
 - `scripts/little_loops/loops/dead-code-cleanup.yaml` — precedent for shell-side capture (used by [[ENH-1658]]); not directly reusable here but confirms `captured.*` is part of the FSM's vocabulary.
+- `scripts/little_loops/loops/harness-single-shot.yaml` and `harness-multi-item.yaml` — canonical harness templates that already use `capture: execute_result` on `execute` + `source: "${captured.execute_result.output}"` in a downstream `check_semantic` evaluator. Closest existing template to what ENH-1671 requires.
+- `scripts/little_loops/loops/rn-plan.yaml:101–133` — `classify_research` state emits a structured token (`NEEDS_FILES` / `NEEDS_WEB`) as the last line of its output; downstream `route_files` reads `${captured.classification.output}` with `output_contains`. Confirms the "prompt emits token → downstream reads captured output" pattern works at runtime.
+- `scripts/tests/test_fsm_executor.py:TestCaptureWorkflow` — 8 unit tests covering all captured subfields (`.output`, `.exit_code`, `.stderr`, `.duration_ms`); confirms `${captured.nonexistent.output}` → `terminated_by == "error"`. No new executor tests needed.
 
 ### Tests
 - Add a fixture under `scripts/tests/` exercising three cases on `check_done`:
@@ -179,13 +206,14 @@ _Confirmed by:_ `scripts/little_loops/fsm/executor.py:985–992` (capture storag
 
 ## Implementation Steps
 
-1. Read the FSM's interpolation rules in `scripts/little_loops/fsm/` to confirm how `execute` can hand structured data to `check_done` (most likely a captured-state slot keyed by state name).
-2. Update `execute`'s prompt to print a structured trailing line — e.g., `LAST_STEP: <text>` and `LAST_FILES: <space-separated paths>` — and capture both into the FSM state.
-3. Rewrite `check_done`'s prompt per Option 1 above. Keep the sample-re-verification block byte-identical so [[ENH-1658]]'s shell counter still works.
-4. If [[ENH-1658]] has landed, `next: count_done`; otherwise keep the current evaluator. Do not couple to 1658.
-5. Add the three fixture tests under `scripts/tests/`.
-6. Run a representative `general-task` loop end-to-end and compare mean `check_done` duration vs. the pre-change baseline. Record the numbers in the PR description.
-7. Update `docs/guides/LOOPS_GUIDE.md`.
+1. ~~Read the FSM's interpolation rules~~ — **pre-confirmed by codebase research**: `scripts/little_loops/fsm/executor.py:985–992` stores captures; `scripts/little_loops/fsm/interpolation.py:80–81` + `_get_nested()` resolves `${captured.<varname>.output}`; `scripts/little_loops/fsm/schema.py:374` shows `capture: str | None` (one slot per state). No FSM runtime changes needed.
+2. In `scripts/little_loops/loops/general-task.yaml:64–75` (`execute` state), add `capture: execute_result` and extend the prompt to emit two structured trailing lines: `LAST_STEP: <step text>` and `LAST_FILES: <path1> <path2> ...`. Reference pattern: `dead-code-cleanup.yaml:26` (`capture: scan_results`).
+3. Rewrite `check_done`'s prompt (`general-task.yaml:78–109`) per Option 1, prepending a delta context block using `${captured.execute_result.output}`. Keep the sample-re-verification block (`## Sample Verification`, `min(3, total_checked)`) byte-identical — asserted by `test_general_task_loop.py:TestChange2CheckDoneReconcileAndSampleVerify` and required by [[ENH-1658]]'s shell counter.
+4. If [[ENH-1658]] has landed (`count_done` state present), update `on_yes: done` → `on_yes: count_done`. Otherwise leave the `llm_structured` evaluator at `general-task.yaml:111–124` unchanged. Do not couple to 1658.
+5. Add three test classes to `scripts/tests/test_general_task_loop.py` following the `TestChange2*` fixture pattern (`yaml.safe_load` + string assertions): (a) `execute` has `capture: execute_result` and prompts for `LAST_STEP:`/`LAST_FILES:` output lines; (b) `check_done` references `${captured.execute_result.output}` and contains scoping-policy wording; (c) `check_done` still contains `## Sample Verification` and `min(3`.
+6. Run `ll-loop validate scripts/little_loops/loops/general-task.yaml` and `python -m pytest scripts/tests/test_general_task_loop.py -v`.
+7. Run a representative `general-task` loop end-to-end and compare mean `check_done` duration vs. the pre-change baseline. Record numbers in the PR description.
+8. Update `docs/guides/LOOPS_GUIDE.md` to document the delta-scoped verification policy.
 
 ## Scope Boundaries
 
@@ -234,5 +262,7 @@ Promoted from [[ENH-1656]]'s problem statement and audit data on 2026-05-24. ENH
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-24): ENH-1671 and ENH-1655 are complementary halves of the same root failure (the 510s `check_done` session at iteration 14 of the `2026-05-23T224029` run that terminated on an API error). ENH-1671 reduces session duration so the failure probability drops; ENH-1655 retries gracefully when failures still occur. Neither provides complete coverage alone. When planning sprint work, schedule both.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-05-24T13:45:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c10f6d15-52d0-417a-a7da-e6f624facae2.jsonl`
+- `/ll:refine-issue` - 2026-05-24T13:38:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f14fda9-d560-46f6-992c-b2274de5ed68.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
 - `/ll:format-issue` - 2026-05-24T13:23:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/101e364c-669a-4add-9c9a-d2fd416d3171.jsonl`

@@ -10,7 +10,7 @@ labels:
 - resilience
 ---
 
-# ENH-1675: Add `retryable_exit_codes` filter to FSM state retry config
+# ENH-1678: Add `retryable_exit_codes` filter to FSM state retry config
 
 ## Summary
 
