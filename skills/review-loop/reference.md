@@ -37,6 +37,8 @@ These are surfaced by running `ll-loop validate <name>`. The review skill presen
 | V-15 | `llm.max_tokens <= 0` | Error |
 | V-16 | `llm.timeout <= 0` | Error |
 | V-17 | Missing top-level `description:` field | Warning |
+| MR-1 | Meta-loop (writes harness artifacts or imports `lib/benchmark.yaml`) has no non-LLM evaluator; suppress with `meta_self_eval_ok: true` (ENH-1665) | Error |
+| MR-2 | Meta-loop lacks measure→propose→apply→re-measure spine: no captured baseline referenced in any evaluator; suppress with `meta_self_eval_ok: true` (ENH-1665) | Warning |
 
 ---
 

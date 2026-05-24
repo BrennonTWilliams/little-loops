@@ -23,6 +23,7 @@ from little_loops.fsm.schema import (
 from little_loops.fsm.validation import (
     ValidationSeverity,
     _validate_evaluator,
+    _validate_meta_loop_evaluation,
     _validate_parameters,
     load_and_validate,
     validate_fsm,
@@ -701,4 +702,205 @@ class TestCircuitValidation:
         )
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown" in w.message or "additional" in w.message.lower()]
+        assert unknown_warnings == []
+
+
+BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
+
+
+class TestMetaLoopValidation:
+    """ENH-1665: MR-1 and MR-2 validation rules for meta-loops."""
+
+    def _meta_fsm(self, **kwargs) -> FSMLoop:
+        """Build a minimal meta-loop (detected via lib/benchmark.yaml import)."""
+        defaults: dict = {
+            "name": "test-meta",
+            "initial": "optimize",
+            "states": {
+                "optimize": make_state(action="run.sh", on_yes="done"),
+                "done": make_state(terminal=True),
+            },
+            "imports": ["lib/benchmark.yaml"],
+        }
+        defaults.update(kwargs)
+        return FSMLoop(**defaults)
+
+    # --- positive control ---
+
+    def test_harness_optimize_passes_clean(self) -> None:
+        """harness-optimize.yaml validates without MR-1 or MR-2 errors (positive control)."""
+        harness_path = BUILTIN_LOOPS_DIR / "harness-optimize.yaml"
+        if not harness_path.exists():
+            pytest.skip("harness-optimize.yaml not found in builtin loops")
+        fsm, _ = load_and_validate(harness_path)
+        errors = _validate_meta_loop_evaluation(fsm)
+        mr_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert mr_errors == [], f"harness-optimize triggered MR-1: {mr_errors}"
+        mr_warnings = [e for e in errors if "MR-2" in e.message or "baseline" in e.message]
+        assert mr_warnings == [], f"harness-optimize triggered MR-2: {mr_warnings}"
+
+    # --- MR-1: meta-loop must have non-LLM evaluator ---
+
+    def test_mr1_fires_for_meta_loop_with_only_llm_evaluator(self) -> None:
+        """MR-1 ERROR fires when meta-loop uses only llm_structured evaluator."""
+        fsm = self._meta_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_meta_loop_evaluation(fsm)
+        mr1_errors = [
+            e for e in errors if e.severity == ValidationSeverity.ERROR and "non-LLM" in e.message
+        ]
+        assert len(mr1_errors) == 1, f"Expected one MR-1 ERROR, got: {errors}"
+
+    def test_mr1_passes_when_exit_code_evaluator_present(self) -> None:
+        """MR-1 does not fire when at least one exit_code evaluator is present."""
+        fsm = self._meta_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="exit_code"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_meta_loop_evaluation(fsm)
+        mr1_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert mr1_errors == [], f"Unexpected MR-1 ERROR: {mr1_errors}"
+
+    def test_mr1_suppressed_by_meta_self_eval_ok(self) -> None:
+        """meta_self_eval_ok: true suppresses MR-1."""
+        fsm = self._meta_fsm(
+            meta_self_eval_ok=True,
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_meta_loop_evaluation(fsm)
+        assert errors == [], f"meta_self_eval_ok should suppress all MR errors: {errors}"
+
+    # --- MR-2: meta-loop should have measure-then-act spine ---
+
+    def test_mr2_fires_when_no_capture_referenced_in_evaluate(self) -> None:
+        """MR-2 WARNING fires when meta-loop has captures but none referenced in evaluate."""
+        fsm = self._meta_fsm(
+            states={
+                "measure": make_state(
+                    action_type="shell",
+                    action="./score.sh",
+                    capture="baseline",
+                    next="check",
+                ),
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="exit_code"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_meta_loop_evaluation(fsm)
+        mr2_warnings = [
+            e for e in errors if e.severity == ValidationSeverity.WARNING and "baseline" in e.message
+        ]
+        assert len(mr2_warnings) == 1, f"Expected one MR-2 WARNING, got: {errors}"
+
+    def test_mr2_does_not_fire_when_capture_referenced_in_previous(self) -> None:
+        """MR-2 does not fire when captured variable is referenced in evaluate.previous."""
+        fsm = self._meta_fsm(
+            states={
+                "measure": make_state(
+                    action_type="shell",
+                    action="./score.sh",
+                    capture="baseline",
+                    next="gate",
+                ),
+                "gate": make_state(
+                    action_type="shell",
+                    action="./score.sh",
+                    evaluate=EvaluateConfig(
+                        type="convergence",
+                        target="${context.target_score}",
+                        previous="${captured.baseline.output}",
+                        direction="maximize",
+                    ),
+                    route={"target": "done", "progress": "done", "stall": "done"},
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_meta_loop_evaluation(fsm)
+        mr2_warnings = [
+            e for e in errors if e.severity == ValidationSeverity.WARNING and "baseline" in e.message
+        ]
+        assert mr2_warnings == [], f"Unexpected MR-2 WARNING: {mr2_warnings}"
+
+    def test_mr2_suppressed_by_meta_self_eval_ok(self) -> None:
+        """meta_self_eval_ok: true suppresses MR-2."""
+        fsm = self._meta_fsm(
+            meta_self_eval_ok=True,
+            states={
+                "measure": make_state(action_type="shell", action="./score.sh", capture="baseline", next="check"),
+                "check": make_state(action="run.sh", evaluate=EvaluateConfig(type="exit_code"), on_yes="done", on_no="check"),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_meta_loop_evaluation(fsm)
+        assert errors == []
+
+    # --- non-meta loops are unaffected ---
+
+    def test_non_meta_loop_with_llm_only_not_flagged(self) -> None:
+        """A non-meta loop with only llm_structured evaluator does not trigger MR-1 or MR-2."""
+        fsm = FSMLoop(
+            name="regular-loop",
+            initial="check",
+            states={
+                "check": make_state(
+                    action="/ll:some-skill",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_meta_loop_evaluation(fsm)
+        assert errors == [], f"Non-meta loop should not trigger MR rules: {errors}"
+
+    # --- meta_self_eval_ok round-trip via validate_fsm ---
+
+    def test_meta_self_eval_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level meta_self_eval_ok produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A meta-loop with escape hatch\n"
+            "initial: work\n"
+            "meta_self_eval_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []

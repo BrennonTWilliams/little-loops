@@ -9,6 +9,13 @@ description: |
 initial: execute
 max_iterations: 5
 timeout: 1800
+# The meta-loop detector matches this loop because the execute action prose references
+# agents/loop-specialist.md as a documentation link. This loop does not write harness
+# artifacts; it evaluates agent behavior via llm_structured only. The llm_structured
+# evaluator is appropriate here because the eval grades a rich round-trip workflow
+# (diagnosis artifact presence, correct tool invocation, failure-mode identification)
+# that cannot be reduced to an exit_code or numeric comparison.
+meta_self_eval_ok: true
 context:
   broken_loop_path: "scripts/tests/fixtures/fsm/broken-verify-loop.yaml"
 

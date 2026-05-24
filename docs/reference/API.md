@@ -3930,6 +3930,8 @@ class FSMLoop:
     commands: list[CommandEntry] = []  # Optional Commands section override for ll-loop show
     targets: list[TargetFileSpec] = []  # Per-FSM-state targeting spec for harness-optimize APO (ENH-1552)
     circuit: CircuitConfig | None = None  # Top-level safety knobs; currently the stall detector (FEAT-1637)
+    meta_self_eval_ok: bool = False       # Suppress MR-1/MR-2 meta-loop lint rules (ENH-1665)
+    imports: list[str] = []               # Raw `import:` list from YAML (fragment metadata, not serialized by to_dict)
 ```
 
 **Nested config dataclasses (FEAT-1637):**
@@ -4523,6 +4525,8 @@ Validate FSM structure and return list of errors.
 - Warns about unreachable states
 - Warns when no top-level `description:` field is set
 - Warns (WARNING) when a failure-named terminal state (e.g. `failed`, `error`, `aborted`) has no predecessor state with a diagnostic action
+- **MR-1 (ERROR)**: meta-loop (writes harness artifacts or imports `lib/benchmark.yaml`) must have at least one non-LLM evaluator; suppress with `meta_self_eval_ok: true` (ENH-1665)
+- **MR-2 (WARNING)**: meta-loop should reference a captured baseline value in a later evaluator (measure→propose→apply→re-measure spine); suppress with `meta_self_eval_ok: true` (ENH-1665)
 
 **Example:**
 ```python

@@ -1,9 +1,10 @@
 ---
 id: ENH-1665
 type: ENH
-status: open
+status: done
 priority: P2
 discovered_date: 2026-05-23
+completed_at: 2026-05-24T09:45:41Z
 discovered_by: manual
 labels:
 - validation
@@ -302,7 +303,21 @@ _Wiring pass added by `/ll:wire-issue`:_
 **Open** | Created: 2026-05-23 | Priority: P2
 
 
+## Resolution
+
+Implemented MR-1 (ERROR) and MR-2 (WARNING) meta-loop lint rules in `validate_fsm`.
+
+- `scripts/little_loops/fsm/schema.py`: Added `meta_self_eval_ok: bool = False` and `imports: list[str]` fields to `FSMLoop`; updated `to_dict`/`from_dict`.
+- `scripts/little_loops/fsm/validation.py`: Added `NON_LLM_EVALUATOR_TYPES`, `_META_LOOP_ACTION_PATTERNS`, `_is_meta_loop()`, `_has_baseline_reference()`, `_validate_meta_loop_evaluation()`; wired into `validate_fsm`; added `meta_self_eval_ok` to `KNOWN_TOP_LEVEL_KEYS`.
+- `scripts/little_loops/loops/loop-specialist-eval.yaml`: Added `meta_self_eval_ok: true` with justification (detector false-positive on documentation reference).
+- `scripts/tests/test_fsm_validation.py`: Added `TestMetaLoopValidation` (9 tests).
+- `scripts/tests/test_fsm_schema.py`: Added `TestMetaSelfEvalOk` (3 round-trip tests).
+- `docs/reference/CLI.md`, `docs/reference/API.md`, `skills/review-loop/reference.md`: Documented MR-1/MR-2 rules.
+
+All 7586 tests pass.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T09:32:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3171e5b-9084-48da-b53c-0ca1d126b0a2.jsonl`
 - `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bfebde01-7bc0-49bc-8e12-d4e6c03d3c1e.jsonl`
 - `/ll:wire-issue` - 2026-05-24T08:03:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da66cfd3-43bf-4f9f-ba92-ed5d1b062810.jsonl`
 - `/ll:refine-issue` - 2026-05-24T07:55:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23a63ac9-9129-474b-a23b-c63b3d6b122b.jsonl`

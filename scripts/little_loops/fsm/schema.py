@@ -887,6 +887,9 @@ class FSMLoop:
     commands: list[CommandEntry] = field(default_factory=list)
     targets: list[TargetFileSpec] = field(default_factory=list)
     circuit: CircuitConfig | None = None
+    meta_self_eval_ok: bool = False
+    # Populated from the raw `import:` list by from_dict(); not serialized by to_dict()
+    imports: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -944,6 +947,9 @@ class FSMLoop:
             if circuit_dict:
                 result["circuit"] = circuit_dict
 
+        if self.meta_self_eval_ok:
+            result["meta_self_eval_ok"] = self.meta_self_eval_ok
+
         return result
 
     @classmethod
@@ -993,6 +999,8 @@ class FSMLoop:
             commands=[CommandEntry(**e) for e in data.get("commands", [])],
             targets=[TargetFileSpec.from_dict(t) for t in (data.get("targets") or [])],
             circuit=circuit,
+            meta_self_eval_ok=data.get("meta_self_eval_ok", False),
+            imports=data.get("import", []),
         )
 
     def get_all_state_names(self) -> set[str]:

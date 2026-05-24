@@ -2793,3 +2793,39 @@ class TestCircuitConfig:
     def test_repeated_failure_defaults_include_empty_progress_paths(self) -> None:
         restored = RepeatedFailureConfig.from_dict({})
         assert restored.progress_paths == []
+
+
+class TestMetaSelfEvalOk:
+    """ENH-1665: meta_self_eval_ok field round-trip serialization."""
+
+    def test_meta_self_eval_ok_true_round_trips(self) -> None:
+        """meta_self_eval_ok=True is present in to_dict() and restored by from_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            meta_self_eval_ok=True,
+        )
+        d = fsm.to_dict()
+        assert d.get("meta_self_eval_ok") is True
+        restored = FSMLoop.from_dict(d)
+        assert restored.meta_self_eval_ok is True
+
+    def test_meta_self_eval_ok_false_omitted_from_dict(self) -> None:
+        """meta_self_eval_ok=False (default) is omitted from to_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "meta_self_eval_ok" not in d
+
+    def test_meta_self_eval_ok_defaults_false(self) -> None:
+        """FSMLoop.from_dict() without meta_self_eval_ok defaults to False."""
+        fsm = FSMLoop.from_dict({
+            "name": "test",
+            "initial": "s",
+            "states": {"s": {"terminal": True}},
+        })
+        assert fsm.meta_self_eval_ok is False

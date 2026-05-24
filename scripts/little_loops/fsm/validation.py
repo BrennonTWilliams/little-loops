@@ -15,6 +15,7 @@ Validation checks:
 from __future__ import annotations
 
 import logging
+import re
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
@@ -71,6 +72,27 @@ EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
     "harbor_scorer": [],
 }
 
+# Non-LLM evaluator types: all evaluator types except llm_structured
+# Derived from EVALUATOR_REQUIRED_FIELDS so new types are automatically included
+NON_LLM_EVALUATOR_TYPES: frozenset[str] = frozenset(EVALUATOR_REQUIRED_FIELDS.keys()) - {
+    "llm_structured"
+}
+
+# Meta-loop detector: action string patterns that indicate harness artifact writes
+_META_LOOP_ACTION_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"loops/[\w-]+\.yaml"),
+    re.compile(r"skills/[\w-]+/SKILL\.md"),
+    re.compile(r"agents/[\w-]+\.md"),
+    re.compile(r"commands/[\w-]+\.md"),
+    re.compile(r"\.claude/(CLAUDE\.md|settings)"),
+)
+
+# Action string tokens that indicate meta-loop behavior
+_META_LOOP_ACTION_TOKENS: frozenset[str] = frozenset({"yaml_state_editor", "replace_action"})
+
+# Import paths that identify a loop as a meta-loop (harness optimization framework)
+_META_LOOP_IMPORT_TRIGGERS: frozenset[str] = frozenset({"lib/benchmark.yaml"})
+
 # Valid comparison operators
 VALID_OPERATORS = {"eq", "ne", "lt", "le", "gt", "ge"}
 
@@ -99,6 +121,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "commands",
         "targets",
         "circuit",
+        "meta_self_eval_ok",
         "import",
         "fragments",
         "from",
@@ -822,9 +845,112 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_failure_terminal_action(fsm))
 
+    errors.extend(_validate_meta_loop_evaluation(fsm))
+
     errors.extend(_validate_circuit(fsm, defined_states))
 
     return errors
+
+
+def _is_meta_loop(fsm: FSMLoop) -> bool:
+    """Return True if fsm is classified as a meta-loop.
+
+    A loop is meta if ANY of the following match:
+    1. Any state action string matches a harness-artifact path regex
+       (writes another loop YAML, skill, agent, command, or project config)
+    2. The loop's import list contains lib/benchmark.yaml
+    3. Any state action references yaml_state_editor or replace_action
+    """
+    # Condition 2: imports lib/benchmark.yaml
+    if any(imp in _META_LOOP_IMPORT_TRIGGERS for imp in fsm.imports):
+        return True
+    # Conditions 1 and 3: scan action strings
+    for state in fsm.states.values():
+        if state.action is None:
+            continue
+        for pattern in _META_LOOP_ACTION_PATTERNS:
+            if pattern.search(state.action):
+                return True
+        for token in _META_LOOP_ACTION_TOKENS:
+            if token in state.action:
+                return True
+    return False
+
+
+def _validate_meta_loop_evaluation(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate meta-loop evaluation rules MR-1 and MR-2.
+
+    MR-1 (ERROR): meta-loop must have at least one non-LLM evaluator.
+    MR-2 (WARNING): meta-loop should reference a captured baseline in an evaluator.
+
+    Both rules are suppressed by ``meta_self_eval_ok: true`` at the loop top-level.
+    """
+    errors: list[ValidationError] = []
+    if fsm.meta_self_eval_ok or not _is_meta_loop(fsm):
+        return errors
+
+    # Collect all evaluator types used across all states
+    evaluator_types: set[str] = set()
+    for state in fsm.states.values():
+        if state.evaluate is not None:
+            evaluator_types.add(state.evaluate.type)
+
+    # MR-1: must have at least one non-LLM evaluator
+    if not evaluator_types & NON_LLM_EVALUATOR_TYPES:
+        errors.append(
+            ValidationError(
+                message=(
+                    "Loop modifies harness artifacts but has no non-LLM evaluator. "
+                    "LLM self-grades on harness updates are unreliable (SHOR Table 1: "
+                    "33-55% accuracy). Pair every check_semantic state with at least one "
+                    "of: exit_code, output_numeric, convergence, diff_stall, mcp_result. "
+                    "To suppress with justification, set `meta_self_eval_ok: true` at the "
+                    "loop top-level."
+                ),
+                path="<root>",
+                severity=ValidationSeverity.ERROR,
+            )
+        )
+
+    # MR-2: should reference a captured baseline in a later evaluator
+    capture_names: set[str] = {
+        state.capture for state in fsm.states.values() if state.capture
+    }
+    if capture_names and not _has_baseline_reference(fsm, capture_names):
+        errors.append(
+            ValidationError(
+                message=(
+                    "Meta-loop appears to lack a measure→propose→apply→re-measure "
+                    "spine: no captured baseline value is referenced by a later evaluator. "
+                    "Meta-loops should compare a post-change score against a pre-change "
+                    "baseline (see loops/harness-optimize.yaml as reference template). "
+                    "To suppress, set `meta_self_eval_ok: true`."
+                ),
+                path="<root>",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+
+    return errors
+
+
+def _has_baseline_reference(fsm: FSMLoop, capture_names: set[str]) -> bool:
+    """Return True if any evaluate block references a captured variable."""
+    for state in fsm.states.values():
+        ev = state.evaluate
+        if ev is None:
+            continue
+        # Check string fields that may interpolate captured values
+        candidates = [ev.previous, ev.source]
+        if isinstance(ev.target, str):
+            candidates.append(ev.target)
+        for field_val in candidates:
+            if not field_val:
+                continue
+            for name in capture_names:
+                if f"captured.{name}" in field_val:
+                    return True
+    return False
 
 
 def _validate_circuit(fsm: FSMLoop, defined_states: set[str]) -> list[ValidationError]:

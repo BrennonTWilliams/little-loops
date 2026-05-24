@@ -423,6 +423,13 @@ Entries are short-lived and ephemeral — treat the directory as a live view, no
 
 Validate a loop definition file.
 
+In addition to structural checks (reachability, evaluator fields, routing consistency), validation applies two **meta-loop lint rules** when a loop is classified as a meta-loop (writes harness artifacts, imports `lib/benchmark.yaml`, or references `yaml_state_editor`/`replace_action`):
+
+- **MR-1 (ERROR)**: A meta-loop must have at least one non-LLM evaluator (`exit_code`, `output_numeric`, `output_json`, `output_contains`, `convergence`, `diff_stall`, `harbor_scorer`, `mcp_result`). LLM self-grades on harness updates are unreliable (SHOR Table 1: 33–55% accuracy). Triggers a `ValueError` (exit code 1) that blocks the loop from running.
+- **MR-2 (WARNING)**: A meta-loop should reference a captured baseline value in a later evaluator (`evaluate.previous`, `evaluate.target`, or `evaluate.source`). This ensures a measure→propose→apply→re-measure spine is present. Does not block validation.
+
+Both rules are suppressed by setting `meta_self_eval_ok: true` at the loop top-level (with a justifying comment).
+
 #### `ll-loop list` / `ll-loop l`
 
 List available loops. Discovery is recursive: runnable loops nested under subdirectories of `loops/` (e.g. `oracles/oracle-capture-issue`) are included, while library fragments under `loops/lib/` are filtered out via `is_runnable_loop()`. Output is grouped by `category` with blank-line separators between groups. Loop names are column-aligned for scanability. Descriptions are truncated with `…` at terminal width. Labels appear as `[label]` badges between the description and `[built-in]` tag. Project loops use bold cyan names while built-in loops use dimmer (non-bold) cyan. The `[built-in]` tag is always positioned on the same line as the name.
