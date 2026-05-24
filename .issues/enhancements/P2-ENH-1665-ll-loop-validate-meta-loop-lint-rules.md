@@ -22,6 +22,31 @@ measure→propose→apply→re-measure spine (MR-2, WARNING).
 This is the highest-leverage layer of EPIC-1663 — the only one humans and
 LLMs can't forget to apply.
 
+## Current Behavior
+
+`ll-loop validate` performs structural and semantic checks on FSM loop YAML
+files but has no rules specific to meta-loops — loops that write harness
+artifacts (other loop YAML files, skills, agents, commands, or project
+config). A meta-loop that grades its own harness updates using only LLM
+evaluators passes validation without any warning, even though such
+self-evaluation has 33–55% accuracy (SHOR Table 1).
+
+## Expected Behavior
+
+`ll-loop validate` fires two new checks on any loop classified as a
+meta-loop by the detector heuristic:
+
+- **MR-1 (ERROR)**: blocks validation when no `evaluate:` block in any state
+  uses a non-LLM evaluator type (`exit_code`, `output_numeric`,
+  `output_json`, `output_contains`, `convergence`, `diff_stall`,
+  `harbor_scorer`, `mcp_result`).
+- **MR-2 (WARNING)**: warns when no captured baseline value is referenced by
+  a later evaluator (no measure→propose→apply→re-measure spine).
+
+Both rules are suppressed by setting `meta_self_eval_ok: true` at the loop
+top-level. The `FSMLoop` schema exposes this as a boolean field (default
+`false`). `harness-optimize.yaml` continues to pass as a positive control.
+
 ## Motivation
 
 SHOR Table 1 shows current SOTA optimizers self-evaluate their own harness
@@ -153,7 +178,31 @@ and MR-2.
   will fail validation. Mitigation: audit step (4) above; only one known
   candidate (`loop-specialist-eval.yaml`).
 
-## Related Documentation
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/fsm/schema.py` — add `meta_self_eval_ok: bool = False` to `FSMLoop`
+- `scripts/little_loops/fsm/validation.py` — add detector constants, `_is_meta_loop()`, `_validate_meta_loop_evaluation()`, wire into `validate_fsm` at line 686
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/runner.py` — calls `validate_fsm`; no changes needed but affected by new errors
+- `scripts/little_loops/loops/loop-specialist-eval.yaml` — known meta-loop candidate; may need `meta_self_eval_ok: true` or a non-LLM gate added
+
+### Similar Patterns
+- `scripts/little_loops/fsm/validation.py:32–58` — `ValidationSeverity` / `ValidationError` model; new rules follow the same pattern
+- Existing rule functions in `validation.py` (e.g., `_validate_evaluator_types`) as structural templates
+
+### Tests
+- `scripts/tests/test_fsm_validation.py` — add MR-1/MR-2 test cases and fixtures
+- New fixture files: `scripts/tests/fixtures/meta-loop-llm-only.yaml`, `scripts/tests/fixtures/meta-loop-no-baseline.yaml`
+
+### Documentation
+- `docs/reference/SCHEMA.md` or `docs/guides/LOOPS_GUIDE.md` — document `meta_self_eval_ok` field and MR-1/MR-2 rules
+
+### Configuration
+- N/A
+
+## Related Key Documentation
 
 | Document | Relevance |
 |----------|-----------|
@@ -172,3 +221,11 @@ and MR-2.
 - shor
 - lint
 - ll-loop
+
+---
+
+**Open** | Created: 2026-05-23 | Priority: P2
+
+
+## Session Log
+- `/ll:format-issue` - 2026-05-24T07:51:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de7ac99b-79b2-4768-a911-b63a81fb1c58.jsonl`

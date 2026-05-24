@@ -5,10 +5,15 @@ priority: P2
 status: open
 discovered_date: 2026-05-24
 discovered_by: downstream-report
-relates_to: [FEAT-1637]
-confidence_score: 90
-outcome_confidence: 80
+relates_to:
+- FEAT-1637
+confidence_score: 100
+outcome_confidence: 89
 decision_needed: false
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1674: StallDetector is blind to progress made by states with unconditional `next:` transitions
@@ -178,6 +183,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-24T08:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05261683-829a-4403-986e-27389bc47dbe.jsonl`
 - `/ll:wire-issue` - 2026-05-24T07:44:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c3f102e7-8b1c-40a0-92c7-9fea7bc9a310.jsonl`
 - `/ll:decide-issue` - 2026-05-24T07:35:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81b5e62d-c94a-4872-b49f-a5ea9e87a99a.jsonl`
 - `/ll:refine-issue` - 2026-05-24T07:31:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2aaa4e23-87ed-4641-85ed-a9de682a4d82.jsonl`
