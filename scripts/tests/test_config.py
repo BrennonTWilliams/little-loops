@@ -1451,7 +1451,7 @@ class TestEventsConfig:
         assert config.transports == []
         assert isinstance(config.socket, SocketEventsConfig)
         assert config.socket.path == ".ll/events.sock"
-        assert config.socket.max_clients == 8
+        assert config.socket.max_clients == 32
         assert isinstance(config.otel, OTelEventsConfig)
         assert config.otel.endpoint == "http://localhost:4317"
         assert config.otel.service_name == "little-loops"
@@ -1522,7 +1522,7 @@ class TestSocketEventsConfig:
         config = SocketEventsConfig.from_dict({})
 
         assert config.path == ".ll/events.sock"
-        assert config.max_clients == 8
+        assert config.max_clients == 32
 
     def test_from_dict_with_overrides(self) -> None:
         """Explicit values override defaults."""

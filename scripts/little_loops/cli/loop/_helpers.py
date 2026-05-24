@@ -997,8 +997,13 @@ def run_foreground(
         else:
             state_colored = colorize(result.final_state, "38;5;208")
         completion_prefix = "Resumed and completed" if mode == "resume" else "Loop completed"
+        rejection_count = 0
+        for _t in getattr(getattr(executor, "event_bus", None), "_transports", []):
+            if hasattr(_t, "get_stats"):
+                rejection_count += _t.get_stats().get("client_rejections", 0)
+        suffix = f", {rejection_count} client rejections" if rejection_count > 0 else ""
         print(
-            f"{completion_prefix}: {state_colored} ({result.iterations} iterations, {duration_str})"
+            f"{completion_prefix}: {state_colored} ({result.iterations} iterations, {duration_str}{suffix})"
         )
 
     return EXIT_CODES.get(result.terminated_by, 1)

@@ -2,8 +2,9 @@
 id: BUG-1638
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: 2026-05-23T12:00:00Z
+completed_at: 2026-05-24T19:22:25Z
 discovered_date: 2026-05-23
 discovered_by: capture-issue
 ---
@@ -127,12 +128,24 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `transport`, `logging`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T19:14:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8af4f12b-36ed-46dc-8671-77ac3007a4a0.jsonl`
 - `/ll:refine-issue` - 2026-05-24T15:30:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2e7bf37-f8f2-40f5-a049-b975a301f9c6.jsonl`
 - `/ll:verify-issues` - 2026-05-24T03:55:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86b55377-f187-4e58-9c10-c40043e89408.jsonl`
 - `/ll:format-issue` - 2026-05-23T19:20:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76e6c26b-1969-49d5-91a6-84282f7c1ac2.jsonl`
 
 - `/ll:capture-issue` — 2026-05-23T12:00:00Z
+- `/ll:manage-issue` - 2026-05-24T19:22:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+
+## Resolution
+
+Fixed in three localized changes:
+
+1. **Bumped `max_clients` default from 8 → 32** in both `transport.py` (`UnixSocketTransport.__init__`) and `config/features.py` (`SocketEventsConfig` dataclass field + `from_dict()` fallback).
+2. **Rate-limited rejection logging** — added `_REJECT_LOG_INTERVAL_SEC = 5.0`, transport-level counters (`_rejections_total`, `_rejections_since_log`, `_last_reject_log_ts`, `_first_reject_logged`), and `_record_rejection()` method that mirrors the existing `_record_drop()` pattern: fires immediately on first rejection, then batches with count until the interval elapses.
+3. **Exposed `get_stats()`** — returns `{"client_rejections": int}`; surfaced in the `run_foreground()` completion line when count > 0 (e.g. `Loop completed: terminal (12 iterations, 3.4s, 7 client rejections)`).
+
+Tests updated: `test_max_clients_cap_rejects_extra_connection` now asserts `get_stats()["client_rejections"] == 1`; new `test_rejection_logging_is_rate_limited` verifies exactly one WARNING per rate-limit window and correct total counter.
 
 ---
 
-**Open** | Created: 2026-05-23 | Priority: P3
+**Done** | Created: 2026-05-23 | Completed: 2026-05-24 | Priority: P3

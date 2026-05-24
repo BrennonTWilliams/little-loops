@@ -457,7 +457,7 @@ class TestUnixSocketTransport:
             t.close()
 
     def test_max_clients_cap_rejects_extra_connection(self, short_tmp_path: Path) -> None:
-        """Connections beyond max_clients are accepted-and-closed."""
+        """Connections beyond max_clients are accepted-and-closed, counter incremented."""
         path = short_tmp_path / "events.sock"
         t = UnixSocketTransport(path, max_clients=1)
         try:
@@ -479,9 +479,55 @@ class TestUnixSocketTransport:
             except TimeoutError:
                 rejected = b""
             assert rejected in (b"",), "extra client should be closed by transport"
+            assert t.get_stats()["client_rejections"] == 1
             c1.close()
             c2.close()
         finally:
+            t.close()
+
+    def test_rejection_logging_is_rate_limited(
+        self, short_tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Rapid rejections emit one WARNING immediately; subsequent ones are batched."""
+        path = short_tmp_path / "events.sock"
+        t = UnixSocketTransport(path, max_clients=1)
+        sockets: list[socket.socket] = []
+        try:
+            # Fill the cap with one real client
+            c1 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            c1.connect(str(path))
+            sockets.append(c1)
+            time.sleep(0.2)
+
+            # Connect 5 more clients — all should be rejected.
+            # Pace them so the accept loop drains the kernel backlog between attempts;
+            # listen(1) would drop the OS queue if we flood without waiting.
+            with caplog.at_level(logging.WARNING, logger="little_loops.transport"):
+                for _ in range(5):
+                    cx = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    cx.connect(str(path))
+                    sockets.append(cx)
+                    time.sleep(0.08)  # let accept loop process this rejection
+                time.sleep(0.2)  # final settle
+
+            # All 5 attempts should be counted
+            assert t.get_stats()["client_rejections"] == 5
+
+            # Only the first rejection fires immediately; the rest are suppressed
+            # within the _REJECT_LOG_INTERVAL_SEC window
+            rejection_warnings = [
+                r for r in caplog.records if "max_clients" in r.message and r.levelno == logging.WARNING
+            ]
+            assert len(rejection_warnings) == 1, (
+                f"Expected 1 rate-limited WARNING, got {len(rejection_warnings)}: "
+                + str([r.message for r in rejection_warnings])
+            )
+        finally:
+            for s in sockets:
+                try:
+                    s.close()
+                except OSError:
+                    pass
             t.close()
 
     def test_send_drops_when_queue_full_logs_warning(

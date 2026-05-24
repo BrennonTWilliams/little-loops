@@ -412,14 +412,14 @@ class SocketEventsConfig:
     """UnixSocketTransport configuration."""
 
     path: str = ".ll/events.sock"
-    max_clients: int = 8
+    max_clients: int = 32
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SocketEventsConfig:
         """Create SocketEventsConfig from dictionary."""
         return cls(
             path=data.get("path", ".ll/events.sock"),
-            max_clients=data.get("max_clients", 8),
+            max_clients=data.get("max_clients", 32),
         )
 
 

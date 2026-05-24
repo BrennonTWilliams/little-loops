@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 
 _CLIENT_QUEUE_MAXSIZE = 1024
 _DROP_LOG_INTERVAL_SEC = 5.0
+_REJECT_LOG_INTERVAL_SEC = 5.0
 _ACCEPT_THREAD_JOIN_TIMEOUT = 2.0
 _CLIENT_THREAD_JOIN_TIMEOUT = 1.0
 _CLOSE_TOTAL_TIMEOUT = 10.0
@@ -133,7 +134,7 @@ class UnixSocketTransport:
     def __init__(
         self,
         path: Path,
-        max_clients: int = 8,
+        max_clients: int = 32,
         on_connect: Callable[[_SocketClient], None] | None = None,
     ) -> None:
         if not hasattr(socket, "AF_UNIX"):
@@ -147,6 +148,10 @@ class UnixSocketTransport:
         self._shutdown = threading.Event()
         self._clients: list[_SocketClient] = []
         self._clients_lock = threading.Lock()
+        self._rejections_total: int = 0
+        self._rejections_since_log: int = 0
+        self._last_reject_log_ts: float = 0.0
+        self._first_reject_logged: bool = False
 
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.unlink(missing_ok=True)
@@ -181,10 +186,7 @@ class UnixSocketTransport:
 
             with self._clients_lock:
                 if len(self._clients) >= self._max_clients:
-                    logger.warning(
-                        "UnixSocketTransport: rejecting client; max_clients=%d reached",
-                        self._max_clients,
-                    )
+                    self._record_rejection()
                     try:
                         conn.close()
                     except OSError:
@@ -252,6 +254,33 @@ class UnixSocketTransport:
             )
             client.last_drop_log_ts = now
             client.dropped_since_log = 0
+
+    def _record_rejection(self) -> None:
+        """Rate-limited log for client rejections. Must be called under _clients_lock."""
+        self._rejections_total += 1
+        self._rejections_since_log += 1
+        now = time.monotonic()
+        if not self._first_reject_logged:
+            logger.warning(
+                "UnixSocketTransport: rejecting client; max_clients=%d reached",
+                self._max_clients,
+            )
+            self._first_reject_logged = True
+            self._last_reject_log_ts = now
+            self._rejections_since_log = 0
+            return
+        if now - self._last_reject_log_ts >= _REJECT_LOG_INTERVAL_SEC:
+            logger.warning(
+                "UnixSocketTransport: rejected %d clients (max_clients=%d reached)",
+                self._rejections_since_log,
+                self._max_clients,
+            )
+            self._last_reject_log_ts = now
+            self._rejections_since_log = 0
+
+    def get_stats(self) -> dict[str, int]:
+        """Return transport-level statistics."""
+        return {"client_rejections": self._rejections_total}
 
     def close(self) -> None:
         deadline = time.monotonic() + _CLOSE_TOTAL_TIMEOUT
