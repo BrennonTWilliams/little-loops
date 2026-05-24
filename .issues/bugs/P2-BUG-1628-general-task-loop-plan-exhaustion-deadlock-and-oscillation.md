@@ -2,7 +2,7 @@
 captured_at: '2026-05-23T14:20:49Z'
 discovered_date: 2026-05-23
 discovered_by: capture-issue
-status: open
+status: done
 confidence_score: 97
 outcome_confidence: 71
 score_complexity: 18
@@ -425,6 +425,7 @@ _Updated by `/ll:confidence-check` on 2026-05-23_
 - **Test coverage gap**: `TestGeneralTaskLoop` (15 structural methods) and the 5 `detect_stall` test methods do not yet exist; tests are co-deliverables — implement the test class alongside the YAML changes so correctness is verified immediately.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-24T01:16:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/897682a8-bbee-44fb-9379-0ee071707036.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-23T20:59:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
 - `/ll:confidence-check` - 2026-05-23T21:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
 - `/ll:decide-issue` - 2026-05-23T20:54:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e496b789-31d6-4e58-a1bc-5765b13f971b.jsonl`
@@ -445,9 +446,28 @@ _Updated by `/ll:confidence-check` on 2026-05-23_
 
 ---
 
-**Open** | Created: 2026-05-23 | Priority: P2
+**Closed** | Created: 2026-05-23 | Closed: 2026-05-23 | Priority: P2
 
 ---
+
+## Closure Note
+
+_Closed by `/ll:ready-issue` on 2026-05-23 — reason: `already_fixed` (in-scope work landed)._
+
+The replan branch — the only fix in scope per the Scope Boundary below — was implemented in commit `5911d896` ("improve(loop): harden general-task against phantom-success gaps", ENH-1644). The commit message explicitly notes "Adjacent to BUG-1628 (plan exhaustion / oscillation)" but did not close this issue at the time because the oscillation guard was still pending.
+
+**In-scope items now satisfied:**
+
+- ✅ **`continue_work` differentiated from `execute`** — `scripts/little_loops/loops/general-task.yaml` `continue_work` (lines 119–143) now has a three-case structure (A: advance plan step, B: append DoD-remediation step, C: no-op when both fully `[x]`). Verbatim duplication with `execute` is broken.
+- ✅ **Replan branch triggers when plan exhausted but DoD unmet** — Case B (lines 131–135): "Plan is fully [x] but a DoD criterion remains unchecked: Find the first unchecked DoD criterion. APPEND a new remediation step to the plan file…"
+- ✅ **Test coverage** — `scripts/tests/test_general_task_loop.py` `TestChange3ContinueWorkDodFallback` (`test_continue_work_diverges_from_execute`, `test_continue_work_has_remediation_fallback`, `test_continue_work_reads_both_files`).
+- ✅ **Documentation** — `docs/guides/LOOPS_GUIDE.md:287` step 5 ("Continue") describes the DoD-fallback remediation behavior.
+
+**Out-of-scope (deferred elsewhere):**
+
+- Oscillation/stall guard — `depends_on: FEAT-1637` (FSM-level `StallDetector`, `status: done`). Hooking general-task into the stall detector, if not already wired by FEAT-1637's implementation, should be tracked as a new issue rather than reopening this one.
+- Explicit DoD/plan-coverage thresholds — `ENH-1629`.
+- `max_iterations` partial-summary hook — `ENH-1631`.
 
 ## Scope Boundary
 
