@@ -27,6 +27,70 @@ Use these tools during the workflow:
 
 ## Workflow
 
+### Step -1: Natural Language Pre-fill (when args provided)
+
+**If `args` is non-empty**, parse the natural language description before doing anything else. Skip this step entirely when `args` is empty or absent.
+
+#### Inference Rules
+
+Read the description and infer the following fields:
+
+**Loop type** — map keywords to types:
+- "fix", "clean", "until passing", "lint", "type check", "test" → `fix-until-clean`
+- "maintain", "keep", "enforce", "constraint", "guard" → `maintain-constraints`
+- "reduce", "increase", "drive", "metric", "count", "score", "coverage" → `drive-metric`
+- "sequence", "steps", "pipeline", "stage", "ordered" → `run-sequence`
+- "harness", "wrap", "skill", "prompt", "iterate", "refine" → `harness`
+- "bandit", "explore", "exploit", "A/B", "strategy" → `rl-bandit`
+- "generate", "score", "RLHF", "quality", "candidate" → `rl-rlhf`
+- "policy", "act", "observe", "reward", "agent" → `rl-policy`
+- "optimize", "meta", "improve loop", "improve skill", "improve command" → `meta-optimize`
+
+**Key parameters** — extract as many as possible from the description:
+- Check/fix command (e.g., "run pytest", "run mypy", "run ruff")
+- Target skill or prompt name
+- Metric name and direction (reduce/increase) and target value
+- Step names for sequences
+- Max iterations (e.g., "up to 10 times", "max 5 iterations")
+- Loop name hint (e.g., "call it X", "name it X")
+
+**Suggested loop name** — derive from inferred type and targets (same rules as Step 3).
+
+#### Confirmation Display
+
+Present a structured summary of inferred values in text (not a tool call), then use AskUserQuestion:
+
+```
+I understood your description as:
+
+  Loop type:      <inferred type label>
+  <param key>:    <inferred value>
+  <param key>:    <inferred value>
+  ...
+  Suggested name: <suggested-name>
+
+Anything I couldn't confidently infer will be asked next.
+```
+
+```yaml
+questions:
+  - question: "Does this match what you want?"
+    header: "Confirm intent"
+    multiSelect: false
+    options:
+      - label: "Yes, generate the loop (Recommended)"
+        description: "Use inferred values — skip the wizard and go straight to YAML preview"
+      - label: "Let me adjust first"
+        description: "Walk through the guided questions with inferred values as defaults"
+```
+
+#### Routing
+
+- **"Yes, generate the loop"** — skip Steps 0–3, proceed directly to **Step 4** with all inferred values already populated. For any parameter that could not be confidently inferred, use the type-appropriate defaults from [loop-types.md](loop-types.md).
+- **"Let me adjust first"** — proceed to **Step 0**, but pre-select inferred values as the default answer in each subsequent `AskUserQuestion` call (highlight the inferred option or pre-fill the text). The user can override any of them.
+
+---
+
 ### Step 0: Creation Mode
 
 Use AskUserQuestion to determine whether to use a template or build from scratch:
@@ -319,12 +383,17 @@ If confirmed:
 # Start the interactive wizard
 /ll:create-loop
 
-# The command will guide you through:
-# 1. Selecting a loop type (fix-until-clean, maintain-constraints, drive-metric, run-sequence, harness)
-# 2. Configuring type-specific options
-# 3. Naming the loop
-# 4. Previewing and saving the FSM YAML
+# Pass a natural language description to skip most wizard questions
+/ll:create-loop run mypy and ruff until they both pass
+/ll:create-loop reduce lint errors to zero using ruff check, max 8 iterations
+/ll:create-loop harness the refine-issue skill and iterate until the issue is implementation-ready
+/ll:create-loop maintain tests passing and types clean, call it quality-guardian
+/ll:create-loop poll GitHub CI every 5 minutes and retry on failure, max 20 iterations
 ```
+
+When args are provided, the skill infers loop type and parameters from the description, shows a
+confirmation summary, and — if confirmed — jumps straight to the YAML preview (Step 4), skipping
+the guided wizard entirely.
 
 ---
 

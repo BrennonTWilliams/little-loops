@@ -2,14 +2,21 @@
 id: ENH-1686
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-05-24
-captured_at: "2026-05-24T22:13:08Z"
+captured_at: '2026-05-24T22:13:08Z'
 discovered_by: capture-issue
-decision_needed: false
+decision_needed: true
 labels:
 - enhancement
 - captured
+confidence_score: 100
+outcome_confidence: 68
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
+size: Very Large
 ---
 
 # ENH-1686: Live-Write Issue Events to history.db (Eliminate Backfill Requirement)
@@ -194,7 +201,34 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-05-24 | Priority: P2
 
+## Confidence Check Notes
+
+_Updated by `/ll:confidence-check` on 2026-05-24 (re-run after refine + wire passes)_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 68/100 → MODERATE
+
+### Outcome Risk Factors
+- **`transition` alignment is a silent-failure risk**: the new `send()` elif branch must write `transition='done'` (not `'issue.completed'`). `scan_completed_issues_from_db()` queries `WHERE transition = 'done'`; a mismatch makes `ll-history summary` show nothing without any error. Step 7 documents the correct mapping explicitly.
+- **Open decision — parallel path scope**: `ParallelOrchestrator._on_worker_complete()` and `_merge_sequential()` both call `close_issue` without `event_bus`. Decide before starting: wire it (expands scope) or add a TODO comment at those call sites. Step 8 documents both resolution paths.
+- **Schema boundary interpretation**: step 6 requires adding a `UNIQUE INDEX` migration and bumping `SCHEMA_VERSION` 2 → 3. Scope says "no schema changes" — a constraint index is additive, but confirm this interpretation before touching `_MIGRATIONS`.
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-05-24
+- **Reason**: Issue too large for single session (score 9/11 — Very Large)
+
+### Decomposed Into
+- ENH-1690: Extend SQLiteTransport to Handle Issue Events
+- ENH-1691: Wire Issue Lifecycle EventBus to SQLiteTransport
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/898f7f18-27df-4e97-81bc-d975051952e8.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d9dd53cb-1947-49f3-931d-c84cd8f105dc.jsonl`
+- `/ll:confidence-check` - 2026-05-24T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f9a6182-6d7f-455d-b3ae-341b705fa79b.jsonl`
 - `/ll:wire-issue` - 2026-05-25T00:03:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08c5063a-9c10-4456-8e64-60f69ee7a67b.jsonl`
 - `/ll:refine-issue` - 2026-05-24T23:57:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3421ff4b-05fc-4e80-bb1d-cb7ee266a185.jsonl`
 - `/ll:format-issue` - 2026-05-24T22:15:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7f2a1ff-6ab8-498b-a8bf-37c6705ab902.jsonl`
