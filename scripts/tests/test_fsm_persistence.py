@@ -904,6 +904,39 @@ class TestPersistentExecutor:
         assert state is not None
         assert state.status == "interrupted"
 
+    def test_final_status_interrupted_with_on_max_iterations_summary(
+        self, tmp_loops_dir: Path
+    ) -> None:
+        """Final status is 'interrupted' after on_max_iterations summary state runs."""
+        fsm = FSMLoop(
+            name="summary-loop",
+            initial="check",
+            max_iterations=2,
+            on_max_iterations="summarize",
+            states={
+                "check": StateConfig(
+                    action="echo 'checking'",
+                    on_yes="check",
+                    on_no="check",
+                ),
+                "summarize": StateConfig(
+                    action="echo 'summarizing'",
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.terminated_by == "max_iterations"
+        assert "echo 'summarizing'" in mock_runner.calls
+        state = executor.persistence.load_state()
+        assert state is not None
+        assert state.status == "interrupted"
+
     def test_final_status_timed_out_on_timeout(self, tmp_loops_dir: Path) -> None:
         """Final status is 'timed_out' when loop timeout is exceeded."""
         fsm = FSMLoop(

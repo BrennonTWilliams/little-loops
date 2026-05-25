@@ -197,6 +197,52 @@ states:
         assert "Loop completed: check" in captured.out
         assert "2 iterations" in captured.out
 
+    def test_runs_summary_state_on_max_iterations(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """on_max_iterations summary state executes when cap fires, then loop terminates."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-max-summary
+initial: check
+max_iterations: 2
+on_max_iterations: summarize
+states:
+  check:
+    action: "echo check"
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: check
+  summarize:
+    action: "echo summarize"
+    next: done
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-max-summary.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch("little_loops.fsm.executor.subprocess.Popen") as mock_popen:
+            # Always fail so the loop iterates until cap
+            mock_popen.side_effect = _make_mock_popen_factory(returncode=1, stderr="error")
+            with patch.object(sys, "argv", ["ll-loop", "run", "test-max-summary"]):
+                from little_loops.cli import main_loop
+
+                result = main_loop()
+
+        assert result == 1  # terminated_by=max_iterations → exit code 1
+        assert mock_popen.call_count == 3  # 2 check iterations + 1 summarize
+
+        captured = capsys.readouterr()
+        assert "Running loop: test-max-summary" in captured.out
+        # Final state is "done" because summary state routed there before termination
+        assert "Loop completed: done" in captured.out
+
     def test_reports_final_state_on_failure(
         self,
         tmp_path: Path,
