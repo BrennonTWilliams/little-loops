@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.109.0] - 2026-05-24
+
+### Added
+
+- **`SQLiteTransport` handles `issue.*` events (ENH-1690)** — `SQLiteTransport.send()` now records `issue.*` lifecycle events into `issue_events` alongside loop events, with `_derive_transition()` mapping event types to canonical status strings (`issue.completed` → `"done"`, etc.). `_backfill_issues()` switched to `INSERT OR IGNORE` backed by a new `idx_issue_events_dedup` unique index on `(issue_id, transition)`, preventing duplicates from repeated backfill calls. Schema bumped to v3. Prerequisite for ENH-1691 live-write wiring.
+
 ## [1.108.0] - 2026-05-24
 
 ### Changed

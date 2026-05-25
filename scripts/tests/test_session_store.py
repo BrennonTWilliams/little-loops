@@ -9,6 +9,7 @@ from pathlib import Path
 from little_loops.session_store import (
     SCHEMA_VERSION,
     SQLiteTransport,
+    _derive_transition,
     backfill,
     connect,
     ensure_db,
@@ -529,3 +530,184 @@ class TestBackfillIssuesV2Columns:
         rows = recent(db, kind="issue")
         assert rows[0]["issue_type"] == "BUG"
         assert rows[0]["priority"] == "P3"
+
+
+class TestDeriveTransition:
+    """_derive_transition() maps issue event types to canonical status strings."""
+
+    def test_known_mappings(self) -> None:
+        cases = [
+            ("issue.completed", "done"),
+            ("issue.closed", "done"),
+            ("issue.deferred", "deferred"),
+            ("issue.skipped", "cancelled"),
+            ("issue.created", "open"),
+            ("issue.started", "in_progress"),
+        ]
+        for event_type, expected in cases:
+            assert _derive_transition(event_type) == expected, event_type
+
+    def test_unknown_event_falls_back_to_suffix(self) -> None:
+        assert _derive_transition("issue.failure_captured") == "failure_captured"
+        assert _derive_transition("issue.reopened") == "reopened"
+
+
+class TestSQLiteTransportIssueEvents:
+    """SQLiteTransport records issue.* events into issue_events (ENH-1690)."""
+
+    def test_records_issue_completed_event(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        transport.send(
+            {
+                "event": "issue.completed",
+                "ts": "2026-05-24T12:00:00Z",
+                "issue_id": "ENH-99",
+                "issue_type": "ENH",
+                "priority": "P2",
+            }
+        )
+        transport.close()
+        rows = recent(db, kind="issue")
+        assert len(rows) == 1
+        assert rows[0]["issue_id"] == "ENH-99"
+        assert rows[0]["transition"] == "done"
+
+    def test_issue_event_transition_mapping(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        events = [
+            ("issue.completed", "done"),
+            ("issue.deferred", "deferred"),
+            ("issue.skipped", "cancelled"),
+            ("issue.created", "open"),
+            ("issue.started", "in_progress"),
+        ]
+        for event_type, _ in events:
+            transport.send({"event": event_type, "ts": "2026-05-24T12:00:00Z", "issue_id": "X-1"})
+        transport.close()
+        rows = recent(db, kind="issue", limit=10)
+        transitions = {r["transition"] for r in rows}
+        for _, expected in events:
+            assert expected in transitions
+
+    def test_loop_event_does_not_create_issue_row(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        transport.send({"event": "state_enter", "loop_name": "x", "state": "s"})
+        transport.close()
+        assert recent(db, kind="issue") == []
+
+    def test_issue_event_is_fts_searchable(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        transport.send(
+            {
+                "event": "issue.completed",
+                "ts": "2026-05-24T12:00:00Z",
+                "issue_id": "ENH-1690",
+                "issue_type": "ENH",
+            }
+        )
+        transport.close()
+        # FTS5 tokenizes "ENH-1690" as ["ENH", "1690"]; search the numeric token
+        results = search(db, query="1690")
+        assert any(r["kind"] == "issue" for r in results)
+
+    def test_unrecognized_event_not_recorded_as_issue(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        transport.send({"event": "action_output", "issue_id": "X-1"})
+        transport.close()
+        assert recent(db, kind="issue") == []
+
+
+class TestSchemaV3:
+    """v3 migration: unique dedup index on issue_events (ENH-1690)."""
+
+    def test_dedup_index_exists_after_ensure_db(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        indexes = {
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='issue_events'"
+            )
+        }
+        conn.close()
+        assert "idx_issue_events_dedup" in indexes
+
+    def test_v2_db_upgrades_to_v3(self, tmp_path: Path) -> None:
+        """A v2 database gains the dedup index on next ensure_db()."""
+        db = tmp_path / "session.db"
+        conn = sqlite3.connect(str(db))
+        conn.executescript(
+            """
+            CREATE TABLE tool_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, tool_name TEXT, args_hash TEXT,
+                result_size INTEGER, bytes_in INTEGER, bytes_out INTEGER, cache_hit INTEGER
+            );
+            CREATE TABLE file_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, path TEXT, op TEXT, issue_id TEXT, git_sha TEXT
+            );
+            CREATE TABLE issue_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                issue_id TEXT, transition TEXT, discovered_by TEXT,
+                issue_type TEXT, priority TEXT, completed_date TEXT,
+                captured_at TEXT, completed_at TEXT
+            );
+            CREATE TABLE loop_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                loop_name TEXT, state TEXT, transition TEXT, retries INTEGER
+            );
+            CREATE TABLE user_corrections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, content TEXT, source TEXT
+            );
+            CREATE TABLE message_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, content TEXT
+            );
+            CREATE VIRTUAL TABLE search_index USING fts5(
+                content, kind UNINDEXED, ref UNINDEXED, anchor UNINDEXED, ts UNINDEXED
+            );
+            CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO meta(key, value) VALUES('schema_version', '2');
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]
+        indexes = {
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='issue_events'"
+            )
+        }
+        conn.close()
+        assert int(version) == SCHEMA_VERSION
+        assert "idx_issue_events_dedup" in indexes
+
+
+class TestBackfillDedup:
+    """_backfill_issues() is idempotent via INSERT OR IGNORE + unique index (ENH-1690)."""
+
+    def test_double_backfill_produces_single_row(self, tmp_path: Path) -> None:
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True)
+        (issues / "P1-BUG-10-x.md").write_text(
+            "---\nid: BUG-10\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert len(rows) == 1
+        assert rows[0]["issue_id"] == "BUG-10"

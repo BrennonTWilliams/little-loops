@@ -18,7 +18,9 @@ Public API:
     SCHEMA_VERSION:   current schema version integer
     ensure_db(path):  create the database and apply pending migrations
     connect(path):    open a connection (ensures schema first)
-    SQLiteTransport:  EventBus Transport sink writing FSM events to loop_events
+    SQLiteTransport:  EventBus Transport sink writing FSM events to
+                      ``loop_events`` and issue lifecycle events to
+                      ``issue_events`` (ENH-1690)
     backfill(db,...): populate the database from existing on-disk sources
     search(db,...):   FTS5 full-text query with BM25 ranking
     recent(db,...):   recent rows for a given event kind
@@ -39,7 +41,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/history.db")
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message"})
 _KIND_TABLE = {
@@ -143,6 +145,12 @@ _MIGRATIONS: list[str] = [
         session_id TEXT,
         content TEXT
     );
+    """,
+    # v3 (ENH-1690): unique dedup index on issue_events so INSERT OR IGNORE
+    # prevents duplicate rows when backfill() is called multiple times.
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_events_dedup
+        ON issue_events(issue_id, transition);
     """,
 ]
 
@@ -298,6 +306,20 @@ def recent(
 # SQLiteTransport
 # ---------------------------------------------------------------------------
 
+_ISSUE_TRANSITION_MAP: dict[str, str] = {
+    "issue.completed": "done",
+    "issue.closed": "done",
+    "issue.deferred": "deferred",
+    "issue.skipped": "cancelled",
+    "issue.created": "open",
+    "issue.started": "in_progress",
+}
+
+
+def _derive_transition(event_type: str) -> str:
+    """Map an ``issue.*`` event type to the canonical transition/status string."""
+    return _ISSUE_TRANSITION_MAP.get(event_type, event_type.split(".", 1)[1])
+
 
 class SQLiteTransport:
     """EventBus sink that records FSM loop events into the session database.
@@ -324,42 +346,70 @@ class SQLiteTransport:
             self._conn = None
 
     def send(self, event: dict[str, Any]) -> None:
-        """Record a recognised FSM event as a ``loop_events`` row (best-effort)."""
+        """Record a recognised event as a ``loop_events`` or ``issue_events`` row (best-effort)."""
         conn = self._conn
         if conn is None:
             return
         event_type = str(event.get("event", ""))
-        if event_type not in _LOOP_EVENT_TYPES:
-            return
-        loop_name = str(event.get("loop_name", "")) or None
-        state = event.get("state")
-        if event_type == "loop_complete":
-            state = event.get("outcome", state)
-        retries = event.get("retries")
         ts = str(event.get("ts") or _now())
         try:
             with self._lock:
-                conn.execute(
-                    "INSERT INTO loop_events(ts, loop_name, state, transition, retries) "
-                    "VALUES(?, ?, ?, ?, ?)",
-                    (
-                        ts,
-                        loop_name,
-                        str(state) if state is not None else None,
-                        event_type,
-                        int(retries) if isinstance(retries, int) else None,
-                    ),
-                )
-                _index(
-                    conn,
-                    content=" ".join(
-                        str(p) for p in (loop_name, state, event_type) if p is not None
-                    ),
-                    kind="loop",
-                    ref=loop_name or "",
-                    anchor=f".loops/{loop_name}.yaml" if loop_name else "",
-                    ts=ts,
-                )
+                if event_type in _LOOP_EVENT_TYPES:
+                    loop_name = str(event.get("loop_name", "")) or None
+                    state = event.get("state")
+                    if event_type == "loop_complete":
+                        state = event.get("outcome", state)
+                    retries = event.get("retries")
+                    conn.execute(
+                        "INSERT INTO loop_events(ts, loop_name, state, transition, retries) "
+                        "VALUES(?, ?, ?, ?, ?)",
+                        (
+                            ts,
+                            loop_name,
+                            str(state) if state is not None else None,
+                            event_type,
+                            int(retries) if isinstance(retries, int) else None,
+                        ),
+                    )
+                    _index(
+                        conn,
+                        content=" ".join(
+                            str(p) for p in (loop_name, state, event_type) if p is not None
+                        ),
+                        kind="loop",
+                        ref=loop_name or "",
+                        anchor=f".loops/{loop_name}.yaml" if loop_name else "",
+                        ts=ts,
+                    )
+                elif event_type.startswith("issue."):
+                    issue_id = event.get("issue_id")
+                    transition = _derive_transition(event_type)
+                    conn.execute(
+                        "INSERT OR IGNORE INTO issue_events("
+                        "ts, issue_id, transition, discovered_by, "
+                        "issue_type, priority, captured_at, completed_at"
+                        ") VALUES(?,?,?,?,?,?,?,?)",
+                        (
+                            ts,
+                            issue_id,
+                            transition,
+                            event.get("discovered_by"),
+                            event.get("issue_type"),
+                            event.get("priority"),
+                            event.get("captured_at"),
+                            event.get("completed_at"),
+                        ),
+                    )
+                    _index(
+                        conn,
+                        content=f"{issue_id or ''} {event.get('issue_type', '')}".strip(),
+                        kind="issue",
+                        ref=str(issue_id or ""),
+                        anchor=event.get("issue_file", ""),
+                        ts=ts,
+                    )
+                else:
+                    return
                 conn.commit()
         except sqlite3.Error:
             logger.warning("SQLiteTransport: write failed for event %r", event_type, exc_info=True)
@@ -446,7 +496,7 @@ def _backfill_issues(conn: sqlite3.Connection, issues_dir: Path) -> int:
         if isinstance(completed_at, str) and completed_at:
             completed_date = completed_at[:10]
         conn.execute(
-            "INSERT INTO issue_events("
+            "INSERT OR IGNORE INTO issue_events("
             "ts, issue_id, transition, discovered_by, "
             "issue_type, priority, completed_date, captured_at, completed_at"
             ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",

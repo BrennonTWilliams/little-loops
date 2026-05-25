@@ -22,6 +22,7 @@ from little_loops.config.features import (
     WebhookEventsConfig,
 )
 from little_loops.events import EventBus
+from little_loops.session_store import recent
 from little_loops.transport import (
     JsonlTransport,
     OTelTransport,
@@ -252,6 +253,28 @@ class TestWireTransports:
         bus.close_transports()
 
         assert (tmp_path / "history.db").exists()
+
+    def test_sqlite_records_issue_event_end_to_end(self, tmp_path: Path) -> None:
+        """issue.* events emitted through bus.emit() appear in issue_events (ENH-1690)."""
+        bus = EventBus()
+        config = EventsConfig(transports=["sqlite"])
+        wire_transports(bus, config, log_dir=tmp_path)
+
+        bus.emit(
+            {
+                "event": "issue.completed",
+                "ts": "2026-05-24T12:00:00Z",
+                "issue_id": "ENH-99",
+                "issue_type": "ENH",
+            }
+        )
+        bus.close_transports()
+
+        db = tmp_path / "history.db"
+        rows = recent(db, kind="issue")
+        assert len(rows) == 1
+        assert rows[0]["issue_id"] == "ENH-99"
+        assert rows[0]["transition"] == "done"
 
     def test_unknown_transport_warns_and_skips(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
