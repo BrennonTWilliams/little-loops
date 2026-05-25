@@ -3702,3 +3702,143 @@ class TestCmdNextLoop:
         autodev_score, _, _ = _score_loop(history.get("autodev", []))
         review_score, _, _ = _score_loop(history.get("review-loop", []))
         assert autodev_score > review_score
+
+
+_SIMPLE_LOOP_YAML = (
+    "name: my-loop\n"
+    "initial: start\n"
+    "states:\n"
+    "  start:\n"
+    "    action: echo hello\n"
+    "    on_yes: done\n"
+    "  done:\n"
+    "    terminal: true\n"
+)
+
+
+class TestCmdShowDiagramOptions:
+    """Tests for ll-loop show --show-diagrams flag family (ENH-1698)."""
+
+    def _setup_loop(self, tmp_path: Path) -> Path:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(_SIMPLE_LOOP_YAML)
+        return loops_dir
+
+    def _base_args(self, **kwargs: Any) -> argparse.Namespace:
+        defaults = dict(
+            json=False,
+            verbose=False,
+            resolved=False,
+            show_diagrams=None,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+        )
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    def test_no_show_diagrams_uses_existing_path(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Without --show-diagrams, existing verbose+badges path is used (no facets kwargs)."""
+        from little_loops.cli.loop import info as info_mod
+        from little_loops.cli.loop.info import cmd_show
+        from little_loops.logger import Logger
+
+        loops_dir = self._setup_loop(tmp_path)
+        logger = Logger(verbose=False)
+        with patch.object(info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram) as mock_render:
+            result = cmd_show("my-loop", self._base_args(), loops_dir, logger)
+        assert result == 0
+        assert mock_render.called
+        call_kwargs = mock_render.call_args.kwargs
+        # Existing path does not pass suppress_labels or title_only
+        assert "suppress_labels" not in call_kwargs
+        assert "title_only" not in call_kwargs
+
+    def test_bare_show_diagrams_uses_summary_preset(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Bare --show-diagrams (True sentinel) defaults to the 'summary' preset (main scope)."""
+        from little_loops.cli.loop import info as info_mod
+        from little_loops.cli.loop.info import cmd_show
+        from little_loops.logger import Logger
+
+        loops_dir = self._setup_loop(tmp_path)
+        logger = Logger(verbose=False)
+        args = self._base_args(show_diagrams=True)
+        with patch.object(info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram) as mock_render:
+            result = cmd_show("my-loop", args, loops_dir, logger)
+        assert result == 0
+        call_kwargs = mock_render.call_args.kwargs
+        # summary preset: edge_labels=True, state_detail=full, scope=main
+        assert call_kwargs.get("mode") == "main"
+        assert call_kwargs.get("suppress_labels") is False
+        assert call_kwargs.get("title_only") is False
+
+    def test_show_diagrams_clean_preset(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--show-diagrams=clean produces suppress_labels=True, title_only=True, mode=main."""
+        from little_loops.cli.loop import info as info_mod
+        from little_loops.cli.loop.info import cmd_show
+        from little_loops.logger import Logger
+
+        loops_dir = self._setup_loop(tmp_path)
+        logger = Logger(verbose=False)
+        args = self._base_args(show_diagrams="clean")
+        with patch.object(info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram) as mock_render:
+            result = cmd_show("my-loop", args, loops_dir, logger)
+        assert result == 0
+        call_kwargs = mock_render.call_args.kwargs
+        assert call_kwargs.get("suppress_labels") is True
+        assert call_kwargs.get("title_only") is True
+        assert call_kwargs.get("mode") == "main"
+
+    def test_show_diagrams_detailed_preset(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--show-diagrams=detailed produces suppress_labels=False, title_only=False, mode=full."""
+        from little_loops.cli.loop import info as info_mod
+        from little_loops.cli.loop.info import cmd_show
+        from little_loops.logger import Logger
+
+        loops_dir = self._setup_loop(tmp_path)
+        logger = Logger(verbose=False)
+        args = self._base_args(show_diagrams="detailed")
+        with patch.object(info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram) as mock_render:
+            result = cmd_show("my-loop", args, loops_dir, logger)
+        assert result == 0
+        call_kwargs = mock_render.call_args.kwargs
+        assert call_kwargs.get("suppress_labels") is False
+        assert call_kwargs.get("title_only") is False
+        assert call_kwargs.get("mode") == "full"
+
+    def test_show_diagrams_and_json_mutually_exclusive(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--show-diagrams and --json together return exit code 1."""
+        from little_loops.cli.loop.info import cmd_show
+        from little_loops.logger import Logger
+
+        loops_dir = self._setup_loop(tmp_path)
+        logger = Logger(verbose=False)
+        args = self._base_args(json=True, show_diagrams=True)
+        result = cmd_show("my-loop", args, loops_dir, logger)
+        assert result == 1
+
+    def test_diagram_output_contains_box_chars(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--show-diagrams renders actual diagram output (contains box-drawing chars)."""
+        from little_loops.cli.loop.info import cmd_show
+        from little_loops.logger import Logger
+
+        loops_dir = self._setup_loop(tmp_path)
+        logger = Logger(verbose=False)
+        args = self._base_args(show_diagrams=True)
+        result = cmd_show("my-loop", args, loops_dir, logger)
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "┌" in out or "─" in out  # box-drawing chars in diagram

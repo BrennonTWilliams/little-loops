@@ -14,6 +14,7 @@ from little_loops.cli.loop._helpers import (
     load_loop_with_spec,
     resolve_loop_path,
 )
+from little_loops.cli.loop.diagram_modes import resolve_facets
 from little_loops.cli.loop.layout import (  # noqa: F401
     _EDGE_LABEL_COLORS,
     _box_inner_lines,
@@ -722,6 +723,10 @@ def cmd_show(
         logger.error(f"Invalid loop: {e}")
         return 1
 
+    if getattr(args, "json", False) and getattr(args, "show_diagrams", None) is not None:
+        logger.error("--json and --show-diagrams are mutually exclusive")
+        return 1
+
     if getattr(args, "json", False):
         data = fsm.to_dict()
         if getattr(args, "resolved", False):
@@ -820,9 +825,19 @@ def cmd_show(
     from little_loops.config import BRConfig
 
     badges = BRConfig(Path.cwd()).loops.glyphs.to_dict()
+    facets = resolve_facets(args)
     print()
     print("Diagram:")
-    diagram = _render_fsm_diagram(fsm, verbose=verbose, badges=badges)
+    if facets is None:
+        diagram = _render_fsm_diagram(fsm, verbose=verbose, badges=badges)
+    else:
+        diagram = _render_fsm_diagram(
+            fsm,
+            badges=badges,
+            mode=facets.scope,
+            suppress_labels=not facets.edge_labels,
+            title_only=facets.state_detail == "title",
+        )
     if diagram:
         print(diagram)
 

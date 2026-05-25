@@ -432,6 +432,42 @@ Examples:
     show_parser.add_argument(
         "--resolved", action="store_true", help="Expand sub-loop states inline under _subloop key"
     )
+    show_parser.add_argument(
+        "--show-diagrams",
+        nargs="?",
+        const=True,
+        default=None,
+        type=_parse_show_diagrams,
+        metavar="MODE",
+        help=(
+            "Display the FSM diagram using a specific rendering mode. MODE is a topology "
+            "(layered|neighborhood|inline) or a preset (detailed|summary|clean|local|oneline). "
+            "Bare --show-diagrams defaults to the 'summary' preset (layered, main-path scope). "
+            "Use --diagram-edge-labels, --diagram-state-detail, --diagram-scope to override "
+            "individual preset facets."
+        ),
+    )
+    show_parser.add_argument(
+        "--diagram-edge-labels",
+        choices=["on", "off"],
+        default=None,
+        metavar="on|off",
+        help="Show or hide edge labels in the FSM diagram (default: on). Overrides preset.",
+    )
+    show_parser.add_argument(
+        "--diagram-state-detail",
+        choices=["title", "full"],
+        default=None,
+        metavar="title|full",
+        help="State box content: 'title' = name only, 'full' = include action body (default: full). Overrides preset.",
+    )
+    show_parser.add_argument(
+        "--diagram-scope",
+        choices=["main", "full"],
+        default=None,
+        metavar="main|full",
+        help="Edge scope: 'main' hides off-happy-path edges, 'full' shows all (default: full). Overrides preset.",
+    )
 
     # Fragments subcommand
     fragments_parser = subparsers.add_parser(
