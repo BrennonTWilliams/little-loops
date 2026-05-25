@@ -161,6 +161,21 @@ Pass a natural-language description to skip the context-analysis step:
 
 The description becomes the seed for the issue title and Summary field. Capture creates a minimal issue — just enough to record the idea. Enrichment happens in Phase 2.
 
+### Linking a New Issue to an EPIC
+
+Pass `--parent EPIC-NNN` to auto-wire the new issue as a child of an existing EPIC:
+
+```
+/ll:capture-issue "Add retry logic to sprint runner" --parent EPIC-1663
+/ll:capture-issue "Fix log output truncation" --parent EPIC-1626 --quick
+```
+
+This does two things atomically:
+1. Sets `parent: EPIC-NNN` in the new issue's frontmatter.
+2. Appends the new issue ID to the EPIC's `relates_to:` list and its `## Children` section.
+
+Use `--quick` alongside `--parent` to create a minimal template when capturing many child tasks at once.
+
 ### Scanning the Codebase
 
 To find issues you didn't know existed, use the scanning commands:

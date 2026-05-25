@@ -108,6 +108,17 @@ Capture issues from conversation or natural language description.
 
 **Arguments:** `input` (optional) - natural language description
 
+**Flags:**
+- `--quick` - Use minimal issue template (Summary, Behavior, Impact, Status only)
+- `--parent EPIC-NNN` - Wire the new issue as a child of the given EPIC: sets `parent:` in the child's frontmatter and updates the EPIC's `relates_to:` list and `## Children` section
+
+**Examples:**
+```
+/ll:capture-issue "retry logic fails on network timeout"
+/ll:capture-issue "Add retry logic to sprint runner" --parent EPIC-1663
+/ll:capture-issue "Fix log output truncation" --parent EPIC-1626 --quick
+```
+
 ### `/ll:format-issue`
 Format issue files to align with template v2.0 structure through section renaming, structural gap-filling, and boilerplate inference. Interactive by default, with optional `--auto` mode for non-interactive formatting.
 
