@@ -341,7 +341,7 @@ If your workflow is highly custom (e.g., multi-branch routing, complex captured-
 
 ## Creating a Harness: The 4-Step Wizard
 
-Run `/ll:create-loop` and select **"Harness a skill or prompt"** when prompted for loop type.
+Run `/ll:create-loop` and select **"Harness a skill or prompt"** when prompted for loop type, or pass a description directly to skip the wizard — e.g., `/ll:create-loop harness the refine-issue skill and iterate until the issue is implementation-ready`.
 
 ### Step H1: Choose a Target
 

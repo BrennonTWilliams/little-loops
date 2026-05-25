@@ -40,7 +40,7 @@ You run:      ll-loop run <name>
 
 The fastest way to create and run a loop:
 
-1. **Create**: `/ll:create-loop` — answer the wizard prompts
+1. **Create**: `/ll:create-loop` — answer the wizard prompts, or pass a description to skip them (e.g., `/ll:create-loop run mypy until it passes`)
 2. **Validate**: `ll-loop validate <name>` — check your YAML for errors
 3. **Run**: `ll-loop run <name>` — start the loop
 
@@ -143,7 +143,7 @@ What are you trying to do?
 | Harness a skill | discover, execute, check_*, advance, done | Multi-phase evaluation (exit code → MCP → skill → LLM → diff) | Batch processing with layered quality gates |
 | Composable sub-loops | 1 per child loop + done | Binary (success/failure) per child | Multi-stage pipelines from existing loops |
 
-Use `/ll:create-loop` to build any of these interactively. The wizard generates FSM YAML ready to run.
+Use `/ll:create-loop` to build any of these. Pass a natural language description to skip the wizard (e.g., `/ll:create-loop reduce lint errors to zero`), or run it with no args for the interactive guided flow. Either way the output is FSM YAML ready to run.
 
 ## Walkthrough: Creating and Running a Loop
 
@@ -151,7 +151,7 @@ Here's a complete example: a loop that fixes test failures until all tests pass.
 
 ### 1. Create
 
-Run `/ll:create-loop` to use the interactive wizard. Or write the FSM YAML directly:
+Run `/ll:create-loop` to use the interactive wizard, or pass a description directly — `/ll:create-loop fix tests until they pass` — to skip most questions. Or write the FSM YAML directly:
 
 ```yaml
 name: fix-tests
@@ -2358,7 +2358,7 @@ All phases are optional; the wizard pre-selects based on your project config and
 
 ### Creating a Harness
 
-Run `/ll:create-loop` and select **"Harness a skill or prompt"**. The 4-step wizard asks:
+Run `/ll:create-loop` and select **"Harness a skill or prompt"**, or pass a description directly — `/ll:create-loop harness the refine-issue skill and iterate until the issue is implementation-ready` — to skip straight to YAML preview. The 4-step wizard asks:
 
 1. **Target** — pick a discovered skill or enter a custom prompt (plus a "done looks like" criterion for the LLM judge)
 2. **Work items** — single-shot, active issues list, file glob, or manual list

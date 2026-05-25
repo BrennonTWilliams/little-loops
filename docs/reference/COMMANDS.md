@@ -457,13 +457,30 @@ Resume from a previous session's continuation prompt.
 ## Automation Loops
 
 ### `/ll:create-loop`
-Create FSM loop configurations interactively.
+Create FSM loop configurations — interactively or from a natural language description.
 
-**Workflow:**
-1. Select loop type (fix-until-clean, maintain-constraints, drive-metric, run-sequence)
+**Arguments (optional):**
+- `description` — Natural language description of the loop. When provided, the skill infers loop type and parameters, shows a confirmation summary, and jumps directly to YAML preview — skipping the guided wizard.
+
+**Workflow (no args — interactive):**
+1. Select loop type (fix-until-clean, maintain-constraints, drive-metric, run-sequence, harness, RL variants, meta-optimize)
 2. Configure type-specific parameters
 3. Name and preview the FSM YAML
 4. Save to `.loops/<name>.yaml` and validate
+
+**Workflow (with args — fast path):**
+1. Infer loop type and parameters from description
+2. Confirm inferred values (or fall back to guided wizard with pre-filled defaults)
+3. Preview, save, and validate
+
+**Usage:**
+```bash
+/ll:create-loop
+/ll:create-loop run mypy and ruff until they both pass
+/ll:create-loop reduce lint errors to zero using ruff check, max 8 iterations
+/ll:create-loop harness the refine-issue skill and iterate until the issue is implementation-ready
+/ll:create-loop maintain tests passing and types clean, call it quality-guardian
+```
 
 **See also:** `docs/generalized-fsm-loop.md` for FSM schema details.
 
