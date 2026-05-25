@@ -291,7 +291,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.106.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.109.0...HEAD
+[1.109.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.108.0...v1.109.0
+[1.108.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.107.0...v1.108.0
+[1.107.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.106.0...v1.107.0
 [1.106.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.105.0...v1.106.0
 [1.105.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.104.0...v1.105.0
 [1.104.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.103.0...v1.104.0
