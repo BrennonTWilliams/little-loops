@@ -13,7 +13,7 @@ arguments:
     description: Natural language description of the issue (optional - analyzes conversation if omitted)
     required: false
   - name: flags
-    description: Optional flags (--quick for minimal template)
+    description: Optional flags (--quick for minimal template, --parent EPIC-NNN to link as child)
     required: false
 metadata:
   short-description: Use when asked to capture or create an issue from conversation or natural langua
@@ -41,6 +41,7 @@ $ARGUMENTS
   - If omitted, analyze conversation for potential issues
 - **flags** (optional): Modify command behavior
   - `--quick` - Use minimal template regardless of config setting
+  - `--parent EPIC-NNN` - Link the new issue as a child of the given EPIC: sets `parent:` in child frontmatter and updates the EPIC's `relates_to:` list and `## Children` section
 
 ## Process
 
@@ -52,7 +53,21 @@ $ARGUMENTS
 FLAGS="${flags:-}"
 QUICK_MODE=false
 if [[ "$FLAGS" == *"--quick"* ]]; then QUICK_MODE=true; fi
+
+PARENT_ID=""
+if [[ "$FLAGS" =~ --parent[[:space:]]+([A-Z]+-[0-9]+) ]]; then
+  PARENT_ID="${BASH_REMATCH[1]}"
+fi
 ```
+
+**If `--parent` was given, validate it before proceeding:**
+
+1. Search `{{config.issues.base_dir}}/epics/` for a file whose frontmatter `id:` matches `PARENT_ID`.
+2. If no matching EPIC file is found, abort with:
+   ```
+   ❌ Parent EPIC not found: [PARENT_ID]. Check the ID and try again.
+   ```
+3. Store the resolved EPIC file path as `PARENT_EPIC_PATH` for use in Phase 4c.
 
 **Check the arguments to determine mode:**
 
@@ -241,7 +256,7 @@ ELSE:
 2. Look up `creation_variants.[TEMPLATE_STYLE]` to determine which sections to include
 3. For each section name in `include_common`, use `common_sections.[name].creation_template` as placeholder content
 4. If `include_type_sections` is true, also include sections from `type_sections` that have a `creation_template`
-5. Always include YAML frontmatter with `captured_at` (ISO 8601 UTC timestamp, e.g. `"2026-04-18T14:32:07Z"` — use shell `date -u +"%Y-%m-%dT%H:%M:%SZ"` format), `discovered_date` (date-only, same day), and `discovered_by: capture-issue`
+5. Always include YAML frontmatter with `captured_at` (ISO 8601 UTC timestamp, e.g. `"2026-04-18T14:32:07Z"` — use shell `date -u +"%Y-%m-%dT%H:%M:%SZ"` format), `discovered_date` (date-only, same day), and `discovered_by: capture-issue`. If `PARENT_ID` is set, also include `parent: [PARENT_ID]` in the frontmatter.
 6. **Infer `testable: false`** — after building the frontmatter, scan the issue title and description for doc-only signal keywords:
    - **Signal keywords**: "doc", "docs", "documentation", "broken link", "broken anchor", "readme", "changelog", "spelling", "typo", "guide", "fix link"
    - **Threshold**: 2+ keyword matches (case-insensitive) in the combined title + description text
@@ -285,6 +300,53 @@ See [templates.md](templates.md) for the complete document linking process inclu
 **Skip this phase if**:
 - `documents.enabled` is not `true` in `.ll/ll-config.json`
 - OR no documents are configured in `documents.categories`
+
+### Phase 4c: Wire Parent EPIC (if `--parent` was given)
+
+**Skip this phase if `PARENT_ID` is empty.**
+
+After the child issue file is created and staged, update the EPIC at `PARENT_EPIC_PATH`:
+
+#### 1. Add child ID to `relates_to:` frontmatter
+
+Read the EPIC file's frontmatter. The `relates_to:` field may be:
+- absent — insert `relates_to: [CHILD_ID]` after the last frontmatter field
+- an empty list `relates_to: []` — replace with `relates_to: [CHILD_ID]`
+- a populated list — append the new ID to the list
+
+Use `Edit` to apply the change in-place. Example:
+
+```
+# Before
+relates_to: [ENH-100, ENH-101]
+
+# After
+relates_to: [ENH-100, ENH-101, CHILD_ID]
+```
+
+#### 2. Append child to `## Children` section
+
+If the EPIC body already contains a `## Children` section, append a new bullet at the end of it:
+
+```markdown
+- **CHILD_ID** — [one-sentence child title from the child's Summary]
+```
+
+If no `## Children` section exists, insert one before `## Status` (or at end of file if no Status footer):
+
+```markdown
+## Children
+
+- **CHILD_ID** — [one-sentence child title]
+```
+
+Use `Edit` to apply the change. Do not rewrite the whole file.
+
+#### 3. Stage the EPIC file
+
+```bash
+git add "PARENT_EPIC_PATH"
+```
 
 #### Action: Update Existing Issue
 
@@ -371,6 +433,12 @@ See [templates.md](templates.md) for complete output report templates including:
 
 # Analyze conversation and use minimal templates
 /ll:capture-issue --quick
+
+# Capture a child issue and link it to an existing EPIC
+/ll:capture-issue "Add retry logic to sprint runner" --parent EPIC-1663
+
+# Child with minimal template
+/ll:capture-issue "Fix log output truncation" --parent EPIC-1626 --quick
 ```
 
 ---
