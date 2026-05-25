@@ -3726,15 +3726,15 @@ class TestCmdShowDiagramOptions:
         return loops_dir
 
     def _base_args(self, **kwargs: Any) -> argparse.Namespace:
-        defaults = dict(
-            json=False,
-            verbose=False,
-            resolved=False,
-            show_diagrams=None,
-            diagram_edge_labels=None,
-            diagram_state_detail=None,
-            diagram_scope=None,
-        )
+        defaults: dict[str, Any] = {
+            "json": False,
+            "verbose": False,
+            "resolved": False,
+            "show_diagrams": None,
+            "diagram_edge_labels": None,
+            "diagram_state_detail": None,
+            "diagram_scope": None,
+        }
         defaults.update(kwargs)
         return argparse.Namespace(**defaults)
 
