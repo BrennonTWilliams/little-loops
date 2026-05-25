@@ -1,8 +1,15 @@
 ---
 captured_at: '2026-05-24T22:52:33Z'
+completed_at: '2026-05-25T01:24:00Z'
 discovered_date: 2026-05-24
 discovered_by: capture-issue
-status: open
+status: done
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-1687: `general-task` `continue_work` missing `capture: execute_result` freezes `check_done` scope
@@ -119,27 +126,58 @@ alias. Rejected for now — overwriting the single `execute_result` key keeps
   `loops/rn-refine.yaml`, `loops/rn-plan.yaml`, anywhere `${captured.*}` is
   read by a downstream state.
 
+#### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — sibling loop audit:_
+
+- `scripts/little_loops/loops/recursive-refine.yaml` — `dequeue_next` (line 103) sets `capture: input` each cycle before downstream states; no stale-capture gap.
+- `scripts/little_loops/loops/rn-refine.yaml` — `init` sets `capture: run_dir` once (a stable path prefix, never re-read as action output); no analogous pattern.
+- `scripts/little_loops/loops/rn-plan.yaml` — no `${captured.*}` interpolation in prompt actions; uses file artifacts for inter-state data; no analogous pattern.
+- `scripts/little_loops/loops/harness-single-shot.yaml:36` — `execute` with `capture: execute_result`; reference example of the same key name used correctly by a single-work-state loop.
+- **Conclusion**: stale-capture defect is unique to `general-task.yaml` among the candidate loops.
+
 ### Tests
 - `scripts/tests/test_general_task_loop.py` (or equivalent) — add a regression
   test asserting that a multi-iteration run sees `LAST_FILES` change after
   `continue_work` runs. If no such test file exists, the simplest harness is
   an `ll-loop` integration test that mocks the host.
 
+#### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — test file confirmed to exist:_
+
+- `scripts/tests/test_general_task_loop.py` **exists**. The regression test should mirror `TestChange5ExecuteCapture` (line 198), which asserts `execute` has `capture: execute_result` and prompts for `LAST_STEP`/`LAST_FILES`. A parallel `TestChange_ContinueWorkCapture` class should assert:
+  1. `states["continue_work"].get("capture") == "execute_result"`
+  2. `"LAST_STEP" in states["continue_work"]["action"]`
+  3. `"LAST_FILES" in states["continue_work"]["action"]`
+- Pattern reference: `scripts/tests/test_builtin_loops.py:TestHarnessCapture` (line 894) shows parametric `capture: execute_result` assertion style.
+- No subprocess mocking needed — pure YAML structural assertions via `yaml.safe_load`.
+
 ### Documentation
-- No public docs reference this state by name. Skip.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — line 338 describes `execute` as the sole producer of `LAST_STEP`/`LAST_FILES` for delta-scoped verification; after the fix `continue_work` becomes a second producer under the same contract. Line 346 (step 5 "Continue") makes no mention of the trailing-output protocol. Both passages require updating to reflect that any work-producing state (not only `execute`) must emit LAST_STEP/LAST_FILES. [Agent 2 finding]
 
 ### Configuration
 - N/A
 
 ## Implementation Steps
 
-1. Edit `general-task.yaml` `continue_work`: append `capture: execute_result`
-   and add LAST_STEP/LAST_FILES trailing-output instructions to the prompt.
-2. Add a regression test that runs ≥3 iterations and asserts the captured
-   `LAST_FILES` value changes between iterations.
+1. Edit `scripts/little_loops/loops/general-task.yaml` `continue_work` state (lines 259-283):
+   append `capture: execute_result` and add LAST_STEP/LAST_FILES trailing-output
+   instructions to the prompt (mirror `execute` lines 86-89).
+2. Add `TestChange_ContinueWorkCapture` to `scripts/tests/test_general_task_loop.py`,
+   modelled on `TestChange5ExecuteCapture` (line 198): assert `continue_work["capture"] == "execute_result"`,
+   `"LAST_STEP" in continue_work["action"]`, and `"LAST_FILES" in continue_work["action"]`.
 3. Re-run the same input task that produced the stuck `2026-05-24T204014`
    run; confirm it now terminates at `done` (or at least makes monotonic
    `count_done.total` progress) instead of hitting `max_iterations`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+4. Update `docs/guides/LOOPS_GUIDE.md` — revise line 338 (step 2 "Delta-scoped criterion verification") to state that any work-producing state (`execute` or `continue_work`) must emit LAST_STEP/LAST_FILES, not only `execute`; add a note on line 346 (step 5 "Continue") explaining the trailing-output contract that `continue_work` now carries.
 
 ## Impact
 
@@ -175,6 +213,11 @@ alias. Rejected for now — overwriting the single `execute_result` key keeps
 `bug`, `captured`, `general-task`, `fsm-loop`, `stale-capture`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-25T01:24:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bad241f5-ea52-4a30-8eea-f8130567f56b.jsonl`
+- `/ll:ready-issue` - 2026-05-25T01:22:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc4af044-51b8-4531-9236-c902ec2a706e.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c4298e6-aea0-4a59-b135-36570bb11394.jsonl`
+- `/ll:wire-issue` - 2026-05-25T01:19:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/779600d2-a095-4582-b268-4bc77de7f312.jsonl`
+- `/ll:refine-issue` - 2026-05-25T01:12:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1241a0cb-721c-46ef-a789-21d2ae204723.jsonl`
 - `/ll:format-issue` - 2026-05-24T23:53:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3421ff4b-05fc-4e80-bb1d-cb7ee266a185.jsonl`
 - `/ll:capture-issue` - 2026-05-24T22:52:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b11535be-d77b-46f8-a622-5a6525775721.jsonl`
 

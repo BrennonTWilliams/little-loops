@@ -278,7 +278,13 @@ states:
       Do nothing. The next check_done will route to done.
 
       Complete at most one step per invocation, then stop.
+
+      After completing the step, print the following two lines as the very last output
+      (fill in the actual step text and all files you created or modified):
+      LAST_STEP: <the step text you just completed>
+      LAST_FILES: <space-separated list of file paths you created or modified>
     action_type: prompt
+    capture: execute_result
     next: check_done
     on_error: diagnose
 

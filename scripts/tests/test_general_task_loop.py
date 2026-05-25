@@ -195,6 +195,28 @@ class TestChange7CountDoneShellGate:
         assert count_done.get("capture") == "done_counts"
 
 
+class TestBUG1687ContinueWorkCapture:
+    """BUG-1687: continue_work must capture execute_result and emit LAST_STEP/LAST_FILES."""
+
+    def test_continue_work_has_capture_execute_result(self, raw_data: dict) -> None:
+        state = raw_data["states"]["continue_work"]
+        assert state.get("capture") == "execute_result", (
+            "continue_work must have capture: execute_result so check_done reads fresh delta data"
+        )
+
+    def test_continue_work_prompts_for_last_step(self, raw_data: dict) -> None:
+        action = raw_data["states"]["continue_work"]["action"]
+        assert "LAST_STEP" in action, (
+            "continue_work.action must instruct the model to emit a LAST_STEP: trailing line"
+        )
+
+    def test_continue_work_prompts_for_last_files(self, raw_data: dict) -> None:
+        action = raw_data["states"]["continue_work"]["action"]
+        assert "LAST_FILES" in action, (
+            "continue_work.action must instruct the model to emit a LAST_FILES: trailing line"
+        )
+
+
 class TestChange5ExecuteCapture:
     """Change 5 (ENH-1671): execute state captures output for check_done delta input."""
 
