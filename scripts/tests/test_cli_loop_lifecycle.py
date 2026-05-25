@@ -7,6 +7,7 @@ import json
 import os
 import signal
 import time
+from datetime import UTC
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -1159,12 +1160,14 @@ class TestCmdStatusLogFile:
         running_dir.mkdir(parents=True)
         events_file = running_dir / "test-loop.events.jsonl"
         # Write two events with a recent timestamp
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        ts = datetime.now(tz=timezone.utc).isoformat()
+        ts = datetime.now(tz=UTC).isoformat()
         events_file.write_text(
-            _json.dumps({"ts": ts, "type": "state_enter"}) + "\n"
-            + _json.dumps({"ts": ts, "type": "evaluate"}) + "\n"
+            _json.dumps({"ts": ts, "type": "state_enter"})
+            + "\n"
+            + _json.dumps({"ts": ts, "type": "evaluate"})
+            + "\n"
         )
 
         with (

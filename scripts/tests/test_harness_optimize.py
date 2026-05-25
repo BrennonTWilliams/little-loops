@@ -205,7 +205,9 @@ class TestHarnessOptimizeStates:
         assert state.get("capture") == "traj_path"
         assert state.get("next") == "load_directive"
 
-    def test_init_run_shell_creates_trajectory_directory(self, loop_data: dict, tmp_path: Path) -> None:
+    def test_init_run_shell_creates_trajectory_directory(
+        self, loop_data: dict, tmp_path: Path
+    ) -> None:
         import subprocess
 
         from little_loops.fsm.interpolation import InterpolationContext, interpolate

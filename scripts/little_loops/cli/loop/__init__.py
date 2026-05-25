@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from little_loops.cli_args import add_context_limit_arg, add_handoff_threshold_arg
 from little_loops.cli.loop.diagram_modes import _parse_show_diagrams
+from little_loops.cli_args import add_context_limit_arg, add_handoff_threshold_arg
 
 __all__ = ["main_loop"]
 

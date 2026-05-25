@@ -62,7 +62,9 @@ class TestLoopRouterFile:
         assert ctx.get("goal") == "", "goal default must be empty string"
         assert ctx.get("auto") == "true", "auto default must be 'true'"
         assert ctx.get("auto_create") == "false", "auto_create default must be 'false'"
-        assert ctx.get("confidence_threshold") == "0.7", "confidence_threshold default must be '0.7'"
+        assert ctx.get("confidence_threshold") == "0.7", (
+            "confidence_threshold default must be '0.7'"
+        )
         assert ctx.get("exclude") == "", "exclude default must be empty string"
 
 
@@ -209,7 +211,10 @@ class TestLoopRouterStates:
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(shutil.which("claude") is None, reason="live LLM required; skip in CI unless claude CLI is available")
+@pytest.mark.skipif(
+    shutil.which("claude") is None,
+    reason="live LLM required; skip in CI unless claude CLI is available",
+)
 class TestLoopRouterLive:
     """Behavioural tests requiring a live LLM (claude CLI). Guarded by --slow."""
 

@@ -1225,9 +1225,7 @@ class TestCreatedSortSentinelDirection:
         self, temp_project_dir: Path, mixed_dates_dir: Path
     ) -> None:
         """--sort created --desc places timestamp-less issues LAST (BUG-1647: was FIRST)."""
-        code, out = _run_search(
-            temp_project_dir, "--sort", "created", "--desc", "--format", "ids"
-        )
+        code, out = _run_search(temp_project_dir, "--sort", "created", "--desc", "--format", "ids")
         assert code == 0
         ids = [ln.strip() for ln in out.splitlines() if ln.strip()]
         # BUG-203 uses mtime fallback (very recent); BUG-202 captured 2026-03-01; BUG-201 oldest
@@ -1239,9 +1237,7 @@ class TestCreatedSortSentinelDirection:
         self, temp_project_dir: Path, mixed_dates_dir: Path
     ) -> None:
         """--sort created --asc: oldest explicit timestamps first, mtime-fallback last."""
-        code, out = _run_search(
-            temp_project_dir, "--sort", "created", "--asc", "--format", "ids"
-        )
+        code, out = _run_search(temp_project_dir, "--sort", "created", "--asc", "--format", "ids")
         assert code == 0
         ids = [ln.strip() for ln in out.splitlines() if ln.strip()]
         # BUG-201 (2026-01-01) < BUG-202 (2026-03-01) < BUG-203 (mtime ~now, so later)

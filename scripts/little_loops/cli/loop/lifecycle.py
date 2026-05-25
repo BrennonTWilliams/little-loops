@@ -441,9 +441,13 @@ def cmd_resume(
 
     explicit_instance_id = getattr(args, "instance_id", None)
     if explicit_instance_id:
-        filtered = [(iid, s) for iid, s in resumable if iid == explicit_instance_id]
+        filtered: list[tuple[str | None, LoopState]] = [
+            (iid, s) for iid, s in resumable if iid == explicit_instance_id
+        ]
         if not filtered:
-            print(f"Instance '{explicit_instance_id}' not found among resumable instances of '{loop_name}'.")
+            print(
+                f"Instance '{explicit_instance_id}' not found among resumable instances of '{loop_name}'."
+            )
             if resumable:
                 print("Resumable instances:")
                 for iid, _ in resumable:

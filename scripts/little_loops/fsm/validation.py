@@ -916,9 +916,7 @@ def _validate_meta_loop_evaluation(fsm: FSMLoop) -> list[ValidationError]:
         )
 
     # MR-2: should reference a captured baseline in a later evaluator
-    capture_names: set[str] = {
-        state.capture for state in fsm.states.values() if state.capture
-    }
+    capture_names: set[str] = {state.capture for state in fsm.states.values() if state.capture}
     if capture_names and not _has_baseline_reference(fsm, capture_names):
         errors.append(
             ValidationError(
@@ -1005,7 +1003,7 @@ def _validate_circuit(fsm: FSMLoop, defined_states: set[str]) -> list[Validation
                 message=(
                     f"circuit.repeated_failure.on_repeated_failure references "
                     f"unknown state '{target}' (must be a declared state or "
-                    f"the literal \"abort\")"
+                    f'the literal "abort")'
                 ),
                 path="circuit.repeated_failure.on_repeated_failure",
             )

@@ -3904,7 +3904,9 @@ class TestIssuesCLIClusters:
         assert "ENH-001" in all_ids
         assert "ENH-002" in all_ids
         # ENH-001 and ENH-002 must be in the same cluster
-        enh_cluster = next((c for c in data if any(i["id"] == "ENH-001" for i in c["issues"])), None)
+        enh_cluster = next(
+            (c for c in data if any(i["id"] == "ENH-001" for i in c["issues"])), None
+        )
         assert enh_cluster is not None
         assert any(i["id"] == "ENH-002" for i in enh_cluster["issues"])
 
@@ -3933,12 +3935,16 @@ class TestIssuesCLIClusters:
         # relates_to pair must be clustered
         assert "BUG-020" in all_ids
         assert "BUG-021" in all_ids
-        bug_cluster = next((c for c in data if any(i["id"] == "BUG-020" for i in c["issues"])), None)
+        bug_cluster = next(
+            (c for c in data if any(i["id"] == "BUG-020" for i in c["issues"])), None
+        )
         assert bug_cluster is not None
         assert any(i["id"] == "BUG-021" for i in bug_cluster["issues"])
         # parent family must be clustered
         assert "EPIC-001" in all_ids
-        epic_cluster = next((c for c in data if any(i["id"] == "EPIC-001" for i in c["issues"])), None)
+        epic_cluster = next(
+            (c for c in data if any(i["id"] == "EPIC-001" for i in c["issues"])), None
+        )
         assert epic_cluster is not None
         assert any(i["id"] == "FEAT-010" for i in epic_cluster["issues"])
         assert any(i["id"] == "FEAT-011" for i in epic_cluster["issues"])
@@ -3957,7 +3963,14 @@ class TestIssuesCLIClusters:
         with patch.object(
             sys,
             "argv",
-            ["ll-issues", "clusters", "--edges=blocking", "--json", "--config", str(temp_project_dir)],
+            [
+                "ll-issues",
+                "clusters",
+                "--edges=blocking",
+                "--json",
+                "--config",
+                str(temp_project_dir),
+            ],
         ):
             from little_loops.cli import main_issues
 

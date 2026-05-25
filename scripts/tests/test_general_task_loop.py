@@ -91,12 +91,8 @@ class TestChange2CheckDoneReconcileAndSampleVerify:
 
     def test_check_done_reads_both_dod_and_plan(self, raw_data: dict) -> None:
         action = raw_data["states"]["check_done"]["action"]
-        assert "general-task-dod.md" in action, (
-            "check_done.action must reference the DoD file"
-        )
-        assert "general-task-plan.md" in action, (
-            "check_done.action must reference the plan file"
-        )
+        assert "general-task-dod.md" in action, "check_done.action must reference the DoD file"
+        assert "general-task-plan.md" in action, "check_done.action must reference the plan file"
 
     def test_check_done_does_plan_vs_dod_coverage(self, raw_data: dict) -> None:
         action = raw_data["states"]["check_done"]["action"]
@@ -287,6 +283,7 @@ class TestChange6SampleVerificationPreserved:
 # Helpers for shell execution tests (modeled on test_loops_recursive_refine.py)
 # ---------------------------------------------------------------------------
 
+
 def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True)
 
@@ -391,6 +388,7 @@ class TestCountDoneShellScript:
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
+
         data = json.loads(result.stdout.strip())
         assert data["total"] == 0
         assert data["hard_unchecked_dod"] == 0
@@ -404,6 +402,7 @@ class TestCountDoneShellScript:
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
+
         data = json.loads(result.stdout.strip())
         assert data["total"] > 0
         assert data["hard_unchecked_dod"] == 0  # no [hard] tags in fixture
@@ -432,6 +431,7 @@ class TestCountDoneShellScript:
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
+
         data = json.loads(result.stdout.strip())
         assert data["failed_samples"] >= 1
         assert data["total"] >= 1
@@ -453,6 +453,7 @@ class TestENH1676PartialDoDThreshold:
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
+
         data = json.loads(result.stdout.strip())
         assert data["hard_unchecked_dod"] >= 1
         assert data["total"] > 0, "unmet hard criterion must block routing to done"
@@ -463,6 +464,7 @@ class TestENH1676PartialDoDThreshold:
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
+
         data = json.loads(result.stdout.strip())
         assert data["hard_unchecked_dod"] == 0
         assert data["total"] == 0, "all criteria checked → total must be 0"
@@ -480,6 +482,7 @@ class TestENH1676PartialDoDThreshold:
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
+
         data = json.loads(result.stdout.strip())
         assert data["hard_unchecked_dod"] == 0
         assert data["soft_unchecked_dod"] >= 1
@@ -489,6 +492,7 @@ class TestENH1676PartialDoDThreshold:
 # ---------------------------------------------------------------------------
 # ENH-1681: final_verify + count_final terminal gate
 # ---------------------------------------------------------------------------
+
 
 def _load_count_final_script() -> str:
     """Extract the shell action from count_final."""
@@ -592,6 +596,7 @@ class TestCountFinalShellScript:
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
+
         data = json.loads(result.stdout.strip())
         assert data["failed_finals"] == 0
 
@@ -601,6 +606,7 @@ class TestCountFinalShellScript:
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
+
         data = json.loads(result.stdout.strip())
         assert data["failed_finals"] == 1
 
@@ -611,6 +617,7 @@ class TestCountFinalShellScript:
         result = _bash(script, cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
+
         data = json.loads(result.stdout.strip())
         assert data["failed_finals"] == 0, (
             "awk count reset must ensure only the most-recent Final Verification section is tallied"

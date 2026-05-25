@@ -748,7 +748,12 @@ def _render_layered_diagram(
         max_box_inner = max(20, min(40, (tw - 4) // max(1, max_layer_size) - 6))
 
     box_inner, box_width, box_height, box_badge = _compute_box_sizes(
-        all_states, display_label, fsm_states, verbose, max_box_inner, badges,
+        all_states,
+        display_label,
+        fsm_states,
+        verbose,
+        max_box_inner,
+        badges,
         title_only=title_only,
     )
 
@@ -1915,7 +1920,12 @@ def _render_horizontal_simple(
         max_box_inner = max(20, min(40, (tw - 4) // num_main - 6))
 
     box_inner, box_width, box_height, box_badge = _compute_box_sizes(
-        all_states, display_label, fsm_states, verbose, max_box_inner, badges,
+        all_states,
+        display_label,
+        fsm_states,
+        verbose,
+        max_box_inner,
+        badges,
         title_only=title_only,
     )
 

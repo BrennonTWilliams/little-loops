@@ -14,12 +14,12 @@ if TYPE_CHECKING:
 
 # ANSI color codes per relationship type
 EDGE_COLOR: dict[str, str] = {
-    "blocks": "31",       # red
-    "blocked_by": "33",   # yellow
-    "parent": "34",       # blue
-    "sibling": "36",      # cyan
-    "depends_on": "35",   # magenta
-    "relates_to": "37",   # white/dim
+    "blocks": "31",  # red
+    "blocked_by": "33",  # yellow
+    "parent": "34",  # blue
+    "sibling": "36",  # cyan
+    "depends_on": "35",  # magenta
+    "relates_to": "37",  # white/dim
 }
 
 _BOX_HEIGHT = 4  # top border + 2 content lines + bottom border
@@ -204,7 +204,9 @@ def _cluster_edges(
         for from_id, to_id, rel in candidates:
             key: frozenset[str] = frozenset({from_id, to_id})
             existing = best.get(key)
-            if existing is None or _EDGE_PRIORITY.get(rel, 99) < _EDGE_PRIORITY.get(existing[2], 99):
+            if existing is None or _EDGE_PRIORITY.get(rel, 99) < _EDGE_PRIORITY.get(
+                existing[2], 99
+            ):
                 best[key] = (from_id, to_id, rel)
 
     return list(best.values())

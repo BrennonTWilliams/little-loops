@@ -539,7 +539,9 @@ class TestUnixSocketTransport:
             # Only the first rejection fires immediately; the rest are suppressed
             # within the _REJECT_LOG_INTERVAL_SEC window
             rejection_warnings = [
-                r for r in caplog.records if "max_clients" in r.message and r.levelno == logging.WARNING
+                r
+                for r in caplog.records
+                if "max_clients" in r.message and r.levelno == logging.WARNING
             ]
             assert len(rejection_warnings) == 1, (
                 f"Expected 1 rate-limited WARNING, got {len(rejection_warnings)}: "

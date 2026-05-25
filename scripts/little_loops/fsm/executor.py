@@ -282,10 +282,7 @@ class FSMExecutor:
 
                 # Check iteration limit
                 if self.iteration >= self.fsm.max_iterations:
-                    if (
-                        self.fsm.on_max_iterations is not None
-                        and not self._summary_state_executed
-                    ):
+                    if self.fsm.on_max_iterations is not None and not self._summary_state_executed:
                         self._emit(
                             "max_iterations_summary",
                             {
@@ -677,9 +674,7 @@ class FSMExecutor:
         )
         return interpolate(state.on_yes, ctx) if state.on_yes else None
 
-    def _compute_progress_fingerprint(
-        self, ctx: InterpolationContext
-    ) -> tuple[object, ...] | None:
+    def _compute_progress_fingerprint(self, ctx: InterpolationContext) -> tuple[object, ...] | None:
         """Return an (mtime, size) fingerprint for configured progress_paths, or None.
 
         Called just before stall_detector.record() so that file changes made by
@@ -870,7 +865,9 @@ class FSMExecutor:
         if self._stall_detector is not None:
             stall_exit_code = action_result.exit_code if action_result else 0
             stall_fingerprint = self._compute_progress_fingerprint(ctx)
-            self._stall_detector.record(self.current_state, stall_exit_code, verdict, stall_fingerprint)
+            self._stall_detector.record(
+                self.current_state, stall_exit_code, verdict, stall_fingerprint
+            )
             stall = self._stall_detector.check()
             if stall is not None:
                 assert self.fsm.circuit is not None

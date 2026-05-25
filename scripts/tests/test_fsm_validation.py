@@ -652,25 +652,19 @@ class TestCircuitValidation:
             load_and_validate(loop_yaml)
 
     def test_on_repeated_failure_abort_accepted(self) -> None:
-        fsm = self._make_fsm(
-            RepeatedFailureConfig(window=3, on_repeated_failure="abort")
-        )
+        fsm = self._make_fsm(RepeatedFailureConfig(window=3, on_repeated_failure="abort"))
         errors = [e for e in validate_fsm(fsm) if e.severity == ValidationSeverity.ERROR]
         circuit_errors = [e for e in errors if "circuit" in (e.path or "")]
         assert circuit_errors == []
 
     def test_on_repeated_failure_declared_state_accepted(self) -> None:
-        fsm = self._make_fsm(
-            RepeatedFailureConfig(window=3, on_repeated_failure="recover")
-        )
+        fsm = self._make_fsm(RepeatedFailureConfig(window=3, on_repeated_failure="recover"))
         errors = [e for e in validate_fsm(fsm) if e.severity == ValidationSeverity.ERROR]
         circuit_errors = [e for e in errors if "circuit" in (e.path or "")]
         assert circuit_errors == []
 
     def test_window_must_be_positive(self) -> None:
-        fsm = self._make_fsm(
-            RepeatedFailureConfig(window=0, on_repeated_failure="abort")
-        )
+        fsm = self._make_fsm(RepeatedFailureConfig(window=0, on_repeated_failure="abort"))
         errors = validate_fsm(fsm)
         assert any(
             "circuit.repeated_failure.window" in (e.path or "") and "must be >= 1" in e.message
@@ -701,7 +695,9 @@ class TestCircuitValidation:
             ),
         )
         _, warnings = load_and_validate(loop_yaml)
-        unknown_warnings = [w for w in warnings if "Unknown" in w.message or "additional" in w.message.lower()]
+        unknown_warnings = [
+            w for w in warnings if "Unknown" in w.message or "additional" in w.message.lower()
+        ]
         assert unknown_warnings == []
 
 
@@ -817,7 +813,9 @@ class TestMetaLoopValidation:
         )
         errors = _validate_meta_loop_evaluation(fsm)
         mr2_warnings = [
-            e for e in errors if e.severity == ValidationSeverity.WARNING and "baseline" in e.message
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING and "baseline" in e.message
         ]
         assert len(mr2_warnings) == 1, f"Expected one MR-2 WARNING, got: {errors}"
 
@@ -847,7 +845,9 @@ class TestMetaLoopValidation:
         )
         errors = _validate_meta_loop_evaluation(fsm)
         mr2_warnings = [
-            e for e in errors if e.severity == ValidationSeverity.WARNING and "baseline" in e.message
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING and "baseline" in e.message
         ]
         assert mr2_warnings == [], f"Unexpected MR-2 WARNING: {mr2_warnings}"
 
@@ -856,8 +856,15 @@ class TestMetaLoopValidation:
         fsm = self._meta_fsm(
             meta_self_eval_ok=True,
             states={
-                "measure": make_state(action_type="shell", action="./score.sh", capture="baseline", next="check"),
-                "check": make_state(action="run.sh", evaluate=EvaluateConfig(type="exit_code"), on_yes="done", on_no="check"),
+                "measure": make_state(
+                    action_type="shell", action="./score.sh", capture="baseline", next="check"
+                ),
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="exit_code"),
+                    on_yes="done",
+                    on_no="check",
+                ),
                 "done": make_state(terminal=True),
             },
         )

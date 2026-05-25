@@ -189,13 +189,13 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
     "stall_detected": _schema(
         "stall_detected",
         "Stall Detected",
-        "Emitted when the FSM stall detector observes `window` consecutive iterations with an identical (state, exit_code, verdict) triple. Either terminates the run (action=\"abort\") or routes to a recovery state (action=\"route:<state>\"). See FEAT-1637.",
+        'Emitted when the FSM stall detector observes `window` consecutive iterations with an identical (state, exit_code, verdict) triple. Either terminates the run (action="abort") or routes to a recovery state (action="route:<state>"). See FEAT-1637.',
         {
             "state": _str("State name whose triple repeated"),
             "exit_code": _int("Action exit code observed in the repeating triple"),
             "verdict": _str("Evaluator verdict observed in the repeating triple"),
             "consecutive": _int("Number of consecutive identical triples that fired the detector"),
-            "action": _str("Either \"abort\" or \"route:<target_state>\""),
+            "action": _str('Either "abort" or "route:<target_state>"'),
         },
         ["state", "exit_code", "verdict", "consecutive", "action"],
     ),

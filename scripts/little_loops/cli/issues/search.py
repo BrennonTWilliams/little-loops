@@ -245,10 +245,18 @@ def _sort_issues(
         if sort_field == "title":
             return (issue.title.lower(),)
         if sort_field == "confidence":
-            score = issue.confidence_score if issue.confidence_score is not None else (-1 if descending else 9999)
+            score = (
+                issue.confidence_score
+                if issue.confidence_score is not None
+                else (-1 if descending else 9999)
+            )
             return (score,)
         if sort_field == "outcome":
-            score = issue.outcome_confidence if issue.outcome_confidence is not None else (-1 if descending else 9999)
+            score = (
+                issue.outcome_confidence
+                if issue.outcome_confidence is not None
+                else (-1 if descending else 9999)
+            )
             return (score,)
         if sort_field == "refinement":
             refinement_commands = {

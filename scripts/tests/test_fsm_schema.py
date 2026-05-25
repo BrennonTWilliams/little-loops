@@ -2824,7 +2824,9 @@ class TestCircuitConfig:
 
     def test_repeated_failure_progress_paths_round_trip(self) -> None:
         paths = ["${env.PWD}/.loops/tmp/plan.md", "${env.PWD}/.loops/tmp/dod.md"]
-        original = RepeatedFailureConfig(window=3, on_repeated_failure="diagnose", progress_paths=paths)
+        original = RepeatedFailureConfig(
+            window=3, on_repeated_failure="diagnose", progress_paths=paths
+        )
         d = original.to_dict()
         assert d["progress_paths"] == paths
         restored = RepeatedFailureConfig.from_dict(d)
@@ -2870,9 +2872,11 @@ class TestMetaSelfEvalOk:
 
     def test_meta_self_eval_ok_defaults_false(self) -> None:
         """FSMLoop.from_dict() without meta_self_eval_ok defaults to False."""
-        fsm = FSMLoop.from_dict({
-            "name": "test",
-            "initial": "s",
-            "states": {"s": {"terminal": True}},
-        })
+        fsm = FSMLoop.from_dict(
+            {
+                "name": "test",
+                "initial": "s",
+                "states": {"s": {"terminal": True}},
+            }
+        )
         assert fsm.meta_self_eval_ok is False

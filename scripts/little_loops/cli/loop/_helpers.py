@@ -714,11 +714,7 @@ def run_foreground(
         global _needs_redraw
         # SIGWINCH redraw: terminal was resized; re-render the pinned pane
         # before processing the next event so the layout matches the new size.
-        if (
-            _needs_redraw
-            and in_pinned_mode
-            and 0 in last_state_at_depth
-        ):
+        if _needs_redraw and in_pinned_mode and 0 in last_state_at_depth:
             _redraw_pinned(last_state_at_depth[0])
             _needs_redraw = False
 

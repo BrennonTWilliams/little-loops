@@ -2212,9 +2212,7 @@ class TestDisplayProgressEvents:
         # the main buffer is left without a restricted scroll region.
         assert out.rindex("\033[r") < out.rindex("\033[?1049l")
 
-    def test_tall_fsm_falls_back_to_neighborhood(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_tall_fsm_falls_back_to_neighborhood(self, capsys: pytest.CaptureFixture[str]) -> None:
         """On a short terminal a tall FSM falls back to the 1-hop neighborhood view."""
         import os
         import shutil
@@ -2234,13 +2232,9 @@ class TestDisplayProgressEvents:
         executor = MockExecutor(events)
         with (
             patch("sys.stdout.isatty", return_value=True),
-            patch.object(
-                shutil, "get_terminal_size", return_value=os.terminal_size((80, 12))
-            ),
+            patch.object(shutil, "get_terminal_size", return_value=os.terminal_size((80, 12))),
         ):
-            run_foreground(
-                executor, tall_fsm, self._make_args(show_diagrams=True, clear=True)
-            )
+            run_foreground(executor, tall_fsm, self._make_args(show_diagrams=True, clear=True))
         out = capsys.readouterr().out
         # Neighborhood: just predecessor s4, active s5, successor s6 — far states
         # like s19 must NOT appear.
@@ -2260,9 +2254,7 @@ class TestDisplayProgressEvents:
         executor = MockExecutor(events)
         with (
             patch("sys.stdout.isatty", return_value=True),
-            patch.object(
-                shutil, "get_terminal_size", return_value=os.terminal_size((80, 6))
-            ),
+            patch.object(shutil, "get_terminal_size", return_value=os.terminal_size((80, 6))),
         ):
             run_foreground(
                 executor, self._make_fsm(), self._make_args(show_diagrams=True, clear=True)
@@ -2606,7 +2598,16 @@ class TestRunForegroundExitCodes:
     """Tests for run_foreground exit code mapping (BUG-605)."""
 
     def _make_args(self) -> argparse.Namespace:
-        return argparse.Namespace(quiet=False, verbose=False, follow=False, show_diagrams=None, diagram_edge_labels=None, diagram_state_detail=None, diagram_scope=None, clear=False)
+        return argparse.Namespace(
+            quiet=False,
+            verbose=False,
+            follow=False,
+            show_diagrams=None,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+            clear=False,
+        )
 
     def _make_fsm(self) -> FSMLoop:
         return make_test_fsm()
@@ -2658,7 +2659,16 @@ class TestRunForegroundResumeMode:
     """Tests for run_foreground(mode='resume') wiring (BUG-1645)."""
 
     def _make_args(self) -> argparse.Namespace:
-        return argparse.Namespace(quiet=False, verbose=False, follow=False, show_diagrams=None, diagram_edge_labels=None, diagram_state_detail=None, diagram_scope=None, clear=False)
+        return argparse.Namespace(
+            quiet=False,
+            verbose=False,
+            follow=False,
+            show_diagrams=None,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+            clear=False,
+        )
 
     def _make_fsm(self) -> FSMLoop:
         return make_test_fsm()
@@ -3141,7 +3151,7 @@ class TestDiagramFacets:
             assert PRESET_EXPANSIONS[name] == exp, f"Preset {name!r} mismatch"
 
     def test_topology_values_resolve_with_defaults(self) -> None:
-        from little_loops.cli.loop.diagram_modes import DiagramFacets, resolve_facets
+        from little_loops.cli.loop.diagram_modes import resolve_facets
 
         for topo in ("layered", "neighborhood", "inline"):
             args = argparse.Namespace(
@@ -3329,7 +3339,15 @@ class TestShowDiagramsMode:
             {"event": "state_enter", "state": "fail_terminal", "iteration": 1},
         ]
         executor = MockExecutor(events)
-        args = argparse.Namespace(quiet=True, verbose=False, show_diagrams="summary", diagram_edge_labels=None, diagram_state_detail=None, diagram_scope=None, clear=False)
+        args = argparse.Namespace(
+            quiet=True,
+            verbose=False,
+            show_diagrams="summary",
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+            clear=False,
+        )
         with patch.object(
             layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
         ) as mock_render:
@@ -3523,13 +3541,17 @@ class TestShowDiagramsArgparse:
         assert "clean" in err
 
     def test_modifier_flags_parsed(self) -> None:
-        args = self._parse_run_args([
-            "ll-loop", "run", "my-loop",
-            "--show-diagrams=clean",
-            "--diagram-edge-labels=on",
-            "--diagram-state-detail=full",
-            "--diagram-scope=main",
-        ])
+        args = self._parse_run_args(
+            [
+                "ll-loop",
+                "run",
+                "my-loop",
+                "--show-diagrams=clean",
+                "--diagram-edge-labels=on",
+                "--diagram-state-detail=full",
+                "--diagram-scope=main",
+            ]
+        )
         assert args.diagram_edge_labels == "on"
         assert args.diagram_state_detail == "full"
         assert args.diagram_scope == "main"
@@ -3642,9 +3664,7 @@ class TestChoosePinnedLayout:
         from little_loops.cli.loop._helpers import _choose_pinned_layout
 
         full = "a\nb\nc"  # 3 lines
-        pinned, h = _choose_pinned_layout(
-            rows=20, variants=[full, "x", "y"], min_action_rows=6
-        )
+        pinned, h = _choose_pinned_layout(rows=20, variants=[full, "x", "y"], min_action_rows=6)
         assert pinned == full
         assert h == 3
 
@@ -3728,8 +3748,7 @@ class TestRenderNeighborhoodDiagram:
         # Active "target" label and lone succ "end" label must share the same
         # row — that's the row the ──▶ arrow is drawn on.
         assert target_row == end_row, (
-            f"target at row {target_row}, end at row {end_row}; "
-            f"output:\n{out}"
+            f"target at row {target_row}, end at row {end_row}; output:\n{out}"
         )
 
     def test_main_mode_filters_on_error_preds(self) -> None:
@@ -3820,9 +3839,7 @@ class TestRenderNeighborhoodDiagram:
             },
         )
         with patch.object(output_mod, "_USE_COLOR", True):
-            out = _render_neighborhood_diagram(
-                fsm, "target", prev_state="not_a_real_state"
-            )
+            out = _render_neighborhood_diagram(fsm, "target", prev_state="not_a_real_state")
 
         orange = f"\x1b[{layout_mod._PREV_STATE_COLOR}m"
         assert orange not in out, f"unexpected orange border; output:\n{out}"
@@ -3882,7 +3899,9 @@ class TestFollowMode:
     def _make_fsm(self) -> FSMLoop:
         return make_test_fsm()
 
-    def _args(self, follow: bool = False, quiet: bool = False, verbose: bool = False) -> argparse.Namespace:
+    def _args(
+        self, follow: bool = False, quiet: bool = False, verbose: bool = False
+    ) -> argparse.Namespace:
         return argparse.Namespace(
             follow=follow,
             quiet=quiet,
@@ -3899,7 +3918,12 @@ class TestFollowMode:
     ) -> None:
         """--follow outputs _format_history_event lines to stdout as events fire."""
         events = [
-            {"event": "state_enter", "state": "diagnose", "iteration": 1, "ts": "2026-01-01T00:00:00"},
+            {
+                "event": "state_enter",
+                "state": "diagnose",
+                "iteration": 1,
+                "ts": "2026-01-01T00:00:00",
+            },
         ]
         executor = MockExecutorWithEventBus(events)
         run_foreground(executor, self._make_fsm(), self._args(follow=True))
@@ -3912,7 +3936,12 @@ class TestFollowMode:
     ) -> None:
         """Without --follow, _format_history_event lines are not written to stdout."""
         events = [
-            {"event": "state_enter", "state": "diagnose", "iteration": 1, "ts": "2026-01-01T00:00:00"},
+            {
+                "event": "state_enter",
+                "state": "diagnose",
+                "iteration": 1,
+                "ts": "2026-01-01T00:00:00",
+            },
         ]
         executor = MockExecutorWithEventBus(events)
         run_foreground(executor, self._make_fsm(), self._args(follow=False))
@@ -3925,7 +3954,12 @@ class TestFollowMode:
     ) -> None:
         """--follow --quiet outputs history-formatted lines without display_progress output."""
         events = [
-            {"event": "state_enter", "state": "propose", "iteration": 2, "ts": "2026-01-01T00:00:01"},
+            {
+                "event": "state_enter",
+                "state": "propose",
+                "iteration": 2,
+                "ts": "2026-01-01T00:00:01",
+            },
         ]
         executor = MockExecutorWithEventBus(events)
         run_foreground(executor, self._make_fsm(), self._args(follow=True, quiet=True))
@@ -3933,9 +3967,7 @@ class TestFollowMode:
         assert "state_enter" in captured.out
         assert "propose" in captured.out
 
-    def test_follow_route_event_rendered(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_follow_route_event_rendered(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--follow renders route events (from → to transitions)."""
         events = [
             {"event": "route", "from": "diagnose", "to": "propose", "ts": "2026-01-01T00:00:01"},
@@ -3945,12 +3977,15 @@ class TestFollowMode:
         captured = capsys.readouterr()
         assert "route" in captured.out
 
-    def test_follow_via_on_event_fallback(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_follow_via_on_event_fallback(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--follow wires callback via _on_event when executor has no event_bus."""
         events = [
-            {"event": "state_enter", "state": "fallback_state", "iteration": 1, "ts": "2026-01-01T00:00:00"},
+            {
+                "event": "state_enter",
+                "state": "fallback_state",
+                "iteration": 1,
+                "ts": "2026-01-01T00:00:00",
+            },
         ]
         executor = MockExecutor(events)
         run_foreground(executor, self._make_fsm(), self._args(follow=True, quiet=True))
