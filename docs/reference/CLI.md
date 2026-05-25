@@ -562,6 +562,22 @@ ll-loop next-loop --exclude autodev        # Skip autodev (e.g. from its own on-
 ll-loop next-loop --count 3 --json        # Top 3 as JSON for downstream tooling
 ```
 
+#### `ll-loop audit-meta`
+
+Read `meta-eval.jsonl` from archived runs and print a summary table of LLM vs. external-evaluator agreement statistics. Useful for diagnosing meta-loops where the LLM judge may be too lenient or agreeing on no-op iterations.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | `-j` | Output stats as a JSON object |
+
+**Exit codes:** 0 = no divergence flags triggered; 1 = at least one threshold crossed (`agreed: false` streak ≥ 3, or trivial-agreement streak ≥ 3).
+
+**Examples:**
+```bash
+ll-loop audit-meta harness-optimize        # Human-readable summary table
+ll-loop audit-meta harness-optimize --json # JSON output for scripting
+```
+
 **Examples:**
 ```bash
 ll-loop fix-types                     # Run loop (shorthand for run)
@@ -593,6 +609,8 @@ ll-loop fragments lib/cli.yaml        # List built-in CLI tool fragments with de
 ll-loop fragments lib/benchmark.yaml  # List built-in benchmark runner fragment
 ll-loop next-loop                     # Suggest next loop from history
 ll-loop next-loop --count 3 --json    # Top 3 suggestions as JSON
+ll-loop audit-meta fix-types          # Summarize meta-eval agreement stats
+ll-loop audit-meta fix-types --json   # JSON output
 ```
 
 See [LOOPS_GUIDE](../guides/LOOPS_GUIDE.md) for loop configuration details.

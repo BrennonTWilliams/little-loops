@@ -3842,3 +3842,123 @@ class TestCmdShowDiagramOptions:
         assert result == 0
         out = capsys.readouterr().out
         assert "┌" in out or "─" in out  # box-drawing chars in diagram
+
+
+class TestCmdAuditMeta:
+    """Tests for ll-loop audit-meta command."""
+
+    def _make_meta_eval(self, run_dir: Path, entries: list[dict[str, Any]]) -> None:
+        """Write a meta-eval.jsonl file in run_dir."""
+        run_dir.mkdir(parents=True, exist_ok=True)
+        with open(run_dir / "meta-eval.jsonl", "w") as f:
+            for entry in entries:
+                f.write(json.dumps(entry) + "\n")
+
+    def _base_args(self, as_json: bool = False) -> argparse.Namespace:
+        return argparse.Namespace(json=as_json)
+
+    def test_no_history_returns_zero(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Returns 0 when no .history directory exists."""
+        from little_loops.cli.loop.info import cmd_audit_meta
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        result = cmd_audit_meta("my-loop", self._base_args(), loops_dir)
+        assert result == 0
+        assert "No history" in capsys.readouterr().out
+
+    def test_no_meta_eval_files_returns_zero(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Returns 0 when runs exist but have no meta-eval.jsonl."""
+        from little_loops.cli.loop.info import cmd_audit_meta
+
+        loops_dir = tmp_path / ".loops"
+        run_dir = loops_dir / ".history" / "20260101T000000-my-loop"
+        run_dir.mkdir(parents=True)
+        result = cmd_audit_meta("my-loop", self._base_args(), loops_dir)
+        assert result == 0
+        assert "No meta-eval" in capsys.readouterr().out
+
+    def test_agreement_rate_printed(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Agreement rate is computed and printed correctly."""
+        from little_loops.cli.loop.info import cmd_audit_meta
+
+        loops_dir = tmp_path / ".loops"
+        run_dir = loops_dir / ".history" / "20260101T000000-my-loop"
+        entries = [
+            {"agreed": True, "diff_stats": {"files_changed": 2}},
+            {"agreed": True, "diff_stats": {"files_changed": 1}},
+            {"agreed": False, "diff_stats": {"files_changed": 0}},
+            {"agreed": False, "diff_stats": {"files_changed": 0}},
+        ]
+        self._make_meta_eval(run_dir, entries)
+        result = cmd_audit_meta("my-loop", self._base_args(), loops_dir)
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "50%" in out
+        assert "No divergence" in out
+
+    def test_optimistic_drift_flag(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Returns exit code 1 and prints flag when agreed=false streak >=3."""
+        from little_loops.cli.loop.info import cmd_audit_meta
+
+        loops_dir = tmp_path / ".loops"
+        run_dir = loops_dir / ".history" / "20260101T000000-my-loop"
+        entries = [
+            {"agreed": False, "diff_stats": {"files_changed": 0}},
+            {"agreed": False, "diff_stats": {"files_changed": 0}},
+            {"agreed": False, "diff_stats": {"files_changed": 0}},
+        ]
+        self._make_meta_eval(run_dir, entries)
+        result = cmd_audit_meta("my-loop", self._base_args(), loops_dir)
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "optimistic drift" in out.lower()
+
+    def test_trivial_agreement_flag(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Returns exit code 1 and prints flag when agreed=true + files_changed=0 streak >=3."""
+        from little_loops.cli.loop.info import cmd_audit_meta
+
+        loops_dir = tmp_path / ".loops"
+        run_dir = loops_dir / ".history" / "20260101T000000-my-loop"
+        entries = [
+            {"agreed": True, "diff_stats": {"files_changed": 0}},
+            {"agreed": True, "diff_stats": {"files_changed": 0}},
+            {"agreed": True, "diff_stats": {"files_changed": 0}},
+        ]
+        self._make_meta_eval(run_dir, entries)
+        result = cmd_audit_meta("my-loop", self._base_args(), loops_dir)
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "trivial agreement" in out.lower()
+
+    def test_json_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--json flag outputs parseable JSON with expected keys."""
+        from little_loops.cli.loop.info import cmd_audit_meta
+
+        loops_dir = tmp_path / ".loops"
+        run_dir = loops_dir / ".history" / "20260101T000000-my-loop"
+        entries = [
+            {"agreed": True, "diff_stats": {"files_changed": 3}},
+            {"agreed": False, "diff_stats": {"files_changed": 1}},
+        ]
+        self._make_meta_eval(run_dir, entries)
+        result = cmd_audit_meta("my-loop", self._base_args(as_json=True), loops_dir)
+        assert result == 0
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["total_entries"] == 2
+        assert data["agreed_count"] == 1
+        assert data["agreement_rate"] == 0.5
+        assert "flags" in data

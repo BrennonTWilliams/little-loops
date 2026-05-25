@@ -20,7 +20,7 @@ def main_loop() -> int:
         Exit code (0 = success)
     """
     from little_loops.cli.loop.config_cmds import cmd_install, cmd_validate
-    from little_loops.cli.loop.info import cmd_fragments, cmd_history, cmd_list, cmd_show
+    from little_loops.cli.loop.info import cmd_audit_meta, cmd_fragments, cmd_history, cmd_list, cmd_show
     from little_loops.cli.loop.lifecycle import cmd_resume, cmd_status, cmd_stop
     from little_loops.cli.loop.next_loop import cmd_next_loop
     from little_loops.cli.loop.run import cmd_run
@@ -51,6 +51,7 @@ def main_loop() -> int:
         "show",
         "fragments",
         "next-loop",
+        "audit-meta",
         # aliases
         "r",
         "c",
@@ -92,6 +93,7 @@ Examples:
   %(prog)s history fix-types      # Show execution history
   %(prog)s next-loop              # Suggest next loop from history
   %(prog)s next-loop --count 3    # Top 3 suggestions
+  %(prog)s audit-meta fix-types   # Summarize meta-eval agreement stats
 """,
     )
 
@@ -513,6 +515,15 @@ Examples:
         help="Exclude a loop name from suggestions (repeatable)",
     )
 
+    # Audit-meta subcommand
+    audit_meta_parser = subparsers.add_parser(
+        "audit-meta",
+        help="Summarize meta-eval.jsonl agreement stats from archived runs",
+    )
+    audit_meta_parser.set_defaults(command="audit-meta")
+    audit_meta_parser.add_argument("loop", help="Loop name")
+    audit_meta_parser.add_argument("-j", "--json", action="store_true", help="Output as JSON")
+
     args = parser.parse_args(argv)
 
     logger = Logger(verbose=not getattr(args, "quiet", False))
@@ -544,6 +555,8 @@ Examples:
         return cmd_fragments(args.lib, args, loops_dir, logger)
     elif args.command == "next-loop":
         return cmd_next_loop(args, loops_dir, logger)
+    elif args.command == "audit-meta":
+        return cmd_audit_meta(args.loop, args, loops_dir)
     else:
         parser.print_help()
         return 1

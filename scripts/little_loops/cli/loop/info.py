@@ -588,6 +588,126 @@ def cmd_history(
     return 0
 
 
+def cmd_audit_meta(loop_name: str, args: argparse.Namespace, loops_dir: Path) -> int:
+    """Summarize meta-eval.jsonl agreement stats from all archived runs of a loop.
+
+    Reads meta-eval.jsonl from each archived run, computes:
+    - Total iterations with llm_structured evaluate events
+    - Agreement rate (agreed / total)
+    - Mean diff size (files_changed) per verdict
+    - Divergence flags:
+      - agreed=false streak >=3 → "LLM optimistic drift detected"
+      - agreed=true with files_changed==0 streak >=3 → "Trivial agreement detected"
+
+    Returns 0 if no flags triggered, 1 if any threshold crossed.
+    """
+    import json as _json
+
+    from little_loops.fsm.persistence import HISTORY_DIR
+
+    history_root = loops_dir / HISTORY_DIR
+    if not history_root.exists():
+        print(f"No history for: {loop_name}")
+        return 0
+
+    suffix = f"-{loop_name}"
+    all_entries: list[dict[str, Any]] = []
+
+    for run_dir in sorted(history_root.iterdir(), key=lambda d: d.name):
+        if not run_dir.is_dir() or not run_dir.name.endswith(suffix):
+            continue
+        meta_eval_file = run_dir / "meta-eval.jsonl"
+        if not meta_eval_file.exists():
+            continue
+        for line in meta_eval_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    all_entries.append(_json.loads(line))
+                except _json.JSONDecodeError:
+                    pass
+
+    if not all_entries:
+        print(f"No meta-eval data for: {loop_name}")
+        return 0
+
+    total = len(all_entries)
+    agreed_count = sum(1 for e in all_entries if e.get("agreed") is True)
+    agreement_rate = agreed_count / total if total else 0.0
+
+    # Mean diff size per verdict
+    agreed_sizes = [
+        e.get("diff_stats", {}).get("files_changed", 0) or 0
+        for e in all_entries
+        if e.get("agreed") is True
+    ]
+    disagreed_sizes = [
+        e.get("diff_stats", {}).get("files_changed", 0) or 0
+        for e in all_entries
+        if e.get("agreed") is False
+    ]
+    mean_agreed = sum(agreed_sizes) / len(agreed_sizes) if agreed_sizes else 0.0
+    mean_disagreed = sum(disagreed_sizes) / len(disagreed_sizes) if disagreed_sizes else 0.0
+
+    # Detect streaks
+    flags: list[str] = []
+    optimistic_streak = 0
+    trivial_streak = 0
+    max_optimistic = 0
+    max_trivial = 0
+
+    for entry in all_entries:
+        agreed = entry.get("agreed")
+        files_changed = (entry.get("diff_stats") or {}).get("files_changed", 0) or 0
+
+        if agreed is False:
+            optimistic_streak += 1
+            trivial_streak = 0
+        elif agreed is True and files_changed == 0:
+            trivial_streak += 1
+            optimistic_streak = 0
+        else:
+            optimistic_streak = 0
+            trivial_streak = 0
+
+        max_optimistic = max(max_optimistic, optimistic_streak)
+        max_trivial = max(max_trivial, trivial_streak)
+
+    if max_optimistic >= 3:
+        flags.append(f"LLM optimistic drift detected (streak={max_optimistic})")
+    if max_trivial >= 3:
+        flags.append(f"Trivial agreement detected (streak={max_trivial})")
+
+    as_json = getattr(args, "json", False)
+    if as_json:
+        result = {
+            "loop": loop_name,
+            "total_entries": total,
+            "agreed_count": agreed_count,
+            "agreement_rate": round(agreement_rate, 4),
+            "mean_files_changed_when_agreed": round(mean_agreed, 2),
+            "mean_files_changed_when_disagreed": round(mean_disagreed, 2),
+            "max_optimistic_streak": max_optimistic,
+            "max_trivial_streak": max_trivial,
+            "flags": flags,
+        }
+        print_json(result)
+    else:
+        print(f"Meta-eval audit: {loop_name}")
+        print(f"  Total entries:     {total}")
+        print(f"  Agreed:            {agreed_count}/{total}  ({agreement_rate:.0%})")
+        print(f"  Mean Δfiles agreed:    {mean_agreed:.1f}")
+        print(f"  Mean Δfiles disagreed: {mean_disagreed:.1f}")
+        if flags:
+            print()
+            for flag in flags:
+                print(f"  ⚠  {flag}")
+        else:
+            print("  No divergence flags.")
+
+    return 1 if flags else 0
+
+
 # ---------------------------------------------------------------------------
 # FSM diagram renderer — delegated to layout module (re-exported above)
 # ---------------------------------------------------------------------------

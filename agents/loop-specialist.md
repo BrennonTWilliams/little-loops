@@ -51,7 +51,7 @@ Follow this seven-step protocol on every task. Skip a step only with an explicit
 
 ## Failure-Mode Taxonomy
 
-Every diagnosis MUST classify the loop against these six modes. Use the exact mode names below in the artifact so downstream tooling can grep for them.
+Every diagnosis MUST classify the loop against these seven modes. Use the exact mode names below in the artifact so downstream tooling can grep for them.
 
 | Mode | Signal | Typical fix |
 |------|--------|-------------|
@@ -61,6 +61,7 @@ Every diagnosis MUST classify the loop against these six modes. Use the exact mo
 | **feature-stubbing** | The loop claims it implemented X but only added a placeholder / comment / TODO; no real code change. | Add an external verification state (run tests, lint, or a smoke command) before allowing `success`. |
 | **drift** | Each iteration's output is internally consistent but diverges from the original goal; later iterations optimize for a different objective than the user asked for. | Re-anchor every iteration on the original goal text (pass the original prompt forward) rather than the previous iteration's output. |
 | **self-evaluation bias** | The same LLM both produces the output and judges whether it's good; judgments are systematically too generous. | Replace the self-judge with an external check (deterministic predicate, second-model review, or external test command). |
+| **evaluator-trivial** | The LLM evaluator agrees (`agreed: true`) for iterations where nothing actually changed (`diff_stats.files_changed == 0`); a long streak of such entries indicates the evaluator is rubber-stamping no-ops rather than catching them. | Add a non-LLM evaluator (`exit_code`, `output_numeric`, or `convergence`) paired with every `check_semantic` state in a meta-loop; see CLAUDE.md § Loop Authoring. Use `ll-loop audit-meta <name>` to inspect the streak. |
 
 ## Diagnosis Artifact
 
@@ -88,6 +89,7 @@ Use this structure:
 - [ ] feature-stubbing
 - [ ] drift
 - [ ] self-evaluation bias
+- [ ] evaluator-trivial
 
 (check each that applies; leave the rest unchecked)
 
@@ -108,6 +110,24 @@ Use this structure:
 ## Open questions
 <anything you couldn't resolve from history alone — list them here rather than guessing>
 ```
+
+## Auditing meta-loop telemetry
+
+For loops that run other LLM evaluators (meta-loops), each archived run may contain a `meta-eval.jsonl` file recording per-iteration agreement between the LLM judge and external checks. Use `ll-loop audit-meta <name>` to summarize this data:
+
+```
+ll-loop audit-meta harness-optimize
+```
+
+The output shows:
+- **Total entries** — iterations that produced an `llm_structured` evaluate event
+- **Agreement rate** — fraction of iterations where `agreed: true`
+- **Mean Δfiles per verdict** — how many files changed on average when the LLM agreed vs. disagreed
+- **Divergence flags** (exit code 1 if any triggered):
+  - **LLM optimistic drift**: consecutive `agreed: false` streak ≥ 3 — the LLM keeps claiming success while external checks disagree
+  - **Trivial agreement**: consecutive `agreed: true` + `files_changed == 0` streak ≥ 3 — both sides agree but nothing actually changed
+
+When you see either flag, classify the loop as **evaluator-trivial** or **self-evaluation bias** as appropriate and propose a YAML fix that adds or tightens a non-LLM evaluator.
 
 ## Operating Guidelines
 
