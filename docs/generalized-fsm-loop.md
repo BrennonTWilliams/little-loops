@@ -1437,7 +1437,8 @@ All loop definitions live in `.loops/`:
 ├── lint-cycle.yaml         # User-defined loop
 └── .running/               # Runtime state (auto-managed)
     ├── fix-types-20260503T122306.state.json
-    └── fix-types-20260503T122306.events.jsonl
+    ├── fix-types-20260503T122306.events.jsonl
+    └── fix-types-20260503T122306.meta-eval.jsonl  # meta-loops only
 ```
 
 ### Relationship to `.issues/`
@@ -1540,7 +1541,7 @@ ll-loop history fix-types
 
 ## Structured Events
 
-Events stream to `.loops/.running/<instance-id>.events.jsonl`:
+Events stream to `.loops/.running/<instance-id>.events.jsonl`. For meta-loops (loops that modify harness artifacts), a sibling `<instance-id>.meta-eval.jsonl` is also produced — one entry per iteration that transitions through an `llm_structured` evaluate state — pairing the LLM self-grade verdict with the external evaluator result for accuracy tracking.
 
 ```jsonl
 {"event": "loop_start", "loop": "fix-types", "ts": "..."}

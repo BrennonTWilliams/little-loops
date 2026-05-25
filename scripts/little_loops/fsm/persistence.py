@@ -25,6 +25,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -36,6 +37,7 @@ from little_loops.events import EventBus
 from little_loops.fsm.concurrency import _process_alive
 from little_loops.fsm.executor import EventCallback, ExecutionResult, FSMExecutor
 from little_loops.fsm.schema import FSMLoop
+from little_loops.fsm.validation import _is_meta_loop
 
 RUNNING_DIR = ".running"
 HISTORY_DIR = ".history"
@@ -62,6 +64,43 @@ def _iso_now() -> str:
 def _now_ms() -> int:
     """Return current time in milliseconds."""
     return int(time.time() * 1000)
+
+
+def _verdict_is_yes(verdict: str) -> bool:
+    """Return True if verdict maps to a positive (yes) outcome."""
+    return verdict.startswith("yes") or verdict in ("progress", "success")
+
+
+def _parse_diff_stat(text: str) -> dict[str, int] | None:
+    """Parse 'git diff --stat' summary line into structured dict."""
+    last_line = text.strip().rsplit("\n", 1)[-1] if text.strip() else ""
+    m = re.search(
+        r"(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?",
+        last_line,
+    )
+    if not m:
+        return None
+    return {
+        "files_changed": int(m.group(1)),
+        "insertions": int(m.group(2) or 0),
+        "deletions": int(m.group(3) or 0),
+    }
+
+
+def _get_diff_stats() -> dict[str, int] | None:
+    """Run 'git diff --stat HEAD' and return structured stats, or None on failure."""
+    try:
+        proc = subprocess.run(
+            ["git", "diff", "--stat", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if proc.returncode == 0:
+            return _parse_diff_stat(proc.stdout)
+    except Exception:
+        pass
+    return None
 
 
 @dataclass
@@ -225,6 +264,7 @@ class StatePersistence:
         stem = instance_id or loop_name
         self.state_file = self.running_dir / f"{stem}.state.json"
         self.events_file = self.running_dir / f"{stem}.events.jsonl"
+        self.meta_eval_file = self.running_dir / f"{stem}.meta-eval.jsonl"
 
     def initialize(self) -> None:
         """Create running directory if needed."""
@@ -307,6 +347,11 @@ class StatePersistence:
         if self.events_file.exists():
             self.events_file.unlink()
 
+    def clear_meta_eval(self) -> None:
+        """Remove meta-eval file."""
+        if self.meta_eval_file.exists():
+            self.meta_eval_file.unlink()
+
     def archive_run(self) -> Path | None:
         """Archive current run files to .history/ before clearing.
 
@@ -343,6 +388,8 @@ class StatePersistence:
             shutil.copy2(self.state_file, archive_dir / "state.json")
         if has_events:
             shutil.copy2(self.events_file, archive_dir / "events.jsonl")
+        if self.meta_eval_file.exists():
+            shutil.copy2(self.meta_eval_file, archive_dir / "meta-eval.jsonl")
 
         return archive_dir
 
@@ -351,6 +398,7 @@ class StatePersistence:
         self.archive_run()
         self.clear_state()
         self.clear_events()
+        self.clear_meta_eval()
 
 
 def _reconcile_stale_runs(loops_dir: Path) -> int:
@@ -470,6 +518,7 @@ class PersistentExecutor:
             **executor_kwargs,
         )
         self._last_result: dict[str, Any] | None = None
+        self._last_non_llm_result: dict[str, Any] | None = None
         self._continuation_prompt: str | None = None
         self.event_bus = EventBus()
 
@@ -519,6 +568,20 @@ class PersistentExecutor:
                     k: v for k, v in event.items() if k not in ("event", "ts", "type", "verdict")
                 },
             }
+            eval_type = event.get("type", "")
+            if eval_type != "llm_structured":
+                self._last_non_llm_result = {
+                    "state": self._executor.current_state,
+                    "evaluator": eval_type,
+                    "verdict": event.get("verdict", ""),
+                    "details": {
+                        k: v
+                        for k, v in event.items()
+                        if k not in ("event", "ts", "type", "verdict")
+                    },
+                }
+            elif _is_meta_loop(self.fsm):
+                self._write_meta_eval_entry(event)
 
         # Track handoff events for continuation prompt
         if event_type == "handoff_detected":
@@ -526,6 +589,38 @@ class PersistentExecutor:
 
         # Delegate to registered observers (e.g. progress display, extensions)
         self.event_bus.emit(event)
+
+    def _write_meta_eval_entry(self, event: dict[str, Any]) -> None:
+        """Append one JSONL entry to meta-eval.jsonl for an llm_structured evaluate in a meta-loop."""
+        non_llm = self._last_non_llm_result or {}
+        non_llm_details = non_llm.get("details", {})
+
+        llm_verdict = event.get("verdict", "")
+        ext_verdict = non_llm.get("verdict", "")
+        agreed: bool | None = (
+            _verdict_is_yes(llm_verdict) == _verdict_is_yes(ext_verdict) if ext_verdict else None
+        )
+
+        ext_value = non_llm_details.get("current", non_llm_details.get("value"))
+        ext_target = non_llm_details.get("target")
+
+        entry: dict[str, Any] = {
+            "iteration": self._executor.iteration,
+            "ts": _iso_now(),
+            "loop": self.fsm.name,
+            "state": self._executor.current_state,
+            "llm_verdict": llm_verdict,
+            "llm_rationale": (event.get("reason") or "")[:200],
+            "external_verdict": ext_verdict or None,
+            "external_state": non_llm.get("state"),
+            "external_evaluator": non_llm.get("evaluator") or None,
+            "external_value": str(ext_value) if ext_value is not None else None,
+            "external_target": str(ext_target) if ext_target is not None else None,
+            "diff_stats": _get_diff_stats(),
+            "agreed": agreed,
+        }
+        with open(self.persistence.meta_eval_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
 
     def _save_state(self) -> None:
         """Save current executor state to file."""

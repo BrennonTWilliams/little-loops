@@ -2651,7 +2651,7 @@ Each `check-*` state uses `evaluate: type: exit_code` to route on the skill's ex
 - **Use `backoff:`** to add a delay before a state's action executes — useful for rate-limited APIs or CI systems.
 - **State is persisted to disk** after every transition. If a loop is interrupted, `ll-loop resume` picks up where it left off.
 - **Convergence loops** use `direction:` to control whether the metric should go down (`minimize`, default) or up (`maximize`).
-- **Loop run state and event logs are automatically archived** to `.loops/.history/<timestamp>-<loop-name>/` immediately on completion. Use `ll-loop history <name>` without a `run_id` to list archived runs, or `ll-loop history <name> <run_id>` to inspect a specific one.
+- **Loop run state, event logs, and meta-eval telemetry are automatically archived** to `.loops/.history/<timestamp>-<loop-name>/` immediately on completion. Meta-loops also archive `meta-eval.jsonl` alongside `state.json` and `events.jsonl`. Use `ll-loop history <name>` without a `run_id` to list archived runs, or `ll-loop history <name> <run_id>` to inspect a specific one.
 
 ## Composable Sub-Loops
 

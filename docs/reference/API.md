@@ -4619,8 +4619,8 @@ Manage loop state persistence and event streaming.
 | `append_event(event)` | Append event to JSONL file |
 | `read_events()` | Read all events from file |
 | `clear_events()` | Remove events file |
-| `clear_all()` | Archive current run to history, then clear state and events |
-| `archive_run()` | Copy current state and events to `.loops/.history/<run_id>-<name>/` |
+| `clear_all()` | Archive current run to history, then clear state, events, and meta-eval |
+| `archive_run()` | Copy state, events, and (for meta-loops) meta-eval to `.loops/.history/<run_id>-<name>/` |
 
 **File structure:**
 ```
@@ -4628,7 +4628,8 @@ Manage loop state persistence and event streaming.
 ├── my-loop.yaml           # Loop definition
 └── .running/              # Runtime state
     ├── my-loop-20260503T122306.state.json
-    └── my-loop-20260503T122306.events.jsonl
+    ├── my-loop-20260503T122306.events.jsonl
+    └── my-loop-20260503T122306.meta-eval.jsonl  # meta-loops only
 ```
 
 #### PersistentExecutor

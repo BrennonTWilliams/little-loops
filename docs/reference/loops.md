@@ -106,6 +106,14 @@ The scorer command must follow the Harbor scorer protocol:
 
 Imports `lib/benchmark.yaml` for the `run_benchmark` fragment.
 
+### Output Artifacts
+
+In addition to trajectory JSONL files written to `.ll/runs/harness-optimize/<run-id>/`, `harness-optimize` is a meta-loop and produces:
+
+| File | Location | Description |
+|------|----------|-------------|
+| `<stem>.meta-eval.jsonl` | `.loops/.running/` (and archived to `.loops/.history/`) | One entry per iteration that passes through an `llm_structured` evaluate state, pairing the LLM self-grade verdict with the external evaluator result. Fields: `iteration`, `ts`, `loop`, `state`, `llm_verdict`, `llm_rationale`, `external_verdict`, `external_evaluator`, `agreed`, `diff_stats`. |
+
 ---
 
 ## `deep-research`

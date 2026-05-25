@@ -573,6 +573,31 @@ class TestArchiveRun:
         events = get_archived_events("test-loop", "2024-01-15T103000", tmp_loops_dir)
         assert events == []
 
+    def test_archive_run_copies_meta_eval_when_exists(self, tmp_loops_dir: Path) -> None:
+        """archive_run() copies meta-eval.jsonl to .history/ when it exists (meta-loop runs)."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(self._make_state())
+        persistence.meta_eval_file.write_text('{"iteration": 1, "agreed": false}\n')
+
+        archive_path = persistence.archive_run()
+
+        assert archive_path is not None
+        assert (archive_path / "meta-eval.jsonl").exists()
+        content = (archive_path / "meta-eval.jsonl").read_text()
+        assert "agreed" in content
+
+    def test_archive_run_does_not_copy_meta_eval_when_absent(self, tmp_loops_dir: Path) -> None:
+        """archive_run() omits meta-eval.jsonl when not present (non-meta-loop runs)."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(self._make_state())
+
+        archive_path = persistence.archive_run()
+
+        assert archive_path is not None
+        assert not (archive_path / "meta-eval.jsonl").exists()
+
 
 class MockActionRunner:
     """Mock action runner for testing."""
@@ -980,6 +1005,116 @@ class TestPersistentExecutor:
         assert len(run_dirs) == 1
         assert (run_dirs[0] / "state.json").exists()
         assert (run_dirs[0] / "events.jsonl").exists()
+
+    def test_meta_eval_written_on_llm_structured_in_meta_loop(
+        self, tmp_loops_dir: Path
+    ) -> None:
+        """meta-eval.jsonl is written when llm_structured evaluate fires in a meta-loop."""
+        meta_fsm = FSMLoop(
+            name="meta-test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="echo loops/test.yaml",  # triggers _is_meta_loop()
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        persistence = StatePersistence("meta-test", tmp_loops_dir)
+        persistence.initialize()
+        executor = PersistentExecutor(
+            meta_fsm, persistence=persistence, action_runner=MockActionRunner()
+        )
+        executor._executor.current_state = "check"
+        executor._executor.iteration = 3
+
+        # Simulate non-LLM evaluate event (external evaluator result)
+        executor._handle_event({
+            "event": "evaluate",
+            "ts": "2026-01-01T00:00:00Z",
+            "type": "exit_code",
+            "verdict": "no",
+        })
+        # Simulate llm_structured evaluate event
+        executor._handle_event({
+            "event": "evaluate",
+            "ts": "2026-01-01T00:00:01Z",
+            "type": "llm_structured",
+            "verdict": "yes",
+            "reason": "The changes look good",
+            "confidence": 0.9,
+            "confident": True,
+        })
+
+        assert persistence.meta_eval_file.exists()
+        lines = [
+            json.loads(line)
+            for line in persistence.meta_eval_file.read_text().strip().split("\n")
+            if line.strip()
+        ]
+        assert len(lines) == 1
+        entry = lines[0]
+        assert entry["iteration"] == 3
+        assert entry["loop"] == "meta-test"
+        assert entry["state"] == "check"
+        assert entry["llm_verdict"] == "yes"
+        assert entry["external_verdict"] == "no"
+        assert entry["external_evaluator"] == "exit_code"
+        assert entry["agreed"] is False  # llm=yes, external=no → disagree
+
+    def test_meta_eval_not_written_for_non_meta_loop(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """meta-eval.jsonl is NOT created when llm_structured evaluate fires in a non-meta-loop."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        executor = PersistentExecutor(
+            simple_fsm, persistence=persistence, action_runner=MockActionRunner()
+        )
+        executor._executor.current_state = "check"
+        executor._executor.iteration = 1
+
+        executor._handle_event({
+            "event": "evaluate",
+            "ts": "2026-01-01T00:00:01Z",
+            "type": "llm_structured",
+            "verdict": "yes",
+            "reason": "ok",
+            "confidence": 0.9,
+            "confident": True,
+        })
+
+        assert not persistence.meta_eval_file.exists()
+
+    def test_meta_eval_archived_after_run(self, tmp_loops_dir: Path) -> None:
+        """meta-eval.jsonl written during a run is copied to .history/ at run end."""
+        persistence = StatePersistence("meta-archive-test", tmp_loops_dir)
+        persistence.initialize()
+        # Pre-write a meta-eval file to simulate prior iteration writes
+        persistence.meta_eval_file.write_text('{"iteration": 1, "agreed": true}\n')
+        # Also write a state so archive_run() fires
+        persistence.save_state(
+            LoopState(
+                loop_name="meta-archive-test",
+                current_state="done",
+                iteration=1,
+                captured={},
+                prev_result=None,
+                last_result=None,
+                started_at="2026-01-01T00:00:00+00:00",
+                updated_at="",
+                status="completed",
+            )
+        )
+
+        archive_path = persistence.archive_run()
+
+        assert archive_path is not None
+        assert (archive_path / "meta-eval.jsonl").exists()
+        entry = json.loads((archive_path / "meta-eval.jsonl").read_text().strip())
+        assert entry["agreed"] is True
 
 
 class TestUtilityFunctions:
