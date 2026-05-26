@@ -448,17 +448,13 @@ This parallels the Python-driven completion paths (`ll-auto`, `ll-parallel`) tha
 
 ### 2. Update Issue Status
 
-Set `status: done` in the issue file's YAML frontmatter (the `completed_at` field was already injected in Phase 1.6). Use the Edit tool to update the `status` field in the frontmatter block:
+Set `status: done` using `ll-issues set-status`:
 
-```yaml
----
-id: BUG-042
-status: done   # ← update from "open"/"in_progress" to "done"
-completed_at: 2026-03-17T15:02:41Z  # already added in Phase 1.6
----
+```bash
+ll-issues set-status ISSUE_ID done
 ```
 
-Do NOT use `git mv` to move the file to a `completed/` directory — status is tracked via frontmatter.
+This atomically updates the `status:` field in frontmatter without touching any other fields. Do NOT use `git mv` or the `Edit` tool to flip the status field directly — `set-status` is the canonical path and handles field preservation correctly. Do NOT move the file to a `completed/` directory — status is tracked via frontmatter.
 
 ### 3. Commit All Changes
 

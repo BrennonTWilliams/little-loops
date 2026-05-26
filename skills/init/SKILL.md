@@ -578,7 +578,7 @@ If user opted in:
    - `ll-sync` - Sync local issues with GitHub Issues
    - `ll-verify-docs` - Verify documented counts match actual file counts
    - `ll-check-links` - Check markdown documentation for broken links
-   - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, anchor-sweep)
+   - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, anchor-sweep)
    - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
    - `ll-create-extension` - Scaffold a new little-loops extension project
    - `ll-generate-schemas` - Regenerate JSON Schema files for all LLEvent types (maintainer tool)
@@ -611,7 +611,7 @@ If user opted in:
    - `ll-sync` - Sync local issues with GitHub Issues
    - `ll-verify-docs` - Verify documented counts match actual file counts
    - `ll-check-links` - Check markdown documentation for broken links
-   - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, anchor-sweep)
+   - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, anchor-sweep)
    - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
    - `ll-create-extension` - Scaffold a new little-loops extension project
    - `ll-generate-schemas` - Regenerate JSON Schema files for all LLEvent types (maintainer tool)
