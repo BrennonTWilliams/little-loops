@@ -655,3 +655,19 @@ class TestENH1631SummarizePartial:
     def test_summarize_partial_routes_to_done(self, raw_data: dict) -> None:
         state = raw_data["states"]["summarize_partial"]
         assert state.get("next") == "done"
+
+
+class TestBUG1724TimeoutProtection:
+    """BUG-1724: All prompt-type states must be protected from the 3600s fallback."""
+
+    def test_default_timeout_set(self, raw_data: dict) -> None:
+        assert raw_data.get("default_timeout") == 1800, (
+            "general-task.yaml must have default_timeout: 1800 to cap all states at 1800s "
+            "instead of the 3600s hardcoded fallback in FSMExecutor._run_action()"
+        )
+
+    def test_final_verify_has_per_state_timeout(self, raw_data: dict) -> None:
+        assert raw_data["states"]["final_verify"].get("timeout", 0) > 0, (
+            "final_verify must have an explicit per-state timeout so it is not silently "
+            "skipped when default_timeout is the only protection"
+        )

@@ -3,6 +3,7 @@ description: "General-purpose task loop: writes a Definition of Done, decomposes
 category: harness
 initial: define_done
 max_iterations: 100
+default_timeout: 1800
 on_handoff: spawn
 on_max_iterations: summarize_partial
 
@@ -206,6 +207,7 @@ states:
     on_error: diagnose
 
   final_verify:
+    timeout: 1800
     action: |
       Your task is: ${context.input}
 

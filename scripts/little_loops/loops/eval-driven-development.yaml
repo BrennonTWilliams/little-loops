@@ -26,6 +26,7 @@ states:
   # Commit implementation changes before evaluation.
   commit_impl:
     action_type: prompt
+    timeout: 600
     action: |
       Run `/ll:commit` to commit any implementation changes.
       Use a descriptive message summarizing the issues implemented.
@@ -59,6 +60,7 @@ states:
   # Commit new issues and eval findings.
   commit_eval:
     action_type: prompt
+    timeout: 600
     action: |
       Run `/ll:commit` to commit new issues and evaluation findings.
       Use message: "chore(eval): capture issues from harness run"
@@ -90,6 +92,7 @@ states:
   # Annotate issues with viability notes, then loop back to implement.
   tradeoff_review:
     action_type: prompt
+    timeout: 1200
     action: |
       Run `/ll:tradeoff-review-issues` to annotate issues with viability notes.
       Then run `/ll:commit` to commit the tradeoff annotations.

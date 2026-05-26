@@ -12,6 +12,7 @@ states:
   check-quality:
     action: "Run `/ll:check-code lint,format,types` and report results."
     action_type: prompt
+    timeout: 300
     evaluate:
       type: llm_structured
       prompt: |

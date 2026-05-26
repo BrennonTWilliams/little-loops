@@ -60,6 +60,7 @@ states:
     #   action_type: prompt        → for a free-form instruction to Claude
     action: "/ll:refine-issue ${captured.current_item.output} --auto"
     action_type: prompt
+    timeout: 1800
     capture: execute_result           # captured as ${captured.execute_result.output}
     max_retries: 3                    # skip item after 3 failed attempts
     on_retry_exhausted: advance
