@@ -6,7 +6,7 @@ priority: P5
 captured_at: "2026-05-15T12:15:21Z"
 discovered_date: 2026-05-15
 discovered_by: capture-issue
-relates_to: [FEAT-957, FEAT-1462, FEAT-992]
+relates_to: [FEAT-957, FEAT-1462, FEAT-992, ENH-1718, FEAT-1719, FEAT-1720, FEAT-1721, ENH-1722]
 labels: [epic, captured, codex, host-compat, tracking]
 ---
 
@@ -130,16 +130,11 @@ FEAT-992).
   see `thoughts/research/hot-path-hook-intents.md`).
 - **FEAT-1489** — Wire `post_tool_use` fire-and-forget for Codex and OpenCode;
   create benchmark script; wire `pre_tool_use` based on benchmark results.
-- **(unfiled)** ENH — Wire `post_compact` adapter intent (gated on
-  finding a real consumer).
-- **(unfiled)** ENH — Wire `permission_request` adapter intent (gated
-  on finding a real consumer).
-- **(unfiled)** ENH — Per-host state directory redirection. First
-  step is a research note: enumerate each state surface
-  (`.issues/`, `.loops/`, scratch, continuation prompt) and decide
-  per-surface whether host-scoped paths make sense. Default
-  recommendation is likely "leave shared," but the decision should
-  be written down rather than implicit.
+- **ENH-1718** — Enable `PreToolUse` by default for Codex adapter (10ms p95 benchmark on record; opt-in was overly conservative)
+- **FEAT-1719** — Wire `PostCompact` intent for Codex adapter (no-op handler + adapter script; gated on consumer)
+- **FEAT-1720** — Wire `permission_request` intent for Codex adapter (no-op handler + adapter script; verify payload shape first)
+- **FEAT-1721** — Codex `claude -p` conformance test suite (ll-auto / ll-sprint / ll-loop golden paths)
+- **ENH-1722** — Research and decide per-host state directory redirection for Codex
 
 ## Success Metrics
 
