@@ -1,11 +1,18 @@
 ---
 id: ENH-1693
-status: open
+status: done
 priority: P3
 type: ENH
-captured_at: "2026-05-25T20:51:20Z"
+captured_at: '2026-05-25T20:51:20Z'
+completed_at: '2026-05-26T02:00:06Z'
 discovered_date: 2026-05-25
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 96
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1693: `ll-loop run` truncates state inputs in default output but shows full content without `--verbose`
@@ -63,13 +70,47 @@ With `--verbose`, the full input is shown as today.
 - **In scope**: Truncate state `input` display in default mode; remove the `✦ (N lines)` prefix when not verbose; gate full input behind `--verbose`
 - **Out of scope**: Changing evaluator output display, loop YAML format, or other CLI flags
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/loop/_helpers.py` — `display_progress()` inside `run_foreground()`; the `action_start` + `if is_prompt:` branch is where `✦ (N lines)` is printed unconditionally and up to 5 content lines are shown; this is the only place needing changes
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/loop/run.py` — calls `run_foreground(args, ...)` with `args.verbose`; no changes needed
+- `scripts/little_loops/cli/loop/__init__.py` — defines `--verbose` / `-v` on `run_parser`; help text currently reads `"Show full prompt at action start (default: first 5 lines)"` — may want to update to reflect new single-line-preview default
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/lifecycle.py` — imports and calls `run_foreground()` inside `cmd_resume()` at line 553; no changes needed but confirms the function signature must not change
+- `scripts/little_loops/cli/loop/layout.py` — defines `_ACTION_TYPE_BADGES = {"prompt": "✦", ...}` at line 110; the `✦` glyph source (informational — `_helpers.py` currently hardcodes the same character inline rather than reading from this dict)
+
+### Similar Patterns
+- `scripts/little_loops/cli/loop/info.py:_truncate()` — existing `_truncate(text: str, max_len: int) -> str` helper using Unicode `…`; already used for the `--follow` / `ll-loop history` action display; can be imported and reused here instead of inline `[:60] + "..."`
+- `scripts/little_loops/cli/loop/_helpers.py:display_progress()` (shell branch) — existing inline `action[:max_line] + "..."` truncation for non-prompt actions; same shape, different width constant
+
+### Tests
+- `scripts/tests/test_ll_loop_display.py` — primary test file; `test_nonverbose_action_start_still_clips()` and `test_verbose_action_start_prompt_not_clipped()` are the most relevant existing tests to update or extend
+- New test should assert: (a) no `✦ (N lines)` in non-verbose output, (b) single-line preview truncated at ~60 chars, (c) verbose still shows `✦ (N lines)` header + full content
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **Breaking**: `TestDisplayProgressEvents.test_nonverbose_action_start_still_clips` (line 1848) — assert `"3 more lines" in out` will fail when multi-line display is replaced by single-line preview; update to assert `"3 more lines"` is absent and `"(N lines)"` header is absent instead
+- **New test A**: `test_nonverbose_action_start_prompt_no_line_count_header` — send multi-line `action_start` with `verbose=False`; assert `"(3 lines)"` is not in output
+- **New test B**: `test_nonverbose_action_start_prompt_single_line_preview` — send 80-char first line with `verbose=False` and `terminal_width=80`; assert `✦` glyph present, second line absent, `"..."` present
+- **New test C**: `test_verbose_action_start_prompt_shows_line_count_header` — send 3-line prompt with `verbose=True`; assert `"(3 lines)"` in output and all lines shown
+
+### Documentation
+- `docs/reference/CLI.md` — may document `--verbose` flag behavior; review for accuracy after change
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — line 2561 references `--verbose` as "default shows a short response head preview"; general language, unlikely to break but review after change
+
 ## Implementation Steps
 
-1. Locate where `ll-loop run` prints each state's input (likely `scripts/little_loops/loop_runner.py` or the CLI rendering layer)
-2. Add a helper that truncates a string to ~60 chars with `...` suffix if longer
-3. In default (non-verbose) mode, apply the helper before printing state input
-4. Remove or suppress the `✦ (N lines)` meta line in non-verbose mode; show the actual first line of content instead
-5. In `--verbose` mode, keep existing full-content behavior
+1. In `scripts/little_loops/cli/loop/_helpers.py`, locate the `action_start` event handler in `display_progress()` — the `if is_prompt:` branch where `prompt_badge = "✦"` and the `✦ (N lines)` header is printed unconditionally
+2. In non-verbose mode: suppress the `✦ (N lines)` meta-line; instead compute `preview = lines[0][:60] + "..."` if the first line is longer than 60 chars (or reuse `_truncate` from `cli/loop/info.py`), and print `-> ✦ <preview>` as a single line
+3. In `--verbose` mode: keep existing behavior — print `✦ (N lines)` header followed by all content lines unclipped
+4. Confirm shell branch (non-prompt `action_start`) already truncates correctly via the existing `action[:max_line] + "..."` path — no change needed there
+5. Add regression tests in `scripts/tests/test_ll_loop_display.py` following the `test_nonverbose_action_start_still_clips()` pattern; verify the `✦ (N lines)` line is absent in non-verbose output and the single-line preview appears instead
+6. Optionally update the `--verbose` help text in `scripts/little_loops/cli/loop/__init__.py` `run_parser` to describe new default behavior
 
 ## Impact
 
@@ -82,7 +123,18 @@ With `--verbose`, the full input is shown as today.
 
 `cli`, `ux`, `loop`, `output`, `captured`
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `scripts/tests/test_ll_loop_display.py` — remove `"3 more lines"` assertion from `test_nonverbose_action_start_still_clips`; add the three new test functions (A, B, C) from the Tests section above
+8. Review `docs/guides/LOOPS_GUIDE.md` line 2561 — confirm `--verbose` description remains accurate after the change
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-26T01:56:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/390ae9e1-a32b-4da7-b395-03f2137e1b1f.jsonl`
+- `/ll:confidence-check` - 2026-05-25T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2b1b983-d9ad-4fe0-ae43-26bbbe98524d.jsonl`
+- `/ll:wire-issue` - 2026-05-26T01:52:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef26377f-1811-47ab-854e-40635e78ae61.jsonl`
+- `/ll:refine-issue` - 2026-05-26T01:47:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2047892-4db7-4e3b-823a-5c1f57ef6384.jsonl`
 - `/ll:format-issue` - 2026-05-25T20:54:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98c0c55a-a905-432a-936c-1fdaa0a11afd.jsonl`
 - `/ll:capture-issue` - 2026-05-25T20:51:20Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/389c4de8-bd09-42af-b2cc-f8421b2bd729.jsonl`
 

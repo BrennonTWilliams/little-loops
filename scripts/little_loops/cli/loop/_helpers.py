@@ -854,20 +854,19 @@ def run_foreground(
                     lines = action.strip().splitlines()
                     line_count = len(lines)
                     prompt_badge = "\u2726"  # ✦
-                    print(
-                        f"{indent} -> {colorize(prompt_badge, '2')} {colorize(f'({line_count} lines)', '2')}",
-                        flush=True,
-                    )
-                    show_count = line_count if verbose else min(5, line_count)
-                    for line in lines[:show_count]:
-                        if verbose:
-                            print(f"{indent}       {line}", flush=True)
-                        else:
-                            display = line[:max_line] + "..." if len(line) > max_line else line
-                            print(f"{indent}       {display}", flush=True)
-                    if line_count > show_count:
+                    if verbose:
                         print(
-                            f"{indent}       ... ({line_count - show_count} more lines)", flush=True
+                            f"{indent} -> {colorize(prompt_badge, '2')} {colorize(f'({line_count} lines)', '2')}",
+                            flush=True,
+                        )
+                        for line in lines:
+                            print(f"{indent}       {line}", flush=True)
+                    else:
+                        first_line = lines[0] if lines else ""
+                        preview = first_line[:60] + "..." if len(first_line) > 60 else first_line
+                        print(
+                            f"{indent} -> {colorize(prompt_badge, '2')} {colorize(preview, '2')}",
+                            flush=True,
                         )
                 else:
                     if verbose:

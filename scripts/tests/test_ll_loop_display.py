@@ -1846,7 +1846,7 @@ class TestDisplayProgressEvents:
         assert long_preview in out
 
     def test_nonverbose_action_start_still_clips(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """BUG-1154: non-verbose action_start prompt retains per-line clip and 5-line cap."""
+        """ENH-1693: non-verbose action_start prompt shows single-line preview, no multi-line display."""
         from unittest.mock import patch as _patch
 
         long_line = "p" * 200
@@ -1861,7 +1861,56 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert long_line not in out
         assert "..." in out
-        assert "3 more lines" in out
+        assert "3 more lines" not in out
+
+    def test_nonverbose_action_start_prompt_no_line_count_header(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-1693: non-verbose action_start prompt does not emit the (N lines) header."""
+        multi_line = "first line\nsecond line\nthird line"
+        events = [
+            {"event": "action_start", "action": multi_line, "is_prompt": True},
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args(verbose=False))
+        out = capsys.readouterr().out
+        assert "(3 lines)" not in out
+        assert "second line" not in out
+
+    def test_nonverbose_action_start_prompt_single_line_preview(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-1693: non-verbose action_start prompt shows ✦ glyph + truncated first line."""
+        from unittest.mock import patch as _patch
+
+        first_line = "x" * 80
+        events = [
+            {"event": "action_start", "action": first_line + "\nsecond line", "is_prompt": True},
+        ]
+        executor = MockExecutor(events)
+        with _patch("little_loops.cli.loop._helpers.terminal_width", return_value=80):
+            run_foreground(executor, self._make_fsm(), self._make_args(verbose=False))
+        out = capsys.readouterr().out
+        assert "✦" in out
+        assert "second line" not in out
+        assert "..." in out
+        assert first_line not in out  # full 80-char line should not appear untruncated
+
+    def test_verbose_action_start_prompt_shows_line_count_header(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-1693: verbose action_start prompt shows (N lines) header and all content."""
+        prompt = "line one\nline two\nline three"
+        events = [
+            {"event": "action_start", "action": prompt, "is_prompt": True},
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+        out = capsys.readouterr().out
+        assert "(3 lines)" in out
+        assert "line one" in out
+        assert "line two" in out
+        assert "line three" in out
 
     def test_nonverbose_evaluate_reason_still_caps_at_300(
         self, capsys: pytest.CaptureFixture[str]
