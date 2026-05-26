@@ -3748,7 +3748,9 @@ class TestCmdShowDiagramOptions:
 
         loops_dir = self._setup_loop(tmp_path)
         logger = Logger(verbose=False)
-        with patch.object(info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram) as mock_render:
+        with patch.object(
+            info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram
+        ) as mock_render:
             result = cmd_show("my-loop", self._base_args(), loops_dir, logger)
         assert result == 0
         assert mock_render.called
@@ -3768,7 +3770,9 @@ class TestCmdShowDiagramOptions:
         loops_dir = self._setup_loop(tmp_path)
         logger = Logger(verbose=False)
         args = self._base_args(show_diagrams=True)
-        with patch.object(info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram) as mock_render:
+        with patch.object(
+            info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram
+        ) as mock_render:
             result = cmd_show("my-loop", args, loops_dir, logger)
         assert result == 0
         call_kwargs = mock_render.call_args.kwargs
@@ -3788,7 +3792,9 @@ class TestCmdShowDiagramOptions:
         loops_dir = self._setup_loop(tmp_path)
         logger = Logger(verbose=False)
         args = self._base_args(show_diagrams="clean")
-        with patch.object(info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram) as mock_render:
+        with patch.object(
+            info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram
+        ) as mock_render:
             result = cmd_show("my-loop", args, loops_dir, logger)
         assert result == 0
         call_kwargs = mock_render.call_args.kwargs
@@ -3807,7 +3813,9 @@ class TestCmdShowDiagramOptions:
         loops_dir = self._setup_loop(tmp_path)
         logger = Logger(verbose=False)
         args = self._base_args(show_diagrams="detailed")
-        with patch.object(info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram) as mock_render:
+        with patch.object(
+            info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram
+        ) as mock_render:
             result = cmd_show("my-loop", args, loops_dir, logger)
         assert result == 0
         call_kwargs = mock_render.call_args.kwargs
@@ -3941,9 +3949,7 @@ class TestCmdAuditMeta:
         out = capsys.readouterr().out
         assert "trivial agreement" in out.lower()
 
-    def test_json_output(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_json_output(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """--json flag outputs parseable JSON with expected keys."""
         from little_loops.cli.loop.info import cmd_audit_meta
 

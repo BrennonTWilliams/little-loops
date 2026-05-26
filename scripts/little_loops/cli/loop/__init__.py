@@ -20,7 +20,13 @@ def main_loop() -> int:
         Exit code (0 = success)
     """
     from little_loops.cli.loop.config_cmds import cmd_install, cmd_validate
-    from little_loops.cli.loop.info import cmd_audit_meta, cmd_fragments, cmd_history, cmd_list, cmd_show
+    from little_loops.cli.loop.info import (
+        cmd_audit_meta,
+        cmd_fragments,
+        cmd_history,
+        cmd_list,
+        cmd_show,
+    )
     from little_loops.cli.loop.lifecycle import cmd_resume, cmd_status, cmd_stop
     from little_loops.cli.loop.next_loop import cmd_next_loop
     from little_loops.cli.loop.run import cmd_run

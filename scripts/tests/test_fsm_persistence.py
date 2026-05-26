@@ -1006,9 +1006,7 @@ class TestPersistentExecutor:
         assert (run_dirs[0] / "state.json").exists()
         assert (run_dirs[0] / "events.jsonl").exists()
 
-    def test_meta_eval_written_on_llm_structured_in_meta_loop(
-        self, tmp_loops_dir: Path
-    ) -> None:
+    def test_meta_eval_written_on_llm_structured_in_meta_loop(self, tmp_loops_dir: Path) -> None:
         """meta-eval.jsonl is written when llm_structured evaluate fires in a meta-loop."""
         meta_fsm = FSMLoop(
             name="meta-test",
@@ -1031,22 +1029,26 @@ class TestPersistentExecutor:
         executor._executor.iteration = 3
 
         # Simulate non-LLM evaluate event (external evaluator result)
-        executor._handle_event({
-            "event": "evaluate",
-            "ts": "2026-01-01T00:00:00Z",
-            "type": "exit_code",
-            "verdict": "no",
-        })
+        executor._handle_event(
+            {
+                "event": "evaluate",
+                "ts": "2026-01-01T00:00:00Z",
+                "type": "exit_code",
+                "verdict": "no",
+            }
+        )
         # Simulate llm_structured evaluate event
-        executor._handle_event({
-            "event": "evaluate",
-            "ts": "2026-01-01T00:00:01Z",
-            "type": "llm_structured",
-            "verdict": "yes",
-            "reason": "The changes look good",
-            "confidence": 0.9,
-            "confident": True,
-        })
+        executor._handle_event(
+            {
+                "event": "evaluate",
+                "ts": "2026-01-01T00:00:01Z",
+                "type": "llm_structured",
+                "verdict": "yes",
+                "reason": "The changes look good",
+                "confidence": 0.9,
+                "confident": True,
+            }
+        )
 
         assert persistence.meta_eval_file.exists()
         lines = [
@@ -1076,15 +1078,17 @@ class TestPersistentExecutor:
         executor._executor.current_state = "check"
         executor._executor.iteration = 1
 
-        executor._handle_event({
-            "event": "evaluate",
-            "ts": "2026-01-01T00:00:01Z",
-            "type": "llm_structured",
-            "verdict": "yes",
-            "reason": "ok",
-            "confidence": 0.9,
-            "confident": True,
-        })
+        executor._handle_event(
+            {
+                "event": "evaluate",
+                "ts": "2026-01-01T00:00:01Z",
+                "type": "llm_structured",
+                "verdict": "yes",
+                "reason": "ok",
+                "confidence": 0.9,
+                "confident": True,
+            }
+        )
 
         assert not persistence.meta_eval_file.exists()
 

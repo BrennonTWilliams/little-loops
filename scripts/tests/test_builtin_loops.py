@@ -3454,7 +3454,16 @@ class TestHitlMdLoop:
 
     def test_required_states_exist(self, data: dict) -> None:
         """All required states must be present: init, segment, generate, evaluate, score, finalize, done, failed."""
-        required = {"init", "segment", "generate", "evaluate", "score", "finalize", "done", "failed"}
+        required = {
+            "init",
+            "segment",
+            "generate",
+            "evaluate",
+            "score",
+            "finalize",
+            "done",
+            "failed",
+        }
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
