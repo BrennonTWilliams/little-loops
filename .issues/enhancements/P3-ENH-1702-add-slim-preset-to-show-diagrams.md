@@ -32,6 +32,13 @@ state detail, but keeps the full layered topology. Neither preset alone
 serves the "narrow terminal, topology context" use case. `slim` combines
 both noise-reduction axes.
 
+## Success Metrics
+
+- `"slim" in PRESET_VALUES` is `True` — verified by existing preset round-trip test
+- `resolve_facets("slim")` returns `DiagramFacets("neighborhood", False, "title", "main", "preset")` — verified by unit test in `test_diagram_modes.py`
+- `--show-diagrams=slim` renders a diagram without edge labels and with title-only state names
+- All existing preset tests continue to pass (no regression)
+
 ## Proposed Behavior
 
 `--show-diagrams=slim` expands to:
@@ -77,4 +84,5 @@ alongside `detailed`, `summary`, `clean`, `local`, `oneline`.
 - No changes to `_LEGACY_HINTS` (no old name to migrate from).
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-26T01:37:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c75bd9d1-613d-4aa0-9283-47dd1f54df31.jsonl`
 - `/ll:capture-issue` - 2026-05-25T23:00:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/632387fc-2984-41b5-beb0-6ada22e27465.jsonl`
