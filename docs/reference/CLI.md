@@ -880,6 +880,8 @@ ll-issues append-log .issues/bugs/P2-BUG-123-foo.md /ll:refine-issue
 ll-issues anchor-sweep --dry-run                 # Preview file:line rewrites
 ll-issues anchor-sweep                           # Rewrite file:line refs in active issues
 ll-issues asw --dry-run                          # Alias: asw
+ll-issues set-status ENH-1725 in_progress        # Transition status
+ll-issues sst BUG-042 done                       # Alias: sst
 ```
 
 ---
@@ -996,6 +998,24 @@ ll-issues ss FEAT-518 --confidence 88 --outcome 72 --score-complexity 22 --score
 ```
 
 **Used by**: `/ll:confidence-check` Phase 4 to persist scores deterministically instead of a free-form `Edit` call.
+
+---
+
+#### `ll-issues set-status` / `ll-issues sst`
+
+Transition an issue to a new status value. Validates the target status against the canonical enum, updates the `status:` frontmatter field in-place, and prints the before→after transition to stdout.
+
+| Argument | Description |
+|----------|-------------|
+| `issue_id` | Issue ID (e.g., `518`, `ENH-518`, `P3-ENH-518`) |
+| `status` | New status value: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled` |
+
+**Examples:**
+```bash
+ll-issues set-status ENH-1725 in_progress   # ENH-1725: open → in_progress
+ll-issues sst BUG-042 done                  # BUG-042: in_progress → done
+ll-issues set-status FEAT-100 blocked
+```
 
 ---
 
