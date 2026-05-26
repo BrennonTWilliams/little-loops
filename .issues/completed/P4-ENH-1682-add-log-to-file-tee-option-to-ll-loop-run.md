@@ -2,12 +2,18 @@
 id: ENH-1682
 type: ENH
 priority: P4
-status: open
+status: cancelled
 title: "Add --log-to <file> tee option to ll-loop run"
 captured_at: "2026-05-24T17:45:05Z"
 discovered_date: "2026-05-24"
 discovered_by: capture-issue
 ---
+
+## Resolution
+
+- **Status**: Cancelled
+- **Completed**: 2026-05-25
+- **Reason**: Superseded by ENH-1703. The two distinguishing features of this issue (ANSI stripping and optional user-specified log path via `--log-to <path>`) have been folded into ENH-1703's scope. ENH-1703's `--log`/`--capture` flag covers the same use case; `--log-to <path>` will be added as an optional path override there.
 
 # ENH-1682: Add --log-to <file> tee option to ll-loop run
 
