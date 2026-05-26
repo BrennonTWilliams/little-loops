@@ -148,7 +148,45 @@ class TestLoadSkills:
         with patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path):
             skills = _load_skills()
 
-        assert skills == [{"name": "my-skill", "description": "My skill desc"}]
+        assert skills == [{"name": "my-skill", "description": "My skill desc", "args": None}]
+
+    def test_skill_dict_includes_args_when_present(self, tmp_path: Path) -> None:
+        skills_dir = tmp_path / "skills" / "my-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text(
+            '---\ndescription: "My skill"\nargs: "ISSUE_ID [--auto]"\n---\n'
+        )
+
+        with patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path):
+            skills = _load_skills()
+
+        assert skills == [
+            {"name": "my-skill", "description": "My skill", "args": "ISSUE_ID [--auto]"}
+        ]
+
+    def test_argument_hint_used_as_fallback_for_args(self, tmp_path: Path) -> None:
+        skills_dir = tmp_path / "skills" / "my-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text(
+            '---\ndescription: "My skill"\nargument-hint: "[issue-id]"\n---\n'
+        )
+
+        with patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path):
+            skills = _load_skills()
+
+        assert skills[0]["args"] == "[issue-id]"
+
+    def test_args_takes_precedence_over_argument_hint(self, tmp_path: Path) -> None:
+        skills_dir = tmp_path / "skills" / "my-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text(
+            '---\ndescription: "My skill"\nargument-hint: "[issue-id]"\nargs: "ISSUE_ID [--dry-run]"\n---\n'
+        )
+
+        with patch("little_loops.cli.action._find_plugin_root", return_value=tmp_path):
+            skills = _load_skills()
+
+        assert skills[0]["args"] == "ISSUE_ID [--dry-run]"
 
     def test_returns_empty_list_when_no_skills(self, tmp_path: Path) -> None:
         (tmp_path / "skills").mkdir()
@@ -399,7 +437,7 @@ class TestCmdList:
 
         assert result == 0
         output = json.loads(capsys.readouterr().out)
-        assert output == [{"name": "my-skill", "description": "My skill"}]
+        assert output == [{"name": "my-skill", "description": "My skill", "args": None}]
 
     def test_returns_empty_list_when_no_skills(
         self, capsys: pytest.CaptureFixture, tmp_path: Path

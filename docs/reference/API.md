@@ -3015,6 +3015,34 @@ if not result:
 
 CLI entry points for the package.
 
+### main_action
+
+```python
+def main_action() -> int
+```
+
+Entry point for `ll-action` command. Thin CLI wrapper for invoking ll skills as one-shot commands with JSON-structured output.
+
+**Returns:** Exit code
+
+**Subcommands:**
+- `invoke <skill> [--args ARG ...] [--timeout SECONDS] [--output stream-json|json]` — invoke a skill and stream NDJSON events or collect JSON
+- `capabilities` — emit `CapabilityReport` as JSON
+- `list` — list all skills with names, descriptions, and argument hints
+
+**`list` output shape:**
+
+```json
+[
+  {"name": "refine-issue", "description": "...", "args": "ISSUE_ID [--auto] [--dry-run]"},
+  {"name": "old-skill", "description": "...", "args": null}
+]
+```
+
+The `args` field is sourced from the `args:` frontmatter field in `skills/<name>/SKILL.md`. If `args:` is absent but `argument-hint:` is present, `argument-hint:` is used as a fallback. The field is `null` when neither is set.
+
+---
+
 ### main_auto
 
 ```python

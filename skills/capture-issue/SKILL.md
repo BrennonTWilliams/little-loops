@@ -1,6 +1,7 @@
 ---
 name: capture-issue
 description: Use when asked to capture or create an issue from conversation or natural language.
+args: "[description] [--quick] [--parent EPIC-NNN]"
 argument-hint: "[description]"
 allowed-tools:
   - Read

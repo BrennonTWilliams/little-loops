@@ -40,15 +40,25 @@ def _read_skill_description(skill_md: Path) -> str:
     return fm.get("description", "").strip().strip('"').strip("'")
 
 
-def _load_skills() -> list[dict[str, str]]:
-    """Return skill list with name and description from skills/*/SKILL.md files."""
+def _load_skills() -> list[dict[str, str | None]]:
+    """Return skill list with name, description, and args from skills/*/SKILL.md files."""
+    from little_loops.frontmatter import parse_skill_frontmatter
+
     plugin_root = _find_plugin_root()
     skills_dir = plugin_root / "skills"
     skills = []
     for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
         name = skill_md.parent.name
-        description = _read_skill_description(skill_md)
-        skills.append({"name": name, "description": description})
+        try:
+            content = skill_md.read_text()
+        except OSError:
+            content = ""
+        fm = parse_skill_frontmatter(content) if content else {}
+        description = str(fm.get("description", "") or "").strip().strip('"').strip("'")
+        # args: takes precedence over argument-hint: (aliasing for 19 existing skills)
+        raw_args = fm.get("args") or fm.get("argument-hint")
+        args: str | None = str(raw_args).strip().strip('"').strip("'") if raw_args else None
+        skills.append({"name": name, "description": description, "args": args})
     return skills
 
 

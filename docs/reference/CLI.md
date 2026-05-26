@@ -84,11 +84,16 @@ Returns the full `CapabilityReport` for the configured host. Does not invoke Cla
 
 #### `list`
 
-Returns all skills with names and descriptions from the plugin manifest. Does not invoke Claude.
+Returns all skills with names, descriptions, and argument hints from the plugin manifest. Does not invoke Claude.
 
 ```json
-[{"name":"refine-issue","description":"..."},...]
+[
+  {"name":"refine-issue","description":"...","args":"ISSUE_ID [--auto] [--dry-run]"},
+  {"name":"old-skill","description":"...","args":null}
+]
 ```
+
+The `args` field is sourced from the `args:` frontmatter field in `skills/<name>/SKILL.md` (with `argument-hint:` as a fallback alias). It is `null` when neither field is present.
 
 **Exit codes:** `0` = success, `1` = error, `124` = timeout
 

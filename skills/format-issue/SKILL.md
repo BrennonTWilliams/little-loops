@@ -1,6 +1,7 @@
 ---
 name: format-issue
 description: Use when asked to format an issue or fix its template structure.
+args: "ISSUE_ID [--auto] [--all] [--dry-run]"
 argument-hint: "[issue-id]"
 allowed-tools:
   - Read

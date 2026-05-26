@@ -176,6 +176,7 @@ All fields are optional. Only `description` is recommended so Claude knows when 
 | :------------------------- | :---------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`                     | No          | Display name for the skill. If omitted, uses the directory name. Lowercase letters, numbers, and hyphens only (max 64 characters).                    |
 | `description`              | Recommended | What the skill does and when to use it. Claude uses this to decide when to apply the skill. If omitted, uses the first paragraph of markdown content. |
+| `args`                     | No          | Argument hint string for programmatic callers (e.g. `ll-action list --json`). Example: `"ISSUE_ID [--auto] [--dry-run]"`. Returned as `"args"` in `ll-action list --json` output; `null` when absent. `argument-hint:` is used as a fallback if `args:` is not set. |
 | `argument-hint`            | No          | Hint shown during autocomplete to indicate expected arguments. Example: `[issue-number]` or `[filename] [format]`.                                    |
 | `disable-model-invocation` | No          | Set to `true` to prevent Claude from automatically loading this skill. Use for workflows you want to trigger manually with `/name`. Default: `false`. |
 | `user-invocable`           | No          | Set to `false` to hide from the `/` menu. Use for background knowledge users shouldn't invoke directly. Default: `true`.                              |
