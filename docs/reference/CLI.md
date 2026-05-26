@@ -530,6 +530,10 @@ The **Commands** section at the bottom of the output can be overridden by adding
 |------|-------|-------------|
 | `--json` | `-j` | Output FSM config as JSON |
 | `--resolved` | | Expand sub-loop states inline under `_subloop` key (requires `--json`) |
+| `--show-diagrams[=MODE]` | | Display FSM diagram inline. `MODE` is a topology (`layered`\|`neighborhood`\|`inline`) or preset (`detailed`\|`summary`\|`clean`\|`local`\|`oneline`). Bare flag selects `summary`. Override facets with `--diagram-edge-labels=on\|off`, `--diagram-state-detail=title\|full`, `--diagram-scope=main\|full`. Mutually exclusive with `--json`. |
+| `--diagram-edge-labels` | | Override edge-label visibility for the diagram (`on`\|`off`). |
+| `--diagram-state-detail` | | Override state-detail level for the diagram (`title`\|`full`). |
+| `--diagram-scope` | | Override diagram scope (`main`\|`full`). |
 
 #### `ll-loop fragments <lib>`
 

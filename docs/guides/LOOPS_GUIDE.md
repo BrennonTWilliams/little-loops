@@ -966,7 +966,7 @@ run_eval → score_results → analyze_failures
 | `harness-optimize` | Score-gated hill-climbing on harness artifacts (skills, commands, CLAUDE.md) — proposes edits, benchmarks, commits accepted mutations; stops on first stall. Supports `.ll/program.md` for overnight runs. Also supports **state mode**: set `targets` to a loop YAML with a `targets.states` list to optimize individual state `action:` blocks independently. |
 | `html-anything` | Generalized HTML artifact harness — classifies artifact type (email, social card, résumé, dashboard, etc.) from a description, writes a platform-specific brief and dynamic scoring rubric, then iteratively generates and refines `index.html` via Playwright CLI |
 | `hitl-compare` | Human-in-the-loop comparison harness — reads whitespace-separated inputs (file paths or raw text), extracts candidate review items with 2+ options, prunes implementation-level micro-decisions, and generates a self-contained interactive HTML page with comparison controls, write-in custom options, and an "Export selections" affordance |
-| `hitl-md` | Human-in-the-loop single-document review harness — reads a markdown file (or raw text), decomposes it into GP-TSM saliency-modulated segments, and generates a self-contained interactive HTML page with per-segment color coding, keyboard navigation, five per-segment edit affordances (delete / insert-before / insert-after / inline-edit / flag-for-AI), a "Copy AI prompt" control for flagged segments, and a "Copy updated markdown" reconstruction control |
+| `hitl-md` | Human-in-the-loop single-document review harness — reads a markdown file (or raw text), decomposes it into GP-TSM saliency-modulated segments, and generates a self-contained interactive HTML page with inline saliency highlights, click/focus-triggered popover edit controls (delete / insert-before / insert-after / inline-edit / flag-for-AI), a "Copy AI prompt" control for flagged segments, and a "Copy updated markdown" reconstruction control. Final HTML is copied to `./hitl-md-review.html` in the run directory for quick access. |
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
 | `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI |
 | `svg-textgrad` | TextGrad-style SVG harness — optimizes the visual brief via structured gradient updates (FAILURE_PATTERN → ROOT_CAUSE → GRADIENT) rather than feeding raw critique to the generator; accumulates gradient history for repeated-failure escalation |
@@ -1110,7 +1110,7 @@ init → identify → prune → generate → evaluate
 
 > **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`). Playwright is used for screenshot evaluation but is optional — the loop degrades gracefully to LLM-only scoring when Playwright is unavailable.
 
-**Technique**: Implements a `segment → generate` pipeline before the standard GAN-style `evaluate → score` loop. The `segment` state resolves the input token (file path or raw text) and applies the **GP-TSM (Grammar-Preserving Text Saliency Modulation)** algorithm inline as LLM instructions — no external Python/ML dependencies. It identifies grammar-preserving segment boundaries (sentence/clause level, treating headings, bullets, and code blocks as atomic), assigns saliency scores (0.0–1.0) and an accessible color palette per content type, and writes `segments.json`. The `generate` state then produces a single self-contained HTML review page with per-segment color coding, keyboard/mouse navigation (Tab, arrow keys, click, Escape), selected-segment emphasis plus others-fade, five per-segment icon affordances (delete / insert-before / insert-after / inline-edit / flag-for-AI), a "Copy AI prompt" control for flagged segments, and a "Copy updated markdown" control that reconstructs the document from the live (possibly mutated) segment list. The `score` state evaluates a 6-criterion rubric with per-criterion thresholds.
+**Technique**: Implements a `segment → generate → finalize` pipeline before the standard GAN-style `evaluate → score` loop. The `segment` state resolves the input token (file path or raw text) and applies the **GP-TSM (Grammar-Preserving Text Saliency Modulation)** algorithm inline as LLM instructions — no external Python/ML dependencies. It identifies grammar-preserving segment boundaries (sentence/clause level, treating headings, bullets, and code blocks as atomic), assigns saliency scores (0.0–1.0) and an accessible color palette per content type, and writes `segments.json`. The `generate` state then produces a single self-contained HTML review page that renders the document with its natural markdown flow (headings, paragraphs, lists, code blocks in their usual shape), with each segment wrapped in a `<span class="seg">` carrying low-alpha inline background highlights keyed to saliency. The five edit controls (delete / insert-before / insert-after / inline-edit / flag-for-AI) appear as a popover triggered by clicking or focusing a segment — controls overlay the document without causing reflow. A "Copy AI prompt" control aggregates all flagged segments, and a "Copy updated markdown" control reconstructs the full document from the live segment list. The `finalize` state copies the approved HTML to `./hitl-md-review.html` in the cwd. The `score` state evaluates a 6-criterion rubric (`document_readability`, `inline_highlighting`, `affordance_overlay`, `keyboard_reachability`, `inline_constraint`, `markdown_reconstruction`) with per-criterion thresholds.
 
 > **Evaluate routing note**: The `evaluate` state's `on_error` routes to `generate` (not `score`), deliberately diverging from the standard LOOPS_GUIDE.md design rule at line 897 ("never back to generate"). Playwright errors here typically indicate the HTML itself is malformed — regenerating is preferable to scoring a broken page. This follows the `svg-image-generator.yaml` precedent. The `on_no` route (Playwright unavailable) still goes to `score` for LLM-only fallback per the standard pattern.
 
@@ -1134,14 +1134,14 @@ ll-loop run hitl-md "path/to/doc.md" --context output_dir=/tmp/my-review
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `input` | (from `loop_input`) | File path or raw markdown text — passed as the positional argument |
-| `output_dir` | `.loops/tmp/hitl-md` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/hitl-md/20260518-143022/`) containing `index.html`, `segments.json`, `critique.md`, and `screenshot.png` |
+| `output_dir` | `.loops/tmp/hitl-md` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/hitl-md/20260518-143022/`) containing `index.html`, `segments.json`, `critique.md`, and `screenshot.png`. The final approved `index.html` is also copied to `./hitl-md-review.html` in the cwd. |
 
 **FSM flow:**
 
 ```
 init → segment → generate → evaluate
                                 ├─ CAPTURED → score
-                                │              ├─ ALL_PASS → done
+                                │              ├─ ALL_PASS → finalize → done
                                 │              ├─ ITERATE  → generate (with critique)
                                 │              └─ ERROR    → failed
                                 ├─ FAILED  → score (Playwright unavailable — LLM-only scoring)
@@ -1150,9 +1150,9 @@ init → segment → generate → evaluate
 
 **Using the generated page:**
 
-1. Open `<run_dir>/index.html` in your browser (`file://` URL — no server needed).
-2. Navigate segment by segment using Tab, arrow keys, or mouse click. Selected segments are emphasized; others fade.
-3. Use the five per-segment icon buttons: 🗑 Delete, ↑+ Insert before, +↓ Insert after, ✏ Edit, 🚩 Flag for AI.
+1. Open `./hitl-md-review.html` (copied to your cwd) or `<run_dir>/index.html` in your browser (`file://` URL — no server needed).
+2. Navigate segment by segment using Tab, arrow keys, or mouse click. Segments render with inline saliency highlights in the natural document flow.
+3. Click or focus a segment to reveal the popover edit controls: 🗑 Delete, ↑+ Insert before, +↓ Insert after, ✏ Edit, 🚩 Flag for AI. Controls appear as an overlay and dismiss without document reflow.
 4. When 1+ segments are flagged, click **Copy AI prompt** at the top — paste the copied prompt into your coding agent chat for targeted revision of those specific spans.
 5. After all edits and AI-assisted revisions, click **Copy updated markdown** at the bottom to reconstruct the full document and paste it back over the source file.
 
