@@ -95,6 +95,41 @@ The FSM does already provide per-run isolation for its own internal state (`.loo
 4. Update tests that assert on `.loops/research/` or other old artifact paths.
 5. Document the `${context.run_dir}` convention in loop authoring docs.
 
+## Scope Boundaries
+
+- **In scope**: Built-in loops that use a hardcoded `output_dir` pointing to a loop-specific subdir under `.loops/` (`deep-research.yaml`, `deep-research-arxiv.yaml`, and any other built-in loops using custom output paths).
+- **Out of scope**: `.loops/tmp/` — shared cross-run scratch space (rate-limit circuit breaker, session scratch files); remains global, not per-run.
+- **Out of scope**: `.loops/.running/` and `.loops/.history/` — FSM internal state; unaffected by this change, which is domain artifacts only.
+- **Out of scope**: Custom loops using `context.output_dir` for intentionally stable, non-timestamped paths (e.g., accumulation loops). `context.output_dir` remains valid; migration to `run_dir` is opt-in.
+
+## Success Metrics
+
+- All built-in loops write domain artifacts under `.loops/runs/{name}-{ts}/`, not the previous per-loop subdirectories.
+- Re-running the same loop creates a distinct timestamped directory; no files from a prior run are overwritten.
+- A single `rm -rf .loops/runs/{run-dir}/` removes exactly one run's artifacts without touching other runs.
+- Loops that do not adopt `run_dir` continue to execute correctly (non-regression).
+
+## API/Interface
+
+New template variable injected by `ll-loop` runner into every loop's context at startup (before the `init` state), creating the directory before first use:
+
+```
+context.run_dir  →  ".loops/runs/{loop_name}-{YYYYMMDDTHHMMSS}/"
+```
+
+Existing `context.output_dir` remains valid and unmodified for loops that explicitly define it.
+
+Migration pattern for loop YAML authors:
+
+```yaml
+# Before (hardcoded, shared across runs):
+context:
+  output_dir: .loops/research
+
+# After (per-run, injected by runner):
+# Remove output_dir; reference ${context.run_dir} in state prompts/commands
+```
+
 ## Impact
 
 - **Priority**: P3 — Meaningful quality-of-life and data-safety improvement; not blocking
@@ -111,4 +146,5 @@ The FSM does already provide per-run isolation for its own internal state (`.loo
 **Open** | Created: 2026-05-26 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-26T20:29:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47cef901-86e9-4bd2-b772-ff487dd8bdac.jsonl`
 - `/ll:capture-issue` - 2026-05-26T20:24:33Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a02e39e-0327-4fde-996c-a64d954c3e35.jsonl`

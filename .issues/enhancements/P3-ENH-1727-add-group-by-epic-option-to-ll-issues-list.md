@@ -43,6 +43,18 @@ Developers working within an epic want a quick way to see the full scope of chil
    - `"epic"` — bucket issues by `issue.parent`, with `None` → "Unparented". Sort buckets so named epics come first (alphabetically by EPIC ID), unparented last.
 3. For each epic bucket header, optionally resolve the epic title by looking up the matching EPIC issue file.
 
+## API/Interface
+
+New CLI argument added to `ll-issues list`:
+
+```
+--group-by {type,epic}
+    Group output by issue type (default, existing behaviour preserved)
+    or by parent epic ID.
+```
+
+No Python API changes — the grouping logic is internal to `cmd_list`.
+
 ## Integration Map
 
 ### Files to Modify
@@ -53,7 +65,13 @@ Developers working within an epic want a quick way to see the full scope of chil
 - `scripts/tests/test_issues_list.py` (if exists) — add test for `--group-by epic`
 
 ### Similar Patterns
-- `list_cmd.py:134–155` — existing type-bucket grouping to model the new branch after
+- `list_cmd.py` — `cmd_list` type-bucket grouping branch to model the new epic-grouping branch after
+
+### Documentation
+- N/A — no user-facing docs reference the current grouping behaviour
+
+### Configuration
+- N/A — no config changes required
 
 ### Tests
 - Unit test: issues with `parent: EPIC-NNN` appear under the correct epic bucket
@@ -67,6 +85,14 @@ Developers working within an epic want a quick way to see the full scope of chil
 3. Add EPIC title resolution (read matching EPIC file, extract `# EPIC-NNN: Title` header)
 4. Write/update tests
 5. Verify `--flat` and `--json` flags still work (they bypass the grouping display, so they should be unaffected)
+
+## Scope Boundaries
+
+- No changes to the `IssueFile` data model — the `parent` field already exists
+- `--flat` and `--json` output modes are unaffected (they bypass grouping display entirely)
+- No filtering by epic — this is grouping-display only
+- No changes to `ll-deps` epic relationship commands
+- Does not add sorting controls beyond alphabetical-by-EPIC-ID for bucket headers; unparented bucket always last
 
 ## Impact
 
@@ -84,6 +110,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `cli`, `issues`, `epics`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-26T20:40:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76dc2061-8005-4612-bcf4-1672e52ae597.jsonl`
 - `/ll:capture-issue` - 2026-05-26T20:32:38Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b05a1db1-f9bd-43eb-b427-427c3cdbc0ac.jsonl`
 
 ---

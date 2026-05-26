@@ -256,6 +256,10 @@ _Added by `/ll:confidence-check` on 2026-05-25_
 - ENH-1703: Foreground log capture — core tee implementation and test wiring
 - ENH-1704: Foreground log capture — config schema and documentation
 
+### Design Revision (2026-05-26)
+
+After decomposition, the opt-in design was reconsidered. Background runs always capture; foreground parity means always-on as well. The `--log`/`--capture` flag and `capture_foreground_logs` config key were dropped in favour of unconditional tee. ENH-1703 and ENH-1704 were updated to reflect this — no flag registration, no config field, no schema entry. ENH-1704 is now docs-only.
+
 ---
 
 ## Status

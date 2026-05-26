@@ -311,22 +311,33 @@ def _build_pinned_pane(
 
     prev_map = prev_state_at_depth or {}
     lines: list[str] = []
-    header_text = f"== loop: {fsm.name} "
-    lines.append(header_text + "=" * max(0, cols - len(header_text)))
-    parent_diagram = _render_one(fsm, parent_highlight, prev_highlight)
-    if parent_diagram:
-        lines.extend(parent_diagram.split("\n"))
 
-    for d, child_fsm_at_d in sorted(child_fsm_stack.items()):
-        if child_fsm_at_d is None or (d + 1) not in last_state_at_depth:
-            continue
-        sep_text = f"── sub-loop: {child_fsm_at_d.name} "
-        lines.append(sep_text + "─" * max(0, cols - len(sep_text)))
-        child_highlight = last_state_at_depth.get(d + 1)
-        child_prev = prev_map.get(d + 1)
-        child_diagram = _render_one(child_fsm_at_d, child_highlight, child_prev)
-        if child_diagram:
-            lines.extend(child_diagram.split("\n"))
+    # Find deepest active loop — show only that one instead of stacking all levels.
+    active_fsm = fsm
+    active_state = parent_highlight
+    active_prev = prev_highlight
+    active_depth = 0
+    for d in sorted(child_fsm_stack.keys()):
+        child = child_fsm_stack[d]
+        if child is not None and (d + 1) in last_state_at_depth:
+            active_fsm = child
+            active_state = last_state_at_depth.get(d + 1)
+            active_prev = prev_map.get(d + 1)
+            active_depth = d + 1
+
+    # Header: breadcrumb shows immediate parent when inside a sub-loop.
+    if active_depth > 0:
+        imm_parent_name = (
+            fsm.name if active_depth == 1 else (child_fsm_stack.get(active_depth - 2) or fsm).name
+        )
+        imm_parent_state = last_state_at_depth.get(active_depth - 1, "")
+        header_text = f"== loop: {active_fsm.name} ({imm_parent_name} › {imm_parent_state}) "
+    else:
+        header_text = f"== loop: {fsm.name} "
+    lines.append(header_text + "=" * max(0, cols - len(header_text)))
+    diagram = _render_one(active_fsm, active_state, active_prev)
+    if diagram:
+        lines.extend(diagram.split("\n"))
 
     lines.append(iteration_line)
     lines.append("─" * cols)
@@ -775,68 +786,57 @@ def run_foreground(
                 )
 
                 assert facets is not None
-                parent_highlight = last_state_at_depth.get(0)
+
+                # Find deepest active loop \u2014 show only that one.
+                active_fsm_diag = fsm
+                active_highlight = last_state_at_depth.get(0)
+                active_depth_diag = 0
+                for d in sorted(child_fsm_stack.keys()):
+                    child_at_d = child_fsm_stack[d]
+                    if child_at_d is not None and (d + 1) in last_state_at_depth:
+                        active_fsm_diag = child_at_d
+                        active_highlight = last_state_at_depth.get(d + 1)
+                        active_depth_diag = d + 1
+
                 # Fall back to full scope when the highlighted state is hidden in main scope.
-                parent_scope = facets.scope
+                active_scope = facets.scope
                 fallback_note: str | None = None
-                if parent_scope == "main" and parent_highlight is not None:
-                    _filtered_edges, parent_reachable = _filter_main_path_graph(
-                        fsm, _collect_edges(fsm)
+                if active_scope == "main" and active_highlight is not None:
+                    _filtered_edges, active_reachable = _filter_main_path_graph(
+                        active_fsm_diag, _collect_edges(active_fsm_diag)
                     )
-                    if parent_highlight not in parent_reachable:
-                        parent_scope = "full"
+                    if active_highlight not in active_reachable:
+                        active_scope = "full"
                         fallback_note = (
                             f"(showing full diagram: active state "
-                            f"{parent_highlight!r} is off the main path)"
+                            f"{active_highlight!r} is off the main path)"
                         )
                 diagram = _render_fsm_diagram(
-                    fsm,
-                    highlight_state=parent_highlight,
+                    active_fsm_diag,
+                    highlight_state=active_highlight,
                     highlight_color=highlight_color,
                     edge_label_colors=edge_label_colors,
                     badges=badges,
-                    mode=parent_scope,
+                    mode=active_scope,
                     suppress_labels=not facets.edge_labels,
                     title_only=facets.state_detail == "title",
                 )
-                header_text = f"== loop: {fsm.name} "
+                # Header: breadcrumb shows immediate parent when inside a sub-loop.
+                if active_depth_diag > 0:
+                    imm_parent_name = (
+                        fsm.name
+                        if active_depth_diag == 1
+                        else (child_fsm_stack.get(active_depth_diag - 2) or fsm).name
+                    )
+                    imm_parent_state = last_state_at_depth.get(active_depth_diag - 1, "")
+                    header_text = f"== loop: {active_fsm_diag.name} ({imm_parent_name} \u203a {imm_parent_state}) "
+                else:
+                    header_text = f"== loop: {fsm.name} "
                 header = header_text + "=" * max(0, tw - len(header_text))
                 print(header, flush=True)
                 if fallback_note is not None:
                     print(fallback_note, flush=True)
                 print(diagram, flush=True)
-                for d, child_fsm_at_d in sorted(child_fsm_stack.items()):
-                    if child_fsm_at_d is not None and (d + 1) in last_state_at_depth:
-                        child_name = child_fsm_at_d.name
-                        separator_text = f"\u2500\u2500 sub-loop: {child_name} "
-                        separator = separator_text + "\u2500" * max(0, tw - len(separator_text))
-                        print(separator, flush=True)
-                        child_highlight = last_state_at_depth.get(d + 1)
-                        child_scope = facets.scope
-                        child_note: str | None = None
-                        if child_scope == "main" and child_highlight is not None:
-                            _ce, child_reachable = _filter_main_path_graph(
-                                child_fsm_at_d, _collect_edges(child_fsm_at_d)
-                            )
-                            if child_highlight not in child_reachable:
-                                child_scope = "full"
-                                child_note = (
-                                    f"(showing full diagram: active state "
-                                    f"{child_highlight!r} is off the main path)"
-                                )
-                        if child_note is not None:
-                            print(child_note, flush=True)
-                        child_diagram = _render_fsm_diagram(
-                            child_fsm_at_d,
-                            highlight_state=child_highlight,
-                            highlight_color=highlight_color,
-                            edge_label_colors=edge_label_colors,
-                            badges=badges,
-                            mode=child_scope,
-                            suppress_labels=not facets.edge_labels,
-                            title_only=facets.state_detail == "title",
-                        )
-                        print(child_diagram, flush=True)
             # In pinned mode the iteration line is part of the pinned pane;
             # only print it inline for non-pinned paths.
             if not quiet and not in_pinned_mode:

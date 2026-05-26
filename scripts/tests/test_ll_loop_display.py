@@ -2389,11 +2389,10 @@ class TestDisplayProgressEvents:
     def test_sub_loop_child_diagram_rendered_during_sub_loop_execution(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """During sub-loop execution, both parent and child FSM diagrams are rendered.
+        """During sub-loop execution only the deepest active loop diagram is rendered.
 
-        When a depth=1 state_enter event arrives and the parent state had loop set,
-        _render_fsm_diagram is called for parent (highlight=parent_state) then for
-        child (highlight=child_state). A separator line is printed between them.
+        When a depth=1 state_enter event arrives, _render_fsm_diagram is called for
+        the child FSM only (not the parent). The header shows the parent breadcrumb.
         """
         from unittest.mock import call, patch
 
@@ -2428,9 +2427,9 @@ class TestDisplayProgressEvents:
         ):
             run_foreground(executor, parent_fsm, self._make_args(show_diagrams=True))
 
-        # depth=0 event: 1 render (parent only, child FSM loaded but not yet shown)
-        # depth=1 event: 2 renders (parent with parent highlight + child with child highlight)
-        assert mock_render.call_count == 3, f"Expected 3 render calls, got {mock_render.call_count}"
+        # depth=0: 1 render (parent FSM)
+        # depth=1: 1 render (child FSM — deepest active, parent is not shown)
+        assert mock_render.call_count == 2, f"Expected 2 render calls, got {mock_render.call_count}"
         calls = mock_render.call_args_list
         assert calls[0] == call(
             parent_fsm,
@@ -2443,16 +2442,6 @@ class TestDisplayProgressEvents:
             title_only=False,
         )
         assert calls[1] == call(
-            parent_fsm,
-            highlight_state="run_sub_loop",
-            highlight_color="32",
-            edge_label_colors=None,
-            badges=None,
-            mode="main",
-            suppress_labels=False,
-            title_only=False,
-        )
-        assert calls[2] == call(
             child_fsm,
             highlight_state="child_state_1",
             highlight_color="32",
@@ -2463,18 +2452,21 @@ class TestDisplayProgressEvents:
             title_only=False,
         )
         out = capsys.readouterr().out
-        assert "sub-loop: child-loop" in out
+        # Breadcrumb in header instead of a separator line
+        assert "child-loop" in out
+        assert "parent-loop" in out
+        assert "run_sub_loop" in out
 
     def test_grandchild_sub_loop_diagram_rendered_at_depth_2(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """At depth=2, parent + child + grandchild FSM diagrams are all rendered.
+        """At each depth, only the deepest active loop diagram is rendered.
 
-        Emits depth=0 → depth=1 → depth=2 events and asserts 6 total render calls:
+        Emits depth=0 → depth=1 → depth=2 events and asserts 3 total render calls:
           - depth=0: 1 render (parent only)
-          - depth=1: 2 renders (parent + child)
-          - depth=2: 3 renders (parent + child + grandchild)
-        Two separator lines ('sub-loop: child-loop' and 'sub-loop: grandchild-loop') appear.
+          - depth=1: 1 render (child only — deepest active)
+          - depth=2: 1 render (grandchild only — deepest active)
+        Headers carry breadcrumb context instead of stacked separator lines.
         """
         from unittest.mock import patch
 
@@ -2526,29 +2518,22 @@ class TestDisplayProgressEvents:
         ):
             run_foreground(executor, parent_fsm, self._make_args(show_diagrams=True))
 
-        # depth=0: 1 render (parent only)
-        # depth=1: 2 renders (parent + child)
-        # depth=2: 3 renders (parent + child + grandchild)
-        assert mock_render.call_count == 6, f"Expected 6 render calls, got {mock_render.call_count}"
+        # One render per depth event — only the deepest active loop is shown.
+        assert mock_render.call_count == 3, f"Expected 3 render calls, got {mock_render.call_count}"
         calls = mock_render.call_args_list
-        # depth=0 event: parent only
+        # depth=0: parent only
         assert calls[0].args[0] is parent_fsm
         assert calls[0].kwargs["highlight_state"] == "run_sub_loop"
-        # depth=1 event: parent + child
-        assert calls[1].args[0] is parent_fsm
-        assert calls[1].kwargs["highlight_state"] == "run_sub_loop"
-        assert calls[2].args[0] is child_fsm
-        assert calls[2].kwargs["highlight_state"] == "child_state_1"
-        # depth=2 event: parent + child + grandchild
-        assert calls[3].args[0] is parent_fsm
-        assert calls[3].kwargs["highlight_state"] == "run_sub_loop"
-        assert calls[4].args[0] is child_fsm
-        assert calls[4].kwargs["highlight_state"] == "child_state_1"
-        assert calls[5].args[0] is grandchild_fsm
-        assert calls[5].kwargs["highlight_state"] == "gc_state_1"
+        # depth=1: child only (deepest active)
+        assert calls[1].args[0] is child_fsm
+        assert calls[1].kwargs["highlight_state"] == "child_state_1"
+        # depth=2: grandchild only (deepest active)
+        assert calls[2].args[0] is grandchild_fsm
+        assert calls[2].kwargs["highlight_state"] == "gc_state_1"
         out = capsys.readouterr().out
-        assert "sub-loop: child-loop" in out
-        assert "sub-loop: grandchild-loop" in out
+        # Breadcrumb headers instead of separator lines
+        assert "child-loop" in out
+        assert "grandchild-loop" in out
 
     def test_shallow_reentry_clears_deeper_sub_loop_diagrams(
         self, capsys: pytest.CaptureFixture[str]
@@ -2607,11 +2592,12 @@ class TestDisplayProgressEvents:
         ):
             run_foreground(executor, parent_fsm, self._make_args(show_diagrams=True))
 
-        # depth=0 "run_sub_loop": 1 render
-        # depth=1 "child_state_1": 2 renders
-        # depth=2 "gc_state_1": 3 renders
-        # depth=0 "done": 1 render (no children — "done" has no loop, deeper levels cleared)
-        assert mock_render.call_count == 7, f"Expected 7 render calls, got {mock_render.call_count}"
+        # One render per depth event — deepest active loop only.
+        # depth=0 "run_sub_loop": 1 render (parent)
+        # depth=1 "child_state_1": 1 render (child)
+        # depth=2 "gc_state_1": 1 render (grandchild)
+        # depth=0 "done": 1 render (parent — deeper levels cleared)
+        assert mock_render.call_count == 4, f"Expected 4 render calls, got {mock_render.call_count}"
         # The last render call should be parent only with "done" highlighted
         last_call = mock_render.call_args_list[-1]
         assert last_call.args[0] is parent_fsm
