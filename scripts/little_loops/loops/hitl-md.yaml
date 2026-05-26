@@ -6,12 +6,15 @@ description: |
   Human-in-the-loop single-document review harness — reads a markdown file (or raw text) and
   decomposes it into grammar-preserving, saliency-modulated segments using the GP-TSM algorithm
   implemented as LLM-in-prompt segmentation (no external ML dependencies). Generates a single
-  self-contained interactive HTML page with per-segment color coding, keyboard/mouse navigation,
-  per-segment edit affordances (delete / insert-before / insert-after / inline-edit / flag-for-AI),
-  a "Copy AI prompt" control for flagged segments, and a "Copy updated markdown" control for
-  reconstructing the revised document. Iteratively screenshots and scores the artifact until
-  it passes a 6-criterion rubric (segment legibility, saliency coloring, keyboard reachability,
-  affordance discoverability, inline constraint, markdown reconstruction).
+  self-contained interactive HTML page that renders the document with its natural reading flow
+  (headings, paragraphs, lists, code blocks rendered normally) and overlays saliency as inline
+  color highlighting plus on-demand popover affordances (delete / insert-before / insert-after /
+  inline-edit / flag-for-AI). Includes a "Copy AI prompt" sticky control for flagged segments
+  and a "Copy updated markdown" control for reconstructing the revised document. Iteratively
+  screenshots and scores the artifact until it passes a 6-criterion rubric (document readability,
+  inline highlighting, affordance overlay, keyboard reachability, inline constraint, markdown
+  reconstruction). On success, the final HTML is copied to ./hitl-md-review.html in the loop's
+  invocation directory so it's discoverable without digging into .loops/tmp/.
 
   GP-TSM integration: implemented as LLM-in-prompt segmentation — the segment state instructs
   the model to apply grammar-preserving boundary detection (sentence/clause level) and assign
@@ -121,9 +124,10 @@ states:
 
   generate:
     # HITL-MD: Generator phase — reads segments.json (and any prior critique.md) and produces
-    # a single self-contained HTML review page. All CSS and JS must be inline so the page
-    # renders under a file:// URL without an HTTP server. On subsequent iterations, addresses
-    # all critique.md issues before introducing changes.
+    # a single self-contained HTML review page. The page must render the document with its
+    # natural reading flow (headings as headings, paragraphs as paragraphs, lists as lists)
+    # and overlay saliency/affordances via inline highlighting + on-demand popovers — NOT as
+    # a vertical stack of bordered segment blocks. All CSS/JS inline; file:// must work.
     action_type: prompt
     action: |
       Read ${captured.run_dir.output}/segments.json for the ordered segment list.
@@ -135,41 +139,107 @@ states:
       - Embeds ALL CSS and JavaScript inline (no external dependencies, no CDN links, no <link> tags)
       - Renders correctly under a file:// URL without an HTTP server
       - Has a clean header showing the document source and total segment count
+      - Includes a sticky "Copy AI prompt (N flagged)" button at the top and a prominent
+        "Copy updated markdown" button at the bottom
 
-      The page must implement the following interactive features:
+      Core design rule: the document must read as a normal rendered markdown document. Do NOT
+      render each segment as its own bordered block, do NOT show segment ID labels in the body,
+      and do NOT fade unselected segments. Saliency and affordances are applied as inline
+      highlights and overlays only.
 
-      **Segment rendering:**
-      - Render each segment as its own block element with a left border colored with the segment's
-        color field. Apply a subtle background tint derived from the color (10% opacity).
-      - Show segments in document order with a small segment ID label (s001, s002, ...) in the
-        upper-left corner of each segment block.
-      - For heading segments: render with appropriate h1–h6 font sizing based on the # count.
-      - For code segments: render in a monospace font with a distinct code background.
-      - For bullet segments: render with the appropriate indentation and bullet marker.
+      **Document rendering (natural markdown flow):**
+      - Render heading segments as <h1>...<h6> (matching the # count in markdown_source).
+      - Render prose segments inside <p> paragraphs. Consecutive prose segments that belonged
+        to the same paragraph in the source should be wrapped together in one <p>.
+      - Render bullet segments inside <ul>/<ol>/<li> in the appropriate list nesting; preserve
+        the original bullet markers and indentation.
+      - Render code segments inside <pre><code> with a monospace font and a distinct code
+        background.
+      - Render blockquote segments inside <blockquote>.
+      - Render separator segments as <hr> (or as the blank-line break they represent).
+      - Use a clean system font stack, generous line-height (~1.6), comfortable max-width
+        (~720px) centered on the page, light page background (#f9fafb).
 
-      **Navigation and selection:**
-      - Clicking a segment selects it: the selected segment gets full-opacity styling and a
-        stronger left border (4px solid); all other segments fade to 40% opacity.
-      - Tab key moves selection forward through segments; Shift+Tab moves backward.
-      - Arrow keys (up/down) also navigate between segments.
-      - Pressing Escape deselects all segments (all return to full opacity).
-      - The currently selected segment must be scrolled into view automatically.
+      **Inline segment markers:**
+      - Wrap each segment with class="seg" plus data-id="sNNN", data-color, data-saliency,
+        and data-type attributes:
+        - For prose, wrap with an inline <span class="seg" data-id="s001" ...>...</span>
+          inside the paragraph. NEVER wrap a prose span in a <div> — keep it inline so the
+          paragraph flow is preserved.
+        - For block-level segments (heading, list item, code, blockquote, separator), apply
+          class="seg" + data-attributes directly to the block element itself
+          (e.g., <h2 class="seg" data-id="s003" ...>, <li class="seg" ...>).
+      - Every segment must be reachable as a single .seg DOM node — the JS uses
+        document.querySelectorAll('.seg') to enumerate segments in order.
 
-      **Per-segment affordance buttons:**
-      When a segment is selected, show five icon buttons in a small floating toolbar anchored
-      to the top-right corner of the selected segment:
-      - 🗑 Delete — removes the segment from the live list (marks it deleted visually)
-      - ↑+ Insert before — opens a textarea above the segment for the user to type new content
-      - +↓ Insert after — opens a textarea below the segment for the user to type new content
-      - ✏ Edit — makes the segment text inline-editable (contenteditable)
-      - 🚩 Flag for AI — toggles a red flag indicator on the segment; flagged segments are
-        included in the AI prompt copy control
+      **Saliency as inline highlight (NOT block borders):**
+      - Apply a subtle background tint derived from the segment's data-color at ~12–15% alpha
+        directly on the .seg element. For inline prose spans, use background-color with
+        rounded corners (border-radius: 3px) and small horizontal padding (padding: 0 2px).
+        For block elements, apply the same low-alpha background-color to the block.
+      - Do NOT add left borders, do NOT add per-segment padding/margin that creates a stacked
+        block appearance. The visual delta from an un-highlighted document should be color
+        wash only.
+      - Higher-saliency colors will naturally read as "hotter" — don't crank up alpha to
+        compensate. Stay at ~12–15% so prose remains readable.
 
-      **Copy AI prompt control:**
-      - A sticky button at the top of the page (initially greyed out): "Copy AI prompt (0 flagged)"
-      - Becomes active (highlighted) when 1+ segments are flagged
-      - Updates the count in real time: "Copy AI prompt (3 flagged)"
-      - When clicked, copies a prompt snippet to the clipboard:
+      **Segment IDs in the gutter / tooltip, NOT in the body:**
+      - Do not render segment IDs inline with the text.
+      - On hover, show the segment ID via a CSS-only tooltip (e.g., title attribute, or
+        a ::after pseudo-element revealed on :hover).
+      - Optionally, when a segment is selected, render a tiny gray segment-ID label
+        (position: absolute) in the left or right page margin opposite the segment.
+
+      **Selection (subtle, not disruptive):**
+      - Tab / Shift+Tab and arrow keys (Up/Down) move selection through segments in document
+        order. Mouse click on a segment selects it. Escape clears selection.
+      - The selected segment gets a thin outline (e.g., 1px solid currentColor at 50% alpha)
+        or a slightly darker tint of its own color. Do NOT fade other segments. The entire
+        document must remain readable at all times.
+      - Scroll the selected segment into view smoothly (scrollIntoView with block: 'center').
+
+      **Affordances as on-demand popover (NOT a permanent toolbar):**
+      - The five edit controls live inside a single small popover element (position: absolute
+        or fixed) that is hidden by default. When a segment is selected, position the popover
+        near the segment (anchored to the segment's bounding rect, above or below it depending
+        on viewport space) and reveal it.
+      - The popover overlays the document — it MUST NOT push surrounding content or reflow
+        text. Achieve this with position: absolute/fixed + a high z-index.
+      - Only one popover is visible at a time. Pressing Escape, clicking outside the popover
+        and outside the segment, or selecting a different segment dismisses the popover.
+      - The popover contains exactly five icon buttons, in this order, each keyboard-focusable:
+        - 🗑 Delete — toggles a "deleted" state on the segment (strikethrough + low opacity
+          inline) and a small "Restore" link appears next to the deleted span/block.
+        - ↑+ Insert before — reveals a small inline textarea immediately before the segment
+          (still inside the natural flow position) where the user types new content.
+        - +↓ Insert after — reveals a small inline textarea immediately after the segment.
+        - ✏ Edit — toggles contenteditable="true" on the segment's text content for in-place
+          editing. (For block-level segments, edit the block's text; for prose spans, edit
+          the span's text.)
+        - 🚩 Flag for AI — toggles a flagged state on the segment (small inline 🚩 glyph
+          and/or a colored underline visible at a glance).
+      - Provide accessible labels (aria-label / title) on every button.
+
+      **Flagged-state inline marker:**
+      - Flagged segments must be visible at a glance without entering the popover. Show a
+        small 🚩 glyph next to the segment (inline, low-impact) and/or apply a colored
+        underline (text-decoration: underline; text-decoration-color: <flag color>).
+
+      **Deleted / edited / inserted segments stay inline:**
+      - Deleted segments: render with text-decoration: line-through and opacity ~0.35 on the
+        original .seg node. Place a small "↺ Restore" link immediately adjacent (still
+        inline). Do NOT remove the DOM node — the markdown-reconstruction logic skips them
+        based on a JS-side `deleted` flag.
+      - Edited segments: contenteditable="true" toggled on the .seg node. No layout shift.
+      - Inserted segments: when the user submits the insert textarea, render the new content
+        as a new inline node positioned immediately before/after the source segment. Choose
+        the element type to match context (a new <p> for prose, a new <li> for list-item
+        insertion, etc.).
+
+      **Copy AI prompt (sticky top button):**
+      - Label: "Copy AI prompt (N flagged)" — N updates live as flags toggle. Initially
+        N=0 and the button is greyed out / disabled.
+      - When clicked, copy this snippet to the clipboard:
         ```
         Please revise the following sections of the document. Each section is marked with its
         segment ID for reference:
@@ -183,25 +253,24 @@ states:
         Focus your edits on improving clarity, accuracy, and completeness for these specific spans.
         ```
 
-      **Copy updated markdown control:**
-      - A prominent button at the bottom of the page: "Copy updated markdown"
-      - When clicked, reconstructs the markdown document from the live segment list:
-        - Skip deleted segments
-        - For inserted segments: use the text entered in the insert textarea as prose
-        - For edited segments: use the current contenteditable text
-        - For unmodified segments: use the original markdown_source from segments.json
-        - Concatenate in document order and copy to clipboard
+      **Copy updated markdown (prominent bottom button):**
+      - When clicked, reconstruct the markdown document from the live segment list:
+        - Skip segments marked deleted.
+        - For inserted segments: use the text entered in the insert textarea (rendered with
+          appropriate markdown for context — `\n\n` separator for prose, `- ` prefix for
+          list-item insertion, etc.).
+        - For edited segments: use the current text content of the (contenteditable) .seg
+          node.
+        - For unmodified segments: use the original markdown_source from segments.json.
+        - Concatenate in document order and copy to clipboard.
 
-      **Deleted segment visual treatment:**
-      - Show deleted segments with strikethrough text and 20% opacity, a ~~deleted~~ badge,
-        and a small "Restore" link that un-deletes them. Do not remove them from the DOM.
+      **Design constraints:**
+      - System font stack only (no external fonts, no @import).
+      - All CSS inline in <style>, all JS inline in <script>.
+      - No external src= or href= references to anything off-disk.
+      - Mobile-responsive, desktop-first.
 
-      **Design:**
-      Clean typography (system font stack), generous whitespace, a light background (#f9fafb),
-      each segment block with padding (12px 16px) and a bottom margin (8px), the toolbar
-      appearing on hover/selection without layout shift. Mobile-responsive but desktop-first.
-
-      Avoid external fonts. All interactive behavior must work under file:// with no server.
+      All interactive behavior must work under file:// with no server.
     next: evaluate
 
   evaluate:
@@ -222,8 +291,10 @@ states:
 
   score:
     # HARNESS: Evaluator phase — LLM judges the screenshot against a 6-criterion rubric
-    # tailored to HITL single-document review ergonomics. Per-criterion thresholds prevent
-    # strong visual design from masking a broken keyboard affordance or failed reconstruction.
+    # tailored to HITL single-document review ergonomics (document_readability,
+    # inline_highlighting, affordance_overlay, keyboard_reachability, inline_constraint,
+    # markdown_reconstruction). Per-criterion thresholds prevent strong visual design from
+    # masking a broken keyboard affordance or failed reconstruction.
     # Gates via output_contains: "ALL_PASS"; routes to generate on fail, failed on LLM error.
     action_type: prompt
     action: |
@@ -237,25 +308,37 @@ states:
       ```
       # Evaluation
 
-      segment_legibility: N/10 — [explanation: can each segment be read and understood in isolation?
-        Are segment boundaries visually clear? Are the segment ID labels visible without being
-        intrusive? Are heading/code/bullet segments rendered with appropriate styling distinctions?]
-      saliency_coloring: N/10 — [explanation: does the per-segment color coding convey saliency
-        at a glance? Are high-saliency segments (score ≥ 0.8) visually distinct from low-saliency
-        ones (score < 0.5)? Is the palette accessible and readable against the background?
-        Are the color-type mappings consistent with the palette defined in the segment state?]
-      keyboard_reachability: N/10 — [explanation: can all five affordance buttons be reached and
-        activated via keyboard alone? Does Tab/arrow navigation cycle through segments? Is the
-        currently selected segment scrolled into view? Is Escape deselection functional?
-        Would a keyboard-only user be able to flag, edit, delete, and insert without a mouse?]
-      affordance_discoverability: N/10 — [explanation: are the five per-segment icon buttons
-        (delete, insert-before, insert-after, edit, flag) discoverable without reading documentation?
-        Is the "Copy AI prompt" control visible and clearly activated by flagging? Is "Copy updated
-        markdown" prominent and its purpose self-evident? Are tooltips or labels present?]
-      inline_constraint: N/10 — [explanation: does the page appear to render correctly under
-        file://? All CSS/JS must be inline. No external src= or href= references. A broken
-        resource icon or any CDN/external reference is a constraint violation. Score 10 for
-        fully self-contained; deduct 3 for each external reference found.]
+      document_readability: N/10 — [explanation: does the page read as a normally-flowing
+        markdown document — headings as headings, paragraphs as paragraphs, lists as lists,
+        code blocks as code blocks? It MUST NOT look like a vertical stack of separately
+        bordered/padded segment blocks. Segment ID labels must NOT appear inline in the body.
+        Unselected segments must NOT be faded to low opacity. Score 10 if the document
+        rendering is indistinguishable from a plain markdown render except for inline color
+        highlights; deduct heavily for any block-stack or per-segment container styling that
+        breaks reading flow.]
+      inline_highlighting: N/10 — [explanation: is saliency conveyed via inline color
+        highlights (low-alpha background tints on inline <span class="seg"> wrappers for
+        prose; same low-alpha background applied directly to block elements for headings/
+        list-items/code/blockquotes)? No left-border-block pattern. Higher-saliency segments
+        should be perceptibly distinct from lower-saliency ones without being garish. Tints
+        must stay subtle enough that the text remains readable.]
+      affordance_overlay: N/10 — [explanation: are the five edit controls (delete,
+        insert-before, insert-after, edit, flag) delivered as a single click/focus-triggered
+        popover that overlays the document without reflowing surrounding content? Hidden by
+        default; only one popover visible at a time; dismissible by Escape, outside-click,
+        or selecting another segment. Is the "Copy AI prompt (N flagged)" sticky top button
+        visible with a live-updating flag count? Is "Copy updated markdown" prominent at the
+        bottom? Are flagged segments visible at a glance via an inline 🚩 glyph or colored
+        underline?]
+      keyboard_reachability: N/10 — [explanation: can all five popover affordances be reached
+        and activated via keyboard alone? Does Tab/Shift+Tab and arrow navigation cycle
+        through segments? Is the currently selected segment scrolled into view? Is Escape
+        functional for both dismissing popovers and clearing selection? Would a keyboard-only
+        user be able to flag, edit, delete, and insert without a mouse?]
+      inline_constraint: N/10 — [explanation: does the page render correctly under file://?
+        All CSS/JS must be inline. No external src= or href= references. A broken-resource
+        icon or any CDN/external reference is a constraint violation. Score 10 for fully
+        self-contained; deduct 3 for each external reference found.]
       markdown_reconstruction: N/10 — [explanation: for a smoke test, mentally trace a simple
         scenario: delete one segment, edit one segment, insert one new segment. Would the
         "Copy updated markdown" reconstruction produce well-formed markdown? Does segments.json
@@ -269,10 +352,10 @@ states:
       ```
 
       Thresholds (evaluate each criterion independently — do NOT average):
-      - segment_legibility: 7
-      - saliency_coloring: 7
+      - document_readability: 8
+      - inline_highlighting: 7
+      - affordance_overlay: 7
       - keyboard_reachability: 7
-      - affordance_discoverability: 7
       - inline_constraint: 8
       - markdown_reconstruction: 7
 
@@ -281,32 +364,56 @@ states:
     evaluate:
       type: output_contains
       pattern: "ALL_PASS"
-    on_yes: done
+    on_yes: finalize
     on_no: generate
     on_error: failed
+
+  finalize:
+    # HARNESS: Final-copy step — promotes the working index.html out of the
+    # timestamped build directory into ./hitl-md-review.html in the loop's
+    # invocation cwd, so the reviewable artifact is discoverable at the top
+    # level of the directory the user ran the loop from. Best-effort: on
+    # error we still route to done so the user gets the build-artifact paths.
+    action_type: shell
+    action: |
+      cp "${captured.run_dir.output}/index.html" "./hitl-md-review.html" && echo "FINALIZED"
+    evaluate:
+      type: output_contains
+      pattern: "FINALIZED"
+    on_yes: done
+    on_no: done
+    on_error: done
 
   done:
     # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
     # Reports all output file paths and explains how to use the interactive review page.
+    # The primary artifact is ./hitl-md-review.html in the invocation cwd; build
+    # artifacts under ${captured.run_dir.output}/ are kept for reference/debugging.
     action_type: prompt
     action: |
       The hitl-md loop has completed successfully.
 
-      Final output files:
-      - ${captured.run_dir.output}/index.html     — the interactive review page (open in your browser)
+      Primary artifact (open this in your browser):
+      - ./hitl-md-review.html  — the interactive review page, copied to the directory the loop was run from
+
+      Build artifacts (kept for reference):
+      - ${captured.run_dir.output}/index.html     — the original interactive review page
       - ${captured.run_dir.output}/segments.json  — the GP-TSM segment list with saliency scores and colors
       - ${captured.run_dir.output}/critique.md    — final evaluation scores and notes
       - ${captured.run_dir.output}/screenshot.png — the last Playwright-captured render (omitted if Playwright unavailable)
 
       To complete the review:
-      1. Open ${captured.run_dir.output}/index.html in your browser (file:// URL works — no server needed).
-      2. Navigate through the document segment by segment using Tab, arrow keys, or mouse click.
-         Selected segments are emphasized; others fade — this helps you focus on one span at a time.
-      3. Use the per-segment icon buttons to:
+      1. Open ./hitl-md-review.html in your browser (file:// URL works — no server needed).
+      2. The document renders with its natural reading flow — headings, paragraphs, lists, and
+         code blocks all in their usual shape. Saliency is shown as inline color highlighting,
+         not as separated blocks. Click a highlighted span (or Tab/arrow-key to it) to reveal
+         a popover with the five edit affordances anchored to that segment.
+      3. Use the popover icon buttons on the selected segment to:
          - 🗑 Delete segments that are stale or irrelevant
          - ↑+ / +↓ Insert new content before or after a segment
-         - ✏ Edit a segment inline
+         - ✏ Edit a segment inline (in place)
          - 🚩 Flag segments where you want the AI to revise or expand
+         Press Escape (or click outside the popover) to dismiss it.
       4. When you have flagged one or more segments, click "Copy AI prompt" at the top of the page.
          Paste the copied prompt into your coding agent chat for targeted AI revision of those spans.
       5. After all edits and AI-assisted revisions, click "Copy updated markdown" at the bottom
