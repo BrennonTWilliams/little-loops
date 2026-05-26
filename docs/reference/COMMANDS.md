@@ -12,7 +12,7 @@ Commands and skills support optional `--flag` modifiers passed after arguments. 
 | `--deep` | Increase thoroughness, accept longer execution | `scan-codebase`, `audit-architecture`, `handoff`, `ready-issue` |
 | `--focus [area]` | Narrow scope to a specific area | `scan-codebase` |
 | `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release`, `audit-issue-conflicts` |
-| `--auto` | Non-interactive mode (no prompts) | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts` |
+| `--auto` | Non-interactive mode (no prompts) | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts`, `link-epics` |
 | `--verbose` | Include detailed output | `align-issues` |
 | `--all` | Process all items instead of a single item | `align-issues`, `format-issue`, `confidence-check` |
 | `--sprint <name>` | Scope to issues in a named sprint definition | `map-dependencies`, `confidence-check`, `issue-size-review` |
@@ -324,6 +324,17 @@ Analyze active issues to discover cross-issue dependencies based on file overlap
 **Flags:** `--auto` (non-interactive: applies only HIGH-confidence proposals)
 
 **Trigger keywords:** "map dependencies", "dependency mapping", "find dependencies"
+
+### `/ll:link-epics`
+Discover parentless open issues and propose parent assignments to open epics using Jaccard similarity scoring on title and summary text. Groups proposals into HIGH/MEDIUM/LOW confidence tiers and confirms interactively (or applies HIGH-tier links automatically in `--auto` mode).
+
+**Flags:**
+- `--auto` — apply all HIGH-confidence proposals without prompting
+- `--min-score MEDIUM|HIGH` — filter proposals to this confidence tier or above (default: MEDIUM)
+
+**Output:** For each accepted link, writes `parent: <EPIC-NNN>` to the child issue frontmatter and appends the child to the epic's `relates_to:` list and `## Children` section.
+
+**Trigger keywords:** "link epics", "assign to epic", "parentless issues", "orphan issues"
 
 ---
 
@@ -853,6 +864,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `issue-size-review`^ | Evaluate issue size/complexity and propose decomposition |
 | `map-dependencies`^ | Analyze cross-issue dependencies based on file overlap |
 | `audit-issue-conflicts`^ | Scan open issues for conflicting requirements and architectural decisions |
+| `link-epics`^ | Assign parentless open issues to open epics via similarity scoring |
 | `go-no-go`^ | Adversarial go/no-go debate for issue implementation decisions |
 | `audit-architecture` | Analyze code structure |
 | `audit-docs`^ | Check documentation accuracy |

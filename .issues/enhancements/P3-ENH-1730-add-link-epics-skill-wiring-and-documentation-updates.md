@@ -1,8 +1,8 @@
 ---
 id: ENH-1730
-title: Add link-epics skill: wiring and documentation updates
+title: "Add link-epics skill: wiring and documentation updates"
 type: ENH
-status: open
+status: done
 priority: P3
 parent: ENH-1728
 ---
@@ -23,9 +23,8 @@ ENH-1729 must be complete (skill file at `skills/link-epics/SKILL.md` must exist
 
 ## Scope
 
-This child covers **Implementation Steps 6 and 8–12** from the parent:
+This child covers **Implementation Steps 8–12** from the parent:
 
-6. Add `link-epics`^ entry to Issue Refinement list in `.claude/CLAUDE.md` (no `plugin.json` change needed — directory scan auto-discovers)
 8. Update `skills/capture-issue/SKILL.md` — add `link-epics` as a follow-up in `## Integration` section ("After capturing issues, run `/ll:link-epics` to assign parentless issues to epics")
 9. Update `skills/issue-workflow/SKILL.md` — add `link-epics` to `### 2. Refinement Phase` command sequence and `## Related Skills` table
 10. Update `commands/help.md` — add `link-epics` stanza to `ISSUE REFINEMENT` block (static file; not auto-discovered by `/ll:help`)
@@ -39,7 +38,6 @@ Also update `docs/reference/CLI.md` — add `link-epics` skill invocation exampl
 
 ## Files to Modify
 
-- `.claude/CLAUDE.md` — Issue Refinement section
 - `skills/capture-issue/SKILL.md` — `## Integration` section
 - `skills/issue-workflow/SKILL.md` — Refinement Phase + Related Skills
 - `commands/help.md` — ISSUE REFINEMENT block

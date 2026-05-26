@@ -186,8 +186,8 @@ _Added by `/ll:confidence-check` on 2026-05-26_
 - **Reason**: Issue too large for single session
 
 ### Decomposed Into
-- ENH-1729: Add link-epics skill: core implementation and tests
-- ENH-1730: Add link-epics skill: wiring and documentation updates
+- ENH-1729: Add link-epics skill: core implementation, CLAUDE.md entry, and tests (Steps 1–7)
+- ENH-1730: Add link-epics skill: wiring and documentation updates (Steps 8–12)
 
 ---
 

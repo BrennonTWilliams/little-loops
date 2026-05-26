@@ -102,6 +102,7 @@ The `args` field is sourced from the `args:` frontmatter field in `skills/<name>
 ll-action invoke refine-issue --args P2-ENH-1229
 ll-action invoke confidence-check --args FEAT-042 --timeout 120
 ll-action invoke refine-issue --args P2-ENH-1229 --output json
+ll-action invoke link-epics --args --auto      # Link all HIGH-confidence orphans to epics non-interactively
 ll-action capabilities
 ll-action list
 ```

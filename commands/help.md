@@ -72,6 +72,10 @@ ISSUE REFINEMENT
     registrations, docs, and tests the implementation plan must touch
     Flags: --auto (non-interactive), --dry-run (preview)
 
+/ll:link-epics [flags]
+    Assign parentless open issues to open epics via title/summary similarity
+    Flags: --auto (apply HIGH-confidence links without prompting), --min-score MEDIUM|HIGH
+
 /ll:verify-issues
     Verify all issue files against current codebase state
 

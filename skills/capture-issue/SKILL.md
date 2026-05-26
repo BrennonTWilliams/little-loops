@@ -381,8 +381,8 @@ back to `status: open`. The file stays where it is in its type directory.
 1. **Update the file's frontmatter and append a Reopened section:**
 
    - Find the closed issue file (in its type dir with `status: done`).
-   - Use `Edit` to change the frontmatter line `status: done` → `status: open`.
-     If the issue currently has no `status:` field (legacy file), insert
+   - Run `ll-issues set-status ISSUE_ID open` to flip the status atomically.
+     If the issue has no `id:` field (legacy file), fall back to `Edit` to insert
      `status: open` into the YAML frontmatter block.
    - Append a Reopened section to the body:
 
@@ -450,5 +450,6 @@ After capturing issues:
 1. **Review**: `cat [issue-path]` to verify content
 2. **Validate**: `/ll:ready-issue [ID]` to check accuracy
 3. **Prioritize**: `/ll:prioritize-issues` if priority needs adjustment
-4. **Commit**: `/ll:commit` to save new issues
-5. **Process**: `/ll:manage-issue [type] [action] [ID]` to implement
+4. **Link**: `/ll:link-epics` to assign parentless issues to open epics
+5. **Commit**: `/ll:commit` to save new issues
+6. **Process**: `/ll:manage-issue [type] [action] [ID]` to implement
