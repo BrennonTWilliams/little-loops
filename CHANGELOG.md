@@ -12,6 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.110.0] - 2026-05-26
+
+### Added
+
+- **`ll-loop audit-meta` subcommand** — Detects evaluator-trivial failure mode in meta-loops; includes updated loop-specialist agent and docs. (ENH-1700)
+- **`ll-action list --json` exposes `args` hint** — Per-skill input schema now surfaced for agent callers. (ENH-1660)
+- **Meta-eval telemetry write and archive** — Meta-loop evaluation results written to a persistent telemetry store and archived per run. (ENH-1699)
+- **`--show-diagrams` options wired into `ll-loop show`** — Topology, preset, and modifier flags available in the `show` subcommand.
+- **Learning Tests Guide** — New documentation for the learning test registry added to docs.
+
+### Fixed
+
+- **Missing `default_timeout` in FSM loop YAMLs** — Added default and per-state timeouts to unprotected loops to prevent indefinite hangs. (BUG-1724)
+- **hitl-md loop tests reflect finalize state** — Corrected test drift caused by FSM shape change.
+
+### Changed
+
+- **hitl-md inline highlights + popover affordances** — Diff highlights rendered inline with popover UI; final HTML copied to cwd on completion.
+- Prompt inputs truncated to single-line preview in default `ll-loop` output for cleaner display.
+
 ## [1.109.0] - 2026-05-24
 
 ### Added
@@ -291,7 +311,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.109.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.110.0...HEAD
+[1.110.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.109.0...v1.110.0
 [1.109.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.108.0...v1.109.0
 [1.108.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.107.0...v1.108.0
 [1.107.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.106.0...v1.107.0
