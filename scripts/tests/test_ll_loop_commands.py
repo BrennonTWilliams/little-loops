@@ -2656,6 +2656,73 @@ states:
         fsm.context[fsm.input_key] = "FEAT-719"
         assert fsm.context["input"] == "FEAT-719"
 
+    def test_dry_run_with_show_diagrams_renders_diagram(self, simple_loop: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """--dry-run --show-diagrams renders FSM diagram before the execution plan."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        args = argparse.Namespace(
+            input=None,
+            context=[],
+            max_iterations=None,
+            delay=None,
+            no_llm=False,
+            llm_model=None,
+            dry_run=True,
+            background=False,
+            foreground_internal=False,
+            quiet=False,
+            verbose=False,
+            show_diagrams=True,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+            clear=False,
+            queue=False,
+            program_md=None,
+        )
+        logger = Logger(use_color=False)
+        result = cmd_run("input-loop", args, simple_loop, logger)
+        assert result == 0
+        out = capsys.readouterr().out
+        # Diagram header and box-drawing characters must appear
+        assert "== loop: input-loop" in out
+        assert any(c in out for c in ("┌", "─", "│", "└"))
+        # Execution plan still renders after diagram
+        assert "Execution plan for" in out
+
+    def test_dry_run_without_show_diagrams_no_diagram(self, simple_loop: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """--dry-run without --show-diagrams does not render any diagram."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        args = argparse.Namespace(
+            input=None,
+            context=[],
+            max_iterations=None,
+            delay=None,
+            no_llm=False,
+            llm_model=None,
+            dry_run=True,
+            background=False,
+            foreground_internal=False,
+            quiet=False,
+            verbose=False,
+            show_diagrams=None,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+            clear=False,
+            queue=False,
+            program_md=None,
+        )
+        logger = Logger(use_color=False)
+        result = cmd_run("input-loop", args, simple_loop, logger)
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "== loop: input-loop" not in out
+        assert "Execution plan for" in out
+
     def test_no_positional_input_leaves_context_unchanged(self, simple_loop: Path) -> None:
         """When no positional input is given, context['input'] retains its YAML default."""
         from little_loops.fsm.validation import load_and_validate

@@ -385,7 +385,7 @@ Run a loop.
 | `--delay` | | Sleep N seconds between iterations (useful for recording) |
 | `--no-llm` | | Disable LLM evaluation |
 | `--llm-model` | | Override LLM model |
-| `--dry-run` | | Show execution plan without running |
+| `--dry-run` | | Show execution plan without running. Diagram rendering is not suppressed — combine with `--show-diagrams` to preview both the FSM diagram and the execution plan. |
 | `--background` | `-b` | Run as background daemon |
 | `--follow` | `-f` | Stream FSM state transitions to stdout as they fire, in `ll-loop history` format. **Cannot be combined with `--background`** — passing both exits with an error; use `ll-logs tail` to watch a background loop instead. |
 | `--quiet` | `-q` | Suppress progress output |
@@ -592,6 +592,8 @@ ll-loop audit-meta harness-optimize --json # JSON output for scripting
 ll-loop fix-types                     # Run loop (shorthand for run)
 ll-loop run fix-types --worktree      # Run in isolated git worktree
 ll-loop run fix-types --dry-run       # Show execution plan
+ll-loop run fix-types --dry-run --show-diagrams          # FSM diagram + execution plan
+ll-loop run fix-types --dry-run --show-diagrams=detailed # Detailed diagram + plan
 ll-loop validate fix-types            # Validate loop definition
 ll-loop test fix-types                # Run single test iteration
 ll-loop simulate fix-types            # Interactive simulation

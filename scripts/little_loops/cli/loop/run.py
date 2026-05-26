@@ -171,6 +171,26 @@ def cmd_run(
 
     # Dry run
     if args.dry_run:
+        from little_loops.cli.loop.diagram_modes import resolve_facets
+        from little_loops.cli.loop.layout import _render_fsm_diagram
+        from little_loops.cli.output import terminal_width
+
+        facets = resolve_facets(args)
+        if facets is not None:
+            tw = terminal_width()
+            header_text = f"== loop: {fsm.name} "
+            print(header_text + "=" * max(0, tw - len(header_text)))
+            diagram = _render_fsm_diagram(
+                fsm,
+                highlight_color=_highlight_color,
+                edge_label_colors=_edge_label_colors,
+                badges=_badges,
+                mode=facets.scope,
+                suppress_labels=not facets.edge_labels,
+                title_only=facets.state_detail == "title",
+            )
+            print(diagram)
+            print()
         print_execution_plan(fsm, edge_label_colors=_edge_label_colors)
         return 0
 
