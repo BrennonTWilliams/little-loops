@@ -176,6 +176,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-27T23:42:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0396aace-1ef5-4664-8d70-2811278964da.jsonl`
 - `/ll:confidence-check` - 2026-05-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88f2fc64-a60a-4bdb-80d0-9adf7d6a62c9.jsonl`
 - `/ll:wire-issue` - 2026-05-27T23:35:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdf71221-6071-432b-bbc4-72085ee3754e.jsonl`
 - `/ll:refine-issue` - 2026-05-27T23:25:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/abccc340-0707-4df4-86fc-a611f1735bf0.jsonl`

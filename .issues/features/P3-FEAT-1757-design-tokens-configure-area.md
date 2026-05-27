@@ -1,11 +1,12 @@
 ---
 id: FEAT-1757
 title: Design tokens /ll:configure area and show-output wiring
-status: open
+status: done
 priority: P3
 type: FEAT
 parent: FEAT-1750
 discovered_date: 2026-05-27
+completed_at: 2026-05-27 23:40:58+00:00
 discovered_by: issue-size-review
 decision_needed: false
 labels:
@@ -173,12 +174,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `/ll:configure design_tokens` is recognized and routed to the new area handler
-- [ ] Area handler shows all six current field values and prompts for changes
-- [ ] `--list` output includes `design-tokens` entry
-- [ ] `areas.md` has a complete `## Area: design_tokens` section with all 6 fields
-- [ ] `show-output.md` has `## design_tokens --show` section with all 6 fields
-- [ ] `test_feat1757_configure_wiring.py` passes
+- [x] `/ll:configure design_tokens` is recognized and routed to the new area handler
+- [x] Area handler shows all six current field values and prompts for changes
+- [x] `--list` output includes `design-tokens` entry
+- [x] `areas.md` has a complete `## Area: design_tokens` section with all 6 fields
+- [x] `show-output.md` has `## design_tokens --show` section with all 6 fields
+- [x] `test_feat1757_configure_wiring.py` passes
 
 ## Dependencies
 
