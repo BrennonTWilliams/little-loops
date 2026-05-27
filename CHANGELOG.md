@@ -12,6 +12,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.111.0] - 2026-05-27
+
+### Added
+
+- **`ready-to-implement-gate` sub-loop primitive** — FSM sub-loop for gating issue implementation against readiness criteria before execution begins. (FEAT-1695)
+- **`assumption-firewall` loop** — Gates issues against the Learning-Test Registry, surfacing untested assumptions before implementation. (FEAT-1696)
+- **`adopt-third-party-api` FSM loop** — Automates the process of exploring and adopting third-party API integrations. (FEAT-1697)
+- **`link-epics` skill** — Links issues to their parent epics with frontmatter wiring and catalog registration. (ENH-1729, ENH-1730)
+
+### Fixed
+
+- **Dead-PID reconciliation in `list_running_loops`** — Loops that exited without cleanup are now marked `done` when `ll-loop list` is called, preventing stale entries from accumulating. (BUG-1731)
+
+### Changed
+
+- **`run_dir` injection for built-in loops** — Each loop run now gets a dedicated artifact directory under `.loops/runs/<loop>/<run-id>/`; built-in loops migrated to use `run_dir` for all per-run output. (ENH-1726)
+- **`--show-diagrams slim` preset** — New `slim` preset renders FSM diagrams in a compact single-column layout for narrow terminals. (ENH-1702)
+- **`ll-issues list --group-by epic`** — Issues can now be grouped by their parent epic in list output. (ENH-1727)
+- **`general-task` execute split into 4 sub-states** — Execution phase decomposed into granular states for better observability and recovery. (ENH-1732)
+- **Deepest active loop shown in pinned pane** — Pinned status pane now shows only the innermost running loop rather than the outermost.
+- **`ll-issues set-status` subcommand** — New CLI subcommand for directly setting an issue's status field.
+- **FSM diagram rendered in dry-run mode** — Passing `--show-diagrams` to `ll-loop run --dry-run` now renders the diagram without executing.
+
 ## [1.110.0] - 2026-05-26
 
 ### Added
@@ -313,7 +336,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.110.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.111.0...HEAD
+[1.111.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.110.0...v1.111.0
 [1.110.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.109.0...v1.110.0
 [1.109.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.108.0...v1.109.0
 [1.108.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.107.0...v1.108.0
