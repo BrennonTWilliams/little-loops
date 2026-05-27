@@ -14,7 +14,6 @@ from little_loops.design_tokens import (
     render_as_prompt_context,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -238,3 +237,71 @@ class TestRenderAsCssVars:
         tokens = load_design_tokens(config)
         assert tokens is not None
         assert "--a-b-c: 1rem;" in render_as_css_vars(tokens)
+
+
+# ---------------------------------------------------------------------------
+# Integration — actual template files
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestIntegration:
+    """Integration tests using the actual templates/design-tokens/ files."""
+
+    _TEMPLATE_DIR = Path(__file__).parent.parent.parent / "templates" / "design-tokens"
+
+    def _skip_if_absent(self) -> None:
+        if not self._TEMPLATE_DIR.exists():
+            pytest.skip("templates/design-tokens/ not found")
+
+    def test_all_four_files_exist(self) -> None:
+        self._skip_if_absent()
+        for rel in (
+            "primitives.json",
+            "semantic.json",
+            "themes/light.json",
+            "themes/dark.json",
+        ):
+            assert (self._TEMPLATE_DIR / rel).exists(), f"Missing {rel}"
+
+    def test_all_four_files_parse_as_json(self) -> None:
+        self._skip_if_absent()
+        for rel in (
+            "primitives.json",
+            "semantic.json",
+            "themes/light.json",
+            "themes/dark.json",
+        ):
+            with open(self._TEMPLATE_DIR / rel) as fh:
+                data = json.load(fh)
+            assert isinstance(data, dict), f"{rel} root must be a JSON object"
+
+    def _make_config_from_template(self, tmp_path: Path, theme: str):
+        """Wire a config that points at the real template directory."""
+        import shutil
+
+        dest = tmp_path / ".ll" / "design-tokens"
+        shutil.copytree(self._TEMPLATE_DIR, dest)
+        config_dir = tmp_path / ".ll"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        (config_dir / "ll-config.json").write_text(
+            json.dumps({"design_tokens": {"enabled": True}})
+        )
+        from little_loops.config.core import BRConfig
+
+        return BRConfig(tmp_path), theme
+
+    def test_round_trip_light_theme(self, tmp_path: Path) -> None:
+        self._skip_if_absent()
+        config, theme = self._make_config_from_template(tmp_path, "light")
+        tokens = load_design_tokens(config, theme=theme)
+        assert tokens is not None
+        assert tokens.resolved.get("color.surface.primary") is not None
+
+    def test_round_trip_dark_theme(self, tmp_path: Path) -> None:
+        self._skip_if_absent()
+        config, theme = self._make_config_from_template(tmp_path, "dark")
+        tokens = load_design_tokens(config, theme=theme)
+        assert tokens is not None
+        # dark theme remaps surface.primary to neutral.950
+        assert tokens.resolved.get("color.surface.primary") == "#101214"

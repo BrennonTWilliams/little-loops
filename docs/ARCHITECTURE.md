@@ -186,6 +186,12 @@ little-loops/
 │   ├── feat-sections.json
 │   ├── enh-sections.json
 │   ├── ll-goals-template.md
+│   ├── design-tokens/       # Built-in accessible default palette
+│   │   ├── primitives.json
+│   │   ├── semantic.json
+│   │   └── themes/
+│   │       ├── light.json
+│   │       └── dark.json
 │   ├── extension/           # Extension scaffold templates (.tmpl)
 │   └── generic.json
 └── scripts/                 # Python package

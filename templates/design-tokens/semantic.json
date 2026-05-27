@@ -1,0 +1,43 @@
+{
+  "_wcag_spot_check": {
+    "light_mode": {
+      "text.primary(#212529)_on_surface.primary(#ffffff)": "16.10:1 PASS AA",
+      "text.primary(#212529)_on_surface.secondary(#f8f9fa)": "15.42:1 PASS AA",
+      "text.primary(#212529)_on_surface.raised(#f1f3f5)": "14.73:1 PASS AA",
+      "text.secondary(#495057)_on_surface.primary(#ffffff)": "7.46:1 PASS AA",
+      "text.secondary(#495057)_on_surface.secondary(#f8f9fa)": "7.14:1 PASS AA",
+      "text.muted(#adb5bd)_on_surface.primary(#ffffff)": "2.26:1 FAIL AA (decorative only)",
+      "action.primary(#1d4ed8)_on_surface.primary(#ffffff)": "7.16:1 PASS AA"
+    },
+    "dark_mode": {
+      "text.primary(#ffffff)_on_surface.primary(#101214)": "20.07:1 PASS AA",
+      "text.primary(#ffffff)_on_surface.secondary(#212529)": "16.10:1 PASS AA",
+      "text.primary(#ffffff)_on_surface.raised(#343a40)": "10.73:1 PASS AA",
+      "text.secondary(#dee2e6)_on_surface.primary(#101214)": "17.33:1 PASS AA",
+      "text.secondary(#dee2e6)_on_surface.secondary(#212529)": "13.59:1 PASS AA",
+      "text.muted(#adb5bd)_on_surface.primary(#101214)": "9.35:1 PASS AA"
+    }
+  },
+  "color": {
+    "surface": {
+      "primary":   "{color.neutral.0}",
+      "secondary": "{color.neutral.50}",
+      "raised":    "{color.neutral.100}"
+    },
+    "text": {
+      "primary":   "{color.neutral.900}",
+      "secondary": "{color.neutral.700}",
+      "muted":     "{color.neutral.500}",
+      "inverse":   "{color.neutral.0}"
+    },
+    "border": {
+      "subtle": "{color.neutral.200}",
+      "strong": "{color.neutral.400}"
+    },
+    "action": {
+      "primary":       "{color.brand.700}",
+      "primary-hover": "{color.brand.900}",
+      "destructive":   "{color.danger.500}"
+    }
+  }
+}

@@ -1,16 +1,24 @@
 ---
 id: FEAT-1748
-title: Design-tokens default palette — four-file high-contrast template set
-status: open
+title: "Design-tokens default palette \u2014 four-file high-contrast template set"
+status: done
 priority: P3
 type: FEAT
 parent: EPIC-1751
-relates_to: [EPIC-1751]
+relates_to:
+- EPIC-1751
 discovered_date: 2026-05-27
 discovered_by: issue-size-review
+completed_at: 2026-05-27 22:11:23+00:00
 labels:
 - feat
 - design-system
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-1748: Design-tokens default palette — four-file high-contrast template set
@@ -170,6 +178,78 @@ Remap surface and text tokens (~20 lines):
 }
 ```
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on analysis of `scripts/little_loops/design_tokens.py`:_
+
+**Critical format difference — use bare string references, not `$value` wrappers.**
+
+The `semantic.json` and theme examples above use W3C Design Token Community Group `{ "$value": "..." }` wrapper objects. The actual loader's `_flatten()` function recurses into **all** nested dicts, including `{ "$value": ... }` objects. This produces flat keys with `.$value` suffixes (e.g. `color.surface.primary.$value`). The CSS renderer (`render_as_css_vars()`) then outputs `--color-surface-primary-$value` — an invalid CSS custom property name.
+
+The loader expects **bare string references at leaf positions**. Replace each `{ "$value": "{dot.path}" }` with the plain string `"{dot.path}"`:
+
+```json
+// ✅ Correct — semantic.json leaf format (bare strings)
+{
+  "color": {
+    "surface": {
+      "primary":   "{color.neutral.0}",
+      "secondary": "{color.neutral.50}",
+      "raised":    "{color.neutral.100}"
+    },
+    "text": {
+      "primary":   "{color.neutral.900}",
+      "secondary": "{color.neutral.700}",
+      "muted":     "{color.neutral.500}",
+      "inverse":   "{color.neutral.0}"
+    },
+    "border": {
+      "subtle": "{color.neutral.200}",
+      "strong": "{color.neutral.400}"
+    },
+    "action": {
+      "primary":       "{color.brand.700}",
+      "primary-hover": "{color.brand.900}",
+      "destructive":   "{color.danger.500}"
+    }
+  }
+}
+```
+
+```json
+// ✅ Correct — themes/dark.json (bare strings)
+{
+  "color": {
+    "surface": {
+      "primary":   "{color.neutral.950}",
+      "secondary": "{color.neutral.900}",
+      "raised":    "{color.neutral.800}"
+    },
+    "text": {
+      "primary":   "{color.neutral.0}",
+      "secondary": "{color.neutral.300}",
+      "muted":     "{color.neutral.500}",
+      "inverse":   "{color.neutral.950}"
+    }
+  }
+}
+```
+
+```json
+// ✅ Correct — themes/light.json (bare string)
+{
+  "color": {
+    "surface": {
+      "primary": "{color.neutral.0}"
+    }
+  }
+}
+```
+
+**Primitives are unchanged** — `primitives.json` uses raw hex leaf values (no references, no `$value` wrappers needed).
+
+**Theme reference scope**: Theme files resolve references against `primitives_flat` first, then `merged_flat` (semantic + theme combined). Referencing primitives directly (e.g. `{color.neutral.950}`) is the safe, unambiguous pattern.
+
 ### WCAG AA verification
 
 At author time, verify all text-on-surface pairings meet:
@@ -183,6 +263,33 @@ Key pairings to verify for light mode:
 - `action.primary (#1d4ed8)` on `surface.primary (#ffffff)` — must be ≥3:1 for interactive elements
 
 Tools: https://webaim.org/resources/contrastchecker/ or the `wcag-contrast` npm package. Record results in a comment block at the top of `semantic.json`.
+
+## Integration Map
+
+### Files to Create
+- `templates/design-tokens/primitives.json` — raw palette; leaf values are concrete strings (no references)
+- `templates/design-tokens/semantic.json` — purpose aliases; leaf values are **bare string references** `"{dot.path}"` (not `$value` objects — see format note in Proposed Solution)
+- `templates/design-tokens/themes/light.json` — light theme overrides; same bare string leaf format
+- `templates/design-tokens/themes/dark.json` — dark theme overrides; same bare string leaf format
+
+### Dependent Files (Consumers)
+- `scripts/little_loops/design_tokens.py` — `load_design_tokens()`, `_flatten()`, `_resolve_value()`, `render_as_css_vars()`, `render_as_prompt_context()` — the loader that reads these files; token format must match its bare-string expectations
+- `scripts/little_loops/config/features.py` — `DesignTokensConfig` — defaults (`primitives_file="primitives.json"`, `semantic_file="semantic.json"`, `themes_dir="themes"`) must match the filenames and directory names used here exactly
+- `skills/init/SKILL.md` — Step 8 materialization pattern — FEAT-1750 extends this to copy the four template files to `.ll/design-tokens/` (skip-if-exists)
+
+### Tests
+- `scripts/tests/test_design_tokens.py` — `TestLoadDesignTokensHappyPath`, `TestLoadDesignTokensThemeOverride` — existing coverage exercises the loader with in-memory dicts; no new tests required for FEAT-1748 (the files are data, not code)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_design_tokens.py` — new `TestIntegration` class needed: load from actual `templates/design-tokens/` path, verify all four files exist, parse as valid JSON, and round-trip through `load_design_tokens()` with both `active_theme="light"` and `active_theme="dark"` resolving without error — follow pattern in `scripts/tests/test_goals_parser.py::TestIntegration` (`@pytest.mark.integration` + `pytest.skip()` guard when template files absent) [Agent 3 finding]
+
+### Configuration
+- `config-schema.json` — `"design_tokens"` block (lines 1203–1239) — the `primitives_file`, `semantic_file`, `themes_dir` defaults are hardcoded and must match the filenames used here
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md` — `## Directory Structure` hand-maintained tree lists `templates/` directory contents; adding `templates/design-tokens/` makes the listing stale — add `design-tokens/` subdirectory entry to the tree [Agent 2 finding]
 
 ## Files to Create
 
@@ -202,10 +309,19 @@ Tools: https://webaim.org/resources/contrastchecker/ or the `wcag-contrast` npm 
 
 ## Implementation Steps
 
-1. Author `templates/design-tokens/primitives.json` with neutral (0–950), brand (5 stops), accent, success, warning, danger color scales
-2. Author `templates/design-tokens/semantic.json` with `{dot.path}` references mapping `color.surface.*`, `color.text.*`, `color.border.*`, `color.action.*`
-3. Author `templates/design-tokens/themes/light.json` (identity overrides) and `themes/dark.json` (~20-line surface/text remaps)
-4. Verify all text-on-surface pairings against WCAG AA 4.5:1 (body) and 3:1 (large/UI); document spot-check results in a comment block at the top of `semantic.json`
+1. Create `templates/design-tokens/` and `templates/design-tokens/themes/` directories
+2. Author `templates/design-tokens/primitives.json` — raw hex leaf values for neutral (0–950), brand (5 stops), accent, success, warning, danger; no references or `$value` wrappers
+3. Author `templates/design-tokens/semantic.json` — bare string references `"{color.neutral.900}"` (NOT `{ "$value": "..." }` wrappers) mapping `color.surface.*`, `color.text.*`, `color.border.*`, `color.action.*`; see Proposed Solution → Codebase Research Findings for the correct format
+4. Author `templates/design-tokens/themes/light.json` (identity override, one entry) and `themes/dark.json` (~20 bare string remaps for surface/text); references must point to primitives (e.g. `{color.neutral.950}`)
+5. Verify all text-on-surface pairings against WCAG AA 4.5:1 (body) and 3:1 (large/UI); document spot-check results in a comment block at the top of `semantic.json`
+6. Validate JSON parses cleanly: `python -c "import json; [json.load(open(f)) for f in ['templates/design-tokens/primitives.json','templates/design-tokens/semantic.json','templates/design-tokens/themes/light.json','templates/design-tokens/themes/dark.json']]"`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `docs/ARCHITECTURE.md` — add `design-tokens/` to the `templates/` subtree in `## Directory Structure` (hand-maintained listing; the new subdirectory is not auto-discovered)
+8. Add `TestIntegration` class to `scripts/tests/test_design_tokens.py` — load from actual `templates/design-tokens/` using `@pytest.mark.integration` + `pytest.skip()` guard (pattern: `test_goals_parser.py::TestIntegration`); verify all four files parse as JSON and round-trip through `load_design_tokens()` with both `active_theme="light"` and `active_theme="dark"`
 
 ## Impact
 
@@ -215,6 +331,10 @@ Tools: https://webaim.org/resources/contrastchecker/ or the `wcag-contrast` npm 
 - **Breaking Change**: No
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-27T22:09:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c515e319-8876-48c2-9509-2158b76d9dac.jsonl`
+- `/ll:confidence-check` - 2026-05-27T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eabe94db-ef4d-43fd-bdd6-d74560a7ce96.jsonl`
+- `/ll:wire-issue` - 2026-05-27T22:06:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a399ddc-a4d1-43f7-935b-22aa9783782e.jsonl`
+- `/ll:refine-issue` - 2026-05-27T22:01:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76a9f4ce-2469-4766-ac68-8b469a3768dc.jsonl`
 - `/ll:format-issue` - 2026-05-27T20:25:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/652005b7-b7e9-404a-9ee0-b21de41aeefa.jsonl`
 - `/ll:issue-size-review` - 2026-05-27T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f94f108-c36b-4b4d-b486-f41734145a41.jsonl`
 
