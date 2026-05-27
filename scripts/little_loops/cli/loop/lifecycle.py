@@ -22,7 +22,6 @@ from little_loops.fsm.persistence import (
     _find_instances,
     _read_pid_file,
     _reconcile_stale_running,
-    _resolve_live_pid,
 )
 from little_loops.logger import Logger
 
@@ -81,7 +80,6 @@ def _get_events_info(running_dir: Path, stem: str) -> tuple[str | None, str | No
         return str(events_file), f"Events: {events_file}  {detail}"
     except OSError:
         return str(events_file), f"Events: {events_file}"
-
 
 
 def _kill_with_timeout(pid: int, label: str, logger: Logger) -> None:

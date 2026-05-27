@@ -458,7 +458,9 @@ states:
         out_lines = captured.out.splitlines()
         stale_line = next((ln for ln in out_lines if "stale-loop" in ln), None)
         assert stale_line is not None
-        assert "[paused]" in stale_line, f"Expected [paused] for reconciled stale entry, got: {stale_line}"
+        assert "[paused]" in stale_line, (
+            f"Expected [paused] for reconciled stale entry, got: {stale_line}"
+        )
         assert "[running]" not in stale_line
 
     def test_status_no_state_returns_error(

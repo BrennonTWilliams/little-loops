@@ -177,7 +177,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
             buckets[prefix].append((issue, stat))
 
     type_labels = {"BUG": "Bugs", "FEAT": "Features", "ENH": "Enhancements", "EPIC": "Epics"}
-    lines: list[str] = []
+    lines = []
     for prefix, label in type_labels.items():
         group = buckets[prefix]
         header = colorize(f"{label} ({len(group)})", f"{TYPE_COLOR.get(prefix, '0')};1")

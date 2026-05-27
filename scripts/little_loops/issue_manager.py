@@ -900,7 +900,9 @@ def process_issue_inplace(
                     work_done = verify_work_was_done(logger, baseline_sha=_baseline_sha)
                     if work_done:
                         logger.info("Evidence of code changes found - completing lifecycle...")
-                        verified = complete_issue_lifecycle(info, config, logger, event_bus=event_bus)
+                        verified = complete_issue_lifecycle(
+                            info, config, logger, event_bus=event_bus
+                        )
                         if verified:
                             logger.success(f"Fallback completion succeeded for {info.issue_id}")
                         else:

@@ -406,7 +406,7 @@ class TestParallelExecutionWorkflow(E2ETestFixture):
 
             with patch("little_loops.issue_manager.SQLiteTransport") as mock_transport:
                 mock_transport.return_value = MagicMock()
-                exit_code = main_auto()
+                main_auto()
 
             assert mock_transport.call_count == 1
         finally:

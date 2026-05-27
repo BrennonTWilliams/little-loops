@@ -64,9 +64,7 @@ class TestApiMdAutoManager:
 
     def test_event_bus_param_in_defer_issue(self) -> None:
         content = API_MD.read_text()
-        assert "defer_issue" in content, (
-            "API.md must include defer_issue function documentation"
-        )
+        assert "defer_issue" in content, "API.md must include defer_issue function documentation"
 
     def test_undefer_issue_return_fixed(self) -> None:
         content = API_MD.read_text()

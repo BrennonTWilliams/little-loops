@@ -210,9 +210,7 @@ class TestAutoManagerIntegration:
 
         return temp_project_dir, issues_dir
 
-    def test_auto_manager_wires_sqlite(
-        self, setup_project: tuple[Path, Path]
-    ) -> None:
+    def test_auto_manager_wires_sqlite(self, setup_project: tuple[Path, Path]) -> None:
         """AutoManager wires SQLiteTransport; close_issue live-writes rows (no backfill needed)."""
         import subprocess
 
@@ -560,8 +558,9 @@ class TestDependencyAwareSequencing:
         from little_loops.issue_manager import AutoManager
 
         config = BRConfig(temp_project_with_deps)
-        manager = AutoManager(config, dry_run=True, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config, dry_run=True, db_path=config.project_root / ".ll" / "history.db"
+        )
 
         assert hasattr(manager, "dep_graph")
         assert len(manager.dep_graph) == 2
@@ -574,8 +573,9 @@ class TestDependencyAwareSequencing:
         from little_loops.issue_manager import AutoManager
 
         config = BRConfig(temp_project_with_deps)
-        manager = AutoManager(config, dry_run=True, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config, dry_run=True, db_path=config.project_root / ".ll" / "history.db"
+        )
 
         # First issue selected should be FEAT-001 (not blocked)
         info = manager._get_next_issue()
@@ -590,8 +590,9 @@ class TestDependencyAwareSequencing:
         from little_loops.issue_manager import AutoManager
 
         config = BRConfig(temp_project_with_deps)
-        manager = AutoManager(config, dry_run=True, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config, dry_run=True, db_path=config.project_root / ".ll" / "history.db"
+        )
 
         # Mark FEAT-001 as completed
         manager.state_manager.state.completed_issues.append("FEAT-001")
@@ -607,8 +608,9 @@ class TestDependencyAwareSequencing:
         from little_loops.issue_manager import AutoManager
 
         config = BRConfig(temp_project_with_deps)
-        manager = AutoManager(config, dry_run=True, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config, dry_run=True, db_path=config.project_root / ".ll" / "history.db"
+        )
 
         # Mark FEAT-001 as attempted (skip) but not completed
         manager.state_manager.state.attempted_issues.add("FEAT-001")
@@ -671,8 +673,9 @@ class TestDependencyAwareSequencing:
         from little_loops.issue_manager import AutoManager
 
         config = BRConfig(temp_project_with_cycle)
-        _manager = AutoManager(config, dry_run=True, db_path=config.project_root / ".ll" / "history.db")
-
+        _manager = AutoManager(
+            config, dry_run=True, db_path=config.project_root / ".ll" / "history.db"
+        )
 
         captured = capsys.readouterr()
         # Check that cycle warning was printed
@@ -725,8 +728,12 @@ class TestAutoManagerPriorityFilter:
         from little_loops.issue_manager import AutoManager
 
         config = BRConfig(temp_project_with_priorities)
-        manager = AutoManager(config, dry_run=True, priority_filter=None, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config,
+            dry_run=True,
+            priority_filter=None,
+            db_path=config.project_root / ".ll" / "history.db",
+        )
 
         issue = manager._get_next_issue()
         assert issue is not None  # At least one issue returned
@@ -739,8 +746,12 @@ class TestAutoManagerPriorityFilter:
         from little_loops.issue_manager import AutoManager
 
         config = BRConfig(temp_project_with_priorities)
-        manager = AutoManager(config, dry_run=True, priority_filter={"P1"}, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config,
+            dry_run=True,
+            priority_filter={"P1"},
+            db_path=config.project_root / ".ll" / "history.db",
+        )
 
         issue = manager._get_next_issue()
         assert issue is not None
@@ -755,8 +766,12 @@ class TestAutoManagerPriorityFilter:
         from little_loops.issue_manager import AutoManager
 
         config = BRConfig(temp_project_with_priorities)
-        manager = AutoManager(config, dry_run=True, priority_filter={"P0"}, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config,
+            dry_run=True,
+            priority_filter={"P0"},
+            db_path=config.project_root / ".ll" / "history.db",
+        )
 
         issue = manager._get_next_issue()
         assert issue is None
@@ -767,8 +782,12 @@ class TestAutoManagerPriorityFilter:
         from little_loops.issue_manager import AutoManager
 
         config = BRConfig(temp_project_with_priorities)
-        manager = AutoManager(config, dry_run=True, priority_filter={"P1", "P3"}, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config,
+            dry_run=True,
+            priority_filter={"P1", "P3"},
+            db_path=config.project_root / ".ll" / "history.db",
+        )
 
         issue = manager._get_next_issue()
         assert issue is not None
@@ -820,8 +839,12 @@ class TestAutoManagerLabelFilter:
         from little_loops.issue_manager import AutoManager
 
         config = BRConfig(temp_project_with_labels)
-        manager = AutoManager(config, dry_run=True, label_filter=None, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config,
+            dry_run=True,
+            label_filter=None,
+            db_path=config.project_root / ".ll" / "history.db",
+        )
 
         issue = manager._get_next_issue()
         assert issue is not None
@@ -832,8 +855,12 @@ class TestAutoManagerLabelFilter:
         from little_loops.issue_manager import AutoManager
 
         config = BRConfig(temp_project_with_labels)
-        manager = AutoManager(config, dry_run=True, label_filter={"fsm"}, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config,
+            dry_run=True,
+            label_filter={"fsm"},
+            db_path=config.project_root / ".ll" / "history.db",
+        )
 
         issue = manager._get_next_issue()
         assert issue is not None
@@ -845,8 +872,12 @@ class TestAutoManagerLabelFilter:
         from little_loops.issue_manager import AutoManager
 
         config = BRConfig(temp_project_with_labels)
-        manager = AutoManager(config, dry_run=True, label_filter={"nonexistent"}, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config,
+            dry_run=True,
+            label_filter={"nonexistent"},
+            db_path=config.project_root / ".ll" / "history.db",
+        )
 
         issue = manager._get_next_issue()
         assert issue is None
@@ -857,8 +888,12 @@ class TestAutoManagerLabelFilter:
         from little_loops.issue_manager import AutoManager
 
         config = BRConfig(temp_project_with_labels)
-        manager = AutoManager(config, dry_run=True, label_filter={"quick-win"}, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config,
+            dry_run=True,
+            label_filter={"quick-win"},
+            db_path=config.project_root / ".ll" / "history.db",
+        )
 
         issue = manager._get_next_issue()
         assert issue is not None
@@ -902,8 +937,9 @@ class TestAutoManagerQuietMode:
         (temp_project_dir / ".issues" / "completed").mkdir()
 
         config = BRConfig(temp_project_dir)
-        manager = AutoManager(config, verbose=False, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config, verbose=False, db_path=config.project_root / ".ll" / "history.db"
+        )
 
         assert manager.logger.verbose is False
 
@@ -941,8 +977,9 @@ class TestAutoManagerQuietMode:
         (temp_project_dir / ".issues" / "completed").mkdir()
 
         config = BRConfig(temp_project_dir)
-        manager = AutoManager(config, db_path=config.project_root / ".ll" / "history.db")  # Use default verbose=True
-
+        manager = AutoManager(
+            config, db_path=config.project_root / ".ll" / "history.db"
+        )  # Use default verbose=True
 
         assert manager.logger.verbose is True
 
@@ -980,8 +1017,9 @@ class TestAutoManagerQuietMode:
         (temp_project_dir / ".issues" / "completed").mkdir()
 
         config = BRConfig(temp_project_dir)
-        manager = AutoManager(config, verbose=True, db_path=config.project_root / ".ll" / "history.db")
-
+        manager = AutoManager(
+            config, verbose=True, db_path=config.project_root / ".ll" / "history.db"
+        )
 
         assert manager.logger.verbose is True
 
@@ -1013,11 +1051,15 @@ class TestAutoManagerQuietMode:
         (temp_project_dir / ".issues" / "completed").mkdir()
 
         config = BRConfig(temp_project_dir)
-        manager_full = AutoManager(config, preview_full=True, db_path=config.project_root / ".ll" / "history.db")
+        manager_full = AutoManager(
+            config, preview_full=True, db_path=config.project_root / ".ll" / "history.db"
+        )
 
         assert manager_full._preview_full is True
 
-        manager_default = AutoManager(config, preview_full=False, db_path=config.project_root / ".ll" / "history.db")
+        manager_default = AutoManager(
+            config, preview_full=False, db_path=config.project_root / ".ll" / "history.db"
+        )
 
         assert manager_default._preview_full is False
 
@@ -2548,7 +2590,12 @@ class TestAutoManagerRun:
                 corrections=[],
             )
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
-                manager = AutoManager(config, dry_run=False, max_issues=1, db_path=config.project_root / ".ll" / "history.db")
+                manager = AutoManager(
+                    config,
+                    dry_run=False,
+                    max_issues=1,
+                    db_path=config.project_root / ".ll" / "history.db",
+                )
 
                 exit_code = manager.run()
 
@@ -2577,7 +2624,12 @@ class TestAutoManagerRun:
                 corrections=[],
             )
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
-                manager = AutoManager(config, dry_run=False, max_issues=2, db_path=config.project_root / ".ll" / "history.db")
+                manager = AutoManager(
+                    config,
+                    dry_run=False,
+                    max_issues=2,
+                    db_path=config.project_root / ".ll" / "history.db",
+                )
 
                 manager.run()
 
@@ -2603,7 +2655,12 @@ class TestAutoManagerRun:
                 corrections=[],
             )
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
-                manager = AutoManager(config, dry_run=False, only_ids={"BUG-003"}, db_path=config.project_root / ".ll" / "history.db")
+                manager = AutoManager(
+                    config,
+                    dry_run=False,
+                    only_ids={"BUG-003"},
+                    db_path=config.project_root / ".ll" / "history.db",
+                )
 
                 manager.run()
 
@@ -2630,7 +2687,12 @@ class TestAutoManagerRun:
             )
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
                 # Numeric-only ID "003" should match "BUG-003"
-                manager = AutoManager(config, dry_run=False, only_ids={"003"}, db_path=config.project_root / ".ll" / "history.db")
+                manager = AutoManager(
+                    config,
+                    dry_run=False,
+                    only_ids={"003"},
+                    db_path=config.project_root / ".ll" / "history.db",
+                )
 
                 manager.run()
 
@@ -2658,7 +2720,12 @@ class TestAutoManagerRun:
                 corrections=[],
             )
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
-                manager = AutoManager(config, dry_run=False, only_ids={"BUG-004"}, db_path=config.project_root / ".ll" / "history.db")
+                manager = AutoManager(
+                    config,
+                    dry_run=False,
+                    only_ids={"BUG-004"},
+                    db_path=config.project_root / ".ll" / "history.db",
+                )
 
                 result = manager.run()
 

@@ -2656,7 +2656,9 @@ states:
         fsm.context[fsm.input_key] = "FEAT-719"
         assert fsm.context["input"] == "FEAT-719"
 
-    def test_dry_run_with_show_diagrams_renders_diagram(self, simple_loop: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_dry_run_with_show_diagrams_renders_diagram(
+        self, simple_loop: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """--dry-run --show-diagrams renders FSM diagram before the execution plan."""
         from little_loops.cli.loop.run import cmd_run
         from little_loops.logger import Logger
@@ -2691,7 +2693,9 @@ states:
         # Execution plan still renders after diagram
         assert "Execution plan for" in out
 
-    def test_dry_run_without_show_diagrams_no_diagram(self, simple_loop: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_dry_run_without_show_diagrams_no_diagram(
+        self, simple_loop: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """--dry-run without --show-diagrams does not render any diagram."""
         from little_loops.cli.loop.run import cmd_run
         from little_loops.logger import Logger

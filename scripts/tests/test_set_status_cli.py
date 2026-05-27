@@ -26,17 +26,20 @@ class TestIssuesCLISetStatus:
 
         issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
         issue_file.write_text(
-            "---\n"
-            "id: BUG-001\n"
-            "status: open\n"
-            "---\n"
-            "# BUG-001: Critical crash on startup\n"
+            "---\nid: BUG-001\nstatus: open\n---\n# BUG-001: Critical crash on startup\n"
         )
 
         with patch.object(
             sys,
             "argv",
-            ["ll-issues", "set-status", "BUG-001", "in_progress", "--config", str(temp_project_dir)],
+            [
+                "ll-issues",
+                "set-status",
+                "BUG-001",
+                "in_progress",
+                "--config",
+                str(temp_project_dir),
+            ],
         ):
             from little_loops.cli import main_issues
 
@@ -58,13 +61,7 @@ class TestIssuesCLISetStatus:
         config_path.write_text(json.dumps(sample_config))
 
         issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
-        issue_file.write_text(
-            "---\n"
-            "id: BUG-001\n"
-            "status: open\n"
-            "---\n"
-            "# BUG-001: Critical crash\n"
-        )
+        issue_file.write_text("---\nid: BUG-001\nstatus: open\n---\n# BUG-001: Critical crash\n")
 
         with patch.object(
             sys,

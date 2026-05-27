@@ -113,7 +113,7 @@ def _read_pid_file(pid_file: Path) -> int | None:
         return None
 
 
-def _resolve_live_pid(running_dir: Path, stem: str, state: "LoopState") -> int | None:
+def _resolve_live_pid(running_dir: Path, stem: str, state: LoopState) -> int | None:
     """Return the canonical PID for an instance via .pid → .lock → state.pid chain.
 
     Returns None when no PID can be resolved from any source.
@@ -135,11 +135,11 @@ def _resolve_live_pid(running_dir: Path, stem: str, state: "LoopState") -> int |
 
 
 def _reconcile_stale_running(
-    state: "LoopState",
-    persistence: "StatePersistence",
+    state: LoopState,
+    persistence: StatePersistence,
     running_dir: Path,
     stem: str,
-) -> "LoopState":
+) -> LoopState:
     """Flip a running-state entry to interrupted when its PID is provably dead.
 
     Called on the read path in cmd_status and list_running_loops so orphaned
@@ -872,7 +872,9 @@ def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]:
         except (json.JSONDecodeError, KeyError):
             continue  # Skip malformed files
         stem = state_file.stem.removesuffix(".state")
-        persistence = StatePersistence(state.loop_name, base_dir, instance_id=stem if stem != state.loop_name else None)
+        persistence = StatePersistence(
+            state.loop_name, base_dir, instance_id=stem if stem != state.loop_name else None
+        )
         state = _reconcile_stale_running(state, persistence, running_dir, stem)
         states.append(state)
 

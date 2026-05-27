@@ -80,9 +80,7 @@ class TestUpdateFrontmatterRoundTrip:
     def test_existing_fields_preserved(self) -> None:
         from little_loops.frontmatter import parse_frontmatter, update_frontmatter
 
-        original = (
-            "---\nid: BUG-55\ntitle: Some bug\npriority: P2\nstatus: open\n---\n\n# BUG-55\n"
-        )
+        original = "---\nid: BUG-55\ntitle: Some bug\npriority: P2\nstatus: open\n---\n\n# BUG-55\n"
         updated = update_frontmatter(original, {"parent": "EPIC-10"})
         fm = parse_frontmatter(updated)
         assert fm["parent"] == "EPIC-10"

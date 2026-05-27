@@ -17,7 +17,9 @@ import argparse
 from dataclasses import dataclass, replace
 
 TOPOLOGY_VALUES: frozenset[str] = frozenset({"layered", "neighborhood", "inline"})
-PRESET_VALUES: frozenset[str] = frozenset({"detailed", "summary", "clean", "local", "oneline", "slim"})
+PRESET_VALUES: frozenset[str] = frozenset(
+    {"detailed", "summary", "clean", "local", "oneline", "slim"}
+)
 
 _LEGACY_HINTS: dict[str, str] = {
     "main": (

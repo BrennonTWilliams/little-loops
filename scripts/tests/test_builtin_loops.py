@@ -3817,9 +3817,7 @@ class TestAssumptionFirewallLoop:
         """run_gate with: must bind targets and max_retries."""
         state = data["states"].get("run_gate", {})
         with_ = state.get("with", {})
-        assert "targets" in with_, (
-            f"run_gate.with must contain 'targets', got {list(with_.keys())}"
-        )
+        assert "targets" in with_, f"run_gate.with must contain 'targets', got {list(with_.keys())}"
         assert "max_retries" in with_, (
             f"run_gate.with must contain 'max_retries', got {list(with_.keys())}"
         )
@@ -3871,9 +3869,7 @@ class TestAdoptThirdPartyApiLoop:
         """prove with: must bind targets and max_retries."""
         state = data["states"].get("prove", {})
         with_ = state.get("with", {})
-        assert "targets" in with_, (
-            f"prove.with must contain 'targets', got {list(with_.keys())}"
-        )
+        assert "targets" in with_, f"prove.with must contain 'targets', got {list(with_.keys())}"
         assert "max_retries" in with_, (
             f"prove.with must contain 'max_retries', got {list(with_.keys())}"
         )

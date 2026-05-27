@@ -377,9 +377,7 @@ class TestSelectStepShellAction:
 
     def test_empty_plan_emits_no_unchecked_steps(self, tmp_path: Path) -> None:
         loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text(
-            "# Task Plan\n- [x] Step 1: done\n"
-        )
+        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [x] Step 1: done\n")
         result = self._run(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         assert "NO_UNCHECKED_STEPS" in result.stdout
@@ -396,12 +394,12 @@ class TestSelectStepShellAction:
 
     def test_unchecked_step_writes_temp_file(self, tmp_path: Path) -> None:
         loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text(
-            "# Task Plan\n- [ ] Step 1: write code\n"
-        )
+        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
         self._run(tmp_path)
         step_file = loops_tmp / "general-task-current-step.txt"
-        assert step_file.exists(), "select_step must write the step to general-task-current-step.txt"
+        assert step_file.exists(), (
+            "select_step must write the step to general-task-current-step.txt"
+        )
         assert "Step 1: write code" in step_file.read_text()
 
 
@@ -461,9 +459,7 @@ class TestMarkDoneShellAction:
 
     def test_removes_current_step_temp_file(self, tmp_path: Path) -> None:
         loops_tmp = _setup_loops_tmp(tmp_path)
-        (loops_tmp / "general-task-plan.md").write_text(
-            "# Task Plan\n- [ ] Step 1: write code\n"
-        )
+        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
         step_file = loops_tmp / "general-task-current-step.txt"
         step_file.write_text("- [ ] Step 1: write code\n")
         self._run(tmp_path)
