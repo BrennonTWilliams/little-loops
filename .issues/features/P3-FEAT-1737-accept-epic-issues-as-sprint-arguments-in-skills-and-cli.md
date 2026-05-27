@@ -12,7 +12,7 @@ discovered_by: capture-issue
 
 ## Summary
 
-All `/ll:` skills and `ll-` CLI commands that accept a sprint file as an argument (especially `ll-sprint`) should also accept an EPIC issue ID (e.g., `EPIC-1234`) as an argument, resolving it at runtime to the collection of child issues belonging to that EPIC.
+Add `SprintManager.load_or_resolve()` as a single-point resolver that accepts either a sprint name (existing file-based path) or an EPIC ID, transparently propagating to all sprint subcommands and skills. Resolution uses a union of the EPIC's `relates_to:` field (forward) and `parent:` on child issues (backward), filtered to active statuses. An optional `--save` flag on `ll-sprint run` materializes the resolved sprint YAML for inspect/edit-before-run workflows.
 
 ## Current Behavior
 
@@ -24,21 +24,27 @@ EPICs are already used as organizational containers for related issues via the `
 
 ## Expected Behavior
 
-- `ll-sprint EPIC-1234` resolves EPIC-1234's child issues and executes them in dependency order, exactly as if a sprint file listing those issues had been passed.
-- Skills that accept a sprint argument (e.g., `/ll:create-sprint`, `/ll:review-sprint`, `/ll:ll-sprint`) recognize an EPIC ID pattern and perform the same resolution.
-- Resolution: collect all issues whose `parent: EPIC-NNN` frontmatter matches the given EPIC, filtered to active status (`open`, `in_progress`, `blocked`).
-- If the EPIC has no active child issues, print a clear message and exit cleanly rather than silently running an empty set.
-- The resolved issue list should respect any dependency ordering already supported by the sprint runner.
+- `ll-sprint run EPIC-1234` resolves EPIC-1234's children and executes them in dependency order, exactly as if a sprint file listing those issues had been passed.
+- Resolution is a union of forward lookup (`relates_to:` on the EPIC file) and backward scan (`parent: EPIC-NNN` on child issues), deduplicated and filtered to active statuses (`open`, `in_progress`, `blocked`).
+- Skills that call `SprintManager` through the Python path (`/ll:create-sprint`, `/ll:review-sprint`) inherit EPIC resolution automatically — no separate wiring per skill.
+- `ll-sprint run EPIC-1234 --save` also writes `.ll/sprints/epic-1234.yaml` before executing.
+- If the EPIC has no active children, a clear message is printed and the runner exits cleanly (exit 0).
+- Resume (`--resume`) works because `.sprint-state.json` tracks `sprint_name: epic-1234`.
 
 ## Acceptance Criteria
 
-- [ ] `ll-sprint EPIC-NNN` accepts an EPIC ID as the sole positional argument and executes child issues as if a matching sprint file had been passed.
+- [ ] `SprintManager.load_or_resolve(arg)` is implemented in `sprint.py` and handles both sprint names and `EPIC-NNN` IDs.
+- [ ] All sprint subcommands (`run`, `show`, `analyze`, `delete`, `edit`) switch from `manager.load()` to `manager.load_or_resolve()`.
+- [ ] Resolution uses the union of forward (`relates_to:`) and backward (`parent:`) lookups, deduplicated.
 - [ ] Child issues are filtered to active statuses (`open`, `in_progress`, `blocked`) before execution.
-- [ ] When the EPIC has no active child issues, a clear message is printed and the runner exits cleanly (exit 0).
-- [ ] When the EPIC ID does not exist, an informative error is printed and the runner exits with a non-zero code.
-- [ ] Resolved child issues are processed in dependency/priority order, matching existing sprint file behavior.
-- [ ] Skills that accept sprint arguments (`/ll:create-sprint`, `/ll:review-sprint`) recognize the `EPIC-NNN` pattern and resolve identically.
+- [ ] Resolved issues are ordered by priority, then dependency graph — matching existing sprint file behavior.
+- [ ] When the EPIC has no active children, a clear message is printed and the runner exits cleanly (exit 0).
+- [ ] When the EPIC ID does not exist, `load_or_resolve` returns `None` and the caller prints an informative error (exit non-zero).
+- [ ] `ll-sprint run EPIC-NNN --save` writes `.ll/sprints/epic-{id}.yaml` before executing.
+- [ ] `ll-sprint run EPIC-NNN --resume` works correctly using `sprint_name: epic-{id}` in state.
+- [ ] Skills (`/ll:create-sprint`, `/ll:review-sprint`) work with EPIC IDs without additional changes.
 - [ ] Existing sprint YAML file paths continue to work unchanged (no regressions).
+- [ ] Unit tests cover `load_or_resolve` (file path, EPIC ID, not-found, empty children); integration test covers the `ll-sprint run EPIC-NNN` path.
 
 ## Use Case
 
@@ -52,37 +58,57 @@ The runner resolves the child issues, orders them by dependency/priority, and pr
 
 ## Implementation Steps
 
-1. **Add EPIC ID detection** — before treating an argument as a sprint file path, check if it matches `^(EPIC-\d+)$`.
-2. **EPIC resolution helper** — implement `resolve_epic_to_issues(epic_id) -> list[IssuePath]` in `scripts/little_loops/` that:
-   - Locates the EPIC file via `ll-issues path EPIC-NNN`
-   - Reads `relates_to:` and finds all issues with `parent: EPIC-NNN` in their frontmatter
-   - Filters to active statuses
-   - Returns ordered list (by priority, then dependency graph)
-3. **Wire into `ll-sprint`** — in `scripts/little_loops/sprint_runner.py` (or equivalent), call the resolver when an EPIC ID is detected and pass the resulting issue list through the existing pipeline.
-4. **Wire into skills** — update any skill that processes sprint arguments (`/ll:create-sprint`, `/ll:review-sprint`) to recognize EPIC IDs and delegate to the resolver.
-5. **Error handling** — emit a helpful message when EPIC not found or has no active children.
-6. **Tests** — unit test the resolver; integration test `ll-sprint EPIC-NNN` path.
+1. **Add `SprintManager.load_or_resolve(arg, config)`** — single detection point in `scripts/little_loops/sprint.py`:
+   - If `arg` matches `^EPIC-\d+$`, resolve it to an ephemeral `Sprint` object (name = `epic-{id}`, no YAML written)
+   - Otherwise, fall through to the existing `load(arg)` file-based path
+   - All subcommands that today call `manager.load(args.sprint)` switch to `manager.load_or_resolve(args.sprint)` — one-line change per subcommand (`run.py`, `show.py`, `manage.py`)
+
+2. **Union resolution strategy** — inside `load_or_resolve`, collect children via two passes:
+   - **Forward**: read `relates_to:` from the EPIC's own frontmatter
+   - **Backward**: scan all issue files for `parent: EPIC-NNN` in frontmatter (authoritative source of truth)
+   - Take the union; deduplicate; filter to active statuses (`open`, `in_progress`, `blocked`)
+   - Order by priority field, then dependency graph (reuse existing `DependencyGraph` logic)
+
+3. **Error handling** — `load_or_resolve` returns `None` (same contract as `load`) when:
+   - The EPIC ID is not found → callers already handle `None` with a meaningful error message
+   - The EPIC has no active children → return a `Sprint` with an empty `issues` list; the run path already handles this with a clean exit
+
+4. **`--save` flag on `ll-sprint run`** — optional flag that materializes the resolved sprint YAML to `.ll/sprints/epic-{id}.yaml` before executing, enabling inspect/edit-before-run workflows without requiring it for normal use
+
+5. **Wire into skills** — `/ll:create-sprint` and `/ll:review-sprint` skills: since they invoke `SprintManager` through the Python path, they inherit the capability automatically; update their argument descriptions to note EPIC ID support
+
+6. **Tests** — unit test `load_or_resolve` (file path, EPIC ID, not-found cases); integration test `ll-sprint run EPIC-NNN` path; test `--save` flag materializes YAML correctly
 
 ## API/Interface
 
 ```python
-# New helper (scripts/little_loops/epic_resolver.py or similar)
-def resolve_epic_to_issues(epic_id: str) -> list[str]:
-    """Return sorted list of active issue IDs belonging to the given EPIC."""
+# scripts/little_loops/sprint.py — SprintManager
+
+def load_or_resolve(self, arg: str) -> "Sprint | None":
+    """Load a sprint by name or resolve an EPIC ID to an ephemeral Sprint.
+
+    Args:
+        arg: Sprint name (file-based) or EPIC ID matching ^EPIC-\\d+$
+
+    Returns:
+        Sprint instance, or None if not found / EPIC not found
+    """
     ...
 ```
 
-CLI usage (no new flags needed — transparent to the user):
+CLI usage (no new flags required for basic use):
 
 ```bash
-ll-sprint EPIC-1234          # run all active children of EPIC-1234
-ll-sprint .ll/sprints/my-sprint.yaml  # existing sprint file — unchanged behavior
+ll-sprint run EPIC-1694             # run all active children of EPIC-1694
+ll-sprint run EPIC-1694 --save      # also write .ll/sprints/epic-1694.yaml first
+ll-sprint run EPIC-1694 --dry-run   # preview execution plan without running
+ll-sprint run my-sprint             # existing sprint YAML — unchanged behavior
 ```
 
 ## Impact
 
 - **Priority**: P3 — Reduces friction for EPIC-driven workflows; not blocking but provides meaningful quality-of-life improvement for users who organize work under EPICs
-- **Effort**: Medium — New `resolve_epic_to_issues` helper plus wiring into `ll-sprint`, `create-sprint`, and `review-sprint`; existing pipeline handles ordering/filtering
+- **Effort**: Medium — `SprintManager.load_or_resolve()` + union resolver + one-line subcommand updates; existing pipeline handles ordering/filtering; `--save` flag is additive
 - **Risk**: Low — New detection branch; existing sprint file behavior is fully unchanged
 - **Breaking Change**: No
 
@@ -95,5 +121,6 @@ ll-sprint .ll/sprints/my-sprint.yaml  # existing sprint file — unchanged behav
 **Open** | Created: 2026-05-27 | Priority: P3
 
 ## Session Log
+- `rewrite` - 2026-05-27 - Redesigned to Option C (`SprintManager.load_or_resolve()` + union resolution + `--save` flag) after exploring Epic→Sprint mapping approaches
 - `/ll:format-issue` - 2026-05-27T05:04:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c37f932-1d34-4311-ac57-0faf89f85130.jsonl`
 - `/ll:capture-issue` - 2026-05-27T05:02:23Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c91edf22-5820-4f59-9f8d-4ab2ca66f171.jsonl`
