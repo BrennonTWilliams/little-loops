@@ -8,6 +8,7 @@ captured_at: "2026-05-26T01:31:23Z"
 discovered_date: "2026-05-26"
 discovered_by: capture-issue
 relates_to: [ENH-1710]
+parent: EPIC-1707
 ---
 
 # ENH-1711: Add issue-to-session cross-reference queries to history.db

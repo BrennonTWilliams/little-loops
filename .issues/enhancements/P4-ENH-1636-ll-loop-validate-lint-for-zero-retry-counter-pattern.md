@@ -6,6 +6,7 @@ status: open
 captured_at: 2026-05-23T12:00:00Z
 discovered_date: 2026-05-23
 discovered_by: capture-issue
+parent: EPIC-1663
 ---
 
 # ENH-1636: `ll-loop validate` lint for zero-retry counter pattern

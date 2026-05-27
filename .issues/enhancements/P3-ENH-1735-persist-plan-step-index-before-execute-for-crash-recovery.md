@@ -1,4 +1,5 @@
 ---
+id: ENH-1735
 title: Persist plan step index before execute for crash recovery in general-task loop
 type: ENH
 priority: P3
@@ -9,6 +10,7 @@ status: open
 captured_at: '2026-05-27T00:00:00Z'
 discovered_date: 2026-05-27
 discovered_by: audit-loop-run
+parent: EPIC-1744
 labels:
 - loops
 - general-task

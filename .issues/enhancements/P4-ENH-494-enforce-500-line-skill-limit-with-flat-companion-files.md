@@ -1,6 +1,11 @@
 ---
+id: ENH-494
+type: ENH
+priority: P4
 discovered_date: 2026-02-24
 discovered_by: context-engineering-analysis
+status: open
+parent: EPIC-1745
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
 confidence_score: 98
 outcome_confidence: 71

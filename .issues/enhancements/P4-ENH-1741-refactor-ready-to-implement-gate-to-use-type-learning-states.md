@@ -6,10 +6,10 @@ status: open
 captured_at: '2026-05-27T18:08:06Z'
 discovered_date: '2026-05-27'
 discovered_by: capture-issue
+parent: EPIC-1694
 relates_to:
 - FEAT-1695
 - FEAT-1283
-- EPIC-1694
 ---
 
 # ENH-1741: Refactor `ready-to-implement-gate` to use `type: learning` states

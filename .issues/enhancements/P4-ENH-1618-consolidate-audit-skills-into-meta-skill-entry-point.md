@@ -1,8 +1,12 @@
 ---
+id: ENH-1618
+type: ENH
+priority: P4
 captured_at: '2026-05-22T19:19:39Z'
 discovered_date: 2026-05-22
 discovered_by: capture-issue
 status: open
+parent: EPIC-1745
 ---
 
 # ENH-1618: Consolidate audit-* skills into a single meta-skill entry point

@@ -6,7 +6,7 @@ priority: P5
 captured_at: "2026-05-15T12:15:21Z"
 discovered_date: 2026-05-15
 discovered_by: capture-issue
-relates_to: [FEAT-957, FEAT-1462, FEAT-992, ENH-1718, FEAT-1719, FEAT-1720, FEAT-1721, ENH-1722]
+relates_to: [FEAT-957, FEAT-1462, FEAT-992, ENH-1718, FEAT-1719, FEAT-1720, FEAT-1721, ENH-1722, ENH-1615, ENH-1529]
 labels: [epic, captured, codex, host-compat, tracking]
 ---
 
@@ -135,6 +135,8 @@ FEAT-992).
 - **FEAT-1720** — Wire `permission_request` intent for Codex adapter (no-op handler + adapter script; verify payload shape first)
 - **FEAT-1721** — Codex `claude -p` conformance test suite (ll-auto / ll-sprint / ll-loop golden paths)
 - **ENH-1722** — Research and decide per-host state directory redirection for Codex
+- **ENH-1615** — Add `disable-model-invocation: true` to all 28 ll-* Codex bridge skills (skill budget / Codex discoverability cleanup)
+- **ENH-1529** — Expose `sandbox_mode` parameter on CodexRunner build methods (Codex execution constraint gap)
 
 ## Success Metrics
 

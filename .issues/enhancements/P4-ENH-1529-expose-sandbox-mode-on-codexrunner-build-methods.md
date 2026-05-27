@@ -8,6 +8,7 @@ captured_at: '2026-05-16T21:26:07Z'
 discovered_date: '2026-05-16'
 discovered_by: capture-issue
 decision_needed: false
+parent: EPIC-1463
 relates_to:
 - FEAT-1465
 - FEAT-1462

@@ -1,8 +1,12 @@
 ---
+id: ENH-1678
+type: ENH
+priority: P3
 captured_at: "2026-05-24T13:15:53Z"
 discovered_date: 2026-05-24
 discovered_by: capture-issue
 status: open
+parent: EPIC-1744
 labels:
 - fsm-loops
 - executor

@@ -6,6 +6,7 @@ type: ENH
 captured_at: "2026-05-25T21:57:02Z"
 discovered_date: 2026-05-25
 discovered_by: capture-issue
+parent: EPIC-1744
 ---
 
 # ENH-1701: Show artifact paths in `ll-loop run` output

@@ -6,6 +6,7 @@ status: open
 discovered_date: 2026-05-24
 discovered_by: capture-issue
 captured_at: '2026-05-24T18:14:01Z'
+parent: EPIC-1744
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 100

@@ -1,6 +1,11 @@
 ---
+id: ENH-977
+type: ENH
+priority: P4
 discovered_date: 2026-04-07
 discovered_by: split-from-ENH-494
+status: open
+parent: EPIC-1745
 blocked_by: [ENH-494]
 ---
 

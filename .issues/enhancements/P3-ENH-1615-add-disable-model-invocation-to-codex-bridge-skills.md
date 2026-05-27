@@ -1,8 +1,11 @@
 ---
+id: ENH-1615
+type: ENH
 captured_at: '2026-05-22T19:19:39Z'
 discovered_date: 2026-05-22
 discovered_by: capture-issue
 status: open
+parent: EPIC-1463
 ---
 
 # ENH-1615: Add disable-model-invocation to all 28 ll-* Codex bridge skills

@@ -7,6 +7,7 @@ status: open
 captured_at: "2026-05-26T01:31:23Z"
 discovered_date: "2026-05-26"
 discovered_by: capture-issue
+parent: EPIC-1707
 ---
 
 # ENH-1710: Map session IDs to JSONL file paths in history.db
