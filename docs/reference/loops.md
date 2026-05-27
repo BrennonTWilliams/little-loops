@@ -133,10 +133,6 @@ ll-loop run deep-research "What are the trade-offs of CRDT vs OT for collaborati
 ll-loop run deep-research "your research topic" \
   --context depth=5 \
   --context coverage_threshold_pct=90
-
-# Custom output directory
-ll-loop run deep-research "your topic" \
-  --context output_dir=.loops/my-research
 ```
 
 ### Context Variables
@@ -144,14 +140,14 @@ ll-loop run deep-research "your topic" \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `topic` | `""` | **Required.** Research question or topic (injected from positional arg via `input_key: topic`). |
-| `output_dir` | `.loops/research` | Directory where per-run subdirectories are created. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/deep-research-{timestamp}/`); created automatically before the `init` state. Override with `--context run_dir=path/` to write to a fixed location. |
 | `depth` | `3` | Minimum number of search rounds before accepting convergence. |
 | `coverage_threshold_pct` | `85` | Target coverage percentage; surfaced in the `score_coverage` prompt. |
 
 ### State Graph
 
 ```
-init  (shell: slug topic, mkdir, touch 4 artifact files, capture run_dir)
+init  (shell: mkdir run_dir, touch 4 artifact files, capture run_dir)
   → generate_queries  (prompt: write 3–5 faceted queries to query-log.md;
                        initialize coverage.md with facet list)
     → search_web  (prompt: WebSearch/WebFetch; append findings + [Source: <url>] to knowledge-base.md)
@@ -169,7 +165,7 @@ init  (shell: slug topic, mkdir, touch 4 artifact files, capture run_dir)
 
 ### Output Artifacts
 
-All artifacts are written to `${context.output_dir}/<slug>/` where `<slug>` is a lowercase, hyphenated form of `context.topic`:
+All artifacts are written to `${context.run_dir}` (the per-run directory injected by the runner):
 
 | File | Description |
 |------|-------------|

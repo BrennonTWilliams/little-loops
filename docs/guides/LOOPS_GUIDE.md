@@ -428,10 +428,6 @@ See [`## deep-research`](../reference/loops.md#deep-research) in the loop refere
 
 ```bash
 ll-loop run rn-plan "build a rate-limiting middleware for the API"
-
-# Write plans to a custom directory:
-ll-loop run rn-plan "refactor the authentication module" \
-  --context output_dir=.loops/plans/auth
 ```
 
 **Context variables:**
@@ -439,9 +435,9 @@ ll-loop run rn-plan "refactor the authentication module" \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `task` | `""` | Task description (populated from positional CLI arg via `input_key: task`) |
-| `output_dir` | `.loops/plans` | Directory where per-task run directories are created |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-plan-{timestamp}/`); created automatically before the `init` state. Override with `--context run_dir=path/` to write to a fixed location. |
 
-**Output artifacts** (written to `${output_dir}/<slug>/`):
+**Output artifacts** (written to `${context.run_dir}`):
 
 | File | Description |
 |------|-------------|
@@ -468,16 +464,12 @@ init             (shell: mkdir run_dir, touch plan.md / plan-rubric.md / researc
 
 **Technique**: Accepts a path to an existing plan `.md` file, copies it into a run directory, and calibrates a 9-dimension scoring rubric to the plan's **current** state (unlike `rn-plan`, which always initialises all dimensions at LOW). Then iterates: classify the most needed research type (NEEDS_FILES or NEEDS_WEB) → research → synthesize findings into the plan → score all 9 dimensions → loop until all reach VERY-HIGH or `max_iterations` is exhausted. A `verify_score` shell state reads the rubric file after the LLM emits `ALL_VERY_HIGH` to guard against hallucinated convergence signals.
 
-**When to use**: When you already have a draft plan (from `rn-plan`, `/ll:iterate-plan`, or written manually) and want to iteratively improve it without starting from scratch. Produces an in-place improved `plan.md` alongside a `plan-rubric.md` and `research.md` in a new run directory under `output_dir`.
+**When to use**: When you already have a draft plan (from `rn-plan`, `/ll:iterate-plan`, or written manually) and want to iteratively improve it without starting from scratch. Produces an in-place improved `plan.md` alongside a `plan-rubric.md` and `research.md` in the per-run artifact directory (`${context.run_dir}`).
 
 **Usage:**
 
 ```bash
-ll-loop run rn-refine ".loops/plans/my-task/plan.md"
-
-# Write refined output to a custom directory:
-ll-loop run rn-refine "thoughts/auth-refactor-plan.md" \
-  --context output_dir=.loops/plans/auth-refine
+ll-loop run rn-refine ".loops/runs/rn-plan-20260526T143022/plan.md"
 ```
 
 **Context variables:**
@@ -485,9 +477,9 @@ ll-loop run rn-refine "thoughts/auth-refactor-plan.md" \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `plan_file` | `""` | Path to the existing plan `.md` file (populated from positional CLI arg via `input_key: plan_file`) |
-| `output_dir` | `.loops/plans` | Directory where per-run directories are created |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-refine-{timestamp}/`); created automatically before the `init` state. Override with `--context run_dir=path/` to write to a fixed location. |
 
-**Output artifacts** (written to `${output_dir}/<slug>/`):
+**Output artifacts** (written to `${context.run_dir}`):
 
 | File | Description |
 |------|-------------|
@@ -1026,14 +1018,13 @@ ll-loop run html-anything "a dashboard showing real-time server metrics"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language artifact description — passed as the positional argument |
-| `output_dir` | `.loops/tmp/html-anything` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/html-anything/20260413-143022/`) for `index.html`, `brief.md`, `rubric.md`, `critique.md`, and `screenshot.png` |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/html-anything-{timestamp}/`) containing `index.html`, `brief.md`, `rubric.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
 | `pass_threshold` | `7` | Minimum score per criterion (1–10); **all criteria** must meet their individual rubric thresholds |
 
 Override per-run:
 
 ```bash
 ll-loop run html-anything "SaaS subscription email" \
-  --context output_dir=/tmp/my-email \
   --context pass_threshold=8
 ```
 
@@ -1102,7 +1093,7 @@ ll-loop run hitl-compare ".issues/bugs/P1-BUG-100-implementation-details.md"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `inputs` | (from `loop_input`) | Whitespace-separated file paths or raw text tokens — passed as the positional argument |
-| `output_dir` | `.loops/tmp/hitl-compare` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/hitl-compare/20260517-143022/`) containing `index.html`, `items.md`, `review.md`, `critique.md`, and `screenshot.png` |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/hitl-compare-{timestamp}/`) containing `index.html`, `items.md`, `review.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
 
 **FSM flow:**
 
@@ -1151,8 +1142,6 @@ ll-loop run hitl-md "thoughts/shared/plans/2026-05-18-FEAT-1613-management.md"
 # Review raw markdown text
 ll-loop run hitl-md "# My Plan\n\nThis is the first paragraph..."
 
-# Override output directory
-ll-loop run hitl-md "path/to/doc.md" --context output_dir=/tmp/my-review
 ```
 
 **Context variables:**
@@ -1160,7 +1149,7 @@ ll-loop run hitl-md "path/to/doc.md" --context output_dir=/tmp/my-review
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `input` | (from `loop_input`) | File path or raw markdown text — passed as the positional argument |
-| `output_dir` | `.loops/tmp/hitl-md` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/hitl-md/20260518-143022/`) containing `index.html`, `segments.json`, `critique.md`, and `screenshot.png`. The final approved `index.html` is also copied to `./hitl-md-review.html` in the cwd. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/hitl-md-{timestamp}/`) containing `index.html`, `segments.json`, `critique.md`, and `screenshot.png`. The final approved `index.html` is also copied to `./hitl-md-review.html` in the cwd. Override with `--context run_dir=path/`. |
 
 **FSM flow:**
 
@@ -1208,14 +1197,13 @@ ll-loop run html-website-generator "a landing page for a Dutch art museum"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language website description — passed as the positional argument |
-| `output_dir` | `/tmp/ll-html-generator` | Output directory for `index.html`, `brief.md`, `critique.md`, and `screenshot.png` |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/html-website-generator-{timestamp}/`) for `index.html`, `brief.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
 
 Override per-run:
 
 ```bash
 ll-loop run html-website-generator "museum landing page" \
-  --context output_dir=/tmp/my-site \
   --context pass_threshold=7
 ```
 
@@ -1263,14 +1251,13 @@ ll-loop run svg-image-generator "a minimalist coffee cup icon"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language SVG description — passed as the positional argument |
-| `output_dir` | `.loops/tmp/svg-image-generator` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/svg-image-generator/20260413-143022/`) for `image.svg`, `brief.md`, `critique.md`, and `screenshot.png` |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/svg-image-generator-{timestamp}/`) for `image.svg`, `brief.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
 
 Override per-run:
 
 ```bash
 ll-loop run svg-image-generator "lightning bolt icon" \
-  --context output_dir=/tmp/my-icon \
   --context pass_threshold=7
 ```
 
@@ -1321,14 +1308,13 @@ ll-loop run svg-textgrad "a minimalist coffee cup icon"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language SVG description — passed as the positional argument |
-| `output_dir` | `.loops/tmp/svg-textgrad` | Base directory; each run creates a timestamped subfolder (e.g. `.loops/tmp/svg-textgrad/20260413-143022/`) for `image.svg`, `brief.md`, `critique.md`, `gradients.md`, `scores.md`, `screenshot.png`, `best.svg`, and `best-brief.md` |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/svg-textgrad-{timestamp}/`) for `image.svg`, `brief.md`, `critique.md`, `gradients.md`, `scores.md`, `screenshot.png`, `best.svg`, and `best-brief.md`; created automatically. Override with `--context run_dir=path/`. |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **weighted average** `(2×visual_clarity + 2×originality + craft + scalability) / 6` must meet or exceed this value |
 
 Override per-run:
 
 ```bash
 ll-loop run svg-textgrad "lightning bolt icon" \
-  --context output_dir=/tmp/my-icon \
   --context pass_threshold=7
 ```
 
