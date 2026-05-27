@@ -21,6 +21,7 @@ from little_loops.config.automation import (
 )
 from little_loops.config.cli import CliConfig, RefineStatusConfig
 from little_loops.config.features import (
+    DesignTokensConfig,
     EventsConfig,
     IssuesConfig,
     LearningTestsConfig,
@@ -213,6 +214,9 @@ class BRConfig:
         self._orchestration = OrchestrationConfig.from_dict(
             self._raw_config.get("orchestration", {})
         )
+        self._design_tokens = DesignTokensConfig.from_dict(
+            self._raw_config.get("design_tokens", {})
+        )
 
     @property
     def project(self) -> ProjectConfig:
@@ -288,6 +292,11 @@ class BRConfig:
     def orchestration(self) -> OrchestrationConfig:
         """Get orchestration configuration."""
         return self._orchestration
+
+    @property
+    def design_tokens(self) -> DesignTokensConfig:
+        """Get design tokens configuration."""
+        return self._design_tokens
 
     @property
     def extensions(self) -> list[str]:
@@ -562,6 +571,14 @@ class BRConfig:
             },
             "learning_tests": {
                 "stale_after_days": self._learning_tests.stale_after_days,
+            },
+            "design_tokens": {
+                "enabled": self._design_tokens.enabled,
+                "path": self._design_tokens.path,
+                "primitives_file": self._design_tokens.primitives_file,
+                "semantic_file": self._design_tokens.semantic_file,
+                "themes_dir": self._design_tokens.themes_dir,
+                "active_theme": self._design_tokens.active_theme,
             },
             "events": {
                 "transports": list(self._events.transports),

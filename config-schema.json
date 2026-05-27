@@ -1200,6 +1200,43 @@
       },
       "additionalProperties": false
     },
+    "design_tokens": {
+      "type": "object",
+      "description": "Design system tokens consumed by built-in artifact-generating loops",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable design token loading. When true, load_design_tokens() resolves the token path on session start."
+        },
+        "path": {
+          "type": "string",
+          "default": ".ll/design-tokens",
+          "description": "Directory containing primitives, semantic, and themes files."
+        },
+        "primitives_file": {
+          "type": "string",
+          "default": "primitives.json",
+          "description": "Filename for primitive token values within the path directory."
+        },
+        "semantic_file": {
+          "type": "string",
+          "default": "semantic.json",
+          "description": "Filename for semantic token aliases within the path directory."
+        },
+        "themes_dir": {
+          "type": "string",
+          "default": "themes",
+          "description": "Subdirectory containing per-theme JSON override files."
+        },
+        "active_theme": {
+          "type": "string",
+          "default": "light",
+          "description": "Name of the active theme file (without .json extension) under themes_dir."
+        }
+      },
+      "additionalProperties": false
+    },
     "analytics": {
       "type": "object",
       "description": "Context-window analytics settings (FEAT-1160). When enabled, the post_tool_use hook persists per-tool byte metrics into .ll/history.db for consumption by /ll:ctx-stats.",

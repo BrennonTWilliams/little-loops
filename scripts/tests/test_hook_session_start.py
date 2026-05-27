@@ -188,6 +188,7 @@ class TestSessionStartFeatureValidation:
                 "sync": {"enabled": False},
                 "documents": {"enabled": False},
                 "product": {"enabled": False},
+                "design_tokens": {"enabled": False},
             },
         )
         assert "Warning:" not in fb
@@ -204,9 +205,15 @@ class TestSessionStartFeatureValidation:
                     "categories": {"arch": {"files": ["docs/ARCH.md"]}},
                 },
                 "product": {"enabled": True, "goals_file": ".ll/ll-goals.md"},
+                "design_tokens": {"enabled": False},
             },
         )
         assert "Warning:" not in fb
+
+    def test_warns_design_tokens_enabled_without_path(self, in_tmp: Path) -> None:
+        fb = self._run_with(in_tmp, {"design_tokens": {"enabled": True}})
+        assert "design_tokens.enabled is true but path" in fb
+        assert "does not exist" in fb
 
 
 class TestSessionStartLargeConfigWarning:

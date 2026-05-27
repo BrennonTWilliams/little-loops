@@ -266,6 +266,30 @@ class ScanConfig:
 
 
 @dataclass
+class DesignTokensConfig:
+    """Design system token configuration."""
+
+    enabled: bool = True
+    path: str = ".ll/design-tokens"
+    primitives_file: str = "primitives.json"
+    semantic_file: str = "semantic.json"
+    themes_dir: str = "themes"
+    active_theme: str = "light"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DesignTokensConfig:
+        """Create DesignTokensConfig from dictionary."""
+        return cls(
+            enabled=data.get("enabled", True),
+            path=data.get("path", ".ll/design-tokens"),
+            primitives_file=data.get("primitives_file", "primitives.json"),
+            semantic_file=data.get("semantic_file", "semantic.json"),
+            themes_dir=data.get("themes_dir", "themes"),
+            active_theme=data.get("active_theme", "light"),
+        )
+
+
+@dataclass
 class SprintsConfig:
     """Sprint management configuration."""
 

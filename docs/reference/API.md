@@ -110,6 +110,7 @@ BRConfig(project_root: Path)
 | `dependency_mapping` | `DependencyMappingConfig` | Overlap detection thresholds |
 | `refine_status` | `RefineStatusConfig` | refine-status display settings |
 | `cli` | `CliConfig` | CLI output settings (color toggle and color overrides) |
+| `design_tokens` | `DesignTokensConfig` | Design system token settings |
 | `issue_categories` | `list[str]` | List of category names |
 | `issue_priorities` | `list[str]` | List of priority prefixes |
 

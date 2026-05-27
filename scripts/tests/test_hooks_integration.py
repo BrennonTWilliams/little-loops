@@ -1577,6 +1577,7 @@ class TestSessionStartValidation:
                             "enabled": True,
                             "goals_file": ".ll/ll-goals.md",
                         },
+                        "design_tokens": {"enabled": False},
                     }
                 )
             )
@@ -1608,6 +1609,7 @@ class TestSessionStartValidation:
                         "sync": {"enabled": False},
                         "documents": {"enabled": False},
                         "product": {"enabled": False},
+                        "design_tokens": {"enabled": False},
                     }
                 )
             )
@@ -1621,6 +1623,32 @@ class TestSessionStartValidation:
             )
 
             assert "Warning:" not in result.stderr
+        finally:
+            os.chdir(original_dir)
+
+    def test_warns_design_tokens_enabled_without_path(self, hook_script: Path, tmp_path: Path):
+        """Warns when design_tokens.enabled is true but the path does not exist."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            config_dir = tmp_path / ".ll"
+            config_dir.mkdir()
+            (config_dir / "ll-config.json").write_text(
+                json.dumps({"design_tokens": {"enabled": True}})
+            )
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input="{}",
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            assert "design_tokens.enabled is true but path" in result.stderr
+            assert "does not exist" in result.stderr
         finally:
             os.chdir(original_dir)
 

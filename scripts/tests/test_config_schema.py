@@ -133,6 +133,35 @@ class TestConfigSchema:
         assert "stale_after_days" in lt_props
         assert lt_props["stale_after_days"]["type"] == "integer"
 
+    def test_design_tokens_in_schema(self) -> None:
+        """design_tokens block must be declared in config-schema.json (FEAT-1747).
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing 'design_tokens' will be rejected unless the property
+        is declared here.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        assert "design_tokens" in data["properties"], (
+            "design_tokens is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        dt = data["properties"]["design_tokens"]
+        assert dt["type"] == "object"
+        assert dt.get("additionalProperties") is False
+        props = dt["properties"]
+        assert props["enabled"]["type"] == "boolean"
+        assert props["enabled"]["default"] is True
+        assert props["path"]["type"] == "string"
+        assert props["path"]["default"] == ".ll/design-tokens"
+        assert props["primitives_file"]["type"] == "string"
+        assert props["primitives_file"]["default"] == "primitives.json"
+        assert props["semantic_file"]["type"] == "string"
+        assert props["semantic_file"]["default"] == "semantic.json"
+        assert props["themes_dir"]["type"] == "string"
+        assert props["themes_dir"]["default"] == "themes"
+        assert props["active_theme"]["type"] == "string"
+        assert props["active_theme"]["default"] == "light"
+
     def test_analytics_in_schema(self) -> None:
         """analytics block must be declared in config-schema.json (FEAT-1624).
 

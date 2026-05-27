@@ -175,4 +175,16 @@ def _validate_features(config: dict[str, Any]) -> list[str]:
                 "[little-loops] Warning: documents.enabled is true but no document categories"
                 " configured"
             )
+    design_tokens = (
+        config.get("design_tokens") if isinstance(config.get("design_tokens"), dict) else {}
+    )
+    if isinstance(design_tokens, dict) and design_tokens.get("enabled") is True:
+        from pathlib import Path
+
+        token_path = design_tokens.get("path", ".ll/design-tokens")
+        if not Path(token_path).exists():
+            warnings_out.append(
+                "[little-loops] Warning: design_tokens.enabled is true but path"
+                f" '{token_path}' does not exist"
+            )
     return warnings_out

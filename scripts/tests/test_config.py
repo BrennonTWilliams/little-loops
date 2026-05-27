@@ -23,6 +23,7 @@ from little_loops.config import (
     CommandsConfig,
     ConfidenceGateConfig,
     DependencyMappingConfig,
+    DesignTokensConfig,
     DuplicateDetectionConfig,
     EventsConfig,
     GitHubSyncConfig,
@@ -2125,6 +2126,79 @@ class TestBRConfigLearningTestsIntegration:
 
         config = BRConfig(temp_project_dir)
         assert config.learning_tests.stale_after_days == 7
+
+
+class TestDesignTokensConfig:
+    """Tests for DesignTokensConfig dataclass."""
+
+    def test_from_dict_with_all_fields(self) -> None:
+        """Test creating DesignTokensConfig with all fields specified."""
+        data = {
+            "enabled": False,
+            "path": ".ll/my-tokens",
+            "primitives_file": "prim.json",
+            "semantic_file": "sem.json",
+            "themes_dir": "t",
+            "active_theme": "dark",
+        }
+        config = DesignTokensConfig.from_dict(data)
+        assert config.enabled is False
+        assert config.path == ".ll/my-tokens"
+        assert config.primitives_file == "prim.json"
+        assert config.semantic_file == "sem.json"
+        assert config.themes_dir == "t"
+        assert config.active_theme == "dark"
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating DesignTokensConfig with default values."""
+        config = DesignTokensConfig.from_dict({})
+        assert config.enabled is True
+        assert config.path == ".ll/design-tokens"
+        assert config.primitives_file == "primitives.json"
+        assert config.semantic_file == "semantic.json"
+        assert config.themes_dir == "themes"
+        assert config.active_theme == "light"
+
+
+class TestBRConfigDesignTokensIntegration:
+    """Tests for BRConfig.design_tokens integration."""
+
+    def test_design_tokens_defaults_when_absent(self, temp_project_dir: Path) -> None:
+        """BRConfig.design_tokens returns defaults when key is absent."""
+        config = BRConfig(temp_project_dir)
+        assert config.design_tokens.enabled is True
+        assert config.design_tokens.path == ".ll/design-tokens"
+        assert config.design_tokens.active_theme == "light"
+
+    def test_design_tokens_override_from_config(self, temp_project_dir: Path) -> None:
+        """Custom design_tokens values are loaded from config file."""
+        sample_config: dict[str, Any] = {
+            "design_tokens": {
+                "enabled": False,
+                "path": ".ll/brand-tokens",
+                "active_theme": "dark",
+            }
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.design_tokens.enabled is False
+        assert config.design_tokens.path == ".ll/brand-tokens"
+        assert config.design_tokens.active_theme == "dark"
+
+    def test_design_tokens_round_trip_to_dict(self, temp_project_dir: Path) -> None:
+        """design_tokens key appears in to_dict() with correct structure."""
+        config = BRConfig(temp_project_dir)
+        d = config.to_dict()
+        assert "design_tokens" in d
+        dt = d["design_tokens"]
+        assert dt["enabled"] is True
+        assert dt["path"] == ".ll/design-tokens"
+        assert dt["primitives_file"] == "primitives.json"
+        assert dt["semantic_file"] == "semantic.json"
+        assert dt["themes_dir"] == "themes"
+        assert dt["active_theme"] == "light"
 
 
 class TestDeepMerge:
