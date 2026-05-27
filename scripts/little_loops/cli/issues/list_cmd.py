@@ -141,7 +141,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
         for issue, stat in issues_with_status:
             if issue.issue_id.split("-", 1)[0] == "EPIC":
                 continue
-            key = issue.parent
+            key = issue.parent if (issue.parent and issue.parent.split("-", 1)[0] == "EPIC") else None
             if key not in parent_buckets:
                 parent_buckets[key] = []
             parent_buckets[key].append((issue, stat))
