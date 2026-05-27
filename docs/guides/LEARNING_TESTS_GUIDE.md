@@ -186,6 +186,15 @@ Delete a record outright (`rm .ll/learning-tests/<slug>.md`) only when the targe
 
 **Pair with `/ll:scrape-docs`.** When the target has vendor documentation, mirror the docs locally first (the `scrape-docs` skill writes them under `docs/`), then run `/ll:explore-api` — the Ingest phase will read the mirrored docs and produce sharper hypotheses than running against nothing.
 
+**Full end-to-end adoption with `adopt-third-party-api`.** To go from a vendor docs URL straight to a verified, citation-linked integration playbook in one command, use the `adopt-third-party-api` loop — it combines `/ll:scrape-docs`, LLM enumeration of up to 7 key surfaces, and `ready-to-implement-gate` proof in a single automated pipeline:
+
+```bash
+ll-loop run adopt-third-party-api "https://manual.raycast.com/extensions"
+# Writes docs/integration-manual-raycast-com.md with one section per proven LT record
+```
+
+Partial coverage (some targets refuted or exhausted) still produces a playbook — unverified sections are flagged at the top with citations to the relevant LT records. See [LOOPS_GUIDE.md → API Adoption](LOOPS_GUIDE.md#api-adoption) for details.
+
 **Re-prove after major version bumps.** After upgrading a dependency that has a learning-test record, `mark-stale` the record and re-run `/ll:explore-api`. The diff between the old (stale) record's assertions and the new one is a concise migration checklist.
 
 ## Further Reading

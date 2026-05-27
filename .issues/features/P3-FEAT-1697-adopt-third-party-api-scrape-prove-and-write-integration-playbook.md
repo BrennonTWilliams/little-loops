@@ -2,12 +2,23 @@
 id: FEAT-1697
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-25T20:53:43Z'
+completed_at: '2026-05-27T04:41:58Z'
 discovered_date: '2026-05-25'
 discovered_by: capture-issue
 parent: EPIC-1694
-relates_to: [EPIC-1694, FEAT-1695, FEAT-1287, FEAT-1283]
+relates_to:
+- EPIC-1694
+- FEAT-1695
+- FEAT-1287
+- FEAT-1283
+confidence_score: 95
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1697: `adopt-third-party-api` — scrape, prove, and write integration playbook
@@ -131,6 +142,62 @@ Both must:
 - One section per proven LT record: title, proven shape (extracted from the LT's frontmatter / body), sample call (cribbed from the proof script), citation `[Proof: .ll/learning-tests/<slug>.md](../.ll/learning-tests/<slug>.md)`.
 - `build_playbook_partial` adds a top-of-file warning block listing which targets were refuted or exhausted, with citations to those LT records too.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — concrete YAML patterns from codebase analysis:_
+
+**`scrape` state** — slash_command pattern (from `outer-loop-eval.yaml:44–53`, `autodev.yaml:180–189`):
+```yaml
+scrape:
+  action: "/ll:scrape-docs ${context.input}"
+  action_type: slash_command
+  capture: scrape_output
+  on_error: failed
+  next: enumerate
+```
+`action_type: slash_command` collapses to `"prompt"` mode internally — no evaluator needed when using `next:` for unconditional routing.
+
+**`enumerate` state** — `output_json` evaluator exact syntax (from `assumption-firewall.yaml:78–83`, `ready-to-implement-gate.yaml:25–30`):
+```yaml
+  evaluate:
+    type: output_json
+    path: ".count"
+    operator: gt
+    target: 0
+  on_yes: flatten_targets
+  on_no: failed
+```
+
+**`flatten_targets` state** — triple-quote heredoc pattern for JSON parse (from `assumption-firewall.yaml:85–95`):
+```yaml
+flatten_targets:
+  action_type: shell
+  action: |
+    python3 << 'PYEOF'
+    import json
+    data = json.loads("""${captured.enumeration.output}""")
+    print(",".join(data["targets"]))
+    PYEOF
+  capture: targets
+  on_error: failed
+  next: prove
+```
+The `"""${captured.enumeration.output}"""` triple-quote form survives newlines and embedded quotes in the LLM output.
+
+**`prove` state** — sub-loop invocation (from `assumption-firewall.yaml:97–105`). Note: `ready-to-implement-gate`'s failure terminal is `blocked` (not `failed`); `on_failure` routes correctly because any non-`done` terminal triggers `on_no`:
+```yaml
+prove:
+  loop: ready-to-implement-gate
+  with:
+    targets: "${captured.targets.output}"
+    max_retries: "2"
+  on_success: build_playbook
+  on_failure: build_playbook_partial
+  on_error: build_playbook_partial
+```
+
+**Domain derivation in `enumerate` prompt** — parse `${context.input}` as a URL; the prompt must instruct the model to derive `<domain>` via `netloc.replace('.', '-')` (e.g., `manual.raycast.com` → `manual-raycast-com`) and embed it in the JSON output so that `build_playbook`/`build_playbook_partial` know where to read from.
+
 ### Meta-loop compliance
 
 This loop **does not modify harness artifacts** — it writes to `docs/` and reads from `.ll/learning-tests/`. Rule MR-1 does not apply directly. The two LLM playbook-writing steps are not gated by evaluators (they always produce output and route to `done`); this is fine because their output is documentation, not code or harness config, and is reviewed by the developer before any code is written from it.
@@ -165,13 +232,22 @@ ll-loop run adopt-third-party-api "https://manual.raycast.com/extensions"
 ### Files to Modify
 
 - `scripts/little_loops/loops/adopt-third-party-api.yaml` — **new** (the loop)
-- `scripts/tests/test_builtin_loops.py` — add `"adopt-third-party-api"` to `expected` set in `test_expected_loops_exist`
+- `scripts/tests/test_builtin_loops.py` — add `"adopt-third-party-api"` to `expected` set in `test_expected_loops_exist`; add `TestAdoptThirdPartyApiLoop` structural test class (see Tests section)
+- `README.md` — update "N FSM loops" numeric count; tracked by `doc_counts.py` / `ll-verify-docs`; will fail CI check if not updated atomically with the new YAML [Wiring pass added by `/ll:wire-issue`]
+- `CONTRIBUTING.md` — update "N YAML files" count in `loops/` entry under `## Project Structure`; tracked by `doc_counts.py` / `ll-verify-docs` [Wiring pass added by `/ll:wire-issue`]
 
 ### Dependent Files (Callers/Importers)
 
-- `scripts/little_loops/loops/ready-to-implement-gate.yaml` (FEAT-1695) — **hard dependency** (sub-loop for the `prove` step)
+- `scripts/little_loops/loops/ready-to-implement-gate.yaml` (FEAT-1695) — **hard dependency** (sub-loop for the `prove` step); confirmed present, terminal states are `done` (success) and `blocked` (failure)
 - `skills/scrape-docs/SKILL.md` — `scrape` step depends on the skill's output contract (`docs/docs-<domain>/` with `<domain> = netloc.replace('.','-')`)
 - `skills/explore-api/SKILL.md` — transitively, via FEAT-1695's gate
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **`skills/scrape-docs/SKILL.md` exists at `.claude/skills/scrape-docs/SKILL.md`** — confirmed present; the `/ll:scrape-docs` slash command is wired and available. The pre-implementation blocker identified during refinement is resolved.
+- `scripts/tests/test_builtin_loops.py:68–124` — `test_expected_loops_exist` uses `expected == actual` (strict equality, not subset). The YAML file and the test update must be in the same commit; adding `"adopt-third-party-api"` to `expected` before the YAML exists will fail CI.
 
 ### Similar Patterns
 
@@ -187,9 +263,18 @@ ll-loop run adopt-third-party-api "https://manual.raycast.com/extensions"
 - Manual smoke (full coverage): point at a docs URL whose API surface is fully provable; expect `done` via `build_playbook`, playbook at `docs/integration-<domain>.md` with citations
 - Manual smoke (partial coverage): point at a docs URL with at least one refutable claim; expect `done` via `build_playbook_partial`, playbook with top warning block
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` — add `TestAdoptThirdPartyApiLoop` class following the pattern in `TestAssumptionFirewallLoop` (lines 3794–3846); minimum assertions: `test_description_is_nonempty`, `test_prove_delegates_to_ready_to_implement_gate` (`prove.loop == "ready-to-implement-gate"`), `test_prove_with_contains_targets_and_max_retries`, `test_done_is_terminal`, `test_failed_is_terminal`
+- **Sweep tests that auto-cover the new YAML** (no code change needed, but YAML must satisfy): `test_all_parse_as_yaml`, `test_all_validate_as_valid_fsm`, `test_all_have_description_field` (requires non-empty top-level `description:`), `test_no_bare_bash_variable_in_shell_actions` (requires `$${VAR}` not `${VAR}` in shell actions), `test_all_failure_terminals_have_diagnostic_action`
+
 ### Documentation
 
-- The loop *produces* documentation as output (`docs/integration-<domain>.md` per invocation); no other docs changes in scope here
+- The loop *produces* documentation as output (`docs/integration-<domain>.md` per invocation)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/README.md` — add catalog row for `adopt-third-party-api` in an Integration/API category section; convention-only, no automated test gate
+- `docs/guides/LOOPS_GUIDE.md` — add row to `## Built-in Loops` section in an appropriate category (e.g., "API Adoption" or alongside `assumption-firewall`); this is the primary user-facing discovery surface; convention-only
+- `docs/guides/LEARNING_TESTS_GUIDE.md` — add cross-reference under `## Practical Patterns` pointing to the combined scrape+prove+playbook workflow; convention-only
 
 ### Configuration
 
@@ -199,9 +284,9 @@ ll-loop run adopt-third-party-api "https://manual.raycast.com/extensions"
 
 1. **Confirm FEAT-1695 is merged and validates** — this loop depends on `ready-to-implement-gate` being discoverable.
 2. **Draft `scripts/little_loops/loops/adopt-third-party-api.yaml`** using the seven-state design above.
-3. **Wire `scrape`** as a slash-command invocation (check existing loops for the canonical `action_type` shape; likely `slash_command` or `command`).
+3. **Wire `scrape`** as `action_type: slash_command` with `action: "/ll:scrape-docs ${context.input}"`, `capture: scrape_output`, `on_error: failed`, `next: enumerate` — this exact shape is used in `outer-loop-eval.yaml:44–53` and `autodev.yaml:180–189`. The skill is confirmed available at `.claude/skills/scrape-docs/SKILL.md`.
 4. **Author the enumeration prompt inline:** must parse `${context.input}` to derive `<domain>`, read `docs/docs-<domain>/*.md`, identify up to 7 targets, emit JSON. Evaluate `output_json .count gt 0`.
-5. **Wire `flatten_targets`** as a shell step using `python3` to extract the comma-separated string from `${captured.enumeration.output}`.
+5. **Wire `flatten_targets`** as a shell step: `action_type: shell`, inline `python3 << 'PYEOF'` heredoc with `json.loads("""${captured.enumeration.output}""")` and `print(",".join(data["targets"]))` — exact pattern from `assumption-firewall.yaml:85–95`.
 6. **Wire `prove`** as a sub-loop call to `ready-to-implement-gate` with the captured targets and `max_retries: "2"`; `on_success: build_playbook`, `on_failure: build_playbook_partial`.
 7. **Author the two playbook prompts** (`build_playbook`, `build_playbook_partial`): both write to `docs/integration-<domain>.md`. Partial version flags refuted/exhausted targets at the top.
 8. **Run `ll-loop validate adopt-third-party-api`** and iterate until no ERRORs.
@@ -209,6 +294,14 @@ ll-loop run adopt-third-party-api "https://manual.raycast.com/extensions"
 10. **Smoke test the failed path:** point at a near-empty docs URL; verify `failed` terminal.
 11. **Smoke test the full-coverage path:** point at a tractable API (one whose surfaces are likely provable from public docs without auth); verify `done` via `build_playbook` and inspect `docs/integration-<domain>.md` for proper citations.
 12. **Smoke test the partial-coverage path:** point at an API with at least one known refutable claim (or inject one by hand); verify `done` via `build_playbook_partial` with a top warning block.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+13. **Update `README.md` and `CONTRIBUTING.md` loop counts** — `doc_counts.py` scans these files for numeric loop counts and exits 1 if they don't match the filesystem. Update atomically in the same commit as the new YAML; run `ll-verify-docs` to confirm no mismatch.
+14. **Add `TestAdoptThirdPartyApiLoop` class** to `scripts/tests/test_builtin_loops.py` — follow `TestAssumptionFirewallLoop` (lines 3794–3846) as the structural template; assert `prove.loop == "ready-to-implement-gate"`, `prove.with` has `targets` and `max_retries`, and `done`/`failed` are terminal states.
+15. **Add catalog entries** — add a row to `scripts/little_loops/loops/README.md` and `docs/guides/LOOPS_GUIDE.md` for `adopt-third-party-api` in an Integration/API Adoption section alongside the other gate-consumer loops.
 
 ## Acceptance Criteria
 
@@ -240,5 +333,23 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-05-25 | Priority: P3
 
+## Resolution
+
+Implemented `scripts/little_loops/loops/adopt-third-party-api.yaml` — a 9-state FSM loop:
+- `scrape` (slash_command) → `/ll:scrape-docs ${context.input}`
+- `enumerate` (prompt) → reads mirrored docs, emits `ENUMERATE_JSON:{...}` with up to 7 targets and derived domain
+- `parse_enumeration` (shell) → extracts sentinel line, caps targets at 7, falls back domain from URL parse
+- `flatten_targets` (shell) → joins targets as comma-separated string
+- `prove` (sub-loop) → `ready-to-implement-gate` with `max_retries: "2"`
+- `build_playbook` / `build_playbook_partial` (prompt) → writes `docs/integration-<domain>.md` with LT citations
+- `done` / `failed` (terminal)
+
+Also updated: `test_builtin_loops.py` (expected set + `TestAdoptThirdPartyApiLoop`), `README.md` (54→57 FSM loops), loops README catalog, LOOPS_GUIDE.md (API Adoption section), LEARNING_TESTS_GUIDE.md (end-to-end adoption pattern).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-27T04:41:58Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-05-27T04:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a67b0ab-80e1-4a4e-8e68-036bd62c36e3.jsonl`
+- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fdfb6b0a-f45e-498c-aa5c-9d67c1fbc347.jsonl`
+- `/ll:wire-issue` - 2026-05-27T04:25:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec9a57c6-1dde-454e-9982-6951fab1dbee.jsonl`
+- `/ll:refine-issue` - 2026-05-27T04:20:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d4cc50b2-5fc3-49cf-96e7-6ce8189bc5f6.jsonl`
 - `/ll:capture-issue` - 2026-05-25T20:53:43Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/810cf8d1-477c-42da-bb20-b577b2ee3ad9.jsonl`

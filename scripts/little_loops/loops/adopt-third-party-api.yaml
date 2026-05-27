@@ -1,0 +1,187 @@
+name: adopt-third-party-api
+category: integration
+description: Scrape a vendor docs URL, enumerate up to 7 key endpoints/features, prove them via ready-to-implement-gate, and write a citation-linked integration playbook to docs/integration-<domain>.md.
+initial: scrape
+max_iterations: 150
+timeout: 7200
+on_handoff: spawn
+
+context:
+  input: ""  # Vendor docs URL (e.g., https://manual.raycast.com/extensions); required
+
+states:
+
+  scrape:
+    action: "/ll:scrape-docs ${context.input}"
+    action_type: slash_command
+    capture: scrape_output
+    on_error: failed
+    next: enumerate
+
+  enumerate:
+    action_type: prompt
+    timeout: 300
+    action: |
+      You are an API surface enumerator for integration playbook generation.
+
+      INPUT URL: ${context.input}
+
+      Step 1 — Derive the domain string:
+      - Extract the hostname from the URL (e.g., "manual.raycast.com" from "https://manual.raycast.com/extensions")
+      - Replace ALL dots with dashes: "manual-raycast-com"
+      - This is <domain>. The scraped docs were written to docs/docs-<domain>/ by the previous step.
+
+      Step 2 — Read the scraped docs from docs/docs-<domain>/*.md.
+
+      Step 3 — Identify up to 7 significant integration surfaces. Criteria:
+      - A "significant integration surface" is an endpoint, feature, or behavioral contract a
+        developer MUST understand to integrate this API correctly.
+      - Phrase each as a single concrete sentence suitable for "/ll:explore-api", e.g.:
+          "Stripe webhook signature verification (Stripe-Signature header)"
+          "useNavigation hook contract for Raycast extension navigation"
+      - Cap at 7 maximum. Select the highest-impact surfaces.
+      - If the docs are too sparse to identify any surface, set count: 0.
+
+      Output your analysis, then on the LAST LINE output exactly:
+      ENUMERATE_JSON:{"targets": ["...", ...], "domain": "<domain>", "count": <N>, "rationale": "<why these N>"}
+
+      If no surfaces found:
+      ENUMERATE_JSON:{"targets": [], "domain": "<domain>", "count": 0, "rationale": "Docs too sparse to enumerate integration surface."}
+    capture: raw_enumeration
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response end with an ENUMERATE_JSON: line containing valid JSON with 'targets', 'domain', 'count', and 'rationale' fields?"
+      min_confidence: 0.5
+    on_yes: parse_enumeration
+    on_no: parse_enumeration
+
+  parse_enumeration:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, sys
+      from urllib.parse import urlparse
+      output = """${captured.raw_enumeration.output}"""
+      found = None
+      for line in reversed(output.split('\n')):
+          line = line.strip()
+          if line.startswith('ENUMERATE_JSON:'):
+              found = line[len('ENUMERATE_JSON:'):]
+              break
+      url = "${context.input}".strip()
+      try:
+          fallback_domain = urlparse(url).netloc.replace('.', '-')
+      except Exception:
+          fallback_domain = "unknown"
+      if not found:
+          print(json.dumps({"targets": [], "domain": fallback_domain, "count": 0, "rationale": "Failed to parse enumeration output."}))
+          sys.exit(0)
+      try:
+          data = json.loads(found)
+          targets = [t for t in data.get("targets", []) if t.strip()][:7]
+          count = len(targets)
+          domain = data.get("domain") or fallback_domain
+          print(json.dumps({"targets": targets, "domain": domain, "count": count, "rationale": data.get("rationale", "")}))
+      except (json.JSONDecodeError, ValueError) as e:
+          print(json.dumps({"targets": [], "domain": fallback_domain, "count": 0, "rationale": f"JSON parse error: {e}"}))
+      PYEOF
+    capture: enumeration
+    evaluate:
+      type: output_json
+      path: ".count"
+      operator: gt
+      target: 0
+    on_yes: flatten_targets
+    on_no: failed
+
+  flatten_targets:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json
+      data = json.loads("""${captured.enumeration.output}""")
+      print(",".join(data["targets"]))
+      PYEOF
+    capture: targets
+    on_error: failed
+    next: prove
+
+  prove:
+    loop: ready-to-implement-gate
+    with:
+      targets: "${captured.targets.output}"
+      max_retries: "2"
+    on_success: build_playbook
+    on_failure: build_playbook_partial
+    on_error: build_playbook_partial
+
+  build_playbook:
+    action_type: prompt
+    timeout: 600
+    action: |
+      You are writing an integration playbook. All enumerated targets were proven in the Learning-Test Registry.
+
+      ENUMERATION RESULTS:
+      ${captured.enumeration.output}
+
+      Parse the JSON above to get: domain (string), targets (list of strings).
+
+      Task: Write docs/integration-<domain>.md (create or overwrite) with:
+
+      1. Title: "# Integration Playbook: <domain>"
+      2. Intro: one sentence describing what this API does.
+      3. One section per proven target (in targets order):
+         ### <target sentence>
+         - **Proven shape**: (extracted from .ll/learning-tests/<slug>.md frontmatter/body)
+         - **Sample call**: (cribbed from proof script in the LT record)
+         - **Citation**: [Proof: .ll/learning-tests/<slug>.md](../.ll/learning-tests/<slug>.md)
+         - **Caveats**: any gotchas from the LT record (omit if none)
+      4. ## Summary — bullet list of all proven targets.
+
+      To find LT records: search .ll/learning-tests/ for files whose name or body matches each target.
+      Write the complete playbook to disk.
+      Output "PLAYBOOK_WRITTEN: docs/integration-<domain>.md" when done.
+    capture: playbook_result
+    next: done
+
+  build_playbook_partial:
+    action_type: prompt
+    timeout: 600
+    action: |
+      You are writing a partial integration playbook. Some enumerated targets could not be proven.
+
+      ENUMERATION RESULTS:
+      ${captured.enumeration.output}
+
+      Parse the JSON above to get: domain (string), targets (list of strings).
+
+      Task: Write docs/integration-<domain>.md (create or overwrite) with:
+
+      1. Title: "# Integration Playbook: <domain> (Partial Coverage)"
+      2. Warning block at the top:
+         > ⚠️ Partial coverage: N of M surfaces could not be proven.
+         > Unverified: <list each unverified target with its LT citation if available>
+      3. One section per proven target (in targets order):
+         ### <target sentence>
+         - **Proven shape**: (from .ll/learning-tests/<slug>.md)
+         - **Sample call**: (from proof script)
+         - **Citation**: [Proof: .ll/learning-tests/<slug>.md](../.ll/learning-tests/<slug>.md)
+         - **Caveats**: any gotchas (omit if none)
+      4. One section per unverified target, labeled "⚠️ Unverified: <target>":
+         - What the docs claim
+         - Why it could not be proven (refuted behavior discrepancy / exhausted retries / not found)
+         - Citation to LT record if one exists: [Attempt: .ll/learning-tests/<slug>.md](../.ll/learning-tests/<slug>.md)
+         - Design guidance: how to work around or validate manually
+      5. ## Summary — proven vs. unverified count.
+
+      To determine proven vs. unverified: check .ll/learning-tests/ for records and their status field.
+      Write the complete playbook to disk.
+      Output "PLAYBOOK_WRITTEN: docs/integration-<domain>.md" when done.
+    capture: playbook_result
+    next: done
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true

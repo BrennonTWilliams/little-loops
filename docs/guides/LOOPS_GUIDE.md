@@ -369,6 +369,18 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 
 **Refine limit guard**: The loop enforces a **lifetime cap** on total `/ll:refine-issue` calls per issue across all loop runs. At the start of each run, the `check_lifetime_limit` state reads the issue's cumulative `refine_count` from `ll-issues refine-status --json` and compares it against `commands.max_refine_count` in `ll-config.json` (default: **5**, range: 1–20). If the cap is reached, the loop routes to `breakdown_issue` (invoking `/ll:issue-size-review`) rather than failing — a persistent readiness gap after multiple refinement passes signals a scope problem, not a content problem. To raise the limit, set `commands.max_refine_count` in your `ll-config.json`.
 
+**API Adoption**
+
+| Loop | Description |
+|------|-------------|
+| `adopt-third-party-api` | End-to-end API adoption pipeline — scrapes a vendor docs URL via `/ll:scrape-docs`, enumerates up to 7 significant endpoints/features, proves each via `ready-to-implement-gate`, and writes a citation-linked integration playbook to `docs/integration-<domain>.md`. Partial coverage (some targets refuted or exhausted) still produces a playbook with a top warning block listing unverified sections. |
+
+Run:
+```bash
+ll-loop run adopt-third-party-api "https://manual.raycast.com/extensions"
+# Scrapes docs → enumerates targets → proves each → writes docs/integration-manual-raycast-com.md
+```
+
 **Research & Knowledge**
 
 | Loop | Description |
