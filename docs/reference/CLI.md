@@ -457,11 +457,11 @@ Show current status of a loop. Aggregates across all running instances of `<loop
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--json` | `-j` | Output loop state as JSON. Returns a single object when one instance is running; returns a JSON array of objects (each including `instance_id`, `pid`, `pid_source`, `log_file`, `events_file`) when two or more instances are running. The `pid` field is populated from the `.pid` file if present, otherwise falls back to the `.lock` file. The `pid_source` field is `"pid_file"`, `"lock_file"`, or `null`. `log_file` is `null` for foreground runs (they never write a `.log` file). `events_file` points to the `<instance-id>.events.jsonl` file, which exists for all run modes |
+| `--json` | `-j` | Output loop state as JSON. Returns a single object when one instance is running; returns a JSON array of objects (each including `instance_id`, `pid`, `pid_source`, `log_file`, `events_file`) when two or more instances are running. The `pid` field is populated from the `.pid` file if present, otherwise falls back to the `.lock` file. The `pid_source` field is `"pid_file"`, `"lock_file"`, or `null`. `log_file` is a path for both foreground and background runs; `null` only for background-spawned child processes (`--foreground-internal`) or pre-ENH-1703 state files. `events_file` points to the `<instance-id>.events.jsonl` file, which exists for all run modes |
 
 The human-readable `Log:` line uses one of three labels:
 - `Log: <path>` — background run with its `.log` file present (normal case)
-- `Log: (foreground run — output went to terminal)` — no `.pid` file; run mode never produced a log
+- `Log: (foreground run — output went to terminal)` — legacy fallback only (pre-ENH-1703 instances or `instance_id=None` runs); foreground runs after ENH-1703 always produce a `.log` file and display `Log: <path>` instead
 - `Log: (expected <path>, missing)` — `.pid` file exists but `.log` was deleted (something went wrong)
 
 An `Events:` line follows whenever an `<instance-id>.events.jsonl` file is found, showing the event count and age of the most recent event regardless of run mode.

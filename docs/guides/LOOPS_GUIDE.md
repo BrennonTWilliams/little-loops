@@ -1731,14 +1731,14 @@ Loop my-scan started in background (PID: 12345)
 # Check whether the process is alive and what state the loop is in
 ll-loop status my-scan
 
-# Stream live output for a background run (log_file is null for foreground runs)
+# Stream live output (works for both foreground and background runs)
 tail -f $(ll-loop status my-scan --json | python3 -c "import sys,json; print(json.load(sys.stdin).get('log_file') or '')")
 
 # For foreground runs, inspect the always-present events file instead
 ll-loop status my-scan --json | python3 -c "import sys,json; print(json.load(sys.stdin).get('events_file') or '')"
 ```
 
-Background runs write stdout and stderr to `.loops/.running/<instance-id>.log`. Foreground runs send output directly to the terminal and never create a `.log` file — `log_file` is `null` in `--json` output for these runs. All runs (foreground and background) write structured events to `.loops/.running/<instance-id>.events.jsonl`; use the `events_file` field from `--json` output to locate it. The PID may be stored in `.loops/.running/<instance-id>.pid` (background-mode processes) or in `.loops/.running/<instance-id>.lock` (foreground runs); `ll-loop status` checks both, preferring the `.pid` file and falling back to the `.lock` file. The `pid_source` field in `--json` output indicates which file the PID came from. The `instance-id` is `<loop-name>-<YYYYMMDDTHHMMSS>` (e.g. `my-scan-20260503T122306`); use `ll-loop status <loop-name> --json` to retrieve the exact log or events path for a running instance.
+Both foreground and background runs write stdout and stderr to `.loops/.running/<instance-id>.log` (ANSI escape sequences stripped). `log_file` in `--json` output is the path to this file for all run modes; `null` only for background-spawned child processes (`--foreground-internal`) or pre-ENH-1703 state files. All runs also write structured events to `.loops/.running/<instance-id>.events.jsonl`; use the `events_file` field from `--json` output to locate it. The PID may be stored in `.loops/.running/<instance-id>.pid` (background-mode processes) or in `.loops/.running/<instance-id>.lock` (foreground runs); `ll-loop status` checks both, preferring the `.pid` file and falling back to the `.lock` file. The `pid_source` field in `--json` output indicates which file the PID came from. The `instance-id` is `<loop-name>-<YYYYMMDDTHHMMSS>` (e.g. `my-scan-20260503T122306`); use `ll-loop status <loop-name> --json` to retrieve the exact log or events path for a running instance.
 
 **Note**: `ll-loop status` may transparently rewrite orphaned state files. When a state file claims `status: running` but the PID (resolved via `.pid` → `.lock` → embedded `state.pid`) is provably dead, the file is updated in-place to `status: interrupted` and a `reconciled_at` timestamp is recorded. This is a no-op for live processes.
 
@@ -2664,6 +2664,7 @@ Each `check-*` state uses `evaluate: type: exit_code` to route on the skill's ex
 - **State is persisted to disk** after every transition. If a loop is interrupted, `ll-loop resume` picks up where it left off.
 - **Convergence loops** use `direction:` to control whether the metric should go down (`minimize`, default) or up (`maximize`).
 - **Loop run state, event logs, and meta-eval telemetry are automatically archived** to `.loops/.history/<timestamp>-<loop-name>/` immediately on completion. Meta-loops also archive `meta-eval.jsonl` alongside `state.json` and `events.jsonl`. Use `ll-loop history <name>` without a `run_id` to list archived runs, or `ll-loop history <name> <run_id>` to inspect a specific one.
+- **Foreground runs always write a log file** to `.loops/.running/<instance-id>.log` (same path as background runs). Output is ANSI-stripped plain text; use `tail -f` or `grep` for post-hoc inspection. `ll-loop status <loop>` shows the path in the `Log:` line.
 
 ## Composable Sub-Loops
 

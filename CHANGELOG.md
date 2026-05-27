@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`run_dir` injection for built-in loops** — Each loop run now gets a dedicated artifact directory under `.loops/runs/<loop>/<run-id>/`; built-in loops migrated to use `run_dir` for all per-run output. (ENH-1726)
 - **`--show-diagrams slim` preset** — New `slim` preset renders FSM diagrams in a compact single-column layout for narrow terminals. (ENH-1702)
+- **Always-on foreground log capture via `_TeeWriter`** — Foreground runs now always tee stdout and stderr (ANSI-stripped) to `.loops/.running/<instance-id>.log`, matching background run behavior. `log_file` in `ll-loop status --json` is now a path for all run modes; `null` only for `--foreground-internal` children or pre-ENH-1703 state files. (ENH-1703)
 - **`ll-issues list --group-by epic`** — Issues can now be grouped by their parent epic in list output. (ENH-1727)
 - **`general-task` execute split into 4 sub-states** — Execution phase decomposed into granular states for better observability and recovery. (ENH-1732)
 - **Deepest active loop shown in pinned pane** — Pinned status pane now shows only the innermost running loop rather than the outermost.
