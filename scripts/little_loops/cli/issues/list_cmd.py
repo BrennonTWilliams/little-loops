@@ -139,6 +139,8 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
 
         parent_buckets: dict[str | None, list] = {}
         for issue, stat in issues_with_status:
+            if issue.issue_id.split("-", 1)[0] == "EPIC":
+                continue
             key = issue.parent
             if key not in parent_buckets:
                 parent_buckets[key] = []
@@ -165,7 +167,8 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                 status_tag = f" [{stat}]" if stat not in ("open", "in_progress") else ""
                 lines.append(f"  {colored_priority}  {colored_id}  {issue.title}{status_tag}")
             lines.append("")
-        lines.append(f"Total: {len(issues_with_status)} active issues")
+        displayed = sum(len(g) for g in parent_buckets.values())
+        lines.append(f"Total: {displayed} active issues (excluding EPICs)")
         print("\n".join(lines))
         return 0
 
