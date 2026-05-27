@@ -1,0 +1,113 @@
+name: assumption-firewall
+category: gate
+description: Gates an issue against the Learning-Test Registry; extracts external-API assumptions (max 7) via LLM, delegates proof to ready-to-implement-gate, routes done/blocked/no_external_deps.
+initial: read_issue
+max_iterations: 100
+timeout: 7200
+on_handoff: spawn
+
+context:
+  input: ""  # Issue ID (e.g., FEAT-2001); required
+
+states:
+
+  read_issue:
+    action: cat "$(ll-issues path '${context.input}')"
+    action_type: shell
+    capture: issue_content
+    on_error: blocked
+    next: extract_assumptions
+
+  extract_assumptions:
+    action_type: prompt
+    timeout: 300
+    action: |
+      You are an assumption extractor. Analyze the following issue and identify external-API assumptions.
+
+      An "external-API assumption" is a claim about behavior of third-party services, SDKs, libraries,
+      or language stdlib functions whose contract is non-obvious. Internal-codebase claims are OUT OF SCOPE.
+
+      ISSUE CONTENT:
+      ${captured.issue_content.output}
+
+      Instructions:
+      1. Identify all external-API assumptions made in this issue (in Summary, Motivation, Proposed Solution, etc.)
+      2. Cap at 7 assumptions maximum. If more than 7 exist, select the highest-risk seven and note the rest in rationale.
+      3. Phrase each assumption as a single concrete sentence suitable for "/ll:explore-api"
+         (e.g., "Stripe webhook signature verification (Stripe-Signature header)").
+      4. If you find zero external-API assumptions (e.g., the issue only touches internal code), return count: 0 and empty targets.
+
+      Output a brief analysis, then on the LAST LINE output exactly:
+      ASSUMPTIONS_JSON:{"targets": ["...", ...], "rationale": "<one paragraph>", "count": <N>}
+
+      If no external-API assumptions exist:
+      ASSUMPTIONS_JSON:{"targets": [], "rationale": "No external-API assumptions found.", "count": 0}
+    capture: raw_extraction
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response end with an ASSUMPTIONS_JSON: line containing valid JSON with 'targets', 'rationale', and 'count' fields?"
+      min_confidence: 0.5
+    on_yes: parse_assumptions
+    on_no: parse_assumptions
+
+  parse_assumptions:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, sys
+      output = """${captured.raw_extraction.output}"""
+      found = None
+      for line in reversed(output.split('\n')):
+          line = line.strip()
+          if line.startswith('ASSUMPTIONS_JSON:'):
+              found = line[len('ASSUMPTIONS_JSON:'):]
+              break
+      if not found:
+          print(json.dumps({"targets": [], "rationale": "Failed to parse extraction output.", "count": 0}))
+          sys.exit(0)
+      try:
+          data = json.loads(found)
+          targets = [t for t in data.get("targets", []) if t.strip()][:7]
+          count = len(targets)
+          print(json.dumps({"targets": targets, "rationale": data.get("rationale", ""), "count": count}))
+      except (json.JSONDecodeError, ValueError) as e:
+          print(json.dumps({"targets": [], "rationale": f"JSON parse error: {e}", "count": 0}))
+      PYEOF
+    capture: extracted
+    evaluate:
+      type: output_json
+      path: ".count"
+      operator: gt
+      target: 0
+    on_yes: flatten_targets
+    on_no: no_external_deps
+
+  flatten_targets:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json
+      data = json.loads("""${captured.extracted.output}""")
+      print(",".join(data["targets"]))
+      PYEOF
+    capture: targets
+    on_error: blocked
+    next: run_gate
+
+  run_gate:
+    loop: ready-to-implement-gate
+    with:
+      targets: "${captured.targets.output}"
+      max_retries: "2"
+    on_success: done
+    on_failure: blocked
+    on_error: blocked
+
+  done:
+    terminal: true
+
+  blocked:
+    terminal: true
+
+  no_external_deps:
+    terminal: true

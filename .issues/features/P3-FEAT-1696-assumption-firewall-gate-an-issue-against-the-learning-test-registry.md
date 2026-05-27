@@ -2,12 +2,24 @@
 id: FEAT-1696
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-25T20:53:43Z'
+completed_at: '2026-05-27T04:12:01Z'
 discovered_date: '2026-05-25'
 discovered_by: capture-issue
 parent: EPIC-1694
-relates_to: [EPIC-1694, FEAT-1695, FEAT-1287, FEAT-1283]
+relates_to:
+- EPIC-1694
+- FEAT-1695
+- FEAT-1287
+- FEAT-1283
+decision_needed: false
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1696: `assumption-firewall` — gate an issue against the Learning-Test Registry
@@ -105,7 +117,13 @@ no_external_deps (terminal — pass; nothing to gate)
 
 The prompt MUST:
 
-- Read `ll-issues show ${context.input} --json` and parse `plan` + `body` fields. Pattern reference: `scripts/little_loops/loops/autodev.yaml:437–441`.
+- Read the full issue markdown via `cat "$(ll-issues path ${context.input})"`. Pattern reference: `scripts/little_loops/loops/autodev.yaml:437–441`.
+
+> **Codebase Research Findings** — _Added by `/ll:refine-issue`_
+>
+> `ll-issues show --json` does **not** expose `plan` or `body` fields. The actual JSON keys are: `issue_id`, `title`, `priority`, `status`, `effort`, `confidence`, `outcome`, `score_*`, `summary` (§ Summary section text only), `integration_files`, `risk`, `labels`, `milestone`, `history`, `path`, `source`, `norm`, `fmt`, `captured_at`, `completed_at`, `decision_needed`, `missing_artifacts`, `implementation_order_risk`. Use `cat "$(ll-issues path ${context.input})"` to read the full markdown text including all sections. This is the right extraction surface for an LLM prompt.
+>
+> Additionally, the established codebase pattern for `output_json` evaluation is to use it on `action_type: shell` states (see `ready-to-implement-gate.yaml` states `parse_targets`, `check_next`, `advance_queue`). No existing loop uses `output_json` on a `prompt` action_type. To follow established patterns safely, consider a two-state design: `extract_assumptions` as a `prompt` state with `llm_structured` evaluator routing to `parse_assumptions`, then `parse_assumptions` as a shell state that validates/re-emits the JSON with `output_json .count gt 0` routing. This adds one state (7 total) but uses only validated evaluator/action-type pairings.
 - Identify **external-API assumptions** only — claims about behavior of third-party services, SDKs, libraries, language stdlib functions whose contract is non-obvious. Internal-codebase claims are out of scope.
 - Cap target count at **7** (`max 7`) so the gate doesn't fan out indefinitely on a verbose issue. If the issue has more than 7 plausible assumptions, the prompt selects the highest-risk seven and records the deferred ones in `rationale`.
 - Phrase each target as a single concrete sentence suitable for `/ll:explore-api` (e.g., `"Stripe webhook signature verification (Stripe-Signature header)"` not `"how does signature verification work?"`).
@@ -165,9 +183,20 @@ firewall_step:
 
 ### Similar Patterns
 
-- `scripts/little_loops/loops/autodev.yaml:437–441` — `ll-issues show <id> --json | python3 -c ...` extraction pattern
+- `scripts/little_loops/loops/autodev.yaml:437–441` — `ll-issues show <id> --json | python3 -c ...` extraction pattern (note: reads `score_ambiguity` / `decision_needed` fields, not `plan`/`body`)
 - `scripts/little_loops/loops/outer-loop-eval.yaml:55–63` — sub-loop with explicit `with:` binding
 - `scripts/little_loops/loops/general-task.yaml` — `input_key: input` positional context convention
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/loops/ready-to-implement-gate.yaml` — confirmed context keys: `targets` (comma-separated, env var `LL_CONTEXT_TARGETS`) and `max_retries` (default `"2"`). Terminal states: `done` and `blocked` only (exhausted retries → `blocked`, not a separate terminal). Sub-loop routing: child `done` → parent `on_success`; any other terminal → parent `on_failure`.
+- `scripts/little_loops/loops/scan-and-implement.yaml:implement` — canonical `with:` + `on_success`/`on_failure` sub-loop pattern: `loop: autodev`, `with: { input: "${captured.input.output}" }`, `on_success: done`, `on_failure: done`.
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml:refine_issue` — asymmetric routing: `on_success: get_passed_issues`, `on_failure: skip_and_continue`, `on_error: skip_and_continue`.
+- `scripts/little_loops/loops/ready-to-implement-gate.yaml:parse_targets` — `python3 - <<'PY'` heredoc with `os.environ.get("LL_CONTEXT_TARGETS","")` — how `targets` context var is consumed inside the sub-loop.
+- `scripts/little_loops/loops/loop-router.yaml:score_project_loops` + `parse_project_score` — established two-state pattern for LLM-to-JSON: `prompt` (keyword-tagged output, `llm_structured` evaluator) → shell state parses tags with `re.search` into structured JSON → `output_json` evaluator routes on field.
+- `scripts/tests/test_builtin_loops.py::test_expected_loops_exist` — current `expected` set has **54** entries; `ready-to-implement-gate` is already included. Adding `"assumption-firewall"` yields 55 entries.
 
 ### Tests
 
@@ -176,9 +205,16 @@ firewall_step:
 - Manual smoke (proven path): run against an issue whose external-API claims are already proven in the registry; expect `done`
 - Manual smoke (refute path): run against an issue with a deliberately-wrong assumption; expect `blocked`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py::TestAssumptionFirewallLoop` — new test class needed (follow pattern of `TestReadyToImplementGateLoop` at line 3746); assert `run_gate.loop == "ready-to-implement-gate"`, `run_gate.with_` contains `targets` and `max_retries` keys, `done.terminal == True`, `blocked.terminal == True`, `no_external_deps.terminal == True` [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles` — sweep tests (`test_all_parse_as_yaml`, `test_all_validate_as_valid_fsm`, `test_all_have_description_field`, `test_no_bare_bash_variable_in_shell_actions`) auto-run against all `.yaml` files including the new one; no code change needed but `assumption-firewall.yaml` must satisfy all structural constraints [Agent 3 finding]
+
 ### Documentation
 
 - Follow-up after EPIC-1694 ships all four loops; not in scope here
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `CONTRIBUTING.md` line ~122 — directory tree lists `"51 YAML files"` in `loops/`; already stale (54 loops today); adding `assumption-firewall` makes it 55 — update this count during implementation [Agent 2 finding]
 
 ### Configuration
 
@@ -188,7 +224,7 @@ firewall_step:
 
 1. **Confirm FEAT-1695 is merged and validates** — this loop depends on `ready-to-implement-gate` being discoverable in `BUILTIN_LOOPS_DIR`.
 2. **Draft `scripts/little_loops/loops/assumption-firewall.yaml`** using the six-state design above. The `extract_assumptions` step should be a `prompt` action_type that emits JSON; capture as `extracted`; evaluate `output_json` on `.count gt 0`.
-3. **Write the extraction prompt inline in the YAML** (per the prompt requirements above): read `ll-issues show ${context.input} --json`, extract external-API assumptions, cap at 7, emit JSON.
+3. **Write the extraction prompt inline in the YAML** (per the prompt requirements above): read the full issue markdown via `cat "$(ll-issues path ${context.input})"` — **do not** use `ll-issues show --json` for this step, as that command exposes only a small subset of frontmatter fields and the `## Summary` section, not the full plan/body. Extract external-API assumptions from the full text, cap at 7, emit JSON. If using a `prompt` action_type, pair it with `llm_structured` evaluator and add a `parse_assumptions` shell state after it to re-emit valid JSON for the `output_json .count gt 0` route (see similar pattern in `scripts/little_loops/loops/loop-router.yaml:score_project_loops` + `parse_project_score`).
 4. **Wire `flatten_targets`** as a shell step using `python3` to read `${captured.extracted.output}` and `print(",".join(json.loads(...)["targets"]))`.
 5. **Wire `run_gate`** as a sub-loop call to `ready-to-implement-gate` with `with: { targets: "${captured.targets.output}", max_retries: "2" }`; `on_success: done`, `on_failure: blocked`.
 6. **Run `ll-loop validate assumption-firewall`** and iterate until no ERRORs.
@@ -197,6 +233,13 @@ firewall_step:
 9. **Smoke test the proven path:** pick an issue whose assumptions are already in the registry as `proven`; verify the loop terminates `done` without invoking `/ll:explore-api`.
 10. **Smoke test the explore + done path:** pick an issue with one missing assumption that `/ll:explore-api` can prove; verify the loop terminates `done` after exactly one `/ll:explore-api` invocation.
 11. **Smoke test the blocked path:** craft an issue with a clearly-wrong assumption; verify the loop terminates `blocked` and the refuted target is visible in the gate's `probe` capture.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+12. Update `CONTRIBUTING.md` line ~122 — change `"51 YAML files"` to `"55 YAML files"` in the `loops/` directory tree entry (count was already stale at 54; this brings it current after adding `assumption-firewall`)
+13. Add `TestAssumptionFirewallLoop` class to `scripts/tests/test_builtin_loops.py` — follow the pattern of `TestReadyToImplementGateLoop` (lines 3746–3791); assert sub-loop binding (`run_gate.loop == "ready-to-implement-gate"`, `with:` keys contain `targets` and `max_retries`), all three terminal states (`done`, `blocked`, `no_external_deps`), and top-level `description:` field is non-empty
 
 ## Acceptance Criteria
 
@@ -229,4 +272,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-05-25 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-27T04:04:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/89cbea26-ef1d-4a28-9421-80d1922756ba.jsonl`
+- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/515d78ac-2928-4b0b-a759-a8b93e35a707.jsonl`
+- `/ll:wire-issue` - 2026-05-27T03:59:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a14a94b-2fbb-46df-9f58-6fb6e6ce292f.jsonl`
+- `/ll:refine-issue` - 2026-05-27T03:53:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/345ce91b-f365-4659-999f-538d5fd1b764.jsonl`
+- `/ll:format-issue` - 2026-05-27T03:19:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/432d6911-81e0-4cc1-8108-1f0da14a2dda.jsonl`
 - `/ll:capture-issue` - 2026-05-25T20:53:43Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/810cf8d1-477c-42da-bb20-b577b2ee3ad9.jsonl`

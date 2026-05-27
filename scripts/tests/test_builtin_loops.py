@@ -120,6 +120,7 @@ class TestBuiltinLoopFiles:
             "deep-research-arxiv",
             "loop-router",
             "ready-to-implement-gate",
+            "assumption-firewall",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -3787,4 +3788,58 @@ class TestReadyToImplementGateLoop:
         state = data["states"].get("blocked", {})
         assert state.get("terminal") is True, (
             f"blocked.terminal should be True, got {state.get('terminal')!r}"
+        )
+
+
+class TestAssumptionFirewallLoop:
+    """Tests that assumption-firewall.yaml has correct structure and routing."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "assumption-firewall.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_description_is_nonempty(self, data: dict) -> None:
+        """Loop must have a non-empty description."""
+        assert data.get("description"), "assumption-firewall must have a non-empty description"
+
+    def test_run_gate_delegates_to_ready_to_implement_gate(self, data: dict) -> None:
+        """run_gate must delegate to ready-to-implement-gate."""
+        state = data["states"].get("run_gate", {})
+        assert state.get("loop") == "ready-to-implement-gate", (
+            f"run_gate.loop should be 'ready-to-implement-gate', got {state.get('loop')!r}"
+        )
+
+    def test_run_gate_with_contains_targets_and_max_retries(self, data: dict) -> None:
+        """run_gate with: must bind targets and max_retries."""
+        state = data["states"].get("run_gate", {})
+        with_ = state.get("with", {})
+        assert "targets" in with_, (
+            f"run_gate.with must contain 'targets', got {list(with_.keys())}"
+        )
+        assert "max_retries" in with_, (
+            f"run_gate.with must contain 'max_retries', got {list(with_.keys())}"
+        )
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        state = data["states"].get("done", {})
+        assert state.get("terminal") is True, (
+            f"done.terminal should be True, got {state.get('terminal')!r}"
+        )
+
+    def test_blocked_is_terminal(self, data: dict) -> None:
+        """blocked state must have terminal: true."""
+        state = data["states"].get("blocked", {})
+        assert state.get("terminal") is True, (
+            f"blocked.terminal should be True, got {state.get('terminal')!r}"
+        )
+
+    def test_no_external_deps_is_terminal(self, data: dict) -> None:
+        """no_external_deps state must have terminal: true."""
+        state = data["states"].get("no_external_deps", {})
+        assert state.get("terminal") is True, (
+            f"no_external_deps.terminal should be True, got {state.get('terminal')!r}"
         )
