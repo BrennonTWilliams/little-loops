@@ -16,7 +16,14 @@ from little_loops.cli.loop._helpers import (
     run_background,
 )
 from little_loops.fsm.concurrency import _process_alive
-from little_loops.fsm.persistence import LoopState, StatePersistence, _find_instances
+from little_loops.fsm.persistence import (
+    LoopState,
+    StatePersistence,
+    _find_instances,
+    _read_pid_file,
+    _reconcile_stale_running,
+    _resolve_live_pid,
+)
 from little_loops.logger import Logger
 
 
@@ -75,66 +82,6 @@ def _get_events_info(running_dir: Path, stem: str) -> tuple[str | None, str | No
     except OSError:
         return str(events_file), f"Events: {events_file}"
 
-
-def _read_pid_file(pid_file: Path) -> int | None:
-    """Read and validate a PID file.
-
-    Returns:
-        The PID as an integer, or None if the file doesn't exist or is invalid.
-    """
-    if not pid_file.exists():
-        return None
-    try:
-        return int(pid_file.read_text().strip())
-    except (ValueError, OSError):
-        return None
-
-
-def _resolve_live_pid(running_dir: Path, stem: str, state: LoopState) -> int | None:
-    """Return the canonical PID for an instance via .pid → .lock → state.pid chain.
-
-    Returns None when no PID can be resolved from any source.
-    """
-    pid = _read_pid_file(running_dir / f"{stem}.pid")
-    if pid is not None:
-        return pid
-    lock_file = running_dir / f"{stem}.lock"
-    if lock_file.exists():
-        try:
-            with open(lock_file) as _lf:
-                lock_data = json.load(_lf)
-            pid = lock_data.get("pid")
-            if pid is not None:
-                return pid
-        except (json.JSONDecodeError, KeyError, OSError):
-            pass
-    return state.pid
-
-
-def _reconcile_stale_running(
-    state: LoopState,
-    persistence: StatePersistence,
-    running_dir: Path,
-    stem: str,
-) -> LoopState:
-    """Flip a running-state entry to interrupted when its PID is provably dead.
-
-    Called on the read path in cmd_status so orphaned foreground-crash entries
-    self-heal without requiring manual cleanup-loops intervention.
-    """
-    if state.status != "running":
-        return state
-    pid = _resolve_live_pid(running_dir, stem, state)
-    if pid is None:
-        return state  # no PID resolvable — cannot determine liveness, leave alone
-    if _process_alive(pid):
-        return state
-    from datetime import UTC, datetime
-
-    state.status = "interrupted"
-    state.reconciled_at = datetime.now(UTC).isoformat()
-    persistence.save_state(state)
-    return state
 
 
 def _kill_with_timeout(pid: int, label: str, logger: Logger) -> None:

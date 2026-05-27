@@ -153,7 +153,7 @@ class TestCmdStop:
                 "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
             ),
             patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
-            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.fsm.persistence._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
@@ -184,7 +184,7 @@ class TestCmdStop:
                 "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
             ),
             patch("little_loops.fsm.persistence.StatePersistence"),
-            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.fsm.persistence._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
@@ -221,7 +221,7 @@ class TestCmdStop:
                 "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
             ),
             patch("little_loops.fsm.persistence.StatePersistence"),
-            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.fsm.persistence._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.kill", side_effect=kill_side_effect),
             patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
@@ -302,7 +302,7 @@ class TestCmdStop:
             patch(
                 "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
             ),
-            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
+            patch("little_loops.fsm.persistence._process_alive", return_value=False),
         ):
             result = cmd_stop("test-loop", tmp_path, logger)
 
@@ -1432,7 +1432,7 @@ class TestCmdStatusLockFilePid:
             patch(
                 "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
             ),
-            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("little_loops.fsm.persistence._process_alive", return_value=True),
             patch("builtins.print") as mock_print,
         ):
             result = cmd_status("test-loop", tmp_path, logger)
@@ -2064,7 +2064,7 @@ class TestReconcileStaleRunning:
                 "little_loops.cli.loop.lifecycle._find_instances",
                 return_value=[(None, state)],
             ),
-            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
+            patch("little_loops.fsm.persistence._process_alive", return_value=False),
             patch("builtins.print"),
         ):
             result = cmd_status("test-loop", tmp_path, logger)
@@ -2089,7 +2089,7 @@ class TestReconcileStaleRunning:
                 "little_loops.cli.loop.lifecycle._find_instances",
                 return_value=[(None, state)],
             ),
-            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
+            patch("little_loops.fsm.persistence._process_alive", return_value=False),
             patch("builtins.print"),
         ):
             result = cmd_status("test-loop", tmp_path, logger)
@@ -2113,7 +2113,7 @@ class TestReconcileStaleRunning:
                 "little_loops.cli.loop.lifecycle._find_instances",
                 return_value=[(None, state)],
             ),
-            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("little_loops.fsm.persistence._process_alive", return_value=True),
             patch("builtins.print"),
         ):
             result = cmd_status("test-loop", tmp_path, logger)
@@ -2134,7 +2134,7 @@ class TestReconcileStaleRunning:
                 "little_loops.cli.loop.lifecycle._find_instances",
                 return_value=[(None, state)],
             ),
-            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
+            patch("little_loops.fsm.persistence._process_alive", return_value=False),
             patch("builtins.print"),
         ):
             result = cmd_status("test-loop", tmp_path, logger)
@@ -2181,7 +2181,7 @@ class TestReconcileStaleRunning:
                 "little_loops.cli.loop.lifecycle._find_instances",
                 return_value=instances,
             ),
-            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
+            patch("little_loops.fsm.persistence._process_alive", return_value=False),
             patch("builtins.print"),
         ):
             result = cmd_status("test-loop", tmp_path, logger)

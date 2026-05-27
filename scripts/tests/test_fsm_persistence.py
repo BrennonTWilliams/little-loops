@@ -1307,6 +1307,93 @@ class TestUtilityFunctions:
         assert states[0].loop_name == "myloop"
         assert states[0].status == "starting"
 
+    def test_list_running_loops_reconciles_dead_pid_to_interrupted(self, tmp_path: Path) -> None:
+        """list_running_loops() flips running→interrupted and writes to disk when PID is dead."""
+        loops_dir = tmp_path / ".loops"
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir(parents=True)
+
+        state_data = {
+            "loop_name": "stale-loop",
+            "current_state": "check",
+            "iteration": 5,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2026-05-01T10:00:00Z",
+            "updated_at": "2026-05-01T10:05:00Z",
+            "status": "running",
+            "pid": 40692,
+        }
+        state_file = running_dir / "stale-loop.state.json"
+        state_file.write_text(json.dumps(state_data))
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("little_loops.fsm.persistence._process_alive", lambda pid: False)
+            states = list_running_loops(loops_dir)
+
+        assert len(states) == 1
+        assert states[0].status == "interrupted"
+        assert states[0].reconciled_at is not None
+
+        written = json.loads(state_file.read_text())
+        assert written["status"] == "interrupted"
+        assert "reconciled_at" in written
+
+    def test_list_running_loops_does_not_reconcile_live_pid(self, tmp_path: Path) -> None:
+        """list_running_loops() leaves running status intact when PID is live."""
+        loops_dir = tmp_path / ".loops"
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir(parents=True)
+
+        state_data = {
+            "loop_name": "live-loop",
+            "current_state": "check",
+            "iteration": 2,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2026-05-01T10:00:00Z",
+            "updated_at": "2026-05-01T10:05:00Z",
+            "status": "running",
+            "pid": 12345,
+        }
+        (running_dir / "live-loop.state.json").write_text(json.dumps(state_data))
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("little_loops.fsm.persistence._process_alive", lambda pid: True)
+            states = list_running_loops(loops_dir)
+
+        assert len(states) == 1
+        assert states[0].status == "running"
+        assert states[0].reconciled_at is None
+
+    def test_list_running_loops_does_not_reconcile_no_pid(self, tmp_path: Path) -> None:
+        """list_running_loops() leaves running status intact when no PID is resolvable."""
+        loops_dir = tmp_path / ".loops"
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir(parents=True)
+
+        state_data = {
+            "loop_name": "no-pid-loop",
+            "current_state": "check",
+            "iteration": 1,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2026-05-01T10:00:00Z",
+            "updated_at": "2026-05-01T10:05:00Z",
+            "status": "running",
+            "pid": None,
+        }
+        (running_dir / "no-pid-loop.state.json").write_text(json.dumps(state_data))
+
+        states = list_running_loops(loops_dir)
+
+        assert len(states) == 1
+        assert states[0].status == "running"
+        assert states[0].reconciled_at is None
+
     def test_get_loop_history(self, tmp_loops_dir: Path) -> None:
         """get_loop_history() returns events for a loop."""
         events = get_loop_history("loop-a", tmp_loops_dir)

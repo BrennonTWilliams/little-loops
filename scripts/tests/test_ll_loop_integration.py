@@ -383,6 +383,84 @@ states:
         captured = capsys.readouterr()
         assert "No running loops" in captured.out
 
+    def test_list_running_reconciles_dead_pid_entries(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --running flips stale running entries to interrupted and excludes them from output.
+
+        BUG-1731: list --running must apply the same dead-PID reconciliation as
+        ll-loop status, so both commands report identical state counts.
+        """
+        loops_dir = tmp_path / ".loops"
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir(parents=True)
+
+        # Live loop: has a real (current) PID
+        live_state = {
+            "loop_name": "live-loop",
+            "current_state": "work",
+            "iteration": 1,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2026-01-15T10:00:00Z",
+            "updated_at": "2026-01-15T10:01:00Z",
+            "status": "running",
+            "pid": 11111,
+        }
+        (running_dir / "live-loop.state.json").write_text(json.dumps(live_state))
+
+        # Stale loop: status=running but PID is dead
+        stale_state = {
+            "loop_name": "stale-loop",
+            "current_state": "check",
+            "iteration": 7,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2026-01-15T09:00:00Z",
+            "updated_at": "2026-01-15T09:30:00Z",
+            "status": "running",
+            "pid": 99999,
+        }
+        stale_file = running_dir / "stale-loop.state.json"
+        stale_file.write_text(json.dumps(stale_state))
+
+        monkeypatch.chdir(tmp_path)
+
+        def _mock_alive(pid: int) -> bool:
+            return pid == 11111
+
+        with (
+            patch("little_loops.fsm.persistence._process_alive", side_effect=_mock_alive),
+            patch.object(sys, "argv", ["ll-loop", "list", "--running"]),
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+
+        # Stale loop on-disk file must have been rewritten to interrupted
+        written = json.loads(stale_file.read_text())
+        assert written["status"] == "interrupted", "Stale entry must be reconciled to interrupted"
+        assert "reconciled_at" in written
+
+        # live-loop still running; stale-loop reconciled to [paused] (interrupted), not [running]
+        assert "live-loop" in captured.out
+        assert "[running]" in captured.out  # live-loop is still shown as running
+        assert "stale-loop" in captured.out  # stale entry still shown but reconciled
+        # Stale entry must appear as [paused] (the display label for interrupted), not [running]
+        out_lines = captured.out.splitlines()
+        stale_line = next((ln for ln in out_lines if "stale-loop" in ln), None)
+        assert stale_line is not None
+        assert "[paused]" in stale_line, f"Expected [paused] for reconciled stale entry, got: {stale_line}"
+        assert "[running]" not in stale_line
+
     def test_status_no_state_returns_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

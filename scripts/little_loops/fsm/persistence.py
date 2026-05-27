@@ -103,6 +103,62 @@ def _get_diff_stats() -> dict[str, int] | None:
     return None
 
 
+def _read_pid_file(pid_file: Path) -> int | None:
+    """Read and validate a PID file, returning the PID or None."""
+    if not pid_file.exists():
+        return None
+    try:
+        return int(pid_file.read_text().strip())
+    except (ValueError, OSError):
+        return None
+
+
+def _resolve_live_pid(running_dir: Path, stem: str, state: "LoopState") -> int | None:
+    """Return the canonical PID for an instance via .pid → .lock → state.pid chain.
+
+    Returns None when no PID can be resolved from any source.
+    """
+    pid = _read_pid_file(running_dir / f"{stem}.pid")
+    if pid is not None:
+        return pid
+    lock_file = running_dir / f"{stem}.lock"
+    if lock_file.exists():
+        try:
+            with open(lock_file) as _lf:
+                lock_data = json.load(_lf)
+            pid = lock_data.get("pid")
+            if pid is not None:
+                return pid
+        except (json.JSONDecodeError, KeyError, OSError):
+            pass
+    return state.pid
+
+
+def _reconcile_stale_running(
+    state: "LoopState",
+    persistence: "StatePersistence",
+    running_dir: Path,
+    stem: str,
+) -> "LoopState":
+    """Flip a running-state entry to interrupted when its PID is provably dead.
+
+    Called on the read path in cmd_status and list_running_loops so orphaned
+    foreground-crash entries self-heal without requiring manual cleanup-loops
+    intervention.
+    """
+    if state.status != "running":
+        return state
+    pid = _resolve_live_pid(running_dir, stem, state)
+    if pid is None:
+        return state  # no PID resolvable — cannot determine liveness, leave alone
+    if _process_alive(pid):
+        return state
+    state.status = "interrupted"
+    state.reconciled_at = datetime.now(UTC).isoformat()
+    persistence.save_state(state)
+    return state
+
+
 @dataclass
 class LoopState:
     """Persistent state for an FSM loop execution.
@@ -812,9 +868,13 @@ def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]:
     for state_file in running_dir.glob("*.state.json"):
         try:
             data = json.loads(state_file.read_text())
-            states.append(LoopState.from_dict(data))
+            state = LoopState.from_dict(data)
         except (json.JSONDecodeError, KeyError):
             continue  # Skip malformed files
+        stem = state_file.stem.removesuffix(".state")
+        persistence = StatePersistence(state.loop_name, base_dir, instance_id=stem if stem != state.loop_name else None)
+        state = _reconcile_stale_running(state, persistence, running_dir, stem)
+        states.append(state)
 
     # Include loops that have a PID file but no state file yet (still starting up).
     # Strip instance-ID timestamp suffix (e.g. "autodev-20240115T103000" → "autodev")
