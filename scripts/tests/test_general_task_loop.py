@@ -54,7 +54,10 @@ class TestGeneralTaskLoopFile:
         expected = {
             "define_done",
             "plan",
-            "execute",
+            "select_step",
+            "do_work",
+            "verify_step",
+            "mark_done",
             "check_done",
             "count_done",
             "final_verify",
@@ -133,14 +136,6 @@ class TestChange3ContinueWorkDodFallback:
             "but a DoD criterion remains unchecked"
         )
 
-    def test_continue_work_diverges_from_execute(self, raw_data: dict) -> None:
-        """continue_work.action must no longer be a verbatim duplicate of execute.action."""
-        execute_action = raw_data["states"]["execute"]["action"]
-        continue_action = raw_data["states"]["continue_work"]["action"]
-        assert execute_action.strip() != continue_action.strip(), (
-            "continue_work.action must diverge from execute.action (Change 3)"
-        )
-
 
 class TestChange7CountDoneShellGate:
     """Change 7 (ENH-1658): check_done routes to count_done shell gate; no llm_structured evaluator."""
@@ -192,56 +187,57 @@ class TestChange7CountDoneShellGate:
 
 
 class TestBUG1687ContinueWorkCapture:
-    """BUG-1687: continue_work must capture execute_result and emit LAST_STEP/LAST_FILES."""
+    """BUG-1687 (superseded by ENH-1732): continue_work handles only DoD remediation (Case B).
 
-    def test_continue_work_has_capture_execute_result(self, raw_data: dict) -> None:
+    After ENH-1732, continue_work no longer captures execute_result or emits LAST_STEP/LAST_FILES.
+    Step selection and implementation moved to select_step and do_work respectively.
+    continue_work only appends a remediation plan step, then routes to select_step.
+    """
+
+    def test_continue_work_routes_to_select_step(self, raw_data: dict) -> None:
         state = raw_data["states"]["continue_work"]
-        assert state.get("capture") == "execute_result", (
-            "continue_work must have capture: execute_result so check_done reads fresh delta data"
+        assert state.get("next") == "select_step", (
+            "continue_work must route to select_step after ENH-1732 so the remediation step "
+            "goes through the full select_step → do_work → verify_step → mark_done chain"
         )
 
-    def test_continue_work_prompts_for_last_step(self, raw_data: dict) -> None:
-        action = raw_data["states"]["continue_work"]["action"]
-        assert "LAST_STEP" in action, (
-            "continue_work.action must instruct the model to emit a LAST_STEP: trailing line"
+    def test_continue_work_action_type_is_prompt(self, raw_data: dict) -> None:
+        state = raw_data["states"]["continue_work"]
+        assert state.get("action_type") == "prompt"
+
+
+class TestChange5DoWorkCapture:
+    """Change 5 (ENH-1732): do_work state captures output for check_done delta input."""
+
+    def test_do_work_has_capture_work_result(self, raw_data: dict) -> None:
+        do_work_state = raw_data["states"]["do_work"]
+        assert do_work_state.get("capture") == "work_result", (
+            "do_work state must have capture: work_result so check_done can read the delta"
         )
 
-    def test_continue_work_prompts_for_last_files(self, raw_data: dict) -> None:
-        action = raw_data["states"]["continue_work"]["action"]
+    def test_do_work_prompts_for_last_files_output(self, raw_data: dict) -> None:
+        action = raw_data["states"]["do_work"]["action"]
         assert "LAST_FILES" in action, (
-            "continue_work.action must instruct the model to emit a LAST_FILES: trailing line"
+            "do_work.action must instruct the model to write LAST_FILES to a temp file"
         )
 
-
-class TestChange5ExecuteCapture:
-    """Change 5 (ENH-1671): execute state captures output for check_done delta input."""
-
-    def test_execute_has_capture_execute_result(self, raw_data: dict) -> None:
-        execute_state = raw_data["states"]["execute"]
-        assert execute_state.get("capture") == "execute_result", (
-            "execute state must have capture: execute_result so check_done can read the delta"
+    def test_do_work_must_not_modify_plan_file(self, raw_data: dict) -> None:
+        action = raw_data["states"]["do_work"]["action"]
+        assert "general-task-plan.md" in action, (
+            "do_work.action must explicitly tell the model NOT to modify the plan file"
         )
-
-    def test_execute_prompts_for_last_step_output(self, raw_data: dict) -> None:
-        action = raw_data["states"]["execute"]["action"]
-        assert "LAST_STEP" in action, (
-            "execute.action must instruct the model to emit a LAST_STEP: trailing line"
-        )
-
-    def test_execute_prompts_for_last_files_output(self, raw_data: dict) -> None:
-        action = raw_data["states"]["execute"]["action"]
-        assert "LAST_FILES" in action, (
-            "execute.action must instruct the model to emit a LAST_FILES: trailing line"
+        assert "Do NOT modify" in action or "do not modify" in action.lower(), (
+            "do_work.action must explicitly prohibit modifying the plan file"
         )
 
 
 class TestChange6CheckDoneDeltaAware:
     """Change 6 (ENH-1671): check_done.action scopes verification to the most recent step."""
 
-    def test_check_done_references_captured_execute_result(self, raw_data: dict) -> None:
+    def test_check_done_references_captured_work_result(self, raw_data: dict) -> None:
         action = raw_data["states"]["check_done"]["action"]
-        assert "${captured.execute_result.output}" in action, (
-            "check_done.action must reference ${captured.execute_result.output} for delta context"
+        assert "${captured.work_result.output}" in action, (
+            "check_done.action must reference ${captured.work_result.output} for LAST_FILES delta context"
         )
 
     def test_check_done_references_last_step(self, raw_data: dict) -> None:
@@ -277,6 +273,212 @@ class TestChange6SampleVerificationPreserved:
         assert "min(3" in action or "up to 3" in action.lower(), (
             "check_done.action must still sample up to min(3, total_checked) criteria"
         )
+
+
+class TestENH1732StateSplit:
+    """ENH-1732: execute split into select_step → do_work → verify_step → mark_done chain."""
+
+    def test_plan_routes_to_select_step(self, raw_data: dict) -> None:
+        assert raw_data["states"]["plan"]["next"] == "select_step"
+
+    def test_select_step_action_type_is_shell(self, raw_data: dict) -> None:
+        assert raw_data["states"]["select_step"]["action_type"] == "shell"
+
+    def test_do_work_action_type_is_prompt(self, raw_data: dict) -> None:
+        assert raw_data["states"]["do_work"]["action_type"] == "prompt"
+
+    def test_verify_step_action_type_is_shell(self, raw_data: dict) -> None:
+        assert raw_data["states"]["verify_step"]["action_type"] == "shell"
+
+    def test_mark_done_action_type_is_shell(self, raw_data: dict) -> None:
+        assert raw_data["states"]["mark_done"]["action_type"] == "shell"
+
+    def test_select_step_routes_yes_to_do_work(self, raw_data: dict) -> None:
+        assert raw_data["states"]["select_step"]["on_yes"] == "do_work"
+
+    def test_select_step_routes_no_to_check_done(self, raw_data: dict) -> None:
+        assert raw_data["states"]["select_step"]["on_no"] == "check_done"
+
+    def test_select_step_routes_error_to_diagnose(self, raw_data: dict) -> None:
+        assert raw_data["states"]["select_step"]["on_error"] == "diagnose"
+
+    def test_do_work_routes_to_verify_step(self, raw_data: dict) -> None:
+        assert raw_data["states"]["do_work"]["next"] == "verify_step"
+
+    def test_do_work_routes_error_to_diagnose(self, raw_data: dict) -> None:
+        assert raw_data["states"]["do_work"]["on_error"] == "diagnose"
+
+    def test_do_work_timeout(self, raw_data: dict) -> None:
+        timeout = raw_data["states"]["do_work"].get("timeout", 0)
+        assert timeout > 0, "do_work must have an explicit timeout to bound per-step cost"
+        assert timeout <= 900, "do_work timeout should be ≤900s (15 min) to prevent SIGKILL"
+
+    def test_verify_step_routes_yes_to_mark_done(self, raw_data: dict) -> None:
+        assert raw_data["states"]["verify_step"]["on_yes"] == "mark_done"
+
+    def test_verify_step_routes_no_to_continue_work(self, raw_data: dict) -> None:
+        assert raw_data["states"]["verify_step"]["on_no"] == "continue_work"
+
+    def test_verify_step_routes_error_to_diagnose(self, raw_data: dict) -> None:
+        assert raw_data["states"]["verify_step"]["on_error"] == "diagnose"
+
+    def test_verify_step_evaluate_is_output_contains(self, raw_data: dict) -> None:
+        evaluate = raw_data["states"]["verify_step"]["evaluate"]
+        assert evaluate["type"] == "output_contains"
+        assert evaluate["pattern"] == "VERIFY_PASS"
+
+    def test_mark_done_routes_to_check_done(self, raw_data: dict) -> None:
+        assert raw_data["states"]["mark_done"]["next"] == "check_done"
+
+    def test_mark_done_routes_error_to_diagnose(self, raw_data: dict) -> None:
+        assert raw_data["states"]["mark_done"]["on_error"] == "diagnose"
+
+    def test_select_step_evaluate_is_output_contains(self, raw_data: dict) -> None:
+        evaluate = raw_data["states"]["select_step"]["evaluate"]
+        assert evaluate["type"] == "output_contains"
+        assert evaluate["pattern"] == "SELECTED_STEP:"
+
+    def test_execute_state_removed(self, raw_data: dict) -> None:
+        assert "execute" not in raw_data.get("states", {}), (
+            "execute state must be removed after ENH-1732 split"
+        )
+
+    def test_max_iterations_increased(self, raw_data: dict) -> None:
+        assert raw_data.get("max_iterations", 0) >= 200, (
+            "max_iterations must be ≥200 to support ~33 plan steps at 6 iterations/step"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Shell action unit tests for ENH-1732 new states
+# ---------------------------------------------------------------------------
+
+
+def _load_state_script(state_name: str) -> str:
+    """Extract the shell action from a named state."""
+    with open(LOOP_FILE) as f:
+        data = yaml.safe_load(f)
+    return data["states"][state_name]["action"]
+
+
+def _setup_loops_tmp(tmp_path: Path) -> Path:
+    loops_tmp = tmp_path / ".loops" / "tmp"
+    loops_tmp.mkdir(parents=True, exist_ok=True)
+    return loops_tmp
+
+
+class TestSelectStepShellAction:
+    """Shell execution tests for the select_step action (ENH-1732)."""
+
+    def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        script = _load_state_script("select_step")
+        script = script.replace("${env.PWD}", str(tmp_path))
+        return _bash(script, cwd=tmp_path)
+
+    def test_empty_plan_emits_no_unchecked_steps(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-plan.md").write_text(
+            "# Task Plan\n- [x] Step 1: done\n"
+        )
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "NO_UNCHECKED_STEPS" in result.stdout
+
+    def test_unchecked_step_emits_selected_step(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-plan.md").write_text(
+            "# Task Plan\n- [x] Step 1: done\n- [ ] Step 2: pending\n"
+        )
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "SELECTED_STEP:" in result.stdout
+        assert "Step 2: pending" in result.stdout
+
+    def test_unchecked_step_writes_temp_file(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-plan.md").write_text(
+            "# Task Plan\n- [ ] Step 1: write code\n"
+        )
+        self._run(tmp_path)
+        step_file = loops_tmp / "general-task-current-step.txt"
+        assert step_file.exists(), "select_step must write the step to general-task-current-step.txt"
+        assert "Step 1: write code" in step_file.read_text()
+
+
+class TestVerifyStepShellAction:
+    """Shell execution tests for the verify_step action (ENH-1732)."""
+
+    def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        script = _load_state_script("verify_step")
+        script = script.replace("${env.PWD}", str(tmp_path))
+        return _bash(script, cwd=tmp_path)
+
+    def test_missing_last_files_emits_verify_pass(self, tmp_path: Path) -> None:
+        _setup_loops_tmp(tmp_path)
+        # No general-task-last-files.txt written
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "VERIFY_PASS" in result.stdout
+
+    def test_empty_files_list_emits_verify_pass(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-last-files.txt").write_text("LAST_FILES: \n")
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "VERIFY_PASS" in result.stdout
+
+    def test_non_python_files_emits_verify_pass(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-last-files.txt").write_text(
+            "LAST_FILES: README.md some-loop.yaml\n"
+        )
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "VERIFY_PASS" in result.stdout
+
+
+class TestMarkDoneShellAction:
+    """Shell execution tests for the mark_done action (ENH-1732)."""
+
+    def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        script = _load_state_script("mark_done")
+        script = script.replace("${env.PWD}", str(tmp_path))
+        return _bash(script, cwd=tmp_path)
+
+    def test_marks_first_unchecked_step_as_done(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-plan.md").write_text(
+            "# Task Plan\n- [x] Step 1: done\n- [ ] Step 2: pending\n- [ ] Step 3: also pending\n"
+        )
+        (loops_tmp / "general-task-current-step.txt").write_text("- [ ] Step 2: pending\n")
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        plan = (loops_tmp / "general-task-plan.md").read_text()
+        lines = plan.splitlines()
+        assert "- [x] Step 1: done" in lines
+        assert "- [x] Step 2: pending" in lines
+        assert "- [ ] Step 3: also pending" in lines
+
+    def test_removes_current_step_temp_file(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-plan.md").write_text(
+            "# Task Plan\n- [ ] Step 1: write code\n"
+        )
+        step_file = loops_tmp / "general-task-current-step.txt"
+        step_file.write_text("- [ ] Step 1: write code\n")
+        self._run(tmp_path)
+        assert not step_file.exists(), "mark_done must remove general-task-current-step.txt"
+
+    def test_only_marks_first_unchecked(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-plan.md").write_text(
+            "# Task Plan\n- [ ] Step 1: first\n- [ ] Step 2: second\n"
+        )
+        (loops_tmp / "general-task-current-step.txt").write_text("- [ ] Step 1: first\n")
+        self._run(tmp_path)
+        plan = (loops_tmp / "general-task-plan.md").read_text()
+        assert "- [x] Step 1: first" in plan
+        assert "- [ ] Step 2: second" in plan
 
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@ name: "general-task"
 description: "General-purpose task loop: writes a Definition of Done, decomposes the task into steps, executes one step at a time, and loops until all DoD criteria are verified."
 category: harness
 initial: define_done
-max_iterations: 100
+max_iterations: 200
 default_timeout: 1800
 on_handoff: spawn
 on_max_iterations: summarize_partial
@@ -71,35 +71,93 @@ states:
 
       Do NOT start executing any steps yet. Only write the plan file.
     action_type: prompt
-    next: execute
+    next: select_step
     on_error: diagnose
 
-  execute:
+  select_step:
+    action: |
+      PLAN="${env.PWD}/.loops/tmp/general-task-plan.md"
+      STEP=$(grep -m1 '^- \[ \]' "$PLAN" || echo "")
+      if [ -z "$STEP" ]; then
+        echo "NO_UNCHECKED_STEPS"
+        exit 0
+      fi
+      echo "$STEP" > "${env.PWD}/.loops/tmp/general-task-current-step.txt"
+      echo "SELECTED_STEP: $STEP"
+    action_type: shell
+    capture: selected_step
+    evaluate:
+      type: output_contains
+      source: "${captured.selected_step.output}"
+      pattern: "SELECTED_STEP:"
+    on_yes: do_work
+    on_no: check_done
+    on_error: diagnose
+
+  do_work:
     action: |
       Your task is: ${context.input}
 
-      A step-by-step plan exists at ${env.PWD}/.loops/tmp/general-task-plan.md.
-      Read it, find the FIRST unchecked step (- [ ]), complete ONLY that step,
-      then mark it done (- [x]) in the file.
+      The step you must complete is in ${env.PWD}/.loops/tmp/general-task-current-step.txt.
+      Read that file to learn exactly which step to implement.
 
-      Do not work on multiple steps. Complete one step, update the plan file, stop.
+      Implement ONLY that step. Do NOT modify ${env.PWD}/.loops/tmp/general-task-plan.md
+      or ${env.PWD}/.loops/tmp/general-task-dod.md.
 
-      After completing the step, print the following two lines as the very last output
-      (fill in the actual step text and all files you created or modified):
-      LAST_STEP: <the step text you just completed>
-      LAST_FILES: <space-separated list of file paths you created or modified>
+      After completing the step, write exactly one line to
+      ${env.PWD}/.loops/tmp/general-task-last-files.txt:
+      LAST_FILES: <space-separated list of files you created or modified>
     action_type: prompt
-    capture: execute_result
+    capture: work_result
+    next: verify_step
+    on_error: diagnose
+    timeout: 900
+
+  verify_step:
+    action: |
+      FILES=$(grep 'LAST_FILES:' "${env.PWD}/.loops/tmp/general-task-last-files.txt" 2>/dev/null | sed 's/LAST_FILES:[[:space:]]*//')
+      if [ -z "$FILES" ]; then
+        echo "VERIFY_PASS"
+        exit 0
+      fi
+      if python -m pytest $FILES --tb=short -q 2>&1 | tail -1 | grep -qE "passed|no tests ran"; then
+        echo "VERIFY_PASS"
+      else
+        echo "VERIFY_FAIL"
+      fi
+    action_type: shell
+    capture: verify_result
+    evaluate:
+      type: output_contains
+      source: "${captured.verify_result.output}"
+      pattern: "VERIFY_PASS"
+    on_yes: mark_done
+    on_no: continue_work
+    on_error: diagnose
+
+  mark_done:
+    action: |
+      PLAN="${env.PWD}/.loops/tmp/general-task-plan.md"
+      STEP_FILE="${env.PWD}/.loops/tmp/general-task-current-step.txt"
+      awk 'found==0 && /^- \[ \]/ { sub(/^- \[ \]/, "- [x]"); found=1 } 1' "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
+      rm -f "$STEP_FILE"
+    action_type: shell
     next: check_done
     on_error: diagnose
 
   check_done:
     action: |
-      The previous execute step produced this output. Extract the LAST_STEP and
-      LAST_FILES values from the structured trailing lines:
-      ---BEGIN EXECUTE OUTPUT---
-      ${captured.execute_result.output}
-      ---END EXECUTE OUTPUT---
+      The previous step just completed. Use the following to scope delta verification.
+
+      Step that was selected (extract LAST_STEP from the SELECTED_STEP line):
+      ---BEGIN STEP SELECTION---
+      ${captured.selected_step.output}
+      ---END STEP SELECTION---
+
+      Files created or modified (extract LAST_FILES from the LAST_FILES line):
+      ---BEGIN WORK RESULT---
+      ${captured.work_result.output}
+      ---END WORK RESULT---
 
       Read both files:
       - ${env.PWD}/.loops/tmp/general-task-dod.md — Definition of Done (criteria)
@@ -111,7 +169,7 @@ states:
       evaluating completion. Do NOT silently mark plan steps [x] without DoD coverage.
 
       Step 2 — Delta-scoped criterion verification:
-      Use LAST_STEP and LAST_FILES from the execute output above to scope verification:
+      Use LAST_STEP and LAST_FILES from the step selection and work result above to scope verification:
       - For DoD criteria that mention or depend on any file in LAST_FILES, OR that are
         plausibly affected by LAST_STEP: VERIFY BY EVIDENCE now (filesystem read /
         command run / file read). Update each criterion to [x] if verified, or leave
@@ -266,28 +324,15 @@ states:
       - ${env.PWD}/.loops/tmp/general-task-plan.md — Task Plan (steps)
       - ${env.PWD}/.loops/tmp/general-task-dod.md — Definition of Done (criteria)
 
-      Case A — Unchecked plan step exists:
-      Find the FIRST unchecked plan step (- [ ]), complete ONLY that step, then mark
-      it done (- [x]) in the plan file. Do not work on multiple steps. Stop after one.
-
-      Case B — Plan is fully [x] but a DoD criterion remains unchecked:
+      The plan is fully [x] but at least one DoD criterion remains unchecked.
       Find the first unchecked DoD criterion. APPEND a new remediation step to the
       plan file (as - [ ] Step N: ...) describing the work needed to satisfy that
-      criterion, then complete that step and mark it [x] in the plan. Do not touch
-      the DoD file in this case — the next check_done will verify it.
+      criterion. Do not touch the DoD file and do not implement the step — the
+      next states will handle that.
 
-      Case C — Plan is fully [x] AND DoD is fully [x]:
-      Do nothing. The next check_done will route to done.
-
-      Complete at most one step per invocation, then stop.
-
-      After completing the step, print the following two lines as the very last output
-      (fill in the actual step text and all files you created or modified):
-      LAST_STEP: <the step text you just completed>
-      LAST_FILES: <space-separated list of file paths you created or modified>
+      Print a summary of the remediation step you appended.
     action_type: prompt
-    capture: execute_result
-    next: check_done
+    next: select_step
     on_error: diagnose
 
   summarize_partial:
@@ -316,7 +361,7 @@ states:
       Diagnose what happened:
       - If ${env.PWD}/.loops/tmp/general-task-plan.md exists, read it and summarize completed steps.
       - If ${env.PWD}/.loops/tmp/general-task-dod.md exists, report which done-criteria were met.
-      - Identify the most likely failure cause and which state failed (define_done, plan, execute, check_done, count_done, final_verify, count_final, or continue_work).
+      - Identify the most likely failure cause and which state failed (define_done, plan, select_step, do_work, verify_step, mark_done, check_done, count_done, final_verify, count_final, continue_work, or summarize_partial).
 
       Write a one-paragraph diagnostic summary the operator can use to re-run or adjust the task description.
     next: failed
