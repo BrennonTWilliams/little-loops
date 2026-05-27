@@ -101,3 +101,4 @@ deepcodebase-*.txt
 .claude/loop-suggestions/
 loop-catalog.*
 docs/research/
+*.gif
