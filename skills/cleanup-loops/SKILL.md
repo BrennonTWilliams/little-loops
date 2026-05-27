@@ -2,7 +2,7 @@
 name: cleanup-loops
 description: Use when asked to clean up stuck loops, kill dead loop processes, or troubleshoot loop state.
 disable-model-invocation: true
-argument-hint: "[--dry-run] [--threshold N]"
+argument-hint: "[--dry-run] [--threshold N] [--interrupted-age H]"
 model: sonnet
 allowed-tools:
   - Bash(ll-loop:*, kill:*, rm:*, python3:*)
@@ -13,6 +13,9 @@ arguments:
     required: false
   - name: threshold
     description: Minutes before a "running" loop's updated_at is considered stale (default 15)
+    required: false
+  - name: interrupted_age
+    description: Hours before an "interrupted" loop is considered abandoned and offered for cleanup, regardless of PID artifacts (default 24)
     required: false
 metadata:
   short-description: Use when asked to clean up stuck loops, kill dead loop processes, or troubleshoo
@@ -82,8 +85,14 @@ kill -0 <pid> 2>/dev/null && echo "alive" || echo "dead"
 
 ## Step 3: Classify Each Loop
 
-Use the current UTC time and the loop's `updated_at` to compute staleness. The staleness
-threshold is `${threshold:-15}` minutes.
+Use the current UTC time and the loop's `updated_at` to compute staleness. There are two
+thresholds:
+
+- **Running-stale threshold**: `${threshold:-15}` minutes — applied to `status == "running"`
+  loops to detect dead/abandoned foreground runs.
+- **Interrupted-aged threshold**: `${interrupted_age:-24}` hours — applied to
+  `status == "interrupted"` loops with no orphaned PID/lock file, to surface accumulated
+  clean-Ctrl-C runs that the user is unlikely to resume.
 
 To compute age in minutes from an ISO 8601 timestamp:
 
@@ -130,6 +139,40 @@ remove the stale artifact based on `pid_source`:
 
 The `.state.json` is preserved for diagnostics.
 
+### NEEDS CLEANUP — stale-interrupted-aged
+
+**Condition**: `status == "interrupted"` AND `updated_at` older than `${interrupted_age:-24}` hours AND
+no orphaned PID/lock file (those fall under `stale-interrupted` above).
+
+**Why this exists**: Clean Ctrl-C exits leave a state file but no orphaned PID, so they don't
+qualify as `stale-interrupted`. Without aging-based detection, these accumulate indefinitely —
+e.g. a long-running loop like `autodev` that the user routinely interrupts and never resumes
+piles up dozens of `.state.json` files in `.loops/.running/`. After a day, the run is
+overwhelmingly unlikely to be resumed.
+
+**Note**: Still resumable in principle — offer `ll-loop resume` before archiving:
+```bash
+ll-loop resume <loop_name>   # preferred if the work is still relevant
+```
+
+If the user wants to discard the run, archive the state and events files to `.loops/.history/`
+and remove them from `.running/`. The cleanest path is to use the same archival mechanism the
+startup sweep uses (`StatePersistence.clear_all()`); if that's awkward to invoke from a skill,
+fall back to a direct copy-then-delete using the `<run_id>-<loop_name>` convention:
+
+```bash
+run_id=$(python3 -c "
+import json
+d = json.load(open('.loops/.running/<instance_id>.state.json'))
+print(d['started_at'].replace(':','').replace('.','').replace('+','')[:17]
+)")
+mkdir -p ".loops/.history/${run_id}-<loop_name>"
+mv .loops/.running/<instance_id>.state.json    ".loops/.history/${run_id}-<loop_name>/state.json"
+mv .loops/.running/<instance_id>.events.jsonl  ".loops/.history/${run_id}-<loop_name>/events.jsonl" 2>/dev/null || true
+```
+
+The `.state.json` and `.events.jsonl` end up in `.history/` for diagnostics; `.running/` is freed.
+
 ### NEEDS ATTENTION — abandoned-handoff
 
 **Condition**: `status == "awaiting_continuation"` AND `updated_at` older than the threshold
@@ -164,6 +207,7 @@ Loop State Summary
 NEEDS CLEANUP (N):
   [1] <loop_name> — stuck-running — status: running — PID: 12345 (dead) — last updated: 47m ago
   [2] <loop_name> — stale-interrupted — status: interrupted — stale PID file — last updated: 2h ago
+  [3] <loop_name> — stale-interrupted-aged — status: interrupted — no PID artifact — last updated: 3d ago
 
 NEEDS ATTENTION (M):
   [3] <loop_name> — abandoned-handoff — status: awaiting_continuation — last updated: 3h ago
@@ -223,6 +267,31 @@ If `ll-loop stop` exits with a non-zero code (e.g. the process already died betw
 report:
 ```
   [WARN] ll-loop stop exited with error for <loop_name>; loop may have already terminated.
+```
+
+### stale-interrupted-aged loops
+
+First offer to resume the loop — even aged interrupts are still resumable in principle:
+```bash
+ll-loop resume <loop_name>
+```
+
+If the user wants to archive and free the slot, move the state + events to `.history/`:
+
+```bash
+state_file=$(ls .loops/.running/<loop_name>-*.state.json 2>/dev/null | sort | tail -1)
+[ -n "$state_file" ] || { echo "no state file for <loop_name>"; continue; }
+stem=$(basename "$state_file" .state.json)
+run_id=$(python3 -c "
+import json
+d = json.load(open('$state_file'))
+print(d['started_at'].replace(':','').replace('.','').replace('+','')[:17]
+)")
+archive_dir=".loops/.history/${run_id}-<loop_name>"
+mkdir -p "$archive_dir"
+mv "$state_file"                                    "$archive_dir/state.json"
+mv ".loops/.running/${stem}.events.jsonl"          "$archive_dir/events.jsonl" 2>/dev/null || true
+echo "Archived $stem to $archive_dir"
 ```
 
 ### stale-interrupted loops
@@ -320,4 +389,10 @@ Cleaned <N> loop(s). <M> loop(s) need attention (see NEEDS ATTENTION above).
 
 # Dry run with custom threshold
 /ll:cleanup-loops --dry-run --threshold 60
+
+# Prune aged interrupted loops more aggressively (after 6h instead of default 24h)
+/ll:cleanup-loops --interrupted-age 6
+
+# Conservative: only flag interrupts that are at least a week old
+/ll:cleanup-loops --interrupted-age 168
 ```

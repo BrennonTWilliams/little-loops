@@ -4,13 +4,19 @@ type: BUG
 priority: P4
 status: open
 discovered_date: 2026-05-26
-captured_at: "2026-05-26T00:48:43Z"
+captured_at: '2026-05-26T00:48:43Z'
 discovered_by: capture-issue
 labels:
-  - bug
-  - captured
-  - process
+- bug
+- captured
+- process
 testable: false
+confidence_score: 97
+outcome_confidence: 68
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-1709: ENH-1686 Marked Done While Child ENH-1691 Still Open
