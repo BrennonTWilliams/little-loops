@@ -684,6 +684,7 @@ class TestCmdStatusWithPid:
                 "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
             ),
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("little_loops.fsm.persistence._process_alive", return_value=True),
             patch("builtins.print") as mock_print,
         ):
             from little_loops.cli.loop.lifecycle import cmd_status
@@ -782,6 +783,7 @@ class TestCmdStatusWithPid:
                 "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
             ),
             patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("little_loops.fsm.persistence._process_alive", return_value=True),
             patch("little_loops.fsm.persistence.StatePersistence.save_state") as mock_save,
             patch("builtins.print") as mock_print,
         ):
