@@ -28,20 +28,20 @@ class TestVerifyIssueLoopSkillExists:
 
 
 class TestReadmeSkillCount:
-    """README.md hero page must reflect 30 skills."""
+    """README.md hero page must reflect 31 skills."""
 
     def test_skill_count_updated(self) -> None:
         content = README.read_text()
-        assert "30 skills" in content, "README.md must show '30 skills'"
+        assert "31 skills" in content, "README.md must show '31 skills'"
 
 
 class TestContributingWiring:
-    """CONTRIBUTING.md must reflect 30 skills and list verify-issue-loop/ in the skills tree."""
+    """CONTRIBUTING.md must reflect 31 skills and list verify-issue-loop/ in the skills tree."""
 
     def test_skill_count_updated(self) -> None:
         content = CONTRIBUTING.read_text()
-        assert "30 skill definitions" in content, (
-            "CONTRIBUTING.md skill count line must show '30 skill definitions'"
+        assert "31 skill definitions" in content, (
+            "CONTRIBUTING.md skill count line must show '31 skill definitions'"
         )
 
     def test_verify_issue_loop_in_skills_tree(self) -> None:
@@ -52,18 +52,18 @@ class TestContributingWiring:
 
 
 class TestArchitectureSkillCount:
-    """docs/ARCHITECTURE.md must reflect 30 skills in both the Mermaid node and tree."""
+    """docs/ARCHITECTURE.md must reflect 31 skills in both the Mermaid node and tree."""
 
     def test_mermaid_skill_count_updated(self) -> None:
         content = ARCHITECTURE.read_text()
-        assert "30 composable skills" in content, (
-            "ARCHITECTURE.md Mermaid node must show '30 composable skills'"
+        assert "31 composable skills" in content, (
+            "ARCHITECTURE.md Mermaid node must show '31 composable skills'"
         )
 
     def test_tree_skill_count_updated(self) -> None:
         content = ARCHITECTURE.read_text()
-        assert "# 30 skill definitions" in content, (
-            "ARCHITECTURE.md directory tree must show '# 30 skill definitions'"
+        assert "# 31 skill definitions" in content, (
+            "ARCHITECTURE.md directory tree must show '# 31 skill definitions'"
         )
 
 

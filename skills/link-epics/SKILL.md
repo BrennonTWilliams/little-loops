@@ -17,7 +17,7 @@ arguments:
     description: "--auto to apply HIGH-tier proposals without prompting; --min-score 0.5 to set the minimum Jaccard score threshold"
     required: false
 metadata:
-  short-description: Discover orphaned issues and propose parent EPIC assignments via Jaccard similarity scoring.
+  short-description: Discover orphaned issues and propose parent EPIC assignments via similarity.
 ---
 
 # Link Epics
