@@ -9,7 +9,7 @@ discovered_by: capture-issue
 labels:
   - epic
   - captured
-relates_to: [ENH-1708, ENH-1710, ENH-1711, FEAT-1712]
+relates_to: [ENH-1708, ENH-1710, ENH-1711, FEAT-1712, ENH-1752, ENH-1753]
 ---
 
 # EPIC-1707: history.db as Agent Context Layer
@@ -52,7 +52,9 @@ Without a consumer surface, the DB is dead weight: writers cost overhead, the sc
 
 ## Children
 
-- **ENH-1708** — Wire `user_corrections` + FTS5 reads into `refine-issue` / `ready-issue` / `confidence-check` (initial narrow slice; child of this epic).
+- **ENH-1752** — Add `history_reader.py` read API with graceful degradation + CLI wrapper for skill invocation (foundational prerequisite for all consumer work).
+- **ENH-1753** — Document the producer→consumer flow in `docs/ARCHITECTURE.md` and the read API surface in `docs/reference/API.md` (required by success metrics; depends on ENH-1752).
+- **ENH-1708** — Wire `user_corrections` + FTS5 reads into `refine-issue` / `ready-issue` / `confidence-check` (initial narrow slice; depends on ENH-1752).
 - **ENH-1710** — Map session IDs to JSONL file paths in history.db (producer-side navigation gap).
 - **ENH-1711** — Add issue-to-session cross-reference queries to history.db (depends on ENH-1710).
 - **FEAT-1712** — LCM-style hierarchical summary DAG over session history (depends on ENH-1710, ENH-1711).
