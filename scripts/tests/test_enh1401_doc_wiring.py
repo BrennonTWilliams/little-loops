@@ -75,8 +75,8 @@ class TestInitInteractiveProductRound:
 
     def test_total_is_seven(self) -> None:
         content = INIT_INTERACTIVE.read_text()
-        assert "TOTAL = 7" in content, (
-            "skills/init/interactive.md must set TOTAL = 7 after adding mandatory Round 4"
+        assert "TOTAL = 8" in content, (
+            "skills/init/interactive.md must set TOTAL = 8 after adding mandatory Round 7 (design tokens)"
         )
 
     def test_round_4_present(self) -> None:

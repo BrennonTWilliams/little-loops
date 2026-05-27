@@ -10,11 +10,11 @@ Before starting the wizard, initialize these counters:
 
 ```
 STEP = 0      # Current round number (incremented before each round)
-TOTAL = 7     # Working total (mandatory rounds: 1, 2, 3a, 4, 6, 11, 12)
+TOTAL = 8     # Working total (mandatory rounds: 1, 2, 3a, 4, 6, 7, 12, 13)
               # Round 3b is silent (automation always enabled, no user prompt)
               # Round 4 is mandatory (product analysis opt-in)
               # Round 5a is conditional (only if parallel processing selected)
-              # Round 7 is silent (advanced settings always skipped)
+              # Round 8 is silent (advanced settings always skipped)
               # Hooks are always active via the plugin system — no installation round needed
 ```
 
@@ -226,7 +226,7 @@ Count active conditions for Round 5:
 
   if ACTIVE > 0: TOTAL += 1   # Round 5a only runs if parallel processing selected; max ACTIVE = 2
   # Round 5b and 5c are never shown (max ACTIVE never exceeds 2)
-  # Rounds 11 (Allowed Tools) and 12 (CLAUDE.md Docs) are always shown — already counted in TOTAL = 7
+  # Rounds 12 (Allowed Tools) and 13 (CLAUDE.md Docs) are always shown — already counted in TOTAL = 8
 ```
 
 ## Round 4: Product Analysis - MANDATORY, ALWAYS RUNS
@@ -464,17 +464,79 @@ If document tracking is enabled with defaults:
 
 If "Skip" selected or no documents found, omit the `documents` section entirely (disabled is the default).
 
-**After completing Round 6, proceed to Round 7 (Extended Config Gate).**
+**After completing Round 6, proceed to Round 7 (Design Tokens).**
 
-## Round 7: Extended Configuration Gate (Auto-Skipped)
+---
+
+## Round 7: Design Tokens — MANDATORY, ALWAYS RUNS
+
+**CRITICAL**: You MUST execute this round. The wizard is NOT complete until you have asked the user about design tokens.
+
+Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Design Tokens
+
+Use a SINGLE AskUserQuestion call:
+
+```yaml
+questions:
+  - header: "Design Tokens"
+    question: "Initialize default design tokens at `.ll/design-tokens/`? (Y/n)"
+    options:
+      - label: "Yes, initialize design tokens (Recommended)"
+        description: "Create four default token files (primitives, semantic, light theme, dark theme) at .ll/design-tokens/"
+      - label: "Use custom path"
+        description: "Point at an existing design-tokens directory"
+      - label: "Skip"
+        description: "Don't set up design tokens now"
+    multiSelect: false
+```
+
+**If "Yes, initialize design tokens" selected:**
+```json
+{"design_tokens": {"enabled": true, "path": ".ll/design-tokens"}}
+```
+The materialization step (SKILL.md Step 8, item 6) will write the four template files to `.ll/design-tokens/`.
+
+**If "Use custom path" selected:**
+
+Ask a follow-up question:
+```yaml
+questions:
+  - header: "Token Path"
+    question: "Enter the path to your existing design-tokens directory (leave blank to skip):"
+    options:
+      - label: "Enter path"
+        description: "Specify the directory path where your design token files live"
+      - label: "Skip"
+        description: "Don't configure design tokens"
+    multiSelect: false
+```
+
+If a path is entered:
+```json
+{"design_tokens": {"enabled": true, "path": "<entered-path>"}}
+```
+
+If left blank or "Skip":
+```json
+{"design_tokens": {"enabled": false}}
+```
+
+**If "Skip" selected:**
+```json
+{"design_tokens": {"enabled": false}}
+```
+
+**After completing Round 7, proceed to Round 8 (Extended Config Gate).**
+
+## Round 8: Extended Configuration Gate (Auto-Skipped)
 
 Advanced settings are always skipped during init — no user input required. Do NOT increment STEP or prompt the user.
 
 # Always skip advanced settings — configurable via /ll:configure
-Proceed to Round 11 (Allowed Tools). Rounds 8–10 are never shown during init.
+Proceed to Round 12 (Allowed Tools). Rounds 9–11 are never shown during init.
 Users can access test directory, build command, continuation, and prompt optimization settings via `/ll:configure`.
 
-## Round 8: Project Advanced (Optional)
+## Round 9: Project Advanced (Optional)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
 
@@ -542,7 +604,7 @@ questions:
 
 Use the actual `test_cmd` and `lint_cmd` values selected in Round 1 for these commands.
 
-## Round 9: Continuation Behavior (Optional)
+## Round 10: Continuation Behavior (Optional)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
 
@@ -593,7 +655,7 @@ questions:
 - "48 hours" -> `prompt_expiry_hours: 48`
 - "No expiry" -> `prompt_expiry_hours: 168`
 
-## Round 10: Prompt Optimization (Optional)
+## Round 11: Prompt Optimization (Optional)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
 
@@ -633,7 +695,7 @@ questions:
 
 **Configuration:** Only include `prompt_optimization` section if any value differs from schema defaults.
 
-## Round 11: Allowed Tools — ALWAYS RUNS
+## Round 12: Allowed Tools — ALWAYS RUNS
 
 **CRITICAL**: You MUST execute this round. The wizard is NOT complete until you have asked the user about allowed tools.
 
@@ -700,7 +762,7 @@ questions:
 
 **Record the result** (chosen target file or "skip") — used by SKILL.md Step 10 to perform the actual merge.
 
-## Round 12: CLAUDE.md Documentation — ALWAYS RUNS
+## Round 13: CLAUDE.md Documentation — ALWAYS RUNS
 
 **CRITICAL**: You MUST execute this round. The wizard is NOT complete until you have asked the user about CLAUDE.md documentation.
 
@@ -751,7 +813,7 @@ questions:
 
 ## Interactive Mode Summary
 
-**Total interaction rounds: 6–7 (7 only if parallel processing selected)**
+**Total interaction rounds: 7–8 (8 only if parallel processing selected)**
 
 | Round | Group | Questions | Conditions |
 |-------|-------|-----------|------------|
@@ -761,12 +823,13 @@ questions:
 | 3b | Automation Features | **Silent** — sprint_management, fsm_loops, sequential_auto always enabled | Always (no prompt) |
 | 5a | Advanced (dynamic) | worktree_files, parallel_workers | Only if "Parallel processing" selected in Round 3a |
 | **6** | **Document Tracking** | **docs (auto-detect or custom categories)** | **Always** |
-| 7 | Extended Config Gate | **Silent** — always skips; Rounds 8–10 never shown | Always (no prompt) |
-| 8 | Project Advanced (optional) | test_dir, build_cmd, run_cmd, impl_hooks | Never shown (use /ll:configure) |
-| 9 | Continuation (optional) | auto_detect, include, expiry | Never shown (use /ll:configure) |
-| 10 | Prompt Optimization (optional) | enabled, mode, confirm | Never shown (use /ll:configure) |
-| **11** | **Allowed Tools** | **target settings file (settings.local.json / settings.json / skip)** | **Always** |
-| **12** | **CLAUDE.md Docs** | **add ll- CLI commands to CLAUDE.md (yes/skip)** | **Always in --interactive** |
+| **7** | **Design Tokens** | **design_tokens (enabled/path)** | **Always** |
+| 8 | Extended Config Gate | **Silent** — always skips; Rounds 9–11 never shown | Always (no prompt) |
+| 9 | Project Advanced (optional) | test_dir, build_cmd, run_cmd, impl_hooks | Never shown (use /ll:configure) |
+| 10 | Continuation (optional) | auto_detect, include, expiry | Never shown (use /ll:configure) |
+| 11 | Prompt Optimization (optional) | enabled, mode, confirm | Never shown (use /ll:configure) |
+| **12** | **Allowed Tools** | **target settings file (settings.local.json / settings.json / skip)** | **Always** |
+| **13** | **CLAUDE.md Docs** | **add ll- CLI commands to CLAUDE.md (yes/skip)** | **Always in --interactive** |
 
 **Key behavior**:
 - Wait for each group's AskUserQuestion response before proceeding to the next
