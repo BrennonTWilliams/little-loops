@@ -16,6 +16,12 @@ relates_to:
 - FEAT-1750
 - FEAT-1747
 - EPIC-1751
+confidence_score: 90
+outcome_confidence: 83
+score_complexity: 22
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1757: Design tokens /ll:configure area and show-output wiring
@@ -89,6 +95,7 @@ Doc-wiring test following `test_enh1734_doc_wiring.py` pattern. Assert:
 - `skills/configure/SKILL.md` — five update points at lines 14, 105, 133, 238, 324
 - `skills/configure/areas.md` — append `## Area: design_tokens` section (after `## Area: hooks`)
 - `skills/configure/show-output.md` — append `## design_tokens --show` section (after `## sync --show`)
+- `docs/reference/COMMANDS.md` — append `design-tokens` to area argument list at line 42
 - `scripts/tests/test_feat1757_configure_wiring.py` — new doc-wiring test (create)
 
 ## Integration Map
@@ -105,6 +112,11 @@ Doc-wiring test following `test_enh1734_doc_wiring.py` pattern. Assert:
 - `scripts/tests/test_feat1756_init_wiring.py` — sibling test for `design_tokens` in init skill; use OR-pattern: `assert "design_tokens" in content or "design-tokens" in content`
 - `scripts/tests/test_feat1625_doc_wiring.py:44-55` — already declares a `CONFIGURE_AREAS` constant pointing at `skills/configure/areas.md`; shows multi-class-per-surface pattern
 - `scripts/tests/test_enh1734_doc_wiring.py` — canonical doc-wiring template (212 lines): `PROJECT_ROOT = Path(__file__).parent.parent.parent`, one class per file surface, one `assert` per test method
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/COMMANDS.md` — `area` argument enumeration at line 42 lists 13 areas; `design-tokens` is absent and will be stale after FEAT-1757 ships [Agent 2 finding]
 
 ### Config System (Read-Only, No Changes Needed)
 - `scripts/little_loops/config/features.py:268-289` — `DesignTokensConfig` dataclass (all 6 fields + defaults)
@@ -153,6 +165,12 @@ Page 4 currently has exactly 4 options (`context`, `prompt`, `allowed-tools`, `h
 **Round 2 gap — 3 fields not covered by proposed Round 1:**
 The proposed Round 1 covers `enabled`, `path`, `active_theme` (3 of 6). The remaining fields `primitives_file`, `semantic_file`, `themes_dir` have no round. Add a `### Round 2 (3 questions)` block for these file-path settings, following the same `AskUserQuestion` pattern as Round 1 (keep/change options for each).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Update `docs/reference/COMMANDS.md` — append `design-tokens` to the `area` argument enumeration at line 42 (current value ends with `hooks`; append `| design-tokens`)
+
 ## Acceptance Criteria
 
 - [ ] `/ll:configure design_tokens` is recognized and routed to the new area handler
@@ -168,6 +186,9 @@ The proposed Round 1 covers `enabled`, `path`, `active_theme` (3 of 6). The rema
 - Can run in parallel with FEAT-1756 (init round) and FEAT-1758 (docs)
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-27T23:36:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdf71221-6071-432b-bbc4-72085ee3754e.jsonl`
+- `/ll:confidence-check` - 2026-05-27T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a3bf84b-0618-4238-b6f3-19ba2f11ad0f.jsonl`
+- `/ll:wire-issue` - 2026-05-27T23:31:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/abbb0cb3-8584-4f07-b7ef-bf61d783adb6.jsonl`
 - `/ll:refine-issue` - 2026-05-27T23:26:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04d2ea8a-a459-4950-b030-01540e95e237.jsonl`
 - `/ll:issue-size-review` - 2026-05-27T23:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 

@@ -16,8 +16,13 @@ labels:
 - general-task
 - resilience
 - crash-recovery
-confidence_score: 80
+confidence_score: 95
 decision_needed: false
+outcome_confidence: 83
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-1735: Persist plan step index before execute for crash recovery
@@ -92,6 +97,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_general_task_loop.py` — extend with checkpoint write/clear/detect assertions; follow `TestGeneralTaskLoopFile.test_validates_as_fsm` pattern using `load_and_validate()` + `validate_fsm()`
 - `scripts/tests/fixtures/fsm/` — no existing checkpoint-recovery fixtures; add new fixture for partial-state simulation
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `TestCheckpointWriteShellAction` (new class in `scripts/tests/test_general_task_loop.py`) — verify checkpoint file written by `select_step` shell action (follow `TestSelectStepShellAction` pattern)
+- `TestCheckpointClearShellAction` (new class in `scripts/tests/test_general_task_loop.py`) — verify checkpoint file removed by `mark_done` shell action (follow `TestMarkDoneShellAction.test_removes_current_step_temp_file` pattern)
+- `TestResumeCheckShellAction` (new class, if `resume_check` state added) — verify checkpoint detect/skip routing logic
+- `TestENH1732StateSplit.test_plan_routes_to_select_step` (`scripts/tests/test_general_task_loop.py:281`) — **will break** if `plan` routes to `resume_check` instead of `select_step`; update assertion to match new routing
+- `TestBUG1687ContinueWorkCapture.test_continue_work_routes_to_select_step` (`scripts/tests/test_general_task_loop.py:197`) — **may break** if `continue_work` routing changes; verify after edit
+
+**Documentation**
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — "General-purpose task loop" section describes `select_step` and `mark_done` actions and sidecar files by name; update to reflect checkpoint write in `select_step`, checkpoint clear in `mark_done`, and add `resume_check` if inserted; update iteration-count math (6 → 7 iterations per step if new state added)
+
+**Intra-file Coupling**
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `diagnose` state in `scripts/little_loops/loops/general-task.yaml` — action text enumerates all state names (`define_done, plan, select_step, do_work, verify_step, mark_done, check_done, count_done, final_verify, count_final, continue_work, or summarize_partial`); add `resume_check` to this list if that state is added
+
 **Similar Patterns in Other Loops**
 - `scripts/little_loops/loops/harness-optimize.yaml` — `dequeue_state`: writes selected state name to sidecar file before the prompt state using `head -1` + atomic `mv` (closest match)
 - `scripts/little_loops/loops/loop-router.yaml` — `parse_project_score`: writes multiple sidecar files before routing to next prompt
@@ -126,6 +148,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 4. Add test in `scripts/tests/test_general_task_loop.py` following `TestGeneralTaskLoopFile.test_validates_as_fsm` using `load_and_validate()` + `validate_fsm()`; add fixture at `scripts/tests/fixtures/fsm/checkpoint-recovery.yaml` with a partial-state scenario
 5. Run `ll-loop validate scripts/little_loops/loops/general-task.yaml` to confirm no routing regressions
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `docs/guides/LOOPS_GUIDE.md` — reflect checkpoint write in `select_step`, checkpoint clear in `mark_done`; add `resume_check` state if inserted; update iteration-count math (6 → 7)
+7. Update `TestENH1732StateSplit.test_plan_routes_to_select_step` (`scripts/tests/test_general_task_loop.py:281`) if `plan` routes to `resume_check` instead of `select_step`
+8. Update `TestBUG1687ContinueWorkCapture.test_continue_work_routes_to_select_step` (`scripts/tests/test_general_task_loop.py:197`) if `continue_work` routing changes
+9. Update `diagnose` state action text in `general-task.yaml` to include `resume_check` in the enumerated state names list (if state is added)
+
 ## Impact
 
 - **Priority**: P3 — Improves robustness for an edge case (SIGKILL/OOM during execute); not blocking for normal operation
@@ -145,5 +176,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88f2fc64-a60a-4bdb-80d0-9adf7d6a62c9.jsonl`
+- `/ll:wire-issue` - 2026-05-27T23:35:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdf71221-6071-432b-bbc4-72085ee3754e.jsonl`
 - `/ll:refine-issue` - 2026-05-27T23:25:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/abccc340-0707-4df4-86fc-a611f1735bf0.jsonl`
 - `/ll:format-issue` - 2026-05-27T23:19:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cff51961-5730-4e30-9a41-1339eda2b782.jsonl`
