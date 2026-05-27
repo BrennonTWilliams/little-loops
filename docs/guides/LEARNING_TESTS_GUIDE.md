@@ -5,11 +5,12 @@
 - [What Is a Learning Test?](#what-is-a-learning-test)
 - [Quick Start](#quick-start)
 - [The Four-Phase Workflow](#the-four-phase-workflow)
+- [Record Status: proven, refuted, stale](#record-status-proven-refuted-stale)
 - [The Record Format](#the-record-format)
 - [CLI Reference](#cli-reference)
 - [Pre-Seeding Assumptions with `--assume`](#pre-seeding-assumptions-with---assume)
 - [Using Learning Tests in Loops](#using-learning-tests-in-loops)
-- [Marking a Record Stale](#marking-a-record-stale)
+- [Troubleshooting](#troubleshooting)
 - [Practical Patterns](#practical-patterns)
 - [Further Reading](#further-reading)
 
@@ -17,11 +18,13 @@
 
 ## What Is a Learning Test?
 
-A learning test is a small, evidence-bearing record of what an external API, SDK, or other black-box system actually does — not what its docs claim, not what the model guessed, what running code proved. The term is Michael Feathers' (see [the philosophy essay](../deterministic-backpressure-learning-tests.md) for the long version); the short version is: before you write integration code against an unknown system, run a proof script against it, write the observed shape down as a set of pass/fail/untested claims, and commit it to a registry the next agent (or the next session of you) can read.
+You are about to write code against an unfamiliar API, SDK, or stdlib corner. Instead of guessing its shape from docs (which may be wrong, out of date, or silent on the edge cases you care about), run a tiny script against it, write down what it actually returned, and save that evidence to a file the next agent — or the next session of you — can read.
+
+That file is a learning test. The term comes from Michael Feathers; see [the philosophy essay](../deterministic-backpressure-learning-tests.md) for the long version.
 
 little-loops gives you three things to make this routine:
 
-- `/ll:explore-api` — a skill that walks the agent through Ingest → Hypothesize → Execute → Refine and writes the record for you.
+- `/ll:explore-api` — a skill that runs the exploration and writes the record for you.
 - `.ll/learning-tests/` — a per-project registry of YAML-frontmatter Markdown files, one per target.
 - `ll-learning-tests` — a read-only CLI other skills and FSM loops use to check whether a target is already proven before re-doing the work.
 
@@ -42,15 +45,13 @@ ll-learning-tests check "Anthropic SDK streaming" && echo "already proven, reuse
 
 The record lives at `.ll/learning-tests/anthropic-sdk-streaming.md`. The raw proof output is at `.ll/learning-tests/raw/anthropic-sdk-streaming.txt`.
 
-The slug is derived by `little_loops.issue_parser.slugify`: lowercase, strip non-word characters, collapse whitespace and hyphens. `"Anthropic SDK streaming"` → `anthropic-sdk-streaming`. The skill prints the resolved slug before writing so you can correct the target if it slugifies unexpectedly.
-
 ## The Four-Phase Workflow
 
-`/ll:explore-api "<target>"` runs the Feathers Learning Test lifecycle as four explicit phases. Knowing what each phase does helps you steer mid-run and read the resulting record.
+`/ll:explore-api "<target>"` runs four explicit phases. Knowing what each does helps you steer mid-run and read the resulting record.
 
 ### 1. Ingest
 
-The skill first calls `ll-learning-tests check "<target>"`. If a record already exists, it prints it and asks whether to short-circuit and reuse it, or proceed with a fresh exploration that will overwrite the prior file. If no record exists, it reads any relevant docs (including anything previously mirrored by `/ll:scrape-docs`), grep/globs for existing in-project usage of the API, and summarises what's already known in 3–5 sentences. That summary scopes the hypotheses.
+The skill calls `ll-learning-tests check "<target>"`. If a record already exists, it prints it and asks whether to reuse it or overwrite with a fresh exploration. If no record exists, it reads any relevant docs (including anything previously mirrored by `/ll:scrape-docs`), greps for existing in-project usage, and summarises what's already known in 3–5 sentences. That summary scopes the hypotheses.
 
 ### 2. Hypothesize
 
@@ -60,6 +61,8 @@ The skill generates 3–7 **falsifiable claims** about the target's behavior —
 - `the first event has type "message_start"`
 - `text deltas arrive on event.delta.text when event.type == "content_block_delta"`
 - `the stream emits a final event with type "message_stop"`
+
+A good claim names a specific field, event type, or behavior. `"the API returns data"` is too vague — it will always pass. `"the response object has a .usage.input_tokens field"` is specific enough that running code either confirms or denies it. Avoid compound claims (`"X and Y both work"`) — split them; each claim should be independently evaluable.
 
 Pre-seeded `--assume` claims (see below) are added at this stage with `result: untested`.
 
@@ -71,17 +74,23 @@ The script is intentionally minimal: only enough code to surface evidence for th
 
 ### 4. Refine
 
-The skill diffs each claim against the captured output and classifies the result as `pass`, `fail`, or `untested`. It sets the record `status`:
+The skill diffs each claim against the captured output and classifies the result as `pass`, `fail`, or `untested`, then sets the record status (see next section). It writes `.ll/learning-tests/<slug>.md`, verifies the write by calling `ll-learning-tests check "<target>"`, and reports the per-claim results in chat.
 
-- `proven` — at least one assertion passed.
-- `refuted` — every exercised assertion failed.
-- `stale` — reserved for `ll-learning-tests mark-stale` later; never set on initial write.
+## Record Status: proven, refuted, stale
 
-It then writes `.ll/learning-tests/<slug>.md` and verifies the write by calling `ll-learning-tests check "<target>"` (expects exit 0). Finally it reports the per-claim results in chat so you can scan the findings without opening the file.
+Every record carries one of three statuses:
+
+- **`proven`** — at least one assertion passed. This is a deliberately loose threshold: partial proof is still useful evidence, and the per-assertion `pass`/`fail`/`untested` results in the record itself give the reader the full picture. A `proven` record with 1/5 passes is not the same as 5/5; read the assertions before relying on it.
+- **`refuted`** — every exercised assertion failed. Something you assumed about the API is wrong. The raw output (see `raw_output_path`) usually shows the actual error or shape; read it before deciding what to do.
+- **`stale`** — the record was valid when written but has been explicitly invalidated (see [Troubleshooting](#troubleshooting) for `mark-stale`). Never set on initial write.
+
+**When a refuted record is the right next step:** read `cat .ll/learning-tests/raw/<slug>.txt` to see what actually came back — often a wrong field name or missing import explains all the failures. Then either delete the record and re-run `/ll:explore-api` with corrected claims, or, if the API itself changed, `mark-stale` it so the prior assertions remain visible as reference during debugging.
+
+In FSM loops, `refuted` is terminal — the state routes to `on_blocked` without retrying. Missing and stale records, by contrast, auto-trigger a fresh `/ll:explore-api`.
 
 ## The Record Format
 
-Records are YAML-frontmatter Markdown files with an empty body. The shape is exactly what `little_loops.learning_tests.write_record()` emits:
+Records are YAML-frontmatter Markdown files with an empty body:
 
 ```yaml
 ---
@@ -106,16 +115,14 @@ raw_output_path: .ll/learning-tests/raw/anthropic-sdk-streaming.txt
 | Field | Type | Notes |
 |---|---|---|
 | `target` | `str` | The original free-text name you passed to `/ll:explore-api`, not the slug. |
-| `date` | `str` | ISO date when the record was written. Single-quoted to match `yaml.dump`. |
-| `status` | `proven` \| `refuted` \| `stale` | `proven` when ≥1 assertion passes; `refuted` when all exercised assertions fail; `stale` set later via `mark-stale`. |
-| `assertions` | `list` of `{claim, result}` | `result` is `pass` / `fail` / `untested`. `untested` covers both `--assume`-pre-seeded claims and claims the proof script did not exercise. |
-| `raw_output_path` | `str \| None` | Relative path to the captured proof output. |
-
-The dataclass definitions are in [`scripts/little_loops/learning_tests.py`](../../scripts/little_loops/learning_tests.py) — `LearnTestRecord` and `Assertion`.
+| `date` | `str` | ISO date when the record was written. |
+| `status` | `proven` \| `refuted` \| `stale` | See [Record Status](#record-status-proven-refuted-stale). |
+| `assertions` | `list` of `{claim, result}` | `result` is `pass` / `fail` / `untested`. |
+| `raw_output_path` | `str \| None` | Relative path to the captured proof output, or `null` when the proof script crashed before producing any output. |
 
 ## CLI Reference
 
-`ll-learning-tests` is intentionally narrow: it owns reads and stale-marking, never writes.
+`ll-learning-tests` is intentionally narrow: it owns reads and stale-marking, never writes. Record creation is owned by `/ll:explore-api` so the prompt context that produces the record also captures the reasoning behind it.
 
 | Subcommand | Purpose | Exit |
 |---|---|---|
@@ -125,15 +132,15 @@ The dataclass definitions are in [`scripts/little_loops/learning_tests.py`](../.
 
 ```bash
 ll-learning-tests check "Anthropic SDK streaming"
-ll-learning-tests list
+ll-learning-tests list | jq -r '.[] | "\(.status)\t\(.target)"'
 ll-learning-tests mark-stale "Anthropic SDK streaming"
 ```
 
-There is no `write` subcommand — and this is deliberate. Record creation is owned by `/ll:explore-api` (and any future authoring skills) so the prompt context that produces the record also captures the reasoning behind it, not just the answer. If you want to persist a new record, run the skill; if you only want to read, query, or invalidate, use the CLI.
-
 ## Pre-Seeding Assumptions with `--assume`
 
-`--assume "<claim>"` pre-seeds a claim into the record with `result: untested` without exercising it in the proof script. It's repeatable. Use it for claims you believe to be true but don't want to (or can't) test directly — typically because they require expensive setup, depend on long-running behavior, or are stated by vendor docs without a cheap way to falsify them locally.
+`--assume "<claim>"` pre-seeds a claim into the record with `result: untested`, without exercising it in the proof script. It's repeatable.
+
+Why bother recording something you didn't test? Because an `untested` claim is a structured TODO, not a comment. It travels with the record, shows up in `ll-learning-tests check` output, and gets upgraded to `pass` or `fail` automatically if a future proof script happens to cover it. Use it for claims you believe to be true but can't cheaply test now — typically because they require expensive setup, depend on long-running behavior, or are stated by vendor docs without a local way to falsify them.
 
 ```bash
 /ll:explore-api "Claude API tool use" \
@@ -141,7 +148,7 @@ There is no `write` subcommand — and this is deliberate. Record creation is ow
   --assume "stop_reason is tool_use when the model invokes a tool"
 ```
 
-Assumed claims appear in the final record alongside the proven ones, but they're flagged `result: untested` so a future reader knows they haven't been independently verified. If the proof script happens to cover one, the result is updated to `pass` or `fail` accordingly.
+Assumed claims appear in the final record alongside the proven ones, flagged `result: untested` so a future reader knows they haven't been independently verified.
 
 ## Using Learning Tests in Loops
 
@@ -160,21 +167,37 @@ states:
     on_blocked: blocked   # any target refuted, or retries exhausted
 ```
 
+`on_blocked` fires when a target is `refuted` (no retries attempted) or when `max_retries` is exhausted without it becoming proven. `on_no` is the fallback if `on_blocked` is not defined; prefer `on_blocked` for clarity.
+
 Required fields: `learning.targets` (non-empty), `on_yes`, and one of `on_blocked` / `on_no`. The dispatch emits `learning_target_proven`, `learning_target_stale`, `learning_explore_invoked`, `learning_target_refuted`, `learning_complete`, and `learning_blocked` events for observability.
 
-This is the integration point that makes the registry pay for itself: a loop that touches a third-party API can declare its assumptions up front, and the first run pays the discovery cost while every subsequent run skips straight to the actual work. See [LOOPS_GUIDE.md → Progressive tool-call throttling](LOOPS_GUIDE.md#progressive-tool-call-throttling) for the full `type: learning` reference and the related event schema.
+This is the integration point that makes the registry pay for itself: a loop that touches a third-party API can declare its assumptions up front, and the first run pays the discovery cost while every subsequent run skips straight to the actual work. See [LOOPS_GUIDE.md → Progressive tool-call throttling](LOOPS_GUIDE.md#progressive-tool-call-throttling) for the full `type: learning` reference and event schema.
 
-## Marking a Record Stale
+## Troubleshooting
 
-When an upstream system changes — a new SDK release, a breaking API revision, a behavior you discover is no longer accurate — invalidate the record without deleting it:
+**`ll-learning-tests check` returns exit 1 for a record I believe exists**
+
+The lookup is slug-based. The slug is derived by `little_loops.issue_parser.slugify`: lowercase, strip non-word characters (dots, slashes, colons), collapse whitespace and hyphens. `"Anthropic SDK streaming"` → `anthropic-sdk-streaming`; `"v1.2.3"` → `v123`; `"path/to/api"` → `pathtoapi`. Run `ll-learning-tests list | jq -r '.[].target'` to see all stored targets, or check the filenames under `.ll/learning-tests/` directly. The `/ll:explore-api` skill prints the resolved slug before writing.
+
+**The proof script runs but all claims fail**
+
+Check `.ll/learning-tests/raw/<slug>.txt` for the actual output. Common causes: wrong import path for the SDK, missing auth env var (the skill scaffolds scripts against your current shell environment — `ANTHROPIC_API_KEY` and similar must already be exported), or an SDK that changed its output shape since the record was written (use `mark-stale` and re-run).
+
+**Marking a record stale**
+
+When an upstream system changes — new SDK release, breaking API revision, behavior you discover is no longer accurate — invalidate the record without deleting it:
 
 ```bash
 ll-learning-tests mark-stale "Anthropic SDK streaming"
 ```
 
-This sets `status: stale` and preserves every other field, so the prior assertions remain visible for context. `/ll:explore-api` treats `stale` records like missing records: on the next run, it proposes a fresh exploration rather than reusing the prior result. FSM `type: learning` states also treat `stale` as "needs re-exploration" and auto-trigger `/ll:explore-api` for that target.
+This sets `status: stale` and preserves every other field, so the prior assertions remain visible for context. `/ll:explore-api` treats `stale` like missing on the next run. Delete a record outright (`rm .ll/learning-tests/<slug>.md`) only when the target itself is no longer relevant to the project.
 
-Delete a record outright (`rm .ll/learning-tests/<slug>.md`) only when the target itself is no longer relevant to the project. Stale is the right tool for "needs refreshing"; deletion is for "we don't care anymore".
+**`/ll:explore-api` asks to overwrite a record I want to keep**
+
+Phase 1 (Ingest) prompts before overwriting. Answer "reuse" to short-circuit. To guard against this in scripts, run `ll-learning-tests check "<target>"` first and skip the skill call if exit code is 0.
+
+> Loop-state troubleshooting (`type: learning` states that re-trigger, `No valid transition` errors) lives in [LOOPS_GUIDE.md → Troubleshooting](LOOPS_GUIDE.md).
 
 ## Practical Patterns
 
@@ -182,31 +205,9 @@ Delete a record outright (`rm .ll/learning-tests/<slug>.md`) only when the targe
 
 **Cite the record in the code.** When you write the integration code, reference the record path in a comment near the call site (e.g. `# Verified shape: .ll/learning-tests/anthropic-sdk-streaming.md`). Future readers — human or agent — get a direct pointer to the evidence.
 
-**Survey what's already proven at session start.** `ll-learning-tests list` prints every record as JSON. Pipe through `jq -r '.[] | "\(.status)\t\(.target)"'` for a one-shot inventory of verified targets before planning new work.
+**Survey what's already proven at session start.** `ll-learning-tests list | jq -r '.[] | "\(.status)\t\(.target)"'` gives a one-shot inventory of verified targets before planning new work.
 
-**Pair with `/ll:scrape-docs`.** When the target has vendor documentation, mirror the docs locally first (the `scrape-docs` skill writes them under `docs/`), then run `/ll:explore-api` — the Ingest phase will read the mirrored docs and produce sharper hypotheses than running against nothing.
-
-**Full end-to-end adoption with `adopt-third-party-api`.** To go from a vendor docs URL straight to a verified, citation-linked integration playbook in one command, use the `adopt-third-party-api` loop — it combines `/ll:scrape-docs`, LLM enumeration of up to 7 key surfaces, and `ready-to-implement-gate` proof in a single automated pipeline:
-
-```bash
-ll-loop run adopt-third-party-api "https://manual.raycast.com/extensions"
-# Writes docs/integration-manual-raycast-com.md with one section per proven LT record
-```
-
-Partial coverage (some targets refuted or exhausted) still produces a playbook — unverified sections are flagged at the top with citations to the relevant LT records. See [LOOPS_GUIDE.md → API Adoption](LOOPS_GUIDE.md#api-adoption) for details.
-
-**Gate an issue against the registry with `assumption-firewall`.** When you want to block implementation on an issue until its external-API assumptions are proven (without scraping new docs), use `assumption-firewall`. It extracts up to 7 API assumptions from the issue ID via LLM, delegates proof to `ready-to-implement-gate`, and routes `done`, `blocked`, or `no_external_deps`:
-
-```bash
-ll-loop run assumption-firewall --context input="FEAT-1234"
-# done          → all assumptions proven; safe to implement
-# blocked       → one or more assumptions refuted; check LT records for details
-# no_external_deps → no external-API assumptions found; proceed unconditionally
-```
-
-Use `assumption-firewall` as a lightweight pre-implementation check before delegating to `autodev` or `ll-auto`. Unlike `adopt-third-party-api`, it works from an issue ID rather than a docs URL and does not produce an integration playbook.
-
-**Re-prove after major version bumps.** After upgrading a dependency that has a learning-test record, `mark-stale` the record and re-run `/ll:explore-api`. The diff between the old (stale) record's assertions and the new one is a concise migration checklist.
+> For end-to-end workflows that chain learning tests into larger automations — `adopt-third-party-api` (docs URL → integration playbook) and `assumption-firewall` (issue ID → pre-implementation gate) — see [LOOPS_GUIDE.md → API Adoption](LOOPS_GUIDE.md#api-adoption).
 
 ## Further Reading
 

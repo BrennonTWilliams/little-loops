@@ -6,7 +6,7 @@ status: open
 captured_at: '2026-05-25T20:53:43Z'
 discovered_date: '2026-05-25'
 discovered_by: capture-issue
-relates_to: [FEAT-1692, FEAT-1695, FEAT-1696, FEAT-1697, FEAT-1287, FEAT-1283, FEAT-1285, FEAT-1286, EPIC-1663]
+relates_to: [FEAT-1692, FEAT-1695, FEAT-1696, FEAT-1697, FEAT-1287, FEAT-1283, FEAT-1285, FEAT-1286, EPIC-1663, FEAT-1738, FEAT-1739, ENH-1740, ENH-1741, FEAT-1742, FEAT-1743]
 ---
 
 # EPIC-1694: Built-in FSM Loops Powered by the Learning-Test Registry
@@ -40,6 +40,8 @@ This constraint is why FEAT-1695 (`ready-to-implement-gate`) is shell-driven rat
 - **FEAT-1696** — `assumption-firewall`: extract assumptions from an issue and gate them
 - **FEAT-1692** — `integrate-sdk`: proof-driven SDK integration (already captured; retrofitted as child)
 - **FEAT-1697** — `adopt-third-party-api`: scrape docs → enumerate endpoints → gate → playbook
+- **FEAT-1742** — discoverability surface (PreToolUse hook or `/ll:confidence-check` probe) that nudges users toward `proof-first-task` when mainstream impl loops touch unfamiliar APIs
+- **FEAT-1743** — wire learning-tests as an opt-in feature flag in `/ll:init` and `config-schema.json`; provides the master switch every EPIC-1694 surface checks before activating
 
 ## Scope
 
