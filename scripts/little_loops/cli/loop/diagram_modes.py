@@ -17,7 +17,7 @@ import argparse
 from dataclasses import dataclass, replace
 
 TOPOLOGY_VALUES: frozenset[str] = frozenset({"layered", "neighborhood", "inline"})
-PRESET_VALUES: frozenset[str] = frozenset({"detailed", "summary", "clean", "local", "oneline"})
+PRESET_VALUES: frozenset[str] = frozenset({"detailed", "summary", "clean", "local", "oneline", "slim"})
 
 _LEGACY_HINTS: dict[str, str] = {
     "main": (
@@ -58,6 +58,7 @@ PRESET_EXPANSIONS: dict[str, DiagramFacets] = {
     "summary": DiagramFacets("layered", True, "full", "main", "preset"),
     "clean": DiagramFacets("layered", False, "title", "main", "preset"),
     "local": DiagramFacets("neighborhood", True, "title", "main", "preset"),
+    "slim": DiagramFacets("neighborhood", False, "title", "main", "preset"),
     "oneline": DiagramFacets("inline", True, "title", "full", "preset"),
 }
 

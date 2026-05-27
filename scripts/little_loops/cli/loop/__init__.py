@@ -159,7 +159,7 @@ Examples:
         metavar="MODE",
         help=(
             "Display the FSM diagram after each step. MODE is a topology "
-            "(layered|neighborhood|inline) or a preset (detailed|summary|clean|local|oneline). "
+            "(layered|neighborhood|inline) or a preset (detailed|summary|clean|local|slim|oneline). "
             "Bare --show-diagrams defaults to the 'summary' preset (layered, main-path scope). "
             "Use --diagram-edge-labels, --diagram-state-detail, --diagram-scope to override "
             "individual preset facets."
@@ -298,7 +298,7 @@ Examples:
         metavar="MODE",
         help=(
             "Display the FSM diagram after each step. MODE is a topology "
-            "(layered|neighborhood|inline) or a preset (detailed|summary|clean|local|oneline). "
+            "(layered|neighborhood|inline) or a preset (detailed|summary|clean|local|slim|oneline). "
             "Bare --show-diagrams defaults to the 'summary' preset (layered, main-path scope). "
             "Use --diagram-edge-labels, --diagram-state-detail, --diagram-scope to override "
             "individual preset facets."
@@ -449,7 +449,7 @@ Examples:
         metavar="MODE",
         help=(
             "Display the FSM diagram using a specific rendering mode. MODE is a topology "
-            "(layered|neighborhood|inline) or a preset (detailed|summary|clean|local|oneline). "
+            "(layered|neighborhood|inline) or a preset (detailed|summary|clean|local|slim|oneline). "
             "Bare --show-diagrams defaults to the 'summary' preset (layered, main-path scope). "
             "Use --diagram-edge-labels, --diagram-state-detail, --diagram-scope to override "
             "individual preset facets."

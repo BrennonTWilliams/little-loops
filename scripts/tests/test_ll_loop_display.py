@@ -2059,6 +2059,35 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert "\u250c" in out
 
+    def test_show_diagrams_slim_forwarded_to_render(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--show-diagrams=slim forwards suppress_labels=True, title_only=True, mode=main."""
+        from unittest.mock import patch
+
+        from little_loops.cli.loop import layout as layout_mod
+
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        with patch.object(
+            layout_mod, "_render_fsm_diagram", wraps=layout_mod._render_fsm_diagram
+        ) as mock_render:
+            run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams="slim"))
+            mock_render.assert_called_once_with(
+                self._make_fsm(),
+                highlight_state="start",
+                highlight_color="32",
+                edge_label_colors=None,
+                badges=None,
+                mode="main",
+                suppress_labels=True,
+                title_only=True,
+            )
+        out = capsys.readouterr().out
+        assert "\u250c" in out
+
     def test_verbose_without_show_diagrams_no_diagram(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -3182,6 +3211,7 @@ class TestDiagramFacets:
             "summary": DiagramFacets("layered", True, "full", "main", "preset"),
             "clean": DiagramFacets("layered", False, "title", "main", "preset"),
             "local": DiagramFacets("neighborhood", True, "title", "main", "preset"),
+            "slim": DiagramFacets("neighborhood", False, "title", "main", "preset"),
             "oneline": DiagramFacets("inline", True, "title", "full", "preset"),
         }
         for name, exp in expected.items():
@@ -3544,6 +3574,10 @@ class TestShowDiagramsArgparse:
         args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=clean"])
         assert args.show_diagrams == "clean"
 
+    def test_show_diagrams_preset_slim(self) -> None:
+        args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=slim"])
+        assert args.show_diagrams == "slim"
+
     def test_show_diagrams_topology_layered(self) -> None:
         args = self._parse_run_args(["ll-loop", "run", "my-loop", "--show-diagrams=layered"])
         assert args.show_diagrams == "layered"
@@ -3657,6 +3691,12 @@ class TestShowDiagramsSubprocessReemit:
         assert "--show-diagrams" in cmd
         idx = cmd.index("--show-diagrams")
         assert cmd[idx + 1] == "clean"
+
+    def test_preset_slim_reemitted_to_cmd(self) -> None:
+        cmd = self._capture_cmd("slim")
+        assert "--show-diagrams" in cmd
+        idx = cmd.index("--show-diagrams")
+        assert cmd[idx + 1] == "slim"
 
     def test_none_mode_suppresses_flag_from_cmd(self) -> None:
         cmd = self._capture_cmd(None)

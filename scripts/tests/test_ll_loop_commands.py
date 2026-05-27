@@ -3869,6 +3869,27 @@ class TestCmdShowDiagramOptions:
         assert call_kwargs.get("title_only") is True
         assert call_kwargs.get("mode") == "main"
 
+    def test_show_diagrams_slim_preset(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--show-diagrams=slim produces suppress_labels=True, title_only=True, mode=main."""
+        from little_loops.cli.loop import info as info_mod
+        from little_loops.cli.loop.info import cmd_show
+        from little_loops.logger import Logger
+
+        loops_dir = self._setup_loop(tmp_path)
+        logger = Logger(verbose=False)
+        args = self._base_args(show_diagrams="slim")
+        with patch.object(
+            info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram
+        ) as mock_render:
+            result = cmd_show("my-loop", args, loops_dir, logger)
+        assert result == 0
+        call_kwargs = mock_render.call_args.kwargs
+        assert call_kwargs.get("suppress_labels") is True
+        assert call_kwargs.get("title_only") is True
+        assert call_kwargs.get("mode") == "main"
+
     def test_show_diagrams_detailed_preset(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
