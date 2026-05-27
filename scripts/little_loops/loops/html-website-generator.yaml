@@ -77,7 +77,7 @@ states:
     # LLM-only scoring if the shell tool is unavailable.
     action_type: shell
     action: |
-      playwright screenshot "file://${context.run_dir}/index.html" "${context.run_dir}/screenshot.png" && echo "CAPTURED"
+      playwright screenshot "file://$(pwd)/${context.run_dir}/index.html" "${context.run_dir}/screenshot.png" && echo "CAPTURED"
     evaluate:
       type: output_contains
       pattern: "CAPTURED"
