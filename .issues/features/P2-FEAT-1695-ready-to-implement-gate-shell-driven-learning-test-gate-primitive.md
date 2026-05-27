@@ -2,12 +2,27 @@
 id: FEAT-1695
 type: FEAT
 priority: P2
-status: open
+status: done
 captured_at: '2026-05-25T20:53:43Z'
+completed_at: '2026-05-27T03:46:58Z'
 discovered_date: '2026-05-25'
 discovered_by: capture-issue
 parent: EPIC-1694
-relates_to: [EPIC-1694, FEAT-1283, FEAT-1287, FEAT-1285, FEAT-1286, FEAT-1696, FEAT-1692, FEAT-1697]
+relates_to:
+- EPIC-1694
+- FEAT-1283
+- FEAT-1287
+- FEAT-1285
+- FEAT-1286
+- FEAT-1696
+- FEAT-1692
+- FEAT-1697
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-1695: `ready-to-implement-gate` — shell-driven Learning-Test gate primitive
@@ -196,6 +211,40 @@ states:
 - Captured-variable interpolation pattern (`${captured.<state>.output}`) is established; reference: `scripts/little_loops/loops/eval-driven-development.yaml:49`.
 - Two terminal states give the parent loop a clean two-way exit via `on_success` (mapped from `done`) and `on_failure` (mapped from `blocked`) when called as a sub-loop.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**CRITICAL — `explore` state: `/ll:explore-api` is not a shell binary**
+
+The proposed `explore` state action calls `/ll:explore-api "$TARGET" || true` inside `action_type: shell`. This runs `bash -c "... /ll:explore-api \"$TARGET\" || true ..."`. Since `/ll:explore-api` is a Claude Code slash command (not a filesystem executable), bash cannot find it. The `|| true` masks the non-zero exit, so the loop silently continues without ever invoking the skill — smoke test step 7 would fail to prove any target.
+
+**Fix**: Replace the `/ll:explore-api "$TARGET" || true` line in the `explore` state with:
+
+```bash
+ll-action invoke explore-api --args "$TARGET" || true
+```
+
+`ll-action` (`scripts/little_loops/cli/action.py:cmd_invoke`) is the shell-callable bridge to ll skills. It constructs `/ll:explore-api <target>` and routes it through `run_claude_command()`, which invokes the host CLI (Claude / Codex) with the skill command. All other `explore` state logic (the STATUS re-check and RESULT emit) is unaffected.
+
+**Note on `type: learning` executor**: `_execute_learning_state()` in `scripts/little_loops/fsm/executor.py:655` has the same issue but is only exercised through `MockActionRunner` in tests; this does not block the shell-driven design.
+
+**Confirmed valid patterns in proposed YAML:**
+
+- `output_contains` evaluator with `pattern: "RESULT=proven"` — passes `test_no_bare_pass_token_in_output_contains` (compound token, not bare `"PASS"`).
+- No `${ALLCAPS}` bare bash variable patterns — passes `test_no_bare_bash_variable_in_shell_actions` (regex `(?<!\$)\$\{[A-Z_][A-Z0-9_]*\}` only flags curly-brace forms without a dot).
+- `${context.max_retries}` is valid template syntax (dot-namespaced); `$MAX` assigned from it is a plain bash variable (no curly braces) — no escaping needed.
+- `"""${captured.state.output}"""` triple-quote pattern in Python heredoc is established — confirmed in `scripts/little_loops/loops/loop-router.yaml` states `route_branch_project` and `parse_project_score`.
+- `on_success:`/`on_failure:` are valid YAML keys — parsed to `on_yes`/`on_no` in `schema.py:510–511`.
+- `test_all_failure_terminals_have_diagnostic_action` — exempt; the loop's failure terminal is `blocked`, not `failed`/`error`/`aborted`.
+
+**`ll-action` invocation syntax reference** (`scripts/little_loops/cli/action.py:195`):
+
+```bash
+ll-action invoke explore-api --args "Stripe idempotency-key header semantics"
+# → runs /ll:explore-api Stripe idempotency-key header semantics via run_claude_command()
+```
+
 ### Meta-loop compliance (CLAUDE.md § Loop Authoring)
 
 This loop **does not modify harness artifacts** — it queries the registry and runs `/ll:explore-api`, which writes `.ll/learning-tests/*.md` (data, not harness config). It is not a meta-loop; rule MR-1 does not apply. All evaluators are non-LLM (`output_json`, `output_contains`) by construction.
@@ -242,6 +291,9 @@ Reference pattern: `scripts/little_loops/loops/outer-loop-eval.yaml:55–63` (ex
 - `scripts/little_loops/fsm/evaluators.py:217–271` — `output_json` evaluator (dot-path + `eq|ne|lt|le|gt|ge` operators)
 - `scripts/little_loops/fsm/schema.py` — captured-variable interpolation (`${captured.<state>.output}`) and `output_contains` evaluator
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/action.py` — `cmd_invoke()` at line 65; the `explore` state shells out to `ll-action invoke explore-api --args "$TARGET"` — this binary must be in PATH; runtime dependency not previously listed [Agent 1 finding]
+
 ### Similar Patterns
 
 - `scripts/little_loops/loops/eval-driven-development.yaml:49` — `${captured.<state>.output}` interpolation
@@ -255,6 +307,10 @@ Reference pattern: `scripts/little_loops/loops/outer-loop-eval.yaml:55–63` (ex
 - End-to-end (proven target): `ll-learning-tests list | jq -r '.[0].target' | xargs -I{} ll-loop run ready-to-implement-gate --context targets="{}"` must reach `done` in one iteration without invoking `/ll:explore-api` (verifiable via `ll-loop history`)
 - End-to-end (missing target): `ll-loop run ready-to-implement-gate --context targets="Python json.dumps default" --context max_retries="1"` must invoke `/ll:explore-api` once and route to `done` or `blocked` based on outcome
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` — add `TestReadyToImplementGateLoop` structural test class (new test to write); model on `TestRefineToReadyIssueSubLoop` and `TestAutodevLoop.test_go_no_go_uses_ll_action_invoke`; must assert: (1) `explore` state action contains `"ll-action invoke"` not `/ll:explore-api` — regression guard for the critical fix; (2) `parse_targets` evaluate uses `output_json` with path `.remaining`; (3) both `done` and `blocked` have `terminal: true` [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` — automatic tests run against all builtin loop YAMLs including the new file without edits; the YAML must have a non-empty top-level `description:` field (`test_all_have_description_field`) and no bare `"PASS"` token in `output_contains` (`test_no_bare_pass_token_in_output_contains`) — already satisfied by the proposed YAML but must not be removed during authoring [Agent 2 finding]
+
 ### Documentation
 
 - `LOOPS_GUIDE.md` — follow-up doc pass after the four loops have shipped (out of scope for this issue per EPIC-1694)
@@ -266,7 +322,7 @@ Reference pattern: `scripts/little_loops/loops/outer-loop-eval.yaml:55–63` (ex
 
 ## Implementation Steps
 
-1. **Draft `scripts/little_loops/loops/ready-to-implement-gate.yaml`** using the YAML above verbatim as the starting point.
+1. **Draft `scripts/little_loops/loops/ready-to-implement-gate.yaml`** using the YAML above as the starting point, **but replace `/ll:explore-api "$TARGET" || true` in the `explore` state with `ll-action invoke explore-api --args "$TARGET" || true`** — `/ll:explore-api` is not a shell binary; see Codebase Research Findings above.
 2. **Run `ll-loop validate ready-to-implement-gate`** and iterate until no ERRORs. Meta-loop rule MR-1 does not apply (no LLM evaluators); other validation should pass cleanly.
 3. **Update `scripts/tests/test_builtin_loops.py`** to add `"ready-to-implement-gate"` to the `expected` set in `test_expected_loops_exist`.
 4. **Run the test:** `python -m pytest scripts/tests/test_builtin_loops.py::test_expected_loops_exist -v`.
@@ -276,6 +332,13 @@ Reference pattern: `scripts/little_loops/loops/outer-loop-eval.yaml:55–63` (ex
 8. **Smoke test the refute path:** if a refuted LT record exists, run the gate against it. Should reach `blocked` without invoking `/ll:explore-api`.
 9. **Smoke test the multi-target path:** comma-separated list mixing proven, missing, and (if available) refuted targets. Verify iteration order and early-exit on refute.
 10. **Confirm discovery:** `ll-loop list | grep ready-to-implement-gate` returns one match.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+11. Add `TestReadyToImplementGateLoop` class to `scripts/tests/test_builtin_loops.py` — model on `TestRefineToReadyIssueSubLoop`; at minimum assert: `explore` state action contains `"ll-action invoke"` (not `/ll:explore-api`), `parse_targets` evaluate has `type: output_json` with `path: ".remaining"`, and both `done` and `blocked` states have `terminal: true`
+12. Verify `ll-action` binary is available in PATH in the test/CI environment before running smoke tests — `scripts/little_loops/cli/action.py` (`cmd_invoke()`) is the runtime bridge; the `explore` state shell action calls it directly
 
 ## Acceptance Criteria
 
@@ -309,4 +372,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-05-25 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-27T03:44:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/395646b3-8a32-4697-a477-563f1397aad9.jsonl`
+- `/ll:confidence-check` - 2026-05-26T17:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f016221c-ae93-4efc-a1e2-4cf135a3c7d9.jsonl`
+- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/395646b3-8a32-4697-a477-563f1397aad9.jsonl`
+- `/ll:wire-issue` - 2026-05-27T03:37:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf41f7b6-ac0c-4c3a-b22f-6fddf68fbac4.jsonl`
+- `/ll:refine-issue` - 2026-05-27T03:31:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/432d6911-81e0-4cc1-8108-1f0da14a2dda.jsonl`
+- `/ll:format-issue` - 2026-05-27T03:18:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/432d6911-81e0-4cc1-8108-1f0da14a2dda.jsonl`
 - `/ll:capture-issue` - 2026-05-25T20:53:43Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/810cf8d1-477c-42da-bb20-b577b2ee3ad9.jsonl`

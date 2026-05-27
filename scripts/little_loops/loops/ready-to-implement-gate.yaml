@@ -1,0 +1,106 @@
+name: ready-to-implement-gate
+category: gate
+description: Sub-loop that proves a list of external-API targets via ll-learning-tests; routes done if all proven, blocked if any refuted.
+initial: parse_targets
+max_iterations: 50
+timeout: 3600
+on_handoff: spawn
+
+context:
+  targets: ""          # comma-separated; required
+  max_retries: "2"     # per-target explore-api retries
+
+states:
+  parse_targets:
+    action: |
+      python3 - <<'PY'
+      import json, os
+      raw = os.environ.get("LL_CONTEXT_TARGETS","").strip()
+      items = [t.strip() for t in raw.split(",") if t.strip()]
+      print(json.dumps({"queue": items, "remaining": len(items), "refuted": []}))
+      PY
+    action_type: shell
+    capture: state
+    evaluate:
+      type: output_json
+      path: ".remaining"
+      operator: gt
+      target: 0
+    on_yes: check_next
+    on_no: done
+
+  check_next:
+    action: |
+      python3 - <<'PY'
+      import json, subprocess, sys
+      state = json.loads("""${captured.state.output}""")
+      target = state["queue"][0]
+      r = subprocess.run(["ll-learning-tests","check",target], capture_output=True, text=True)
+      record = json.loads(r.stdout) if r.returncode == 0 else None
+      status = (record or {}).get("status")
+      verdict = "proven" if status == "proven" else ("refuted" if status == "refuted" else "needs_explore")
+      print(json.dumps({"target": target, "verdict": verdict, "queue": state["queue"], "refuted": state["refuted"]}))
+      PY
+    action_type: shell
+    capture: probe
+    evaluate:
+      type: output_json
+      path: ".verdict"
+      operator: eq
+      target: "proven"
+    on_yes: advance_queue
+    on_no: branch_on_verdict
+
+  branch_on_verdict:
+    action: echo '${captured.probe.output}'
+    action_type: shell
+    evaluate:
+      type: output_json
+      path: ".verdict"
+      operator: eq
+      target: "refuted"
+    on_yes: blocked
+    on_no: explore
+
+  explore:
+    action: |
+      TARGET=$(echo '${captured.probe.output}' | python3 -c "import sys,json;print(json.load(sys.stdin)['target'])")
+      MAX=${context.max_retries}
+      for i in $(seq 1 $MAX); do
+        ll-action invoke explore-api --args "$TARGET" || true
+        STATUS=$(ll-learning-tests check "$TARGET" 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('status',''))" 2>/dev/null || echo "")
+        if [ "$STATUS" = "proven" ]; then echo "RESULT=proven"; exit 0; fi
+        if [ "$STATUS" = "refuted" ]; then echo "RESULT=refuted"; exit 0; fi
+      done
+      echo "RESULT=exhausted"
+    action_type: shell
+    capture: explore_result
+    evaluate:
+      type: output_contains
+      pattern: "RESULT=proven"
+    on_yes: advance_queue
+    on_no: blocked
+
+  advance_queue:
+    action: |
+      python3 - <<'PY'
+      import json
+      probe = json.loads("""${captured.probe.output}""")
+      queue = probe["queue"][1:]
+      print(json.dumps({"queue": queue, "remaining": len(queue), "refuted": probe["refuted"]}))
+      PY
+    action_type: shell
+    capture: state
+    evaluate:
+      type: output_json
+      path: ".remaining"
+      operator: gt
+      target: 0
+    on_yes: check_next
+    on_no: done
+
+  done:
+    terminal: true
+
+  blocked:
+    terminal: true

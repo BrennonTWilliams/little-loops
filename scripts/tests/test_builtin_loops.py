@@ -119,6 +119,7 @@ class TestBuiltinLoopFiles:
             "deep-research",
             "deep-research-arxiv",
             "loop-router",
+            "ready-to-implement-gate",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -3739,4 +3740,51 @@ class TestAgentEvalImproveLoop:
         state = data["states"].get("refine_config", {})
         assert state.get("on_retry_exhausted") == "diagnose", (
             f"refine_config.on_retry_exhausted should be 'diagnose', got {state.get('on_retry_exhausted')!r}"
+        )
+
+
+class TestReadyToImplementGateLoop:
+    """Tests that ready-to-implement-gate.yaml has correct structure and routing."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "ready-to-implement-gate.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_explore_uses_ll_action_invoke(self, data: dict) -> None:
+        """explore state must call ll-action invoke, not /ll:explore-api (which is not a shell binary)."""
+        state = data["states"].get("explore", {})
+        action = state.get("action", "")
+        assert "ll-action invoke" in action, (
+            "explore action must use 'll-action invoke', not '/ll:explore-api'"
+        )
+        assert "/ll:explore-api" not in action, (
+            "explore action must not call /ll:explore-api directly; use 'll-action invoke explore-api'"
+        )
+
+    def test_parse_targets_evaluate_is_output_json_on_remaining(self, data: dict) -> None:
+        """parse_targets evaluate must use output_json evaluator with path '.remaining'."""
+        state = data["states"].get("parse_targets", {})
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_json", (
+            f"parse_targets.evaluate.type should be 'output_json', got {evaluate.get('type')!r}"
+        )
+        assert evaluate.get("path") == ".remaining", (
+            f"parse_targets.evaluate.path should be '.remaining', got {evaluate.get('path')!r}"
+        )
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        state = data["states"].get("done", {})
+        assert state.get("terminal") is True, (
+            f"done.terminal should be True, got {state.get('terminal')!r}"
+        )
+
+    def test_blocked_is_terminal(self, data: dict) -> None:
+        """blocked state must have terminal: true."""
+        state = data["states"].get("blocked", {})
+        assert state.get("terminal") is True, (
+            f"blocked.terminal should be True, got {state.get('terminal')!r}"
         )
