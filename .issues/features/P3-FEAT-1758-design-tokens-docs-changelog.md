@@ -7,6 +7,7 @@ type: FEAT
 parent: FEAT-1750
 discovered_date: 2026-05-27
 discovered_by: issue-size-review
+decision_needed: false
 labels:
 - feat
 - docs
@@ -99,13 +100,47 @@ Doc-wiring test following `test_enh1734_doc_wiring.py` pattern. Assert:
 
 ## Key Anchors
 
-- `docs/reference/CONFIGURATION.md:154–157` — Full Configuration Example JSON (insert design_tokens block after documents block)
-- `docs/reference/CONFIGURATION.md:452–477` — `### documents` section (structural model)
-- `docs/reference/API.md:113` — existing `design_tokens | DesignTokensConfig` row
-- `docs/reference/API.md:151–156` — `CliConfig` table (structural model for DesignTokensConfig table)
-- `docs/reference/API.md:162` — append `#### DesignTokensConfig` after `#### CliConfig`
-- `DesignTokensConfig` fields (from `scripts/little_loops/config/features.py:268–289`):
+- `docs/reference/CONFIGURATION.md:154–157` — Full Configuration Example JSON (`"documents"` block; `"loops"` block starts at line 159; insert `design_tokens` between lines 157 and 159)
+- `docs/reference/CONFIGURATION.md:452–477` — `### documents` section (structural model); note this section uses 3-column `Key | Default | Description` table, but **use 4-column `Key | Type | Default | Description`** for `design_tokens` — consistent with newer CONFIGURATION.md sections at lines 727, 780, 808, 825, 850, 879
+- `docs/reference/API.md:113` — existing `design_tokens | DesignTokensConfig` row in BRConfig table
+- `docs/reference/API.md:151–156` — `CliConfig` table (`Key | Type | Default | Description`, 4 columns — structural model for DesignTokensConfig table)
+- `docs/reference/API.md:162–163` — line 162 is blank (end of CliConfig Notes block); line 163 is `#### Methods`; insert `#### DesignTokensConfig` at line 162 (before `#### Methods`)
+- `docs/ARCHITECTURE.md:714` — end of `## Configuration Flow` mermaid diagram; insert the design-tokens cross-cutting note here, before the `---` separator at line 716 (no existing "artifact-loops paragraph"; this is the nearest prose anchor for a cross-cutting config note)
+- `docs/ARCHITECTURE.md:189` — `│   ├── design-tokens/` already appears in the directory tree (no change needed there)
+- `README.md:163–168` — `## What's in the box` bullet list; add design tokens near the `**Configuration system**` bullet (line 168)
+- `CHANGELOG.md:14` — `## [Unreleased]` section exists but must NOT be used; create new `## [1.112.0] - 2026-05-27` section above `## [1.111.0]` (current latest); follow format `### Added` / `- **\`feature\`** — description. (FEAT-NNNN)`
+- `DesignTokensConfig` fields (confirmed from `scripts/little_loops/config/features.py:268–289`):
   `enabled` (bool, default `True`), `path` (str, `".ll/design-tokens"`), `primitives_file` (str, `"primitives.json"`), `semantic_file` (str, `"semantic.json"`), `themes_dir` (str, `"themes"`), `active_theme` (str, `"light"`)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**CONFIGURATION.md — column format clarification:**
+The `### documents` structural model (lines 452–477) uses a 3-column `Key | Default | Description` table. However, the issue specifies a 4-column table including `Type`, which is consistent with newer sections of `CONFIGURATION.md` (lines 727, 780, 808, 825, 850, 879 all use `Key | Type | Default | Description`). Use 4 columns for `design_tokens` — the type distinction (bool vs str) adds meaningful information here.
+
+**API.md — exact insertion point:**
+Line 162 is blank (end of the `**Notes:**` block following `#### CliConfig`); line 163 is `#### Methods`. Insert `#### DesignTokensConfig` at line 162 so it appears between CliConfig and Methods.
+
+**ARCHITECTURE.md — no existing "artifact-loops paragraph":**
+There is no standalone "artifact-loops paragraph" in `ARCHITECTURE.md`. The closest existing section is `## Configuration Flow` (lines 681–715) followed by `---` at line 716. Add the design-tokens cross-cutting note as a prose sentence after the mermaid diagram (line 714), before the `---` separator. Suggested text: *"Design tokens (`DesignTokensConfig`) serve as a cross-cutting input to artifact-generating loops: `ll-loop run` and `ll-loop resume` pre-inject the resolved token set into the FSM initial context before the first state is entered."*
+
+**CHANGELOG.md — version to use:**
+Current latest release is `## [1.111.0] - 2026-05-27`. The `## [Unreleased]` section exists but per project convention must not be used for new entries. Create `## [1.112.0] - 2026-05-27` (or the next appropriate version) above `[1.111.0]`. Entry format: `- **\`design-tokens\`** — description. (FEAT-NNNN)`.
+
+**Test pattern (from `scripts/tests/test_enh1734_doc_wiring.py`):**
+```python
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+CONFIGURATION_MD = PROJECT_ROOT / "docs" / "reference" / "CONFIGURATION.md"
+
+class TestConfigurationMd:
+    def test_design_tokens_section_header(self) -> None:
+        content = CONFIGURATION_MD.read_text()
+        assert "### `design_tokens`" in content, (
+            "CONFIGURATION.md must include a ### `design_tokens` section header"
+        )
+```
+Each target file gets its own `Path` constant and class; each assertion is a single `in content` check.
 
 ## Acceptance Criteria
 
@@ -123,6 +158,7 @@ Doc-wiring test following `test_enh1734_doc_wiring.py` pattern. Assert:
 - Changelog entry should mention FEAT-1756 and FEAT-1757 outcomes; best written last
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-27T23:48:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3eb92b60-b471-4c74-afcb-29035af4b912.jsonl`
 - `/ll:issue-size-review` - 2026-05-27T23:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 
 ---
