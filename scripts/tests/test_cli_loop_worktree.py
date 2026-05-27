@@ -618,6 +618,7 @@ class TestCmdRunWorktree:
             mock_cfg.return_value.cli.colors.fsm_active_state = None
             mock_cfg.return_value.loops.glyphs.to_dict.return_value = {}
             mock_cfg.return_value.commands.rate_limits.circuit_breaker_enabled = False
+            mock_cfg.return_value.design_tokens.enabled = False
             mock_cfg.return_value.extensions = []
             mock_cfg.return_value.events = MagicMock(transports=[])
 
@@ -653,6 +654,7 @@ class TestCmdRunWorktree:
             mock_cfg.return_value.cli.colors.fsm_active_state = None
             mock_cfg.return_value.loops.glyphs.to_dict.return_value = {}
             mock_cfg.return_value.commands.rate_limits.circuit_breaker_enabled = False
+            mock_cfg.return_value.design_tokens.enabled = False
             mock_cfg.return_value.extensions = []
             mock_cfg.return_value.events = MagicMock(transports=[])
 
@@ -678,6 +680,7 @@ class TestCmdRunWorktree:
             mock_cfg.return_value.cli.colors.fsm_edge_labels.to_dict.return_value = {}
             mock_cfg.return_value.cli.colors.fsm_active_state = None
             mock_cfg.return_value.loops.glyphs.to_dict.return_value = {}
+            mock_cfg.return_value.design_tokens.enabled = False
 
             with pytest.raises(SystemExit) as exc_info:
                 cmd_run("test-loop", args, loops_dir, logger)

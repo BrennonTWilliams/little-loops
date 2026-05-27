@@ -633,6 +633,34 @@ class TestCmdResume:
 
         mock_executor.request_shutdown.assert_called_once()
 
+    def test_design_tokens_context_injected_via_cmd_resume(self, tmp_path: Path) -> None:
+        """design_tokens_context is injected into fsm.context by cmd_resume."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_fsm.context = {}
+
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.design_tokens.load_design_tokens", return_value=None),
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        assert "design_tokens_context" in mock_fsm.context, (
+            "design_tokens_context must be injected into fsm.context by cmd_resume"
+        )
+
 
 class TestCmdResumeBackground:
     """Tests for cmd_resume --background flag (FEAT-608)."""
@@ -1516,6 +1544,7 @@ class TestCmdResumeCircuitWiring:
         )
         mock_config.extensions = {}
         mock_config.events = MagicMock(transports=[])
+        mock_config.design_tokens.enabled = False
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -1552,6 +1581,7 @@ class TestCmdResumeCircuitWiring:
         )
         mock_config.extensions = {}
         mock_config.events = MagicMock(transports=[])
+        mock_config.design_tokens.enabled = False
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -1590,6 +1620,7 @@ class TestCmdResumeTransportWiring:
         )
         mock_config.extensions = {}
         mock_config.events = MagicMock(transports=[])
+        mock_config.design_tokens.enabled = False
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -1626,6 +1657,7 @@ class TestCmdResumeTransportWiring:
         )
         mock_config.extensions = {}
         mock_config.events = MagicMock(transports=[])
+        mock_config.design_tokens.enabled = False
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -1654,6 +1686,7 @@ class TestCmdResumeTransportWiring:
         )
         mock_config.extensions = {}
         mock_config.events = MagicMock(transports=[])
+        mock_config.design_tokens.enabled = False
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),

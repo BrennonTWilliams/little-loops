@@ -1019,6 +1019,7 @@ ll-loop run html-anything "a dashboard showing real-time server metrics"
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language artifact description — passed as the positional argument |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/html-anything-{timestamp}/`) containing `index.html`, `brief.md`, `rubric.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
+| `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 | `pass_threshold` | `7` | Minimum score per criterion (1–10); **all criteria** must meet their individual rubric thresholds |
 
 Override per-run:
@@ -1094,6 +1095,7 @@ ll-loop run hitl-compare ".issues/bugs/P1-BUG-100-implementation-details.md"
 |----------|---------|-------------|
 | `inputs` | (from `loop_input`) | Whitespace-separated file paths or raw text tokens — passed as the positional argument |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/hitl-compare-{timestamp}/`) containing `index.html`, `items.md`, `review.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
+| `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 
 **FSM flow:**
 
@@ -1150,6 +1152,7 @@ ll-loop run hitl-md "# My Plan\n\nThis is the first paragraph..."
 |----------|---------|-------------|
 | `input` | (from `loop_input`) | File path or raw markdown text — passed as the positional argument |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/hitl-md-{timestamp}/`) containing `index.html`, `segments.json`, `critique.md`, and `screenshot.png`. The final approved `index.html` is also copied to `./hitl-md-review.html` in the cwd. Override with `--context run_dir=path/`. |
+| `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 
 **FSM flow:**
 
@@ -1198,6 +1201,7 @@ ll-loop run html-website-generator "a landing page for a Dutch art museum"
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language website description — passed as the positional argument |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/html-website-generator-{timestamp}/`) for `index.html`, `brief.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
+| `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
 
 Override per-run:
@@ -1252,6 +1256,7 @@ ll-loop run svg-image-generator "a minimalist coffee cup icon"
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language SVG description — passed as the positional argument |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/svg-image-generator-{timestamp}/`) for `image.svg`, `brief.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
+| `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
 
 Override per-run:
@@ -1309,6 +1314,7 @@ ll-loop run svg-textgrad "a minimalist coffee cup icon"
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language SVG description — passed as the positional argument |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/svg-textgrad-{timestamp}/`) for `image.svg`, `brief.md`, `critique.md`, `gradients.md`, `scores.md`, `screenshot.png`, `best.svg`, and `best-brief.md`; created automatically. Override with `--context run_dir=path/`. |
+| `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **weighted average** `(2×visual_clarity + 2×originality + craft + scalability) / 6` must meet or exceed this value |
 
 Override per-run:

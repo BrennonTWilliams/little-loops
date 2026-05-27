@@ -20,6 +20,7 @@ timeout: 7200
 context:
   description: ""             # populated from loop_input via input_key: description
   pass_threshold: 7           # minimum score per criterion (1-10) to pass
+  design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
 
 states:
 
@@ -119,6 +120,8 @@ states:
       If ${captured.run_dir.output}/critique.md exists, read it and address all issues
       listed in the "Issues to Address" section specifically and completely.
 
+      ${context.design_tokens_context}
+
       Write a single self-contained HTML file to ${captured.run_dir.output}/index.html that:
       - Fully satisfies every platform constraint specified in brief.md for the artifact type
       - Embeds all CSS and JavaScript inline (no external dependencies, no CDN links)
@@ -131,6 +134,8 @@ states:
         clean typography hierarchy for name/contact/sections
       - For html-website: responsive layout, semantic HTML, accessible, distinctive aesthetic
       - Achieves a distinctive, high-quality aesthetic — avoid AI-slop patterns
+      - If design tokens are provided above, use their semantic names and resolved values
+        for colors; do not invent new color values outside the token palette
       - If critique exists, resolves every specific issue before introducing new ideas
     next: evaluate
 

@@ -15,6 +15,7 @@ timeout: 14400
 context:
   description: ""             # populated from loop_input via input_key: description
   pass_threshold: 6           # minimum score per criterion (1-10) to pass
+  design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
 
 states:
 
@@ -53,6 +54,8 @@ states:
       If ${context.run_dir}/critique.md exists, read it and address all issues
       listed in the "Issues to Address" section specifically and completely.
 
+      ${context.design_tokens_context}
+
       Write a single self-contained HTML file to ${context.run_dir}/index.html that:
       - Implements the visual identity and layout from the brief
       - Embeds all CSS and JavaScript inline (no external dependencies, no CDN links)
@@ -60,6 +63,8 @@ states:
       - Achieves a distinctive, museum-quality aesthetic — avoid AI-slop patterns
         (generic gradients, unmodified Bootstrap components, stock imagery placeholders,
         bland sans-serif on white backgrounds)
+      - If design tokens are provided above, use their semantic names and resolved values
+        for colors; do not invent new color values outside the token palette
       - If critique exists, resolves every specific issue before introducing new ideas
     next: evaluate
 

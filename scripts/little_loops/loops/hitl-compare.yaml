@@ -18,6 +18,7 @@ timeout: 7200
 # or treated as raw text content — this discrimination happens in the identify prompt.
 context:
   inputs: ""              # whitespace-separated file paths or raw text; populated via input_key
+  design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
 
 states:
 
@@ -138,6 +139,8 @@ states:
 
       If ${captured.run_dir.output}/critique.md exists, read it and address all issues listed
       in the "Issues to Address" section specifically and completely.
+
+      ${context.design_tokens_context}
 
       Write a single self-contained HTML file to ${captured.run_dir.output}/index.html that:
       - Embeds ALL CSS and JavaScript inline (no external dependencies, no CDN links, no <link> tags)

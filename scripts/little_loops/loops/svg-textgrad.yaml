@@ -16,6 +16,7 @@ timeout: 7200
 context:
   description: ""             # populated from loop_input via input_key: description
   pass_threshold: 6           # minimum score per criterion (1-10) to pass
+  design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
 
 states:
 
@@ -64,8 +65,12 @@ states:
     action: |
       Read ${captured.run_dir.output}/brief.md for the visual brief.
 
+      ${context.design_tokens_context}
+
       Write a single self-contained SVG file to ${captured.run_dir.output}/image.svg that:
       - Implements the shape language and color palette from the brief exactly
+      - If design tokens are provided above, use their semantic color values; do not
+        invent new colors outside the token palette
       - Has a proper viewBox attribute (e.g. viewBox="0 0 800 800") so it scales correctly
       - Contains no external dependencies: no <image href="...">, no external fonts,
         no xlink:href pointing to remote resources — everything embedded or drawn with paths

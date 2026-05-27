@@ -174,8 +174,14 @@ def cmd_run(
         os.environ["LL_CONTEXT_LIMIT"] = str(args.context_limit)
 
     from little_loops.config import BRConfig
+    from little_loops.design_tokens import load_design_tokens, render_as_prompt_context
 
     _config = BRConfig(Path.cwd())
+
+    if "design_tokens_context" not in fsm.context:
+        _tokens = load_design_tokens(_config)
+        fsm.context["design_tokens_context"] = render_as_prompt_context(_tokens) if _tokens else ""
+
     _edge_label_colors = _config.cli.colors.fsm_edge_labels.to_dict()
     _highlight_color = _config.cli.colors.fsm_active_state
     _badges = _config.loops.glyphs.to_dict()

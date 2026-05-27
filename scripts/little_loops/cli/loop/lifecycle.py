@@ -469,11 +469,17 @@ def cmd_resume(
             print()
 
     from little_loops.config import BRConfig
+    from little_loops.design_tokens import load_design_tokens, render_as_prompt_context
     from little_loops.extension import wire_extensions
     from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
     from little_loops.transport import wire_transports
 
     config = BRConfig(Path.cwd())
+
+    if "design_tokens_context" not in fsm.context:
+        _tokens = load_design_tokens(config)
+        fsm.context["design_tokens_context"] = render_as_prompt_context(_tokens) if _tokens else ""
+
     circuit = (
         RateLimitCircuit(Path(config.commands.rate_limits.circuit_breaker_path))
         if config.commands.rate_limits.circuit_breaker_enabled

@@ -174,7 +174,7 @@ class TestCmdRunProgramMdInjection:
         loops_dir.mkdir()
         (loops_dir / "test-loop.yaml").write_text(
             "name: test-loop\ninitial: done\n"
-            'context:\n  targets: ""\n  directive: ""\n'
+            'context:\n  targets: ""\n  directive: ""\n  design_tokens_context: ""\n'
             "states:\n  done:\n    terminal: true\n"
         )
         return loops_dir
@@ -278,6 +278,39 @@ class TestCmdRunProgramMdInjection:
             f"run_dir must match test-loop-YYYYMMDDTHHMMSS, got: {run_dir!r}"
         )
         assert run_dir.endswith("/"), "run_dir must end with /"
+
+    def test_design_tokens_context_injected_into_context(self, tmp_path: Path) -> None:
+        """design_tokens_context is injected into fsm.context by cmd_run before dry_run returns."""
+        from unittest.mock import patch
+
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.fsm.validation import load_and_validate
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args(dry_run=True)
+        logger = Logger(use_color=False)
+
+        fsm, _ = load_and_validate(loops_dir / "test-loop.yaml")
+
+        def fake_load_and_validate(path: Path):  # type: ignore[override]
+            return fsm, []
+
+        with (
+            patch(
+                "little_loops.fsm.validation.load_and_validate",
+                side_effect=fake_load_and_validate,
+            ),
+            patch(
+                "little_loops.design_tokens.load_design_tokens",
+                return_value=None,
+            ),
+        ):
+            cmd_run("test-loop", args, loops_dir, logger)
+
+        assert fsm.context.get("design_tokens_context") is not None, (
+            "design_tokens_context must be injected into fsm.context by cmd_run"
+        )
 
     def test_context_run_dir_not_overwritten_by_user_context(self, tmp_path: Path) -> None:
         """--context run_dir=custom overrides the runner-injected default."""

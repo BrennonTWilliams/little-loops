@@ -1,11 +1,13 @@
 ---
 id: FEAT-1749
-title: Design-tokens loop wiring — pre-inject context into 6 built-in artifact loops
-status: open
+title: "Design-tokens loop wiring \u2014 pre-inject context into 6 built-in artifact\
+  \ loops"
+status: done
 priority: P3
 type: FEAT
 parent: EPIC-1751
 discovered_date: 2026-05-27
+completed_at: 2026-05-27 22:40:45+00:00
 discovered_by: issue-size-review
 labels:
 - feat
@@ -14,6 +16,12 @@ labels:
 relates_to:
 - EPIC-1751
 - FEAT-1747
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # FEAT-1749: Design-tokens loop wiring — pre-inject context into 6 built-in artifact loops
@@ -158,6 +166,75 @@ Run each with `design_tokens.enabled: false`:
 - `scripts/tests/test_ll_loop_program_md.py`
 - `scripts/tests/test_builtin_loops.py`
 
+## Integration Map
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/__init__.py` — production dispatch; calls `cmd_run(args.loop, args, loops_dir, logger)` at the `"run"` branch and `cmd_resume(...)` at the `"resume"` branch in `main()`. No code change required but is the primary production call site for both injection points. [Agent 1 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**FEAT-1747 dependency confirmed** — `load_design_tokens` and `render_as_prompt_context` exist in `scripts/little_loops/design_tokens.py` (single module file, not a package):
+```python
+def load_design_tokens(config: BRConfig, theme: str | None = None) -> DesignTokens | None
+def render_as_prompt_context(tokens: DesignTokens) -> str
+```
+Returns `None` when `design_tokens.enabled` is `False` or the configured path doesn't exist.
+
+**Critical: injection placement in `run.py`** — The `run_dir` guard closes at line 162, but `BRConfig` is not instantiated until line 178 (as `_config`, not `config`). The design_tokens injection must be placed **after line 178**, reusing the existing `_config` variable:
+```python
+# Place AFTER line 178 where _config = BRConfig(Path.cwd()) is already set
+if "design_tokens_context" not in fsm.context:
+    tokens = load_design_tokens(_config)
+    fsm.context["design_tokens_context"] = render_as_prompt_context(tokens) if tokens else ""
+```
+Do NOT instantiate a new `BRConfig(Path.cwd())` — `_config` already exists. Import at top of block: `from little_loops.design_tokens import load_design_tokens, render_as_prompt_context`.
+
+**`lifecycle.py` placement confirmed** — `config = BRConfig(Path.cwd())` is at line 476 (variable `config`, consistent with issue). Run_dir re-injection is at lines 444–447, before BRConfig. Injection must go after line 476 using `config` (already correct in the Proposed Solution).
+
+**Test fixture requires `design_tokens_context: ""`** — `TestCmdRunProgramMdInjection._make_loop()` writes a fixture YAML inline (lines 170–177 of `test_ll_loop_program_md.py`). The new `test_design_tokens_context_injected_into_context` test must either add `design_tokens_context: ""` to that shared fixture or write its own variant with the field declared.
+
+**Confirmed test class locations in `test_builtin_loops.py`:**
+- `TestHtmlWebsiteGeneratorLoop` — line 2640
+- `TestSvgImageGeneratorLoop` — line 2713
+- `TestSvgTextgradLoop` — line 2822
+- `TestHtmlAnythingLoop` — line 3115
+- `TestHitlCompareLoop` — line 3282
+- `TestHitlMdLoop` — line 3442
+
+**Confirmed loop YAML `context:` blocks** (all six loops; `design_tokens_context: ""` adds to each):
+| Loop | Existing context keys |
+|---|---|
+| `html-website-generator.yaml` | `description: ""`, `pass_threshold: 6` |
+| `svg-image-generator.yaml` | `description: ""`, `pass_threshold: 6` |
+| `svg-textgrad.yaml` | `description: ""`, `pass_threshold: 6` |
+| `html-anything.yaml` | `description: ""`, `pass_threshold: 7` |
+| `hitl-compare.yaml` | `inputs: ""` |
+| `hitl-md.yaml` | `input: ""` |
+
+**`test_context_has_design_tokens_context` pattern** — mirrors `test_context_has_description` which exists in 4 of the 6 classes (at lines 2701, 2781, 2905, 3240). `TestHitlCompareLoop` and `TestHitlMdLoop` use `test_context_has_inputs`/`test_context_has_input` instead but follow identical structure. New test body:
+```python
+def test_context_has_design_tokens_context(self, data: dict) -> None:
+    ctx = data.get("context", {})
+    assert "design_tokens_context" in ctx
+```
+
+**Additional reference**: `test_ll_loop_commands.py:TestCmdRunContextInjection` (line 2577) — existing context-injection test class that may also need `design_tokens_context` coverage.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — Each of the six built-in loops has a context-variable table listing `run_dir` as `runner-injected`. After this issue, `design_tokens_context` becomes a second runner-injected variable and must appear in each table. Sections to update: `### html-anything` (~line 1021), `### hitl-compare` (~line 1096), `### hitl-md` (~line 1152), `### html-website-generator` (~line 1200), `### svg-image-generator` (~line 1254), `### svg-textgrad` (~line 1311). [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_loop_lifecycle.py` — Covers `cmd_resume` exhaustively (`TestCmdResume`, `TestCmdResumeBackground`, etc.) but has zero `design_tokens` mentions. Acceptance criterion #2 ("design_tokens_context present in fsm.context after cmd_resume") has no backing test. A new test for the `cmd_resume` injection path must be added here, following the same pattern as `test_run_dir_injected_into_context` in `test_ll_loop_program_md.py`. [Agent 3 finding]
+- `scripts/tests/test_cli_loop_worktree.py` — `TestCmdRunWorktree` patches `little_loops.config.BRConfig` as a bare `MagicMock` without configuring `.design_tokens`. After FEAT-1749 adds `load_design_tokens(_config)` in the injection block, this mock will pass a `MagicMock` to `load_design_tokens` instead of a real `BRConfig`; the function may return a truthy `MagicMock` and then call `render_as_prompt_context(mock)` with an invalid argument. **This test may break.** The mock needs `mock_cfg.return_value.design_tokens.enabled = False` or `load_design_tokens` must be patched at the module level in this test class. [Agent 3 finding]
+
 ## Acceptance Criteria
 
 - [ ] `design_tokens_context` is present in `fsm.context` after `cmd_run` when tokens are enabled and path exists.
@@ -176,6 +253,14 @@ Run each with `design_tokens.enabled: false`:
 4. Add `test_design_tokens_context_injected_into_context` to `TestCmdRunProgramMdInjection` in `test_ll_loop_program_md.py`, following the `test_run_dir_injected_into_context` pattern
 5. Add `test_context_has_design_tokens_context` to all six loop test classes in `test_builtin_loops.py`; run full suite
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `docs/guides/LOOPS_GUIDE.md` — add a `design_tokens_context | "" | runner-injected` row to the context-variable tables for all six built-in loops (six table edits total)
+7. Add `test_design_tokens_context_injected_via_cmd_resume` to `test_cli_loop_lifecycle.py` — verifies acceptance criterion #2 (cmd_resume injection); follow the `test_run_dir_injected_into_context` pattern from `test_ll_loop_program_md.py`
+8. Fix `TestCmdRunWorktree` in `test_cli_loop_worktree.py` — before adding the injection code, add `mock_cfg.return_value.design_tokens.enabled = False` (or patch `little_loops.design_tokens.load_design_tokens` at the module level) to prevent a MagicMock from being passed to `render_as_prompt_context`
+
 ## Impact
 
 - **Priority**: P3 — depends on FEAT-1747; makes design tokens visible in actual loop output
@@ -188,8 +273,12 @@ Run each with `design_tokens.enabled: false`:
 - FEAT-1747 must be merged first (loader must exist for the injection sites to call it).
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-27T22:27:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b372a37b-0b66-456e-af99-2cc6e5c0a993.jsonl`
+- `/ll:wire-issue` - 2026-05-27T22:22:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4eb3a107-2ec1-41bd-8a12-54c4a785770a.jsonl`
+- `/ll:refine-issue` - 2026-05-27T22:15:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc6064e1-5abc-4291-80e1-7166397af8e6.jsonl`
 - `/ll:format-issue` - 2026-05-27T20:25:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/652005b7-b7e9-404a-9ee0-b21de41aeefa.jsonl`
 - `/ll:issue-size-review` - 2026-05-27T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f94f108-c36b-4b4d-b486-f41734145a41.jsonl`
+- `/ll:confidence-check` - 2026-05-27T22:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26ce65c9-f604-4d07-ab8b-653b4eb3c1b0.jsonl`
 
 ---
 

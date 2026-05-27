@@ -2704,6 +2704,11 @@ class TestHtmlWebsiteGeneratorLoop:
         assert "description" in ctx
         assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
 
+    def test_context_has_design_tokens_context(self, data: dict) -> None:
+        """context block must declare design_tokens_context; runner-injected at loop start."""
+        ctx = data.get("context", {})
+        assert "design_tokens_context" in ctx
+
     def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""
         assert data.get("max_iterations", 0) > 0
@@ -2783,6 +2788,11 @@ class TestSvgImageGeneratorLoop:
         ctx = data.get("context", {})
         assert "description" in ctx
         assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
+
+    def test_context_has_design_tokens_context(self, data: dict) -> None:
+        """context block must declare design_tokens_context; runner-injected at loop start."""
+        ctx = data.get("context", {})
+        assert "design_tokens_context" in ctx
 
     def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""
@@ -2907,6 +2917,11 @@ class TestSvgTextgradLoop:
         ctx = data.get("context", {})
         assert "description" in ctx
         assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
+
+    def test_context_has_design_tokens_context(self, data: dict) -> None:
+        """context block must declare design_tokens_context; runner-injected at loop start."""
+        ctx = data.get("context", {})
+        assert "design_tokens_context" in ctx
 
     def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""
@@ -3243,6 +3258,11 @@ class TestHtmlAnythingLoop:
         assert "description" in ctx
         assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
 
+    def test_context_has_design_tokens_context(self, data: dict) -> None:
+        """context block must declare design_tokens_context; runner-injected at loop start."""
+        ctx = data.get("context", {})
+        assert "design_tokens_context" in ctx
+
     def test_context_pass_threshold_is_7(self, data: dict) -> None:
         """pass_threshold must be 7 — higher than SVG's 6 because platform constraints are binary."""
         ctx = data.get("context", {})
@@ -3388,6 +3408,11 @@ class TestHitlCompareLoop:
         ctx = data.get("context", {})
         assert "inputs" in ctx
         assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
+
+    def test_context_has_design_tokens_context(self, data: dict) -> None:
+        """context block must declare design_tokens_context; runner-injected at loop start."""
+        ctx = data.get("context", {})
+        assert "design_tokens_context" in ctx
 
     def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""
@@ -3564,6 +3589,11 @@ class TestHitlMdLoop:
         ctx = data.get("context", {})
         assert "input" in ctx, "context must have 'input' key (singular, not 'inputs')"
         assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
+
+    def test_context_has_design_tokens_context(self, data: dict) -> None:
+        """context block must declare design_tokens_context; runner-injected at loop start."""
+        ctx = data.get("context", {})
+        assert "design_tokens_context" in ctx
 
     def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""
