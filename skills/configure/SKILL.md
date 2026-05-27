@@ -11,7 +11,7 @@ allowed-tools:
   - Bash(pip:*)
 arguments:
   - name: area
-    description: "project|issues|commands|parallel|automation|documents|continuation|context|prompt|scan|sync|allowed-tools|hooks (optional - prompts if omitted)"
+    description: "project|issues|commands|parallel|automation|documents|continuation|context|prompt|scan|sync|allowed-tools|hooks|design-tokens (optional - prompts if omitted)"
     required: false
   - name: flags
     description: Optional flags (--list, --show, --reset)
@@ -111,6 +111,7 @@ Map argument names to config sections:
 | `sync` | `sync` | GitHub Issues sync: enabled, label mapping, priorities |
 | `allowed-tools` | `permissions.allow` in `.claude/settings.json` or `.claude/settings.local.json` | ll- CLI tool allow entries (Note: writes to Claude Code settings files, not ll-config.json) |
 | `hooks` | `hooks` in `.claude/settings.json` or `.claude/settings.local.json` | ll- lifecycle hook configuration (Note: writes to Claude Code settings files, not ll-config.json) |
+| `design-tokens` | `design_tokens` | Design system token settings |
 
 ---
 
@@ -138,6 +139,7 @@ Configuration Areas
   sync          [DEFAULT]     GitHub Issues sync: enabled, label mapping, priorities
   allowed-tools [DEFAULT]     ll- CLI tool allow entries in settings.json/settings.local.json
   hooks         [DEFAULT]     ll- hook configuration in settings.json/settings.local.json
+  design-tokens [DEFAULT]     Design system token settings
 
 Configure: /ll:configure <area>
 Show:      /ll:configure <area> --show
@@ -242,7 +244,7 @@ questions:
       - label: "continuation"
         description: "Session handoff: auto-detect, includes, expiry"
       - label: "More areas..."
-        description: "Show context, prompt, hooks"
+        description: "Show context, prompt, design-tokens, allowed-tools, hooks"
 ```
 
 If "More areas..." selected again:
@@ -257,6 +259,20 @@ questions:
         description: "Context monitoring: threshold, limits"
       - label: "prompt"
         description: "Prompt optimization: mode, confirm, bypass"
+      - label: "design-tokens"
+        description: "Design system token settings"
+      - label: "More areas..."
+        description: "Show allowed-tools, hooks"
+```
+
+If "More areas..." selected again:
+
+```yaml
+questions:
+  - question: "Which area do you want to configure?"
+    header: "Area"
+    multiSelect: false
+    options:
       - label: "allowed-tools"
         description: "ll- CLI tool allow entries in settings.json/settings.local.json"
       - label: "hooks"
@@ -329,6 +345,7 @@ $ARGUMENTS
   - `sync` - GitHub Issues sync: enabled, label mapping, priorities
   - `allowed-tools` - ll- CLI tool allow entries in settings.json/settings.local.json
   - `hooks` - ll- lifecycle hook configuration in settings.json/settings.local.json
+  - `design-tokens` - Design system token settings
 
 - **flags** (optional): Command behavior flags
   - `--list` - Display all configuration areas with status

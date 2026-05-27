@@ -936,3 +936,88 @@ questions:
 ```
 
 Then execute the chosen sub-command.
+
+---
+
+## Area: design_tokens
+
+### Current Values
+
+```
+Current Design Tokens Configuration
+------------------------------------
+  enabled:         {{config.design_tokens.enabled}}
+  path:            {{config.design_tokens.path}}
+  primitives_file: {{config.design_tokens.primitives_file}}
+  semantic_file:   {{config.design_tokens.semantic_file}}
+  themes_dir:      {{config.design_tokens.themes_dir}}
+  active_theme:    {{config.design_tokens.active_theme}}
+```
+
+### Round 1 (3 questions)
+
+```yaml
+questions:
+  - header: "Enable"
+    question: "Enable design tokens? (current: {{config.design_tokens.enabled}})"
+    options:
+      - label: "{{current enabled}} (keep)"
+        description: "Keep current setting"
+      - label: "true"
+        description: "Yes, enable design tokens (default)"
+      - label: "false"
+        description: "No, disable"
+    multiSelect: false
+
+  - header: "Path"
+    question: "Design tokens directory path (current: {{config.design_tokens.path}}):"
+    options:
+      - label: "{{current path}} (keep)"
+        description: "Keep current path"
+      - label: ".ll/design-tokens"
+        description: "Default location"
+    multiSelect: false
+
+  - header: "Theme"
+    question: "Active theme (current: {{config.design_tokens.active_theme}}):"
+    options:
+      - label: "{{current active_theme}} (keep)"
+        description: "Keep current theme"
+      - label: "light"
+        description: "Light theme"
+      - label: "dark"
+        description: "Dark theme"
+    multiSelect: false
+```
+
+### Round 2 (3 questions)
+
+```yaml
+questions:
+  - header: "Primitives"
+    question: "Primitives file name (current: {{config.design_tokens.primitives_file}}):"
+    options:
+      - label: "{{current primitives_file}} (keep)"
+        description: "Keep current filename"
+      - label: "primitives.json"
+        description: "Default filename"
+    multiSelect: false
+
+  - header: "Semantic"
+    question: "Semantic tokens file name (current: {{config.design_tokens.semantic_file}}):"
+    options:
+      - label: "{{current semantic_file}} (keep)"
+        description: "Keep current filename"
+      - label: "semantic.json"
+        description: "Default filename"
+    multiSelect: false
+
+  - header: "Themes dir"
+    question: "Themes subdirectory (current: {{config.design_tokens.themes_dir}}):"
+    options:
+      - label: "{{current themes_dir}} (keep)"
+        description: "Keep current directory name"
+      - label: "themes"
+        description: "Default subdirectory"
+    multiSelect: false
+```

@@ -39,7 +39,7 @@ List all available little-loops commands with descriptions.
 Interactively configure specific areas in ll-config.json.
 
 **Arguments:**
-- `area` (optional): `project`, `issues`, `commands`, `parallel`, `automation`, `documents`, `continuation`, `context`, `prompt`, `scan`, `sync`, `allowed-tools`, `hooks`
+- `area` (optional): `project`, `issues`, `commands`, `parallel`, `automation`, `documents`, `continuation`, `context`, `prompt`, `scan`, `sync`, `allowed-tools`, `hooks`, `design-tokens`
 
 **Flags:** `--list`, `--show`, `--reset`
 

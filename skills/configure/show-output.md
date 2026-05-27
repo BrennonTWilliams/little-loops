@@ -174,3 +174,18 @@ Sync Configuration
 
 Edit: /ll:configure sync
 ```
+
+## design_tokens --show
+
+```
+Design Tokens Configuration
+----------------------------
+  enabled:         {{config.design_tokens.enabled}}         (default: true)
+  path:            {{config.design_tokens.path}}            (default: .ll/design-tokens)
+  primitives_file: {{config.design_tokens.primitives_file}} (default: primitives.json)
+  semantic_file:   {{config.design_tokens.semantic_file}}   (default: semantic.json)
+  themes_dir:      {{config.design_tokens.themes_dir}}      (default: themes)
+  active_theme:    {{config.design_tokens.active_theme}}    (default: light)
+
+Edit: /ll:configure design-tokens
+```
