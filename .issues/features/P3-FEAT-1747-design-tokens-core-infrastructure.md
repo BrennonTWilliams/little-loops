@@ -4,7 +4,7 @@ title: Design-tokens core infrastructure — schema, dataclass, loader, baseline
 status: open
 priority: P3
 type: FEAT
-parent: FEAT-1746
+parent: EPIC-1751
 relates_to: [EPIC-1751]
 discovered_date: 2026-05-27
 discovered_by: issue-size-review
@@ -22,6 +22,50 @@ Add the foundational infrastructure for design-token support: the `design_tokens
 
 ## Parent Issue
 Decomposed from FEAT-1746: Design tokens config field with default palette, wired into built-in artifact-generating loops
+
+## Current Behavior
+
+The codebase has no design-token concept. `config-schema.json` has no `design_tokens` property. No `DesignTokensConfig` dataclass, no `design_tokens.py` loader, and no renderers exist. Artifact-generating loops produce HTML/CSS using ad-hoc styling with no shared token source.
+
+## Expected Behavior
+
+`config-schema.json` accepts a `design_tokens` block with six properties. `BRConfig` exposes a `.design_tokens` property returning a `DesignTokensConfig` instance. `load_design_tokens(config)` resolves token references across primitives/semantic/theme layers and returns a `DesignTokens` object (or `None` when disabled/path missing). Session-start warns when `enabled: true` but path is absent.
+
+## Motivation
+
+- Establishes the single source of truth for design system tokens consumed by artifact-generating loops
+- Eliminates per-loop color hardcoding; any loop can call `load_design_tokens()` and get resolved values
+- Dependency gate for FEAT-1748, FEAT-1749, FEAT-1750 — none of the other three children can be completed without this infrastructure
+
+## Use Case
+
+**Who**: A developer configuring ll for a branded project
+
+**Context**: Running built-in HTML/SVG artifact loops and wanting consistent visual output across all generated files
+
+**Goal**: Configure a `design_tokens` block in `.ll/ll-config.json` once so every loop can load and apply semantic token values
+
+**Outcome**: `load_design_tokens(config)` returns a resolved `DesignTokens` object; loops call `render_as_prompt_context()` to inject token values into generation prompts; generated artifacts reference `color.text.primary`, `color.surface.primary` etc. from the project's config
+
+## API/Interface
+
+```python
+@dataclass(frozen=True)
+class DesignTokens:
+    primitives: dict
+    semantic: dict
+    theme: dict
+    resolved: dict      # flat name -> concrete value, post reference-resolution
+    source_path: Path
+
+def load_design_tokens(
+    config: BRConfig,
+    theme: str | None = None,
+) -> DesignTokens | None: ...   # None when disabled or path missing
+
+def render_as_prompt_context(tokens: DesignTokens) -> str: ...
+def render_as_css_vars(tokens: DesignTokens) -> str: ...
+```
 
 ## Proposed Solution
 
@@ -163,6 +207,21 @@ Add new test: `test_warns_design_tokens_enabled_without_path` following the `tes
 - [ ] `_validate_features` emits a warning when `enabled: true` but path is absent.
 - [ ] All new and updated tests pass: `pytest scripts/tests/test_design_tokens.py scripts/tests/test_config.py scripts/tests/test_config_schema.py scripts/tests/test_hook_session_start.py scripts/tests/test_hooks_integration.py`
 
+## Implementation Steps
+
+1. Add `design_tokens` block to `config-schema.json` before `analytics` (~line 1203)
+2. Implement `DesignTokensConfig` in `features.py`; wire into `BRConfig._parse_config()`, add `.design_tokens` property and `to_dict()` support; export from `config/__init__.py`
+3. Create `scripts/little_loops/design_tokens.py` with `DesignTokens` dataclass, `load_design_tokens()` (with reference resolution and cycle detection), `render_as_prompt_context()`, `render_as_css_vars()`
+4. Fix no-warning fixtures in `test_hook_session_start.py` and `test_hooks_integration.py`; add `_validate_features` warning in `session_start.py`
+5. Write `test_design_tokens.py`; add `TestDesignTokensConfig` and `TestBRConfigDesignTokensIntegration` to `test_config.py`; add `test_design_tokens_in_schema` to `test_config_schema.py`; run full suite
+
+## Impact
+
+- **Priority**: P3 — foundational; no existing feature breaks without it, but blocks FEAT-1749
+- **Effort**: Medium — new module, schema extension, multiple test classes across five test files
+- **Risk**: Low — purely additive; no existing APIs change
+- **Breaking Change**: No
+
 ## Similar Patterns
 
 - **`ScanConfig`** (`scripts/little_loops/config/features.py:ScanConfig`) — multi-field dataclass with `from_dict` and `field(default_factory=...)`.
@@ -172,6 +231,7 @@ Add new test: `test_warns_design_tokens_enabled_without_path` following the `tes
 - **`TestConfigSchema.test_analytics_in_schema`** (`scripts/tests/test_config_schema.py:136`) — schema test template.
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-27T20:25:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/652005b7-b7e9-404a-9ee0-b21de41aeefa.jsonl`
 - `/ll:issue-size-review` - 2026-05-27T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f94f108-c36b-4b4d-b486-f41734145a41.jsonl`
 
 ---

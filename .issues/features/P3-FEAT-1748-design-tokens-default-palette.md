@@ -4,7 +4,7 @@ title: Design-tokens default palette — four-file high-contrast template set
 status: open
 priority: P3
 type: FEAT
-parent: FEAT-1746
+parent: EPIC-1751
 relates_to: [EPIC-1751]
 discovered_date: 2026-05-27
 discovered_by: issue-size-review
@@ -23,6 +23,30 @@ This child can be worked in parallel with FEAT-1747 (core infrastructure); no co
 
 ## Parent Issue
 Decomposed from FEAT-1746: Design tokens config field with default palette, wired into built-in artifact-generating loops
+
+## Current Behavior
+
+No built-in design token template files exist. Users who configure `design_tokens` must author all four JSON files (`primitives.json`, `semantic.json`, `themes/light.json`, `themes/dark.json`) from scratch with no guidance on accessible contrast ratios.
+
+## Expected Behavior
+
+Four semantically layered JSON token files ship with ll under `templates/design-tokens/`. `primitives.json` defines the raw palette; `semantic.json` maps purpose names via `{dot.path}` references; `themes/light.json` and `themes/dark.json` provide theme overrides. All text-on-surface pairings in both themes clear WCAG AA (4.5:1 body, 3:1 large text). All four files parse as valid JSON.
+
+## Motivation
+
+- Lowers the barrier to design-token adoption: users get a working, accessible palette on day one without researching WCAG contrast ratios
+- Required by FEAT-1750 (`/ll:init` materializes these files on accept) — without the templates, the init flow has nothing to copy
+- Can be worked in parallel with FEAT-1747 (no code dependency)
+
+## Use Case
+
+**Who**: A new ll user running `/ll:init` who accepts the design-tokens prompt
+
+**Context**: First-time project setup on a brand-new project
+
+**Goal**: Receive a ready-to-use, accessible default palette without hand-authoring token files
+
+**Outcome**: Four JSON files materialized at `.ll/design-tokens/`; the palette passes WCAG AA in both light and dark themes; the user can extend or replace individual tokens without touching the others
 
 ## Proposed Solution
 
@@ -176,7 +200,22 @@ Tools: https://webaim.org/resources/contrastchecker/ or the `wcag-contrast` npm 
 - [ ] `text.primary` and `text.secondary` on each surface color clear WCAG AA 4.5:1 in both light and dark themes (verified at author time; spot check documented in a comment or PR description).
 - [ ] The four files are parseable by `json.loads()` with no errors.
 
+## Implementation Steps
+
+1. Author `templates/design-tokens/primitives.json` with neutral (0–950), brand (5 stops), accent, success, warning, danger color scales
+2. Author `templates/design-tokens/semantic.json` with `{dot.path}` references mapping `color.surface.*`, `color.text.*`, `color.border.*`, `color.action.*`
+3. Author `templates/design-tokens/themes/light.json` (identity overrides) and `themes/dark.json` (~20-line surface/text remaps)
+4. Verify all text-on-surface pairings against WCAG AA 4.5:1 (body) and 3:1 (large/UI); document spot-check results in a comment block at the top of `semantic.json`
+
+## Impact
+
+- **Priority**: P3 — parallel with FEAT-1747; required by FEAT-1750 for init materialization
+- **Effort**: Small — JSON file authoring with WCAG spot-check verification; no code changes
+- **Risk**: Low — new files only; no existing code modified
+- **Breaking Change**: No
+
 ## Session Log
+- `/ll:format-issue` - 2026-05-27T20:25:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/652005b7-b7e9-404a-9ee0-b21de41aeefa.jsonl`
 - `/ll:issue-size-review` - 2026-05-27T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f94f108-c36b-4b4d-b486-f41734145a41.jsonl`
 
 ---
