@@ -508,6 +508,8 @@ def cmd_resume(
             edge_label_colors=_edge_label_colors,
             badges=_badges,
             mode="resume",
+            instance_id=instance_id,
+            running_dir=running_dir,
         )
     finally:
         executor.close_transports()

@@ -858,3 +858,29 @@ class TestMakeInstanceId:
         time.sleep(1.05)
         id2 = _make_instance_id("test")
         assert id1 != id2, "Expected distinct instance IDs across second boundary"
+
+
+class TestRunBackgroundInstanceIdForwarding:
+    """Tests for ENH-1703: run_background passes --instance-id to re-exec'd foreground child."""
+
+    def test_instance_id_forwarded_to_foreground_child(self, tmp_path: Path) -> None:
+        """run_background includes --instance-id in the child command so the child can tee its log."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        args = argparse.Namespace(
+            max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--instance-id" in cmd, "--instance-id must be forwarded to the foreground child"
+        idx = cmd.index("--instance-id")
+        forwarded_id = cmd[idx + 1]
+        assert forwarded_id.startswith("my-loop-"), "Forwarded instance_id should start with loop name"

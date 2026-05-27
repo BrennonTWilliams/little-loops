@@ -2,7 +2,8 @@
 id: ENH-1703
 priority: P4
 type: ENH
-status: open
+status: done
+completed_at: 2026-05-27T21:13:47Z
 parent: ENH-1670
 decision_needed: false
 confidence_score: 95
@@ -20,6 +21,14 @@ score_change_surface: 0
 Make `run_foreground()` always tee stdout/stderr to `{instance_id}.log`, matching the behaviour of `run_background()`. No flag, no config key — capture is unconditional for all foreground runs, giving operators a recoverable artifact without sacrificing the live-terminal experience.
 
 Absorbs ENH-1682 (cancelled): adds ANSI-stripping on log writes so the file is plain-text / grep-friendly while the terminal stream is left unchanged.
+
+## Current Behavior
+
+`run_foreground()` does not write any log file. When `ll-loop run <loop>` or `ll-loop resume <id>` runs in foreground mode, output streams to the terminal only — no file artifact is produced. Only `run_background()` captures a `{instance_id}.log` file. Operators have no recoverable artifact from foreground runs.
+
+## Expected Behavior
+
+`run_foreground()` always tees stdout/stderr to `{running_dir}/{instance_id}.log` while simultaneously streaming to the terminal unchanged (no ANSI loss, no suppression). The log file contains plain text (ANSI sequences stripped). Both `ll-loop run` and `ll-loop resume` produce a log file. The `ll-loop status` display automatically renders `Log: <path>` for foreground runs.
 
 ## Parent Issue
 
@@ -85,6 +94,14 @@ if not getattr(args, "foreground_internal", False):
 - `MockExecutor` at line 34 and `make_test_fsm()` at line 84 are module-level helpers available for fixtures
 - Inline `ansi_re = re.compile(r"\x1b\[[0-9;]*[mABCDEFGHJKSTfhilmnprsu]")` per test method rather than using the scattered instance-method variants found elsewhere in the file.
 
+## Scope Boundaries
+
+- Documentation updates deferred to ENH-1704 (docs-only follow-up)
+- No new flag, config key, or opt-out mechanism — capture is unconditional
+- No changes to `_format_log_label()` — automatically renders `Log: <path>` once a log file exists
+- No changes to `next_loop.py` — already uses `instance_id=None, foreground_internal=False` defaults
+- Does not apply to background-spawned foreground children (`--foreground-internal`) — those already write via Popen redirect
+
 ## Acceptance Criteria
 
 - `ll-loop run <loop>` always produces `{instance_id}.log` in the running dir with full stdout/stderr captured
@@ -140,14 +157,42 @@ _Added by `/ll:confidence-check` on 2026-05-27_
 ### Outcome Risk Factors
 - **Broad call surface (Pattern A, ~65 call sites)** — `run_foreground()` is called in ~55 test methods across `test_ll_loop_display.py` plus 2 production call sites (`run.py`, `lifecycle.py`). The backward-compatible `instance_id: str | None = None` default (wiring constraint #7) is the critical safeguard — any deviation from this exact default would break all 55 test call sites with `TypeError`. Risk is managed but the wide surface demands careful implementation.
 
+## Impact
+
+- **Priority**: P4 — Quality-of-life; operators gain a recoverable artifact without config overhead
+- **Effort**: Medium — `_TeeWriter` wrapper, signature change with default, ~55 test call sites verified safe by backward-compatible default
+- **Risk**: Low — `instance_id: str | None = None` default preserves all existing call sites; tee guarded by `instance_id is not None` and `foreground_internal` flag
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `cli`, `loop-runner`, `logging`, `testing`
+
 ## Related Issues
 
 - ENH-1682 (cancelled) — absorbed into this issue; ANSI-strip addition above
 - ENH-1704 — docs-only follow-up (depends on this issue)
 
+**Done** | Created: 2026-05-25 | Priority: P4
+
+## Resolution
+
+Implemented always-on foreground log capture via `_TeeWriter` in `_helpers.py`:
+
+- Added `_ANSI_RE` (broad regex covering all escape sequences) and `_TeeWriter` class to `_helpers.py`
+- Added `instance_id: str | None = None` and `running_dir: Path | None = None` params to `run_foreground()`; tee guarded by `instance_id is not None and not foreground_internal`
+- Wrapped function body in outer `try/finally` to guarantee `sys.stdout`/`sys.stderr` restoration and log file close
+- Propagated `instance_id` and `running_dir` in both `run.py` (`cmd_run`) and `lifecycle.py` (`cmd_resume`)
+- Updated `test_status_foreground_run_no_pid_no_log` docstring to reflect it is now a legacy-fallback guard
+- Added `TestRunForegroundCapture` (5 tests) in `test_ll_loop_display.py`
+- Added `TestRunBackgroundInstanceIdForwarding` (1 test) in `test_cli_loop_background.py`
+- All 7877 tests pass; ruff and mypy clean
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-27T20:58:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/433b1b9b-ce33-437c-9c1f-0ee0bb7c8b8a.jsonl`
 - `/ll:confidence-check` - 2026-05-27T21:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3786d8e-e9c2-4081-b930-0fcc1bd2c80f.jsonl`
 - `/ll:wire-issue` - 2026-05-27T20:51:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72d039de-33dc-4db3-ac4e-00b6406c2c7f.jsonl`
 - `/ll:refine-issue` - 2026-05-27T20:45:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da4cdbba-d276-49c6-8178-d0634377bace.jsonl`
 - `/ll:issue-size-review` - 2026-05-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49c875d1-35f0-42f5-a121-41c0c7663183.jsonl`
 - Design revised to always-on (dropped flag/config) - 2026-05-26
+- `/ll:manage-issue` - 2026-05-27T21:13:47Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/433b1b9b-ce33-437c-9c1f-0ee0bb7c8b8a.jsonl`

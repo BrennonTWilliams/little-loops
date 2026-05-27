@@ -1101,7 +1101,12 @@ class TestCmdStatusLogFile:
         assert "run_eval" in print_text
 
     def test_status_foreground_run_no_pid_no_log(self, tmp_path: Path) -> None:
-        """Shows foreground-run label when no .pid and no .log file exist."""
+        """Shows legacy foreground-run label when no .pid and no .log file exist.
+
+        This is the fallback label for instances that pre-date ENH-1703 (always-on
+        log capture) or ran with instance_id=None.  Foreground runs after ENH-1703
+        produce a .log file and therefore hit the first branch of _format_log_label.
+        """
         logger = MagicMock()
         mock_state = self._make_state()
 

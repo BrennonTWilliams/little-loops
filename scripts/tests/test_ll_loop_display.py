@@ -4069,3 +4069,128 @@ class TestFollowMode:
         captured = capsys.readouterr()
         assert "state_enter" in captured.out
         assert "fallback_state" in captured.out
+
+
+class TestRunForegroundCapture:
+    """Tests for ENH-1703: run_foreground always-on log capture."""
+
+    def _make_args(self, foreground_internal: bool = False) -> argparse.Namespace:
+        return argparse.Namespace(
+            quiet=False,
+            verbose=False,
+            follow=False,
+            show_diagrams=None,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+            clear=False,
+            foreground_internal=foreground_internal,
+        )
+
+    def _make_fsm(self) -> FSMLoop:
+        return make_test_fsm()
+
+    def _make_executor(self) -> Any:
+        class _Executor:
+            def __init__(self) -> None:
+                self._on_event: Any = None
+
+            def run(self) -> ExecutionResult:
+                return ExecutionResult(
+                    final_state="done",
+                    iterations=1,
+                    terminated_by="terminal",
+                    duration_ms=100,
+                    captured={},
+                )
+
+        return _Executor()
+
+    def test_log_file_written_when_instance_id_provided(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Log file is created at running_dir/{instance_id}.log for foreground runs."""
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+
+        run_foreground(
+            self._make_executor(),
+            self._make_fsm(),
+            self._make_args(),
+            instance_id="my-loop-20260101T120000",
+            running_dir=running_dir,
+        )
+        capsys.readouterr()  # consume captured output to keep test output clean
+
+        log_file = running_dir / "my-loop-20260101T120000.log"
+        assert log_file.exists(), "Log file should be created"
+        assert log_file.stat().st_size > 0, "Log file should have content"
+
+    def test_log_file_has_no_ansi_sequences(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Log file content is plain text — ANSI sequences stripped."""
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        ansi_re = __import__("re").compile(r"\x1b\[[0-9;]*[mABCDEFGHJKSTfhilmnprsu]")
+
+        run_foreground(
+            self._make_executor(),
+            self._make_fsm(),
+            self._make_args(),
+            instance_id="my-loop-20260101T120000",
+            running_dir=running_dir,
+        )
+        capsys.readouterr()  # consume captured output to keep test output clean
+
+        log_content = (running_dir / "my-loop-20260101T120000.log").read_text()
+        assert not ansi_re.search(log_content), "Log file must not contain ANSI escape sequences"
+
+    def test_no_log_file_without_instance_id(self, tmp_path: Path) -> None:
+        """No log file is created when instance_id is None (backward-compatible default)."""
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+
+        with patch("builtins.print"):
+            run_foreground(
+                self._make_executor(),
+                self._make_fsm(),
+                self._make_args(),
+                instance_id=None,
+                running_dir=running_dir,
+            )
+
+        assert list(running_dir.glob("*.log")) == [], "No log file without instance_id"
+
+    def test_no_tee_for_foreground_internal(self, tmp_path: Path) -> None:
+        """Background-spawned foreground children (foreground_internal=True) skip tee to avoid double writes."""
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+
+        with patch("builtins.print"):
+            run_foreground(
+                self._make_executor(),
+                self._make_fsm(),
+                self._make_args(foreground_internal=True),
+                instance_id="my-loop-20260101T120000",
+                running_dir=running_dir,
+            )
+
+        assert list(running_dir.glob("*.log")) == [], "No tee for foreground_internal children"
+
+    def test_stdout_restored_after_run(self, tmp_path: Path) -> None:
+        """sys.stdout is restored to original after run_foreground completes."""
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        orig_stdout = sys.stdout
+
+        with patch("builtins.print"):
+            run_foreground(
+                self._make_executor(),
+                self._make_fsm(),
+                self._make_args(),
+                instance_id="my-loop-20260101T120000",
+                running_dir=running_dir,
+            )
+
+        assert sys.stdout is orig_stdout, "sys.stdout must be restored after tee teardown"

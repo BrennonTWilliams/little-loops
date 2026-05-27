@@ -389,6 +389,8 @@ def cmd_run(
             highlight_color=_highlight_color,
             edge_label_colors=_edge_label_colors,
             badges=_badges,
+            instance_id=instance_id,
+            running_dir=running_dir,
         )
     finally:
         if executor is not None:
