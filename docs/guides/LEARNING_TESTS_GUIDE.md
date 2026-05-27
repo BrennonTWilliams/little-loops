@@ -195,6 +195,17 @@ ll-loop run adopt-third-party-api "https://manual.raycast.com/extensions"
 
 Partial coverage (some targets refuted or exhausted) still produces a playbook — unverified sections are flagged at the top with citations to the relevant LT records. See [LOOPS_GUIDE.md → API Adoption](LOOPS_GUIDE.md#api-adoption) for details.
 
+**Gate an issue against the registry with `assumption-firewall`.** When you want to block implementation on an issue until its external-API assumptions are proven (without scraping new docs), use `assumption-firewall`. It extracts up to 7 API assumptions from the issue file via LLM, delegates proof to `ready-to-implement-gate`, and routes `done`, `blocked`, or `no_external_deps`:
+
+```bash
+ll-loop run assumption-firewall --context issue_file=".issues/features/P2-FEAT-1234-my-feature.md"
+# done          → all assumptions proven; safe to implement
+# blocked       → one or more assumptions refuted; check LT records for details
+# no_external_deps → no external-API assumptions found; proceed unconditionally
+```
+
+Use `assumption-firewall` as a lightweight pre-implementation check before delegating to `autodev` or `ll-auto`. Unlike `adopt-third-party-api`, it works from an issue file rather than a docs URL and does not produce an integration playbook.
+
 **Re-prove after major version bumps.** After upgrading a dependency that has a learning-test record, `mark-stale` the record and re-run `/ll:explore-api`. The diff between the old (stale) record's assertions and the new one is a concise migration checklist.
 
 ## Further Reading

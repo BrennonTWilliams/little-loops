@@ -374,11 +374,21 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | Loop | Description |
 |------|-------------|
 | `adopt-third-party-api` | End-to-end API adoption pipeline — scrapes a vendor docs URL via `/ll:scrape-docs`, enumerates up to 7 significant endpoints/features, proves each via `ready-to-implement-gate`, and writes a citation-linked integration playbook to `docs/integration-<domain>.md`. Partial coverage (some targets refuted or exhausted) still produces a playbook with a top warning block listing unverified sections. |
+| `ready-to-implement-gate` | Sub-loop primitive — given a list of external-API targets, proves each against the Learning-Test Registry via `/ll:explore-api`; routes `done` when all targets are proven, `blocked` when any are refuted or exhausted. Used as a child by `adopt-third-party-api` and `assumption-firewall`, but runnable standalone to gate any pre-implementation proof step. |
+| `assumption-firewall` | Issue gating loop — extracts up to 7 external-API assumptions from an issue file via LLM, delegates proof of each assumption to `ready-to-implement-gate`, and routes `done` (all proven), `blocked` (any refuted), or `no_external_deps` (no assumptions found). Use before starting implementation on issues that touch unfamiliar third-party APIs. |
 
 Run:
 ```bash
 ll-loop run adopt-third-party-api "https://manual.raycast.com/extensions"
 # Scrapes docs → enumerates targets → proves each → writes docs/integration-manual-raycast-com.md
+
+# Gate an issue against the LT registry before implementing
+ll-loop run assumption-firewall --context issue_file=".issues/features/P2-FEAT-1234-my-feature.md"
+# Extracts API assumptions → proves each → routes done/blocked/no_external_deps
+
+# Prove a specific list of targets standalone
+ll-loop run ready-to-implement-gate --context targets="stripe.PaymentIntent stripe.Webhook"
+# Iterates targets → proves each via /ll:explore-api → routes done or blocked
 ```
 
 **Research & Knowledge**
@@ -2577,7 +2587,7 @@ For full details on evaluation phases, MCP gates, skill-as-judge, stall detectio
 | `-v` / `--verbose` | Show full prompt content at action start; default shows a single-line truncated preview |
 | `-b` / `--background` | Run as a background daemon |
 | `--show-diagrams[=MODE]` | Display FSM diagram after each step. `MODE` is a **topology** (`layered`\|`neighborhood`\|`inline`) or a **preset** (`detailed`\|`summary`\|`clean`\|`local`\|`slim`\|`oneline`). Bare flag selects the `summary` preset (layered, main-path scope). Use `--diagram-edge-labels=on\|off`, `--diagram-state-detail=title\|full`, and `--diagram-scope=main\|full` to override individual preset facets. **Breaking:** `main`/`full`/`mini` are no longer valid — use `summary`/`detailed`/`clean` respectively. Also works with `--dry-run`: the diagram is rendered above the execution plan. |
-| `--clear` | Clear terminal before each iteration; combine with `--show-diagrams` for a live in-place dashboard. When combined on a tty, the screen splits into a pinned FSM diagram (top) and a scrolling action-output region (bottom). On terminals too short for the full diagram, the pinned pane falls back to a 1-hop neighborhood view, then to a single-line `fsm:` status. |
+| `--clear` | Clear terminal before each iteration; combine with `--show-diagrams` for a live in-place dashboard. When combined on a tty, the screen splits into a pinned FSM diagram (top) and a scrolling action-output region (bottom). On terminals too short for the full diagram, the pinned pane falls back to a 1-hop neighborhood view, then to a single-line `fsm:` status. When a parent loop spawns child loops, the pinned pane shows only the **deepest active child loop** — keeping the display focused regardless of nesting depth. |
 | `--delay <SECONDS>` | Sleep N seconds between iterations; overrides `backoff:` from YAML |
 | `--context KEY=VALUE` | Override a context variable at runtime (repeatable) |
 | `--program-md PATH` | Load steering directive from a Markdown file (default: `.ll/program.md` when present); parsed fields are injected into loop context before `--context` overrides. See [`.ll/program.md` convention](../reference/program-md.md). |

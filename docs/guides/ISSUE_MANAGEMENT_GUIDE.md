@@ -460,6 +460,23 @@ Or use `/ll:commit` to have the skill draft the commit message from the diff and
 
 ---
 
+## Browsing Issues by Epic
+
+`ll-issues list` groups issues by type by default. Use `--group-by epic` to see issues grouped under their parent EPIC instead — useful when planning or reviewing work for a specific initiative:
+
+```bash
+ll-issues list --group-by epic
+```
+
+Output shows each open EPIC as a header, with its child issues (those with a matching `parent:` frontmatter field) nested beneath it. Issues without a `parent:` appear in an `Unparented` bucket at the end. The flag works alongside all standard filters (`--type`, `--priority`, `--status`):
+
+```bash
+ll-issues list --group-by epic --status open --priority P0,P1
+# → P0/P1 open issues grouped by their parent EPIC
+```
+
+---
+
 ## Running Issues in Bulk
 
 When you have many issues to process, the CLI tools can handle them in bulk without manual prompting between each one.
