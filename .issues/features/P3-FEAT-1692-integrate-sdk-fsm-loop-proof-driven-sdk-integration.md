@@ -2,12 +2,28 @@
 id: FEAT-1692
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-25T20:34:52Z'
+completed_at: '2026-05-27T06:38:33Z'
 discovered_date: '2026-05-25'
 discovered_by: capture-issue
 parent: EPIC-1694
-relates_to: [FEAT-1287, FEAT-1283, FEAT-1282, EPIC-1663, EPIC-1694, FEAT-1695, FEAT-1696, FEAT-1697]
+relates_to:
+- FEAT-1287
+- FEAT-1283
+- FEAT-1282
+- EPIC-1663
+- EPIC-1694
+- FEAT-1695
+- FEAT-1696
+- FEAT-1697
+decision_needed: false
+confidence_score: 94
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1692: `integrate-sdk` FSM loop — proof-driven SDK integration
@@ -83,7 +99,7 @@ The developer never wrote a hallucinated assumption into production code. The pr
 
 ## Proposed Solution
 
-### Loop YAML (skeleton — `{{config.loops.loops_dir}}/integrate-sdk.yaml`)
+### Loop YAML (skeleton — `scripts/little_loops/loops/integrate-sdk.yaml`)
 
 ```yaml
 name: integrate-sdk
@@ -159,6 +175,45 @@ states:
     # Emits a structured failure-mode classification per loop-specialist taxonomy
 ```
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Critical FSM YAML syntax corrections** (the skeleton above uses incorrect syntax that differs from all production loops):
+
+1. **`inputs:` / `{{inputs.xxx}}` is wrong for FSM loops.** That Handlebars syntax belongs to `scripts/little_loops/parallel/tasks/` definitions. FSM loops use `context:` + `${context.xxx}` for parameterization. CLI positional binding uses `input_key:`. Correct form:
+   ```yaml
+   input_key: target          # binds first CLI positional to context.target
+   context:
+     target: ""               # required — SDK name (e.g., "anthropic")
+     goal: ""                 # required — integration goal
+     scaffold_dir: "src/integrations/"
+   ```
+   All `{{inputs.target}}` etc. in shell actions must be `${context.target}`.
+
+2. **`on_exit_0`/`on_exit_1` are wrong routing keys.** All production loops use `on_yes` (exit 0) / `on_no` (non-zero) with `evaluate: type: exit_code`. The `on_exit_0`/`on_exit_1` key names do not exist in the schema. Example from `scan_existing_usage`:
+   ```yaml
+   scan_existing_usage:
+     action_type: shell
+     action: |
+       hits=$(grep -rln "import ${context.target}\|from ${context.target}" ...)
+       [ "$hits" -gt 0 ] && exit 0 || exit 1
+     evaluate:
+       type: exit_code
+     on_yes: hypothesize_from_code
+     on_no: hypothesize_from_docs
+   ```
+
+3. **`prompt_file:` is not a valid field inside `evaluate: type: llm_structured`.** The `llm_structured` evaluator takes an inline `prompt:` string and optional `source:` (the text to evaluate). There is no `prompt_file:` field. For `hypothesize_from_code`/`hypothesize_from_docs`, use `action_type: prompt` with an inline `action:` prompt string, plus a `capture:` key to store the surfaces list — not `type: llm_structured`.
+
+4. **`pre_step:` is not a supported FSM hook.** `FSMExecutor` has no pre-state hook; `ensure_docs_mirrored` must be a separate state before `hypothesize_from_docs`, not a `pre_step` annotation.
+
+5. **`terminal: true` states do not execute actions.** `_execute_state` is never reached for terminal states — they immediately call `_finish("terminal")`. The `diagnose_and_block` state cannot be both `terminal: true` and `type: llm_structured`. Correct design: `diagnose_and_block` must be a non-terminal action state (running the diagnosis prompt), followed by a separate `terminal: true` `blocked` state.
+
+6. **`learning_gate` targets cannot be a dynamic `||` expression.** The `learning:` sub-block expects a YAML list, not a jinja expression. To use dynamic surfaces from a prior state, capture that state's output to `context` and inject via `${captured.hypothesize_from_code.output}` — but the FSM interpolation system doesn't splat strings into YAML lists. The practical solution is to write the surface list to a file in the capture step and read it in the `learning_gate` pre-action, or represent them as a newline-delimited `${context.surfaces}` string. See `adopt-third-party-api.yaml` for the production pattern — it uses an `output_json` evaluator to parse the enumeration output before passing it to a sub-loop.
+
+**Closest existing analog:** `scripts/little_loops/loops/adopt-third-party-api.yaml` implements `scrape → enumerate surfaces → prove (sub-loop) → write playbook` — the nearest complete pipeline. Study its state graph before authoring `integrate-sdk.yaml`.
+
 ### Meta-loop compliance (CLAUDE.md § Loop Authoring)
 
 This loop **does scaffold project source files**, which puts it at the edge of "meta-loop" territory. Mitigation:
@@ -209,32 +264,42 @@ Outputs:
 ## Integration Map
 
 ### Files to Modify
-- `{{config.loops.loops_dir}}/integrate-sdk.yaml` — **new** (the loop)
-- `{{config.loops.loops_dir}}/prompts/hypothesize_from_code.md` — **new**
-- `{{config.loops.loops_dir}}/prompts/hypothesize_from_docs.md` — **new**
-- `{{config.loops.loops_dir}}/prompts/scaffold_integration.md` — **new** (must instruct: emit `# Verified:` comments)
-- `{{config.loops.loops_dir}}/prompts/diagnose_and_block.md` — **new** (follow `loop-specialist` failure-mode taxonomy)
-- `scripts/lib/verify_learning_citations.sh` — **new** (greps scaffolded files for `# Verified:` lines, asserts each cited `.ll/learning-tests/<slug>.md` exists and `status: proven`)
+- `scripts/little_loops/loops/integrate-sdk.yaml` — **new** (the loop)
+- `scripts/little_loops/loops/prompts/hypothesize_from_code.md` — **new**
+- `scripts/little_loops/loops/prompts/hypothesize_from_docs.md` — **new**
+- `scripts/little_loops/loops/prompts/scaffold_integration.md` — **new** (must instruct: emit `# Verified:` comments)
+- `scripts/little_loops/loops/prompts/diagnose_and_block.md` — **new** (follow `loop-specialist` failure-mode taxonomy)
+- `scripts/verify_learning_citations.sh` — **new** (`scripts/lib/` does not exist; place as a standalone script in `scripts/`; model after `hooks/scripts/check-duplicate-issue-id.sh` for null-safe `find -print0 | while IFS= read -r -d ''` traversal; greps scaffolded files for `# Verified:` lines, asserts each cited `.ll/learning-tests/<slug>.md` exists and `status: proven`)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/states/learning.py` — `type: learning` state implementation; loop relies on its `on_pass`/`on_fail` transitions (FEAT-1283)
 - `skills/explore-api/SKILL.md` — `learning_gate` invokes this skill per surface (FEAT-1287)
 - `skills/scrape-docs/SKILL.md` (or `scrape-docs` skill at `~/.claude/skills/`) — `pre_step: ensure_docs_mirrored` invokes this when docs are missing
 - `scripts/little_loops/learning_tests.py` — `LearnTestRecord`, `read_record()`, `check_learning_test()` used by `verify_learning_citations.sh`
-- `scripts/little_loops/loops/runner.py` — generic FSM runner; no changes needed if `type: learning` and `type: exit_code` are already supported
+- `scripts/little_loops/fsm/executor.py` — **actual FSM runtime** (`scripts/little_loops/loops/runner.py` does not exist); `FSMExecutor._execute_learning_state` (lines 602–673) handles `type: learning` dispatch; `FSMExecutor._execute_state` (line 772; learning routing at line 798) routes to it; no changes needed
+- `scripts/little_loops/fsm/schema.py` — `LearningConfig` dataclass (lines 271–305) defines `targets: list[str]` and `max_retries: int`; `StateConfig` holds the `learning:` sub-block
 - `commands/help.md` — Quick Reference Table should list `ll-loop run integrate-sdk` once stable
 
 ### Similar Patterns
 - `scripts/tests/fixtures/fsm/learning-state-loop.yaml` — canonical `type: learning` usage; copy structure
 - `skills/create-loop/loop-types.md` — "Optimize a harness" branch shape (`diagnose → propose → apply → measure-externally`) is the meta-loop template this issue follows
-- `agents/loop-specialist.md` — failure-mode taxonomy for `diagnose_and_block` prompt
-- Existing loops in `{{config.loops.loops_dir}}/` (if any) that branch on `exit_code` for greenfield/non-greenfield decisions
+- `agents/loop-specialist.md` — failure-mode taxonomy for `diagnose_and_block` prompt (seven modes: `ambiguous-output`, `infinite-cycle`, `premature-termination`, `feature-stubbing`, `drift`, `self-evaluation bias`, `evaluator-trivial`)
+- `scripts/little_loops/loops/adopt-third-party-api.yaml` — **closest existing analog**: `scrape → enumerate surfaces → prove via sub-loop → write playbook`; study its state graph before authoring `integrate-sdk.yaml`, especially the `output_json` evaluator for parsing enumerated surfaces
+- `scripts/little_loops/loops/ready-to-implement-gate.yaml` — shows how to drive `ll-action invoke explore-api` per surface in a shell loop and check `ll-learning-tests check` for registry status
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` and `harness-optimize.yaml` — production `exit_code` branching patterns with `evaluate: type: exit_code` / `on_yes` / `on_no` (not `on_exit_0`/`on_exit_1`)
+- `scripts/little_loops/loops/loop-router.yaml` — `input_key: goal` pattern for binding CLI positional to `${context.goal}`
 
 ### Tests
 - Manual e2e: `ll-loop run integrate-sdk --target "anthropic" --goal "streaming"` against a clean tempdir; expect either `done` (scaffold + citations exist) or `on_blocked` (diagnosis exists); never silent success without citations.
-- `ll-loop validate {{config.loops.loops_dir}}/integrate-sdk.yaml` — must pass meta-loop rule MR-1 (non-LLM evaluator paired with `check_semantic`).
-- New unit test `scripts/tests/test_integrate_sdk_loop.py` — load YAML, assert state graph is well-formed, assert `verify_scaffold` is `exit_code` (not LLM), assert `learning_gate.on_fail` points to a terminal state, not a retry loop.
+- `ll-loop validate scripts/little_loops/loops/integrate-sdk.yaml` — must pass meta-loop rule MR-1 (non-LLM evaluator paired with `check_semantic`).
+- New unit test `scripts/tests/test_integrate_sdk_loop.py` — load YAML, assert state graph is well-formed, assert `verify_scaffold` uses `evaluate: type: exit_code` (not LLM), assert `learning_gate.on_no` points to a terminal state, not a retry loop.
 - `scripts/tests/test_verify_learning_citations.py` — verify the citation-checker script: passes when every `# Verified: <path>` resolves to a `status: proven` record; fails when path missing or status `refuted` / `stale`.
+- `scripts/tests/test_builtin_loops.py` — **existing test that validates all built-in loop YAMLs are well-formed; must be updated to include `integrate-sdk.yaml`** (it validates loops from `scripts/little_loops/loops/`).
+- Model new loop tests after `scripts/tests/test_learning_state.py` (uses `_MockRunner` and `_learning_fsm()` helper) and `scripts/tests/test_fsm_executor.py` (uses `MockActionRunner`).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles.test_expected_loops_exist` — has a **hardcoded exact-equality set** of all expected loop names (lines 66–125); the parametric `builtin_loops` fixture auto-discovers via glob but this test uses `assert expected == actual` (set equality); adding `integrate-sdk.yaml` without adding `"integrate-sdk"` to the `expected` set will **hard-break this test**
+- `TestIntegrateSdkLoop` (new class inside `test_builtin_loops.py`) — add loop-specific structural assertions following the `TestAdoptThirdPartyApiLoop` pattern (lines 3847–3890): `LOOP_FILE = BUILTIN_LOOPS_DIR / "integrate-sdk.yaml"`, assert `learning_gate` routes to `scaffold_integration` on `on_yes`, assert a terminal blocked/diagnose path exists
 
 ### Documentation
 - `docs/ARCHITECTURE.md` — add `integrate-sdk` to the "canonical loops" or "Learning Test Registry" section as the worked example of `type: learning` in a real loop.
@@ -242,14 +307,19 @@ Outputs:
 - `README.md` — only if loop count is tracked; otherwise skip.
 - `.claude/CLAUDE.md` § Loop Authoring — add `integrate-sdk` as a referenced example of a compliant meta-adjacent loop.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/README.md` — loop catalog index (manually maintained); add `integrate-sdk` row in the `## API Adoption` section alongside `adopt-third-party-api`
+- `CONTRIBUTING.md` — directory layout comment reads `N YAML files` for `loops/`; tracked by `ll-verify-docs` via `doc_counts.py`; must increment count when loop is added
+- `README.md` — **required, not optional**: `ll-verify-docs` / `doc_counts.py` checks the `N FSM loops` count against actual `*.yaml` files; adding `integrate-sdk.yaml` will cause a mismatch unless the count is updated
+
 ### Configuration
-- N/A — uses existing `{{config.loops.loops_dir}}`; no new config keys needed.
+- N/A — uses existing `scripts/little_loops/loops/` (built-in loops directory); no new config keys needed.
 
 ## Implementation Steps
 
-1. **Draft the YAML** at `{{config.loops.loops_dir}}/integrate-sdk.yaml` following the skeleton above; run `ll-loop validate` and iterate until it passes (including meta-loop rule MR-1).
+1. **Draft the YAML** at `scripts/little_loops/loops/integrate-sdk.yaml` — start from `scripts/little_loops/loops/adopt-third-party-api.yaml` (closest analog) and `scripts/tests/fixtures/fsm/learning-state-loop.yaml` (canonical `type: learning` fixture); use `input_key: target` + `context:` + `${context.xxx}` syntax (NOT `inputs:` / `{{inputs.xxx}}`); use `evaluate: type: exit_code` with `on_yes`/`on_no` (NOT `on_exit_0`/`on_exit_1`); run `ll-loop validate` and iterate until it passes (including meta-loop rule MR-1).
 2. **Author the four prompt files** under `{{config.loops.loops_dir}}/prompts/`; the `scaffold_integration` prompt must explicitly require `# Verified:` citations on every generated API call site.
-3. **Write `verify_learning_citations.sh`** at `scripts/lib/`; it greps the scaffold dir for `# Verified: <path>` lines, parses each path, asserts the file exists and `status: proven` in its frontmatter; exits 1 on any missing/refuted/stale citation.
+3. **Write `scripts/verify_learning_citations.sh`** (`scripts/lib/` does not exist — place in `scripts/`); model shell structure on `hooks/scripts/check-duplicate-issue-id.sh` (null-safe `find -print0 | while IFS= read -r -d ''` traversal, `set -euo pipefail`); it greps the scaffold dir for `# Verified: <path>` lines, parses each path via `scripts/little_loops/learning_tests.py` `read_record()` or YAML frontmatter extraction, asserts `status: proven`; exits 1 on any missing/refuted/stale citation.
 4. **Test on a tractable greenfield target** (e.g., `python-pathlib` — no auth, well-documented, deterministic). Confirm full flow: scan → hypothesize_from_docs → learning_gate → scaffold → verify → done. Inspect scaffolded code for citations.
 5. **Test the `on_blocked` path** by giving the loop a target with an intentionally wrong hypothesis (or one whose API has changed since training). Confirm `diagnose_and_block` emits a structured failure-mode classification, not generic prose.
 6. **Test the existing-usage branch** by running against a target already imported in the repo (e.g., `pytest` if it's used). Confirm `hypothesize_from_code` cribs from real call sites.
@@ -257,9 +327,18 @@ Outputs:
 8. **Add the loop to `docs/ARCHITECTURE.md`** as the canonical `type: learning` worked example.
 9. **Update `commands/help.md`** Quick Reference Table once the loop is stable.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+10. Update `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles.test_expected_loops_exist` — add `"integrate-sdk"` to the hardcoded `expected` set (exact-equality assertion; the auto-discovering `builtin_loops` fixture does not update this set automatically — the test **will fail** without this change)
+11. Update `README.md` — increment the `N FSM loops` count (enforced by `ll-verify-docs` / `doc_counts.py`; **required, not optional**)
+12. Update `CONTRIBUTING.md` — increment the `N YAML files` count in the `loops/` directory layout comment (enforced by `ll-verify-docs` / `doc_counts.py`)
+13. Update `scripts/little_loops/loops/README.md` — add `integrate-sdk` row in the `## API Adoption` section alongside `adopt-third-party-api`
+
 ## Acceptance Criteria
 
-- `ll-loop validate {{config.loops.loops_dir}}/integrate-sdk.yaml` passes (including meta-loop rule MR-1).
+- `ll-loop validate scripts/little_loops/loops/integrate-sdk.yaml` passes (including meta-loop rule MR-1).
 - Greenfield e2e: running against `python-pathlib` (or equivalent zero-auth target) produces `.ll/learning-tests/<slug>.md` for each enumerated surface and scaffolded code with at least one `# Verified: .ll/learning-tests/<slug>.md` comment per API call site.
 - Existing-usage e2e: running against an already-imported library exercises the `hypothesize_from_code` branch (verifiable in run logs).
 - `on_blocked` path produces a `diagnose_and_block` artifact with a failure-mode classification from the `loop-specialist` taxonomy; **no scaffolded code is written**.
@@ -286,6 +365,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-05-25 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-27T06:30:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f51b3be-f04b-431b-a48d-86d79a52239d.jsonl`
+- `/ll:confidence-check` - 2026-05-27T13:22:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/540d9d58-9859-451e-a1a9-6f40ea21c360.jsonl`
+- `/ll:wire-issue` - 2026-05-27T06:22:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a5cf255-802c-4a93-983b-a058df40ad59.jsonl`
+- `/ll:refine-issue` - 2026-05-27T06:15:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a21261b4-cb01-4c3d-99db-c1129c637920.jsonl`
 - `/ll:format-issue` - 2026-05-25T20:44:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10e5eccd-bc85-4eab-9876-27a2c27b8c25.jsonl`
 - `/ll:capture-issue` - 2026-05-25T20:34:52Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:capture-issue` - 2026-05-25T20:53:43Z - retrofitted as child of EPIC-1694 (4-loop LT stack) - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/810cf8d1-477c-42da-bb20-b577b2ee3ad9.jsonl`

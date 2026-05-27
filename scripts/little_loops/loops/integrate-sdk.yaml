@@ -1,0 +1,290 @@
+name: integrate-sdk
+category: integration
+description: >
+  Proof-driven SDK integration: scan existing usage (code branch) or enumerate surfaces
+  from docs/knowledge (greenfield branch), prove each surface via the Learning Test Registry
+  (ready-to-implement-gate sub-loop), then scaffold integration code with # Verified: citations.
+  Blocks with a structured diagnosis if any required surface is refuted or proof fails.
+input_key: target
+initial: scan_existing_usage
+max_iterations: 150
+timeout: 7200
+on_handoff: spawn
+
+context:
+  target: ""                   # SDK/library name (e.g., "anthropic", "stripe"); required
+  goal: ""                     # Integration goal (e.g., "streaming completions with tool use"); required
+  scaffold_dir: "src/integrations/"  # Directory for scaffolded integration code
+  max_retries: "2"             # Per-surface explore-api retries in ready-to-implement-gate
+
+states:
+
+  # ─── Phase 1: Branch on existing vs. greenfield ─────────────────────────────
+
+  scan_existing_usage:
+    action_type: shell
+    timeout: 30
+    action: |
+      hits=$(grep -rln "import ${context.target}\|from ${context.target}" \
+        --include="*.py" --include="*.ts" --include="*.js" \
+        . 2>/dev/null | grep -v "\.git" | wc -l | tr -d ' ')
+      echo "USAGE_HITS=${hits}"
+      [ "$hits" -gt 0 ] && exit 0 || exit 1
+    capture: usage_scan
+    evaluate:
+      type: exit_code
+    on_yes: enumerate_from_code
+    on_no: enumerate_from_docs
+
+  # ─── Phase 2a: Enumerate from existing code (code branch) ───────────────────
+
+  enumerate_from_code:
+    action_type: prompt
+    timeout: 300
+    action: |
+      You are an SDK surface enumerator. Existing code imports ${context.target}; your job is to
+      enumerate integration surfaces required by the goal by reading what the code already uses.
+
+      SDK TARGET: ${context.target}
+      INTEGRATION GOAL: ${context.goal}
+
+      Step 1 — Find and read all files that import or use "${context.target}":
+      - Search for `import ${context.target}`, `from ${context.target}`, or `require('${context.target}')`
+      - Read those files and identify which API surfaces (methods, classes, types, response shapes)
+        are currently called
+
+      Step 2 — Based on what you found AND the goal "${context.goal}", enumerate surfaces that a
+      developer MUST understand to implement this integration correctly:
+      - Include surfaces the goal requires that are already in use
+      - Include surfaces the goal requires that are NOT yet exercised (new territory)
+      - A "significant integration surface" is a method, response shape, streaming protocol, or
+        behavioral contract that could diverge from naive assumptions (edge cases, rate limits, etc.)
+      - Phrase each as a single concrete sentence suitable for "/ll:explore-api"
+        (e.g., "Anthropic SDK streaming completions (MessageStream event shapes and iteration)")
+      - Cap at 7 maximum; select highest-risk surfaces first
+
+      Output your analysis, then on the LAST LINE output exactly:
+      ENUMERATE_JSON:{"targets": ["...", ...], "count": <N>, "branch": "code", "rationale": "<why these N>"}
+    capture: raw_enumeration
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response end with an ENUMERATE_JSON: line containing valid JSON with 'targets', 'count', 'branch', and 'rationale' fields?"
+      min_confidence: 0.5
+    on_yes: parse_enumeration
+    on_no: parse_enumeration
+
+  # ─── Phase 2b: Enumerate from docs/knowledge (greenfield branch) ────────────
+
+  enumerate_from_docs:
+    action_type: prompt
+    timeout: 300
+    action: |
+      You are an SDK surface enumerator for a greenfield integration (no existing code to crib from).
+
+      SDK TARGET: ${context.target}
+      INTEGRATION GOAL: ${context.goal}
+
+      Step 1 — Check for pre-scraped docs at these paths (read if present):
+      - docs/docs-${context.target}/
+      - docs/external/${context.target}/
+      - docs/integration-${context.target}.md
+      If docs are present, read them to inform surface enumeration.
+      If not, note "no cached docs found" and rely on training knowledge (flagging cutoff risk).
+
+      Step 2 — Enumerate integration surfaces required for the goal "${context.goal}":
+      - A "significant integration surface" is a method, response shape, streaming protocol, or
+        behavioral contract a developer MUST understand and test to integrate this SDK correctly
+      - Prioritize surfaces that are subtly wrong in docs, have streaming semantics, polymorphic
+        types, or differ from naive expectations (these are where hallucination risk is highest)
+      - Phrase each as a single concrete sentence suitable for "/ll:explore-api"
+        (e.g., "Anthropic Messages API tool_use content block shape (type, id, name, input fields)")
+      - Cap at 7 maximum; select highest-risk surfaces first
+      - If this SDK requires credentials an automated proof script cannot obtain (API keys, OAuth
+        tokens, service accounts), set requires_credentials to true in your JSON output
+
+      Output your analysis, then on the LAST LINE output exactly:
+      ENUMERATE_JSON:{"targets": ["...", ...], "count": <N>, "branch": "docs", "requires_credentials": <true|false>, "rationale": "<why these N>"}
+    capture: raw_enumeration
+    evaluate:
+      type: llm_structured
+      prompt: "Does the response end with an ENUMERATE_JSON: line containing valid JSON with 'targets', 'count', 'branch', and 'rationale' fields?"
+      min_confidence: 0.5
+    on_yes: parse_enumeration
+    on_no: parse_enumeration
+
+  # ─── Phase 3: Parse and validate enumeration ────────────────────────────────
+
+  parse_enumeration:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, sys
+      output = """${captured.raw_enumeration.output}"""
+      found = None
+      for line in reversed(output.split('\n')):
+          line = line.strip()
+          if line.startswith('ENUMERATE_JSON:'):
+              found = line[len('ENUMERATE_JSON:'):]
+              break
+      if not found:
+          print(json.dumps({
+              "targets": [], "count": 0,
+              "branch": "unknown", "requires_credentials": False,
+              "rationale": "Failed to parse enumeration output — no ENUMERATE_JSON: line found."
+          }))
+          sys.exit(0)
+      try:
+          data = json.loads(found)
+          targets = [t.strip() for t in data.get("targets", []) if str(t).strip()][:7]
+          count = len(targets)
+          print(json.dumps({
+              "targets": targets,
+              "count": count,
+              "branch": data.get("branch", "unknown"),
+              "requires_credentials": bool(data.get("requires_credentials", False)),
+              "rationale": data.get("rationale", "")
+          }))
+      except (json.JSONDecodeError, ValueError) as e:
+          print(json.dumps({
+              "targets": [], "count": 0,
+              "branch": "unknown", "requires_credentials": False,
+              "rationale": f"JSON parse error: {e}"
+          }))
+      PYEOF
+    capture: enumeration
+    evaluate:
+      type: output_json
+      path: ".count"
+      operator: gt
+      target: 0
+    on_yes: flatten_surfaces
+    on_no: diagnose_and_block
+
+  flatten_surfaces:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json
+      data = json.loads("""${captured.enumeration.output}""")
+      print(",".join(data["targets"]))
+      PYEOF
+    capture: targets
+    on_error: diagnose_and_block
+    next: prove
+
+  # ─── Phase 4: Prove surfaces via Learning Tests ──────────────────────────────
+
+  prove:
+    loop: ready-to-implement-gate
+    with:
+      targets: "${captured.targets.output}"
+      max_retries: "${context.max_retries}"
+    on_success: scaffold_integration
+    on_failure: diagnose_and_block
+    on_error: diagnose_and_block
+
+  # ─── Phase 5: Scaffold integration code with citations ──────────────────────
+
+  scaffold_integration:
+    action_type: prompt
+    timeout: 600
+    action: |
+      You are writing proof-driven integration code for the ${context.target} SDK.
+
+      INTEGRATION GOAL: ${context.goal}
+      SCAFFOLD DIRECTORY: ${context.scaffold_dir}
+      PROVEN SURFACES: ${captured.targets.output}
+
+      Instructions:
+      1. Read the Learning Test Records from .ll/learning-tests/ for each proven surface.
+         These records contain the actual (tested) shapes, not vendor doc assumptions.
+      2. Create ${context.scaffold_dir} if it does not exist.
+      3. Write integration code to ${context.scaffold_dir}${context.target}_client.py
+         (use appropriate extension for the project's primary language).
+      4. CRITICAL RULE: Every API call site MUST have a # Verified: comment citing the
+         Learning Test record that proves that surface. No call site may be unverified.
+
+      Citation format (Python example):
+          # Verified: .ll/learning-tests/anthropic-streaming.md
+          async for event in client.messages.stream(...):
+              ...
+
+      Citation format (TypeScript example):
+          // Verified: .ll/learning-tests/stripe-webhooks.md
+          const event = stripe.webhooks.constructEvent(...)
+
+      5. Use the actual field names, types, and shapes from the LT records — NOT training data
+         assumptions. If the LT record reveals a discrepancy vs. your expectations, prefer the
+         LT record.
+
+      When finished, output on the LAST LINE:
+      SCAFFOLD_WRITTEN: <full path to the written file>
+    capture: scaffold_result
+    evaluate:
+      type: output_contains
+      pattern: "SCAFFOLD_WRITTEN:"
+    on_yes: verify_scaffold
+    on_no: diagnose_and_block
+
+  # ─── Phase 6: Non-LLM citation verification (MR-1 compliant) ────────────────
+
+  verify_scaffold:
+    action_type: shell
+    timeout: 60
+    action: bash scripts/verify_learning_citations.sh "${context.scaffold_dir}"
+    capture: verify_result
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: diagnose_and_block
+
+  # ─── Phase 7: Failure diagnosis ──────────────────────────────────────────────
+
+  diagnose_and_block:
+    action_type: prompt
+    timeout: 300
+    action: |
+      You are diagnosing why the integrate-sdk loop could not complete successfully.
+
+      INTEGRATION TARGET: ${context.target}
+      INTEGRATION GOAL: ${context.goal}
+
+      Available context (use whatever is non-empty):
+      - Enumeration: ${captured.enumeration.output}
+      - Targets: ${captured.targets.output}
+      - Scaffold result: ${captured.scaffold_result.output}
+      - Verify result: ${captured.verify_result.output}
+
+      Classify the failure using the loop-specialist failure-mode taxonomy.
+      Use EXACTLY one of these mode names as the primary classification:
+
+      | Mode | When to use |
+      |------|-------------|
+      | ambiguous-output | Enumeration produced vague/non-testable surfaces |
+      | infinite-cycle | Loop kept retrying without making progress |
+      | premature-termination | Loop exited before all surfaces were processed |
+      | feature-stubbing | Scaffold written without verifiable content |
+      | drift | Goal drifted from original target during enumeration |
+      | self-evaluation-bias | LLM self-graded as proven without real evidence |
+      | evaluator-trivial | Citation verifier passed even with missing/stale records |
+      | requires-credentials | Proof scripts need API keys not available in this environment |
+
+      Write a structured diagnosis to .loops/runs/integrate-sdk/ (create the directory).
+      Use filename: diagnosis-$(date -u +%Y%m%dT%H%M%SZ).md
+      Include:
+      1. Primary failure mode (from taxonomy above)
+      2. What was attempted (which surfaces, which branch)
+      3. What specifically failed (refuted assertions, missing citations, auth errors)
+      4. Recommended next step for the developer to unblock
+
+      Output "DIAGNOSIS_WRITTEN: <path>" when done.
+    capture: diagnosis
+    next: blocked
+
+  # ─── Terminal states ──────────────────────────────────────────────────────────
+
+  blocked:
+    terminal: true
+
+  done:
+    terminal: true

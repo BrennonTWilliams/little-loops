@@ -122,6 +122,7 @@ class TestBuiltinLoopFiles:
             "ready-to-implement-gate",
             "assumption-firewall",
             "adopt-third-party-api",
+            "integrate-sdk",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -3886,4 +3887,84 @@ class TestAdoptThirdPartyApiLoop:
         state = data["states"].get("failed", {})
         assert state.get("terminal") is True, (
             f"failed.terminal should be True, got {state.get('terminal')!r}"
+        )
+
+
+class TestIntegrateSdkLoop:
+    """Tests that integrate-sdk.yaml has correct structure and routing."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "integrate-sdk.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_description_is_nonempty(self, data: dict) -> None:
+        """Loop must have a non-empty description."""
+        assert data.get("description"), "integrate-sdk must have a non-empty description"
+
+    def test_prove_delegates_to_ready_to_implement_gate(self, data: dict) -> None:
+        """prove state must delegate to ready-to-implement-gate sub-loop."""
+        state = data["states"].get("prove", {})
+        assert state.get("loop") == "ready-to-implement-gate", (
+            f"prove.loop should be 'ready-to-implement-gate', got {state.get('loop')!r}"
+        )
+
+    def test_prove_with_contains_targets_and_max_retries(self, data: dict) -> None:
+        """prove with: must bind both targets and max_retries."""
+        state = data["states"].get("prove", {})
+        with_ = state.get("with", {})
+        assert "targets" in with_, f"prove.with must contain 'targets', got {list(with_.keys())}"
+        assert "max_retries" in with_, (
+            f"prove.with must contain 'max_retries', got {list(with_.keys())}"
+        )
+
+    def test_verify_scaffold_uses_exit_code_evaluator(self, data: dict) -> None:
+        """verify_scaffold must use exit_code evaluator, not LLM."""
+        state = data["states"].get("verify_scaffold", {})
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "exit_code", (
+            f"verify_scaffold.evaluate.type should be 'exit_code' (non-LLM), "
+            f"got {evaluate.get('type')!r}"
+        )
+
+    def test_prove_failure_routes_to_non_retry_state(self, data: dict) -> None:
+        """prove on_failure must route to diagnose_and_block (not a retry loop)."""
+        state = data["states"].get("prove", {})
+        on_failure = state.get("on_failure")
+        assert on_failure == "diagnose_and_block", (
+            f"prove.on_failure should be 'diagnose_and_block', got {on_failure!r}"
+        )
+        # diagnose_and_block must NOT be terminal (it runs a prompt then routes to blocked)
+        diagnose_state = data["states"].get("diagnose_and_block", {})
+        assert not diagnose_state.get("terminal"), (
+            "diagnose_and_block must not be terminal — it must run the diagnosis prompt "
+            "then route to blocked"
+        )
+
+    def test_blocked_is_terminal(self, data: dict) -> None:
+        """blocked state must have terminal: true."""
+        state = data["states"].get("blocked", {})
+        assert state.get("terminal") is True, (
+            f"blocked.terminal should be True, got {state.get('terminal')!r}"
+        )
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        state = data["states"].get("done", {})
+        assert state.get("terminal") is True, (
+            f"done.terminal should be True, got {state.get('terminal')!r}"
+        )
+
+    def test_scan_branches_to_both_enumerate_states(self, data: dict) -> None:
+        """scan_existing_usage must branch to both enumerate_from_code and enumerate_from_docs."""
+        state = data["states"].get("scan_existing_usage", {})
+        assert state.get("on_yes") == "enumerate_from_code", (
+            f"scan_existing_usage.on_yes should be 'enumerate_from_code', "
+            f"got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "enumerate_from_docs", (
+            f"scan_existing_usage.on_no should be 'enumerate_from_docs', "
+            f"got {state.get('on_no')!r}"
         )
