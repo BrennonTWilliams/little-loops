@@ -71,7 +71,40 @@ states:
 
       Do NOT start executing any steps yet. Only write the plan file.
     action_type: prompt
-    next: select_step
+    next: resume_check
+    on_error: diagnose
+
+  resume_check:
+    action: |
+      CHECKPOINT="${env.PWD}/.loops/tmp/general-task-checkpoint.json"
+      LAST_FILES_PATH="${env.PWD}/.loops/tmp/general-task-last-files.txt"
+      if [ ! -f "$CHECKPOINT" ]; then
+        echo "RESUME_NONE"
+        exit 0
+      fi
+      if [ -f "$LAST_FILES_PATH" ]; then
+        FILES=$(grep 'LAST_FILES:' "$LAST_FILES_PATH" 2>/dev/null | sed 's/LAST_FILES:[[:space:]]*//')
+        if [ -n "$FILES" ]; then
+          MISSING=0
+          for f in $FILES; do
+            [ ! -e "$f" ] && MISSING=1 && break
+          done
+          if [ "$MISSING" = "0" ]; then
+            echo "RESUME_SKIP"
+            exit 0
+          fi
+        fi
+      fi
+      rm -f "$CHECKPOINT"
+      echo "RESUME_CLEAN"
+    action_type: shell
+    capture: resume_check_result
+    evaluate:
+      type: output_contains
+      source: "${captured.resume_check_result.output}"
+      pattern: "RESUME_SKIP"
+    on_yes: mark_done
+    on_no: select_step
     on_error: diagnose
 
   select_step:
@@ -83,6 +116,8 @@ states:
         exit 0
       fi
       echo "$STEP" > "${env.PWD}/.loops/tmp/general-task-current-step.txt"
+      CHECKPOINT="${env.PWD}/.loops/tmp/general-task-checkpoint.json"
+      printf '{"in_flight_step":"%s","timestamp":"%s"}\n' "$STEP" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$CHECKPOINT"
       echo "SELECTED_STEP: $STEP"
     action_type: shell
     capture: selected_step
@@ -141,6 +176,7 @@ states:
       STEP_FILE="${env.PWD}/.loops/tmp/general-task-current-step.txt"
       awk 'found==0 && /^- \[ \]/ { sub(/^- \[ \]/, "- [x]"); found=1 } 1' "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
       rm -f "$STEP_FILE"
+      rm -f "${env.PWD}/.loops/tmp/general-task-checkpoint.json"
     action_type: shell
     next: check_done
     on_error: diagnose
@@ -361,7 +397,7 @@ states:
       Diagnose what happened:
       - If ${env.PWD}/.loops/tmp/general-task-plan.md exists, read it and summarize completed steps.
       - If ${env.PWD}/.loops/tmp/general-task-dod.md exists, report which done-criteria were met.
-      - Identify the most likely failure cause and which state failed (define_done, plan, select_step, do_work, verify_step, mark_done, check_done, count_done, final_verify, count_final, continue_work, or summarize_partial).
+      - Identify the most likely failure cause and which state failed (define_done, plan, resume_check, select_step, do_work, verify_step, mark_done, check_done, count_done, final_verify, count_final, continue_work, or summarize_partial).
 
       Write a one-paragraph diagnostic summary the operator can use to re-run or adjust the task description.
     next: failed

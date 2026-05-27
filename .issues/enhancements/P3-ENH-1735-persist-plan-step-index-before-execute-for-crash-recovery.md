@@ -6,8 +6,9 @@ priority: P3
 effort: Low
 impact: Medium
 risk: Low
-status: open
+status: done
 captured_at: '2026-05-27T00:00:00Z'
+completed_at: '2026-05-27T23:49:26Z'
 discovered_date: 2026-05-27
 discovered_by: audit-loop-run
 parent: EPIC-1744

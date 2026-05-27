@@ -278,8 +278,17 @@ class TestChange6SampleVerificationPreserved:
 class TestENH1732StateSplit:
     """ENH-1732: execute split into select_step → do_work → verify_step → mark_done chain."""
 
-    def test_plan_routes_to_select_step(self, raw_data: dict) -> None:
-        assert raw_data["states"]["plan"]["next"] == "select_step"
+    def test_plan_routes_to_resume_check(self, raw_data: dict) -> None:
+        assert raw_data["states"]["plan"]["next"] == "resume_check"
+
+    def test_resume_check_routes_no_to_select_step(self, raw_data: dict) -> None:
+        assert raw_data["states"]["resume_check"]["on_no"] == "select_step"
+
+    def test_resume_check_routes_yes_to_mark_done(self, raw_data: dict) -> None:
+        assert raw_data["states"]["resume_check"]["on_yes"] == "mark_done"
+
+    def test_resume_check_routes_error_to_diagnose(self, raw_data: dict) -> None:
+        assert raw_data["states"]["resume_check"]["on_error"] == "diagnose"
 
     def test_select_step_action_type_is_shell(self, raw_data: dict) -> None:
         assert raw_data["states"]["select_step"]["action_type"] == "shell"
@@ -475,6 +484,124 @@ class TestMarkDoneShellAction:
         plan = (loops_tmp / "general-task-plan.md").read_text()
         assert "- [x] Step 1: first" in plan
         assert "- [ ] Step 2: second" in plan
+
+
+class TestCheckpointWriteShellAction:
+    """ENH-1735: select_step writes in-flight checkpoint before routing to do_work."""
+
+    def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        script = _load_state_script("select_step")
+        script = script.replace("${env.PWD}", str(tmp_path))
+        return _bash(script, cwd=tmp_path)
+
+    def test_checkpoint_written_when_step_found(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
+        self._run(tmp_path)
+        checkpoint = loops_tmp / "general-task-checkpoint.json"
+        assert checkpoint.exists(), "select_step must write general-task-checkpoint.json"
+
+    def test_checkpoint_contains_step_text(self, tmp_path: Path) -> None:
+        import json
+
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
+        self._run(tmp_path)
+        checkpoint = loops_tmp / "general-task-checkpoint.json"
+        data = json.loads(checkpoint.read_text())
+        assert "in_flight_step" in data
+        assert "Step 1: write code" in data["in_flight_step"]
+
+    def test_checkpoint_not_written_when_no_steps(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [x] Step 1: done\n")
+        self._run(tmp_path)
+        checkpoint = loops_tmp / "general-task-checkpoint.json"
+        assert not checkpoint.exists(), (
+            "select_step must not write checkpoint when no unchecked steps remain"
+        )
+
+
+class TestCheckpointClearShellAction:
+    """ENH-1735: mark_done clears the in-flight checkpoint after step completion."""
+
+    def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        script = _load_state_script("mark_done")
+        script = script.replace("${env.PWD}", str(tmp_path))
+        return _bash(script, cwd=tmp_path)
+
+    def test_removes_checkpoint_when_present(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
+        step_file = loops_tmp / "general-task-current-step.txt"
+        step_file.write_text("- [ ] Step 1: write code\n")
+        checkpoint = loops_tmp / "general-task-checkpoint.json"
+        checkpoint.write_text(
+            '{"in_flight_step":"- [ ] Step 1: write code","timestamp":"2026-01-01T00:00:00Z"}'
+        )
+        self._run(tmp_path)
+        assert not checkpoint.exists(), "mark_done must remove general-task-checkpoint.json"
+
+    def test_tolerates_missing_checkpoint(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
+        step_file = loops_tmp / "general-task-current-step.txt"
+        step_file.write_text("- [ ] Step 1: write code\n")
+        result = self._run(tmp_path)
+        assert result.returncode == 0, "mark_done must not fail when checkpoint is absent"
+
+
+class TestResumeCheckShellAction:
+    """ENH-1735: resume_check detects in-flight checkpoint and routes to mark_done or select_step."""
+
+    def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        script = _load_state_script("resume_check")
+        script = script.replace("${env.PWD}", str(tmp_path))
+        return _bash(script, cwd=tmp_path)
+
+    def test_no_checkpoint_emits_resume_none(self, tmp_path: Path) -> None:
+        _setup_loops_tmp(tmp_path)
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "RESUME_NONE" in result.stdout
+
+    def test_checkpoint_with_existing_files_emits_resume_skip(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        checkpoint = loops_tmp / "general-task-checkpoint.json"
+        checkpoint.write_text(
+            '{"in_flight_step":"- [ ] Step 1: write code","timestamp":"2026-01-01T00:00:00Z"}'
+        )
+        output_file = tmp_path / "output.py"
+        output_file.write_text("# output\n")
+        (loops_tmp / "general-task-last-files.txt").write_text(f"LAST_FILES: {output_file}\n")
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "RESUME_SKIP" in result.stdout
+
+    def test_checkpoint_with_missing_files_emits_resume_clean(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        checkpoint = loops_tmp / "general-task-checkpoint.json"
+        checkpoint.write_text(
+            '{"in_flight_step":"- [ ] Step 1: write code","timestamp":"2026-01-01T00:00:00Z"}'
+        )
+        (loops_tmp / "general-task-last-files.txt").write_text(
+            "LAST_FILES: /nonexistent/file.py\n"
+        )
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "RESUME_CLEAN" in result.stdout
+        assert not checkpoint.exists(), "resume_check must delete checkpoint on RESUME_CLEAN"
+
+    def test_checkpoint_without_last_files_emits_resume_clean(self, tmp_path: Path) -> None:
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        checkpoint = loops_tmp / "general-task-checkpoint.json"
+        checkpoint.write_text(
+            '{"in_flight_step":"- [ ] Step 1: write code","timestamp":"2026-01-01T00:00:00Z"}'
+        )
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "RESUME_CLEAN" in result.stdout
+        assert not checkpoint.exists(), "resume_check must delete checkpoint when no last-files.txt"
 
 
 # ---------------------------------------------------------------------------
