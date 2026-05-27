@@ -2,10 +2,11 @@
 id: ENH-1726
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 captured_at: '2026-05-26T20:24:33Z'
+completed_at: '2026-05-27T05:21:06Z'
 decision_needed: false
 relates_to:
 - ENH-1684
@@ -289,7 +290,20 @@ Option B (rely on serialized context) is incorrect because `fsm.context` is not 
 
 **Resume continuity**: On resume, inject the SAME `run_dir` as the original run by reconstructing it from the discovered `instance_id` (lifecycle.py:414 — already available as `resumable[0][0]`). Set `run_dir = f".loops/runs/{instance_id}/"` so artifacts from the resumed run continue into the same directory as the original run, not a new timestamped directory.
 
+## Resolution
+
+Implemented in commit `e352d4a6` (2026-05-26). All implementation steps completed:
+
+1. `run_dir` injection added to `cmd_run()` in `scripts/little_loops/cli/loop/run.py` — pre-injected before the validation scan using `_make_instance_id()`; directory created before `PersistentExecutor` construction.
+2. `cmd_resume()` in `lifecycle.py` injects the same `run_dir` from the existing `instance_id` for resume continuity.
+3. All 10 built-in loops migrated to `${context.run_dir}`: `deep-research.yaml`, `deep-research-arxiv.yaml`, `rn-plan.yaml`, `rn-plan-apo.yaml`, `rn-refine.yaml`, `hitl-compare.yaml`, `hitl-md.yaml`, `html-anything.yaml`, `html-website-generator.yaml`, `svg-image-generator.yaml`, `svg-textgrad.yaml`.
+4. Tests updated: `test_builtin_loops.py`, `test_deep_research.py`, `test_deep_research_arxiv.py`, `test_rn_plan.py`, `test_rn_refine.py`. New injection test added in `test_ll_loop_program_md.py`.
+5. `.gitignore` updated: `.ll/runs/harness-optimize/` generalized to `.loops/runs/`.
+6. 585 tests pass.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-27T05:21:06Z - already implemented; status marked done
+- `/ll:ready-issue` - 2026-05-27T05:19:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f43bc75e-8b05-46bc-a8f7-1ca01eb0932d.jsonl`
 - `/ll:confidence-check` - 2026-05-26T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1a1f3a0-45d3-40a9-a3c3-825b86f43731.jsonl`
 - `/ll:wire-issue` - 2026-05-27T00:22:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623b3ad3-472e-486a-b0ac-aa05e638d1f5.jsonl`
 - `/ll:refine-issue` - 2026-05-27T00:12:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc1ae0a4-8512-4b9a-97b5-ed439fd238c7.jsonl`
