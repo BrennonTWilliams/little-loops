@@ -2,10 +2,17 @@
 id: ENH-1727
 type: ENH
 priority: P3
-status: open
-captured_at: "2026-05-26T20:32:38Z"
+status: done
+captured_at: '2026-05-26T20:32:38Z'
+completed_at: '2026-05-27T02:24:25Z'
 discovered_date: 2026-05-26
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1727: Add `--group-by epic` option to `ll-issues list`
@@ -98,7 +105,7 @@ _Wiring pass added by `/ll:wire-issue`:_
    )
    ```
 
-2. **Add epic-grouping branch in `cmd_list`** — in `scripts/little_loops/cli/issues/list_cmd.py`, after line 132 (`enriched = enriched[:limit]`) and before line 134 (`issues_with_status = ...`). After the existing `--json` (line 110) and `--flat` (line 129) early-return blocks, branch on `args.group_by`:
+2. **Add epic-grouping branch in `cmd_list`** — in `scripts/little_loops/cli/issues/list_cmd.py`, after line 132 (`return 0`, end of `--flat` block) and before line 134 (`# Group by type prefix`). After the existing `--json` (line 110) and `--flat` (line 129) early-return blocks, branch on `args.group_by`:
    - `"type"` path: existing lines 135–155 unchanged
    - `"epic"` path: bucket by `issue.parent` (`None` → `"Unparented"`), sort named epics alphabetically by epic ID, append unparented last; for each epic bucket header, resolve title by calling `config.issues_path` to find the matching EPIC file and reading its `# EPIC-NNN: Title` H1 (use `IssueFile.title` if the EPIC is loaded, or regex on the H1 line)
 
@@ -154,6 +161,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `cli`, `issues`, `epics`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-27T02:18:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01cdd312-a82e-4fc3-9f8d-a582dd91db5b.jsonl`
+- `/ll:confidence-check` - 2026-05-27T01:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca60f941-c956-4861-b798-811fcaf0e874.jsonl`
 - `/ll:wire-issue` - 2026-05-27T00:39:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f67938c-cbb3-4914-bee5-0317a112a94e.jsonl`
 - `/ll:refine-issue` - 2026-05-27T00:34:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/276b0668-a79f-456b-bedc-b6bd95271676.jsonl`
 - `/ll:format-issue` - 2026-05-26T20:40:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76dc2061-8005-4612-bcf4-1672e52ae597.jsonl`

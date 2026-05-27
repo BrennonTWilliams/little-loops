@@ -79,6 +79,22 @@ def issues_dir_with_epic(issues_dir: Path) -> Path:
     return issues_dir
 
 
+@pytest.fixture
+def issues_dir_with_epic_children(issues_dir_with_epic: Path) -> Path:
+    """Extend issues_dir_with_epic with child issues that have parent: EPIC-001."""
+    bugs_dir = issues_dir_with_epic / "bugs"
+    bugs_dir.mkdir(parents=True, exist_ok=True)
+    (bugs_dir / "P1-BUG-010-epic-child-bug.md").write_text(
+        "---\nstatus: open\nparent: EPIC-001\n---\n# BUG-010: Epic child bug\n\n## Summary\nChild of EPIC-001."
+    )
+    enhancements_dir = issues_dir_with_epic / "enhancements"
+    enhancements_dir.mkdir(parents=True, exist_ok=True)
+    (enhancements_dir / "P3-ENH-011-epic-child-enh.md").write_text(
+        "---\nstatus: open\nparent: EPIC-001\n---\n# ENH-011: Epic child enhancement\n\n## Summary\nAlso child of EPIC-001."
+    )
+    return issues_dir_with_epic
+
+
 class TestIssuesCLIList:
     """Tests for ll-issues list sub-command."""
 
@@ -695,6 +711,90 @@ class TestIssuesCLIList:
         assert len(data) > 0
         for item in data:
             assert "milestone" in item
+
+    def test_list_group_by_epic_parented(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_epic_children: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --group-by epic places child issues under their parent epic bucket."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--group-by", "epic", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # EPIC-001 bucket header should include the title and count
+        assert "EPIC-001" in captured.out
+        assert "Parent initiative" in captured.out
+        # Both child issues should appear
+        assert "BUG-010" in captured.out
+        assert "ENH-011" in captured.out
+
+    def test_list_group_by_epic_unparented(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_epic_children: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --group-by epic places issues with no parent: field under Unparented."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--group-by", "epic", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Unparented" in captured.out
+        # Base issues_dir issues have no parent field
+        assert "BUG-001" in captured.out
+
+    def test_list_group_by_type_default(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --group-by type produces the same output as omitting --group-by."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "list", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result_default = main_issues()
+        captured_default = capsys.readouterr()
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--group-by", "type", "--config", str(temp_project_dir)],
+        ):
+            result_explicit = main_issues()
+        captured_explicit = capsys.readouterr()
+
+        assert result_default == 0
+        assert result_explicit == 0
+        assert captured_default.out == captured_explicit.out
 
 
 class TestIssuesCLISequence:

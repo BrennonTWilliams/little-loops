@@ -179,6 +179,13 @@ Examples:
         metavar="MILESTONE",
         help="Filter by milestone name (matches issues whose milestone: frontmatter equals MILESTONE)",
     )
+    ls.add_argument(
+        "--group-by",
+        choices=["type", "epic"],
+        default="type",
+        dest="group_by",
+        help="Group output by issue type (default) or parent ID",
+    )
     add_config_arg(ls)
 
     sr = subs.add_parser("search", aliases=["sr"], help="Search issues with filters and sorting")

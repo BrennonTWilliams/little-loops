@@ -324,7 +324,7 @@ class TestIssueListNoColor:
                 "get_issue_dir": lambda self, cat: tmp_path / ".issues" / cat,
             },
         )()  # type: ignore[misc]
-        args = argparse.Namespace(type=None, priority=None, flat=False)
+        args = argparse.Namespace(type=None, priority=None, flat=False, group_by="type")
 
         with patch.object(output_mod, "_USE_COLOR", False):
             result = cmd_list(config, args)

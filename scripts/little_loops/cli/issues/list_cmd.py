@@ -131,6 +131,44 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
             print(f"{issue.path.name}  {issue.title}")
         return 0
 
+    group_by = getattr(args, "group_by", "type")
+    if group_by == "epic":
+        # Build parent title lookup from raw (before type filter) so headers
+        # resolve correctly when --type BUG is combined with --group-by epic
+        parent_titles: dict[str, str] = {i.issue_id: i.title for i, _ in raw if i.title}
+
+        parent_buckets: dict[str | None, list] = {}
+        for issue, stat in issues_with_status:
+            key = issue.parent
+            if key not in parent_buckets:
+                parent_buckets[key] = []
+            parent_buckets[key].append((issue, stat))
+
+        named_keys = sorted(k for k in parent_buckets if k is not None)
+        ordered_keys = named_keys + ([None] if None in parent_buckets else [])
+
+        lines: list[str] = []
+        for key in ordered_keys:
+            group = parent_buckets[key]
+            if key is None:
+                header = colorize(f"Unparented ({len(group)})", "1")
+            else:
+                title = parent_titles.get(key, "")
+                label = f"{key}: {title} ({len(group)})" if title else f"{key} ({len(group)})"
+                parent_prefix = key.split("-", 1)[0]
+                header = colorize(label, f"{TYPE_COLOR.get(parent_prefix, '0')};1")
+            lines.append(header)
+            for issue, stat in group:
+                issue_type = issue.issue_id.split("-", 1)[0]
+                colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
+                colored_priority = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
+                status_tag = f" [{stat}]" if stat not in ("open", "in_progress") else ""
+                lines.append(f"  {colored_priority}  {colored_id}  {issue.title}{status_tag}")
+            lines.append("")
+        lines.append(f"Total: {len(issues_with_status)} active issues")
+        print("\n".join(lines))
+        return 0
+
     # Group by type prefix
     buckets: dict[str, list] = {"BUG": [], "FEAT": [], "ENH": [], "EPIC": []}
     for issue, stat in issues_with_status:
