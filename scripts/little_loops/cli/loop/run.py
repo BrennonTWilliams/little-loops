@@ -150,6 +150,17 @@ def cmd_run(
         key, _, value = kv.partition("=")
         fsm.context[key.strip()] = value.strip()
 
+    # Generate instance_id early so run_dir can be derived before the validation scan
+    if getattr(args, "foreground_internal", False):
+        _pre_instance_id: str | None = getattr(args, "instance_id", None)
+    else:
+        _pre_instance_id = _make_instance_id(loop_name)
+
+    # Inject run_dir into context before validation so ${context.run_dir} resolves.
+    # --context run_dir=VALUE (already applied above) takes precedence.
+    if "run_dir" not in fsm.context:
+        fsm.context["run_dir"] = str(loops_dir / "runs" / (_pre_instance_id or loop_name)) + "/"
+
     # Apply YAML loop config env-var overrides (CLI flags below overwrite these)
     if fsm.config is not None and isinstance(fsm.config.handoff_threshold, int):
         os.environ["LL_HANDOFF_THRESHOLD"] = str(fsm.config.handoff_threshold)
@@ -230,10 +241,7 @@ def cmd_run(
     running_dir = loops_dir / ".running"
     running_dir.mkdir(parents=True, exist_ok=True)
     _reconcile_stale_runs(loops_dir)
-    if getattr(args, "foreground_internal", False):
-        instance_id: str | None = getattr(args, "instance_id", None)
-    else:
-        instance_id = _make_instance_id(loop_name)
+    instance_id = _pre_instance_id
     pid_file = running_dir / f"{instance_id or loop_name}.pid"
     foreground_pid_file: Path | None = pid_file
 
@@ -361,6 +369,7 @@ def cmd_run(
             if _config.commands.rate_limits.circuit_breaker_enabled
             else None
         )
+        Path(fsm.context["run_dir"]).mkdir(parents=True, exist_ok=True)
         executor = PersistentExecutor(
             fsm, loops_dir=loops_dir, circuit=circuit, instance_id=instance_id, pid=os.getpid()
         )

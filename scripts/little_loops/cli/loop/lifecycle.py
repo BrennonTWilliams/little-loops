@@ -443,6 +443,11 @@ def cmd_resume(
         key, _, value = kv.partition("=")
         fsm.context[key.strip()] = value.strip()
 
+    # Re-inject run_dir using the same instance_id as the original run so resumed
+    # loops write artifacts to the same directory they started with.
+    if "run_dir" not in fsm.context and instance_id is not None:
+        fsm.context["run_dir"] = str(loops_dir / "runs" / instance_id) + "/"
+
     if getattr(args, "delay", None) is not None:
         fsm.backoff = args.delay
 

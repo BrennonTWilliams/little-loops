@@ -12,23 +12,19 @@ initial: init
 max_iterations: 20
 timeout: 7200
 
-# HARNESS: Context variables control output location and quality threshold.
-# Pass a custom output_dir to write files elsewhere.
+# HARNESS: Context variables control quality threshold.
 context:
   description: ""             # populated from loop_input via input_key: description
-  output_dir: ".loops/tmp/svg-image-generator"
   pass_threshold: 6           # minimum score per criterion (1-10) to pass
 
 states:
 
   init:
-    # HARNESS: Setup phase — creates a timestamped run folder under output_dir and
-    # captures the full path so all subsequent states write to an isolated directory.
-    # Using a shell state mirrors the canonical pattern from evaluation-quality.yaml.
+    # HARNESS: Setup phase — captures the runner-injected run_dir as an absolute path
+    # so all subsequent states write to the same isolated per-run directory.
     action_type: shell
     action: |
-      TS=$(date -u +%Y%m%d-%H%M%S)
-      DIR="${context.output_dir}/$TS"
+      DIR="${context.run_dir}"
       mkdir -p "$DIR"
       echo "$(pwd)/$DIR"
     capture: run_dir

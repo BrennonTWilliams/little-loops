@@ -13,25 +13,23 @@ initial: init
 max_iterations: 20
 timeout: 7200
 
-# HARNESS: Context variables control output location and quality threshold.
+# HARNESS: Context variables control quality threshold.
 # pass_threshold is set higher than SVG (7 vs 6) because platform constraints are
 # binary pass/fail — partial compliance with inline-style or dimensional requirements
 # is not acceptable the way aesthetic judgements can be marginal.
 context:
   description: ""             # populated from loop_input via input_key: description
-  output_dir: ".loops/tmp/html-anything"
   pass_threshold: 7           # minimum score per criterion (1-10) to pass
 
 states:
 
   init:
-    # HARNESS: Setup phase — creates a timestamped run folder under output_dir and
-    # captures the full absolute path so all subsequent states write to an isolated
-    # directory. Using $(pwd) ensures the captured path is valid for file:// URIs.
+    # HARNESS: Setup phase — captures the runner-injected run_dir as an absolute path
+    # so all subsequent states write to the same isolated per-run directory.
+    # Using $(pwd) ensures the captured path is valid for file:// URIs.
     action_type: shell
     action: |
-      TS=$(date -u +%Y%m%d-%H%M%S)
-      DIR="${context.output_dir}/$TS"
+      DIR="${context.run_dir}"
       mkdir -p "$DIR"
       echo "$(pwd)/$DIR"
     capture: run_dir

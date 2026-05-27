@@ -12,24 +12,20 @@ max_iterations: 40
 on_handoff: pause
 timeout: 7200
 
-# HARNESS: Context variables control output location and quality threshold.
-# Pass a custom output_dir to write files elsewhere.
+# HARNESS: Context variables control quality threshold.
 context:
   description: ""             # populated from loop_input via input_key: description
-  output_dir: ".loops/tmp/svg-textgrad"
   pass_threshold: 6           # minimum score per criterion (1-10) to pass
 
 states:
 
   init:
-    # HARNESS: Setup phase — creates a timestamped run folder under output_dir and
-    # captures the full path so all subsequent states write to an isolated directory.
+    # HARNESS: Setup phase — captures the runner-injected run_dir as an absolute path.
     # Also initializes gradients.md and scores.md so compute_gradient can safely read
     # both on iteration 1 without file-not-found errors.
     action_type: shell
     action: |
-      TS=$(date -u +%Y%m%d-%H%M%S)
-      DIR="${context.output_dir}/$TS"
+      DIR="${context.run_dir}"
       mkdir -p "$DIR"
       touch "$DIR/gradients.md"
       touch "$DIR/scores.md"

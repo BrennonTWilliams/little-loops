@@ -13,21 +13,17 @@ timeout: 3600
 
 context:
   topic: ""            # populated from positional CLI arg via input_key: topic
-  output_dir: ".loops/research"
   depth: 3             # minimum search rounds before accepting convergence
   coverage_threshold_pct: 85  # target coverage percentage (used in score_coverage prompt)
 
 states:
 
   init:
-    # Setup phase — derive a slug from the topic, create a run directory, and
-    # initialize empty research artifact files. Captures the absolute run-dir path
-    # so all subsequent states can write to the same isolated location.
+    # Setup phase — create per-run artifact files in the runner-injected run_dir.
+    # Captures the absolute path so all subsequent states can write to it.
     action_type: shell
     action: |
-      SLUG=$(echo "${context.topic}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\+/-/g; s/^-//; s/-$//')
-      SLUG="$${SLUG:-deep-research-run}"
-      DIR="${context.output_dir}/$SLUG"
+      DIR="${context.run_dir}"
       mkdir -p "$DIR"
       : > "$DIR/report.md"
       : > "$DIR/knowledge-base.md"

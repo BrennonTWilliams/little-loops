@@ -29,23 +29,21 @@ initial: init
 max_iterations: 20
 timeout: 7200
 
-# HARNESS: Context variables control output location.
+# HARNESS: Context variables for input.
 # input is populated from the CLI positional arg via input_key: input.
 # The token is resolved as a file path (if it exists on disk) or treated as raw markdown text.
 context:
   input: ""              # file path or raw markdown text; populated via input_key
-  output_dir: ".loops/tmp/hitl-md"
 
 states:
 
   init:
-    # HARNESS: Setup phase — creates a timestamped run folder under output_dir and
-    # captures the full absolute path so all subsequent states write to an isolated
-    # directory. Using $(pwd) ensures the captured path is valid for file:// URIs.
+    # HARNESS: Setup phase — captures the runner-injected run_dir as an absolute path
+    # so all subsequent states write to the same isolated per-run directory.
+    # Using $(pwd) ensures the captured path is valid for file:// URIs.
     action_type: shell
     action: |
-      TS=$(date -u +%Y%m%d-%H%M%S)
-      DIR="${context.output_dir}/$TS"
+      DIR="${context.run_dir}"
       mkdir -p "$DIR"
       echo "$(pwd)/$DIR"
     capture: run_dir

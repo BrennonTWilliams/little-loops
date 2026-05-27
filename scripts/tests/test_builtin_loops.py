@@ -2694,11 +2694,11 @@ class TestHtmlWebsiteGeneratorLoop:
         state = data["states"].get("score", {})
         assert state.get("on_no") == "generate"
 
-    def test_context_has_description_and_output_dir(self, data: dict) -> None:
-        """context block must define description and output_dir variables."""
+    def test_context_has_description(self, data: dict) -> None:
+        """context block must define description variable; output_dir is runner-injected."""
         ctx = data.get("context", {})
         assert "description" in ctx
-        assert "output_dir" in ctx
+        assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
 
     def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""
@@ -2774,11 +2774,11 @@ class TestSvgImageGeneratorLoop:
         state = data["states"].get("score", {})
         assert state.get("on_no") == "generate"
 
-    def test_context_has_description_and_output_dir(self, data: dict) -> None:
-        """context block must define description and output_dir variables with correct defaults."""
+    def test_context_has_description(self, data: dict) -> None:
+        """context block must define description; output_dir is runner-injected run_dir."""
         ctx = data.get("context", {})
         assert "description" in ctx
-        assert ctx.get("output_dir") == ".loops/tmp/svg-image-generator"
+        assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
 
     def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""
@@ -2898,11 +2898,11 @@ class TestSvgTextgradLoop:
         state = data["states"].get("apply_gradient", {})
         assert state.get("next") == "generate"
 
-    def test_context_has_description_and_output_dir(self, data: dict) -> None:
-        """context block must define description and output_dir with correct defaults."""
+    def test_context_has_description(self, data: dict) -> None:
+        """context block must define description; output_dir is runner-injected run_dir."""
         ctx = data.get("context", {})
         assert "description" in ctx
-        assert ctx.get("output_dir") == ".loops/tmp/svg-textgrad"
+        assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
 
     def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""
@@ -3233,11 +3233,11 @@ class TestHtmlAnythingLoop:
             "score.action must fall back to reading index.html when screenshot is absent"
         )
 
-    def test_context_has_description_and_output_dir(self, data: dict) -> None:
-        """context block must define description and output_dir with correct defaults."""
+    def test_context_has_description(self, data: dict) -> None:
+        """context block must define description; output_dir is runner-injected run_dir."""
         ctx = data.get("context", {})
         assert "description" in ctx
-        assert ctx.get("output_dir") == ".loops/tmp/html-anything"
+        assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
 
     def test_context_pass_threshold_is_7(self, data: dict) -> None:
         """pass_threshold must be 7 — higher than SVG's 6 because platform constraints are binary."""
@@ -3379,11 +3379,11 @@ class TestHitlCompareLoop:
         state = data["states"].get("score", {})
         assert state.get("on_error") == "failed"
 
-    def test_context_has_inputs_and_output_dir(self, data: dict) -> None:
-        """context block must define inputs and output_dir with correct defaults."""
+    def test_context_has_inputs(self, data: dict) -> None:
+        """context block must define inputs; output_dir is runner-injected run_dir."""
         ctx = data.get("context", {})
         assert "inputs" in ctx
-        assert ctx.get("output_dir") == ".loops/tmp/hitl-compare"
+        assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
 
     def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""
@@ -3555,11 +3555,11 @@ class TestHitlMdLoop:
         state = data["states"].get("score", {})
         assert state.get("on_error") == "failed"
 
-    def test_context_has_input_and_output_dir(self, data: dict) -> None:
-        """context block must define input (singular) and output_dir with correct defaults."""
+    def test_context_has_input(self, data: dict) -> None:
+        """context block must define input (singular); output_dir is runner-injected run_dir."""
         ctx = data.get("context", {})
         assert "input" in ctx, "context must have 'input' key (singular, not 'inputs')"
-        assert ctx.get("output_dir") == ".loops/tmp/hitl-md"
+        assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
 
     def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""

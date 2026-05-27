@@ -111,11 +111,10 @@ class TestRnPlanYaml:
     def test_failed_state_is_terminal(self, data: dict) -> None:
         assert data["states"]["failed"].get("terminal") is True
 
-    def test_context_has_task_and_output_dir(self, data: dict) -> None:
+    def test_context_has_task(self, data: dict) -> None:
         ctx = data.get("context", {})
         assert "task" in ctx
-        assert "output_dir" in ctx
-        assert ctx["output_dir"] == ".loops/plans"
+        assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
 
     def test_max_iterations_is_50(self, data: dict) -> None:
         assert data.get("max_iterations") == 50
@@ -140,16 +139,13 @@ class TestRnPlanYaml:
 
 
 class TestRnPlanShellStates:
-    """Exercise the init shell action directly to verify slug and directory creation."""
+    """Exercise the init shell action directly to verify directory and artifact creation."""
 
     def test_init_creates_run_directory(self, tmp_path: Path) -> None:
-        """init action creates the output directory under output_dir."""
-        task = "Build a REST API for user authentication"
-        # Use a relative output_dir so $(pwd)/$DIR produces a valid absolute path
+        """init action creates the run_dir and all three artifact files."""
+        run_dir = tmp_path / ".loops" / "runs" / "rn-plan-20260526T120000"
         script = f"""
-SLUG=$(echo "{task}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\\+/-/g; s/^-//; s/-$//')
-SLUG="${{SLUG:-rn-plan-run}}"
-DIR=".loops/plans/$SLUG"
+DIR="{run_dir}"
 mkdir -p "$DIR"
 : > "$DIR/plan.md"
 : > "$DIR/plan-rubric.md"
@@ -158,39 +154,16 @@ echo "$(pwd)/$DIR"
 """
         result = _bash(script, tmp_path)
         assert result.returncode == 0, f"init shell failed: {result.stderr}"
-        run_dir = result.stdout.strip()
-        assert run_dir, "init must output the run directory path"
-
-        run_path = Path(run_dir)
-        assert run_path.is_dir(), f"Run directory not created: {run_path}"
-        assert (run_path / "plan.md").exists(), "plan.md not created"
-        assert (run_path / "plan-rubric.md").exists(), "plan-rubric.md not created"
-        assert (run_path / "research.md").exists(), "research.md not created"
-
-    def test_init_slug_is_lowercase_hyphenated(self, tmp_path: Path) -> None:
-        """init action produces a lowercase, hyphenated slug from the task."""
-        output_dir = tmp_path / ".loops" / "plans"
-        output_dir.mkdir(parents=True)
-
-        task = "Migrate Hooks Adapter Layer"
-        script = f"""
-SLUG=$(echo "{task}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\\+/-/g; s/^-//; s/-$//')
-echo "$SLUG"
-"""
-        result = _bash(script, tmp_path)
-        assert result.returncode == 0
-        slug = result.stdout.strip()
-        assert slug == "migrate-hooks-adapter-layer"
+        assert run_dir.is_dir(), f"Run directory not created: {run_dir}"
+        assert (run_dir / "plan.md").exists(), "plan.md not created"
+        assert (run_dir / "plan-rubric.md").exists(), "plan-rubric.md not created"
+        assert (run_dir / "research.md").exists(), "research.md not created"
 
     def test_init_outputs_absolute_path(self, tmp_path: Path) -> None:
         """init action echoes an absolute path (starts with /)."""
-        output_dir = tmp_path / ".loops" / "plans"
-        output_dir.mkdir(parents=True)
-
-        task = "simple task"
+        run_dir = tmp_path / ".loops" / "runs" / "rn-plan-20260526T120000"
         script = f"""
-SLUG=$(echo "{task}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\\+/-/g; s/^-//; s/-$//')
-DIR="{output_dir}/$SLUG"
+DIR="{run_dir}"
 mkdir -p "$DIR"
 echo "$(pwd)/$DIR"
 """
@@ -198,21 +171,6 @@ echo "$(pwd)/$DIR"
         assert result.returncode == 0
         path = result.stdout.strip()
         assert path.startswith("/"), f"init must output absolute path, got: {path!r}"
-
-    def test_init_empty_task_uses_fallback_slug(self, tmp_path: Path) -> None:
-        """init action falls back to 'rn-plan-run' when task produces empty slug."""
-        output_dir = tmp_path / ".loops" / "plans"
-        output_dir.mkdir(parents=True)
-
-        script = """
-SLUG=$(echo "" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\\+/-/g; s/^-//; s/-$//')
-SLUG="${SLUG:-rn-plan-run}"
-echo "$SLUG"
-"""
-        result = _bash(script, tmp_path)
-        assert result.returncode == 0
-        slug = result.stdout.strip()
-        assert slug == "rn-plan-run"
 
 
 class TestRnPlanExecution:

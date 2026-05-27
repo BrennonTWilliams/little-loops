@@ -11,11 +11,9 @@ initial: plan
 max_iterations: 30
 timeout: 14400
 
-# HARNESS: Context variables control output location and quality threshold.
-# Pass a custom output_dir to write files elsewhere.
+# HARNESS: Context variables control quality threshold.
 context:
   description: ""             # populated from loop_input via input_key: description
-  output_dir: "/tmp/ll-html-generator"
   pass_threshold: 6           # minimum score per criterion (1-10) to pass
 
 states:
@@ -27,9 +25,9 @@ states:
     # generator has strong direction on the first iteration.
     action_type: prompt
     action: |
-      Create directory ${context.output_dir} if it does not already exist.
+      Create directory ${context.run_dir} if it does not already exist.
 
-      Write a design brief to ${context.output_dir}/brief.md for the following website:
+      Write a design brief to ${context.run_dir}/brief.md for the following website:
       "${context.description}"
 
       The brief must include:
@@ -50,12 +48,12 @@ states:
     # without an HTTP server (no CORS, no external resource loading needed).
     action_type: prompt
     action: |
-      Read ${context.output_dir}/brief.md for the design brief.
+      Read ${context.run_dir}/brief.md for the design brief.
 
-      If ${context.output_dir}/critique.md exists, read it and address all issues
+      If ${context.run_dir}/critique.md exists, read it and address all issues
       listed in the "Issues to Address" section specifically and completely.
 
-      Write a single self-contained HTML file to ${context.output_dir}/index.html that:
+      Write a single self-contained HTML file to ${context.run_dir}/index.html that:
       - Implements the visual identity and layout from the brief
       - Embeds all CSS and JavaScript inline (no external dependencies, no CDN links)
       - Produces a responsive layout that works at desktop and mobile widths
@@ -74,7 +72,7 @@ states:
     # LLM-only scoring if the shell tool is unavailable.
     action_type: shell
     action: |
-      playwright screenshot "file://${context.output_dir}/index.html" "${context.output_dir}/screenshot.png" && echo "CAPTURED"
+      playwright screenshot "file://${context.run_dir}/index.html" "${context.run_dir}/screenshot.png" && echo "CAPTURED"
     evaluate:
       type: output_contains
       pattern: "CAPTURED"
@@ -88,11 +86,11 @@ states:
     # The PNG produced by the evaluate state is read as a multimodal image input.
     action_type: prompt
     action: |
-      Read the screenshot at ${context.output_dir}/screenshot.png to view the generated website.
-      Also read ${context.output_dir}/brief.md to recall the design intent.
+      Read the screenshot at ${context.run_dir}/screenshot.png to view the generated website.
+      Also read ${context.run_dir}/brief.md to recall the design intent.
 
       Score the website on each criterion from 1 to 10 and write the evaluation to
-      ${context.output_dir}/critique.md using this exact format:
+      ${context.run_dir}/critique.md using this exact format:
 
       ```
       # Evaluation
@@ -129,6 +127,6 @@ states:
 
   done:
     # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
-    # The final website is at ${context.output_dir}/index.html.
-    # The last critique (with final scores) is at ${context.output_dir}/critique.md.
+    # The final website is at ${context.run_dir}/index.html.
+    # The last critique (with final scores) is at ${context.run_dir}/critique.md.
     terminal: true

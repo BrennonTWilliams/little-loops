@@ -7,7 +7,14 @@ discovered_date: 2026-05-26
 discovered_by: capture-issue
 captured_at: '2026-05-26T20:24:33Z'
 decision_needed: false
-relates_to: [ENH-1684]
+relates_to:
+- ENH-1684
+confidence_score: 100
+outcome_confidence: 62
+score_complexity: 9
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-1726: Unify FSM loop run artifacts into a per-run directory under `.loops/runs/`
@@ -260,7 +267,30 @@ context:
 
 **Open** | Created: 2026-05-26 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-26_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 62/100 → MODERATE
+
+### Outcome Risk Factors
+- **Broad enumeration across 26 change sites** — even with mostly mechanical changes, the wide surface (12 YAML migrations + 6 test updates + 5 doc updates + 2 code files + .gitignore) increases chances of a missed site; a verification grep (`grep -r "output_dir" scripts/little_loops/loops/`) after migration would confirm completeness but is not specified in the issue
+- **Open design decision in cmd_resume() handling** — either/or choice is unresolved: add parallel `run_dir` injection in `lifecycle.py:cmd_resume()` vs. rely on serialized context rehydration; resolve before starting to avoid a resume-path bug in the first loop that adopts `${context.run_dir}`
+- **rn-plan-apo coordinated update** — `run_planner` state passes `--context output_dir=...` to a nested `ll-loop run rn-plan` call and `score_plans` reads from the resulting path; these two states must be updated together with `rn-plan.yaml` or the nested loop's outputs will be unreachable
+
+### Decision Rationale
+
+**Decision: Option A — inject `run_dir` in `cmd_resume()` (parallel to `cmd_run()`).**
+
+`LoopState.to_dict()` (persistence.py:216) does not include `fsm.context`. `PersistentExecutor.resume()` (persistence.py:769) restores iteration/captured/prev_result etc. but never touches `fsm.context`. `cmd_resume()` loads `fsm` fresh from YAML via `load_loop()` (lifecycle.py:432) — `fsm.context` is populated only from the YAML definition plus `--context` CLI overrides. No `run_dir` is present after resume without explicit injection.
+
+Option B (rely on serialized context) is incorrect because `fsm.context` is not serialized at all.
+
+**Resume continuity**: On resume, inject the SAME `run_dir` as the original run by reconstructing it from the discovered `instance_id` (lifecycle.py:414 — already available as `resumable[0][0]`). Set `run_dir = f".loops/runs/{instance_id}/"` so artifacts from the resumed run continue into the same directory as the original run, not a new timestamped directory.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-05-26T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1a1f3a0-45d3-40a9-a3c3-825b86f43731.jsonl`
 - `/ll:wire-issue` - 2026-05-27T00:22:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623b3ad3-472e-486a-b0ac-aa05e638d1f5.jsonl`
 - `/ll:refine-issue` - 2026-05-27T00:12:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc1ae0a4-8512-4b9a-97b5-ed439fd238c7.jsonl`
 - `/ll:format-issue` - 2026-05-26T20:29:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47cef901-86e9-4bd2-b772-ff487dd8bdac.jsonl`

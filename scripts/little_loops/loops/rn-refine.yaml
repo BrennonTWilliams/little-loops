@@ -13,24 +13,19 @@ timeout: 7200
 
 context:
   plan_file: ""     # populated from positional CLI arg via input_key: plan_file
-  output_dir: ".loops/plans"
 
 states:
 
   init:
-    # Setup phase — validate the source plan file exists, derive a slug from its
-    # filename stem, create a run directory, and copy the existing plan content
-    # (instead of blank-initializing). Captures the absolute run-dir path so all
-    # subsequent states can write to the same isolated location.
+    # Setup phase — validate the source plan file exists, copy it into the
+    # runner-injected run_dir, and initialize supporting files.
     action_type: shell
     action: |
       if [ ! -f "${context.plan_file}" ]; then
         echo "ERROR: Plan file not found: ${context.plan_file}"
         exit 1
       fi
-      SLUG=$(basename "${context.plan_file}" .md | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\+/-/g; s/^-//; s/-$//')
-      SLUG="$${SLUG:-rn-refine-run}"
-      DIR="${context.output_dir}/$SLUG"
+      DIR="${context.run_dir}"
       mkdir -p "$DIR"
       cp "${context.plan_file}" "$DIR/plan.md"
       realpath "${context.plan_file}" > "$DIR/.source-path"

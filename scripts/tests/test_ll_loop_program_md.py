@@ -249,6 +249,60 @@ class TestCmdRunProgramMdInjection:
         result = cmd_run("test-loop", args, loops_dir, logger)
         assert result == 0
 
+    def test_run_dir_injected_into_context(self, tmp_path: Path) -> None:
+        """run_dir is injected into fsm.context by cmd_run before dry_run returns."""
+        import re
+
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.fsm.validation import load_and_validate
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args(dry_run=True)
+        logger = Logger(use_color=False)
+
+        fsm, _ = load_and_validate(loops_dir / "test-loop.yaml")
+
+        def fake_load_and_validate(path: Path):  # type: ignore[override]
+            return fsm, []
+
+        with patch(
+            "little_loops.fsm.validation.load_and_validate", side_effect=fake_load_and_validate
+        ):
+            cmd_run("test-loop", args, loops_dir, logger)
+
+        run_dir = fsm.context.get("run_dir", "")
+        assert run_dir, "run_dir must be injected into fsm.context"
+        assert "runs" in run_dir, f"run_dir must be under .loops/runs/, got: {run_dir!r}"
+        assert re.search(r"test-loop-\d{8}T\d{6}", run_dir), (
+            f"run_dir must match test-loop-YYYYMMDDTHHMMSS, got: {run_dir!r}"
+        )
+        assert run_dir.endswith("/"), "run_dir must end with /"
+
+    def test_context_run_dir_not_overwritten_by_user_context(self, tmp_path: Path) -> None:
+        """--context run_dir=custom overrides the runner-injected default."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.fsm.validation import load_and_validate
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args(dry_run=True, context=["run_dir=/custom/path/"])
+        logger = Logger(use_color=False)
+
+        fsm, _ = load_and_validate(loops_dir / "test-loop.yaml")
+
+        def fake_load_and_validate(path: Path):  # type: ignore[override]
+            return fsm, []
+
+        with patch(
+            "little_loops.fsm.validation.load_and_validate", side_effect=fake_load_and_validate
+        ):
+            cmd_run("test-loop", args, loops_dir, logger)
+
+        assert fsm.context.get("run_dir") == "/custom/path/", (
+            "--context run_dir=VALUE must take precedence over runner injection"
+        )
+
     def test_default_program_md_path_is_cwd_ll_program_md(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -77,9 +77,9 @@ docs/demo
 .loops/.history/
 .loops/.queue/
 .loops/tmp/
+.loops/runs/
 .loops/diagnostics/
 .loops/reviews/
-.ll/runs/harness-optimize/
 *.Cast
 
 # Debug output files

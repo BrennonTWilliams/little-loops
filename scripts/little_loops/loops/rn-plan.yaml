@@ -13,19 +13,15 @@ timeout: 7200
 
 context:
   task: ""           # populated from positional CLI arg via input_key: task
-  output_dir: ".loops/plans"
 
 states:
 
   init:
-    # Setup phase — derive a slug from the task, create a run directory, and
-    # initialize empty plan and rubric files. Captures the absolute run-dir path
-    # so all subsequent states can write to the same isolated location.
+    # Setup phase — create per-run plan files in the runner-injected run_dir.
+    # Captures the absolute path so all subsequent states can write to it.
     action_type: shell
     action: |
-      SLUG=$(echo "${context.task}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\+/-/g; s/^-//; s/-$//')
-      SLUG="$${SLUG:-rn-plan-run}"
-      DIR="${context.output_dir}/$SLUG"
+      DIR="${context.run_dir}"
       mkdir -p "$DIR"
       : > "$DIR/plan.md"
       : > "$DIR/plan-rubric.md"

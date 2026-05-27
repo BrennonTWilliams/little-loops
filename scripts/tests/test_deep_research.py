@@ -94,11 +94,10 @@ class TestDeepResearchYaml:
     def test_terminal_done_state(self, data: dict) -> None:
         assert data["states"]["done"].get("terminal") is True
 
-    def test_context_has_topic_and_output_dir(self, data: dict) -> None:
+    def test_context_has_topic(self, data: dict) -> None:
         ctx = data.get("context", {})
         assert "topic" in ctx
-        assert "output_dir" in ctx
-        assert ctx["output_dir"] == ".loops/research"
+        assert "output_dir" not in ctx  # runner-injected run_dir replaces output_dir
 
     def test_context_has_depth_and_coverage_threshold(self, data: dict) -> None:
         ctx = data.get("context", {})
@@ -114,15 +113,13 @@ class TestDeepResearchYaml:
 
 
 class TestDeepResearchShellStates:
-    """Exercise the init shell action directly to verify slug and directory creation."""
+    """Exercise the init shell action directly to verify directory and artifact creation."""
 
     def test_init_creates_run_directory(self, tmp_path: Path) -> None:
-        """init action creates the output directory and all four artifact files."""
-        topic = "What are the trade-offs of CRDT vs OT for collaborative editing?"
+        """init action creates the run_dir and all four artifact files."""
+        run_dir = tmp_path / ".loops" / "runs" / "deep-research-20260526T120000"
         script = f"""
-SLUG=$(echo "{topic}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\\+/-/g; s/^-//; s/-$//')
-SLUG="${{SLUG:-deep-research-run}}"
-DIR=".loops/research/$SLUG"
+DIR="{run_dir}"
 mkdir -p "$DIR"
 : > "$DIR/report.md"
 : > "$DIR/knowledge-base.md"
@@ -132,34 +129,17 @@ echo "$(pwd)/$DIR"
 """
         result = _bash(script, tmp_path)
         assert result.returncode == 0, f"init shell failed: {result.stderr}"
-        run_dir = result.stdout.strip()
-        assert run_dir, "init must output the run directory path"
-
-        run_path = Path(run_dir)
-        assert run_path.is_dir(), f"Run directory not created: {run_path}"
-        assert (run_path / "report.md").exists(), "report.md not created"
-        assert (run_path / "knowledge-base.md").exists(), "knowledge-base.md not created"
-        assert (run_path / "coverage.md").exists(), "coverage.md not created"
-        assert (run_path / "query-log.md").exists(), "query-log.md not created"
-
-    def test_init_slug_is_lowercase_hyphenated(self, tmp_path: Path) -> None:
-        """init action produces a lowercase, hyphenated slug from the topic."""
-        topic = "CRDT vs Operational Transform"
-        script = f"""
-SLUG=$(echo "{topic}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\\+/-/g; s/^-//; s/-$//')
-echo "$SLUG"
-"""
-        result = _bash(script, tmp_path)
-        assert result.returncode == 0
-        slug = result.stdout.strip()
-        assert slug == "crdt-vs-operational-transform"
+        assert run_dir.is_dir(), f"Run directory not created: {run_dir}"
+        assert (run_dir / "report.md").exists(), "report.md not created"
+        assert (run_dir / "knowledge-base.md").exists(), "knowledge-base.md not created"
+        assert (run_dir / "coverage.md").exists(), "coverage.md not created"
+        assert (run_dir / "query-log.md").exists(), "query-log.md not created"
 
     def test_init_outputs_absolute_path(self, tmp_path: Path) -> None:
         """init action echoes an absolute path (starts with /)."""
-        topic = "deep research test topic"
+        run_dir = tmp_path / ".loops" / "runs" / "deep-research-20260526T120000"
         script = f"""
-SLUG=$(echo "{topic}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\\+/-/g; s/^-//; s/-$//')
-DIR=".loops/research/$SLUG"
+DIR="{run_dir}"
 mkdir -p "$DIR"
 echo "$(pwd)/$DIR"
 """
@@ -167,18 +147,6 @@ echo "$(pwd)/$DIR"
         assert result.returncode == 0
         path = result.stdout.strip()
         assert path.startswith("/"), f"init must output absolute path, got: {path!r}"
-
-    def test_init_empty_topic_uses_fallback_slug(self, tmp_path: Path) -> None:
-        """init action falls back to 'deep-research-run' when topic produces empty slug."""
-        script = """
-SLUG=$(echo "" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/-\\+/-/g; s/^-//; s/-$//')
-SLUG="${SLUG:-deep-research-run}"
-echo "$SLUG"
-"""
-        result = _bash(script, tmp_path)
-        assert result.returncode == 0
-        slug = result.stdout.strip()
-        assert slug == "deep-research-run"
 
 
 class TestDeepResearchEvaluators:

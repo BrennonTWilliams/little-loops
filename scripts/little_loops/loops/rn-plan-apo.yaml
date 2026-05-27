@@ -32,22 +32,23 @@ states:
     # Executes rn-plan once per task in tasks_file using the current planning
     # prompt at plan_prompt_file. tasks_file is a JSON array of task strings;
     # plain text (one task per line) also works via the python fallback.
-    # Captures the parent directory holding every per-task output dir so
-    # score_plans can read plan.md + plan-rubric.md from each.
+    # Each rn-plan run writes its artifacts to a per-task subdirectory of
+    # ${context.run_dir}/plans/ so score_plans can find all plan trees there.
     action_type: shell
     timeout: 1800
     action: |
-      TS=$(date -u +%Y%m%d-%H%M%S)
-      RUN_DIR=".loops/tmp/rn-plan-apo/$TS"
-      mkdir -p "$RUN_DIR/plans"
-      python3 -c "import json,sys; raw=open('${context.tasks_file}').read(); data=(json.loads(raw) if raw.lstrip().startswith('[') else [l for l in raw.splitlines() if l.strip()]); print('\n'.join(t if isinstance(t,str) else t.get('task','') for t in data))" > "$RUN_DIR/tasks.txt"
+      PARENT_DIR="${context.run_dir}"
+      mkdir -p "$PARENT_DIR/plans"
+      python3 -c "import json,sys; raw=open('${context.tasks_file}').read(); data=(json.loads(raw) if raw.lstrip().startswith('[') else [l for l in raw.splitlines() if l.strip()]); print('\n'.join(t if isinstance(t,str) else t.get('task','') for t in data))" > "$PARENT_DIR/tasks.txt"
       COUNT=0
       while IFS= read -r TASK; do
         [ -z "$TASK" ] && continue
         COUNT=$((COUNT + 1))
-        ll-loop run rn-plan "$TASK" --context output_dir="$RUN_DIR/plans" >> "$RUN_DIR/planner.log" 2>&1 || true
-      done < "$RUN_DIR/tasks.txt"
-      echo "$(pwd)/$RUN_DIR"
+        TASK_DIR="$PARENT_DIR/plans/task-$COUNT"
+        mkdir -p "$TASK_DIR"
+        ll-loop run rn-plan "$TASK" --context run_dir="$TASK_DIR/" >> "$PARENT_DIR/planner.log" 2>&1 || true
+      done < "$PARENT_DIR/tasks.txt"
+      echo "$(pwd)/$PARENT_DIR"
       echo "PLANS_GENERATED=$COUNT"
     capture: plans
     on_blocked: done
