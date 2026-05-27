@@ -191,6 +191,56 @@ class TestSummaryDbSource:
         assert data["total_count"] == 1
         assert data["type_counts"].get("ENH") == 1
 
+    def test_summary_uses_live_written_db_rows(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """summary reads rows seeded via SQLiteTransport.send() (live-write path)."""
+        from little_loops.session_store import SQLiteTransport, ensure_db
+
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+        db_path = project_root / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True)
+        ensure_db(db_path)
+
+        transport = SQLiteTransport(db_path)
+        transport.send(
+            {
+                "event": "issue.completed",
+                "ts": "2026-05-26T10:00:00+00:00",
+                "issue_id": "BUG-200",
+                "issue_type": "BUG",
+                "priority": "P1",
+                "file_path": str(project_root / ".issues" / "bugs" / "P1-BUG-200-live.md"),
+                "completed_at": "2026-05-26T10:00:00Z",
+            }
+        )
+        transport.close()
+
+        empty_issues = project_root / ".issues"
+        empty_issues.mkdir(exist_ok=True)
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-history",
+                "--config",
+                str(project_root),
+                "summary",
+                "--json",
+                "-d",
+                str(empty_issues),
+            ],
+        ):
+            from little_loops.cli import main_history
+
+            assert main_history() == 0
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["total_count"] == 1
+        assert data["type_counts"].get("BUG") == 1
+
     def test_summary_falls_back_to_files_when_db_empty(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

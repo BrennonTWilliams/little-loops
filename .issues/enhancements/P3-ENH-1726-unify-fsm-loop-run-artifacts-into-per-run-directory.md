@@ -63,26 +63,73 @@ The FSM does already provide per-run isolation for its own internal state (`.loo
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/persistence.py` or loop executor — inject `run_dir` into context at startup
+- `scripts/little_loops/fsm/persistence.py` or loop executor — inject `run_dir` into context at startup; also update module docstring `.loops/` directory layout diagram to include `runs/`
 - `scripts/little_loops/loops/deep-research.yaml` — replace `output_dir`/`DIR` construction with `${context.run_dir}`
 - `scripts/little_loops/loops/deep-research-arxiv.yaml` — same migration
 - Any other built-in loops using custom output directories
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `.gitignore` — add `.loops/runs/` entry; currently only `.loops/.running/`, `.loops/.history/`, `.loops/.queue/`, `.loops/tmp/`, `.loops/diagnostics/`, `.loops/reviews/` are present; the specific `.ll/runs/harness-optimize/` entry should be generalized to `.loops/runs/` [Agent 1 + 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/__init__.py` — entrypoint that kicks off loop execution; likely where `run_dir` generation belongs
 - `scripts/little_loops/cli/loop/next_loop.py` — may need access to `run_dir`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_resume()` bypasses `cmd_run()` and therefore bypasses `run_dir` injection; verify that `StatePersistence` serializes `fsm.context` (including `run_dir`) so resumed loops can access it — if not, add parallel injection in `cmd_resume()` [Agent 1 + 2 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Actual injection point (corrects above)**: `cmd_run()` in `scripts/little_loops/cli/loop/run.py` (~line 151) — after `--context` overrides are applied but before `run_foreground()` / `run_background()` is called. This is where all context merging already happens; `__init__.py` is just the package init and `next_loop.py` does not need changes.
+
+**`run_id` reuse opportunity**: `scripts/little_loops/fsm/persistence.py:generate_run_id()` already generates `YYYYMMDDTHHMMSS_<8hex>`. The `StatePersistence` object is created in `_helpers.py` before the executor; `run_dir` can be derived from `persistence.run_id` for guaranteed uniqueness: `.loops/runs/{loop_name}-{persistence.run_id}/`.
+
+**Template engine confirmation**: `scripts/little_loops/fsm/interpolation.py:InterpolationContext` resolves `${context.X}` from `loop.context` — no changes to `interpolation.py` needed; `${context.run_dir}` will work automatically once injected.
+
+**Additional loops needing migration** (beyond deep-research.yaml / deep-research-arxiv.yaml):
+- `scripts/little_loops/loops/rn-plan.yaml` — `context.output_dir: .loops/plans`
+- `scripts/little_loops/loops/rn-plan-apo.yaml` — `context.output_dir: .loops/plans`
+- `scripts/little_loops/loops/rn-refine.yaml` — references `.loops/plans`
+- `scripts/little_loops/loops/svg-image-generator.yaml` — inline `DIR` derivation in init bash
+- `scripts/little_loops/loops/svg-textgrad.yaml` — inline `DIR` derivation in init bash
+- `scripts/little_loops/loops/html-anything.yaml` — `context.output_dir: .loops/html`
+- `scripts/little_loops/loops/html-website-generator.yaml` — `context.output_dir: .loops/html`
+- `scripts/little_loops/loops/hitl-md.yaml` — `context.output_dir: .loops/artifacts`
+- `scripts/little_loops/loops/hitl-compare.yaml` — `context.output_dir: .loops/artifacts`
+- `scripts/little_loops/loops/dataset-curation.yaml` — `context.output_dir: .loops/datasets`
+
+**deep-research init state pattern**: Both deep-research loops use a `.current_dir` sentinel file to persist `DIR` across states (init writes the resolved path; subsequent states read it back). Migration replaces `DIR="${context.output_dir}/$SLUG"` with `DIR="${context.run_dir}"` — the sentinel file pattern can remain but points to the new per-run location.
 
 ### Similar Patterns
 - ENH-1684 is the narrow per-loop patch this replaces at the structural level
 - `.loops/.history/<run_id>-<loop_name>/` — existing per-run isolation model for FSM state; `runs/` mirrors this pattern for domain artifacts
 
 ### Tests
-- `scripts/tests/test_deep_research.py` — update path assertions to match new `runs/` layout
+- `scripts/tests/test_deep_research.py` — update path assertions to match new `runs/` layout (asserts `loop.context["output_dir"] == ".loops/research"` ~line 97; update for `run_dir`)
+- `scripts/tests/test_deep_research_arxiv.py` — same as above for arxiv variant
+- `scripts/tests/test_rn_plan.py` — asserts on `.loops/plans` paths; update for `run_dir`
+- `scripts/tests/test_rn_refine.py` — asserts on `.loops/plans` paths
 - `scripts/tests/test_builtin_loops.py` — check for hardcoded path assertions
+- `scripts/tests/test_ll_loop_state.py` — shows `.running/` fixture construction pattern to follow for new `run_dir` injection tests (`TestCmdStop`, `TestCmdResume`)
+- `scripts/tests/test_ll_loop_commands.py` — shows `.history/` path construction pattern (`TestHistoryTailTruncation._write_events()`)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` `TestSvgImageGeneratorLoop`, `TestSvgTextgradLoop`, `TestHtmlAnythingLoop`, `TestHitlCompareLoop`, `TestHitlMdLoop` — each asserts the exact `output_dir` value (e.g., `".loops/tmp/svg-image-generator"`); these specific test methods will break after migration and need updating [Agent 3 finding]
+- `scripts/tests/test_rn_plan_apo.py` — analog of `test_rn_plan.py`; verify it asserts on `.loops/plans` paths and update accordingly [Agent 1 finding]
+- `scripts/tests/test_cli_loop_background.py` `TestMakeInstanceId` — tests `_make_instance_id()` format and uniqueness; verify no artifact path assertions break; also the reference implementation pattern for the timestamp format used in `run_dir` [Agent 3 finding]
+- `scripts/tests/test_ll_loop_program_md.py` `TestCmdRunProgramMdInjection` — **do not modify**; this test is the canonical pattern to follow when writing the new `run_dir` injection test (uses `cmd_run()` + `dry_run=True` + `load_and_validate` patch to inspect `fsm.context` after injection) [Agent 3 finding]
+- **New test to write**: Add a test class (in `test_ll_loop_commands.py` or a new file) following the `TestCmdRunProgramMdInjection` pattern that verifies: (1) `fsm.context["run_dir"]` is set to `.loops/runs/{loop_name}-{timestamp}/` after `cmd_run()`, (2) the directory was created on disk at `tmp_path / ".loops" / "runs" / ...`, (3) the path format matches `{loop_name}-YYYYMMDDTHHMMSS` consistent with `_make_instance_id()` output [Agent 3 finding]
 
 ### Documentation
 - `docs/ARCHITECTURE.md` — update `.loops/` directory structure diagram
 - Loop authoring section of CLAUDE.md — document `${context.run_dir}` convention
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — 9 separate sections referencing `output_dir` tables and example artifact paths for `deep-research`, `rn-plan`, `rn-refine`, `html-anything`, `hitl-compare`, `hitl-md`, `html-website-generator`, `svg-image-generator`, `svg-textgrad` loops; each must replace the documented `output_dir` default with `run_dir` convention [Agent 2 finding]
+- `docs/reference/loops.md` — 4 coupling points in the `deep-research` reference section: `--context output_dir=...` example invocation, context variables table `output_dir` row, init state graph comment, and output artifacts section; update all to `run_dir` [Agent 2 finding]
+- `docs/generalized-fsm-loop.md` — documents `output_dir` as a conventional context key with example YAML; add `run_dir` as runner-injected alternative and migration pattern [Agent 2 finding]
 
 ### Configuration
 - N/A — no config file changes needed; `run_dir` is runtime-injected
@@ -94,6 +141,74 @@ The FSM does already provide per-run isolation for its own internal state (`.loo
 3. Audit remaining built-in loops for custom `output_dir` usage and migrate.
 4. Update tests that assert on `.loops/research/` or other old artifact paths.
 5. Document the `${context.run_dir}` convention in loop authoring docs.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Step 1 — Exact injection location and code pattern:**
+
+`cmd_run()` in `scripts/little_loops/cli/loop/run.py` already mutates `fsm.context` before constructing the executor (context overrides from `--context` args are applied there). Add `run_dir` injection immediately after those overrides:
+
+```python
+# After applying --context overrides, before creating PersistentExecutor:
+from pathlib import Path
+run_dir = f".loops/runs/{_make_instance_id(loop.name)}/"
+Path(run_dir).mkdir(parents=True, exist_ok=True)
+fsm.context["run_dir"] = run_dir
+```
+
+`_make_instance_id()` in `scripts/little_loops/cli/loop/_helpers.py` already generates `{loop_name}-{YYYYMMDDTHHMMSS}` — reuse it directly. No new timestamp logic needed.
+
+Also inject in `run_background()` in `_helpers.py` if it constructs a separate executor path (verify).
+
+**Step 2 — deep-research migration detail:**
+
+These loops use `capture: run_dir` in the init state (captures stdout as the resolved dir path) and reference it in subsequent states as `${captured.run_dir.output}` — NOT `${context.run_dir}`. The migration replaces the init state's shell computation:
+
+```bash
+# Before (init state shell command):
+SLUG=$(echo "$TOPIC" | tr '[:upper:]' '[:lower:]' | ...)
+DIR="${context.output_dir}/$SLUG"
+mkdir -p "$DIR"
+echo "$(pwd)/$DIR"   # captured as run_dir
+```
+
+```bash
+# After (init state can use run_dir directly, no slug needed):
+echo "$(pwd)/${context.run_dir}"   # or just remove the capture: if run_dir is sufficient
+```
+
+Alternatively: keep the `capture: run_dir` pattern but source it from `${context.run_dir}` instead of computing from `output_dir`; subsequent states remain unchanged.
+
+**Step 3 — loops using `.loops/tmp/` do NOT need migration:**
+
+`general-task.yaml`, `fix-quality-and-tests.yaml`, `scan-and-implement.yaml` and similar use `.loops/tmp/<loop-name>-<artifact>` paths — these are intentional shared/stateless scratch that must persist across runs. Do not migrate these.
+
+**Step 4 — Test patterns to follow:**
+
+`scripts/tests/test_ll_loop_state.py:TestCmdStop` shows how to construct `.running/` fixtures with `tmp_path`. Use the same pattern for new `run_dir` tests:
+
+```python
+loops_dir = tmp_path / ".loops"
+runs_dir = loops_dir / "runs"
+# After run: assert runs_dir children match f"{loop_name}-*" glob
+```
+
+**Step 5 — Context injection is transparent to the template engine:**
+
+`FSMExecutor._build_context()` in `scripts/little_loops/fsm/executor.py` reads `self.fsm.context` by reference on every state. Any key added to `fsm.context` before executor construction is automatically available as `${context.KEY}` in all states — no changes to `interpolation.py` or `executor.py` needed.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. **Inject `run_dir` before the missing-keys validation scan** — `cmd_run()` in `run.py` validates required context keys at ~line 198; the injection must happen before this scan (not after `PersistentExecutor` construction) to avoid false "missing context variable" errors on loops that reference `${context.run_dir}`. The dry-run exit at line ~173 is fine to precede the injection if dry-run tests don't exercise loops using `${context.run_dir}`; otherwise inject before the dry-run exit as well.
+7. **Handle `cmd_resume()` in `lifecycle.py`** — `cmd_resume()` builds a `PersistentExecutor` from the YAML (context is rehydrated from YAML, not persisted state). Without a parallel `run_dir` injection here, resumed loops will fail on `${context.run_dir}` references. Either add the same injection before `PersistentExecutor` construction in `cmd_resume()`, or verify and document that loops are expected to fall back to a stable `output_dir` on resume.
+8. **Update `rn-plan-apo.yaml` `run_planner` and `score_plans` states** — the `run_planner` state currently invokes `ll-loop run rn-plan "$TASK" --context output_dir="$RUN_DIR/plans"` and `score_plans` reads from `${captured.plans.output}/plans/`. After `rn-plan` migrates to `${context.run_dir}`, this explicit `--context output_dir=...` override becomes inert and `score_plans` can no longer find plan outputs at the expected path. Update both states together with `rn-plan.yaml`. [Agent 2 finding]
+9. **Add `.loops/runs/` to `.gitignore`** — the per-run artifact directories are runtime output and should not be committed. The current entry `.ll/runs/harness-optimize/` is a misplaced specific entry; replace with a generic `.loops/runs/` pattern.
+10. **Update `docs/guides/LOOPS_GUIDE.md`** — 9 loop-specific sections reference `output_dir` defaults and artifact path examples; update each section to document `${context.run_dir}` convention and the new per-run artifact layout.
+11. **Update `docs/reference/loops.md`** and **`docs/generalized-fsm-loop.md`** — remove or migrate `output_dir` examples to `run_dir`; add the runner-injected variable table.
 
 ## Scope Boundaries
 
@@ -146,5 +261,7 @@ context:
 **Open** | Created: 2026-05-26 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-27T00:22:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623b3ad3-472e-486a-b0ac-aa05e638d1f5.jsonl`
+- `/ll:refine-issue` - 2026-05-27T00:12:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc1ae0a4-8512-4b9a-97b5-ed439fd238c7.jsonl`
 - `/ll:format-issue` - 2026-05-26T20:29:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47cef901-86e9-4bd2-b772-ff487dd8bdac.jsonl`
 - `/ll:capture-issue` - 2026-05-26T20:24:33Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a02e39e-0327-4fde-996c-a64d954c3e35.jsonl`

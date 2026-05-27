@@ -389,6 +389,30 @@ class TestParallelExecutionWorkflow(E2ETestFixture):
             os.chdir(original_cwd)
             sys.argv = original_argv
 
+    def test_ll_auto_wires_sqlite(self, e2e_project_dir: Path) -> None:
+        """main_auto() constructs AutoManager with SQLiteTransport (ENH-1733)."""
+        import os
+        import sys
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.cli import main_auto
+
+        original_cwd = Path.cwd()
+        original_argv = sys.argv.copy()
+
+        try:
+            os.chdir(e2e_project_dir)
+            sys.argv = ["ll-auto", "--dry-run"]
+
+            with patch("little_loops.issue_manager.SQLiteTransport") as mock_transport:
+                mock_transport.return_value = MagicMock()
+                exit_code = main_auto()
+
+            assert mock_transport.call_count == 1
+        finally:
+            os.chdir(original_cwd)
+            sys.argv = original_argv
+
     def test_ll_parallel_worktree_creation(self, e2e_project_dir: Path) -> None:
         """ll-parallel should create worktrees for parallel processing."""
         from little_loops.config import BRConfig

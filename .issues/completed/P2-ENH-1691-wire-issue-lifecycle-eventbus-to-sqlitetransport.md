@@ -2,7 +2,7 @@
 id: ENH-1691
 type: ENH
 priority: P2
-status: open
+status: done
 parent: ENH-1686
 discovered_date: 2026-05-24
 decision_needed: false
@@ -14,6 +14,7 @@ score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
+size: Very Large
 ---
 
 # ENH-1691: Wire Issue Lifecycle EventBus to SQLiteTransport
@@ -22,13 +23,25 @@ score_change_surface: 18
 
 Wire the `IssueOrchestrator`/`AutoManager` event bus to `SQLiteTransport` so issue lifecycle events (status transitions) are written live to `issue_events` in `.ll/history.db`. Add `event_bus` param to the two lifecycle functions that lack it, pass the bus at all call sites, decide the parallel orchestrator path, and add end-to-end integration tests plus doc updates.
 
+## Current Behavior
+
+`AutoManager` creates an `EventBus` in `__init__()` but never attaches a `SQLiteTransport`, so all events emitted by `process_issue_inplace()` are silently dropped. `undefer_issue()` (line 832) and `skip_issue()` (line 785) in `issue_lifecycle.py` have no `event_bus` parameter and emit nothing. As a result, `issue.started` and `issue.skipped` transitions are absent from `issue_events` in `.ll/history.db`; `ll-session recent --kind issue` returns no rows for `ll-auto` runs until `ll-session backfill` is executed manually.
+
+## Expected Behavior
+
+`AutoManager.__init__()` wires a `SQLiteTransport` directly, and all lifecycle call sites in `issue_manager.py` pass `self.event_bus`. `undefer_issue()` and `skip_issue()` accept an optional `event_bus: EventBus | None = None` parameter and emit `issue.started` and `issue.skipped` events respectively. Running `ll-session recent --kind issue` immediately after `ll-auto` returns rows without requiring `ll-session backfill`. Subsequent `backfill` calls do not create duplicate rows.
+
+## Motivation
+
+Without live writes, `ll-session recent --kind issue` and `ll-history summary` require `ll-session backfill` before returning data, adding a manual bootstrap step that blocks event-based history adoption. This wiring eliminates the cold-start friction, makes `ll-session` a reliable real-time source of truth for issue lifecycle state, and closes the final sequential-path gap required to complete ENH-1686.
+
 ## Parent Issue
 
 Decomposed from ENH-1686: Live-Write Issue Events to history.db (Eliminate Backfill Requirement)
 
 **Depends on**: ENH-1690 (SQLiteTransport must handle `issue.*` events before wiring has any effect)
 
-## Scope
+## Scope Boundaries
 
 - **In scope**: `event_bus` param on `undefer_issue()` and `skip_issue()`; passing `event_bus` at all call sites in `issue_manager.py`; wiring `SQLiteTransport` in `AutoManager.__init__()`; parallel path decision + handling; end-to-end integration tests; doc updates.
 - **Out of scope**: transport-layer changes (ENH-1690); schema migrations (ENH-1690); changes to `issue_events` table structure.
@@ -63,6 +76,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_issue_workflow_integration.py` — `TestSequentialWorkflowIntegration` (line 24) constructs real `AutoManager` with `tempfile.TemporaryDirectory()`; after the change `AutoManager.__init__()` creates a `SQLiteTransport` — these tests will silently create a DB file unless `db_path=tmp_path/...` is passed explicitly; **medium risk of unexpected DB I/O in CI** [Agent 3 finding]
 - `scripts/tests/test_cli_e2e.py` — no `ll-auto` equivalent of `test_ll_parallel_wires_transports` (line 357) exists; add `test_ll_auto_wires_sqlite` to verify `SQLiteTransport` is instantiated in `main_auto()` (model after the parallel variant: patch `little_loops.issue_manager.SQLiteTransport`, assert it is instantiated in `__init__`) [Agent 3 finding]
 - `scripts/tests/test_orchestrator.py` — `test_on_worker_complete_close_verdict` (line 1547) and `test_merge_sequential_close` (line 1800) patch `close_issue` via module-level patch; these remain valid for Option B; if Option A is chosen, add assertions that `self._event_bus` is passed to those call sites [Agent 3 finding]
+- `scripts/tests/test_session_store.py` — `TestDeriveTransition.test_known_mappings` (line 538) and `TestSQLiteTransportIssueEvents.test_issue_event_transition_mapping` (line 576): existing safety-net tests that assert `"issue.started"` → `"in_progress"` and `"issue.skipped"` → `"cancelled"`; will fail if `undefer_issue()` emits `"issue.undeferred"` instead of `"issue.started"` — no changes needed, but run these after Step 1 as a correctness guard [Agent 2/3 finding]
+- `scripts/tests/test_cli.py` — `TestMainAutoIntegration` (line 276) and `TestMainAutoAdditionalCoverage` (line 1452): test `main_auto()` via `MagicMock`; no exhaustive kwargs check, so new `db_path` kwarg is absorbed passively; no update required — positive assertion that `db_path` is wired is covered by `test_ll_auto_wires_sqlite` in `test_cli_e2e.py` [Agent 3 finding]
 
 ### Documentation
 - `docs/reference/API.md` — `AutoManager.__init__` signature (`db_path` param)
@@ -74,6 +89,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/EVENT-SCHEMA.md` — master event-type table (lines ~909–916) lists existing event types but is missing `issue.skipped` and `issue.started` (emitted by `skip_issue()` and `undefer_issue()` respectively); individual `###` sections also absent [Agent 2 finding]
 - `docs/reference/CLI.md:1291` — `### ll-session` description states the DB is "populated by `SQLiteTransport` and `ll-session backfill`"; after the change `AutoManager` also populates via live-write — update framing [Agent 2 finding]
 - `docs/reference/API.md` — pre-existing omissions: `#### complete_issue_lifecycle` signature block missing `event_bus: EventBus | None = None`; `### defer_issue` signature block also missing `event_bus` — worth fixing here since this PR touches the same area [Agent 2 finding]
+- `config-schema.json` — `sqlite` block description (~line 1178) currently says "FSM loop events" only; after ENH-1691, `AutoManager.__init__()` also writes issue lifecycle events directly (not via config-driven `wire_transports`) — update description to include issue lifecycle event types [Agent 2 finding]
 
 ## Implementation Steps
 
@@ -146,6 +162,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 4. `docs/ARCHITECTURE.md` — add `ll-auto` row to Extensions/Transports table (~line 512–517); note that `AutoManager` wires `SQLiteTransport` directly in `__init__`, not via `wire_transports()`
 5. `docs/reference/EVENT-SCHEMA.md` — add `issue.skipped` and `issue.started` entries to the master event-type table (~lines 909–916) and add `### issue.skipped` / `### issue.started` section blocks
 6. `docs/reference/API.md` — also fix pre-existing omissions: add `event_bus: EventBus | None = None` to `complete_issue_lifecycle` and `defer_issue` signature blocks (these have the param in code already)
+7. `config-schema.json` — `sqlite` block description (~line 1178): update from "FSM loop events" to include issue lifecycle events; note that `ll-auto` wires `SQLiteTransport` directly in `AutoManager.__init__()` rather than via config-driven `wire_transports`
 
 ### Decision Rationale
 
@@ -185,13 +202,25 @@ Add to `scripts/tests/test_issue_manager.py` (or new `test_issue_events_live.py`
 - Create an issue via `AutoManager` with `db_path=tmp_db`, call `close_issue()`, assert `issue_events` row exists in DB **without calling `backfill()`**.
 
 ### `TestEventBusEmission` updates (`test_issue_lifecycle.py`)
-Add new test methods for `undefer_issue` and `skip_issue` following the pattern of `test_close_issue_emits_event` at line 1175. Pattern: `received: list[dict] = []; bus = EventBus(); bus.register(lambda e: received.append(e))` — assert `len(received) == 1`, `event["event"] == "issue.undeferred"` / `"issue.skipped"`, `event["issue_id"]`, `event["ts"]`. Also add `test_no_emission_without_event_bus` for each (backward-compat, follows line 1312).
+Add new test methods for `undefer_issue` and `skip_issue` following the pattern of `test_close_issue_emits_event` at line 1175. Pattern: `received: list[dict] = []; bus = EventBus(); bus.register(lambda e: received.append(e))` — assert `len(received) == 1`, `event["event"] == "issue.started"` / `"issue.skipped"`, `event["issue_id"]`, `event["ts"]`. Also add `test_no_emission_without_event_bus` for each (backward-compat, follows line 1312).
 
 ### `TestSummaryDbSource` companion (`test_issue_history_cli.py`)
 Seed DB via live-write (not `backfill()`), assert `ll-history summary` returns data — exercises the cold-start acceptance criterion. Follow `TestSummaryDbSource` (line 139): DB placed at `project_root / ".ll" / "history.db"`, pass `--config project_root` to `main_history()`. Existing tests use `backfill()` for seeding; the new test seeds via `SQLiteTransport.send({"event": "issue.completed", ...})` directly or via `AutoManager` with `db_path=`.
 
 ### `test_issue_history_parsing.py` companion
 Add test verifying `scan_completed_issues_from_db()` finds live-written rows; validates that `transition = 'done'` from `send()` matches the `WHERE transition = 'done'` query. Follow `TestScanCompletedIssuesFromDb` (line 438) — use `tmp_path` (not `:memory:`) consistent with all existing `SQLiteTransport` tests. Seed via `SQLiteTransport.send({"event": "issue.completed", "ts": "...", "issue_id": "ENH-1", ...})` rather than `backfill()`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**`test_ll_auto_wires_sqlite` assertion approach differs from parallel test** — `test_ll_parallel_wires_transports` (line 357) patches `wire_transports` and asserts it was called once, but `AutoManager` wires `SQLiteTransport` directly in `__init__()` (not via `wire_transports()`). Correct assertion: patch `little_loops.issue_manager.SQLiteTransport` as a class mock, call `main_auto()`, assert `mock_sqlite_transport.call_count == 1`. Reuse the cwd-save/restore + `sys.argv` fixture pattern from `test_ll_parallel_wires_transports`; adapt only the patch target and assertion.
+
+**`SQLiteTransport.send()` seeding pattern for live-write tests** — the `TestSummaryDbSource` and `TestScanCompletedIssuesFromDb` live-write variants should follow `scripts/tests/test_session_store.py:TestSQLiteTransportIssueEvents.test_records_issue_completed_event` (line 558): `transport = SQLiteTransport(db); transport.send({"event": "issue.completed", "ts": "...", "issue_id": "ENH-99", "issue_type": "ENH", "priority": "P2"}); transport.close()`. Call `transport.close()` before querying.
+
+**`bus.close_transports()` required before asserting DB** — for integration tests that use `wire_transports(bus, config, log_dir=tmp_path)` + `bus.emit()`, call `bus.close_transports()` before running `recent(db, kind="issue")` assertions. Reference: `scripts/tests/test_transport.py:257–277`. Note: `wire_transports` places the DB at `tmp_path / "history.db"` (not `tmp_path / ".ll" / "history.db"`).
+
+**`db_path` param confirmed absent from `AutoManager.__init__()`** — the parameter does not yet exist; Step 3 must add it. Once added, update `test_issue_workflow_integration.py` lines 92 and 128 to pass `db_path=tmp_path / ".ll" / "history.db"` to prevent unexpected DB I/O in CI.
 
 ## Acceptance Criteria
 
@@ -202,19 +231,43 @@ Add test verifying `scan_completed_issues_from_db()` finds live-written rows; va
 - [ ] Parallel path decision is explicit (wired or TODO-commented)
 - [ ] All new and updated tests pass
 
+## Impact
+
+- **Priority**: P2 — final sequential-path gap blocking ENH-1686; without this, `ll-session` requires manual backfill to show any issue events from `ll-auto` runs
+- **Effort**: Medium — surgical param additions across 3 source files, 5 test files, and 3 doc files; no schema or migration changes required
+- **Risk**: Low — `event_bus` params are optional with `None` default; all existing call sites remain valid without modification
+- **Breaking Change**: No
+
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-05-24 (re-run after `/ll:decide-issue`)_
+_Updated by `/ll:confidence-check` on 2026-05-26 (re-run after `/ll:wire-issue`; ENH-1690 now done)_
 
-**Readiness Score**: 95/100 → PROCEED
+**Readiness Score**: 97/100 → PROCEED
 **Outcome Confidence**: 68/100 → MODERATE
 
 ### Outcome Risk Factors
-- **Sprint sequential path choice unresolved**: `cli/sprint/run.py` has two `process_issue_inplace()` calls (lines 360, 464) that will silently skip event emission after the change; make a deliberate in-PR decision (plumb `event_bus` through the local sprint scope, or add `# TODO(ENH-1686)` comments).
-- **Test fixture side effects**: `test_issue_workflow_integration.py` constructs a real `AutoManager`; after transport wiring, tests will write a DB file unless `db_path=tmp_path / ".ll" / "history.db"` is added to constructor calls at lines ~87 and ~123 — apply this alongside the wiring change.
-- **`_complete_issue_lifecycle_if_needed()` TODO scope**: orchestrator.py:1196 is an inline reimplementation not automatically covered by Option B TODOs on `_on_worker_complete` / `_merge_sequential`; confirm it gets a TODO annotation or is addressed in the PR description.
+- **Sprint sequential path choice**: `cli/sprint/run.py` has two `process_issue_inplace()` calls (lines ~360, 464) that will silently skip emission after the change; make a deliberate in-PR choice — plumb `event_bus` through local sprint scope or add `# TODO(ENH-1686)` comments. Either is valid; the decision just needs to be explicit.
+- **Test fixture side effects**: `test_issue_workflow_integration.py` constructs a real `AutoManager`; after transport wiring, tests will create a DB file unless `db_path=tmp_path / ".ll" / "history.db"` is added to constructor calls at ~lines 87 and 123 — apply this defensively alongside the Step 3 wiring change.
+- **`_complete_issue_lifecycle_if_needed()` TODO scope**: `orchestrator.py:1196` is an inline lifecycle reimplementation not covered by Option B TODOs on `_on_worker_complete`/`_merge_sequential`; confirm it gets a TODO annotation or an explicit PR note.
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-05-26
+- **Reason**: Issue too large for single session (score 11/11 — Very Large)
+
+### Decomposed Into
+- ENH-1733: Wire EventBus to AutoManager and Lifecycle Functions (implementation + tests)
+- ENH-1734: Documentation Updates for ENH-1691 EventBus Wiring
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f138859-02cf-4887-806e-2fe090003148.jsonl`
+- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1dab2222-8d7f-4ed5-9998-bb5ae8528310.jsonl`
+- `/ll:wire-issue` - 2026-05-27T00:07:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72065e62-8f35-44f0-9c47-2a55b9a150c6.jsonl`
+- `/ll:refine-issue` - 2026-05-26T23:59:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2a9f0d8e-0278-40d0-9635-e8605b3e2210.jsonl`
+- `/ll:format-issue` - 2026-05-26T23:53:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0cbebb1-43c2-434d-b381-1fa90e90d292.jsonl`
 - `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35bbabac-1f2b-42ef-8053-1780201465c4.jsonl`
 - `/ll:decide-issue` - 2026-05-25T01:03:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7745eb24-b502-4f62-a85c-2e699d8c21a0.jsonl`
 - `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0719b6aa-570e-4737-9190-bda2db553e6d.jsonl`

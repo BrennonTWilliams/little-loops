@@ -58,33 +58,77 @@ No Python API changes — the grouping logic is internal to `cmd_list`.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/issues/list_cmd.py` — add grouping branch
-- `scripts/little_loops/cli/issues/__init__.py` (or wherever the `list` subparser is registered) — add `--group-by` argument
+- `scripts/little_loops/cli/issues/list_cmd.py` — add epic-grouping branch at lines 134–155 (after the `--flat` early-return at line 129; before the type-bucket block at line 134)
+- `scripts/little_loops/cli/issues/__init__.py` — add `--group-by` argument to the `ls` subparser (lines 118–182, before `add_config_arg(ls)` at line 182)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/tests/test_issues_list.py` (if exists) — add test for `--group-by epic`
+- No callers of `cmd_list` beyond the dispatch block at `__init__.py:634` — changes are internal
 
 ### Similar Patterns
-- `list_cmd.py` — `cmd_list` type-bucket grouping branch to model the new epic-grouping branch after
+- `scripts/little_loops/cli/issues/list_cmd.py:134–155` — exact type-bucket grouping pattern to model the epic-grouping branch after (build a `buckets` dict, fill from issues, render headers with `colorize`, emit rows with `colored_priority` + `colored_id` + title)
+- `scripts/tests/test_issues_cli.py:71–79` — `issues_dir_with_epic` fixture (creates `P2-EPIC-001-parent-initiative.md`) shows how to add fixture files for EPIC tests
+
+### Tests
+- `scripts/tests/test_issues_cli.py` — `TestIssuesCLIList` class (line 82) — all new tests go here; there is **no** `test_issues_list.py`
+- Unit test: issues with `parent: EPIC-NNN` frontmatter appear under the correct epic bucket header
+- Unit test: issues with no `parent:` field appear under "Unparented" bucket
+- Unit test: `--group-by type` (default, or omitted) still produces identical output to current behaviour
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_output.py` — `TestIssueListNoColor.test_no_color_produces_plain_text` (line 327) — builds a bare `argparse.Namespace(type=None, priority=None, flat=False)` without `group_by`; if `cmd_list` accesses `args.group_by` directly (not via `getattr`), this test will break — add `group_by="type"` to the Namespace [Agent 3 finding]
 
 ### Documentation
-- N/A — no user-facing docs reference the current grouping behaviour
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — `ll-issues list` flag table at line 648 (section `#### ll-issues list / ll-issues l`); add `--group-by {type,epic}` row describing the new flag [Agent 2 finding]
 
 ### Configuration
 - N/A — no config changes required
 
-### Tests
-- Unit test: issues with `parent: EPIC-NNN` appear under the correct epic bucket
-- Unit test: issues with no `parent:` appear under "Unparented"
-- Unit test: `--group-by type` (default) still produces the same output as before
-
 ## Implementation Steps
 
-1. Add `--group-by` choice argument to the list subparser
-2. Implement epic-grouping branch in `cmd_list` after the sort/limit step
-3. Add EPIC title resolution (read matching EPIC file, extract `# EPIC-NNN: Title` header)
-4. Write/update tests
-5. Verify `--flat` and `--json` flags still work (they bypass the grouping display, so they should be unaffected)
+1. **Add `--group-by` argument** — in `scripts/little_loops/cli/issues/__init__.py`, insert after line 181 (the `--milestone` argument block, before `add_config_arg(ls)`):
+   ```python
+   ls.add_argument(
+       "--group-by",
+       choices=["type", "epic"],
+       default="type",
+       dest="group_by",
+       help="Group output by issue type (default) or parent epic ID",
+   )
+   ```
+
+2. **Add epic-grouping branch in `cmd_list`** — in `scripts/little_loops/cli/issues/list_cmd.py`, after line 132 (`enriched = enriched[:limit]`) and before line 134 (`issues_with_status = ...`). After the existing `--json` (line 110) and `--flat` (line 129) early-return blocks, branch on `args.group_by`:
+   - `"type"` path: existing lines 135–155 unchanged
+   - `"epic"` path: bucket by `issue.parent` (`None` → `"Unparented"`), sort named epics alphabetically by epic ID, append unparented last; for each epic bucket header, resolve title by calling `config.issues_path` to find the matching EPIC file and reading its `# EPIC-NNN: Title` H1 (use `IssueFile.title` if the EPIC is loaded, or regex on the H1 line)
+
+3. **Epic title resolution** — use `_load_issues_with_status` results already in scope: filter for `issue.issue_id.startswith("EPIC-")` to build an `{epic_id: title}` lookup dict before rendering the epic buckets. This avoids extra file reads since EPIC files are already loaded.
+
+4. **Write tests** — add to `scripts/tests/test_issues_cli.py` inside `TestIssuesCLIList`:
+   - Extend `issues_dir_with_epic` fixture (line 72) to include child issues with `parent: EPIC-001` in their frontmatter
+   - `test_list_group_by_epic_parented`: checks EPIC-001 bucket header and child issue appears beneath it
+   - `test_list_group_by_epic_unparented`: checks issues with no `parent:` appear under "Unparented" bucket
+   - `test_list_group_by_type_default`: confirms omitting `--group-by` produces same output as `--group-by type`
+
+5. **Verify `--flat` and `--json` unaffected** — both early-return before the grouping branch; no changes needed; covered by existing tests
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update `docs/reference/CLI.md` — add `--group-by {type,epic}` row to the `ll-issues list` flag table (after the `--priority` row around line 651, before `--label`)
+7. Update `scripts/tests/test_cli_output.py` — add `group_by="type"` to the bare `argparse.Namespace` in `TestIssueListNoColor.test_no_color_produces_plain_text` (line 327) to prevent `AttributeError` if `cmd_list` uses direct attribute access
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/cli/issues/list_cmd.py:134–155` — type-bucket grouping pattern: `buckets: dict[str, list] = {"BUG": [], "FEAT": [], "ENH": [], "EPIC": []}` → fill per-issue by `issue.issue_id.split("-", 1)[0]` → render with `colorize(f"{label} ({len(group)})", ...)`. Epic-grouping branch should follow same render signature.
+- `scripts/little_loops/cli/issues/__init__.py:118–182` — `ls` subparser block. `--group-by` goes between `--milestone` (line 179) and `add_config_arg(ls)` (line 182).
+- `scripts/little_loops/issue_parser.py:251` — `parent: str | None = None` on `IssueFile`; populated at line 334 and 491–497 (with deprecated `parent_issue:` alias handling). **No model changes needed.**
+- `scripts/tests/test_issues_cli.py:71–79` — `issues_dir_with_epic` fixture: writes `"# EPIC-001: Parent initiative\n\n## Summary\nTop-level grouping."` — note it does **not** include frontmatter `parent:` on child issues; new test fixture variants must add `parent: EPIC-001` in frontmatter of child issues to exercise `issue.parent`.
+- EPIC title resolution: build from `raw` (pre-type-filter list), **not** `issues_with_status` — `--type BUG --group-by epic` would filter out EPICs from `issues_with_status`, breaking header resolution. Use `epic_titles = {i.issue_id: i.title for i, _ in raw if i.issue_id.startswith("EPIC-")}` so headers always resolve regardless of `--type` filter.
+- `parent` values are not guaranteed to be EPIC-prefix (e.g., `parent: ENH-1391` is valid). When grouping by epic, bucket by `issue.parent` regardless of the parent's type prefix; render the bucket header as `"{parent_id}: {title}"` if the parent is in `raw`, otherwise just `"{parent_id}"`.
 
 ## Scope Boundaries
 
@@ -110,6 +154,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `cli`, `issues`, `epics`, `captured`
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-27T00:39:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f67938c-cbb3-4914-bee5-0317a112a94e.jsonl`
+- `/ll:refine-issue` - 2026-05-27T00:34:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/276b0668-a79f-456b-bedc-b6bd95271676.jsonl`
 - `/ll:format-issue` - 2026-05-26T20:40:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76dc2061-8005-4612-bcf4-1672e52ae597.jsonl`
 - `/ll:capture-issue` - 2026-05-26T20:32:38Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b05a1db1-f9bd-43eb-b427-427c3cdbc0ac.jsonl`
 

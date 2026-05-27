@@ -917,6 +917,7 @@ class ParallelOrchestrator:
             self.logger.info(f"{result.issue_id} should be closed: {result.close_status}")
             info = self._issue_info_by_id.get(result.issue_id)
             if info:
+                # TODO(ENH-1686): parallel-path close events not yet live-written
                 if close_issue(
                     info,
                     self.br_config,
@@ -1029,6 +1030,7 @@ class ParallelOrchestrator:
             from little_loops.issue_lifecycle import close_issue
 
             info = self._issue_info_by_id.get(result.issue_id)
+            # TODO(ENH-1686): parallel-path close events not yet live-written
             if info and close_issue(
                 info,
                 self.br_config,
@@ -1202,6 +1204,7 @@ class ParallelOrchestrator:
         Returns:
             True if lifecycle was completed (or already complete), False on error
         """
+        # TODO(ENH-1686): parallel-path close events not yet live-written
         info = self._issue_info_by_id.get(issue_id)
         if not info:
             self.logger.warning(f"No issue info found for {issue_id}")

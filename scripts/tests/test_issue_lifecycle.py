@@ -1324,3 +1324,163 @@ class TestEventBusEmission:
             mock_logger,
         )
         assert result is not None
+
+    def test_skip_issue_emits_event(self, tmp_path: Path) -> None:
+        """skip_issue() emits issue.skipped event when event_bus is provided."""
+        from little_loops.events import EventBus
+        from little_loops.issue_lifecycle import skip_issue
+
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        original = bugs_dir / "P3-BUG-042-slow-query.md"
+        original.write_text("---\nstatus: open\n---\n\n# BUG-042: Slow Query\n")
+        new_path = bugs_dir / "P5-BUG-042-slow-query.md"
+
+        received: list[dict] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            skip_issue(original, new_path, reason="low priority", event_bus=bus)
+
+        assert len(received) == 1
+        event = received[0]
+        assert event["event"] == "issue.skipped"
+        assert event["issue_id"] == "BUG-042"
+        assert event["file_path"] == str(new_path)
+        assert event["reason"] == "low priority"
+        assert "ts" in event
+
+    def test_undefer_issue_emits_event(
+        self,
+        sample_config: BRConfig,
+        mock_logger: MagicMock,
+    ) -> None:
+        """undefer_issue() emits issue.started event when event_bus is provided."""
+        from little_loops.events import EventBus
+        from little_loops.issue_lifecycle import undefer_issue
+
+        bugs_dir = sample_config.get_issue_dir("bugs")
+        deferred_path = bugs_dir / "P2-BUG-007-old-bug.md"
+        deferred_path.write_text(
+            "---\nid: BUG-007\nstatus: deferred\ntype: BUG\npriority: P2\n---\n"
+            "\n# BUG-007: Old Bug\n\n## Summary\nDeferred before."
+        )
+
+        received: list[dict] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = undefer_issue(
+                sample_config, deferred_path, mock_logger, reason="Ready", event_bus=bus
+            )
+
+        assert result is not None
+        assert len(received) == 1
+        event = received[0]
+        assert event["event"] == "issue.started"
+        assert event["issue_id"] == "BUG-007"
+        assert event["file_path"] == str(deferred_path)
+        assert event["reason"] == "Ready"
+        assert "ts" in event
+
+    def test_skip_issue_no_emission_without_event_bus(self, tmp_path: Path) -> None:
+        """skip_issue() works without event_bus (backward compat, no error)."""
+        from little_loops.issue_lifecycle import skip_issue
+
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        original = bugs_dir / "P3-BUG-099-noise.md"
+        original.write_text("---\nstatus: open\n---\n\n# BUG-099: Noise\n")
+        new_path = bugs_dir / "P5-BUG-099-noise.md"
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            skip_issue(original, new_path)  # no event_bus — should not raise
+
+        assert new_path.exists()
+
+    def test_undefer_issue_no_emission_without_event_bus(
+        self,
+        sample_config: BRConfig,
+        mock_logger: MagicMock,
+    ) -> None:
+        """undefer_issue() works without event_bus (backward compat, no error)."""
+        from little_loops.issue_lifecycle import undefer_issue
+
+        bugs_dir = sample_config.get_issue_dir("bugs")
+        deferred_path = bugs_dir / "P2-BUG-008-silent.md"
+        deferred_path.write_text(
+            "---\nid: BUG-008\nstatus: deferred\ntype: BUG\npriority: P2\n---\n"
+            "\n# BUG-008: Silent\n\n## Summary\nDeferred."
+        )
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = undefer_issue(sample_config, deferred_path, mock_logger)
+
+        assert result is not None
+
+
+# =============================================================================
+# Skip Tests
+# =============================================================================
+
+
+class TestSkip:
+    """Tests for skip_issue() basic behavior."""
+
+    def test_skip_issue_success(self, tmp_path: Path) -> None:
+        """skip_issue renames file and appends Skip Log section."""
+        from little_loops.issue_lifecycle import skip_issue
+
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        original = bugs_dir / "P3-BUG-010-noisy.md"
+        original.write_text("---\nstatus: open\n---\n\n# BUG-010: Noisy\n")
+        new_path = bugs_dir / "P5-BUG-010-noisy.md"
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            skip_issue(original, new_path, reason="low priority")
+
+        assert new_path.exists()
+        assert not original.exists()
+        content = new_path.read_text()
+        assert "## Skip Log" in content
+        assert "low priority" in content
+
+    def test_skip_issue_raises_when_missing(self, tmp_path: Path) -> None:
+        """skip_issue raises FileNotFoundError when original path doesn't exist."""
+        from little_loops.issue_lifecycle import skip_issue
+
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        with pytest.raises(FileNotFoundError):
+            skip_issue(bugs_dir / "nonexistent.md", bugs_dir / "P5-BUG-000-x.md")
+
+    def test_skip_issue_raises_when_target_exists(self, tmp_path: Path) -> None:
+        """skip_issue raises FileExistsError when target path already exists."""
+        from little_loops.issue_lifecycle import skip_issue
+
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        original = bugs_dir / "P3-BUG-011-dupe.md"
+        original.write_text("---\nstatus: open\n---\n")
+        target = bugs_dir / "P5-BUG-011-dupe.md"
+        target.write_text("already here")
+        with pytest.raises(FileExistsError):
+            skip_issue(original, target)

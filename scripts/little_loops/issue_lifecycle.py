@@ -782,7 +782,12 @@ def _build_skip_section(reason: str | None) -> str:
 """
 
 
-def skip_issue(original_path: Path, new_path: Path, reason: str | None = None) -> None:
+def skip_issue(
+    original_path: Path,
+    new_path: Path,
+    reason: str | None = None,
+    event_bus: EventBus | None = None,
+) -> None:
     """Deprioritize an issue by renaming its priority prefix.
 
     Appends a ``## Skip Log`` entry with ISO timestamp and optional reason,
@@ -794,6 +799,7 @@ def skip_issue(original_path: Path, new_path: Path, reason: str | None = None) -
         original_path: Current path to the issue file
         new_path: Target path (same directory, new priority prefix)
         reason: Optional reason text for the Skip Log entry
+        event_bus: Optional EventBus for emitting ``issue.skipped``
 
     Raises:
         FileNotFoundError: If original_path does not exist
@@ -828,12 +834,26 @@ def skip_issue(original_path: Path, new_path: Path, reason: str | None = None) -
         atomic_write(original_path, content, encoding="utf-8")
         original_path.rename(new_path)
 
+    if event_bus is not None:
+        m = re.match(r"P\d+-([A-Z]+-\d+)-", new_path.name)
+        issue_id = m.group(1) if m else str(new_path.stem)
+        event_bus.emit(
+            {
+                "event": "issue.skipped",
+                "ts": _iso_now(),
+                "issue_id": issue_id,
+                "file_path": str(new_path),
+                "reason": reason,
+            }
+        )
+
 
 def undefer_issue(
     config: BRConfig,
     deferred_issue_path: Path,
     logger: Logger,
     reason: str | None = None,
+    event_bus: EventBus | None = None,
 ) -> Path | None:
     """Undefer an issue by writing ``status: open`` to its frontmatter.
 
@@ -872,6 +892,16 @@ Reason: {reason}"""
         _commit_issue_completion(info, "undefer", commit_body, logger)
 
         logger.success(f"Undeferred: {deferred_issue_path.name}")
+        if event_bus is not None:
+            event_bus.emit(
+                {
+                    "event": "issue.started",
+                    "ts": _iso_now(),
+                    "issue_id": info.issue_id,
+                    "file_path": str(deferred_issue_path),
+                    "reason": reason,
+                }
+            )
         return deferred_issue_path
 
     except Exception as e:

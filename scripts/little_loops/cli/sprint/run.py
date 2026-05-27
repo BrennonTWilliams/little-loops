@@ -357,6 +357,7 @@ def _cmd_sprint_run(
 
                 wave_failed = False
                 for issue in wave:
+                    # TODO(ENH-1686): sprint sequential path not yet live-written
                     issue_result = process_issue_inplace(
                         info=issue,
                         config=config,
@@ -461,6 +462,7 @@ def _cmd_sprint_run(
                         if issue.issue_id not in actually_failed:
                             continue
                         logger.info(f"  Retrying {issue.issue_id} in-place...")
+                        # TODO(ENH-1686): sprint sequential path not yet live-written
                         retry_result = process_issue_inplace(
                             info=issue,
                             config=config,

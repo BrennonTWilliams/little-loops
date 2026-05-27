@@ -95,6 +95,7 @@ class TestSequentialWorkflowIntegration:
             max_issues=1,
             resume=False,
             category=None,
+            db_path=project_root / ".ll" / "history.db",
         )
 
         import subprocess as _subprocess
@@ -131,6 +132,7 @@ class TestSequentialWorkflowIntegration:
             max_issues=1,
             resume=False,
             category=None,
+            db_path=project_root / ".ll" / "history.db",
         )
 
         # Track which issues were found using find_issues

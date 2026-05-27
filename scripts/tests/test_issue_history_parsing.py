@@ -487,3 +487,29 @@ class TestScanCompletedIssuesFromDb:
         assert issue.completed_date == date(2026, 5, 22)
         assert issue.completed_at == datetime(2026, 5, 22, 15, 30, 0)
         assert issue.captured_at == datetime(2026, 5, 20, 10, 0, 0)
+
+    def test_scan_finds_live_written_rows(self, tmp_path: Path) -> None:
+        """scan_completed_issues_from_db finds rows seeded via SQLiteTransport.send()."""
+        from little_loops.issue_history.parsing import scan_completed_issues_from_db
+        from little_loops.session_store import SQLiteTransport, ensure_db
+
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        transport = SQLiteTransport(db)
+        transport.send(
+            {
+                "event": "issue.completed",
+                "ts": "2026-05-26T12:00:00+00:00",
+                "issue_id": "BUG-300",
+                "issue_type": "BUG",
+                "priority": "P2",
+                "file_path": str(tmp_path / ".issues" / "bugs" / "P2-BUG-300-live.md"),
+                "completed_at": "2026-05-26T12:00:00Z",
+            }
+        )
+        transport.close()
+
+        results = scan_completed_issues_from_db(db)
+        assert len(results) == 1
+        assert results[0].issue_id == "BUG-300"
+        assert results[0].issue_type == "BUG"

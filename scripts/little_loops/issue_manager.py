@@ -33,6 +33,7 @@ from little_loops.issue_lifecycle import (
 from little_loops.issue_parser import IssueInfo, IssueParser, find_issues
 from little_loops.logger import Logger, format_duration
 from little_loops.output_parsing import parse_ready_issue_output
+from little_loops.session_store import DEFAULT_DB_PATH, SQLiteTransport
 from little_loops.skill_expander import expand_skill
 from little_loops.state import ProcessingState, StateManager, _iso_now
 from little_loops.subprocess_utils import (
@@ -458,6 +459,7 @@ def process_issue_inplace(
     on_model_detected: Callable[[str], None] | None = None,
     on_usage: Callable[[int, int], None] | None = None,
     preview_full: bool = False,
+    event_bus: EventBus | None = None,
 ) -> IssueProcessingResult:
     """Process a single issue through the 3-phase workflow in the current working tree.
 
@@ -661,6 +663,7 @@ def process_issue_inplace(
                         logger,
                         close_reason,
                         parsed.get("close_status"),
+                        event_bus=event_bus,
                     ):
                         return IssueProcessingResult(
                             success=True,
@@ -834,6 +837,7 @@ def process_issue_inplace(
                     info,
                     config,
                     logger,
+                    event_bus=event_bus,
                 )
                 failure_reason = str(new_issue) if new_issue else error_output
             else:
@@ -886,7 +890,7 @@ def process_issue_inplace(
                     logger.info(
                         "Implementation markers found in issue file - completing lifecycle..."
                     )
-                    verified = complete_issue_lifecycle(info, config, logger)
+                    verified = complete_issue_lifecycle(info, config, logger, event_bus=event_bus)
                     if verified:
                         logger.success(f"Content marker completion succeeded for {info.issue_id}")
                     else:
@@ -896,7 +900,7 @@ def process_issue_inplace(
                     work_done = verify_work_was_done(logger, baseline_sha=_baseline_sha)
                     if work_done:
                         logger.info("Evidence of code changes found - completing lifecycle...")
-                        verified = complete_issue_lifecycle(info, config, logger)
+                        verified = complete_issue_lifecycle(info, config, logger, event_bus=event_bus)
                         if verified:
                             logger.success(f"Fallback completion succeeded for {info.issue_id}")
                         else:
@@ -958,6 +962,7 @@ class AutoManager:
         label_filter: set[str] | None = None,
         verbose: bool = True,
         preview_full: bool = False,
+        db_path: Path | None = None,
     ) -> None:
         """Initialize the auto manager.
 
@@ -992,6 +997,7 @@ class AutoManager:
 
         self.logger = Logger(verbose=verbose, use_color=use_color_enabled())
         self.event_bus = EventBus()
+        self.event_bus.add_transport(SQLiteTransport(db_path or DEFAULT_DB_PATH))
         self.state_manager = StateManager(
             config.get_state_file(), self.logger, event_bus=self.event_bus
         )
@@ -1163,6 +1169,7 @@ class AutoManager:
         finally:
             if not self._shutdown_requested:
                 self.state_manager.cleanup()
+            self.event_bus.close_transports()
 
         self._log_timing_summary(run_start_time)
         self.logger.success(f"Processed {self.processed_count} issue(s)")
@@ -1244,6 +1251,7 @@ class AutoManager:
             self.dry_run,
             on_model_detected=on_model,
             preview_full=self._preview_full,
+            event_bus=self.event_bus,
         )
 
         # Map result back to state tracking
