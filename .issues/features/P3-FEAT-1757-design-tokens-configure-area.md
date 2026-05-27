@@ -7,6 +7,7 @@ type: FEAT
 parent: FEAT-1750
 discovered_date: 2026-05-27
 discovered_by: issue-size-review
+decision_needed: false
 labels:
 - feat
 - config
@@ -90,6 +91,27 @@ Doc-wiring test following `test_enh1734_doc_wiring.py` pattern. Assert:
 - `skills/configure/show-output.md` — append `## design_tokens --show` section (after `## sync --show`)
 - `scripts/tests/test_feat1757_configure_wiring.py` — new doc-wiring test (create)
 
+## Integration Map
+
+### Files to Modify
+- `skills/configure/SKILL.md` (368 lines) — five named update points; all append after the current last entry (`hooks`)
+- `skills/configure/areas.md` (939 lines) — append `## Area: design_tokens` after line 939 (end of file)
+- `skills/configure/show-output.md` (176 lines) — append `## design_tokens --show` after line 176 (end of file)
+
+### New Files to Create
+- `scripts/tests/test_feat1757_configure_wiring.py` — doc-wiring regression test
+
+### Similar Tests/Patterns (Follow These)
+- `scripts/tests/test_feat1756_init_wiring.py` — sibling test for `design_tokens` in init skill; use OR-pattern: `assert "design_tokens" in content or "design-tokens" in content`
+- `scripts/tests/test_feat1625_doc_wiring.py:44-55` — already declares a `CONFIGURE_AREAS` constant pointing at `skills/configure/areas.md`; shows multi-class-per-surface pattern
+- `scripts/tests/test_enh1734_doc_wiring.py` — canonical doc-wiring template (212 lines): `PROJECT_ROOT = Path(__file__).parent.parent.parent`, one class per file surface, one `assert` per test method
+
+### Config System (Read-Only, No Changes Needed)
+- `scripts/little_loops/config/features.py:268-289` — `DesignTokensConfig` dataclass (all 6 fields + defaults)
+- `scripts/little_loops/config/core.py:217-219` — `BRConfig` loads `design_tokens` block
+- `scripts/little_loops/config/core.py:296-299` — `BRConfig.design_tokens` property
+- `scripts/little_loops/config/core.py:575-582` — `BRConfig.to_dict()` serializes `design_tokens`
+
 ## Key Anchors
 
 - `skills/configure/SKILL.md:14` — pipe-delimited arguments description
@@ -103,6 +125,33 @@ Doc-wiring test following `test_enh1734_doc_wiring.py` pattern. Assert:
 - `skills/configure/show-output.md:162` — append point (after `## sync --show`)
 - `DesignTokensConfig` fields (from `scripts/little_loops/config/features.py:268–289`):
   `enabled` (bool, default `True`), `path` (str, `".ll/design-tokens"`), `primitives_file` (str, `"primitives.json"`), `semantic_file` (str, `"semantic.json"`), `themes_dir` (str, `"themes"`), `active_theme` (str, `"light"`)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — verified against current file state (SKILL.md: 368 lines, areas.md: 939 lines, show-output.md: 176 lines):_
+
+**Corrected SKILL.md positions** (issue line numbers are approximations):
+- Line 14: pipe-delimited description — **accurate**
+- "Line 105" (area mapping table): `hooks` row is at **line 113** (table spans lines 99–113)
+- "Line 133" (--list block): block spans **lines 125–145**; `hooks` is last entry at ~line 140
+- "Line 238" (interactive menus): pages span **lines 196–264**; page 4 ends at line 264 with `hooks` at line 263
+- "Line 324" (arguments list): list spans **lines 318–331**; `hooks` bullet at **line 331**
+
+**Interactive menu page 4 overflow — design change required:**
+Page 4 currently has exactly 4 options (`context`, `prompt`, `allowed-tools`, `hooks`) — at max capacity (`AskUserQuestion` supports at most 4 options). Adding `design-tokens` requires one of:
+- Restructuring Page 4 to move `hooks` to a new Page 5, then add `design-tokens` on Page 4
+- Or moving `design-tokens` onto Page 3 (which currently has 3 named areas + "More"), displacing some other area
+
+**areas.md corrected append point:**
+- File is **939 lines** total; `## Area: hooks` begins at line 840 and ends at line 939
+- Append `## Area: design_tokens` after line 939 (end of file)
+
+**show-output.md corrected append point:**
+- File is **176 lines** total; `## sync --show` heading is at line 162 but the section ends at line 176
+- Append `## design_tokens --show` after line 176 (end of file)
+
+**Round 2 gap — 3 fields not covered by proposed Round 1:**
+The proposed Round 1 covers `enabled`, `path`, `active_theme` (3 of 6). The remaining fields `primitives_file`, `semantic_file`, `themes_dir` have no round. Add a `### Round 2 (3 questions)` block for these file-path settings, following the same `AskUserQuestion` pattern as Round 1 (keep/change options for each).
 
 ## Acceptance Criteria
 
@@ -119,6 +168,7 @@ Doc-wiring test following `test_enh1734_doc_wiring.py` pattern. Assert:
 - Can run in parallel with FEAT-1756 (init round) and FEAT-1758 (docs)
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-27T23:26:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04d2ea8a-a459-4950-b030-01540e95e237.jsonl`
 - `/ll:issue-size-review` - 2026-05-27T23:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 
 ---

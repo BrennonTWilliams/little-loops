@@ -17,9 +17,10 @@ labels:
 - resilience
 - crash-recovery
 confidence_score: 80
+decision_needed: false
 ---
 
-# ENH-1731: Persist plan step index before execute for crash recovery
+# ENH-1735: Persist plan step index before execute for crash recovery
 
 ## Summary
 
@@ -68,6 +69,63 @@ On `define_done` or `plan` (early states), check for an existing checkpoint and 
 | `loops/general-task.yaml` | Add checkpoint write to `execute` action; add checkpoint check to `plan` or a new `resume_check` state |
 | `scripts/tests/fixtures/fsm/` | Optional: fixture with partial state to test resume path |
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Important context — ENH-1732 (DONE):** The `execute` state referenced above no longer exists. It was decomposed into `select_step → do_work → verify_step → mark_done`. The actual implementation target is `select_step` and `mark_done`.
+
+**Files to Modify**
+- `scripts/little_loops/loops/general-task.yaml` — three changes:
+  - `select_step` (line 77): augment existing `echo "$STEP" > current-step.txt` to also write `general-task-checkpoint.json` with `{"in_flight_step": "$STEP", "timestamp": "..."}` before routing to `do_work`
+  - `mark_done` (line 138): add `rm -f "${env.PWD}/.loops/tmp/general-task-checkpoint.json"` alongside the existing `rm -f "$STEP_FILE"` at line 143
+  - `plan` (line 57) or a new `resume_check` state inserted before `select_step`: detect in-flight checkpoint on startup
+
+**Scope note — `ll-loop resume` already works:** `PersistentExecutor._handle_event()` in `scripts/little_loops/fsm/persistence.py` emits `state_enter` and calls `_save_state()` before each state's action runs. On a crash during `do_work`, `state.json` already records `current_state: "do_work"` and `captured["selected_step"]`. On resume, `general-task-current-step.txt` is still on disk (not yet deleted by `mark_done`), so `do_work` re-runs correctly. **The gap is only for fresh `ll-loop run` (not resume):** `cmd_run()` in `cli/loop/run.py` calls `PersistentExecutor(clear_previous=True)`, wiping the state file, causing the loop to re-enter `define_done` and re-select the same `[ ]` step.
+
+**Dependent Files (no changes needed — reference only)**
+- `scripts/little_loops/fsm/persistence.py` — `PersistentExecutor._save_state()`, `LoopState` dataclass; `LoopState.captured` stores `selected_step` output but not a numeric index
+- `scripts/little_loops/cli/loop/run.py` — `cmd_run()` with `clear_previous=True`; recovery gap lives here
+- `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_resume()`, `_reconcile_stale_running()` for stale PID detection
+
+**Tests**
+- `scripts/tests/test_general_task_loop.py` — extend with checkpoint write/clear/detect assertions; follow `TestGeneralTaskLoopFile.test_validates_as_fsm` pattern using `load_and_validate()` + `validate_fsm()`
+- `scripts/tests/fixtures/fsm/` — no existing checkpoint-recovery fixtures; add new fixture for partial-state simulation
+
+**Similar Patterns in Other Loops**
+- `scripts/little_loops/loops/harness-optimize.yaml` — `dequeue_state`: writes selected state name to sidecar file before the prompt state using `head -1` + atomic `mv` (closest match)
+- `scripts/little_loops/loops/loop-router.yaml` — `parse_project_score`: writes multiple sidecar files before routing to next prompt
+- `scripts/little_loops/loops/scan-and-implement.yaml` — `snapshot_pre`: dedicated pre-action snapshot state before an expensive sub-loop
+
+## Scope Boundaries
+
+- **In scope**: Writing current plan step index to `general-task-checkpoint.json` before the execute prompt; detecting an in-flight checkpoint on restart and skipping the step (if output files exist) or re-executing cleanly; clearing the checkpoint when `check_done` confirms step completion
+- **Out of scope**: Crash recovery for loops other than `general-task`; full replay or undo of already-completed steps; multi-level or per-substep checkpoint granularity; persistent step history across multiple runs
+
+## Implementation Steps
+
+1. Add checkpoint write shell snippet to `execute` state in `loops/general-task.yaml` (write `in_flight_step` to `.loops/tmp/general-task-checkpoint.json`)
+2. Add checkpoint detection logic to `plan` or a new `resume_check` state to handle in-flight steps on restart (check if checkpoint file exists and if output files for that step already exist)
+3. Clear checkpoint in `check_done` (or equivalent completion state) after step is marked `[x]`
+4. Add optional FSM fixture under `scripts/tests/fixtures/fsm/` with partial checkpoint state to test resume path
+5. Run `ll-loop validate loops/general-task.yaml` to confirm no routing regressions
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Correction:** Steps 1–3 above reference `execute` state which no longer exists (split by ENH-1732). Corrected concrete steps:
+
+1. In `select_step` (`scripts/little_loops/loops/general-task.yaml:85`): after `echo "$STEP" > "${env.PWD}/.loops/tmp/general-task-current-step.txt"`, add:
+   ```bash
+   CHECKPOINT="${env.PWD}/.loops/tmp/general-task-checkpoint.json"
+   printf '{"in_flight_step":"%s","timestamp":"%s"}\n' "$STEP" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$CHECKPOINT"
+   ```
+2. In `plan` (`scripts/little_loops/loops/general-task.yaml:57`) or a new `resume_check` state (inserted between `plan` and `select_step`): add logic to detect `general-task-checkpoint.json`; if present and the in-flight step's expected output files already exist (from `general-task-last-files.txt`), mark the step `[x]` and skip re-execution
+3. In `mark_done` (`scripts/little_loops/loops/general-task.yaml:143`): add `rm -f "${env.PWD}/.loops/tmp/general-task-checkpoint.json"` on the line after the existing `rm -f "$STEP_FILE"`
+4. Add test in `scripts/tests/test_general_task_loop.py` following `TestGeneralTaskLoopFile.test_validates_as_fsm` using `load_and_validate()` + `validate_fsm()`; add fixture at `scripts/tests/fixtures/fsm/checkpoint-recovery.yaml` with a partial-state scenario
+5. Run `ll-loop validate scripts/little_loops/loops/general-task.yaml` to confirm no routing regressions
+
 ## Impact
 
 - **Priority**: P3 — Improves robustness for an edge case (SIGKILL/OOM during execute); not blocking for normal operation
@@ -80,3 +138,12 @@ On `define_done` or `plan` (early states), check for an existing checkpoint and 
 - general-task
 - resilience
 - crash-recovery
+
+## Status
+
+**Open** | Created: 2026-05-27 | Priority: P3
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-05-27T23:25:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/abccc340-0707-4df4-86fc-a611f1735bf0.jsonl`
+- `/ll:format-issue` - 2026-05-27T23:19:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cff51961-5730-4e30-9a41-1339eda2b782.jsonl`
