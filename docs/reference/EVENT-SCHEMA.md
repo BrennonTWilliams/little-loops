@@ -758,6 +758,52 @@ Emitted when an issue is moved to the deferred pool.
 
 ---
 
+### `issue.skipped`
+
+Emitted when an issue is skipped during automated processing (e.g., by `ll-auto` when the issue does not meet filter criteria or is explicitly excluded).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `issue_id` | `str` | Issue identifier |
+| `file_path` | `str` | Absolute path to the issue file |
+| `reason` | `str` | Human-readable reason for skipping |
+
+**Example:**
+```json
+{
+  "event": "issue.skipped",
+  "ts": "...",
+  "issue_id": "BUG-042",
+  "file_path": "/path/to/.issues/bugs/P2-BUG-042-....md",
+  "reason": "Issue type excluded by --type filter"
+}
+```
+
+---
+
+### `issue.started`
+
+Emitted when a deferred issue is undeferred and returned to active status (via `undefer_issue()`).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `issue_id` | `str` | Issue identifier |
+| `file_path` | `str` | Absolute path to the issue file |
+| `reason` | `str` | Human-readable reason for restarting |
+
+**Example:**
+```json
+{
+  "event": "issue.started",
+  "ts": "...",
+  "issue_id": "FEAT-099",
+  "file_path": "/path/to/.issues/features/P2-FEAT-099-....md",
+  "reason": "Unblocked after dependency resolved"
+}
+```
+
+---
+
 ## Subsystem: Parallel Orchestrator
 
 **Source:** `little_loops.parallel.orchestrator.Orchestrator`  
@@ -913,6 +959,8 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `issue.closed` | Issue Lifecycle | `issue_lifecycle.py` |
 | `issue.completed` | Issue Lifecycle | `issue_lifecycle.py` |
 | `issue.deferred` | Issue Lifecycle | `issue_lifecycle.py` |
+| `issue.skipped` | Issue Lifecycle | `issue_lifecycle.py` |
+| `issue.started` | Issue Lifecycle | `issue_lifecycle.py` |
 | `parallel.worker_completed` | Parallel | `parallel/orchestrator.py` |
 
 ---

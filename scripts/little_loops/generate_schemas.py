@@ -436,7 +436,7 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         },
         ["issue_id", "reason", "status"],
     ),
-    # Issue Lifecycle (4 types)
+    # Issue Lifecycle (6 types)
     "issue.failure_captured": _schema(
         "issue.failure_captured",
         "Issue: Failure Captured",
@@ -477,6 +477,28 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             "issue_id": _str("Issue identifier"),
             "file_path": _str("Path to the deferred issue file"),
             "reason": _str("Reason the issue was deferred"),
+        },
+        ["issue_id", "file_path", "reason"],
+    ),
+    "issue.skipped": _schema(
+        "issue.skipped",
+        "Issue: Skipped",
+        "Emitted when an issue is skipped during automated processing.",
+        {
+            "issue_id": _str("Issue identifier"),
+            "file_path": _str("Path to the issue file"),
+            "reason": _str("Reason the issue was skipped"),
+        },
+        ["issue_id", "file_path", "reason"],
+    ),
+    "issue.started": _schema(
+        "issue.started",
+        "Issue: Started",
+        "Emitted when a deferred issue is undeferred and returned to active processing.",
+        {
+            "issue_id": _str("Issue identifier"),
+            "file_path": _str("Path to the issue file"),
+            "reason": _str("Reason the issue was restarted"),
         },
         ["issue_id", "file_path", "reason"],
     ),

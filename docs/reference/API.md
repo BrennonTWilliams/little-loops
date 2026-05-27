@@ -1996,11 +1996,14 @@ AutoManager(
     max_issues: int = 0,
     resume: bool = False,
     category: str | None = None,
-    only_ids: set[str] | None = None,
+    only_ids: list[str] | set[str] | None = None,
     skip_ids: set[str] | None = None,
     type_prefixes: set[str] | None = None,
     priority_filter: set[str] | None = None,
     verbose: bool = True,
+    label_filter: set[str] | None = None,
+    preview_full: bool = False,
+    db_path: Path | None = None,
 )
 ```
 
@@ -2015,6 +2018,11 @@ AutoManager(
 - `type_prefixes` - If provided, only process issues with these type prefixes
 - `priority_filter` - If provided, only process issues with these priority levels (e.g., `{"P0", "P1"}`)
 - `verbose` - Whether to output progress messages
+- `label_filter` - If provided, only process issues carrying one of these labels
+- `preview_full` - Show full issue body in dry-run preview (default: summary only)
+- `db_path` - Override path for the SQLite session store (default: `.ll/history.db`)
+
+**Behavior:** On construction, `AutoManager` creates an internal `EventBus` and wires a `SQLiteTransport(db_path or DEFAULT_DB_PATH)` to it automatically. Issue lifecycle events (`issue.completed`, `issue.deferred`, `issue.skipped`, `issue.started`, etc.) are recorded live during `run()` without any additional configuration.
 
 #### Methods
 
@@ -2118,10 +2126,17 @@ def complete_issue_lifecycle(
     info: IssueInfo,
     config: BRConfig,
     logger: Logger,
+    event_bus: EventBus | None = None,
 ) -> bool
 ```
 
 Fallback: Complete issue lifecycle when command exited early.
+
+**Parameters:**
+- `info` - Issue info
+- `config` - Project configuration
+- `logger` - Logger for output
+- `event_bus` - Optional `EventBus` for emitting lifecycle events on completion
 
 **Returns:** `True` if successful
 
@@ -2143,6 +2158,7 @@ def defer_issue(
     config: BRConfig,
     logger: Logger,
     reason: str | None = None,
+    event_bus: EventBus | None = None,
 ) -> bool
 ```
 
@@ -2155,6 +2171,7 @@ Appends a `## Deferred` section to the issue file with the reason and date, then
 - `config` - Project configuration
 - `logger` - Logger for output
 - `reason` - Reason for deferring (default: `"Intentionally set aside for later consideration"`)
+- `event_bus` - Optional `EventBus` for emitting `issue.deferred` lifecycle event
 
 **Returns:** `True` if successful, `False` otherwise
 
@@ -2166,20 +2183,20 @@ def undefer_issue(
     deferred_issue_path: Path,
     logger: Logger,
     reason: str | None = None,
+    event_bus: EventBus | None = None,
 ) -> Path | None
 ```
 
-Move an issue from `deferred/` back to its original category directory.
-
-Removes the `## Deferred` section from the issue file and commits the move.
+Update a deferred issue in-place: sets status to `open` and emits `issue.started`.
 
 **Parameters:**
 - `config` - Project configuration
 - `deferred_issue_path` - Path to the issue file in `deferred/`
 - `logger` - Logger for output
 - `reason` - Reason for undeferring (optional)
+- `event_bus` - Optional `EventBus` for emitting `issue.started` lifecycle event
 
-**Returns:** New `Path` of the issue in its active category directory, or `None` if failed
+**Returns:** Same path as `deferred_issue_path` — the issue is updated in-place (status set to `open`), no file is moved; returns `None` if failed
 
 **Example:**
 

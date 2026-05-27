@@ -1175,7 +1175,7 @@
         },
         "sqlite": {
           "type": "object",
-          "description": "SQLiteTransport configuration. Records FSM loop events into the per-project session store (.ll/history.db) for indexed cross-cutting queries via the ll-session CLI.",
+          "description": "SQLiteTransport configuration. Records FSM loop events and issue lifecycle events (issue.completed, issue.deferred, issue.skipped, issue.started, issue.closed, issue.failure_captured) into the per-project session store (.ll/history.db) for indexed cross-cutting queries via the ll-session CLI. Note: AutoManager.__init__() wires SQLiteTransport directly for ll-auto runs without requiring events.transports config.",
           "properties": {
             "path": {
               "type": "string",

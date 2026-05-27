@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`AutoManager` wires `EventBus`/`SQLiteTransport` directly** — `ll-auto` now records issue lifecycle events (`issue.completed`, `issue.deferred`, `issue.skipped`, `issue.started`, `issue.closed`, `issue.failure_captured`) live into `.ll/history.db` without requiring `events.transports: ["sqlite"]` in config. New `db_path` constructor parameter overrides the default path. (ENH-1733)
+- **Documentation updates for EventBus wiring** — `AutoManager.__init__` signature, new `issue.skipped`/`issue.started` event types, CLI wiring table `ll-auto` row, backfill framing, and `config-schema.json` sqlite description updated to reflect ENH-1691/1733 implementation. (ENH-1734)
 - **`ll-loop audit-meta` subcommand** — Detects evaluator-trivial failure mode in meta-loops; includes updated loop-specialist agent and docs. (ENH-1700)
 - **`ll-action list --json` exposes `args` hint** — Per-skill input schema now surfaced for agent callers. (ENH-1660)
 - **Meta-eval telemetry write and archive** — Meta-loop evaluation results written to a persistent telemetry store and archived per run. (ENH-1699)

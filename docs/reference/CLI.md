@@ -1109,7 +1109,7 @@ Show issue statistics for completed issues.
 | `--json` | `-j` | Output as JSON |
 | `--directory` | `-d` | Path to issues directory (default: `.issues`) |
 
-When the unified session DB (`.ll/history.db`, FEAT-1112) contains backfilled `issue_events` rows (run `ll-session backfill`), `summary` reads from the DB instead of re-parsing every completed-issue file. An empty/absent DB falls back to file parsing — no behavior change for un-backfilled projects (ENH-1621). Only the `summary` subcommand is DB-backed; `analyze` and `export` still scan the files because they need bodies and git history.
+When the unified session DB (`.ll/history.db`, FEAT-1112) contains `issue_events` rows, `summary` reads from the DB instead of re-parsing every completed-issue file. An empty/absent DB falls back to file parsing — no behavior change for projects without recorded events (ENH-1621). As of ENH-1691, `ll-auto` writes issue lifecycle events live during each run via `AutoManager`'s internal `SQLiteTransport`; `ll-session backfill` is retained for importing historical data captured before ENH-1691. Only the `summary` subcommand is DB-backed; `analyze` and `export` still scan the files because they need bodies and git history.
 
 #### `ll-history analyze`
 
@@ -1338,7 +1338,7 @@ ll-logs extract --all --cmd ll-history   # Filter to ll-history invocations
 
 ### ll-session
 
-Query the unified session store (SQLite + FTS5) — the per-project `.ll/history.db` populated by `SQLiteTransport` and `ll-session backfill`. Lets operators search and inspect session activity without re-parsing the scattered JSON/markdown sources the analyze-* skills read.
+Query the unified session store (SQLite + FTS5) — the per-project `.ll/history.db` populated by `SQLiteTransport`, `AutoManager` (live-writes issue lifecycle events during `ll-auto` runs), and `ll-session backfill` (for historical data captured before ENH-1691). Lets operators search and inspect session activity without re-parsing the scattered JSON/markdown sources the analyze-* skills read.
 
 **Global flags:**
 

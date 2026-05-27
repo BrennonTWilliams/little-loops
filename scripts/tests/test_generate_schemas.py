@@ -15,11 +15,11 @@ class TestSchemaDefinitions:
     """Tests for the SCHEMA_DEFINITIONS catalog."""
 
     def test_all_34_event_types_defined(self) -> None:
-        """All 35 LLEvent types must be defined."""
-        assert len(SCHEMA_DEFINITIONS) == 35
+        """All 37 LLEvent types must be defined."""
+        assert len(SCHEMA_DEFINITIONS) == 37
 
     def test_expected_event_types_present(self) -> None:
-        """Each of the 34 known event types must appear in catalog."""
+        """Each of the 37 known event types must appear in catalog."""
         expected = {
             "loop_start",
             "state_enter",
@@ -48,6 +48,8 @@ class TestSchemaDefinitions:
             "issue.closed",
             "issue.completed",
             "issue.deferred",
+            "issue.skipped",
+            "issue.started",
             "parallel.worker_completed",
             "learning_blocked",
             "learning_complete",
@@ -64,17 +66,17 @@ class TestGenerateSchemas:
     """Tests for generate_schemas() output."""
 
     def test_creates_34_files(self, tmp_path: Path) -> None:
-        """Generates exactly 35 schema files."""
+        """Generates exactly 37 schema files."""
         generate_schemas(tmp_path)
         files = list(tmp_path.glob("*.json"))
-        assert len(files) == 35
+        assert len(files) == 37
 
     def test_creates_output_dir_if_missing(self, tmp_path: Path) -> None:
         """Creates the output directory if it doesn't exist."""
         output_dir = tmp_path / "nested" / "schemas"
         generate_schemas(output_dir)
         assert output_dir.exists()
-        assert len(list(output_dir.glob("*.json"))) == 35
+        assert len(list(output_dir.glob("*.json"))) == 37
 
     def test_all_files_are_valid_json(self, tmp_path: Path) -> None:
         """Every generated file contains valid JSON."""
@@ -113,6 +115,8 @@ class TestGenerateSchemas:
         assert (tmp_path / "issue_closed.json").exists()
         assert (tmp_path / "issue_completed.json").exists()
         assert (tmp_path / "issue_deferred.json").exists()
+        assert (tmp_path / "issue_skipped.json").exists()
+        assert (tmp_path / "issue_started.json").exists()
         assert (tmp_path / "parallel_worker_completed.json").exists()
 
     def test_idempotent_on_second_run(self, tmp_path: Path) -> None:
@@ -184,7 +188,7 @@ class TestGenerateSchemasCLI:
 
         with patch("sys.argv", ["ll-generate-schemas", "--output", str(tmp_path)]):
             main_generate_schemas()
-        assert len(list(tmp_path.glob("*.json"))) == 35
+        assert len(list(tmp_path.glob("*.json"))) == 37
 
     def test_cli_default_output_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """CLI defaults to docs/reference/schemas/ relative to cwd."""

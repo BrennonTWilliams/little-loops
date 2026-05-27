@@ -504,7 +504,7 @@ The `EventBus` is wired into the following subsystems, which emit events at key 
 |-----------|------|----------------|
 | FSM Executor | `fsm/executor.py` | `fsm.state_enter`, `fsm.loop_complete`, `fsm.evaluate`, `fsm.route` |
 | StateManager | `state.py` | State persistence events (save, load, mark completed/failed) |
-| Issue Lifecycle | `issue_lifecycle.py` | Issue status transitions (move, close, defer) |
+| Issue Lifecycle | `issue_lifecycle.py` | Issue status transitions (move, close, defer, skip, undefer) — emits `issue.completed`, `issue.closed`, `issue.deferred`, `issue.skipped` (from `skip_issue()`), `issue.started` (from `undefer_issue()`), `issue.failure_captured` |
 | Parallel Orchestrator | `parallel/orchestrator.py` | Worker start/complete, merge events |
 
 Extensions are wired to the EventBus at CLI entry points via `wire_extensions()`, so they receive events from all subsystems during a run:
@@ -515,8 +515,9 @@ Extensions are wired to the EventBus at CLI entry points via `wire_extensions()`
 | `ll-loop resume` | `cli/loop/lifecycle.py` | Yes — EventBus + FSMExecutor registry wired | Yes — `wire_transports()` after extensions; `executor.close_transports()` runs in `finally` so transports flush on exit/exception |
 | `ll-parallel` | `cli/parallel.py` | Yes — EventBus only (no FSMExecutor wiring) | Yes — `wire_transports()` after extensions; teardown runs in `ParallelOrchestrator._cleanup()` via `event_bus.close_transports()` |
 | `ll-sprint` | `cli/sprint/run.py` | Yes — EventBus only (no FSMExecutor wiring for parallel branch) | Yes — per-wave `wire_transports()` after extensions; teardown delegated to per-wave `ParallelOrchestrator._cleanup()` |
+| `ll-auto` | `cli/auto.py` | No — EventBus is internal to `AutoManager` | Yes — `AutoManager.__init__()` wires `SQLiteTransport(db_path)` directly; does not call `wire_transports()` |
 
-The transport layer fans events out additively: every event emitted on the `EventBus` is delivered to every registered observer **and** every registered transport. Built-in transports: `JsonlTransport` (durable file log; selected via `events.transports: ["jsonl"]`), `UnixSocketTransport` (real-time `AF_UNIX` streaming for local TUIs and dashboards; selected via `events.transports: ["socket"]`, requires POSIX), `OTelTransport` (OpenTelemetry OTLP exporter; selected via `events.transports: ["otel"]`, requires `pip install 'little-loops[otel]'`), `WebhookTransport` (batched HTTP POST to a remote endpoint; selected via `events.transports: ["webhook"]`, requires `pip install 'little-loops[webhooks]'`), and `SQLiteTransport` (writes events to the per-project `.ll/history.db` unified session store; selected via `events.transports: ["sqlite"]`, queryable via `ll-session`).
+The transport layer fans events out additively: every event emitted on the `EventBus` is delivered to every registered observer **and** every registered transport. Built-in transports: `JsonlTransport` (durable file log; selected via `events.transports: ["jsonl"]`), `UnixSocketTransport` (real-time `AF_UNIX` streaming for local TUIs and dashboards; selected via `events.transports: ["socket"]`, requires POSIX), `OTelTransport` (OpenTelemetry OTLP exporter; selected via `events.transports: ["otel"]`, requires `pip install 'little-loops[otel]'`), `WebhookTransport` (batched HTTP POST to a remote endpoint; selected via `events.transports: ["webhook"]`, requires `pip install 'little-loops[webhooks]'`), and `SQLiteTransport` (writes events to the per-project `.ll/history.db` unified session store; selected via `events.transports: ["sqlite"]`, queryable via `ll-session`). **Note:** `AutoManager.__init__()` wires `SQLiteTransport` directly (not via the config-driven `events.transports` path), so `ll-auto` records issue lifecycle events without requiring `"sqlite"` in the project config.
 
 **UnixSocketTransport — initial state seeding:** When a new client connects to `events.sock`, the transport immediately sends `state_change` events for all currently running loops (read from `.loops/.running/*.state.json`) before the client enters the regular event stream. This means a dashboard or TUI that connects mid-run receives the current FSM state of every active loop without waiting for the next state transition. Clients that connect before any loop is running receive no seed events (the event stream is empty until a loop starts).
 
@@ -622,6 +623,8 @@ classDiagram
     class AutoManager {
         +config: BRConfig
         +state_manager: StateManager
+        +event_bus: EventBus
+        +db_path: Path | None
         +run() int
     }
 
