@@ -234,7 +234,7 @@ Edge label colors are **user-configurable** via `cli.colors.fsm_edge_labels` in 
 > **Note:** `rate_limit_waiting` is a heartbeat event (not a diagram edge label), but it shares the Amber styling with `rate_limit_exhausted` so rate-limit activity is visually consistent across diagrams and event logs.
 
 > **Note:** `cli.colors.fsm_edge_labels` governs more than diagram arrows. As of ENH-1050, the same config key also controls:
-> - The `✓`/`✗` verdict symbol colors in `display_progress()` (the `yes`, `no`, and `error` keys map to checkmark and x-mark colors during evaluate events)
+> - The `✓`/`✗` verdict symbol colors in `StateFeedRenderer.handle_event()` (the `yes`, `no`, and `error` keys map to checkmark and x-mark colors during evaluate events)
 > - The `[TERMINAL]` marker color in `print_execution_plan()` (uses the `yes` key, defaulting to green)
 
 The active state highlight color is configurable via `cli.colors.fsm_active_state` (default: green `32`). The same value drives both border coloring and interior background fill: the fg color code is automatically converted to its bg equivalent (e.g. `"32"` → bg `"42"`) so all interior cells are filled with the highlight color. Border glyphs (`┌ ─ ┐ │ └ ┘`) also carry the bg fill (e.g. `\033[32;42m│`) so the colored region runs edge-to-edge with no visible gap between the fill and the border. The state name and content lines render with a bright white foreground (`97`) over the colored background for legibility across light and dark terminal themes. Compound ANSI codes (e.g. `"38;5;208"`) cannot be auto-converted and fall back to border-only coloring. See [`CONFIGURATION.md → cli.colors.fsm_active_state`](CONFIGURATION.md#clicolorsfsm_active_state).

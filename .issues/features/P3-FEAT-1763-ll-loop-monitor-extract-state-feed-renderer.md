@@ -2,11 +2,12 @@
 id: FEAT-1763
 title: 'll-loop monitor: extract StateFeedRenderer from run_foreground()'
 type: FEAT
-status: open
+status: done
 priority: P3
 parent: FEAT-1761
 size: Medium
 captured_at: '2026-05-27T00:00:00Z'
+completed_at: 2026-05-28 15:14:16+00:00
 discovered_date: '2026-05-27'
 discovered_by: issue-size-review
 testable: true
@@ -176,11 +177,30 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `refactoring`, `cli`, `loop`
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-05-28
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/loop/_helpers.py`: Extracted `StateFeedRenderer` class (lines 452-810) from `run_foreground()` closures; updated `run_foreground()` to instantiate and wire `renderer.handle_event`
+- `scripts/tests/test_state_feed_renderer.py`: Created 17 standalone unit tests for `StateFeedRenderer` instantiation and `handle_event` output formatting
+- `scripts/tests/test_cli_loop_lifecycle.py`: Updated docstring and comments referencing `display_progress` → `renderer.handle_event`
+- `docs/reference/OUTPUT_STYLING.md`: Updated prose to reference `StateFeedRenderer.handle_event` instead of `display_progress()`
+
+### Verification Results
+- Tests: PASS (7981 passed, 5 skipped)
+- Lint: PASS
+- Types: PASS (pre-existing wcwidth stubs warning only)
+
 ## Status
 
 **Open** | Created: 2026-05-27 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-28T15:14:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6bca643f-c857-4758-aed5-fd97e3769416.jsonl`
+- `/ll:ready-issue` - 2026-05-28T14:59:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ecb5ba9e-bb08-4909-9a13-01c1510944d5.jsonl`
 - `/ll:ready-issue` - 2026-05-28T04:31:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e097599-5bb8-4042-b028-dbcf64320294.jsonl`
 - `/ll:wire-issue` - 2026-05-28T04:27:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90f38bbf-f167-4cba-bdb4-9006604ff987.jsonl`
 - `/ll:refine-issue` - 2026-05-28T04:20:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/41d3cbb1-7199-4507-ba24-2665bb6a3ff3.jsonl`

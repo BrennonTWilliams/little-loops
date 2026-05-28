@@ -537,7 +537,7 @@ class TestCmdResume:
         )
 
     def test_resume_wires_display_callback_to_event_bus(self, tmp_path: Path) -> None:
-        """cmd_resume registers display_progress on executor.event_bus (BUG-1645).
+        """cmd_resume registers renderer.handle_event on executor.event_bus (BUG-1645).
 
         Regression guard: before BUG-1645 the resume path called executor.resume()
         directly without registering any event subscriber, so the terminal stayed
@@ -569,7 +569,7 @@ class TestCmdResume:
             result = cmd_resume("test-loop", args, tmp_path, logger)
 
         assert result == 0
-        # event_bus.register must have been called with the display closure.
+        # event_bus.register must have been called with the display handler.
         assert mock_exec_cls.return_value.event_bus.register.call_count >= 1
 
     def test_context_overrides_applied_to_fsm(self, tmp_path: Path) -> None:

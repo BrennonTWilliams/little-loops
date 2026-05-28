@@ -449,6 +449,341 @@ def _render_pinned_pane(
     return pinned_height
 
 
+class StateFeedRenderer:
+    """Renders loop-state events as terminal output for foreground runs and monitor attach.
+
+    Extracted from ``run_foreground()`` so both the foreground run path and the
+    ``cmd_monitor`` attach path (FEAT-1764) can share the same rendering logic.
+    """
+
+    def __init__(
+        self,
+        fsm: FSMLoop,
+        args: argparse.Namespace,
+        highlight_color: str = "32",
+        edge_label_colors: dict[str, str] | None = None,
+        badges: dict[str, str] | None = None,
+        loops_dir: Path | None = None,
+    ) -> None:
+        self.fsm = fsm
+        self.args = args
+        self.highlight_color = highlight_color
+        self.edge_label_colors = edge_label_colors
+        self.badges = badges
+        self.loops_dir = loops_dir or Path(".")
+
+        # Derived from args
+        self.quiet: bool = getattr(args, "quiet", False)
+        self.verbose: bool = getattr(args, "verbose", False)
+        self.facets: DiagramFacets | None = resolve_facets(args)
+        self.show_diagrams: bool = self.facets is not None
+        self.clear_screen: bool = getattr(args, "clear", False)
+        self.in_pinned_mode: bool = (
+            self.show_diagrams and self.clear_screen and sys.stdout.isatty()
+        )
+
+        # Mutable state (was closure-captured in run_foreground)
+        self.current_iteration: list[int] = [0]
+        self.last_state_at_depth: dict[int, str] = {}
+        self.prev_state_at_depth: dict[int, str] = {}
+        self.child_fsm_stack: dict[int, FSMLoop | None] = {}
+        self.pinned_height: list[int] = [0]
+        self.loop_start_time: float = time.monotonic()
+
+    def _elapsed_str(self) -> str:
+        elapsed_int = int(time.monotonic() - self.loop_start_time)
+        if elapsed_int < 60:
+            return f"{elapsed_int}s"
+        return f"{elapsed_int // 60}m {elapsed_int % 60}s"
+
+    def _redraw_pinned(self, state0: str) -> None:
+        """Redraw the pinned pane in place using the current depth-0 state."""
+        assert self.facets is not None
+        iter_line = (
+            f"[{self.current_iteration[0]}/{self.fsm.max_iterations}] "
+            f"{colorize(state0, '1')} ({colorize(self._elapsed_str(), '2')})"
+        )
+        self.pinned_height[0] = _render_pinned_pane(
+            self.fsm,
+            state0,
+            self.child_fsm_stack,
+            self.last_state_at_depth,
+            iter_line,
+            facets=self.facets,
+            highlight_color=self.highlight_color,
+            edge_label_colors=self.edge_label_colors,
+            badges=self.badges,
+            prev_state_at_depth=self.prev_state_at_depth,
+        )
+
+    def handle_event(self, event: dict) -> None:
+        """Display progress for events."""
+        global _needs_redraw
+        # SIGWINCH redraw: terminal was resized; re-render the pinned pane
+        # before processing the next event so the layout matches the new size.
+        if _needs_redraw and self.in_pinned_mode and 0 in self.last_state_at_depth:
+            self._redraw_pinned(self.last_state_at_depth[0])
+            _needs_redraw = False
+
+        event_type = event.get("event")
+        depth = event.get("depth", 0)
+        indent = "  " * depth
+        tw = terminal_width()
+        max_line = tw - 8 - len(indent)
+
+        if event_type == "state_enter":
+            self.current_iteration[0] = event.get("iteration", 0)
+            state = event.get("state", "")
+            elapsed_str = self._elapsed_str() if not self.quiet else ""
+            # Non-pinned --clear path keeps the bare full-screen clear.
+            if (
+                self.clear_screen
+                and sys.stdout.isatty()
+                and depth == 0
+                and not self.in_pinned_mode
+            ):
+                print("\033[2J\033[H", end="", flush=True)
+            # Update last-known state at this depth and clear stale deeper entries.
+            old_state = self.last_state_at_depth.get(depth)
+            if old_state is not None and old_state != state:
+                self.prev_state_at_depth[depth] = old_state
+            self.last_state_at_depth[depth] = state
+            for k in [k for k in self.last_state_at_depth if k > depth]:
+                del self.last_state_at_depth[k]
+                self.prev_state_at_depth.pop(k, None)
+            # Load child FSM for the current state at this depth
+            parent_at_depth = self.fsm if depth == 0 else self.child_fsm_stack.get(depth - 1)
+            if parent_at_depth is not None and state in parent_at_depth.states:
+                fsm_state = parent_at_depth.states[state]
+                if fsm_state.loop is not None:
+                    try:
+                        self.child_fsm_stack[depth] = load_loop(
+                            fsm_state.loop, self.loops_dir, Logger()
+                        )
+                    except (FileNotFoundError, ValueError):
+                        pass
+                else:
+                    self.child_fsm_stack[depth] = None
+            else:
+                self.child_fsm_stack[depth] = None
+            # Clear stale deeper child FSM entries
+            for k in [k for k in self.child_fsm_stack if k > depth]:
+                del self.child_fsm_stack[k]
+
+            if self.in_pinned_mode:
+                state0 = self.last_state_at_depth.get(0)
+                if state0 is None:
+                    state0 = state
+                self._redraw_pinned(state0)
+            elif self.show_diagrams:
+                from little_loops.cli.loop.layout import (
+                    _collect_edges,
+                    _filter_main_path_graph,
+                    _render_fsm_diagram,
+                )
+
+                assert self.facets is not None
+
+                # Find deepest active loop — show only that one.
+                active_fsm_diag = self.fsm
+                active_highlight = self.last_state_at_depth.get(0)
+                active_depth_diag = 0
+                for d in sorted(self.child_fsm_stack.keys()):
+                    child_at_d = self.child_fsm_stack[d]
+                    if child_at_d is not None and (d + 1) in self.last_state_at_depth:
+                        active_fsm_diag = child_at_d
+                        active_highlight = self.last_state_at_depth.get(d + 1)
+                        active_depth_diag = d + 1
+
+                # Fall back to full scope when the highlighted state is hidden in main scope.
+                active_scope = self.facets.scope
+                fallback_note: str | None = None
+                if active_scope == "main" and active_highlight is not None:
+                    _filtered_edges, active_reachable = _filter_main_path_graph(
+                        active_fsm_diag, _collect_edges(active_fsm_diag)
+                    )
+                    if active_highlight not in active_reachable:
+                        active_scope = "full"
+                        fallback_note = (
+                            f"(showing full diagram: active state "
+                            f"{active_highlight!r} is off the main path)"
+                        )
+                diagram = _render_fsm_diagram(
+                    active_fsm_diag,
+                    highlight_state=active_highlight,
+                    highlight_color=self.highlight_color,
+                    edge_label_colors=self.edge_label_colors,
+                    badges=self.badges,
+                    mode=active_scope,
+                    suppress_labels=not self.facets.edge_labels,
+                    title_only=self.facets.state_detail == "title",
+                )
+                # Header: breadcrumb shows immediate parent when inside a sub-loop.
+                if active_depth_diag > 0:
+                    imm_parent_name = (
+                        self.fsm.name
+                        if active_depth_diag == 1
+                        else (self.child_fsm_stack.get(active_depth_diag - 2) or self.fsm).name
+                    )
+                    imm_parent_state = self.last_state_at_depth.get(active_depth_diag - 1, "")
+                    header_text = f"== loop: {active_fsm_diag.name} ({imm_parent_name} › {imm_parent_state}) "
+                else:
+                    header_text = f"== loop: {self.fsm.name} "
+                header = header_text + "=" * max(0, tw - len(header_text))
+                print(header, flush=True)
+                if fallback_note is not None:
+                    print(fallback_note, flush=True)
+                print(diagram, flush=True)
+            # In pinned mode the iteration line is part of the pinned pane;
+            # only print it inline for non-pinned paths.
+            if not self.quiet and not self.in_pinned_mode:
+                print(
+                    f"{indent}[{self.current_iteration[0]}/{self.fsm.max_iterations}] {colorize(state, '1')} ({colorize(elapsed_str, '2')})",
+                    end="",
+                    flush=True,
+                )
+
+        elif event_type == "action_start":
+            if not self.quiet:
+                action = event.get("action", "")
+                is_prompt = event.get("is_prompt", False)
+                if is_prompt:
+                    lines = action.strip().splitlines()
+                    line_count = len(lines)
+                    prompt_badge = "✦"  # ✦
+                    if self.verbose:
+                        print(
+                            f"{indent} -> {colorize(prompt_badge, '2')} {colorize(f'({line_count} lines)', '2')}",
+                            flush=True,
+                        )
+                        for line in lines:
+                            print(f"{indent}       {line}", flush=True)
+                    else:
+                        first_line = lines[0] if lines else ""
+                        preview = (
+                            first_line[:60] + "..." if len(first_line) > 60 else first_line
+                        )
+                        print(
+                            f"{indent} -> {colorize(prompt_badge, '2')} {colorize(preview, '2')}",
+                            flush=True,
+                        )
+                else:
+                    if self.verbose:
+                        action_display = action
+                    else:
+                        action_display = (
+                            action[:max_line] + "..." if len(action) > max_line else action
+                        )
+                    print(f"{indent} -> {colorize(action_display, '2')}", flush=True)
+
+        elif event_type == "action_output":
+            if not self.quiet:
+                line = event.get("line", "")
+                if line.strip():
+                    print(f"{indent}       {line}", flush=True)
+
+        elif event_type == "action_complete":
+            if not self.quiet:
+                duration_ms = event.get("duration_ms", 0)
+                exit_code = event.get("exit_code", 0)
+                duration_sec = duration_ms / 1000
+                if duration_sec < 60:
+                    duration_str = f"{duration_sec:.1f}s"
+                else:
+                    minutes = int(duration_sec // 60)
+                    seconds = duration_sec % 60
+                    duration_str = f"{minutes}m {seconds:.0f}s"
+                parts = [f"{indent}       ({colorize(duration_str, '2')})"]
+                if exit_code == 124:
+                    parts.append(colorize("timed out", "38;5;208"))
+                elif exit_code != 0:
+                    parts.append(colorize(f"exit: {exit_code}", "38;5;208"))
+                print("  ".join(parts), flush=True)
+
+        elif event_type == "evaluate":
+            if not self.quiet:
+                verdict = event.get("verdict", "")
+                confidence = event.get("confidence")
+                reason = event.get("reason", "")
+                error = event.get("error", "")
+                _elc = self.edge_label_colors or {}
+                if verdict in ("yes", "target", "progress"):
+                    _vc = _elc.get("yes", "32")
+                    symbol = colorize("✓", _vc)
+                    verdict_colored = colorize(verdict, _vc)
+                elif verdict == "no":
+                    _vc = _elc.get("no", "38;5;208")
+                    symbol = colorize("✗", _vc)
+                    verdict_colored = colorize(verdict, _vc)
+                elif verdict == "error":
+                    _vc = _elc.get("error", "38;5;208")
+                    symbol = colorize("✗", _vc)
+                    verdict_colored = colorize(verdict, _vc)
+                else:
+                    symbol = colorize("✗", "38;5;208")
+                    verdict_colored = colorize(verdict, "2")
+                # Build verdict line
+                if error and verdict == "error":
+                    verdict_line = f"{symbol} {verdict_colored}: {error}"
+                elif confidence is not None:
+                    verdict_line = (
+                        f"{symbol} {verdict_colored} {colorize(f'({confidence:.2f})', '2')}"
+                    )
+                else:
+                    verdict_line = f"{symbol} {verdict_colored}"
+                print(f"{indent}       {verdict_line}", flush=True)
+                # Show raw_preview for error verdicts to aid diagnosis
+                raw_preview = event.get("raw_preview", "")
+                if raw_preview and verdict == "error":
+                    if self.verbose:
+                        sub_lines = raw_preview.splitlines() or [""]
+                        first, rest = sub_lines[0], sub_lines[1:]
+                        print(f"{indent}         raw: {first}", flush=True)
+                        for sub in rest:
+                            print(f"{indent}              {sub}", flush=True)
+                    else:
+                        print(f"{indent}         raw: {raw_preview[:200]}", flush=True)
+                # Show reason on a second line if present (and not already shown as error)
+                if reason and not (error and verdict == "error"):
+                    if self.verbose:
+                        for sub in reason.splitlines() or [""]:
+                            print(f"{indent}         {sub}", flush=True)
+                    else:
+                        reason_display = reason[:300] + "..." if len(reason) > 300 else reason
+                        print(f"{indent}         {reason_display}", flush=True)
+
+        elif event_type == "route":
+            if not self.quiet:
+                to_state = event.get("to", "")
+                print(
+                    f"{indent}       {colorize('->', '2')} {colorize(to_state, '1')}",
+                    flush=True,
+                )
+
+        elif event_type == "max_iterations_summary":
+            if not self.quiet:
+                summary_state = event.get("summary_state", "")
+                iters = event.get("iterations", 0)
+                msg = (
+                    f"iteration cap reached ({iters}); running summary state '{summary_state}'"
+                )
+                print(f"{indent}       {colorize(msg, '38;5;208')}", flush=True)
+
+        elif event_type == "stall_detected":
+            if not self.quiet:
+                state = event.get("state", "")
+                exit_code = event.get("exit_code", 0)
+                verdict = event.get("verdict", "")
+                consecutive = event.get("consecutive", 0)
+                action = event.get("action", "abort")
+                triple = f"(exit_code={exit_code}, verdict='{verdict}')"
+                msg = (
+                    f"stall_detected: state '{state}' produced {triple} "
+                    f"for {consecutive} consecutive iterations -> {action}"
+                )
+                print(f"{indent}       {colorize(msg, '38;5;208')}", flush=True)
+
+
 def get_builtin_loops_dir() -> Path:
     """Get the path to built-in loops bundled with the plugin."""
     return Path(__file__).parent.parent.parent / "loops"
@@ -719,330 +1054,33 @@ def run_foreground(
         sys.stderr = _TeeWriter(_orig_stderr, _log_fh)  # type: ignore[assignment]
 
     try:
-        quiet = getattr(args, "quiet", False)
-        verbose = getattr(args, "verbose", False)
-        facets: DiagramFacets | None = resolve_facets(args)
-        show_diagrams = facets is not None
-        clear_screen = getattr(args, "clear", False)
-        if not quiet:
+        # Create the state feed renderer — encapsulates display state and event handling.
+        renderer = StateFeedRenderer(
+            fsm,
+            args,
+            highlight_color=highlight_color,
+            edge_label_colors=edge_label_colors,
+            badges=badges,
+            loops_dir=getattr(executor, "loops_dir", Path(".")),
+        )
+        if not renderer.quiet:
             print(f"Running loop: {colorize(fsm.name, '1')}")
             print(f"Max iterations: {colorize(str(fsm.max_iterations), '2')}")
             print()
 
-        current_iteration = [0]  # Use list to allow mutation in closure
-        last_state_at_depth: dict[int, str] = {}  # Track last known state per nesting depth
-        prev_state_at_depth: dict[int, str] = {}  # Track immediately-prior state per depth
-        child_fsm_stack: dict[int, FSMLoop | None] = {}  # Active child FSM per depth
-        pinned_height = [0]  # Pinned-pane height; non-zero when alt-screen mode active
-        loop_start_time = time.monotonic()
-
-        in_pinned_mode = show_diagrams and clear_screen and sys.stdout.isatty()
-
-        def _elapsed_str() -> str:
-            elapsed_int = int(time.monotonic() - loop_start_time)
-            if elapsed_int < 60:
-                return f"{elapsed_int}s"
-            return f"{elapsed_int // 60}m {elapsed_int % 60}s"
-
-        def _redraw_pinned(state0: str) -> None:
-            """Redraw the pinned pane in place using the current depth-0 state."""
-            assert facets is not None
-            iter_line = (
-                f"[{current_iteration[0]}/{fsm.max_iterations}] "
-                f"{colorize(state0, '1')} ({colorize(_elapsed_str(), '2')})"
-            )
-            pinned_height[0] = _render_pinned_pane(
-                fsm,
-                state0,
-                child_fsm_stack,
-                last_state_at_depth,
-                iter_line,
-                facets=facets,
-                highlight_color=highlight_color,
-                edge_label_colors=edge_label_colors,
-                badges=badges,
-                prev_state_at_depth=prev_state_at_depth,
-            )
-
-        def display_progress(event: dict) -> None:
-            """Display progress for events."""
-            global _needs_redraw
-            # SIGWINCH redraw: terminal was resized; re-render the pinned pane
-            # before processing the next event so the layout matches the new size.
-            if _needs_redraw and in_pinned_mode and 0 in last_state_at_depth:
-                _redraw_pinned(last_state_at_depth[0])
-                _needs_redraw = False
-
-            event_type = event.get("event")
-            depth = event.get("depth", 0)
-            indent = "  " * depth
-            tw = terminal_width()
-            max_line = tw - 8 - len(indent)
-
-            if event_type == "state_enter":
-                current_iteration[0] = event.get("iteration", 0)
-                state = event.get("state", "")
-                elapsed_str = _elapsed_str() if not quiet else ""
-                # Non-pinned --clear path keeps the bare full-screen clear.
-                if clear_screen and sys.stdout.isatty() and depth == 0 and not in_pinned_mode:
-                    print("\033[2J\033[H", end="", flush=True)
-                # Update last-known state at this depth and clear stale deeper entries.
-                # Before overwriting, snapshot the prior value into prev_state_at_depth so
-                # the neighborhood renderer can mark "which pred we just came from".
-                old_state = last_state_at_depth.get(depth)
-                if old_state is not None and old_state != state:
-                    prev_state_at_depth[depth] = old_state
-                last_state_at_depth[depth] = state
-                for k in [k for k in last_state_at_depth if k > depth]:
-                    del last_state_at_depth[k]
-                    prev_state_at_depth.pop(k, None)
-                # Load child FSM for the current state at this depth
-                parent_at_depth = fsm if depth == 0 else child_fsm_stack.get(depth - 1)
-                if parent_at_depth is not None and state in parent_at_depth.states:
-                    fsm_state = parent_at_depth.states[state]
-                    if fsm_state.loop is not None:
-                        try:
-                            child_fsm_stack[depth] = load_loop(
-                                fsm_state.loop, executor.loops_dir, Logger()
-                            )
-                        except (FileNotFoundError, ValueError):
-                            pass  # leave child_fsm_stack[depth] unchanged on failure
-                    else:
-                        child_fsm_stack[depth] = None
-                else:
-                    child_fsm_stack[depth] = None
-                # Clear stale deeper child FSM entries
-                for k in [k for k in child_fsm_stack if k > depth]:
-                    del child_fsm_stack[k]
-
-                if in_pinned_mode:
-                    # Pinned-pane path: header + diagram + state line live in the
-                    # pinned region; action output streams below in the scroll region.
-                    state0 = last_state_at_depth.get(0)
-                    if state0 is None:
-                        state0 = state
-                    _redraw_pinned(state0)
-                elif show_diagrams:
-                    from little_loops.cli.loop.layout import (
-                        _collect_edges,
-                        _filter_main_path_graph,
-                        _render_fsm_diagram,
-                    )
-
-                    assert facets is not None
-
-                    # Find deepest active loop \u2014 show only that one.
-                    active_fsm_diag = fsm
-                    active_highlight = last_state_at_depth.get(0)
-                    active_depth_diag = 0
-                    for d in sorted(child_fsm_stack.keys()):
-                        child_at_d = child_fsm_stack[d]
-                        if child_at_d is not None and (d + 1) in last_state_at_depth:
-                            active_fsm_diag = child_at_d
-                            active_highlight = last_state_at_depth.get(d + 1)
-                            active_depth_diag = d + 1
-
-                    # Fall back to full scope when the highlighted state is hidden in main scope.
-                    active_scope = facets.scope
-                    fallback_note: str | None = None
-                    if active_scope == "main" and active_highlight is not None:
-                        _filtered_edges, active_reachable = _filter_main_path_graph(
-                            active_fsm_diag, _collect_edges(active_fsm_diag)
-                        )
-                        if active_highlight not in active_reachable:
-                            active_scope = "full"
-                            fallback_note = (
-                                f"(showing full diagram: active state "
-                                f"{active_highlight!r} is off the main path)"
-                            )
-                    diagram = _render_fsm_diagram(
-                        active_fsm_diag,
-                        highlight_state=active_highlight,
-                        highlight_color=highlight_color,
-                        edge_label_colors=edge_label_colors,
-                        badges=badges,
-                        mode=active_scope,
-                        suppress_labels=not facets.edge_labels,
-                        title_only=facets.state_detail == "title",
-                    )
-                    # Header: breadcrumb shows immediate parent when inside a sub-loop.
-                    if active_depth_diag > 0:
-                        imm_parent_name = (
-                            fsm.name
-                            if active_depth_diag == 1
-                            else (child_fsm_stack.get(active_depth_diag - 2) or fsm).name
-                        )
-                        imm_parent_state = last_state_at_depth.get(active_depth_diag - 1, "")
-                        header_text = f"== loop: {active_fsm_diag.name} ({imm_parent_name} \u203a {imm_parent_state}) "
-                    else:
-                        header_text = f"== loop: {fsm.name} "
-                    header = header_text + "=" * max(0, tw - len(header_text))
-                    print(header, flush=True)
-                    if fallback_note is not None:
-                        print(fallback_note, flush=True)
-                    print(diagram, flush=True)
-                # In pinned mode the iteration line is part of the pinned pane;
-                # only print it inline for non-pinned paths.
-                if not quiet and not in_pinned_mode:
-                    print(
-                        f"{indent}[{current_iteration[0]}/{fsm.max_iterations}] {colorize(state, '1')} ({colorize(elapsed_str, '2')})",
-                        end="",
-                        flush=True,
-                    )
-
-            elif event_type == "action_start":
-                if not quiet:
-                    action = event.get("action", "")
-                    is_prompt = event.get("is_prompt", False)
-                    if is_prompt:
-                        lines = action.strip().splitlines()
-                        line_count = len(lines)
-                        prompt_badge = "\u2726"  # ✦
-                        if verbose:
-                            print(
-                                f"{indent} -> {colorize(prompt_badge, '2')} {colorize(f'({line_count} lines)', '2')}",
-                                flush=True,
-                            )
-                            for line in lines:
-                                print(f"{indent}       {line}", flush=True)
-                        else:
-                            first_line = lines[0] if lines else ""
-                            preview = (
-                                first_line[:60] + "..." if len(first_line) > 60 else first_line
-                            )
-                            print(
-                                f"{indent} -> {colorize(prompt_badge, '2')} {colorize(preview, '2')}",
-                                flush=True,
-                            )
-                    else:
-                        if verbose:
-                            action_display = action
-                        else:
-                            action_display = (
-                                action[:max_line] + "..." if len(action) > max_line else action
-                            )
-                        print(f"{indent} -> {colorize(action_display, '2')}", flush=True)
-
-            elif event_type == "action_output":
-                if not quiet:
-                    line = event.get("line", "")
-                    if line.strip():
-                        print(f"{indent}       {line}", flush=True)
-
-            elif event_type == "action_complete":
-                if not quiet:
-                    duration_ms = event.get("duration_ms", 0)
-                    exit_code = event.get("exit_code", 0)
-                    duration_sec = duration_ms / 1000
-                    if duration_sec < 60:
-                        duration_str = f"{duration_sec:.1f}s"
-                    else:
-                        minutes = int(duration_sec // 60)
-                        seconds = duration_sec % 60
-                        duration_str = f"{minutes}m {seconds:.0f}s"
-                    parts = [f"{indent}       ({colorize(duration_str, '2')})"]
-                    if exit_code == 124:
-                        parts.append(colorize("timed out", "38;5;208"))
-                    elif exit_code != 0:
-                        parts.append(colorize(f"exit: {exit_code}", "38;5;208"))
-                    print("  ".join(parts), flush=True)
-
-            elif event_type == "evaluate":
-                if not quiet:
-                    verdict = event.get("verdict", "")
-                    confidence = event.get("confidence")
-                    reason = event.get("reason", "")
-                    error = event.get("error", "")
-                    _elc = edge_label_colors or {}
-                    if verdict in ("yes", "target", "progress"):
-                        _vc = _elc.get("yes", "32")
-                        symbol = colorize("\u2713", _vc)
-                        verdict_colored = colorize(verdict, _vc)
-                    elif verdict == "no":
-                        _vc = _elc.get("no", "38;5;208")
-                        symbol = colorize("\u2717", _vc)
-                        verdict_colored = colorize(verdict, _vc)
-                    elif verdict == "error":
-                        _vc = _elc.get("error", "38;5;208")
-                        symbol = colorize("\u2717", _vc)
-                        verdict_colored = colorize(verdict, _vc)
-                    else:
-                        symbol = colorize("\u2717", "38;5;208")
-                        verdict_colored = colorize(verdict, "2")
-                    # Build verdict line
-                    if error and verdict == "error":
-                        verdict_line = f"{symbol} {verdict_colored}: {error}"
-                    elif confidence is not None:
-                        verdict_line = (
-                            f"{symbol} {verdict_colored} {colorize(f'({confidence:.2f})', '2')}"
-                        )
-                    else:
-                        verdict_line = f"{symbol} {verdict_colored}"
-                    print(f"{indent}       {verdict_line}", flush=True)
-                    # Show raw_preview for error verdicts to aid diagnosis
-                    raw_preview = event.get("raw_preview", "")
-                    if raw_preview and verdict == "error":
-                        if verbose:
-                            sub_lines = raw_preview.splitlines() or [""]
-                            first, rest = sub_lines[0], sub_lines[1:]
-                            print(f"{indent}         raw: {first}", flush=True)
-                            for sub in rest:
-                                print(f"{indent}              {sub}", flush=True)
-                        else:
-                            print(f"{indent}         raw: {raw_preview[:200]}", flush=True)
-                    # Show reason on a second line if present (and not already shown as error)
-                    if reason and not (error and verdict == "error"):
-                        if verbose:
-                            for sub in reason.splitlines() or [""]:
-                                print(f"{indent}         {sub}", flush=True)
-                        else:
-                            reason_display = reason[:300] + "..." if len(reason) > 300 else reason
-                            print(f"{indent}         {reason_display}", flush=True)
-
-            elif event_type == "route":
-                if not quiet:
-                    to_state = event.get("to", "")
-                    print(
-                        f"{indent}       {colorize('->', '2')} {colorize(to_state, '1')}",
-                        flush=True,
-                    )
-
-            elif event_type == "max_iterations_summary":
-                if not quiet:
-                    summary_state = event.get("summary_state", "")
-                    iters = event.get("iterations", 0)
-                    msg = (
-                        f"iteration cap reached ({iters}); running summary state '{summary_state}'"
-                    )
-                    print(f"{indent}       {colorize(msg, '38;5;208')}", flush=True)
-
-            elif event_type == "stall_detected":
-                if not quiet:
-                    state = event.get("state", "")
-                    exit_code = event.get("exit_code", 0)
-                    verdict = event.get("verdict", "")
-                    consecutive = event.get("consecutive", 0)
-                    action = event.get("action", "abort")
-                    triple = f"(exit_code={exit_code}, verdict='{verdict}')"
-                    msg = (
-                        f"stall_detected: state '{state}' produced {triple} "
-                        f"for {consecutive} consecutive iterations -> {action}"
-                    )
-                    print(f"{indent}       {colorize(msg, '38;5;208')}", flush=True)
-
         # Wire progress display via the EventBus on PersistentExecutor
-        if not quiet or show_diagrams:
+        if not renderer.quiet or renderer.show_diagrams:
             if hasattr(executor, "event_bus"):
-                executor.event_bus.register(display_progress)
+                executor.event_bus.register(renderer.handle_event)
             else:
-                executor._on_event = display_progress
+                executor._on_event = renderer.handle_event
 
         # Wire follow mode — streams history-formatted events independently of quiet
         if getattr(args, "follow", False):
             from little_loops.cli.loop.info import _format_history_event
 
             tw = terminal_width()
-            _verbose = verbose
+            _verbose = renderer.verbose
 
             def _follow_callback(event: dict[str, Any]) -> None:
                 line = _format_history_event(event, verbose=_verbose, width=tw)
@@ -1064,7 +1102,7 @@ def run_foreground(
         # Enter alternate screen buffer when showing diagrams with clear to prevent
         # scrollback contamination from diagrams taller than the terminal height.
         global _using_alt_screen
-        if show_diagrams and clear_screen and sys.stdout.isatty():
+        if renderer.show_diagrams and renderer.clear_screen and sys.stdout.isatty():
             _using_alt_screen = True
             print("\033[?1049h\033[H", end="", flush=True)
             _install_sigwinch_handler()
@@ -1089,7 +1127,7 @@ def run_foreground(
                 _using_alt_screen = False
             _restore_sigwinch_handler()
 
-        if not quiet:
+        if not renderer.quiet:
             print()
             duration_sec = result.duration_ms / 1000
             if duration_sec < 60:
