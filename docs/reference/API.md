@@ -160,6 +160,19 @@ Controls ANSI color output across all `ll-*` CLI tools.
 - Unspecified `cli.colors` sub-keys retain their defaults.
 - Color values are raw SGR parameter strings (e.g. `"32"`, `"38;5;208"`, `"1;34"`).
 
+#### DesignTokensConfig
+
+Controls design system token injection into FSM loops. See [CONFIGURATION.md → `design_tokens`](CONFIGURATION.md#design_tokens) for setup guidance.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | `bool` | `True` | Enable design-token context injection into FSM loops. |
+| `path` | `str` | `".ll/design-tokens"` | Directory containing token definition files. |
+| `primitives_file` | `str` | `"primitives.json"` | Filename for primitive (raw) token values within `path`. |
+| `semantic_file` | `str` | `"semantic.json"` | Filename for semantic (aliased) token values within `path`. |
+| `themes_dir` | `str` | `"themes"` | Subdirectory of `path` containing per-theme override files. |
+| `active_theme` | `str` | `"light"` | Name of the active theme; must match a file in `themes_dir`. |
+
 #### Methods
 
 ##### get_issue_dir

@@ -713,6 +713,8 @@ flowchart LR
     PAC --> PAR_CLI
 ```
 
+Design tokens (`DesignTokensConfig`) serve as a cross-cutting input to artifact-generating loops: `ll-loop run` and `ll-loop resume` pre-inject the resolved token set into the FSM initial context before the first state is entered.
+
 ---
 
 ## Issue Processing Lifecycle

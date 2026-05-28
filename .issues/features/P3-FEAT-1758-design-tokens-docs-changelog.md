@@ -1,12 +1,13 @@
 ---
 id: FEAT-1758
 title: Design tokens documentation, README, and changelog
-status: open
+status: done
 priority: P3
 type: FEAT
 parent: FEAT-1750
 discovered_date: 2026-05-27
 discovered_by: issue-size-review
+completed_at: 2026-05-28 00:00:43+00:00
 decision_needed: false
 labels:
 - feat
@@ -17,6 +18,13 @@ relates_to:
 - FEAT-1747
 - FEAT-1748
 - EPIC-1751
+confidence_score: 100
+outcome_confidence: 78
+testable: false
+score_complexity: 18
+score_test_coverage: 10
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-1758: Design tokens documentation, README, and changelog
@@ -98,6 +106,32 @@ Doc-wiring test following `test_enh1734_doc_wiring.py` pattern. Assert:
 - `CHANGELOG.md` — entry covering all four FEAT-1746 children
 - `scripts/tests/test_feat1758_docs_wiring.py` — new doc-wiring test (create)
 
+## Integration Map
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+This is a docs-only issue — no implementation files require changes. The following files have existing `design_tokens` references that become cross-linkable once `CONFIGURATION.md#design_tokens` exists; they are **not required** for acceptance criteria but are optional follow-ups:
+
+- `docs/guides/LOOPS_GUIDE.md` — 6 state-type context-variable tables reference `design_tokens_context` and `design_tokens.enabled`; no link to `CONFIGURATION.md#design_tokens` currently [Agent 1]
+- `docs/reference/COMMANDS.md` — `design-tokens` listed as a valid `/ll:configure` area slug without a link to the new config section [Agent 2]
+- `skills/configure/SKILL.md` — `design-tokens` row in the Area table without a link to the new config section [Agent 2]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_feat1758_docs_wiring.py` — new test (already in Files to Modify); follow `test_enh1734_doc_wiring.py` exactly: one `Path` constant per target file, one class per file, one assertion per method, no fixtures, each method calls `.read_text()` independently
+- **CHANGELOG assertion gap**: Acceptance criterion 6 requires a CHANGELOG entry but the 5 proposed assertions exclude CHANGELOG. Per codebase convention, no `test_*_doc_wiring.py` asserts CHANGELOG content — this gap is intentional; CHANGELOG correctness is verified during release [Agent 3]
+- **Per-field coverage (optional)**: Proposed test checks section headers only; the ENH-1734 pattern supports per-field test methods (`test_enabled_field_present`, etc.). Adding per-field assertions for all 6 `DesignTokensConfig` fields would strengthen regression protection [Agent 3]
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_Optional touchpoints identified by wiring analysis — not required for acceptance criteria:_
+
+- **Optional**: In `docs/guides/LOOPS_GUIDE.md`, update the 6 `design_tokens_context` context-variable table rows to cross-reference `CONFIGURATION.md#design_tokens` — helps users connect the injected context variable to its underlying config settings.
+
 ## Key Anchors
 
 - `docs/reference/CONFIGURATION.md:154–157` — Full Configuration Example JSON (`"documents"` block; `"loops"` block starts at line 159; insert `design_tokens` between lines 157 and 159)
@@ -108,7 +142,7 @@ Doc-wiring test following `test_enh1734_doc_wiring.py` pattern. Assert:
 - `docs/ARCHITECTURE.md:714` — end of `## Configuration Flow` mermaid diagram; insert the design-tokens cross-cutting note here, before the `---` separator at line 716 (no existing "artifact-loops paragraph"; this is the nearest prose anchor for a cross-cutting config note)
 - `docs/ARCHITECTURE.md:189` — `│   ├── design-tokens/` already appears in the directory tree (no change needed there)
 - `README.md:163–168` — `## What's in the box` bullet list; add design tokens near the `**Configuration system**` bullet (line 168)
-- `CHANGELOG.md:14` — `## [Unreleased]` section exists but must NOT be used; create new `## [1.112.0] - 2026-05-27` section above `## [1.111.0]` (current latest); follow format `### Added` / `- **\`feature\`** — description. (FEAT-NNNN)`
+- `CHANGELOG.md:8` — `## [Unreleased]` section (at line 8) exists but must NOT be used; `## [1.111.0]` is at line 15 (current latest); create new `## [1.112.0] - 2026-05-27` section between lines 14–15 (blank line before `[1.111.0]`); follow format `### Added` / `- **\`feature\`** — description. (FEAT-NNNN)`
 - `DesignTokensConfig` fields (confirmed from `scripts/little_loops/config/features.py:268–289`):
   `enabled` (bool, default `True`), `path` (str, `".ll/design-tokens"`), `primitives_file` (str, `"primitives.json"`), `semantic_file` (str, `"semantic.json"`), `themes_dir` (str, `"themes"`), `active_theme` (str, `"light"`)
 
@@ -158,6 +192,9 @@ Each target file gets its own `Path` constant and class; each assertion is a sin
 - Changelog entry should mention FEAT-1756 and FEAT-1757 outcomes; best written last
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-27T23:58:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/112e2a30-c9a6-423b-a8f6-6378ccb07daf.jsonl`
+- `/ll:confidence-check` - 2026-05-27T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b11ecacf-9e2d-4d24-af2b-ff630ba1eb3d.jsonl`
+- `/ll:wire-issue` - 2026-05-27T23:53:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7649778c-9578-4167-b94a-9d44421b6bef.jsonl`
 - `/ll:refine-issue` - 2026-05-27T23:48:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3eb92b60-b471-4c74-afcb-29035af4b912.jsonl`
 - `/ll:issue-size-review` - 2026-05-27T23:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 

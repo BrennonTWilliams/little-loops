@@ -156,6 +156,15 @@ For interactive editing, use `/ll:configure`.
     "categories": {}
   },
 
+  "design_tokens": {
+    "enabled": true,
+    "path": ".ll/design-tokens",
+    "primitives_file": "primitives.json",
+    "semantic_file": "semantic.json",
+    "themes_dir": "themes",
+    "active_theme": "light"
+  },
+
   "loops": {
     "loops_dir": ".loops"
   },
@@ -475,6 +484,34 @@ To enable document tracking, set `documents.enabled: true` and define categories
 ```
 
 Each category requires a `files` array of relative paths. The optional `description` field documents what the category covers.
+
+### `design_tokens`
+
+Design system token settings for artifact-generating loops. When enabled, `ll-loop run` and `ll-loop resume` pre-inject the resolved token set into the FSM initial context before the first state is entered.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | `bool` | `true` | Enable design-token context injection into FSM loops. |
+| `path` | `str` | `".ll/design-tokens"` | Directory containing token definition files. |
+| `primitives_file` | `str` | `"primitives.json"` | Filename for primitive (raw) token values within `path`. |
+| `semantic_file` | `str` | `"semantic.json"` | Filename for semantic (aliased) token values within `path`. |
+| `themes_dir` | `str` | `"themes"` | Subdirectory of `path` containing per-theme override files. |
+| `active_theme` | `str` | `"light"` | Name of the active theme; must match a file in `themes_dir`. |
+
+```json
+{
+  "design_tokens": {
+    "enabled": true,
+    "path": ".ll/design-tokens",
+    "primitives_file": "primitives.json",
+    "semantic_file": "semantic.json",
+    "themes_dir": "themes",
+    "active_theme": "light"
+  }
+}
+```
+
+Run `/ll:configure design-tokens` to interactively set up the design-tokens directory and initialize the default WCAG AA palette template.
 
 ### `loops`
 
