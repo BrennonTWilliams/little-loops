@@ -6,6 +6,7 @@ status: open
 captured_at: "2026-05-27T05:02:23Z"
 discovered_date: "2026-05-27"
 discovered_by: capture-issue
+decision_needed: false
 ---
 
 # FEAT-1737: Accept EPIC Issues as Sprint Arguments in Skills and CLI Commands
@@ -79,6 +80,84 @@ The runner resolves the child issues, orders them by dependency/priority, and pr
 
 6. **Tests** — unit test `load_or_resolve` (file path, EPIC ID, not-found cases); integration test `ll-sprint run EPIC-NNN` path; test `--save` flag materializes YAML correctly
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. **Resume state normalization** — in `_cmd_sprint_run()` (run.py), when creating `SprintState`, use `sprint.name` (the resolved Sprint object's name, e.g. `"epic-1234"`) rather than raw `args.sprint` (e.g. `"EPIC-1234"`). This ensures the normalized lowercase `epic-{id}` is stored in `.sprint-state.json`, making `--resume` work consistently regardless of user-input casing. The comparison `loaded_state.sprint_name == sprint.name` (not `args.sprint`) must be used in the resume-check block [Agent 2 finding]
+8. **Add `save=False` to all `argparse.Namespace(...)` constructions for `_cmd_sprint_run`** — approximately 9 call sites in `test_sprint.py` and 15+ in `test_sprint_integration.py`; without this, tests will raise `AttributeError` when `run.py` accesses `args.save` [Agent 3 finding]
+9. **Update `_parse_sprint_args()` in `test_cli.py:TestSprintArgumentParsing`** — this helper is a local duplicate of the run parser; add `run.add_argument("--save", action="store_true")` to match the updated `main_sprint()` [Agent 2 finding]
+10. **Add `"epics"` category to test fixtures** — `sprint_project` in `test_sprint_integration.py` and both `sprint_project` fixtures in `test_cli.py` need `"epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"}` in config and `(issues_dir / "epics").mkdir()` [Agent 2 + 3 finding]
+11. **Update `docs/reference/API.md`** — add `load_or_resolve()` to SprintManager methods table [Agent 2 finding]
+12. **Update `docs/reference/CLI.md`** — update positional description and add `--save` flag row [Agent 2 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Step 1 — `load_or_resolve()` implementation specifics:**
+- Add after `SprintManager.load()` in `scripts/little_loops/sprint.py`
+- EPIC file: `self._find_issue_path(epic_id)` — already searches `epics/` via `config.issue_categories` glob; returns `Path | None`
+- Forward lookup: `IssueParser(self.config).parse_file(epic_path)` → `epic_info.relates_to` (list of child IDs as strings)
+- Backward lookup: `find_issues(self.config, status_filter=_ACTIVE_STATUSES)` → filter where `issue.parent == epic_id`
+- Active statuses: import `_ACTIVE_STATUSES` from `scripts/little_loops/cli/issues/clusters.py` or inline `frozenset({"open", "in_progress", "blocked"})`
+- `DependencyGraph.from_issues()` only uses `blocked_by`/`blocks`/`depends_on` edges for ordering — `relates_to` is NOT wired into wave ordering; this is correct behavior
+
+**Step 2 — Exact subcommand call sites:**
+- `_cmd_sprint_run()` in `scripts/little_loops/cli/sprint/run.py`
+- `_cmd_sprint_show()` in `scripts/little_loops/cli/sprint/show.py`
+- `_cmd_sprint_analyze()` in `scripts/little_loops/cli/sprint/manage.py`
+- `_cmd_sprint_edit()` in `scripts/little_loops/cli/sprint/edit.py`
+- `_cmd_sprint_delete()` uses `manager.delete(args.sprint)` (not `manager.load()`) — no change needed there
+
+**Step 4 — `--save` flag wiring:**
+- Add inline in `run_parser` block in `scripts/little_loops/cli/sprint/__init__.py`: `run_parser.add_argument("--save", action="store_true", help="...")`
+- In `_cmd_sprint_run()`, after `load_or_resolve()` detects an EPIC and builds the ephemeral Sprint, call `sprint.save(manager.sprints_dir)` before executing if `args.save` is set
+
+**Step 5 — Skills inheritance scope:**
+- `create-sprint.md` and `review-sprint.md` route through `SprintManager` via `main_sprint()` — inherit automatically ✓
+- `confidence-check/SKILL.md` and `issue-size-review/SKILL.md` read sprint YAML via shell — do NOT inherit EPIC resolution; out of scope for this issue
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/sprint.py` — Add `SprintManager.load_or_resolve()` after existing `SprintManager.load()`; uses `_find_issue_path()` for EPIC file lookup (already searches `epics/` via `config.issue_categories` glob)
+- `scripts/little_loops/cli/sprint/run.py` — Change `manager.load(args.sprint)` → `manager.load_or_resolve(args.sprint)` in `_cmd_sprint_run()`; add `--save` handling after resolution
+- `scripts/little_loops/cli/sprint/show.py` — Change `manager.load(args.sprint)` → `manager.load_or_resolve(args.sprint)` in `_cmd_sprint_show()`
+- `scripts/little_loops/cli/sprint/manage.py` — Change `manager.load(args.sprint)` → `manager.load_or_resolve(args.sprint)` in `_cmd_sprint_analyze()`
+- `scripts/little_loops/cli/sprint/edit.py` — Change `manager.load(args.sprint)` → `manager.load_or_resolve(args.sprint)` in `_cmd_sprint_edit()`
+- `scripts/little_loops/cli/sprint/__init__.py` — Add `--save` flag inline in `run_parser` block (follow `action="store_true"` pattern used by `--prune`, `--revalidate`)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/deps.py` — calls `Sprint.load()` directly (bypasses `SprintManager`); EPIC support there is out of scope for this issue
+- `skills/confidence-check/SKILL.md` — reads sprint YAML via shell; does NOT inherit Python-path EPIC resolution (out of scope)
+- `skills/issue-size-review/SKILL.md` — same; shell-level YAML read, no automatic inheritance (out of scope)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/sprint/_helpers.py` — sprint utility functions used by subcommands; imports sprint-related classes alongside the primary files [Agent 1 finding]
+- `scripts/little_loops/cli/__init__.py` — re-exports `main_sprint` in `__all__`; indirect registration point for the sprint entry point [Agent 1 finding]
+
+### Similar Patterns to Follow
+- `scripts/little_loops/issue_parser.py:find_issues()` — bulk scan returning `IssueInfo` with `parent` and `relates_to` populated; filter `issue.parent == "EPIC-NNN"` for backward scan
+- `scripts/little_loops/cli/issues/clusters.py:_ACTIVE_STATUSES` — canonical `frozenset({"open", "in_progress", "blocked"})` to import for active-status filtering
+- `scripts/little_loops/dependency_graph.py:DependencyGraph.from_issues()` + `.get_execution_waves()` — existing ordering logic; takes `list[IssueInfo]`; **does NOT use `relates_to`** (only `blocked_by`/`blocks`/`depends_on` edges contribute to wave order)
+
+### Tests
+- `scripts/tests/test_sprint.py:TestSprintManager` — add unit tests for `load_or_resolve()` (file path, EPIC ID, not-found, empty children)
+- `scripts/tests/test_sprint_integration.py:sprint_project` — needs `"epics"` category added to config dict and `(issues_dir / "epics").mkdir()` for EPIC integration tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli.py:TestSprintCLIEntryPoint` — end-to-end tests for sprint CLI via `main_sprint()` + `sys.argv`; `_parse_sprint_args()` helper (in `TestSprintArgumentParsing`) is a local duplicate of the run parser and must have `--save` added alongside `run_parser` or new parser tests for `--save` will fail; both `sprint_project` fixtures (in `TestSprintCLIEntryPoint` and `TestMainSprintAdditionalCoverage`) need `"epics"` category + `(issues_dir / "epics").mkdir()` [Agent 1 + Agent 2 finding]
+- **HIGH-BREAK RISK**: All `argparse.Namespace(...)` calls that construct args for `_cmd_sprint_run` in `test_sprint.py` (9 tests: `TestSprintErrorHandling`, `TestSprintDependencyAnalysis`, `TestSprintOnlyFlag`, `TestSprintWaveCleanStart`) and `test_sprint_integration.py` (15+ tests: `TestMultiWaveExecution`, `TestErrorRecovery`, `TestDependencyHandling`, `TestEdgeCases`) must add `save=False` — without it, the function will raise `AttributeError` when `run.py` accesses `args.save` [Agent 3 finding]
+- New tests to write for `load_or_resolve()` (follow `TestSprintManager.test_load_sprint` / `test_load_nonexistent` pattern): `test_load_or_resolve_sprint_name`, `test_load_or_resolve_epic_id_forward_lookup`, `test_load_or_resolve_epic_id_backward_lookup`, `test_load_or_resolve_epic_id_union_dedup`, `test_load_or_resolve_epic_not_found`, `test_load_or_resolve_epic_no_active_children`, `test_load_or_resolve_filters_inactive_statuses`, `test_save_flag_materializes_yaml` [Agent 3 finding]
+
+### Documentation
+- `docs/guides/SPRINT_GUIDE.md` — document EPIC-ID support in the sprint argument description; also add `--save` to the flags table in `## Running a Sprint`; add a note to `## Handling Interruptions (Resume)` about `epic-{id}` state naming
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — add `load_or_resolve(arg)` → `Sprint | None` row to the `### SprintManager` methods table; note `--save` under the `### main_sprint` sub-commands description [Agent 2 finding]
+- `docs/reference/CLI.md` — update `sprint` positional argument description from "Sprint name" to "Sprint name or EPIC ID"; add `--save` row to the flags table for `#### ll-sprint run` [Agent 2 finding]
+
 ## API/Interface
 
 ```python
@@ -121,6 +200,8 @@ ll-sprint run my-sprint             # existing sprint YAML — unchanged behavio
 **Open** | Created: 2026-05-27 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-28T00:05:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70d1a28b-6e5d-424c-a7ee-0f4c6c686c6e.jsonl`
+- `/ll:refine-issue` - 2026-05-27T23:56:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05bd8488-8487-466c-b194-76003660b362.jsonl`
 - `rewrite` - 2026-05-27 - Redesigned to Option C (`SprintManager.load_or_resolve()` + union resolution + `--save` flag) after exploring Epic→Sprint mapping approaches
 - `/ll:format-issue` - 2026-05-27T05:04:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c37f932-1d34-4311-ac57-0faf89f85130.jsonl`
 - `/ll:capture-issue` - 2026-05-27T05:02:23Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c91edf22-5820-4f59-9f8d-4ab2ca66f171.jsonl`

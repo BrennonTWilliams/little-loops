@@ -377,6 +377,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `adopt-third-party-api` | End-to-end API adoption pipeline — scrapes a vendor docs URL via `/ll:scrape-docs`, enumerates up to 7 significant endpoints/features, proves each via `ready-to-implement-gate`, and writes a citation-linked integration playbook to `docs/integration-<domain>.md`. Partial coverage (some targets refuted or exhausted) still produces a playbook with a top warning block listing unverified sections. |
 | `ready-to-implement-gate` | Sub-loop primitive — given a list of external-API targets, proves each against the Learning-Test Registry via `/ll:explore-api`; routes `done` when all targets are proven, `blocked` when any are refuted or exhausted. Used as a child by `adopt-third-party-api` and `assumption-firewall`, but runnable standalone to gate any pre-implementation proof step. |
 | `assumption-firewall` | Issue gating loop — extracts up to 7 external-API assumptions from an issue file via LLM, delegates proof of each assumption to `ready-to-implement-gate`, and routes `done` (all proven), `blocked` (any refuted), or `no_external_deps` (no assumptions found). Use before starting implementation on issues that touch unfamiliar third-party APIs. |
+| `integrate-sdk` | Proof-driven SDK integration — branches on existing usage (code branch) vs. greenfield (docs branch), enumerates up to 7 required API surfaces, proves each via `ready-to-implement-gate`, then scaffolds integration code with `# Verified: .ll/learning-tests/<slug>.md` citations. Blocks with a structured diagnosis if any surface is refuted or citations don't resolve to proven records. |
 
 Run:
 ```bash
@@ -390,6 +391,10 @@ ll-loop run assumption-firewall --context issue_file=".issues/features/P2-FEAT-1
 # Prove a specific list of targets standalone
 ll-loop run ready-to-implement-gate --context targets="stripe.PaymentIntent stripe.Webhook"
 # Iterates targets → proves each via /ll:explore-api → routes done or blocked
+
+# Scaffold a proof-backed SDK integration (auto-detects existing usage vs. greenfield)
+ll-loop run integrate-sdk --context target="anthropic" --context goal="streaming completions with tool use"
+# Scans for existing imports → enumerates surfaces → proves each → scaffolds src/integrations/anthropic.py
 ```
 
 **Research & Knowledge**
