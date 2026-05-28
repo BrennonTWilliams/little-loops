@@ -40,7 +40,7 @@ ll-loop monitor <loop_name> --no-clear   # stream without clearing screen
 
 Background loops can only be observed by manually reading `.loops/.running/<loop>.state.json`, tailing a log file, or running `ll-loop status <loop>` (which gives a one-shot snapshot, not realtime updates).
 
-## Implementation Notes
+## Proposed Solution
 
 - The display/rendering pipeline already exists in the foreground run path (likely `_display.py` or similar). Extract it behind an interface that accepts a state feed rather than being coupled to the running loop subprocess.
 - State feed abstraction: a generator/iterator that yields `LoopState` snapshots — foreground runs push states directly; monitor mode polls `.state.json` with `inotify`/`FSEvents`/fallback polling (100ms interval).
@@ -49,7 +49,7 @@ Background loops can only be observed by manually reading `.loops/.running/<loop
 - PID file location: `.loops/.running/<loop_name>.pid` (already written by `run_background()`).
 - State file location: `.loops/.running/<loop_name>.state.json` (already written on each state transition).
 
-## API / Interface Changes
+## API/Interface
 
 New subcommand:
 ```
@@ -63,6 +63,46 @@ ll-loop status <loop_name> --watch [--show-diagrams [MODE]]
 
 Decision: prefer a dedicated `monitor` subcommand for discoverability; `status --watch` can be a documented alias.
 
+## Use Case
+
+**Who**: A developer running long `ll-loop` automation sessions on a codebase
+
+**Context**: They start a loop with `--background` to keep the terminal free, then later want to observe its progress — FSM state transitions, current iteration, and live log output — without having to parse `.state.json` manually.
+
+**Goal**: Attach the same rich visual display used by foreground `--clear --show-diagrams` runs to an already-running background process.
+
+**Outcome**: Real-time FSM diagram and log stream appear in the terminal; Ctrl-C detaches without interrupting the loop; a clean final summary prints when the loop finishes naturally.
+
+## Implementation Steps
+
+1. Identify and extract the display/rendering pipeline from the foreground run path into a reusable `StateFeedRenderer` interface
+2. Implement `StateFeedSource` abstraction: foreground pushes states directly; monitor mode polls `.loops/.running/<loop>.state.json` via `inotify`/`FSEvents`/fallback 100ms polling
+3. Add log-tail support (read the loop's log file and render alongside the FSM diagram panel)
+4. Add `ll-loop monitor <loop_name>` subcommand with `--show-diagrams [MODE]`, `--no-clear`, `--log-file PATH` flags
+5. Wire Ctrl-C handling to detach the monitor only — must not send a signal to the background loop process
+6. Add tests and update CLI help/docs
+
+## Integration Map
+
+### Files to Modify
+- TBD — identify display pipeline module: `grep -r "show_diagrams\|_display\|run_background" scripts/little_loops/`
+- `scripts/little_loops/cli/ll_loop.py` (or equivalent) — add `monitor` subcommand
+
+### Dependent Files (Callers/Importers)
+- TBD — `grep -r "run_background\|\.running\|state\.json" scripts/`
+
+### Similar Patterns
+- `ll-loop run --clear --show-diagrams` — existing rendering pipeline to extract and reuse
+
+### Tests
+- `scripts/tests/` — new tests for `monitor` subcommand, `StateFeedSource` abstraction, and Ctrl-C detach behavior
+
+### Documentation
+- `docs/` — update `ll-loop` CLI reference with `monitor` subcommand
+
+### Configuration
+- N/A
+
 ## Acceptance Criteria
 
 - [ ] `ll-loop monitor <name>` attaches to a running background loop and renders FSM state changes in realtime.
@@ -72,10 +112,26 @@ Decision: prefer a dedicated `monitor` subcommand for discoverability; `status -
 - [ ] On loop completion, monitor exits with the loop's exit code.
 - [ ] Works on macOS (FSEvents or polling) and Linux (inotify or polling).
 
+## Impact
+
+- **Priority**: P3 — Quality-of-life improvement; background loops are functional, this adds live observability
+- **Effort**: Medium — Display rendering pipeline exists; requires abstraction layer, new subcommand, and Ctrl-C signal handling
+- **Risk**: Low — Monitor is read-only; main risk is Ctrl-C handling (must not propagate signal to the background loop process)
+- **Breaking Change**: No
+
+## Labels
+
+`feature`, `cli`, `ll-loop`, `ux`, `observability`
+
 ## Related Issues
 
 - FEAT-1232: `ll-loop parallel` subcommand (deferred) — background group launcher
 - FEAT-047: `ll-loop` CLI tool (core runner)
 
+## Status
+
+**Open** | Created: 2026-05-28 | Priority: P3
+
 ## Session Log
+- `/ll:format-issue` - 2026-05-28T03:58:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34d7caed-10b0-415b-91c0-c8c95443f1f9.jsonl`
 - `/ll:capture-issue` - 2026-05-28T03:46:53Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2bcb218-a171-4a8f-92ee-aeaf8000e6a2.jsonl`
