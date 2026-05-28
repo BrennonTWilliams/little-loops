@@ -376,6 +376,50 @@ llm:
   timeout: number               # Timeout for LLM calls in seconds (default: 1800)
 ```
 
+### Linear Flow Shorthand (`flow:`)
+
+As an alternative to `states:`, a loop may declare a linear ordered chain using `flow:`. The engine expands `flow:` into a `states:` map at parse time — the executor never sees the `flow:` key.
+
+```yaml
+# Minimal flow: loop
+name: lint-and-test
+description: "Run lint, then tests"
+initial: run_lint          # Required — not inferred from flow: list
+flow:
+  - run_lint
+  - run_tests
+
+state_defs:                # Optional: supply action/evaluate bodies for generated states
+  run_lint:
+    action: "ruff check scripts/"
+    fragment: shell_exit
+  run_tests:
+    action: "python -m pytest scripts/tests/"
+    fragment: shell_exit
+```
+
+**Expansion rules:**
+
+| Entry form | Generates |
+|-----------|-----------|
+| `state_name` (non-last) | `{next: <next_state_name>}` — advances unconditionally |
+| `state_name` (last) | `{terminal: true}` |
+| `name?yes:no` (ternary) | `{on_yes: yes, on_no: no}` — conditional branch |
+
+`state_defs:` values are deep-merged into the generated skeleton after expansion. This is the only way to attach `action:`, `evaluate:`, `fragment:`, `timeout:`, or other state fields to a `flow:` entry.
+
+**`initial:` is required** and must be set to the first state's name. It is not inferred automatically.
+
+**Error handling**: Non-branching states generate `next:` (not individual `on_yes`/`on_no`/`on_error` keys). The executor routes `next:` on success (zero exit code) **and** on error when no `on_error` is defined. To add per-state error recovery, set `on_error:` in that state's `state_defs:` entry — a non-zero exit then routes to `on_error` while zero-exit routes to `next:`.
+
+**Constraints:**
+- `flow:` and `states:` are mutually exclusive; the validator raises an error if both are present.
+- When a child loop (via `from:`) declares its own `flow:`, it overrides the parent's `states:` entirely.
+- `state_defs:` is stripped after expansion and is never visible to the executor.
+- The loop is considered runnable by `ll-loop list` / `is_runnable_loop()` when `name`, `initial`, and `flow` are all present.
+
+See [Linear Flow Shorthand via `flow:`](guides/LOOPS_GUIDE.md#linear-flow-shorthand-via-flow) in the Loops Guide for worked examples including conditional branching and error-recovery overrides.
+
 ---
 
 ## Two-Layer Transition System

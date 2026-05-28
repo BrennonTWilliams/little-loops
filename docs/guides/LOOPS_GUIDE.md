@@ -3128,7 +3128,9 @@ The merged loop has every field from `apo-base` — `category`, `max_iterations`
 For simple linear pipelines where each state proceeds unconditionally to the next, the `flow:` key replaces the verbose `states:` map with an ordered list:
 
 ```yaml
+name: lint-and-test
 description: "Run lint, then tests"
+initial: run_lint
 flow:
   - run_lint
   - run_tests
@@ -3142,20 +3144,42 @@ state_defs:
     fragment: shell_exit
 ```
 
-The last entry is implicitly `terminal: true`. Every non-terminal entry transitions unconditionally to the next state (`on_yes`, `on_no`, and `on_error` all point forward).
+`initial:` must be set explicitly to the first state's name — it is not inferred from the `flow:` list. The last entry in `flow:` is implicitly `terminal: true`. Every non-terminal entry generates a `next:` transition, which routes all outcomes (success **and** error) forward to the next state unless you override error handling in `state_defs:` (see below).
 
 ### Conditional branching in `flow:`
 
 Use the `name?yes_target:no_target` ternary syntax for states that need to branch:
 
 ```yaml
+name: check-and-run
+initial: check_ready
 flow:
   - check_ready?run_impl:done
   - run_impl
   - done
+
+state_defs:
+  check_ready:
+    action: "ll-issues show FEAT-42 --json | jq -e '.status == \"open\"'"
+    fragment: shell_exit
+  run_impl:
+    action: "/ll:manage-issue FEAT-42"
 ```
 
-`check_ready` receives `on_yes: run_impl` and `on_no: done`; `run_impl` receives `on_yes: done`. Add the state body in `state_defs:` — the ternary only controls routing.
+`check_ready` receives `on_yes: run_impl` and `on_no: done`; `run_impl` receives `next: done`. Ternary entries only control routing — add the state body in `state_defs:`.
+
+### Error handling in `flow:` states
+
+Non-branching states use `next:` (not `on_yes`/`on_no`/`on_error`), so by default all outcomes — including non-zero exit codes — advance to the next state. To add error recovery for a specific state, add `on_error:` to its `state_defs:` entry:
+
+```yaml
+state_defs:
+  run_tests:
+    action: "python -m pytest scripts/tests/"
+    on_error: diagnose       # overrides the unconditional next: for error cases
+```
+
+When `on_error` is present on a `next:`-based state, a non-zero exit routes to `on_error` and a zero exit routes to `next`.
 
 ### Relationship to `states:`
 
