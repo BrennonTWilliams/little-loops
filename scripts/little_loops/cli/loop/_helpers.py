@@ -20,7 +20,7 @@ from little_loops.cli.loop.diagram_modes import (
     resolve_facets,
 )
 from little_loops.cli.output import colorize, terminal_size, terminal_width
-from little_loops.fsm.concurrency import _process_alive
+from little_loops.fsm.concurrency import LockManager, _process_alive
 from little_loops.logger import Logger
 
 if TYPE_CHECKING:
@@ -926,6 +926,24 @@ def run_background(
     """
     running_dir = loops_dir / ".running"
     running_dir.mkdir(parents=True, exist_ok=True)
+
+    # Pre-flight scope conflict check — detect conflicts before spawning the child
+    # so the user gets immediate feedback instead of a silent child failure.
+    logger = Logger()
+    try:
+        fsm = load_loop(loop_name, loops_dir, logger)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"Error loading loop '{loop_name}': {e}", file=sys.stderr)
+        return 1
+
+    lock_manager = LockManager(loops_dir)
+    scope = fsm.scope or ["."]
+    conflict = lock_manager.find_conflict(scope)
+    if conflict and not getattr(args, "queue", False):
+        print(f"Scope conflict with running loop: {conflict.loop_name}", file=sys.stderr)
+        print(f"  Conflicting scope: {conflict.scope}", file=sys.stderr)
+        print("  Use --queue to wait for it to finish", file=sys.stderr)
+        return 1
 
     instance_id = _make_instance_id(loop_name)
     pid_file = running_dir / f"{instance_id}.pid"

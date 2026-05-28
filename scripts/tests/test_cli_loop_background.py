@@ -137,12 +137,21 @@ class TestLoopSignalHandler:
 class TestRunBackground:
     """Tests for run_background() helper."""
 
+    @pytest.fixture(autouse=True)
+    def _create_loop_yaml(self, tmp_path: Path) -> None:
+        """Create minimal loop YAML so load_loop() succeeds in pre-flight check."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\ninitial: start\nstates:\n  start:\n    terminal: true\n"
+        )
+
     def test_spawns_detached_process(self, tmp_path: Path) -> None:
         """Spawns process with start_new_session=True."""
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False
         )
@@ -164,7 +173,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False
         )
@@ -184,7 +193,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False
         )
@@ -203,7 +212,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=10, no_llm=False, llm_model=None, quiet=False, queue=False
         )
@@ -223,7 +232,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None, no_llm=True, llm_model=None, quiet=False, queue=False
         )
@@ -242,7 +251,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False
         )
@@ -262,7 +271,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False
         )
@@ -282,7 +291,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None,
             no_llm=False,
@@ -306,7 +315,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None,
             no_llm=False,
@@ -330,7 +339,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None,
             no_llm=False,
@@ -356,7 +365,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False, context=[]
         )
@@ -375,7 +384,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False
         )
@@ -397,7 +406,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None,
             no_llm=False,
@@ -422,7 +431,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None,
             no_llm=False,
@@ -446,7 +455,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         program_md_path = tmp_path / ".ll" / "program.md"
         args = argparse.Namespace(
             max_iterations=None,
@@ -473,7 +482,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None,
             no_llm=False,
@@ -500,7 +509,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None,
             no_llm=False,
@@ -528,7 +537,7 @@ class TestRunBackground:
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None,
             no_llm=False,
@@ -547,6 +556,62 @@ class TestRunBackground:
 
         cmd = mock_popen.call_args[0][0]
         assert "--program-md" not in cmd
+
+
+    def test_scope_conflict_returns_1(self, tmp_path: Path, capsys) -> None:
+        """Returns 1 and prints conflict to stderr when scope is already locked."""
+        import argparse
+
+        from little_loops.fsm.concurrency import LockManager
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+
+        # Pre-acquire a conflicting lock
+        lm = LockManager(loops_dir)
+        lm.acquire("blocker", ["."])
+
+        args = argparse.Namespace(
+            max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 42
+            from little_loops.cli.loop._helpers import run_background
+
+            result = run_background("my-loop", args, loops_dir)
+
+        assert result == 1
+        mock_popen.assert_not_called()
+        captured = capsys.readouterr()
+        assert "Scope conflict" in captured.err
+        assert "blocker" in captured.err
+
+    def test_queue_bypasses_preflight_check(self, tmp_path: Path) -> None:
+        """--queue bypasses pre-flight scope check and spawns child anyway."""
+        import argparse
+
+        from little_loops.fsm.concurrency import LockManager
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+
+        # Pre-acquire a conflicting lock
+        lm = LockManager(loops_dir)
+        lm.acquire("blocker", ["."])
+
+        args = argparse.Namespace(
+            max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=True
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 42
+            from little_loops.cli.loop._helpers import run_background
+
+            result = run_background("my-loop", args, loops_dir)
+
+        assert result == 0
+        mock_popen.assert_called_once()
 
 
 class TestCmdStopWithPid:
@@ -863,12 +928,21 @@ class TestMakeInstanceId:
 class TestRunBackgroundInstanceIdForwarding:
     """Tests for ENH-1703: run_background passes --instance-id to re-exec'd foreground child."""
 
+    @pytest.fixture(autouse=True)
+    def _create_loop_yaml(self, tmp_path: Path) -> None:
+        """Create minimal loop YAML so load_loop() succeeds in pre-flight check."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\ninitial: start\nstates:\n  start:\n    terminal: true\n"
+        )
+
     def test_instance_id_forwarded_to_foreground_child(self, tmp_path: Path) -> None:
         """run_background includes --instance-id in the child command so the child can tee its log."""
         import argparse
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
+        loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
             max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False
         )
