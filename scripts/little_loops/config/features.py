@@ -267,7 +267,14 @@ class ScanConfig:
 
 @dataclass
 class DesignTokensConfig:
-    """Design system token configuration."""
+    """Design system token configuration.
+
+    `active` and `profiles_dir` (ENH-1768) select one of several bundled
+    profiles. The loader resolves token files from
+    `<path>/<profiles_dir or "profiles">/<active>/`, with a fallback to the
+    legacy flat layout (`<path>/primitives.json`, ...) for pre-ENH-1768
+    projects that haven't been re-initialized.
+    """
 
     enabled: bool = True
     path: str = ".ll/design-tokens"
@@ -275,6 +282,8 @@ class DesignTokensConfig:
     semantic_file: str = "semantic.json"
     themes_dir: str = "themes"
     active_theme: str = "light"
+    active: str = "default"
+    profiles_dir: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DesignTokensConfig:
@@ -286,6 +295,8 @@ class DesignTokensConfig:
             semantic_file=data.get("semantic_file", "semantic.json"),
             themes_dir=data.get("themes_dir", "themes"),
             active_theme=data.get("active_theme", "light"),
+            active=data.get("active", "default"),
+            profiles_dir=data.get("profiles_dir"),
         )
 
 

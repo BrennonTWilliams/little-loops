@@ -1,0 +1,15 @@
+{
+  "color": {
+    "surface": {
+      "primary":   "{color.paper.950}",
+      "secondary": "{color.paper.900}",
+      "raised":    "{color.paper.800}"
+    },
+    "text": {
+      "primary":   "{color.paper.0}",
+      "secondary": "{color.paper.300}",
+      "muted":     "{color.paper.500}",
+      "inverse":   "{color.paper.950}"
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "_note": "Editorial-mono: 8px base unit, generous vertical rhythm tuned for long-form reading. Sharp corners (radius tiny), minimal shadow.",
+  "space": {
+    "0":   "0",
+    "1":   "0.5rem",
+    "2":   "1rem",
+    "3":   "1.5rem",
+    "4":   "2rem",
+    "5":   "2.5rem",
+    "6":   "3rem",
+    "8":   "4rem",
+    "10":  "5rem",
+    "12":  "6rem",
+    "16":  "8rem",
+    "24":  "12rem"
+  },
+  "radius": {
+    "none": "0",
+    "sm":   "1px",
+    "md":   "2px",
+    "lg":   "3px",
+    "xl":   "4px",
+    "full": "9999px"
+  },
+  "shadow": {
+    "sm":  "none",
+    "md":  "0 1px 0 rgba(0, 0, 0, 0.08)",
+    "lg":  "0 2px 0 rgba(0, 0, 0, 0.08)"
+  },
+  "border": {
+    "width": {
+      "thin":   "1px",
+      "medium": "1px",
+      "thick":  "2px"
+    }
+  }
+}

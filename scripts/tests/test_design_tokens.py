@@ -246,13 +246,15 @@ class TestRenderAsCssVars:
 
 @pytest.mark.integration
 class TestIntegration:
-    """Integration tests using the actual templates/design-tokens/ files."""
+    """Integration tests against the actual bundled `default` profile."""
 
-    _TEMPLATE_DIR = Path(__file__).parent.parent.parent / "templates" / "design-tokens"
+    _TEMPLATE_DIR = (
+        Path(__file__).parent.parent.parent / "templates" / "design-tokens" / "profiles" / "default"
+    )
 
     def _skip_if_absent(self) -> None:
         if not self._TEMPLATE_DIR.exists():
-            pytest.skip("templates/design-tokens/ not found")
+            pytest.skip("templates/design-tokens/profiles/default/ not found")
 
     def test_all_four_files_exist(self) -> None:
         self._skip_if_absent()
@@ -277,11 +279,14 @@ class TestIntegration:
             assert isinstance(data, dict), f"{rel} root must be a JSON object"
 
     def _make_config_from_template(self, tmp_path: Path, theme: str):
-        """Wire a config that points at the real template directory."""
+        """Wire a config that points at the bundled default profile."""
         import shutil
 
+        # Copy the whole templates/design-tokens/ tree so the profiles dir
+        # structure carries over and the loader resolves profiles/default/.
+        src_root = Path(__file__).parent.parent.parent / "templates" / "design-tokens"
         dest = tmp_path / ".ll" / "design-tokens"
-        shutil.copytree(self._TEMPLATE_DIR, dest)
+        shutil.copytree(src_root, dest)
         config_dir = tmp_path / ".ll"
         config_dir.mkdir(parents=True, exist_ok=True)
         (config_dir / "ll-config.json").write_text(json.dumps({"design_tokens": {"enabled": True}}))

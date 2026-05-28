@@ -7,7 +7,7 @@ captured_at: "2026-05-27T20:30:00Z"
 discovered_date: "2026-05-27"
 discovered_by: issue-size-review
 labels: [epic, design-system, config, loops, init]
-relates_to: [FEAT-1747, FEAT-1748, FEAT-1749, FEAT-1750]
+relates_to: [FEAT-1747, FEAT-1748, FEAT-1749, FEAT-1750, ENH-1768]
 ---
 
 # EPIC-1751: Design Tokens System
@@ -53,6 +53,7 @@ Every run of `html-anything` / `svg-image-generator` is a fresh aesthetic guess 
 - **FEAT-1748** — Default palette: four-file WCAG AA–verified template set under `templates/design-tokens/`
 - **FEAT-1749** — Loop wiring: pre-inject `design_tokens_context` into `fsm.context` for all 6 artifact loops
 - **FEAT-1750** — Init / Configure UX + docs
+- **ENH-1768** — Multi-profile system with `design_tokens.active` selector; ships 2–3 starter profiles, init picker, configure switcher (follow-up to FEAT-1747/1748/1750)
 
 ## Implementation Order
 

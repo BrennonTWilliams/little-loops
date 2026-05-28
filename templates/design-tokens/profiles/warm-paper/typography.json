@@ -1,0 +1,40 @@
+{
+  "_note": "Warm-paper: humanist serif body, hand-tuned sans display. Slightly larger base size and warmer rhythm than Default.",
+  "font": {
+    "family": {
+      "sans":    "'Work Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+      "serif":   "'Lora', 'Charter', 'Iowan Old Style', Georgia, serif",
+      "mono":    "'iA Writer Mono', 'Courier Prime', monospace",
+      "display": "'Fraunces', 'Lora', Georgia, serif",
+      "body":    "{font.family.serif}",
+      "heading": "{font.family.display}",
+      "code":    "{font.family.mono}"
+    },
+    "weight": {
+      "normal":   "400",
+      "medium":   "500",
+      "semibold": "600",
+      "bold":     "700"
+    },
+    "size": {
+      "xs":   "0.8125rem",
+      "sm":   "0.9375rem",
+      "base": "1.0625rem",
+      "lg":   "1.1875rem",
+      "xl":   "1.375rem",
+      "2xl":  "1.6875rem",
+      "3xl":  "2.125rem",
+      "4xl":  "2.75rem"
+    },
+    "line-height": {
+      "tight":   "1.2",
+      "normal":  "1.65",
+      "relaxed": "1.85"
+    },
+    "letter-spacing": {
+      "tight":  "-0.015em",
+      "normal": "0",
+      "wide":   "0.03em"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "color": {
+    "surface": {
+      "primary":   "{color.paper.0}",
+      "secondary": "{color.paper.50}",
+      "raised":    "{color.paper.100}"
+    }
+  }
+}

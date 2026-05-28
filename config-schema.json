@@ -1233,6 +1233,16 @@
           "type": "string",
           "default": "light",
           "description": "Name of the active theme file (without .json extension) under themes_dir."
+        },
+        "active": {
+          "type": "string",
+          "default": "default",
+          "description": "Name of the active profile under profiles_dir (ENH-1768). Loader resolves token files from <path>/<profiles_dir>/<active>/. Falls back to the legacy flat layout (<path>/{primitives.json,...}) when no profile directory exists, so pre-ENH-1768 projects keep working."
+        },
+        "profiles_dir": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Subdirectory of <path> that contains profile directories (ENH-1768). Defaults to 'profiles' when null. Each profile is a self-contained token set (primitives, semantic, typography, spacing, themes/) selected via 'active'."
         }
       },
       "additionalProperties": false

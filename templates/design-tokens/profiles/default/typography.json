@@ -1,0 +1,39 @@
+{
+  "_note": "Default profile: clean sans-serif system, moderate scale, B2B/SaaS rhythm. Inter for UI text, JetBrains Mono for code.",
+  "font": {
+    "family": {
+      "sans": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      "serif": "Georgia, 'Times New Roman', serif",
+      "mono": "'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace",
+      "body": "{font.family.sans}",
+      "heading": "{font.family.sans}",
+      "code": "{font.family.mono}"
+    },
+    "weight": {
+      "normal": "400",
+      "medium": "500",
+      "semibold": "600",
+      "bold": "700"
+    },
+    "size": {
+      "xs":   "0.75rem",
+      "sm":   "0.875rem",
+      "base": "1rem",
+      "lg":   "1.125rem",
+      "xl":   "1.25rem",
+      "2xl":  "1.5rem",
+      "3xl":  "1.875rem",
+      "4xl":  "2.25rem"
+    },
+    "line-height": {
+      "tight":   "1.25",
+      "normal":  "1.5",
+      "relaxed": "1.625"
+    },
+    "letter-spacing": {
+      "tight":  "-0.01em",
+      "normal": "0",
+      "wide":   "0.025em"
+    }
+  }
+}

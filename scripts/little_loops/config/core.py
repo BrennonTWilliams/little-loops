@@ -579,6 +579,8 @@ class BRConfig:
                 "semantic_file": self._design_tokens.semantic_file,
                 "themes_dir": self._design_tokens.themes_dir,
                 "active_theme": self._design_tokens.active_theme,
+                "active": self._design_tokens.active,
+                "profiles_dir": self._design_tokens.profiles_dir,
             },
             "events": {
                 "transports": list(self._events.transports),

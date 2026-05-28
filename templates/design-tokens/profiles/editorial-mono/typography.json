@@ -1,0 +1,42 @@
+{
+  "_note": "Editorial-mono: long-read serif body, condensed sans display. Distinctive type rhythm; this is where the profile's personality lives.",
+  "font": {
+    "family": {
+      "sans":    "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+      "serif":   "'Source Serif Pro', 'Lyon Text', Georgia, 'Times New Roman', serif",
+      "mono":    "'IBM Plex Mono', 'Courier New', monospace",
+      "display": "'Playfair Display', 'Lyon Display', Georgia, serif",
+      "body":    "{font.family.serif}",
+      "heading": "{font.family.display}",
+      "code":    "{font.family.mono}"
+    },
+    "weight": {
+      "normal":   "400",
+      "medium":   "500",
+      "semibold": "600",
+      "bold":     "700",
+      "black":    "900"
+    },
+    "size": {
+      "xs":   "0.8125rem",
+      "sm":   "0.9375rem",
+      "base": "1.0625rem",
+      "lg":   "1.25rem",
+      "xl":   "1.5rem",
+      "2xl":  "1.875rem",
+      "3xl":  "2.5rem",
+      "4xl":  "3.25rem",
+      "5xl":  "4.25rem"
+    },
+    "line-height": {
+      "tight":   "1.15",
+      "normal":  "1.6",
+      "relaxed": "1.75"
+    },
+    "letter-spacing": {
+      "tight":  "-0.02em",
+      "normal": "0",
+      "wide":   "0.04em"
+    }
+  }
+}

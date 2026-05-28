@@ -1,0 +1,32 @@
+{
+  "_note": "Warm-paper: cream-and-clay palette. Surfaces are warm off-white (paper); text is deep espresso brown (not pure black); accent is terracotta. Reads handcrafted, not corporate. Verified WCAG AA on body text.",
+  "color": {
+    "paper": {
+      "0":   "#fdfbf6",
+      "50":  "#f9f4ea",
+      "100": "#f3eada",
+      "200": "#e8dcc4",
+      "300": "#d4c5a7",
+      "400": "#b8a482",
+      "500": "#8c7a5e",
+      "600": "#6b5d47",
+      "700": "#4a4031",
+      "800": "#2e2820",
+      "900": "#1a1612",
+      "950": "#0d0b08"
+    },
+    "terracotta": {
+      "100": "#fde6d5",
+      "300": "#f7b886",
+      "500": "#c84a1c",
+      "700": "#9a3812",
+      "900": "#5c2208"
+    },
+    "moss": {
+      "500": "#5e7140"
+    },
+    "success": { "500": "#5e7140" },
+    "warning": { "500": "#9a6b12" },
+    "danger":  { "500": "#9a3812" }
+  }
+}

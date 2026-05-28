@@ -280,7 +280,7 @@ After the user confirms, check whether the configured tool commands are availabl
 --- Actions that would be taken ---
   [write]  .ll/ll-config.json
   [write]  .ll/ll-goals.md (from templates/ll-goals-template.md)  # Only if product enabled and file absent
-  [write]  .ll/design-tokens/{primitives.json,semantic.json,themes/light.json,themes/dark.json}  # Only if design tokens enabled and dir absent
+  [write]  .ll/design-tokens/profiles/{default,editorial-mono,warm-paper}/{primitives,semantic,typography,spacing}.json + themes/{light,dark}.json  # Only if design tokens enabled and dir absent
   [mkdir]  {{config.issues.base_dir}}/{bugs,features,enhancements,completed,deferred}
   [update] .gitignore (add state file exclusions)
   [update] .claude/settings.local.json (add ll- CLI tool permissions)  # Only if user opts in
@@ -332,14 +332,12 @@ Skip all Write, Edit, and Bash(mkdir) tool calls. Skip Steps 9, 10, 11, and 12 â
    Skip silently if `.ll/ll-goals.md` already exists (never overwrite).
    Track outcome: `GOALS_FILE_CREATED=true`
 
-6. Deploy design token templates if design tokens are enabled:
-   If `design_tokens.enabled: true` in the config AND `.ll/design-tokens/` does not already exist:
-   - Read `templates/design-tokens/primitives.json` and write to `.ll/design-tokens/primitives.json`
-   - Read `templates/design-tokens/semantic.json` and write to `.ll/design-tokens/semantic.json`
-   - Read `templates/design-tokens/themes/light.json` and write to `.ll/design-tokens/themes/light.json`
-   - Read `templates/design-tokens/themes/dark.json` and write to `.ll/design-tokens/themes/dark.json`
+6. Deploy design token profiles if design tokens are enabled (ENH-1768):
+   If `design_tokens.enabled: true` in the config AND `.ll/design-tokens/profiles/` does not already exist:
+   - Mirror the full `templates/design-tokens/profiles/` tree into `.ll/design-tokens/profiles/`. Three starter profiles ship: `default`, `editorial-mono`, `warm-paper`. Each profile directory contains six files: `primitives.json`, `semantic.json`, `typography.json`, `spacing.json`, `themes/light.json`, `themes/dark.json`.
+   - Write `design_tokens.active: <chosen-profile-name>` into the config (default is `"default"`; in `--interactive` mode the Round 7 profile picker selects the value).
 
-   Skip silently if `.ll/design-tokens/` already exists (never overwrite).
+   Skip silently if `.ll/design-tokens/profiles/` already exists (never overwrite).
    Track outcome: `DESIGN_TOKENS_CREATED=true`
 
 ### 8.5. Install Codex CLI Hook Adapter (Conditional)
@@ -646,7 +644,7 @@ INITIALIZATION COMPLETE
 
 Created: .ll/ll-config.json
 Created: .ll/ll-goals.md (product goals template)  # Only show if product enabled
-Created: .ll/design-tokens/ (four design token files)  # Only show if DESIGN_TOKENS_CREATED=true
+Created: .ll/design-tokens/profiles/{default,editorial-mono,warm-paper}/ (3 starter profiles)  # Only show if DESIGN_TOKENS_CREATED=true
 Created: {{config.issues.base_dir}}/{bugs,features,enhancements,completed,deferred}
 Updated: .gitignore (added state file exclusions)
 Updated: .claude/settings.local.json (added ll- CLI tool permissions)  # Only show if user opted in

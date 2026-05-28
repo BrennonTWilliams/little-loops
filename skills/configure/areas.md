@@ -952,7 +952,12 @@ Current Design Tokens Configuration
   semantic_file:   {{config.design_tokens.semantic_file}}
   themes_dir:      {{config.design_tokens.themes_dir}}
   active_theme:    {{config.design_tokens.active_theme}}
+  active:          {{config.design_tokens.active}}
+  profiles_dir:    {{config.design_tokens.profiles_dir}}
+  installed:       {{installed profiles list from <path>/<profiles_dir or "profiles">/ — list subdirectory names}}
 ```
+
+Before showing the questions, enumerate installed profiles: list subdirectories of `<config.design_tokens.path>/<config.design_tokens.profiles_dir or "profiles">/`. Show each name in the picker.
 
 ### Round 1 (3 questions)
 
@@ -969,13 +974,17 @@ questions:
         description: "No, disable"
     multiSelect: false
 
-  - header: "Path"
-    question: "Design tokens directory path (current: {{config.design_tokens.path}}):"
+  - header: "Active Profile"
+    question: "Switch the active profile (current: {{config.design_tokens.active}}). The active profile drives every artifact loop's tokens."
     options:
-      - label: "{{current path}} (keep)"
-        description: "Keep current path"
-      - label: ".ll/design-tokens"
-        description: "Default location"
+      - label: "{{current active}} (keep)"
+        description: "Keep current profile"
+      - label: "default"
+        description: "Accessible neutral + blue brand. SaaS-friendly."
+      - label: "editorial-mono"
+        description: "Editorial serif + grayscale + ink-red accent."
+      - label: "warm-paper"
+        description: "Cream surfaces + soft brown + terracotta accent."
     multiSelect: false
 
   - header: "Theme"
@@ -990,7 +999,34 @@ questions:
     multiSelect: false
 ```
 
-### Round 2 (3 questions)
+If the user picks a profile name that is NOT in the enumerated installed list (e.g. via "Other"), warn that the profile does not yet exist under `<path>/<profiles_dir or "profiles">/` and that the runtime loader will degrade to no tokens until the profile is materialized. Write the value anyway — the user may be intentionally pre-configuring for an upcoming profile.
+
+### Round 2 (3 questions — advanced)
+
+Path and file-name overrides. Most users never touch these.
+
+```yaml
+questions:
+  - header: "Path"
+    question: "Design tokens base directory path (current: {{config.design_tokens.path}}):"
+    options:
+      - label: "{{current path}} (keep)"
+        description: "Keep current path"
+      - label: ".ll/design-tokens"
+        description: "Default location"
+    multiSelect: false
+
+  - header: "Profiles Dir"
+    question: "Subdirectory of <path> that holds profile directories (current: {{config.design_tokens.profiles_dir}}):"
+    options:
+      - label: "{{current profiles_dir}} (keep)"
+        description: "Keep current setting"
+      - label: "profiles"
+        description: "Default subdirectory (used when null)"
+    multiSelect: false
+```
+
+### Round 3 (3 questions — file names)
 
 ```yaml
 questions:

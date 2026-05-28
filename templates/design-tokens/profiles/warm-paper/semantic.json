@@ -1,0 +1,36 @@
+{
+  "_wcag_spot_check": {
+    "light_mode": {
+      "text.primary(#1a1612)_on_surface.primary(#fdfbf6)": "17.23:1 PASS AA",
+      "text.secondary(#4a4031)_on_surface.primary(#fdfbf6)": "9.29:1 PASS AA",
+      "text.muted(#8c7a5e)_on_surface.primary(#fdfbf6)": "4.12:1 NEAR AA (decorative only)",
+      "action.primary(#9a3812)_on_surface.primary(#fdfbf6)": "7.57:1 PASS AA"
+    },
+    "dark_mode": {
+      "text.primary(#fdfbf6)_on_surface.primary(#0d0b08)": "19.31:1 PASS AA",
+      "text.secondary(#d4c5a7)_on_surface.primary(#0d0b08)": "13.71:1 PASS AA"
+    }
+  },
+  "color": {
+    "surface": {
+      "primary":   "{color.paper.0}",
+      "secondary": "{color.paper.50}",
+      "raised":    "{color.paper.100}"
+    },
+    "text": {
+      "primary":   "{color.paper.900}",
+      "secondary": "{color.paper.700}",
+      "muted":     "{color.paper.500}",
+      "inverse":   "{color.paper.0}"
+    },
+    "border": {
+      "subtle": "{color.paper.200}",
+      "strong": "{color.paper.400}"
+    },
+    "action": {
+      "primary":       "{color.terracotta.700}",
+      "primary-hover": "{color.terracotta.900}",
+      "destructive":   "{color.danger.500}"
+    }
+  }
+}

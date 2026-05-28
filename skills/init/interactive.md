@@ -491,10 +491,29 @@ questions:
 ```
 
 **If "Yes, initialize design tokens" selected:**
-```json
-{"design_tokens": {"enabled": true, "path": ".ll/design-tokens"}}
+
+Follow up with a profile picker so the user picks the *vibe* of the starter palette (ENH-1768):
+
+```yaml
+questions:
+  - header: "Token Profile"
+    question: "Pick a starter token profile. The active profile drives every artifact-generating loop's colors, type, and spacing. Three profiles ship; you can switch later with `/ll:configure design-tokens`."
+    options:
+      - label: "default (Recommended)"
+        description: "Accessible neutral grayscale + blue brand + orange accent. Bootstrap/SaaS-ish. WCAG AA on body text."
+      - label: "editorial-mono"
+        description: "Editorial vibe: serif body, condensed sans display, true neutrals, single deep-ink-red accent. Long-read rhythm."
+      - label: "warm-paper"
+        description: "Warm cream surfaces, soft brown text, terracotta accent. Handcrafted feel."
+    multiSelect: false
 ```
-The materialization step (SKILL.md Step 8, item 6) will write the four template files to `.ll/design-tokens/`.
+
+Write the choice into config:
+```json
+{"design_tokens": {"enabled": true, "path": ".ll/design-tokens", "active": "<chosen-profile-name>"}}
+```
+
+The materialization step (SKILL.md Step 8, item 6) will copy `templates/design-tokens/profiles/` into `.ll/design-tokens/profiles/` (all three profiles ship; the one named in `active` is what loops pick up).
 
 **If "Use custom path" selected:**
 

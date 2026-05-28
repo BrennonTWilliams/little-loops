@@ -1,0 +1,37 @@
+{
+  "_note": "Warm-paper: 6px base unit, gentle rhythm. Soft radii (slightly larger than default), warm subtle shadow.",
+  "space": {
+    "0":   "0",
+    "1":   "0.375rem",
+    "2":   "0.75rem",
+    "3":   "1.125rem",
+    "4":   "1.5rem",
+    "5":   "1.875rem",
+    "6":   "2.25rem",
+    "8":   "3rem",
+    "10":  "3.75rem",
+    "12":  "4.5rem",
+    "16":  "6rem",
+    "24":  "9rem"
+  },
+  "radius": {
+    "none": "0",
+    "sm":   "0.375rem",
+    "md":   "0.625rem",
+    "lg":   "1rem",
+    "xl":   "1.5rem",
+    "full": "9999px"
+  },
+  "shadow": {
+    "sm":  "0 1px 2px rgba(74, 64, 49, 0.06)",
+    "md":  "0 3px 8px rgba(74, 64, 49, 0.10)",
+    "lg":  "0 8px 20px rgba(74, 64, 49, 0.12)"
+  },
+  "border": {
+    "width": {
+      "thin":   "1px",
+      "medium": "2px",
+      "thick":  "3px"
+    }
+  }
+}

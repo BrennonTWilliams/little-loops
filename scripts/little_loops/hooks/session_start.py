@@ -181,10 +181,20 @@ def _validate_features(config: dict[str, Any]) -> list[str]:
     if isinstance(design_tokens, dict) and design_tokens.get("enabled") is True:
         from pathlib import Path
 
-        token_path = design_tokens.get("path", ".ll/design-tokens")
-        if not Path(token_path).exists():
+        token_path = Path(design_tokens.get("path", ".ll/design-tokens"))
+        if not token_path.exists():
             warnings_out.append(
                 "[little-loops] Warning: design_tokens.enabled is true but path"
                 f" '{token_path}' does not exist"
             )
+        else:
+            # ENH-1768: warn when active profile is configured but missing.
+            profiles_dir = design_tokens.get("profiles_dir") or "profiles"
+            active = design_tokens.get("active", "default")
+            profiles_root = token_path / profiles_dir
+            if profiles_root.is_dir() and not (profiles_root / active).is_dir():
+                warnings_out.append(
+                    "[little-loops] Warning: design_tokens.active="
+                    f"'{active}' but '{profiles_root / active}' does not exist"
+                )
     return warnings_out

@@ -182,10 +182,13 @@ Design Tokens Configuration
 ----------------------------
   enabled:         {{config.design_tokens.enabled}}         (default: true)
   path:            {{config.design_tokens.path}}            (default: .ll/design-tokens)
+  active:          {{config.design_tokens.active}}          (default: default)
+  profiles_dir:    {{config.design_tokens.profiles_dir}}    (default: null → "profiles")
   primitives_file: {{config.design_tokens.primitives_file}} (default: primitives.json)
   semantic_file:   {{config.design_tokens.semantic_file}}   (default: semantic.json)
   themes_dir:      {{config.design_tokens.themes_dir}}      (default: themes)
   active_theme:    {{config.design_tokens.active_theme}}    (default: light)
+  installed:       {{enumerate <path>/<profiles_dir or "profiles">/ subdirectories}}
 
 Edit: /ll:configure design-tokens
 ```
