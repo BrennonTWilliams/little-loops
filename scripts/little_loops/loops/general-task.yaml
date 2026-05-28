@@ -43,6 +43,13 @@ states:
       Each criterion must be independently verifiable by checking files, running commands,
       or reading outputs.
 
+      Do NOT write DoD criteria that target this loop's own internal tracking artifacts
+      (${env.PWD}/.loops/tmp/general-task-plan.md, ${env.PWD}/.loops/tmp/general-task-dod.md)
+      — e.g. "duplicate plan steps are struck through" or "the plan file has no pending
+      steps." Those files are loop bookkeeping, not task deliverables; criteria about them
+      are unsatisfiable by the worker (which is forbidden to edit them) and make the loop
+      spin. Write criteria only about the actual task output.
+
       If the task involves running code, executing tests, installing a service, or
       producing output at runtime, the DoD MUST include criteria for that runtime
       behavior (e.g., "dry-run exits 0", "service plist loads without launchd errors",
@@ -174,7 +181,16 @@ states:
     action: |
       PLAN="${env.PWD}/.loops/tmp/general-task-plan.md"
       STEP_FILE="${env.PWD}/.loops/tmp/general-task-current-step.txt"
-      awk 'found==0 && /^- \[ \]/ { sub(/^- \[ \]/, "- [x]"); found=1 } 1' "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
+      # Mark the step that select_step actually selected (bound to current-step.txt),
+      # NOT just the first unchecked line. This decouples marking from selection order
+      # so the two states can never desync (BUG-1766). $0==target is an exact string
+      # compare, so bracket/slash chars in the step text are literal and safe.
+      STEP_TEXT=$(cat "$STEP_FILE" 2>/dev/null)
+      if [ -n "$STEP_TEXT" ]; then
+        awk -v target="$STEP_TEXT" 'found==0 && $0==target && /^- \[ \]/ { sub(/^- \[ \]/, "- [x]"); found=1 } 1' "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
+      else
+        awk 'found==0 && /^- \[ \]/ { sub(/^- \[ \]/, "- [x]"); found=1 } 1' "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
+      fi
       rm -f "$STEP_FILE"
       rm -f "${env.PWD}/.loops/tmp/general-task-checkpoint.json"
     action_type: shell
@@ -360,13 +376,19 @@ states:
       - ${env.PWD}/.loops/tmp/general-task-plan.md — Task Plan (steps)
       - ${env.PWD}/.loops/tmp/general-task-dod.md — Definition of Done (criteria)
 
-      The plan is fully [x] but at least one DoD criterion remains unchecked.
-      Find the first unchecked DoD criterion. APPEND a new remediation step to the
+      Read the plan file to determine which steps are checked vs unchecked. At least
+      one DoD criterion or plan step remains unresolved.
+      Find the first unchecked DoD criterion. Before appending, read the existing plan
+      steps. If the plan already contains an unchecked step that would satisfy this same
+      DoD criterion (a near-duplicate remediation step), do NOT append another one —
+      report that a remediation step already exists and stop. Only if no existing
+      unchecked step covers this criterion, APPEND a new remediation step to the
       plan file (as - [ ] Step N: ...) describing the work needed to satisfy that
       criterion. Do not touch the DoD file and do not implement the step — the
       next states will handle that.
 
-      Print a summary of the remediation step you appended.
+      Print a summary of the remediation step you appended (or note that an existing
+      step already covers the criterion).
     action_type: prompt
     next: select_step
     on_error: diagnose

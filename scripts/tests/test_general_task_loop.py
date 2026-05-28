@@ -452,7 +452,7 @@ class TestMarkDoneShellAction:
         script = script.replace("${env.PWD}", str(tmp_path))
         return _bash(script, cwd=tmp_path)
 
-    def test_marks_first_unchecked_step_as_done(self, tmp_path: Path) -> None:
+    def test_marks_selected_step_as_done(self, tmp_path: Path) -> None:
         loops_tmp = _setup_loops_tmp(tmp_path)
         (loops_tmp / "general-task-plan.md").write_text(
             "# Task Plan\n- [x] Step 1: done\n- [ ] Step 2: pending\n- [ ] Step 3: also pending\n"
@@ -474,7 +474,7 @@ class TestMarkDoneShellAction:
         self._run(tmp_path)
         assert not step_file.exists(), "mark_done must remove general-task-current-step.txt"
 
-    def test_only_marks_first_unchecked(self, tmp_path: Path) -> None:
+    def test_marks_only_the_selected_step(self, tmp_path: Path) -> None:
         loops_tmp = _setup_loops_tmp(tmp_path)
         (loops_tmp / "general-task-plan.md").write_text(
             "# Task Plan\n- [ ] Step 1: first\n- [ ] Step 2: second\n"
@@ -600,6 +600,84 @@ class TestResumeCheckShellAction:
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         assert "RESUME_CLEAN" in result.stdout
         assert not checkpoint.exists(), "resume_check must delete checkpoint when no last-files.txt"
+
+
+class TestBUG1766ConvergenceEfficiency:
+    """BUG-1766: stop the general-task loop from re-executing finished work.
+
+    Four coordinated edits to general-task.yaml:
+    1. mark_done marks the line selected by select_step (current-step.txt), not the
+       first unchecked line, so marking can never desync from selection.
+    2. continue_work refuses to append near-duplicate remediation steps.
+    3. define_done forbids DoD criteria that target the loop's own tracking files.
+    4. continue_work no longer asserts the false "plan is fully [x]" premise.
+    """
+
+    def _run_mark_done(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        script = _load_state_script("mark_done")
+        script = script.replace("${env.PWD}", str(tmp_path))
+        return _bash(script, cwd=tmp_path)
+
+    # --- Edit 1: mark_done bound to the selected step ----------------------
+
+    def test_mark_done_marks_selected_step_not_first_unchecked(self, tmp_path: Path) -> None:
+        """current-step.txt points at a LATER step; mark_done must mark THAT one."""
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-plan.md").write_text(
+            "# Task Plan\n- [x] Step 1: done\n- [ ] Step 2: second\n- [ ] Step 3: third\n"
+        )
+        (loops_tmp / "general-task-current-step.txt").write_text("- [ ] Step 3: third\n")
+        result = self._run_mark_done(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        plan = (loops_tmp / "general-task-plan.md").read_text()
+        assert "- [x] Step 3: third" in plan, "mark_done must mark the SELECTED step"
+        assert "- [ ] Step 2: second" in plan, (
+            "mark_done must NOT mark the first unchecked step when a later step is selected"
+        )
+
+    def test_mark_done_falls_back_to_first_unchecked_when_no_current_step(
+        self, tmp_path: Path
+    ) -> None:
+        """With no current-step.txt, mark_done safely marks the first unchecked step."""
+        loops_tmp = _setup_loops_tmp(tmp_path)
+        (loops_tmp / "general-task-plan.md").write_text(
+            "# Task Plan\n- [ ] Step 1: first\n- [ ] Step 2: second\n"
+        )
+        result = self._run_mark_done(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        plan = (loops_tmp / "general-task-plan.md").read_text()
+        assert "- [x] Step 1: first" in plan
+        assert "- [ ] Step 2: second" in plan
+
+    def test_mark_done_action_references_current_step_file(self, raw_data: dict) -> None:
+        action = raw_data["states"]["mark_done"]["action"]
+        assert "general-task-current-step.txt" in action
+        assert "STEP_TEXT" in action and "target" in action, (
+            "mark_done must bind marking to current-step.txt content"
+        )
+
+    # --- Edit 2: continue_work dedup guard ---------------------------------
+
+    def test_continue_work_has_dedup_guard(self, raw_data: dict) -> None:
+        action = raw_data["states"]["continue_work"]["action"]
+        assert "near-duplicate" in action, "continue_work must contain a dedup guard"
+        assert "do NOT append another one" in action
+
+    # --- Edit 3: define_done forbids tracking-file criteria ----------------
+
+    def test_define_done_forbids_tracking_file_criteria(self, raw_data: dict) -> None:
+        action = raw_data["states"]["define_done"]["action"]
+        assert "Do NOT write DoD criteria that target" in action
+        assert "general-task-plan.md" in action and "general-task-dod.md" in action
+
+    # --- Edit 4: continue_work false-premise prompt fixed ------------------
+
+    def test_continue_work_drops_false_plan_complete_premise(self, raw_data: dict) -> None:
+        action = raw_data["states"]["continue_work"]["action"]
+        assert (
+            "The plan is fully [x] but at least one DoD criterion remains unchecked" not in action
+        )
+        assert "checked vs unchecked" in action
 
 
 # ---------------------------------------------------------------------------
