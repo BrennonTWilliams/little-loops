@@ -27,7 +27,7 @@ def main_loop() -> int:
         cmd_list,
         cmd_show,
     )
-    from little_loops.cli.loop.lifecycle import cmd_resume, cmd_status, cmd_stop
+    from little_loops.cli.loop.lifecycle import cmd_monitor, cmd_resume, cmd_status, cmd_stop
     from little_loops.cli.loop.next_loop import cmd_next_loop
     from little_loops.cli.loop.run import cmd_run
     from little_loops.cli.loop.testing import cmd_simulate, cmd_test
@@ -58,6 +58,7 @@ def main_loop() -> int:
         "fragments",
         "next-loop",
         "audit-meta",
+        "monitor",
         # aliases
         "r",
         "c",
@@ -100,6 +101,7 @@ Examples:
   %(prog)s next-loop              # Suggest next loop from history
   %(prog)s next-loop --count 3    # Top 3 suggestions
   %(prog)s audit-meta fix-types   # Summarize meta-eval agreement stats
+  %(prog)s monitor fix-types      # Attach to a running loop and render FSM state
 """,
     )
 
@@ -530,6 +532,68 @@ Examples:
     audit_meta_parser.add_argument("loop", help="Loop name")
     audit_meta_parser.add_argument("-j", "--json", action="store_true", help="Output as JSON")
 
+    # Monitor subcommand (FEAT-1764)
+    monitor_parser = subparsers.add_parser(
+        "monitor",
+        help="Attach to a running loop and render its FSM state in realtime",
+    )
+    monitor_parser.set_defaults(command="monitor")
+    monitor_parser.add_argument("loop", help="Loop name")
+    monitor_parser.add_argument(
+        "--show-diagrams",
+        nargs="?",
+        const=True,
+        default=None,
+        type=_parse_show_diagrams,
+        metavar="MODE",
+        help=(
+            "Display the FSM diagram after each step. MODE is a topology "
+            "(layered|neighborhood|inline) or a preset (detailed|summary|clean|local|slim|oneline). "
+            "Bare --show-diagrams defaults to the 'summary' preset (layered, main-path scope). "
+            "Use --diagram-edge-labels, --diagram-state-detail, --diagram-scope to override "
+            "individual preset facets."
+        ),
+    )
+    monitor_parser.add_argument(
+        "--diagram-edge-labels",
+        choices=["on", "off"],
+        default=None,
+        metavar="on|off",
+        help="Show or hide edge labels in the FSM diagram (default: on). Overrides preset.",
+    )
+    monitor_parser.add_argument(
+        "--diagram-state-detail",
+        choices=["title", "full"],
+        default=None,
+        metavar="title|full",
+        help="State box content: 'title' = name only, 'full' = include action body (default: full). Overrides preset.",
+    )
+    monitor_parser.add_argument(
+        "--diagram-scope",
+        choices=["main", "full"],
+        default=None,
+        metavar="main|full",
+        help="Edge scope: 'main' hides off-happy-path edges, 'full' shows all (default: full). Overrides preset.",
+    )
+    monitor_parser.add_argument(
+        "--clear",
+        action="store_true",
+        help="Clear terminal before each iteration (useful with --show-diagrams); uses the alternate screen buffer when combined with --show-diagrams to avoid scrollback contamination",
+    )
+    monitor_parser.add_argument(
+        "--quiet", "--qt", action="store_true", help="Suppress progress output"
+    )
+    monitor_parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show full prompt at action start"
+    )
+    monitor_parser.add_argument(
+        "--log-file",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Override log file location (default: <loops_dir>/.running/<loop>.log)",
+    )
+
     args = parser.parse_args(argv)
 
     logger = Logger(verbose=not getattr(args, "quiet", False))
@@ -563,6 +627,8 @@ Examples:
         return cmd_next_loop(args, loops_dir, logger)
     elif args.command == "audit-meta":
         return cmd_audit_meta(args.loop, args, loops_dir)
+    elif args.command == "monitor":
+        return cmd_monitor(args, loops_dir)
     else:
         parser.print_help()
         return 1

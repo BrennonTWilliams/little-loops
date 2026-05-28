@@ -15,6 +15,7 @@ import pytest
 
 from little_loops.cli.loop.lifecycle import (
     _format_relative_time,
+    cmd_monitor,
     cmd_resume,
     cmd_status,
     cmd_stop,
@@ -2229,3 +2230,271 @@ class TestReconcileStaleRunning:
         assert state2.status == "interrupted"
         assert state1.reconciled_at is not None
         assert state2.reconciled_at is not None
+
+
+class TestCmdMonitor:
+    """Tests for cmd_monitor — FEAT-1764.
+
+    Inlined here alongside cmd_status/cmd_stop/cmd_resume per the
+    one-file-per-module convention for cli/loop/lifecycle.py.
+    """
+
+    def _make_state(self, status: str = "running") -> MagicMock:
+        s = MagicMock()
+        s.loop_name = "test-loop"
+        s.status = status
+        s.current_state = "evaluate"
+        s.iteration = 5
+        s.started_at = "2026-05-28T10:00:00Z"
+        s.updated_at = "2026-05-28T10:05:00Z"
+        s.continuation_prompt = None
+        s.pid = None
+        return s
+
+    def _make_args(self, **kwargs) -> argparse.Namespace:
+        defaults: dict = {
+            "loop": "test-loop",
+            "quiet": True,
+            "verbose": False,
+            "show_diagrams": None,
+            "clear": False,
+            "diagram_edge_labels": None,
+            "diagram_state_detail": None,
+            "diagram_scope": None,
+            "follow": False,
+            "log_file": None,
+        }
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    def test_no_instances_returns_1(self, tmp_path: Path) -> None:
+        """No state file found → helpful message and exit 1."""
+        args = self._make_args()
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[]),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_monitor(args, tmp_path)
+
+        assert result == 1
+        output = " ".join(str(c) for c in mock_print.call_args_list)
+        assert "test-loop" in output
+
+    def test_dead_pid_prints_last_state_returns_0(self, tmp_path: Path) -> None:
+        """If PID is not alive, print last known state and exit 0."""
+        state = self._make_state(status="completed")
+        args = self._make_args()
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        (running_dir / "test-loop.pid").write_text("99999")
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[(None, state)],
+            ),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_monitor(args, tmp_path)
+
+        assert result == 0
+        output = " ".join(str(c) for c in mock_print.call_args_list)
+        assert "completed" in output
+        assert "evaluate" in output
+
+    def test_no_pid_anywhere_prints_last_state_returns_0(self, tmp_path: Path) -> None:
+        """No .pid file, no state.pid → treat as not running, exit 0."""
+        state = self._make_state(status="failed")
+        args = self._make_args()
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[(None, state)],
+            ),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_monitor(args, tmp_path)
+
+        assert result == 0
+        output = " ".join(str(c) for c in mock_print.call_args_list)
+        assert "failed" in output
+
+    def test_attach_forwards_events_to_renderer_and_ctrl_c_returns_0(
+        self, tmp_path: Path
+    ) -> None:
+        """Live attach tails events.jsonl → renderer.handle_event, Ctrl-C exits 0."""
+        state = self._make_state(status="running")
+        args = self._make_args()
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        (running_dir / "test-loop.pid").write_text("12345")
+        events_file = running_dir / "test-loop.events.jsonl"
+        # Pre-existing line — must be skipped by seek-to-end.
+        events_file.write_text(
+            json.dumps({"event": "state_enter", "state": "old", "iteration": 1, "depth": 0})
+            + "\n"
+        )
+
+        mock_renderer = MagicMock()
+        mock_renderer.in_pinned_mode = False
+
+        sleep_calls = [0]
+
+        def fake_sleep(_n: float) -> None:
+            sleep_calls[0] += 1
+            if sleep_calls[0] == 1:
+                with open(events_file, "a") as fh:
+                    fh.write(
+                        json.dumps(
+                            {
+                                "event": "state_enter",
+                                "state": "evaluate",
+                                "iteration": 5,
+                                "depth": 0,
+                            }
+                        )
+                        + "\n"
+                    )
+                return
+            raise KeyboardInterrupt
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[(None, state)],
+            ),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
+            patch(
+                "little_loops.cli.loop._helpers.StateFeedRenderer",
+                return_value=mock_renderer,
+            ),
+            patch("little_loops.cli.loop.lifecycle.time.sleep", side_effect=fake_sleep),
+        ):
+            result = cmd_monitor(args, tmp_path)
+
+        assert result == 0
+        assert mock_renderer.handle_event.called
+        # The new (post-seek) event is the only one delivered to the renderer.
+        delivered = [call.args[0] for call in mock_renderer.handle_event.call_args_list]
+        assert any(e.get("state") == "evaluate" for e in delivered)
+        assert not any(e.get("state") == "old" for e in delivered)
+
+    def test_attach_does_not_signal_subject_pid(self, tmp_path: Path) -> None:
+        """Ctrl-C detach must NOT send any signal to the loop process."""
+        state = self._make_state(status="running")
+        args = self._make_args()
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        (running_dir / "test-loop.pid").write_text("12345")
+        events_file = running_dir / "test-loop.events.jsonl"
+        events_file.write_text("")
+
+        mock_renderer = MagicMock()
+        mock_renderer.in_pinned_mode = False
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[(None, state)],
+            ),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
+            patch(
+                "little_loops.cli.loop._helpers.StateFeedRenderer",
+                return_value=mock_renderer,
+            ),
+            patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
+            patch("little_loops.cli.loop.lifecycle.time.sleep", side_effect=KeyboardInterrupt),
+        ):
+            result = cmd_monitor(args, tmp_path)
+
+        assert result == 0
+        mock_kill.assert_not_called()
+
+    def test_log_file_override_honored(self, tmp_path: Path) -> None:
+        """--log-file PATH causes the override path to be tailed instead of the default."""
+        state = self._make_state(status="running")
+        custom_log = tmp_path / "custom-output.log"
+        custom_log.write_text("")
+        args = self._make_args(log_file=str(custom_log))
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        (running_dir / "test-loop.pid").write_text("12345")
+        events_file = running_dir / "test-loop.events.jsonl"
+        events_file.write_text("")
+        # Default log path with content that should NOT appear in output.
+        default_log = running_dir / "test-loop.log"
+        default_log.write_text("DEFAULT-LOG-LINE\n")
+
+        mock_renderer = MagicMock()
+        mock_renderer.in_pinned_mode = False
+
+        sleep_calls = [0]
+
+        def fake_sleep(_n: float) -> None:
+            sleep_calls[0] += 1
+            if sleep_calls[0] == 1:
+                with open(custom_log, "a") as fh:
+                    fh.write("CUSTOM-LOG-LINE\n")
+                return
+            raise KeyboardInterrupt
+
+        printed: list[str] = []
+
+        def fake_print(*args_, **_kw):
+            printed.append(" ".join(str(a) for a in args_))
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[(None, state)],
+            ),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
+            patch(
+                "little_loops.cli.loop._helpers.StateFeedRenderer",
+                return_value=mock_renderer,
+            ),
+            patch("little_loops.cli.loop.lifecycle.time.sleep", side_effect=fake_sleep),
+            patch("builtins.print", side_effect=fake_print),
+        ):
+            result = cmd_monitor(args, tmp_path)
+
+        assert result == 0
+        captured = "\n".join(printed)
+        assert "CUSTOM-LOG-LINE" in captured
+        assert "DEFAULT-LOG-LINE" not in captured
+
+    def test_events_file_missing_when_running_falls_back_to_state(
+        self, tmp_path: Path
+    ) -> None:
+        """If events.jsonl is absent (race / archived), fall back to last-known-state."""
+        state = self._make_state(status="running")
+        args = self._make_args()
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        (running_dir / "test-loop.pid").write_text("12345")
+        # No events file written.
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[(None, state)],
+            ),
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
+            patch("little_loops.cli.loop._helpers.StateFeedRenderer"),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_monitor(args, tmp_path)
+
+        assert result == 0
+        output = " ".join(str(c) for c in mock_print.call_args_list)
+        assert "evaluate" in output

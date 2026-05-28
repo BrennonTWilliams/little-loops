@@ -519,3 +519,131 @@ def cmd_resume(
         )
     finally:
         executor.close_transports()
+
+
+def _print_last_state(state: LoopState) -> None:
+    """Print last-known state (used when not actively tailing)."""
+    print(f"Loop: {state.loop_name}")
+    print(f"Status: {state.status}")
+    print(f"Current state: {state.current_state}")
+    print(f"Iteration: {state.iteration}")
+
+
+def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
+    """Attach to a running loop and render its FSM state in realtime.
+
+    Read-only attach: tails ``<stem>.events.jsonl`` and the log file from disk,
+    forwarding events to a ``StateFeedRenderer``. Ctrl-C detaches without
+    sending any signal to the loop process (FEAT-1764).
+    """
+    loop_name = args.loop
+    running_dir = loops_dir / ".running"
+    instances = _find_instances(loop_name, running_dir)
+
+    if not instances:
+        print(f"No instances of '{loop_name}' found")
+        return 1
+
+    instance_id, state = instances[-1]
+    stem = instance_id or loop_name
+
+    pid = _read_pid_file(running_dir / f"{stem}.pid")
+    if pid is None:
+        pid = getattr(state, "pid", None)
+
+    if pid is None or not _process_alive(pid):
+        _print_last_state(state)
+        return 0
+
+    # Fabricate missing Namespace attrs that StateFeedRenderer reads.
+    for attr, default in (
+        ("quiet", False),
+        ("verbose", False),
+        ("show_diagrams", None),
+        ("clear", False),
+        ("diagram_edge_labels", None),
+        ("diagram_state_detail", None),
+        ("diagram_scope", None),
+        ("follow", False),
+    ):
+        if not hasattr(args, attr):
+            setattr(args, attr, default)
+
+    try:
+        fsm = load_loop(loop_name, loops_dir, Logger())
+    except (FileNotFoundError, ValueError) as e:
+        print(f"Cannot load loop '{loop_name}': {e}")
+        return 1
+
+    # Late import: tests patch StateFeedRenderer at its module-of-origin
+    # (little_loops.cli.loop._helpers.StateFeedRenderer); using a function-local
+    # import ensures the patch takes effect at call time.
+    from little_loops.cli.loop._helpers import (
+        StateFeedRenderer,
+        _install_sigwinch_handler,
+        _restore_sigwinch_handler,
+    )
+
+    renderer = StateFeedRenderer(fsm, args, loops_dir=loops_dir)
+
+    log_override = getattr(args, "log_file", None)
+    log_path = Path(log_override) if log_override else running_dir / f"{stem}.log"
+    events_file = running_dir / f"{stem}.events.jsonl"
+
+    if not events_file.exists():
+        _print_last_state(state)
+        return 0
+
+    sigwinch_installed = False
+    if renderer.in_pinned_mode:
+        _install_sigwinch_handler()
+        sigwinch_installed = True
+
+    try:
+        with open(events_file, encoding="utf-8") as ev_f:
+            ev_f.seek(0, 2)
+            log_f = None
+            if log_path.exists():
+                log_f = open(log_path, encoding="utf-8")
+                log_f.seek(0, 2)
+            try:
+                while True:
+                    progressed = False
+                    try:
+                        line = ev_f.readline()
+                    except FileNotFoundError:
+                        break
+                    if line:
+                        progressed = True
+                        stripped = line.strip()
+                        if stripped:
+                            try:
+                                event = json.loads(stripped)
+                            except json.JSONDecodeError:
+                                event = None
+                            if event is not None:
+                                renderer.handle_event(event)
+                    if log_f is not None:
+                        try:
+                            log_line = log_f.readline()
+                        except FileNotFoundError:
+                            log_line = ""
+                        if log_line:
+                            progressed = True
+                            print(log_line.rstrip())
+                    if not progressed:
+                        if not _process_alive(pid):
+                            break
+                        if not events_file.exists():
+                            break
+                        time.sleep(0.1)
+            finally:
+                if log_f is not None:
+                    log_f.close()
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        if sigwinch_installed:
+            _restore_sigwinch_handler()
+
+    return 0

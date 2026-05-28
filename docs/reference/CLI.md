@@ -492,6 +492,33 @@ Resume a loop. Resumable statuses are `"running"`, `"awaiting_continuation"`, an
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
 
+#### `ll-loop monitor <loop>`
+
+Attach to a running loop and render its FSM state in realtime. Read-only:
+tails `<instance-id>.events.jsonl` and the loop's `.log` file from disk and
+forwards events to the same `StateFeedRenderer` used by `ll-loop run`. Ctrl-C
+detaches from the rendered stream without sending any signal to the loop
+process (use `ll-loop stop` to terminate the loop). When no instance is running
+(no live PID), prints the last-known state of the most recent instance and
+exits 0.
+
+```bash
+ll-loop monitor fix-types               # tail events and log
+ll-loop monitor fix-types --show-diagrams --clear    # pinned FSM diagram + scrolling log
+ll-loop monitor fix-types --log-file /tmp/custom.log # tail a custom log path
+```
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--show-diagrams[=MODE]` | | Display FSM diagram alongside events (same semantics as `ll-loop run`). |
+| `--diagram-edge-labels` | | Override edge-label visibility (`on`\|`off`). |
+| `--diagram-state-detail` | | Override state-detail level (`title`\|`full`). |
+| `--diagram-scope` | | Override diagram scope (`main`\|`full`). |
+| `--clear` | | Pin the FSM diagram and stream events below (TTY only). |
+| `--quiet` / `--qt` | | Suppress progress output. |
+| `--verbose` | `-v` | Show full prompt at action start. |
+| `--log-file PATH` | | Tail this log file instead of `.loops/.running/<instance-id>.log`. |
+
 #### `ll-loop history <loop>` / `ll-loop h <loop>`
 
 Show execution history for a loop.

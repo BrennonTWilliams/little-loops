@@ -519,6 +519,7 @@ Extensions are wired to the EventBus at CLI entry points via `wire_extensions()`
 |-----------------|------|------------------|------------------|
 | `ll-loop run` | `cli/loop/run.py` | Yes — EventBus + FSMExecutor registry wired (interceptors, contributed actions/evaluators populated) | Yes — `wire_transports()` after extensions; `executor.close_transports()` runs in `finally` before lock release |
 | `ll-loop resume` | `cli/loop/lifecycle.py` | Yes — EventBus + FSMExecutor registry wired | Yes — `wire_transports()` after extensions; `executor.close_transports()` runs in `finally` so transports flush on exit/exception |
+| `ll-loop monitor` | `cli/loop/lifecycle.py` | No — read-only attach: does not instantiate `PersistentExecutor` or subscribe to `EventBus`; reads `<instance-id>.events.jsonl` from disk and forwards events to `StateFeedRenderer`. Ctrl-C detaches without signaling the loop process. | No |
 | `ll-parallel` | `cli/parallel.py` | Yes — EventBus only (no FSMExecutor wiring) | Yes — `wire_transports()` after extensions; teardown runs in `ParallelOrchestrator._cleanup()` via `event_bus.close_transports()` |
 | `ll-sprint` | `cli/sprint/run.py` | Yes — EventBus only (no FSMExecutor wiring for parallel branch) | Yes — per-wave `wire_transports()` after extensions; teardown delegated to per-wave `ParallelOrchestrator._cleanup()` |
 | `ll-auto` | `cli/auto.py` | No — EventBus is internal to `AutoManager` | Yes — `AutoManager.__init__()` wires `SQLiteTransport(db_path)` directly; does not call `wire_transports()` |

@@ -1525,6 +1525,7 @@ ll-loop list --running
 ll-loop status fix-types
 ll-loop stop fix-types
 ll-loop resume fix-types
+ll-loop monitor fix-types
 
 # History
 ll-loop history fix-types

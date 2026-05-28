@@ -65,6 +65,7 @@ The E2E test suite covers the following workflows:
 - **Validates**:
   - `ll-loop status` works without active loop
   - `ll-loop list` shows available configurations
+  - `ll-loop monitor` subcommand is registered and accepts `--help`
 
 ## Test Isolation
 

@@ -815,7 +815,7 @@ Find stuck or stale `ll-loop` processes, diagnose root causes from state and eve
 
 **Trigger keywords:** "cleanup loops", "stuck loops", "clean loops", "stale loops", "kill stuck loops"
 
-**See also:** `/ll:debug-loop-run`, `/ll:review-loop`, `ll-loop stop`
+**See also:** `/ll:debug-loop-run`, `/ll:review-loop`, `ll-loop stop`, `ll-loop monitor`
 
 ### `/ll:rename-loop`
 Rename a loop (built-in or project-level) and update every reference to it so the loop system remains fully functional.

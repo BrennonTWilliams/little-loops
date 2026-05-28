@@ -1743,12 +1743,18 @@ Loop my-scan started in background (PID: 12345)
 # Check whether the process is alive and what state the loop is in
 ll-loop status my-scan
 
+# Attach and render FSM state in realtime (read-only; Ctrl-C detaches)
+ll-loop monitor my-scan
+ll-loop monitor my-scan --show-diagrams --clear   # pinned FSM diagram view
+
 # Stream live output (works for both foreground and background runs)
 tail -f $(ll-loop status my-scan --json | python3 -c "import sys,json; print(json.load(sys.stdin).get('log_file') or '')")
 
 # For foreground runs, inspect the always-present events file instead
 ll-loop status my-scan --json | python3 -c "import sys,json; print(json.load(sys.stdin).get('events_file') or '')"
 ```
+
+`ll-loop monitor` tails `.events.jsonl` and forwards events to the same renderer used by foreground runs, so a background loop becomes visually inspectable without restarting it. Ctrl-C detaches from the rendered stream without signaling the loop process — use `ll-loop stop` to terminate.
 
 Both foreground and background runs write stdout and stderr to `.loops/.running/<instance-id>.log` (ANSI escape sequences stripped). `log_file` in `--json` output is the path to this file for all run modes; `null` only for background-spawned child processes (`--foreground-internal`) or pre-ENH-1703 state files. All runs also write structured events to `.loops/.running/<instance-id>.events.jsonl`; use the `events_file` field from `--json` output to locate it. The PID may be stored in `.loops/.running/<instance-id>.pid` (background-mode processes) or in `.loops/.running/<instance-id>.lock` (foreground runs); `ll-loop status` checks both, preferring the `.pid` file and falling back to the `.lock` file. The `pid_source` field in `--json` output indicates which file the PID came from. The `instance-id` is `<loop-name>-<YYYYMMDDTHHMMSS>` (e.g. `my-scan-20260503T122306`); use `ll-loop status <loop-name> --json` to retrieve the exact log or events path for a running instance.
 
