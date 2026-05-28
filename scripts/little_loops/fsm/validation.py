@@ -1015,7 +1015,12 @@ def _validate_circuit(fsm: FSMLoop, defined_states: set[str]) -> list[Validation
 def _find_reachable_states(fsm: FSMLoop) -> set[str]:
     """Find all states reachable from the initial state.
 
-    Uses breadth-first search to find all reachable states.
+    Uses breadth-first search to find all reachable states. Seeds the BFS
+    with the initial state plus top-level transition targets that act as
+    alternate entry points: ``on_max_iterations`` (fires when the iteration
+    cap is hit) and ``circuit.repeated_failure.on_repeated_failure`` (fires
+    when the circuit breaker trips). These are real edges the runtime can
+    take, so states reached only through them are not orphans.
 
     Args:
         fsm: The FSM loop to analyze
@@ -1025,6 +1030,12 @@ def _find_reachable_states(fsm: FSMLoop) -> set[str]:
     """
     reachable: set[str] = set()
     to_visit: deque[str] = deque([fsm.initial])
+    if fsm.on_max_iterations is not None:
+        to_visit.append(fsm.on_max_iterations)
+    if fsm.circuit is not None and fsm.circuit.repeated_failure is not None:
+        target = fsm.circuit.repeated_failure.on_repeated_failure
+        if target not in STALL_SPECIAL_TOKENS:
+            to_visit.append(target)
 
     while to_visit:
         current = to_visit.popleft()
