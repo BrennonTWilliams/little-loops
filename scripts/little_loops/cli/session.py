@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from little_loops.cli.output import configure_output, use_color_enabled
+from little_loops.cli.output import configure_output, print_json, use_color_enabled
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, backfill, recent, search
 
@@ -58,6 +58,9 @@ Examples:
     )
     recent_parser.add_argument(
         "--limit", type=int, default=20, metavar="N", help="Maximum rows (default: 20)"
+    )
+    recent_parser.add_argument(
+        "--json", action="store_true", dest="json", help="Output as JSON array"
     )
 
     subparsers.add_parser("backfill", help="Seed the database from existing on-disk sources")
@@ -102,6 +105,9 @@ def main_session() -> int:
 
     if args.command == "recent":
         rows = recent(args.db, kind=args.kind, limit=args.limit)
+        if args.json:
+            print_json(list(rows))
+            return 0
         if not rows:
             print(f"No {args.kind} events.")
             return 0

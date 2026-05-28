@@ -705,6 +705,8 @@ def cmd_audit_meta(loop_name: str, args: argparse.Namespace, loops_dir: Path) ->
         else:
             print("  No divergence flags.")
 
+    if as_json:
+        return 0  # let caller inspect JSON for flags; non-zero kills provider.runCli
     return 1 if flags else 0
 
 
