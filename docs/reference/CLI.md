@@ -280,13 +280,13 @@ Create a new sprint.
 | `--skip` | | Issue IDs to exclude |
 | `--type` | | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 
-#### `ll-sprint run <sprint>` / `ll-sprint r <sprint>`
+#### `ll-sprint run <sprint|EPIC-NNN>` / `ll-sprint r <sprint|EPIC-NNN>`
 
-Execute a sprint.
+Execute a sprint or resolve an EPIC's active children as a sprint.
 
 | Argument/Flag | Short | Description |
 |---------------|-------|-------------|
-| `sprint` | | Sprint name to execute |
+| `sprint` | | Sprint name **or** EPIC ID (e.g. `EPIC-1234`) to resolve and execute |
 | `--dry-run` | `-n` | Show plan without running |
 | `--max-workers` | `-w` | Max parallel workers |
 | `--timeout` | `-t` | Timeout per issue in seconds |
@@ -297,8 +297,11 @@ Execute a sprint.
 | `--skip` | | Issue IDs to skip during execution |
 | `--skip-analysis` | | Skip dependency analysis |
 | `--type` | | Filter by type |
+| `--save` | | Write the resolved sprint YAML to `.ll/sprints/epic-NNN.yaml` before executing (useful for inspect/edit workflows) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
+
+When an EPIC ID is passed, resolution is the union of the EPIC's `relates_to:` field (forward) and any issue with `parent: EPIC-NNN` (backward), deduplicated and filtered to active statuses (`open`, `in_progress`, `blocked`). Resume works using the normalized `epic-NNN` name stored in `.sprint-state.json`.
 
 > **Milestone write-back**: When `ll-sprint run` starts, it writes `milestone: <sprint-name>` to the frontmatter of every issue in the sprint. This makes the sprint assignment visible on each issue file and enables `ll-issues list --milestone` filtering and `ll-sync` milestone assignment.
 

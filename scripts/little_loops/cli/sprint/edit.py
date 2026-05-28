@@ -14,7 +14,7 @@ from little_loops.sprint import SprintManager
 def _cmd_sprint_edit(args: argparse.Namespace, manager: SprintManager) -> int:
     """Edit a sprint's issue list."""
     logger = Logger()
-    sprint = manager.load(args.sprint)
+    sprint = manager.load_or_resolve(args.sprint)
     if not sprint:
         logger.error(f"Sprint not found: {args.sprint}")
         return 1

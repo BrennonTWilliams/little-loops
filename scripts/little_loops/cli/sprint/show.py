@@ -154,7 +154,7 @@ def _render_health_summary(
 def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
     """Show sprint details with dependency visualization."""
     logger = Logger()
-    sprint = manager.load(args.sprint)
+    sprint = manager.load_or_resolve(args.sprint)
     if not sprint:
         logger.error(f"Sprint not found: {args.sprint}")
         return 1

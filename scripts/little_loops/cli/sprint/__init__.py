@@ -134,6 +134,11 @@ Examples:
     add_label_arg(run_parser)
     add_handoff_threshold_arg(run_parser)
     add_context_limit_arg(run_parser)
+    run_parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Write resolved sprint YAML to .ll/sprints/ before executing (useful for EPIC IDs)",
+    )
 
     # list subcommand
     list_parser = subparsers.add_parser("list", aliases=["l"], help="List all sprints")

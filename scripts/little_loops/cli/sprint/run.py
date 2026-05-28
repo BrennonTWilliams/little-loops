@@ -118,10 +118,18 @@ def _cmd_sprint_run(
     if context_limit is not None:
         os.environ["LL_CONTEXT_LIMIT"] = str(context_limit)
 
-    sprint = manager.load(args.sprint)
+    sprint = manager.load_or_resolve(args.sprint)
     if not sprint:
         logger.error(f"Sprint not found: {args.sprint}")
         return 1
+
+    if not sprint.issues:
+        logger.info(f"Sprint '{sprint.name}' has no active issues — nothing to process")
+        return 0
+
+    if getattr(args, "save", False):
+        saved_path = sprint.save(manager.sprints_dir)
+        logger.info(f"Sprint saved to {saved_path}")
 
     # Apply skip filter if provided
     issues_to_process = list(sprint.issues)
@@ -278,7 +286,7 @@ def _cmd_sprint_run(
 
     if args.resume:
         loaded_state = _load_sprint_state(logger)
-        if loaded_state and loaded_state.sprint_name == args.sprint:
+        if loaded_state and loaded_state.sprint_name == sprint.name:
             state = loaded_state
             # Find first incomplete wave by checking completed issues
             completed_set = set(state.completed_issues)
@@ -298,19 +306,19 @@ def _cmd_sprint_run(
             if loaded_state:
                 logger.warning(
                     f"State file is for sprint '{loaded_state.sprint_name}', "
-                    f"not '{args.sprint}' - starting fresh"
+                    f"not '{sprint.name}' - starting fresh"
                 )
             else:
                 logger.warning("No valid state found - starting fresh")
             state = SprintState(
-                sprint_name=args.sprint,
+                sprint_name=sprint.name,
                 started_at=datetime.now().isoformat(),
             )
     else:
         # Fresh start - delete any old state
         _cleanup_sprint_state(logger)
         state = SprintState(
-            sprint_name=args.sprint,
+            sprint_name=sprint.name,
             started_at=datetime.now().isoformat(),
         )
 

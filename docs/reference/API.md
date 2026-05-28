@@ -5008,6 +5008,7 @@ Manager for sprint CRUD operations.
 |--------|---------|-------------|
 | `create(name, issues, description, options)` | `Sprint` | Create new sprint |
 | `load(name)` | `Sprint \| None` | Load sprint by name |
+| `load_or_resolve(arg)` | `Sprint \| None` | Load sprint by name **or** resolve an EPIC ID (`EPIC-NNN`) to an ephemeral Sprint via forward (`relates_to:`) + backward (`parent:`) lookup, filtered to active statuses |
 | `list_all()` | `list[Sprint]` | List all sprints |
 | `delete(name)` | `bool` | Delete sprint |
 | `validate_issues(issues)` | `dict[str, Path]` | Validate issue IDs exist |

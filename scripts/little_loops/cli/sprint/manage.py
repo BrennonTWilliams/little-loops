@@ -70,7 +70,7 @@ def _cmd_sprint_analyze(args: argparse.Namespace, manager: SprintManager) -> int
     from little_loops.parallel.file_hints import FileHints, extract_file_hints
 
     logger = Logger()
-    sprint = manager.load(args.sprint)
+    sprint = manager.load_or_resolve(args.sprint)
     if not sprint:
         logger.error(f"Sprint not found: {args.sprint}")
         return 1

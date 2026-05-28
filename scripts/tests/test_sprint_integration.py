@@ -19,7 +19,7 @@ def sprint_project(tmp_path: Path) -> BRConfig:
     issues_dir = tmp_path / ".issues"
     issues_dir.mkdir()
 
-    for category in ["bugs", "features", "enhancements", "completed"]:
+    for category in ["bugs", "features", "enhancements", "epics", "completed"]:
         (issues_dir / category).mkdir()
 
     # Create config
@@ -40,6 +40,7 @@ def sprint_project(tmp_path: Path) -> BRConfig:
                 "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
                 "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
                 "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
+                "epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"},
             },
             "completed_dir": "completed",
         },

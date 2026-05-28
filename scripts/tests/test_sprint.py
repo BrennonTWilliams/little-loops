@@ -824,9 +824,9 @@ issues:
         state_file = tmp_path / ".sprint-state.json"
         assert state_file.exists(), "State file should be saved on exception"
 
-        # Verify state content
+        # Verify state content — sprint_name matches sprint.name (canonical), not args.sprint
         state_data = json.loads(state_file.read_text())
-        assert state_data["sprint_name"] == "test"
+        assert state_data["sprint_name"] == "test-sprint"
         assert "last_checkpoint" in state_data
 
 
@@ -2320,6 +2320,213 @@ class TestSprintWaveCleanStart:
         assert captured_kwargs.get("clean_start") is True, (
             "Wave create_parallel_config must pass clean_start=True to avoid loading stale orchestrator state"
         )
+
+
+class TestSprintManagerLoadOrResolve:
+    """Tests for SprintManager.load_or_resolve() (FEAT-1737)."""
+
+    @pytest.fixture
+    def epic_project(self, tmp_path: Path) -> BRConfig:
+        """Project with epics category and sample issues."""
+        issues_dir = tmp_path / ".issues"
+        for category in ["bugs", "features", "enhancements", "epics", "completed"]:
+            (issues_dir / category).mkdir(parents=True)
+
+        config_dir = tmp_path / ".ll"
+        config_dir.mkdir()
+        config_data = {
+            "project": {"name": "test-project", "src_dir": "src/"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                    "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                    "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
+                    "epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"},
+                },
+                "completed_dir": "completed",
+            },
+        }
+        (config_dir / "ll-config.json").write_text(json.dumps(config_data))
+        return BRConfig(tmp_path)
+
+    def test_load_or_resolve_sprint_name(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """Non-EPIC arg falls through to file-based load()."""
+        sprints_dir = tmp_path / ".sprints"
+        manager = SprintManager(sprints_dir=sprints_dir, config=epic_project)
+        manager.create(name="my-sprint", issues=["BUG-001"])
+
+        result = manager.load_or_resolve("my-sprint")
+        assert result is not None
+        assert result.name == "my-sprint"
+        assert result.issues == ["BUG-001"]
+
+    def test_load_or_resolve_nonexistent_sprint_name(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """Non-EPIC arg that doesn't exist returns None from load()."""
+        manager = SprintManager(sprints_dir=tmp_path, config=epic_project)
+        result = manager.load_or_resolve("nonexistent-sprint")
+        assert result is None
+
+    def test_load_or_resolve_epic_id_forward_lookup(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """EPIC ID with relates_to includes those issues via forward lookup."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-100-test-epic.md").write_text(
+            "---\nid: EPIC-100\nstatus: open\nrelates_to:\n  - BUG-001\n---\n# EPIC-100: Test Epic\n"
+        )
+        (issues_dir / "bugs" / "P1-BUG-001-test-bug.md").write_text(
+            "# BUG-001: Test Bug\n\n## Summary\nFix this.\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-100")
+
+        assert result is not None
+        assert result.name == "epic-100"
+        assert "BUG-001" in result.issues
+
+    def test_load_or_resolve_epic_id_backward_lookup(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """EPIC ID without relates_to finds children via parent: field scan."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-200-test-epic.md").write_text(
+            "---\nid: EPIC-200\nstatus: open\n---\n# EPIC-200: Test Epic\n"
+        )
+        (issues_dir / "features" / "P2-FEAT-010-test-feature.md").write_text(
+            "---\nparent: EPIC-200\n---\n# FEAT-010: Test Feature\n\n## Summary\nImplement this.\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-200")
+
+        assert result is not None
+        assert result.name == "epic-200"
+        assert "FEAT-010" in result.issues
+
+    def test_load_or_resolve_epic_id_union_dedup(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """Forward and backward lookups are merged and deduplicated."""
+        issues_dir = tmp_path / ".issues"
+        # EPIC has BUG-001 in relates_to and FEAT-010 has parent: EPIC-300
+        # BUG-001 also has parent: EPIC-300 (appears in both → deduplicated)
+        (issues_dir / "epics" / "P1-EPIC-300-test-epic.md").write_text(
+            "---\nid: EPIC-300\nstatus: open\nrelates_to:\n  - BUG-001\n---\n# EPIC-300: Test Epic\n"
+        )
+        (issues_dir / "bugs" / "P1-BUG-001-test-bug.md").write_text(
+            "---\nparent: EPIC-300\n---\n# BUG-001: Test Bug\n\n## Summary\nFix this.\n"
+        )
+        (issues_dir / "features" / "P2-FEAT-010-test-feature.md").write_text(
+            "---\nparent: EPIC-300\n---\n# FEAT-010: Test Feature\n\n## Summary\nImplement this.\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-300")
+
+        assert result is not None
+        assert result.name == "epic-300"
+        issue_ids = result.issues
+        assert "BUG-001" in issue_ids
+        assert "FEAT-010" in issue_ids
+        # Deduplicated: BUG-001 should appear exactly once
+        assert issue_ids.count("BUG-001") == 1
+
+    def test_load_or_resolve_filters_inactive_statuses(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """Done/cancelled children are excluded from the resolved sprint."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-400-test-epic.md").write_text(
+            "---\nid: EPIC-400\nstatus: open\nrelates_to:\n  - BUG-001\n  - FEAT-010\n---\n# EPIC-400\n"
+        )
+        (issues_dir / "bugs" / "P1-BUG-001-test-bug.md").write_text(
+            "# BUG-001: Active Bug\n\n## Summary\nFix this.\n"
+        )
+        (issues_dir / "features" / "P2-FEAT-010-done-feature.md").write_text(
+            "---\nstatus: done\n---\n# FEAT-010: Done Feature\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-400")
+
+        assert result is not None
+        assert "BUG-001" in result.issues
+        assert "FEAT-010" not in result.issues
+
+    def test_load_or_resolve_epic_not_found(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """EPIC ID that doesn't exist returns None."""
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-999")
+        assert result is None
+
+    def test_load_or_resolve_epic_no_active_children(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """EPIC with no active children returns Sprint with empty issues list."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-500-empty-epic.md").write_text(
+            "---\nid: EPIC-500\nstatus: open\n---\n# EPIC-500: Empty Epic\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-500")
+
+        assert result is not None
+        assert result.name == "epic-500"
+        assert result.issues == []
+
+    def test_load_or_resolve_epic_id_case_insensitive(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """EPIC ID is recognized and normalized regardless of input case."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-600-test-epic.md").write_text(
+            "---\nid: EPIC-600\nstatus: open\nrelates_to:\n  - BUG-001\n---\n# EPIC-600: Test Epic\n"
+        )
+        (issues_dir / "bugs" / "P1-BUG-001-test-bug.md").write_text(
+            "# BUG-001: Test Bug\n\n## Summary\nFix this.\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        # lowercase input
+        result = manager.load_or_resolve("epic-600")
+        assert result is not None
+        assert result.name == "epic-600"
+        assert "BUG-001" in result.issues
+
+    def test_save_flag_materializes_yaml(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """Saving an EPIC-resolved Sprint writes a YAML file."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-700-test-epic.md").write_text(
+            "---\nid: EPIC-700\nstatus: open\nrelates_to:\n  - BUG-001\n---\n# EPIC-700: Test Epic\n"
+        )
+        (issues_dir / "bugs" / "P1-BUG-001-test-bug.md").write_text(
+            "# BUG-001: Test Bug\n\n## Summary\nFix this.\n"
+        )
+
+        sprints_dir = tmp_path / ".sprints"
+        manager = SprintManager(sprints_dir=sprints_dir, config=epic_project)
+        sprint = manager.load_or_resolve("EPIC-700")
+
+        assert sprint is not None
+        saved_path = sprint.save(manager.sprints_dir)
+        assert saved_path.exists()
+        assert saved_path.name == "epic-700.yaml"
+
+        with open(saved_path) as f:
+            data = yaml.safe_load(f)
+        assert data["name"] == "epic-700"
+        assert "BUG-001" in data["issues"]
 
 
 class TestSprintListJsonShortForm:

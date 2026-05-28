@@ -809,6 +809,7 @@ class TestSprintArgumentParsing:
         run.add_argument("--resume", "-r", action="store_true")
         run.add_argument("--quiet", "-q", action="store_true")
         run.add_argument("--skip", type=str, default=None)
+        run.add_argument("--save", action="store_true")
 
         # list
         list_parser = subparsers.add_parser("list")
@@ -946,6 +947,19 @@ class TestSprintArgumentParsing:
         assert args.dry_run is True
         assert args.max_workers == 4
         assert args.resume is True
+
+    def test_run_with_save_flag(self) -> None:
+        """run subcommand accepts --save to materialize resolved sprint YAML."""
+        args = self._parse_sprint_args(["run", "EPIC-100", "--save"])
+        assert args.command == "run"
+        assert args.sprint == "EPIC-100"
+        assert args.save is True
+
+    def test_run_save_defaults_false(self) -> None:
+        """--save defaults to False when not provided."""
+        args = self._parse_sprint_args(["run", "sprint-1"])
+        assert args.command == "run"
+        assert args.save is False
 
 
 class TestSprintShowDependencyVisualization:
@@ -2362,6 +2376,11 @@ class TestMainSprintAdditionalCoverage:
                             "dir": "features",
                             "action": "implement",
                         },
+                        "epics": {
+                            "prefix": "EPIC",
+                            "dir": "epics",
+                            "action": "coordinate",
+                        },
                     },
                 },
             }
@@ -2369,7 +2388,7 @@ class TestMainSprintAdditionalCoverage:
 
             # Create issue directories
             issues_dir = project / ".issues"
-            for category in ["bugs", "features"]:
+            for category in ["bugs", "features", "epics"]:
                 (issues_dir / category).mkdir(parents=True)
 
             # Create sample issues

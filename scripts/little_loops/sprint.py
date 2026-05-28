@@ -1,6 +1,7 @@
 """Sprint and sequence management for issue execution."""
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,6 +10,9 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 logger = logging.getLogger(__name__)
+
+_EPIC_ID_RE = re.compile(r"^EPIC-\d+$", re.IGNORECASE)
+_ACTIVE_STATUSES: set[str] = {"open", "in_progress", "blocked"}
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -278,6 +282,83 @@ class SprintManager:
             Sprint instance or None if not found
         """
         return Sprint.load(self.sprints_dir, name)
+
+    def load_or_resolve(self, arg: str) -> "Sprint | None":
+        """Load a sprint by name or resolve an EPIC ID to an ephemeral Sprint.
+
+        If `arg` matches ^EPIC-\\d+$ (case-insensitive), resolves the EPIC's
+        active children via union of forward (relates_to:) and backward (parent:)
+        lookups, filtered to active statuses and ordered by dependency graph.
+        Otherwise falls through to the file-based load() path.
+
+        Args:
+            arg: Sprint name (file-based) or EPIC ID matching ^EPIC-\\d+$
+
+        Returns:
+            Sprint instance, or None if not found / EPIC not found
+        """
+        if not _EPIC_ID_RE.match(arg):
+            return self.load(arg)
+
+        epic_id = arg.upper()
+
+        if not self.config:
+            return self.load(arg)
+
+        epic_path = self._find_issue_path(epic_id)
+        if epic_path is None:
+            return None
+
+        from little_loops.issue_parser import IssueParser, find_issues
+
+        parser = IssueParser(self.config)
+        try:
+            epic_info = parser.parse_file(epic_path)
+        except Exception as e:
+            logger.warning("Failed to parse EPIC file %s: %s", epic_path, e)
+            return None
+
+        # Forward lookup: relates_to on the EPIC file
+        forward_ids: set[str] = set(epic_info.relates_to)
+
+        # Backward lookup: scan all active issues for parent == epic_id
+        all_active = find_issues(self.config, status_filter=_ACTIVE_STATUSES)
+        backward_ids = {info.issue_id for info in all_active if info.parent == epic_id}
+
+        # Union + dedup; intersect with active set so forward refs to done issues are dropped
+        active_ids_set = {info.issue_id for info in all_active}
+        child_ids = (forward_ids | backward_ids) & active_ids_set
+        child_infos = [info for info in all_active if info.issue_id in child_ids]
+
+        sprint_name = f"epic-{epic_id.split('-', 1)[1]}"
+
+        if not child_infos:
+            logger.info("EPIC %s has no active children", epic_id)
+            return Sprint(
+                name=sprint_name,
+                description=f"Resolved from {epic_id}",
+                issues=[],
+                created=datetime.now(UTC).isoformat(),
+            )
+
+        from little_loops.dependency_graph import DependencyGraph
+
+        dep_graph = DependencyGraph.from_issues(child_infos, all_known_ids=active_ids_set)
+        try:
+            waves = dep_graph.get_execution_waves()
+            ordered_ids = [issue.issue_id for wave in waves for issue in wave]
+        except ValueError:
+            ordered_ids = [
+                info.issue_id
+                for info in sorted(child_infos, key=lambda i: (i.priority or "P5", i.issue_id))
+            ]
+
+        return Sprint(
+            name=sprint_name,
+            description=f"Resolved from {epic_id}: {epic_info.title}",
+            issues=ordered_ids,
+            created=datetime.now(UTC).isoformat(),
+        )
 
     def list_all(self) -> list[Sprint]:
         """List all sprints.

@@ -2,8 +2,9 @@
 id: FEAT-1737
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-27T05:02:23Z'
+completed_at: '2026-05-28T00:47:52Z'
 discovered_date: '2026-05-27'
 discovered_by: capture-issue
 decision_needed: false
@@ -161,7 +162,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_sprint_integration.py:sprint_project` — needs `"epics"` category added to config dict and `(issues_dir / "epics").mkdir()` for EPIC integration tests
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_cli.py:TestSprintCLIEntryPoint` — end-to-end tests for sprint CLI via `main_sprint()` + `sys.argv`; `_parse_sprint_args()` helper (in `TestSprintArgumentParsing`) is a local duplicate of the run parser and must have `--save` added alongside `run_parser` or new parser tests for `--save` will fail; both `sprint_project` fixtures (in `TestSprintCLIEntryPoint` and `TestMainSprintAdditionalCoverage`) need `"epics"` category + `(issues_dir / "epics").mkdir()` [Agent 1 + Agent 2 finding]
+- `scripts/tests/test_cli.py:TestMainSprintAdditionalCoverage` — end-to-end tests for sprint CLI via `main_sprint()` + `sys.argv`; `_parse_sprint_args()` helper (in `TestSprintArgumentParsing`) is a local duplicate of the run parser and must have `--save` added alongside `run_parser` or new parser tests for `--save` will fail; the `sprint_project` fixture inside `TestMainSprintAdditionalCoverage` needs `"epics"` category + `(issues_dir / "epics").mkdir()` [Agent 1 + Agent 2 finding; `TestSprintCLIEntryPoint` corrected to `TestMainSprintAdditionalCoverage` — only one `sprint_project` fixture exists in this file]
 - ~~**HIGH-BREAK RISK**: All `argparse.Namespace(...)` calls that construct args for `_cmd_sprint_run` in `test_sprint.py` (9 tests) and `test_sprint_integration.py` (15+ tests) must add `save=False`~~ — **Mitigated**: use `getattr(args, 'save', False)` in `run.py` instead of `args.save` directly; existing test Namespace() constructions require no changes [Agent 3 finding; mitigation added post-confidence-check]
 - New tests to write for `load_or_resolve()` (follow `TestSprintManager.test_load_sprint` / `test_load_nonexistent` pattern): `test_load_or_resolve_sprint_name`, `test_load_or_resolve_epic_id_forward_lookup`, `test_load_or_resolve_epic_id_backward_lookup`, `test_load_or_resolve_epic_id_union_dedup`, `test_load_or_resolve_epic_not_found`, `test_load_or_resolve_epic_no_active_children`, `test_load_or_resolve_filters_inactive_statuses`, `test_save_flag_materializes_yaml` [Agent 3 finding]
 
@@ -229,6 +230,7 @@ _Added by `/ll:confidence-check` on 2026-05-27; mitigations applied 2026-05-27_
 - **Moderate core logic in `load_or_resolve()`**: five resolution legs (pattern detect → forward lookup → backward scan → union dedup → status filter + ordering); mitigated by leg-by-leg test order in step 6.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-28T00:35:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/284cd144-0544-4ee8-b806-20b7316ec7e9.jsonl`
 - `/ll:confidence-check` - 2026-05-27T06:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2a9c6cc-4a64-4816-9521-d7ecff878e47.jsonl`
 - `/ll:confidence-check` - 2026-05-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6aa2b389-8690-4aba-a467-a4575b38d46e.jsonl`
 - `/ll:wire-issue` - 2026-05-28T00:05:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70d1a28b-6e5d-424c-a7ee-0f4c6c686c6e.jsonl`
