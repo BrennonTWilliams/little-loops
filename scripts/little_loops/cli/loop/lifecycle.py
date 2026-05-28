@@ -532,9 +532,9 @@ def _print_last_state(state: LoopState) -> None:
 def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
     """Attach to a running loop and render its FSM state in realtime.
 
-    Read-only attach: tails ``<stem>.events.jsonl`` and the log file from disk,
-    forwarding events to a ``StateFeedRenderer``. Ctrl-C detaches without
-    sending any signal to the loop process (FEAT-1764).
+    Read-only attach: tails ``<stem>.events.jsonl`` and forwards events to a
+    ``StateFeedRenderer``. Ctrl-C detaches without sending any signal to the
+    loop process (FEAT-1764).
     """
     loop_name = args.loop
     running_dir = loops_dir / ".running"
@@ -586,8 +586,6 @@ def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
 
     renderer = StateFeedRenderer(fsm, args, loops_dir=loops_dir)
 
-    log_override = getattr(args, "log_file", None)
-    log_path = Path(log_override) if log_override else running_dir / f"{stem}.log"
     events_file = running_dir / f"{stem}.events.jsonl"
 
     if not events_file.exists():
@@ -602,44 +600,28 @@ def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
     try:
         with open(events_file, encoding="utf-8") as ev_f:
             ev_f.seek(0, 2)
-            log_f = None
-            if log_path.exists():
-                log_f = open(log_path, encoding="utf-8")
-                log_f.seek(0, 2)
-            try:
-                while True:
-                    progressed = False
-                    try:
-                        line = ev_f.readline()
-                    except FileNotFoundError:
-                        break
-                    if line:
-                        progressed = True
-                        stripped = line.strip()
-                        if stripped:
-                            try:
-                                event = json.loads(stripped)
-                            except json.JSONDecodeError:
-                                event = None
-                            if event is not None:
-                                renderer.handle_event(event)
-                    if log_f is not None:
+            while True:
+                progressed = False
+                try:
+                    line = ev_f.readline()
+                except FileNotFoundError:
+                    break
+                if line:
+                    progressed = True
+                    stripped = line.strip()
+                    if stripped:
                         try:
-                            log_line = log_f.readline()
-                        except FileNotFoundError:
-                            log_line = ""
-                        if log_line:
-                            progressed = True
-                            print(log_line.rstrip())
-                    if not progressed:
-                        if not _process_alive(pid):
-                            break
-                        if not events_file.exists():
-                            break
-                        time.sleep(0.1)
-            finally:
-                if log_f is not None:
-                    log_f.close()
+                            event = json.loads(stripped)
+                        except json.JSONDecodeError:
+                            event = None
+                        if event is not None:
+                            renderer.handle_event(event)
+                if not progressed:
+                    if not _process_alive(pid):
+                        break
+                    if not events_file.exists():
+                        break
+                    time.sleep(0.1)
     except KeyboardInterrupt:
         return 0
     finally:
