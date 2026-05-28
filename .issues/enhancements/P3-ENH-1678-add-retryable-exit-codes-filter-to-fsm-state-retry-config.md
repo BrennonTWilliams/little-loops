@@ -84,7 +84,7 @@ if state.retryable_exit_codes and exit_code not in state.retryable_exit_codes:
 - `schema.py` — `StateConfig` dataclass
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/fsm/runner.py` — executes states via executor; reads `StateConfig` from loop YAML; no changes needed
+- `scripts/little_loops/fsm/runners.py` — executes states via executor; reads `StateConfig` from loop YAML; no changes needed
 - TBD — run `grep -r "StateConfig" scripts/little_loops/` to confirm full importer list
 
 ### Similar Patterns
@@ -121,5 +121,6 @@ if state.retryable_exit_codes and exit_code not in state.retryable_exit_codes:
 **Open** | Created: 2026-05-24 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-28T23:48:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0efd786b-4b4c-43ee-9e8e-268bad2cc8a5.jsonl`
 - `/ll:format-issue` - 2026-05-24T13:21:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/765fa3c6-1a05-4cb7-8170-c01366684b4e.jsonl`
 - `/ll:capture-issue` - 2026-05-24T13:15:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bfd5e964-4cba-4f63-8354-255b3fbb9f18.jsonl`

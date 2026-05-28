@@ -1,4 +1,9 @@
 ---
+id: BUG-1767
+title: StallDetector progress_paths fingerprint is defeated by loops that mutate their own
+  progress-path files
+type: BUG
+priority: P3
 captured_at: '2026-05-28T17:31:20Z'
 discovered_date: 2026-05-28
 discovered_by: capture-issue
@@ -149,6 +154,7 @@ the general-task config need to land together.
 `bug`, `captured`, `fsm`, `stall-detector`, `loops`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-28T23:48:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0efd786b-4b4c-43ee-9e8e-268bad2cc8a5.jsonl`
 - `/ll:capture-issue` - 2026-05-28T17:31:20Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d72d4842-d084-41b6-af0f-1adf964926ab.jsonl`
 
 ---
