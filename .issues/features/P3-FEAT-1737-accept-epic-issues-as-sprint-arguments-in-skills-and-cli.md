@@ -3,10 +3,16 @@ id: FEAT-1737
 type: FEAT
 priority: P3
 status: open
-captured_at: "2026-05-27T05:02:23Z"
-discovered_date: "2026-05-27"
+captured_at: '2026-05-27T05:02:23Z'
+discovered_date: '2026-05-27'
 discovered_by: capture-issue
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # FEAT-1737: Accept EPIC Issues as Sprint Arguments in Skills and CLI Commands
@@ -78,14 +84,22 @@ The runner resolves the child issues, orders them by dependency/priority, and pr
 
 5. **Wire into skills** — `/ll:create-sprint` and `/ll:review-sprint` skills: since they invoke `SprintManager` through the Python path, they inherit the capability automatically; update their argument descriptions to note EPIC ID support
 
-6. **Tests** — unit test `load_or_resolve` (file path, EPIC ID, not-found cases); integration test `ll-sprint run EPIC-NNN` path; test `--save` flag materializes YAML correctly
+6. **Tests** — write unit tests for `load_or_resolve` leg-by-leg before wiring into subcommands; each leg has a corresponding named test (see Tests section); implement in this order to catch failures early:
+   1. `test_load_or_resolve_sprint_name` — pattern detection + fall-through to `load()`
+   2. `test_load_or_resolve_epic_id_forward_lookup` — forward `relates_to:` path
+   3. `test_load_or_resolve_epic_id_backward_lookup` — backward `parent:` scan
+   4. `test_load_or_resolve_epic_id_union_dedup` — union + deduplication
+   5. `test_load_or_resolve_filters_inactive_statuses` — status filter
+   6. `test_load_or_resolve_epic_not_found` + `test_load_or_resolve_epic_no_active_children` — edge cases
+   7. `test_save_flag_materializes_yaml` — `--save` path
+   Then wire into subcommands and run the integration test.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 7. **Resume state normalization** — in `_cmd_sprint_run()` (run.py), when creating `SprintState`, use `sprint.name` (the resolved Sprint object's name, e.g. `"epic-1234"`) rather than raw `args.sprint` (e.g. `"EPIC-1234"`). This ensures the normalized lowercase `epic-{id}` is stored in `.sprint-state.json`, making `--resume` work consistently regardless of user-input casing. The comparison `loaded_state.sprint_name == sprint.name` (not `args.sprint`) must be used in the resume-check block [Agent 2 finding]
-8. **Add `save=False` to all `argparse.Namespace(...)` constructions for `_cmd_sprint_run`** — approximately 9 call sites in `test_sprint.py` and 15+ in `test_sprint_integration.py`; without this, tests will raise `AttributeError` when `run.py` accesses `args.save` [Agent 3 finding]
+8. **Access `args.save` via `getattr(args, 'save', False)`** in `_cmd_sprint_run()` instead of `args.save` directly — `argparse` sets the default when invoked via CLI, but `argparse.Namespace()` constructions in tests do not inherit parser defaults; `getattr` eliminates all ~60 test Namespace() update sites without touching any test file. [Mitigation added post-confidence-check]
 9. **Update `_parse_sprint_args()` in `test_cli.py:TestSprintArgumentParsing`** — this helper is a local duplicate of the run parser; add `run.add_argument("--save", action="store_true")` to match the updated `main_sprint()` [Agent 2 finding]
 10. **Add `"epics"` category to test fixtures** — `sprint_project` in `test_sprint_integration.py` and both `sprint_project` fixtures in `test_cli.py` need `"epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"}` in config and `(issues_dir / "epics").mkdir()` [Agent 2 + 3 finding]
 11. **Update `docs/reference/API.md`** — add `load_or_resolve()` to SprintManager methods table [Agent 2 finding]
@@ -112,7 +126,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Step 4 — `--save` flag wiring:**
 - Add inline in `run_parser` block in `scripts/little_loops/cli/sprint/__init__.py`: `run_parser.add_argument("--save", action="store_true", help="...")`
-- In `_cmd_sprint_run()`, after `load_or_resolve()` detects an EPIC and builds the ephemeral Sprint, call `sprint.save(manager.sprints_dir)` before executing if `args.save` is set
+- In `_cmd_sprint_run()`, after `load_or_resolve()` detects an EPIC and builds the ephemeral Sprint, call `sprint.save(manager.sprints_dir)` before executing if `getattr(args, 'save', False)` is set (use `getattr` — not `args.save` — to avoid requiring all test Namespace() calls to carry `save=False`)
 
 **Step 5 — Skills inheritance scope:**
 - `create-sprint.md` and `review-sprint.md` route through `SprintManager` via `main_sprint()` — inherit automatically ✓
@@ -148,7 +162,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_cli.py:TestSprintCLIEntryPoint` — end-to-end tests for sprint CLI via `main_sprint()` + `sys.argv`; `_parse_sprint_args()` helper (in `TestSprintArgumentParsing`) is a local duplicate of the run parser and must have `--save` added alongside `run_parser` or new parser tests for `--save` will fail; both `sprint_project` fixtures (in `TestSprintCLIEntryPoint` and `TestMainSprintAdditionalCoverage`) need `"epics"` category + `(issues_dir / "epics").mkdir()` [Agent 1 + Agent 2 finding]
-- **HIGH-BREAK RISK**: All `argparse.Namespace(...)` calls that construct args for `_cmd_sprint_run` in `test_sprint.py` (9 tests: `TestSprintErrorHandling`, `TestSprintDependencyAnalysis`, `TestSprintOnlyFlag`, `TestSprintWaveCleanStart`) and `test_sprint_integration.py` (15+ tests: `TestMultiWaveExecution`, `TestErrorRecovery`, `TestDependencyHandling`, `TestEdgeCases`) must add `save=False` — without it, the function will raise `AttributeError` when `run.py` accesses `args.save` [Agent 3 finding]
+- ~~**HIGH-BREAK RISK**: All `argparse.Namespace(...)` calls that construct args for `_cmd_sprint_run` in `test_sprint.py` (9 tests) and `test_sprint_integration.py` (15+ tests) must add `save=False`~~ — **Mitigated**: use `getattr(args, 'save', False)` in `run.py` instead of `args.save` directly; existing test Namespace() constructions require no changes [Agent 3 finding; mitigation added post-confidence-check]
 - New tests to write for `load_or_resolve()` (follow `TestSprintManager.test_load_sprint` / `test_load_nonexistent` pattern): `test_load_or_resolve_sprint_name`, `test_load_or_resolve_epic_id_forward_lookup`, `test_load_or_resolve_epic_id_backward_lookup`, `test_load_or_resolve_epic_id_union_dedup`, `test_load_or_resolve_epic_not_found`, `test_load_or_resolve_epic_no_active_children`, `test_load_or_resolve_filters_inactive_statuses`, `test_save_flag_materializes_yaml` [Agent 3 finding]
 
 ### Documentation
@@ -199,7 +213,24 @@ ll-sprint run my-sprint             # existing sprint YAML — unchanged behavio
 
 **Open** | Created: 2026-05-27 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-27; mitigations applied 2026-05-27_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 75/100 → MODERATE (revised from 67 after mitigations)
+
+### Mitigations Applied
+
+- **Namespace sweep eliminated**: Use `getattr(args, 'save', False)` instead of `args.save` in `_cmd_sprint_run()` — ~60 test Namespace() update sites reduced to zero. Score D: 10 → 18.
+- **load_or_resolve() leg-by-leg order**: Explicit test-first sequence added to step 6 — write and pass each unit test leg before wiring into subcommands, localizing failures to individual resolution paths.
+
+### Outcome Risk Factors (residual)
+- **Moderate core logic in `load_or_resolve()`**: five resolution legs (pattern detect → forward lookup → backward scan → union dedup → status filter + ordering); mitigated by leg-by-leg test order in step 6.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-05-27T06:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2a9c6cc-4a64-4816-9521-d7ecff878e47.jsonl`
+- `/ll:confidence-check` - 2026-05-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6aa2b389-8690-4aba-a467-a4575b38d46e.jsonl`
 - `/ll:wire-issue` - 2026-05-28T00:05:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70d1a28b-6e5d-424c-a7ee-0f4c6c686c6e.jsonl`
 - `/ll:refine-issue` - 2026-05-27T23:56:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05bd8488-8487-466c-b194-76003660b362.jsonl`
 - `rewrite` - 2026-05-27 - Redesigned to Option C (`SprintManager.load_or_resolve()` + union resolution + `--save` flag) after exploring Epic→Sprint mapping approaches
