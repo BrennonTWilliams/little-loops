@@ -55,19 +55,20 @@ Raw agents re-derive the same structural moves differently each run. The `ll-` C
 Harness-driven development is TDD's analog for agent-built software: define what "working" looks like first, then iterate until the harness passes. little-loops grades, writes, and improves the harness for you — removing the engineering tax that keeps most teams skipping evals entirely.
 
 **The harness grades:**
-- Six layered gate types — exit code, deterministic external state, full agentic user simulation, LLM-as-judge, diff size invariant, no-op detection
-- Cheapest gates run first. Failures route back to execution rather than advancing
+- Six layered gate types (exit code through full agentic simulation), cheapest first — failures route back to execution, not forward
 - Stall detection catches the "already done" no-op that silently burns through iteration budgets
 
 **The harness writes itself:**
 - `/ll:create-eval-from-issues` — turn an issue's acceptance criteria into a runnable harness in under a minute
 - `/ll:create-loop` — auto-derive the full harness from your project config
-- Annotated templates and `ll-loop validate` — dry-run the FSM before paying for a real run
+- `ll-loop validate` — dry-run the FSM before paying for a real run
 
 **The harness improves itself:**
 - `harness-optimize` — hill-climbing on harness artifacts. One targeted edit per iteration, benchmark, accept on rising score, revert otherwise
-- APO loop category with five prompt-optimization strategies — point it at a prompt, converge to a target score
-- `/ll:audit-loop-run` — four-valued verdict (`met` / `phantom` / `partial` / `degraded`) catches failure modes humans miss
+- Prompt optimization loops — point at a prompt, converge to a target score
+- `/ll:audit-loop-run` — four-valued verdict catches failure modes humans miss
+
+→ [Loops Guide](docs/guides/LOOPS_GUIDE.md) for gate types, FSM authoring, and harness patterns
 
 *Point at context. Get a harness.*
 
@@ -93,12 +94,7 @@ pip install little-loops
 <details>
 <summary>Alternative install methods</summary>
 
-**From local path (development):**
-
-```bash
-/plugin marketplace add /path/to/little-loops
-/plugin install ll@little-loops
-```
+**Local development install:** see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Manual configuration** — add to `.claude/settings.local.json`:
 
