@@ -907,7 +907,9 @@ def run_foreground(
                                 print(f"{indent}       {line}", flush=True)
                         else:
                             first_line = lines[0] if lines else ""
-                            preview = first_line[:60] + "..." if len(first_line) > 60 else first_line
+                            preview = (
+                                first_line[:60] + "..." if len(first_line) > 60 else first_line
+                            )
                             print(
                                 f"{indent} -> {colorize(prompt_badge, '2')} {colorize(preview, '2')}",
                                 flush=True,
@@ -1000,13 +1002,18 @@ def run_foreground(
             elif event_type == "route":
                 if not quiet:
                     to_state = event.get("to", "")
-                    print(f"{indent}       {colorize('->', '2')} {colorize(to_state, '1')}", flush=True)
+                    print(
+                        f"{indent}       {colorize('->', '2')} {colorize(to_state, '1')}",
+                        flush=True,
+                    )
 
             elif event_type == "max_iterations_summary":
                 if not quiet:
                     summary_state = event.get("summary_state", "")
                     iters = event.get("iterations", 0)
-                    msg = f"iteration cap reached ({iters}); running summary state '{summary_state}'"
+                    msg = (
+                        f"iteration cap reached ({iters}); running summary state '{summary_state}'"
+                    )
                     print(f"{indent}       {colorize(msg, '38;5;208')}", flush=True)
 
             elif event_type == "stall_detected":

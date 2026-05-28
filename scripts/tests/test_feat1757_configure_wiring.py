@@ -45,7 +45,14 @@ class TestConfigureAreasMd:
 
     def test_all_six_fields_present(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        for field in ("enabled", "path", "primitives_file", "semantic_file", "themes_dir", "active_theme"):
+        for field in (
+            "enabled",
+            "path",
+            "primitives_file",
+            "semantic_file",
+            "themes_dir",
+            "active_theme",
+        ):
             assert f"design_tokens.{field}" in content, (
                 f"skills/configure/areas.md design_tokens area must reference config field '{field}'"
             )
@@ -62,7 +69,14 @@ class TestConfigureShowOutputMd:
 
     def test_show_section_has_all_six_fields(self) -> None:
         content = CONFIGURE_SHOW.read_text()
-        for field in ("enabled", "path", "primitives_file", "semantic_file", "themes_dir", "active_theme"):
+        for field in (
+            "enabled",
+            "path",
+            "primitives_file",
+            "semantic_file",
+            "themes_dir",
+            "active_theme",
+        ):
             assert f"design_tokens.{field}" in content, (
                 f"skills/configure/show-output.md design_tokens --show must reference config field '{field}'"
             )

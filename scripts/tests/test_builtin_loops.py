@@ -3995,6 +3995,5 @@ class TestIntegrateSdkLoop:
             f"got {state.get('on_yes')!r}"
         )
         assert state.get("on_no") == "enumerate_from_docs", (
-            f"scan_existing_usage.on_no should be 'enumerate_from_docs', "
-            f"got {state.get('on_no')!r}"
+            f"scan_existing_usage.on_no should be 'enumerate_from_docs', got {state.get('on_no')!r}"
         )

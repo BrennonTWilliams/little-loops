@@ -883,4 +883,6 @@ class TestRunBackgroundInstanceIdForwarding:
         assert "--instance-id" in cmd, "--instance-id must be forwarded to the foreground child"
         idx = cmd.index("--instance-id")
         forwarded_id = cmd[idx + 1]
-        assert forwarded_id.startswith("my-loop-"), "Forwarded instance_id should start with loop name"
+        assert forwarded_id.startswith("my-loop-"), (
+            "Forwarded instance_id should start with loop name"
+        )

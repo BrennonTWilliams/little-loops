@@ -284,9 +284,7 @@ class TestIntegration:
         shutil.copytree(self._TEMPLATE_DIR, dest)
         config_dir = tmp_path / ".ll"
         config_dir.mkdir(parents=True, exist_ok=True)
-        (config_dir / "ll-config.json").write_text(
-            json.dumps({"design_tokens": {"enabled": True}})
-        )
+        (config_dir / "ll-config.json").write_text(json.dumps({"design_tokens": {"enabled": True}}))
         from little_loops.config.core import BRConfig
 
         return BRConfig(tmp_path), theme

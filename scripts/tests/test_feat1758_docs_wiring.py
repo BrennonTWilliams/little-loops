@@ -31,7 +31,7 @@ class TestConfigurationMd:
     def test_design_tokens_in_full_example_json(self) -> None:
         content = CONFIGURATION_MD.read_text()
         assert '"design_tokens"' in content, (
-            "CONFIGURATION.md full-example JSON must include a \"design_tokens\" block"
+            'CONFIGURATION.md full-example JSON must include a "design_tokens" block'
         )
 
     def test_enabled_field_present(self) -> None:

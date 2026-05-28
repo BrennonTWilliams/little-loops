@@ -584,9 +584,7 @@ class TestResumeCheckShellAction:
         checkpoint.write_text(
             '{"in_flight_step":"- [ ] Step 1: write code","timestamp":"2026-01-01T00:00:00Z"}'
         )
-        (loops_tmp / "general-task-last-files.txt").write_text(
-            "LAST_FILES: /nonexistent/file.py\n"
-        )
+        (loops_tmp / "general-task-last-files.txt").write_text("LAST_FILES: /nonexistent/file.py\n")
         result = self._run(tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         assert "RESUME_CLEAN" in result.stdout

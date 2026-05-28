@@ -2350,9 +2350,7 @@ class TestSprintManagerLoadOrResolve:
         (config_dir / "ll-config.json").write_text(json.dumps(config_data))
         return BRConfig(tmp_path)
 
-    def test_load_or_resolve_sprint_name(
-        self, tmp_path: Path, epic_project: BRConfig
-    ) -> None:
+    def test_load_or_resolve_sprint_name(self, tmp_path: Path, epic_project: BRConfig) -> None:
         """Non-EPIC arg falls through to file-based load()."""
         sprints_dir = tmp_path / ".sprints"
         manager = SprintManager(sprints_dir=sprints_dir, config=epic_project)
@@ -2459,9 +2457,7 @@ class TestSprintManagerLoadOrResolve:
         assert "BUG-001" in result.issues
         assert "FEAT-010" not in result.issues
 
-    def test_load_or_resolve_epic_not_found(
-        self, tmp_path: Path, epic_project: BRConfig
-    ) -> None:
+    def test_load_or_resolve_epic_not_found(self, tmp_path: Path, epic_project: BRConfig) -> None:
         """EPIC ID that doesn't exist returns None."""
         manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
         result = manager.load_or_resolve("EPIC-999")
@@ -2502,9 +2498,7 @@ class TestSprintManagerLoadOrResolve:
         assert result.name == "epic-600"
         assert "BUG-001" in result.issues
 
-    def test_save_flag_materializes_yaml(
-        self, tmp_path: Path, epic_project: BRConfig
-    ) -> None:
+    def test_save_flag_materializes_yaml(self, tmp_path: Path, epic_project: BRConfig) -> None:
         """Saving an EPIC-resolved Sprint writes a YAML file."""
         issues_dir = tmp_path / ".issues"
         (issues_dir / "epics" / "P1-EPIC-700-test-epic.md").write_text(
