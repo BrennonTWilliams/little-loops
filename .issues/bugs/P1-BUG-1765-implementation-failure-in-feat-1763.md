@@ -2,7 +2,7 @@
 id: BUG-1765
 type: BUG
 priority: P1
-status: open
+status: cancelled
 captured_at: 2026-05-28T04:46:29Z
 discovered_by: auto-generated
 ---
