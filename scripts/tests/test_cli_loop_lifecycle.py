@@ -2262,7 +2262,6 @@ class TestCmdMonitor:
             "diagram_state_detail": None,
             "diagram_scope": None,
             "follow": False,
-            "log_file": None,
         }
         defaults.update(kwargs)
         return argparse.Namespace(**defaults)
@@ -2415,61 +2414,6 @@ class TestCmdMonitor:
 
         assert result == 0
         mock_kill.assert_not_called()
-
-    def test_log_file_override_honored(self, tmp_path: Path) -> None:
-        """--log-file PATH causes the override path to be tailed instead of the default."""
-        state = self._make_state(status="running")
-        custom_log = tmp_path / "custom-output.log"
-        custom_log.write_text("")
-        args = self._make_args(log_file=str(custom_log))
-
-        running_dir = tmp_path / ".running"
-        running_dir.mkdir()
-        (running_dir / "test-loop.pid").write_text("12345")
-        events_file = running_dir / "test-loop.events.jsonl"
-        events_file.write_text("")
-        # Default log path with content that should NOT appear in output.
-        default_log = running_dir / "test-loop.log"
-        default_log.write_text("DEFAULT-LOG-LINE\n")
-
-        mock_renderer = MagicMock()
-        mock_renderer.in_pinned_mode = False
-
-        sleep_calls = [0]
-
-        def fake_sleep(_n: float) -> None:
-            sleep_calls[0] += 1
-            if sleep_calls[0] == 1:
-                with open(custom_log, "a") as fh:
-                    fh.write("CUSTOM-LOG-LINE\n")
-                return
-            raise KeyboardInterrupt
-
-        printed: list[str] = []
-
-        def fake_print(*args_, **_kw):
-            printed.append(" ".join(str(a) for a in args_))
-
-        with (
-            patch(
-                "little_loops.cli.loop.lifecycle._find_instances",
-                return_value=[(None, state)],
-            ),
-            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
-            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=MagicMock()),
-            patch(
-                "little_loops.cli.loop._helpers.StateFeedRenderer",
-                return_value=mock_renderer,
-            ),
-            patch("little_loops.cli.loop.lifecycle.time.sleep", side_effect=fake_sleep),
-            patch("builtins.print", side_effect=fake_print),
-        ):
-            result = cmd_monitor(args, tmp_path)
-
-        assert result == 0
-        captured = "\n".join(printed)
-        assert "CUSTOM-LOG-LINE" in captured
-        assert "DEFAULT-LOG-LINE" not in captured
 
     def test_events_file_missing_when_running_falls_back_to_state(
         self, tmp_path: Path

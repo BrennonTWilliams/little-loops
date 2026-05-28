@@ -586,13 +586,6 @@ Examples:
     monitor_parser.add_argument(
         "--verbose", "-v", action="store_true", help="Show full prompt at action start"
     )
-    monitor_parser.add_argument(
-        "--log-file",
-        type=Path,
-        default=None,
-        metavar="PATH",
-        help="Override log file location (default: <loops_dir>/.running/<loop>.log)",
-    )
 
     args = parser.parse_args(argv)
 
