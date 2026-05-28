@@ -51,8 +51,10 @@ states:
     action: |
       Read ${context.run_dir}/brief.md for the design brief.
 
-      If ${context.run_dir}/critique.md exists, read it and address all issues
-      listed in the "Issues to Address" section specifically and completely.
+      A previous iteration may have written ${context.run_dir}/critique.md. If
+      that file exists, read it and address every issue in its "Issues to
+      Address" section specifically and completely. If it does not exist,
+      proceed silently — do not narrate the check.
 
       ${context.design_tokens_context}
 
