@@ -99,6 +99,27 @@ Run test suites with common patterns.
 ### `/ll:find-dead-code`
 Analyze codebase for deprecated, unused, or dead code.
 
+### `/ll:explore-api`
+Guide the agent through the four-phase **Feathers Learning Test** lifecycle for an external API, SDK, or library — Ingest → Hypothesize → Execute → Refine — and persist a `LearnTestRecord` to the Learning Test Registry (`.ll/learning-tests/<slug>.md`).
+
+Use before writing production code that depends on a third-party system: verifying event shapes, response structures, or return types with a real proof script rather than guessing.
+
+**Arguments:**
+- `target` (required): Free-text description of the system (e.g., `"Anthropic SDK streaming"`)
+- `--assume "<claim>"` (repeatable): Pre-seed a claim as assumed-true without running a proof
+
+**Outputs:** `.ll/learning-tests/<slug>.md` (YAML frontmatter record) and `.ll/learning-tests/raw/<slug>.txt` (proof script output)
+
+**Registry CLI:** `ll-learning-tests check "<target>"` — returns the saved record (exit 0) or signals a miss (exit 1)
+
+**Examples:**
+```bash
+/ll:explore-api "Anthropic SDK streaming"
+/ll:explore-api "Claude API tool use" --assume "tools is a list" --assume "stop_reason is tool_use"
+```
+
+**Trigger keywords:** "explore API", "learning test", "prove API behavior", "feathers test"
+
 ---
 
 ## Issue Management
@@ -842,6 +863,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `check-code` | Run lint, format, type checks |
 | `run-tests` | Execute test suites |
 | `find-dead-code` | Identify unused code |
+| `explore-api`^ | Explore external API/library behavior and record proof to Learning Test Registry |
 | `capture-issue`^ | Capture issues from conversation or description |
 | `format-issue`^ | Format issue files (interactive or --auto mode) |
 | `scan-codebase` | Find issues in code (technical analysis) |
