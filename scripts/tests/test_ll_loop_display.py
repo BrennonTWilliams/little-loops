@@ -2659,6 +2659,28 @@ class TestDisplayProgressEvents:
         assert route_lines, "Expected route output"
         assert route_lines[0].startswith("  "), f"Expected 2-space indent, got: {route_lines[0]!r}"
 
+    def test_run_foreground_startup_shows_artifact_paths(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """run_foreground startup prints artifact paths when loop_path is provided."""
+        events: list[dict[str, Any]] = []
+        executor = MockExecutor(events)
+        fsm = self._make_fsm()
+        fsm.context = {"output_dir": ".loops/output/"}
+        loop_path = Path("loops/test-loop.yaml")
+        run_foreground(executor, fsm, self._make_args(), loop_path=loop_path)
+        captured = capsys.readouterr()
+        assert "  loop:" in captured.out
+        assert "loops/test-loop.yaml" in captured.out
+        assert "  output_dir:" in captured.out
+        assert ".loops/output/" in captured.out
+        # Artifact lines appear after Max iterations and before the blank line
+        max_iter_pos = captured.out.find("Max iterations:")
+        loop_pos = captured.out.find("  loop:")
+        assert max_iter_pos >= 0
+        assert loop_pos >= 0
+        assert max_iter_pos < loop_pos
+
 
 class TestRunForegroundExitCodes:
     """Tests for run_foreground exit code mapping (BUG-605)."""

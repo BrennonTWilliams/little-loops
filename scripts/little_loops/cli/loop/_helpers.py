@@ -284,6 +284,7 @@ def _build_pinned_pane(
     badges: dict[str, str] | None,
     prev_highlight: str | None = None,
     prev_state_at_depth: dict[int, str] | None = None,
+    loop_path: Path | None = None,
 ) -> str:
     """Compose the pinned pane (header + diagram(s) + state line + separator).
 
@@ -359,6 +360,8 @@ def _build_pinned_pane(
     else:
         header_text = f"== loop: {fsm.name} "
     lines.append(header_text + "=" * max(0, cols - len(header_text)))
+    for key, value in _artifact_lines(fsm, loop_path):
+        lines.append(f"  {key}: {colorize(value, '2')}")
     diagram = _render_one(active_fsm, active_state, active_prev)
     if diagram:
         lines.extend(diagram.split("\n"))
@@ -381,6 +384,7 @@ def _render_pinned_pane(
     badges: dict[str, str] | None,
     min_action_rows: int = MIN_ACTION_ROWS,
     prev_state_at_depth: dict[int, str] | None = None,
+    loop_path: Path | None = None,
 ) -> int:
     """Render the pinned pane to stdout and set the scroll region beneath it.
 
@@ -413,6 +417,7 @@ def _render_pinned_pane(
             badges=badges,
             prev_highlight=prev_map.get(0),
             prev_state_at_depth=prev_map,
+            loop_path=loop_path,
         )
 
     # Build the fallback ladder based on facets source and topology.
@@ -464,6 +469,7 @@ class StateFeedRenderer:
         edge_label_colors: dict[str, str] | None = None,
         badges: dict[str, str] | None = None,
         loops_dir: Path | None = None,
+        loop_path: Path | None = None,
     ) -> None:
         self.fsm = fsm
         self.args = args
@@ -471,6 +477,7 @@ class StateFeedRenderer:
         self.edge_label_colors = edge_label_colors
         self.badges = badges
         self.loops_dir = loops_dir or Path(".")
+        self.loop_path = loop_path
 
         # Derived from args
         self.quiet: bool = getattr(args, "quiet", False)
@@ -514,6 +521,7 @@ class StateFeedRenderer:
             edge_label_colors=self.edge_label_colors,
             badges=self.badges,
             prev_state_at_depth=self.prev_state_at_depth,
+            loop_path=self.loop_path,
         )
 
     def handle_event(self, event: dict) -> None:
@@ -633,6 +641,8 @@ class StateFeedRenderer:
                 print(header, flush=True)
                 if fallback_note is not None:
                     print(fallback_note, flush=True)
+                for key, value in _artifact_lines(self.fsm, self.loop_path):
+                    print(f"  {key}: {colorize(value, '2')}", flush=True)
                 print(diagram, flush=True)
             # In pinned mode the iteration line is part of the pinned pane;
             # only print it inline for non-pinned paths.
@@ -787,6 +797,28 @@ class StateFeedRenderer:
 def get_builtin_loops_dir() -> Path:
     """Get the path to built-in loops bundled with the plugin."""
     return Path(__file__).parent.parent.parent / "loops"
+
+
+def _artifact_lines(fsm: FSMLoop, loop_path: Path | None) -> list[tuple[str, str]]:
+    """Extract path-like context values from *fsm* for display in artifact headers.
+
+    Returns a list of ``(key, value)`` pairs where *value* is a non-empty string
+    that starts with ``.``, ``/``, or ``~``, or contains ``/``, and does not
+    contain ``${`` (unresolved template expression). When *loop_path* is not
+    ``None``, the first entry is always ``("loop", str(loop_path))``.
+    """
+    pairs: list[tuple[str, str]] = []
+    if loop_path is not None:
+        pairs.append(("loop", str(loop_path)))
+    context: dict[str, Any] = getattr(fsm, "context", None) or {}
+    for key, value in context.items():
+        if not isinstance(value, str) or not value:
+            continue
+        if "${" in value:
+            continue
+        if value.startswith(".") or value.startswith("/") or value.startswith("~") or "/" in value:
+            pairs.append((key, value))
+    return pairs
 
 
 def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:
@@ -1039,6 +1071,7 @@ def run_foreground(
     mode: str = "run",
     instance_id: str | None = None,
     running_dir: Path | None = None,
+    loop_path: Path | None = None,
 ) -> int:
     """Run loop with progress display.
 
@@ -1082,10 +1115,13 @@ def run_foreground(
             edge_label_colors=edge_label_colors,
             badges=badges,
             loops_dir=getattr(executor, "loops_dir", Path(".")),
+            loop_path=loop_path,
         )
         if not renderer.quiet:
             print(f"Running loop: {colorize(fsm.name, '1')}")
             print(f"Max iterations: {colorize(str(fsm.max_iterations), '2')}")
+            for key, value in _artifact_lines(fsm, loop_path):
+                print(f"  {key}: {colorize(value, '2')}")
             print()
 
         # Wire progress display via the EventBus on PersistentExecutor

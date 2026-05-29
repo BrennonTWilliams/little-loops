@@ -1,6 +1,7 @@
 """Tests for StateFeedRenderer class."""
 
 import argparse
+from pathlib import Path
 
 import pytest
 
@@ -289,3 +290,96 @@ class TestStateFeedRendererHandleEvent:
         )
         captured = capsys.readouterr()
         assert captured.out == ""
+
+    def test_non_pinned_handle_event_prints_artifact_lines(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Non-pinned handle_event prints artifact paths between header and diagram."""
+        fsm = _make_test_fsm()
+        fsm.context = {"output_dir": ".loops/output/"}
+        args = _make_args(show_diagrams=True)
+        loop_path = Path("loops/test-loop.yaml")
+        renderer = StateFeedRenderer(fsm, args, loop_path=loop_path)
+        renderer.handle_event(
+            {"event": "state_enter", "state": "start", "iteration": 1, "depth": 0}
+        )
+        captured = capsys.readouterr()
+        assert "  loop:" in captured.out
+        assert "loops/test-loop.yaml" in captured.out
+        assert "  output_dir:" in captured.out
+        assert ".loops/output/" in captured.out
+        # Header comes before artifact lines
+        header_pos = captured.out.find("== loop:")
+        loop_pos = captured.out.find("  loop:")
+        assert header_pos >= 0
+        assert loop_pos >= 0
+        assert header_pos < loop_pos
+
+
+class TestArtifactLines:
+    """Tests for _artifact_lines helper."""
+
+    def test_extracts_path_like_context_values(self) -> None:
+        """_artifact_lines extracts context values that look like filesystem paths."""
+        from little_loops.cli.loop._helpers import _artifact_lines
+
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="start",
+            states={"start": StateConfig(action="echo start")},
+            max_iterations=10,
+            context={
+                "output_dir": ".loops/plans/",
+                "plan_dir": "./output",
+                "debug": "true",
+                "threshold": "LOW",
+                "template_ref": "${captured.run_dir.output}",
+            },
+        )
+        loop_path = Path("/tmp/test-loop.yaml")
+        result = _artifact_lines(fsm, loop_path)
+
+        assert result[0] == ("loop", str(loop_path))
+        keys = {k for k, v in result}
+        assert "output_dir" in keys
+        assert "plan_dir" in keys
+        assert "debug" not in keys
+        assert "threshold" not in keys
+        assert "template_ref" not in keys
+
+    def test_no_loop_path_omits_loop_entry(self) -> None:
+        """_artifact_lines with loop_path=None excludes the 'loop' key."""
+        from little_loops.cli.loop._helpers import _artifact_lines
+
+        fsm = _make_test_fsm()
+        result = _artifact_lines(fsm, None)
+        keys = {k for k, v in result}
+        assert "loop" not in keys
+
+    def test_no_context_returns_only_loop_path(self) -> None:
+        """_artifact_lines with empty context returns only the loop path entry."""
+        from little_loops.cli.loop._helpers import _artifact_lines
+
+        fsm = _make_test_fsm()
+        loop_path = Path("loops/test.yaml")
+        result = _artifact_lines(fsm, loop_path)
+        assert result == [("loop", str(loop_path))]
+
+    def test_root_paths_are_extracted(self) -> None:
+        """_artifact_lines extracts absolute and home-dir paths."""
+        from little_loops.cli.loop._helpers import _artifact_lines
+
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="start",
+            states={"start": StateConfig(action="echo start")},
+            max_iterations=10,
+            context={
+                "tmp_dir": "/tmp/scratch",
+                "home_dir": "~/loop-output",
+            },
+        )
+        result = _artifact_lines(fsm, None)
+        keys = {k for k, v in result}
+        assert "tmp_dir" in keys
+        assert "home_dir" in keys

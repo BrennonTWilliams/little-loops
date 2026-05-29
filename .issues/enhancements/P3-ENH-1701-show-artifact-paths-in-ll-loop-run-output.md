@@ -1,12 +1,19 @@
 ---
 id: ENH-1701
-status: open
+status: done
 priority: P3
 type: ENH
-captured_at: "2026-05-25T21:57:02Z"
+captured_at: '2026-05-25T21:57:02Z'
+completed_at: 2026-05-29 03:22:42+00:00
 discovered_date: 2026-05-25
 discovered_by: capture-issue
 parent: EPIC-1744
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-1701: Show artifact paths in `ll-loop run` and `ll-loop monitor` output
@@ -59,13 +66,39 @@ Add a `_artifact_lines(fsm, loop_path)` helper that extracts path-like context v
 
 ## Implementation Steps
 
-1. **Thread `loop_path: Path` through display functions** — `resolve_loop_path()` is already called at the `run_loop` / `resume_loop` call sites in `_helpers.py`; capture the result and pass it as a new parameter to `_build_pinned_pane` and the non-pinned print block in `run_foreground`.
+1. **Thread `loop_path: Path | None` through call sites** — `resolve_loop_path()` is already called at `cmd_run` (`run.py:107`) and inside `load_loop` (`_helpers.py:825`); the resolved path is local-only and discarded after `load_and_validate`. Capture it at each call site:
+   - `run.py:107` → pass `path` to `run_foreground(fsm, args, executor=executor, loop_path=path)` at line 392
+   - `lifecycle.py:509` (`cmd_resume`) → same: thread through `run_foreground` call
+   - `lifecycle.py:573` (`cmd_monitor`) → capture path from `load_loop` return, pass to `StateFeedRenderer(fsm, args, loops_dir=loops_dir, loop_path=path)` at line 587
+   - `_helpers.py:934` (`run_background`) → display path in startup output (following existing pattern at lines 1023-1028)
 
-2. **Add `_artifact_lines(fsm, loop_path)` helper** — extract path-looking values from `fsm.context`: a value qualifies if it is a non-empty string, starts with `.` or `/` or contains `/`, and contains no `${` template expressions. Return a list of `(key, value)` pairs.
+2. **Add `_artifact_lines(fsm, loop_path)` helper** — extract path-looking values from `fsm.context` (a `dict[str, Any]`, see `FSMLoop` schema at `fsm/schema.py:872`): a value qualifies if it is a non-empty string, starts with `.` or `/` or contains `/`, and contains no `${` template expressions. Return a list of `(key, value)` pairs. The `loop_path` parameter is always included as the first entry (key: `"loop"`) when not `None`.
 
-3. **Render the section** — in `_build_pinned_pane` (`_helpers.py:314–318`), insert the artifact lines between the `== loop: name ==` header and `parent_diagram`. In `run_foreground` (`_helpers.py:673–675`), print the same lines after the `Max iterations:` line.
+3. **Render the section** — three insertion points:
+   - `_build_pinned_pane` (`_helpers.py:338-361`): after the `== loop: name ==` header line (appended at line 361), before the FSM diagram (line 362-364). Format: indented `"  key: value"` lines using `colorize(value, '2')` (dim), matching the `run_background` pattern at lines 1023-1028.
+   - `run_foreground` startup block (`_helpers.py:1086-1089`): after `Max iterations:` line (line 1088), before the blank line (line 1089).
+   - `StateFeedRenderer.handle_event` non-pinned path (`_helpers.py:630-636`): after the `== loop: name ==` header print (line 632), before the diagram print (line 636). This covers subsequent state transitions when `show_diagrams` is enabled in non-pinned mode.
 
-4. **Make loop_path optional** — default to `None` so callers that don't have the path (e.g. sub-loop display) are unaffected.
+4. **Add `loop_path: Path | None = None` to signatures**:
+   - `_build_pinned_pane` (line 272): add `loop_path: Path | None = None` parameter
+   - `_render_pinned_pane` (line 371): thread through to `_build_pinned_pane`
+   - `StateFeedRenderer.__init__` (line 459): add `loop_path: Path | None = None`, store as `self.loop_path`
+   - `StateFeedRenderer._redraw_pinned` (line 499): pass `self.loop_path` to `_render_pinned_pane`
+   - `run_foreground` (line 1032): add `loop_path: Path | None = None` parameter; pass to `StateFeedRenderer` constructor at line 1078
+
+_Enhanced by `/ll:refine-issue` — line numbers and third insertion point from codebase analysis_
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and should be included in the implementation:_
+
+5. **Write `_artifact_lines` unit test** — create a test in `test_state_feed_renderer.py` or `test_ll_loop_display.py` using `_make_test_fsm()` with context values (`output_dir`, `plan_dir`, etc.); verify path-like values are extracted and template expressions (`${...}`) are excluded. Follow `TestStateFeedRendererHandleEvent` pattern (line 76).
+
+6. **Write `_build_pinned_pane` with `loop_path` test** — add test in `test_ll_loop_display.py` that passes a `loop_path` and verifies artifact lines appear between the `== loop: name ==` header and the FSM diagram. Follow `test_show_diagrams_state_enter_prints_diagram` pattern (line 2002).
+
+7. **Write non-pinned `handle_event` artifact-lines test** — add test in `test_state_feed_renderer.py` that sets up `show_diagrams=True` (non-pinned path at `_helpers.py:630-636`) with a `loop_path` and verifies artifact lines are printed after the header.
+
+8. **Review `docs/reference/CLI.md` example output** — the `ll-loop monitor` example (lines 506-508) shows current output format; consider updating to include artifact-paths section for consistency with the new display.
 
 ## API/Interface
 
@@ -83,27 +116,66 @@ This matches `".loops/plans"`, `"./output"`, `"/tmp/scratch"` and excludes `"ITE
 ## Files
 
 - `scripts/little_loops/cli/loop/_helpers.py` — primary change site
-  - `_build_pinned_pane` (~line 314): insert artifact section after header line
-  - `run_foreground` (~line 673): print artifact section in startup block
+  - `_build_pinned_pane` (line 272): add `loop_path` param, insert artifact section after header line
+  - `_render_pinned_pane` (line 371): thread `loop_path` through
+  - `StateFeedRenderer.__init__` (line 459): add `loop_path` param, store as `self.loop_path`
+  - `StateFeedRenderer._redraw_pinned` (line 499): pass `self.loop_path` to `_render_pinned_pane`
+  - `StateFeedRenderer.handle_event` (line 630-636): insert artifact section after non-pinned header
+  - `run_foreground` (line 1032): add `loop_path` param; print artifact section after `Max iterations:` line
+  - New: `_artifact_lines(fsm, loop_path)` helper
+- `scripts/little_loops/cli/loop/run.py` — threading change only
+  - `cmd_run` (line 107): capture resolved `path`, pass to `run_foreground` at line 392
+- `scripts/little_loops/cli/loop/lifecycle.py` — threading change only
+  - `cmd_resume` (line 509): thread `loop_path` through `run_foreground` call
+  - `cmd_monitor` (line 573/587): capture `path` from `load_loop`, pass to `StateFeedRenderer`
+
+_Enhanced by `/ll:refine-issue` — added run.py and lifecycle.py threading changes from codebase analysis_
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/_helpers.py` — `_build_pinned_pane` (~line 314): insert artifact section after header line; `run_foreground` (~line 673): print artifact section after `Max iterations:` line; add new `_artifact_lines(fsm, loop_path)` helper. `StateFeedRenderer` (~line 452) is shared by both `run_foreground` and `cmd_monitor`, so monitor gets the artifact section automatically.
-- `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_monitor` (~line 532): verify artifact paths render correctly in attach mode; no code changes needed since it reuses `StateFeedRenderer`.
+- `scripts/little_loops/cli/loop/_helpers.py` — primary change site. `_build_pinned_pane` (line 272): add `loop_path` param, insert artifact section after header. `_render_pinned_pane` (line 371): thread through. `StateFeedRenderer.__init__` (line 459): add `loop_path` param. `StateFeedRenderer._redraw_pinned` (line 499): pass `self.loop_path`. `StateFeedRenderer.handle_event` (line 630-636): insert artifact section after non-pinned header. `run_foreground` (line 1032): add `loop_path` param, print artifact section after `Max iterations:`. New: `_artifact_lines(fsm, loop_path)` helper.
+- `scripts/little_loops/cli/loop/run.py` — `cmd_run` (line 107): capture resolved `path`, pass to `run_foreground` at line 392.
+- `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_resume` (line 509): thread `loop_path` through `run_foreground`. `cmd_monitor` (line 573/587): capture path from `load_loop`, pass to `StateFeedRenderer`.
 
 ### Dependent Files (Callers/Importers)
-- TBD — grep for callers: `grep -r "run_foreground\|_build_pinned_pane\|run_loop\|resume_loop\|cmd_monitor" scripts/little_loops/cli/loop/`
-- `_helpers.py` call sites in `run.py` / `resume.py` must thread `loop_path` through
+- `scripts/little_loops/cli/loop/run.py:392` — `cmd_run` calls `run_foreground(fsm, args, executor=executor)`; resolved `path` is local-only at line 107, must be threaded through
+- `scripts/little_loops/cli/loop/lifecycle.py:509` — `cmd_resume` calls `run_foreground(fsm, args, executor=executor)`; no `loop_path` threaded
+- `scripts/little_loops/cli/loop/lifecycle.py:587` — `cmd_monitor` instantiates `StateFeedRenderer(fsm, args, loops_dir=loops_dir)`; no `loop_path` passed
+- `scripts/little_loops/cli/loop/_helpers.py:934` — `run_background` calls `load_loop` (which resolves path internally but discards it); path would need extraction for display
+- `scripts/little_loops/cli/loop/_helpers.py:825` — `load_loop` calls `resolve_loop_path` internally but discards the resolved path after `load_and_validate`
+- `scripts/little_loops/cli/loop/_helpers.py:845` — `load_loop_with_spec` same pattern: resolves path, reads YAML, path is local-only
+
+_Added by `/ll:refine-issue` — based on codebase analysis_
 
 ### Similar Patterns
-- TBD — check for existing context-display helpers in `_helpers.py`
+- `scripts/little_loops/cli/loop/info.py:889-895` (`cmd_show`) — displays `str(path)` in a config line using `" · ".join(...)` with 3-space indent
+- `scripts/little_loops/cli/loop/_helpers.py:1023-1028` (`run_background`) — prints path info with `colorize(str(path_value), '2')` (dim) and 2-space indent (`"  Log: ..."`)
+- `scripts/little_loops/cli/loop/lifecycle.py:39-48` (`_format_log_label`) — factored helper that returns `str(log_file)` for display; pattern to model `_artifact_lines` after
+- `scripts/little_loops/cli/loop/_helpers.py:1086-1089` (`run_foreground` startup block) — prints `Running loop: {name}` + `Max iterations: {N}` with colorize; artifact lines slot after this block
+
+_Added by `/ll:refine-issue` — based on codebase analysis_
 
 ### Tests
-- TBD — identify test files under `scripts/tests/` for `cli/loop/_helpers.py`
+- `scripts/tests/test_ll_loop_display.py` — primary test file for display functions; imports `run_foreground`, `_choose_pinned_layout`; uses `MockExecutor` + `capsys` for output assertions
+- `scripts/tests/test_state_feed_renderer.py` — directly tests `StateFeedRenderer`; verifies rendering output
+- `scripts/tests/test_cli_loop_lifecycle.py` — tests `cmd_monitor` via `lifecycle.py`; imports `_helpers` module
+- `scripts/tests/test_cli_loop_worktree.py` — tests `run_foreground` in worktree contexts
+- `scripts/tests/test_cli_loop_background.py` — tests `run_background` which also displays path info (existing pattern at `_helpers.py:1023-1028`)
+
+_Added by `/ll:refine-issue` — based on codebase analysis_
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **New tests to write** (3 gaps identified):
+  - `_artifact_lines(fsm, loop_path)` unit test — no existing test; follow pattern in `test_state_feed_renderer.py` `_make_test_fsm()` (line 11) to create minimal FSM with context values
+  - `_build_pinned_pane` with `loop_path` test — no direct test exists; follow `TestDisplayProgressEvents.test_show_diagrams_state_enter_prints_diagram` (line 2002) in `test_ll_loop_display.py`
+  - Non-pinned `handle_event` artifact-lines test — the `show_diagrams=True, in_pinned_mode=False` code path at `_helpers.py:630-636` has no test; follow `TestStateFeedRendererHandleEvent` (line 76) in `test_state_feed_renderer.py`
+- **Existing tests confirmed safe**: All existing tests use substring `in` assertions on output; `loop_path=None` default means no constructor/function calls break. `test_ll_loop_execution.py` (lines 149, 194, 242), `test_state_feed_renderer.py` (lines 52, 62, 69), `test_cli_loop_lifecycle.py` `TestCmdMonitor` (line 2235) all pass unchanged.
 
 ### Documentation
-- N/A — display-only change, no CLI or public API changes
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — shows example `ll-loop monitor` output (lines 506-508) and documents `ll-loop run` behavior; example output may need updating to reflect the new artifact-paths section between the header and diagram
 
 ### Configuration
 - N/A
@@ -119,7 +191,34 @@ This matches `".loops/plans"`, `"./output"`, `"/tmp/scratch"` and excludes `"ITE
 
 `enhancement`, `ux`, `ll-loop`
 
+## Resolution
+
+Implemented by `/ll:manage-issue enhancement improve ENH-1701` on 2026-05-29.
+
+### Changes Made
+
+- **`scripts/little_loops/cli/loop/_helpers.py`**: Added `_artifact_lines(fsm, loop_path)` helper that extracts path-like context values from the FSM. Threaded `loop_path: Path | None = None` through `_build_pinned_pane`, `_render_pinned_pane`, `StateFeedRenderer.__init__`, `StateFeedRenderer._redraw_pinned`, and `run_foreground`. Artifact lines are rendered with 2-space indent and dim colorization between the `== loop: name ==` header and the FSM diagram in: the pinned pane, the non-pinned `handle_event` path, and the `run_foreground` startup block.
+- **`scripts/little_loops/cli/loop/run.py`**: Pass resolved `loop_path` to `run_foreground(loop_path=path)` in `cmd_run`.
+- **`scripts/little_loops/cli/loop/lifecycle.py`**: Resolve `loop_path` alongside `load_loop` in `cmd_resume` and `cmd_monitor`, thread to `run_foreground` / `StateFeedRenderer`.
+
+### Tests Added
+
+- `TestArtifactLines` (4 tests) in `test_state_feed_renderer.py` — unit tests for path extraction heuristic
+- `test_non_pinned_handle_event_prints_artifact_lines` in `test_state_feed_renderer.py` — verifies artifact lines in non-pinned mode
+- `test_run_foreground_startup_shows_artifact_paths` in `test_ll_loop_display.py` — verifies startup block output
+
+### Verification
+
+- 8040 tests pass (0 regressions; 10 pre-existing failures in `TestShowDiagramsSubprocessReemit`)
+- `ruff check` passes
+- `mypy` type checking passes
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-29T03:24:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d85f12a7-c85e-4471-b885-9197d219ef77.jsonl`
+- `/ll:ready-issue` - 2026-05-29T02:55:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82f0529e-8000-4736-8a2a-e8c25f82d1b0.jsonl`
+- `/ll:confidence-check` - 2026-05-28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/358f113a-4acd-4899-a149-3c67227c3aac.jsonl`
+- `/ll:wire-issue` - 2026-05-29T02:48:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae7b0149-ae11-41b9-943c-cc3211273c10.jsonl`
+- `/ll:refine-issue` - 2026-05-29T02:41:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/805655a0-3762-4e3d-929a-ece68774fd31.jsonl`
 - `/ll:format-issue` - 2026-05-29T02:25:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c530bceb-47b8-4d43-bb17-49b4bbf4410b.jsonl`
 - `/ll:format-issue` - 2026-05-25T22:02:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/432171fe-0cc8-40cb-a835-f0fb1286db77.jsonl`
 - `/ll:capture-issue` - 2026-05-25T21:57:02Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

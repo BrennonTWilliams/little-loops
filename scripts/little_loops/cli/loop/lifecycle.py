@@ -13,6 +13,7 @@ from pathlib import Path
 from little_loops.cli.loop._helpers import (
     load_loop,
     register_loop_signal_handlers,
+    resolve_loop_path,
     run_background,
 )
 from little_loops.fsm.concurrency import _process_alive
@@ -435,6 +436,11 @@ def cmd_resume(
         logger.error(f"Validation error: {e}")
         return 1
 
+    try:
+        loop_path = resolve_loop_path(loop_name, loops_dir)
+    except FileNotFoundError:
+        loop_path = None
+
     for kv in getattr(args, "context", None) or []:
         if "=" not in kv:
             raise SystemExit(f"Invalid --context format: {kv!r} (expected KEY=VALUE)")
@@ -516,6 +522,7 @@ def cmd_resume(
             mode="resume",
             instance_id=instance_id,
             running_dir=running_dir,
+            loop_path=loop_path,
         )
     finally:
         executor.close_transports()
@@ -575,6 +582,11 @@ def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
         print(f"Cannot load loop '{loop_name}': {e}")
         return 1
 
+    try:
+        loop_path = resolve_loop_path(loop_name, loops_dir)
+    except FileNotFoundError:
+        loop_path = None
+
     # Late import: tests patch StateFeedRenderer at its module-of-origin
     # (little_loops.cli.loop._helpers.StateFeedRenderer); using a function-local
     # import ensures the patch takes effect at call time.
@@ -584,7 +596,7 @@ def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
         _restore_sigwinch_handler,
     )
 
-    renderer = StateFeedRenderer(fsm, args, loops_dir=loops_dir)
+    renderer = StateFeedRenderer(fsm, args, loops_dir=loops_dir, loop_path=loop_path)
 
     events_file = running_dir / f"{stem}.events.jsonl"
 

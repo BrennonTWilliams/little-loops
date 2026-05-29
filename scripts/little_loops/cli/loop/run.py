@@ -397,6 +397,7 @@ def cmd_run(
             edge_label_colors=_edge_label_colors,
             badges=_badges,
             instance_id=instance_id,
+            loop_path=path,
             running_dir=running_dir,
         )
     finally:
