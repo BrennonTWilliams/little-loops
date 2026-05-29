@@ -2,7 +2,7 @@
 id: BUG-1754
 title: workflow-automation-proposer disable-model-invocation breaks workflow analysis loop suggester pipeline
 type: BUG
-status: open
+status: done
 priority: P2
 captured_at: '2026-05-27T21:16:34Z'
 discovered_date: '2026-05-27'
@@ -54,11 +54,12 @@ Verify fix by running `ll-verify-skill-budget` before and after to confirm the l
 - ENH-1394: Add `disable-model-invocation: true` to Operational Skills (done — incorrectly classified proposer as operational)
 - P4-ENH-1497: Adapt disable-model-invocation skills for Codex
 
+## Resolution
+
+Removed `disable-model-invocation: true` from `skills/workflow-automation-proposer/SKILL.md`. The flag was incorrectly applied to this pipeline skill during ENH-1394 — `workflow-automation-proposer` is Step 3 of the `analyze-workflows` pipeline and invoked via Skill tool, not a standalone operational skill. The listing budget went from 1262 → 1286 (+24 tokens), still well under the 2000-token limit.
+
+**Verification**: 5854/5855 tests pass (1 pre-existing failure in `test_ll_loop_display.py` unrelated to this change), skill budget under threshold.
+
 ## Session Log
 - `/ll:capture-issue` - 2026-05-27T21:16:34Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d76f6684-f28b-48e1-8feb-af054e035afe.jsonl`
-
----
-
-## Status
-
-`open`
+- `manage-issue` - 2026-05-28T23:01:00Z - fixed
