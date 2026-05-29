@@ -3468,11 +3468,22 @@ class TestHitlMdLoop:
     """Structural tests for the hitl-md FSM loop (FEAT-1613)."""
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "hitl-md.yaml"
+    PROMPT_FILE = Path("prompts/hitl-md-generate.md")
 
     @pytest.fixture
     def data(self) -> dict:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    @pytest.fixture
+    def generate_spec(self) -> str:
+        """Full design specification including both the YAML action and the extracted prompt file."""
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        yaml_data = yaml.safe_load(self.LOOP_FILE.read_text())
+        yaml_action = yaml_data["states"].get("generate", {}).get("action", "")
+        assert self.PROMPT_FILE.exists(), f"Prompt file not found: {self.PROMPT_FILE}"
+        prompt_content = self.PROMPT_FILE.read_text()
+        return yaml_action + "\n" + prompt_content
 
     def test_required_top_level_fields(self, data: dict) -> None:
         """Loop must have name, initial, input_key (singular), and states fields."""
@@ -3649,91 +3660,82 @@ class TestHitlMdLoop:
             "segment.action must reference length_normalized flag for trust calibration"
         )
 
-    def test_generate_action_has_staged_highlighting(self, data: dict) -> None:
-        """generate state must instruct LLM to use IntersectionObserver-based staged
+    def test_generate_action_has_staged_highlighting(self, generate_spec: str) -> None:
+        """generate spec must instruct LLM to use IntersectionObserver-based staged
         highlight reveal (HCEye dynamic-appearance finding)."""
-        action = data["states"].get("generate", {}).get("action", "")
-        assert "IntersectionObserver" in action, (
-            "generate.action must reference IntersectionObserver for staged highlighting"
+        assert "IntersectionObserver" in generate_spec, (
+            "generate spec must reference IntersectionObserver for staged highlighting"
         )
-        assert "staged" in action.lower() or "wave" in action.lower(), (
-            "generate.action must describe staged/waved highlight reveal"
+        assert "staged" in generate_spec.lower() or "wave" in generate_spec.lower(), (
+            "generate spec must describe staged/waved highlight reveal"
         )
 
-    def test_generate_action_has_density_slider(self, data: dict) -> None:
-        """generate state must instruct LLM to render an adaptive density slider
+    def test_generate_action_has_density_slider(self, generate_spec: str) -> None:
+        """generate spec must instruct LLM to render an adaptive density slider
         (input type='range') filtering highlights by saliency threshold."""
-        action = data["states"].get("generate", {}).get("action", "")
-        assert 'type="range"' in action or "type='range'" in action, (
-            "generate.action must reference a range input for the density slider"
+        assert 'type="range"' in generate_spec or "type='range'" in generate_spec, (
+            "generate spec must reference a range input for the density slider"
         )
-        assert "density" in action.lower(), (
-            "generate.action must describe the density control"
+        assert "density" in generate_spec.lower(), (
+            "generate spec must describe the density control"
         )
 
-    def test_generate_action_has_multi_channel_saliency(self, data: dict) -> None:
-        """generate state must instruct LLM to render multi-channel saliency
+    def test_generate_action_has_multi_channel_saliency(self, generate_spec: str) -> None:
+        """generate spec must instruct LLM to render multi-channel saliency
         (anomaly, claim_type, confidence channels) with toggle controls."""
-        action = data["states"].get("generate", {}).get("action", "")
-        # New data attributes per the issue's integration map
         for attr in (
             "data-channel-importance",
             "data-channel-anomaly",
             "data-channel-confidence",
             "data-claim-type",
         ):
-            assert attr in action, (
-                f"generate.action must reference the {attr} attribute"
+            assert attr in generate_spec, (
+                f"generate spec must reference the {attr} attribute"
             )
 
-    def test_generate_action_has_schema_switching(self, data: dict) -> None:
-        """generate state must instruct LLM to render a schema-switching toolbar
+    def test_generate_action_has_schema_switching(self, generate_spec: str) -> None:
+        """generate spec must instruct LLM to render a schema-switching toolbar
         (re-group by heading, saliency, claim type, anomaly)."""
-        action = data["states"].get("generate", {}).get("action", "")
-        assert "schema" in action.lower() and "switch" in action.lower(), (
-            "generate.action must describe schema-switching toggles"
+        assert "schema" in generate_spec.lower() and "switch" in generate_spec.lower(), (
+            "generate spec must describe schema-switching toggles"
         )
 
-    def test_generate_action_has_minimap(self, data: dict) -> None:
-        """generate state must instruct LLM to render a canvas-based minimap
+    def test_generate_action_has_minimap(self, generate_spec: str) -> None:
+        """generate spec must instruct LLM to render a canvas-based minimap
         with localStorage-backed visit heatmap (Reddy Keyhole Effect)."""
-        action = data["states"].get("generate", {}).get("action", "")
-        assert "minimap" in action.lower(), (
-            "generate.action must reference the minimap feature"
+        assert "minimap" in generate_spec.lower(), (
+            "generate spec must reference the minimap feature"
         )
-        assert "canvas" in action.lower(), (
-            "generate.action must reference canvas for minimap rendering"
+        assert "canvas" in generate_spec.lower(), (
+            "generate spec must reference canvas for minimap rendering"
         )
-        assert "localStorage" in action, (
-            "generate.action must reference localStorage for visit heatmap"
+        assert "localStorage" in generate_spec, (
+            "generate spec must reference localStorage for visit heatmap"
         )
 
-    def test_generate_action_has_calibrated_friction(self, data: dict) -> None:
-        """generate state must instruct LLM to render calibrated friction —
+    def test_generate_action_has_calibrated_friction(self, generate_spec: str) -> None:
+        """generate spec must instruct LLM to render calibrated friction —
         confidence badges before content, click-to-reveal for low-confidence
         high-saliency claims, length-normalized credibility marker (Kim et al. 2026,
         Steyvers et al. 2024)."""
-        action = data["states"].get("generate", {}).get("action", "")
-        assert "trust calibration" in action.lower() or "calibrated friction" in action.lower(), (
-            "generate.action must describe the trust calibration / calibrated friction toggle"
+        assert "trust calibration" in generate_spec.lower() or "calibrated friction" in generate_spec.lower(), (
+            "generate spec must describe the trust calibration / calibrated friction toggle"
         )
-        assert "click-to-reveal" in action.lower() or "click to reveal" in action.lower(), (
-            "generate.action must describe the click-to-reveal gate"
+        assert "click-to-reveal" in generate_spec.lower() or "click to reveal" in generate_spec.lower(), (
+            "generate spec must describe the click-to-reveal gate"
         )
-        assert "length_normalized" in action or "length-normalized" in action.lower(), (
-            "generate.action must reference length-normalized confidence display"
+        assert "length_normalized" in generate_spec or "length-normalized" in generate_spec.lower(), (
+            "generate spec must reference length-normalized confidence display"
         )
 
-    def test_generate_action_references_design_tokens(self, data: dict) -> None:
-        """generate state must instruct LLM to source colors/spacing/motion from
+    def test_generate_action_references_design_tokens(self, generate_spec: str) -> None:
+        """generate spec must instruct LLM to source colors/spacing/motion from
         design token CSS custom properties rather than hardcoded values."""
-        action = data["states"].get("generate", {}).get("action", "")
-        assert "design_tokens_context" in action, (
-            "generate.action must reference ${context.design_tokens_context}"
+        assert "design_tokens_context" in generate_spec, (
+            "generate spec must reference ${context.design_tokens_context}"
         )
-        # The new features must reference CSS custom property syntax
-        assert "var(--" in action, (
-            "generate.action must instruct use of CSS custom properties for token consistency"
+        assert "var(--" in generate_spec, (
+            "generate spec must instruct use of CSS custom properties for token consistency"
         )
 
     def test_score_state_has_new_criteria(self, data: dict) -> None:

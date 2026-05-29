@@ -2,8 +2,9 @@
 id: ENH-1804
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: "2026-05-29T21:57:08Z"
+completed_at: "2026-05-29T22:40:00Z"
 discovered_date: 2026-05-29
 discovered_by: capture-issue
 ---
@@ -118,7 +119,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:format-issue` - 2026-05-29T22:00:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c276e230-d4ed-4934-9b72-d81b4c8c08a1.jsonl`
 
 - `/ll:capture-issue` — 2026-05-29T21:57:08Z — `64ba091c-1c65-464a-81b6-237b5a702007.jsonl`
+- `/ll:manage-issue` — 2026-05-29T22:40:00Z — (implementation)
 
 ---
 
-**Open** | Created: 2026-05-29 | Priority: P3
+**Done** | Created: 2026-05-29 | Priority: P3
