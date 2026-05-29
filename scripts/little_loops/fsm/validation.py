@@ -24,6 +24,7 @@ from typing import Any
 
 import yaml
 
+from little_loops.fsm.evaluators import _NUMERIC_OPERATORS
 from little_loops.fsm.fragments import resolve_flow, resolve_fragments, resolve_inheritance
 from little_loops.fsm.schema import EvaluateConfig, FSMLoop, ParameterSpec, StateConfig
 
@@ -848,6 +849,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_meta_loop_evaluation(fsm))
 
+    errors.extend(_validate_zero_retry_counter(fsm))
+
     errors.extend(_validate_on_max_iterations(fsm, defined_states))
 
     errors.extend(_validate_circuit(fsm, defined_states))
@@ -933,6 +936,89 @@ def _validate_meta_loop_evaluation(fsm: FSMLoop) -> list[ValidationError]:
         )
 
     return errors
+
+
+# Regex patterns for detecting counter-increment actions.
+# Must contain a printf/echo writing to a file AND an arithmetic increment.
+_COUNTER_FILE_WRITE_RE = re.compile(r"(?:printf|echo)\s+.*>")
+_COUNTER_INCREMENT_RE = re.compile(
+    r"\$\(\(.*\+\s*1\s*\)\)"  # $((N + 1)) or $((N+1))
+    r"|\+\+"  # C-style increment
+    r"|\+=1"  # compound assignment
+    r"|awk\s+.*\+\+"  # awk with increment
+)
+
+
+def _validate_zero_retry_counter(fsm: FSMLoop) -> list[ValidationError]:
+    """Detect counter + output_numeric combos that yield zero effective retries.
+
+    A common loop-authoring footgun: a state increments a counter file and then
+    evaluates ``output_numeric`` with ``operator: lt, target: 1`` against it.
+    After the first increment the counter is 1, ``1 < 1 == false``, so the
+    retry budget is 0 by construction. Author almost always intended target=2.
+    """
+    errors: list[ValidationError] = []
+
+    for state_name, state in fsm.states.items():
+        if not state.action or not state.evaluate:
+            continue
+
+        ev = state.evaluate
+        if ev.type != "output_numeric":
+            continue
+        if ev.operator is None or ev.target is None:
+            continue
+
+        # Must be a number-like target for numeric comparison
+        try:
+            target = float(ev.target)
+        except (ValueError, TypeError):
+            continue
+
+        if not _is_counter_action(state.action):
+            continue
+
+        # Check: after first increment (0→1), does operator(1, target) already fail?
+        op_fn = _NUMERIC_OPERATORS.get(ev.operator)
+        if op_fn is None:
+            continue
+
+        if not op_fn(1.0, target):
+            suggested_target = _suggested_target(ev.operator, target)
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"Zero retry budget: operator={ev.operator} target={target} "
+                        f"means the first post-increment value (1) already fails "
+                        f"({ev.operator}(1, {target}) == False). "
+                        f"Did you mean target={suggested_target}?"
+                    ),
+                    path=f"states.{state_name}.evaluate",
+                    severity=ValidationSeverity.WARNING,
+                )
+            )
+
+    return errors
+
+
+def _is_counter_action(action: str) -> bool:
+    """Return True if the action string contains a counter-increment pattern."""
+    return bool(
+        _COUNTER_FILE_WRITE_RE.search(action)
+        and _COUNTER_INCREMENT_RE.search(action)
+    )
+
+
+def _suggested_target(operator: str, target: float) -> str:
+    """Suggest a target value that allows at least one retry."""
+    # For lt/le with a too-low target, suggest target+1 so first post-increment passes
+    if operator in ("lt", "le"):
+        return str(int(target) + 1)
+    # For eq with target=0, suggest 1 so the counter can eventually match
+    if operator == "eq" and target == 0:
+        return "1"
+    # For other cases, suggest target+1 as a default nudge
+    return str(int(target) + 1)
 
 
 def _has_baseline_reference(fsm: FSMLoop, capture_names: set[str]) -> bool:

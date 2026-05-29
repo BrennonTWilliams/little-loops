@@ -25,6 +25,7 @@ from little_loops.fsm.validation import (
     _validate_evaluator,
     _validate_meta_loop_evaluation,
     _validate_parameters,
+    _validate_zero_retry_counter,
     load_and_validate,
     validate_fsm,
 )
@@ -968,3 +969,153 @@ class TestOnMaxIterationsValidation:
         errors = [e for e in validate_fsm(fsm) if e.severity == ValidationSeverity.ERROR]
         on_max_errors = [e for e in errors if "on_max_iterations" in (e.path or "")]
         assert on_max_errors == []
+
+
+COUNTER_ACTION = 'N=$((N + 1)); printf "%d" "$N" > /tmp/counter.txt'
+
+
+class TestZeroRetryCounterValidation:
+    """ENH-1636: Zero-retry counter pattern lint for output_numeric evaluators."""
+
+    def _fsm_with_counter(self, operator: str, target: float, action: str | None = None) -> FSMLoop:
+        """Build a minimal FSM with a counter action and output_numeric evaluator."""
+        return FSMLoop(
+            name="test-zero-retry",
+            initial="check",
+            states={
+                "check": make_state(
+                    action=action if action is not None else COUNTER_ACTION,
+                    evaluate=EvaluateConfig(
+                        type="output_numeric", operator=operator, target=target
+                    ),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+
+    # --- Zero-retry warnings ---
+
+    def test_warns_lt_target_1(self) -> None:
+        """lt target=1 with counter action yields zero retries (1 < 1 is false)."""
+        fsm = self._fsm_with_counter(operator="lt", target=1)
+        errors = _validate_zero_retry_counter(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert "target=1" in errors[0].message.lower()
+        assert "states.check.evaluate" in (errors[0].path or "")
+
+    def test_warns_lt_target_0(self) -> None:
+        """lt target=0 with counter action yields zero retries (1 < 0 is false)."""
+        fsm = self._fsm_with_counter(operator="lt", target=0)
+        errors = _validate_zero_retry_counter(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+
+    def test_warns_le_target_0(self) -> None:
+        """le target=0 with counter action yields zero retries (1 <= 0 is false)."""
+        fsm = self._fsm_with_counter(operator="le", target=0)
+        errors = _validate_zero_retry_counter(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+
+    def test_warns_eq_target_0(self) -> None:
+        """eq target=0 with counter action yields zero retries (1 == 0 is false, counter never matches)."""
+        fsm = self._fsm_with_counter(operator="eq", target=0)
+        errors = _validate_zero_retry_counter(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+
+    # --- No warning (valid budget) ---
+
+    def test_no_warn_lt_target_2(self) -> None:
+        """lt target=2 with counter action allows one retry (1 < 2 is true)."""
+        fsm = self._fsm_with_counter(operator="lt", target=2)
+        errors = _validate_zero_retry_counter(fsm)
+        assert errors == []
+
+    def test_no_warn_lt_target_3(self) -> None:
+        """lt target=3 with counter action allows two retries (1 < 3 is true)."""
+        fsm = self._fsm_with_counter(operator="lt", target=3)
+        errors = _validate_zero_retry_counter(fsm)
+        assert errors == []
+
+    def test_no_warn_gt_target_0(self) -> None:
+        """gt target=0 with counter action allows retries (1 > 0 is true)."""
+        fsm = self._fsm_with_counter(operator="gt", target=0)
+        errors = _validate_zero_retry_counter(fsm)
+        assert errors == []
+
+    def test_no_warn_ge_target_1(self) -> None:
+        """ge target=1 with counter action allows retries (1 >= 1 is true)."""
+        fsm = self._fsm_with_counter(operator="ge", target=1)
+        errors = _validate_zero_retry_counter(fsm)
+        assert errors == []
+
+    # --- Non-counter action ---
+
+    def test_no_warn_non_counter_action(self) -> None:
+        """Plain echo without increment is not a counter pattern."""
+        fsm = self._fsm_with_counter(
+            operator="lt", target=1, action='echo "hello" > /tmp/out.txt'
+        )
+        errors = _validate_zero_retry_counter(fsm)
+        assert errors == []
+
+    # --- Missing evaluate / action ---
+
+    def test_no_warn_no_evaluate(self) -> None:
+        """State without evaluate block is skipped."""
+        fsm = FSMLoop(
+            name="test-no-eval",
+            initial="check",
+            states={
+                "check": make_state(action=COUNTER_ACTION, on_yes="done"),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_zero_retry_counter(fsm)
+        assert errors == []
+
+    def test_no_warn_no_action(self) -> None:
+        """State without action is skipped."""
+        fsm = FSMLoop(
+            name="test-no-action",
+            initial="check",
+            states={
+                "check": make_state(
+                    evaluate=EvaluateConfig(type="output_numeric", operator="lt", target=1),
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_zero_retry_counter(fsm)
+        assert errors == []
+
+    def test_no_warn_non_output_numeric(self) -> None:
+        """Counter action with exit_code evaluator is not flagged."""
+        fsm = FSMLoop(
+            name="test-exit-code",
+            initial="check",
+            states={
+                "check": make_state(
+                    action=COUNTER_ACTION,
+                    evaluate=EvaluateConfig(type="exit_code"),
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_zero_retry_counter(fsm)
+        assert errors == []
+
+    # --- Integration: wired into validate_fsm ---
+
+    def test_integration_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes zero-retry counter warnings."""
+        fsm = self._fsm_with_counter(operator="lt", target=1)
+        errors = validate_fsm(fsm)
+        warnings = [e for e in errors if "zero" in e.message.lower() or "retry" in e.message.lower()]
+        assert len(warnings) >= 1
