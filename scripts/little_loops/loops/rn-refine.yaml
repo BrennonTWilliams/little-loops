@@ -8,14 +8,13 @@ description: |
   VERY-HIGH or max_iterations is exhausted.
   Run as: ll-loop run rn-refine "path/to/plan.md"
 initial: init
-max_iterations: 50
+max_iterations: 30
 timeout: 7200
 
 context:
-  plan_file: ""     # populated from positional CLI arg via input_key: plan_file
+  plan_file: "" # populated from positional CLI arg via input_key: plan_file
 
 states:
-
   init:
     # Setup phase — validate the source plan file exists, copy it into the
     # runner-injected run_dir, and initialize supporting files.
