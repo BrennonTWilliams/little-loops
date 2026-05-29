@@ -14,6 +14,7 @@ labels:
   - loops
   - harness
 relates_to: [BUG-1767, BUG-1766]
+parent: EPIC-1663
 ---
 
 # ENH-1795: Action-level loop detection (complement to `diff_stall`)

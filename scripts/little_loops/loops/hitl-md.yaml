@@ -435,6 +435,7 @@ states:
 
       All interactive behavior must work under file:// with no server.
     next: evaluate
+    on_error: failed
 
   evaluate:
     # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// page.

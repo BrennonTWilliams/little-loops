@@ -7,6 +7,7 @@ captured_at: "2026-05-29T20:55:00Z"
 discovered_date: "2026-05-29"
 discovered_by: capture-issue
 labels: [bug, skills, audit-issue-conflicts, git]
+parent: EPIC-1745
 ---
 
 # BUG-1800: audit-issue-conflicts `git add .issues/` stages unrelated untracked files

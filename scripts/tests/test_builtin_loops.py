@@ -3584,6 +3584,11 @@ class TestHitlMdLoop:
         state = data["states"].get("score", {})
         assert state.get("on_error") == "failed"
 
+    def test_generate_on_error_routes_to_failed(self, data: dict) -> None:
+        """generate state must route to failed on error to surface prompt failures explicitly."""
+        state = data["states"].get("generate", {})
+        assert state.get("on_error") == "failed"
+
     def test_context_has_input(self, data: dict) -> None:
         """context block must define input (singular); output_dir is runner-injected run_dir."""
         ctx = data.get("context", {})

@@ -7,6 +7,7 @@ captured_at: "2026-05-29T20:55:00Z"
 discovered_date: "2026-05-29"
 discovered_by: capture-issue
 labels: [enhancement, skills, audit-issue-conflicts, idempotency]
+parent: EPIC-1745
 ---
 
 # ENH-1802: audit-issue-conflicts re-appends Scope Boundary section on every run

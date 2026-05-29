@@ -4,6 +4,7 @@ discovered_by: capture-issue
 captured_at: "2026-05-27T04:46:43Z"
 blocked_by: [ENH-494]
 depends_on: FEAT-948
+parent: EPIC-1707
 ---
 
 # FEAT-1736: Wire-Issue Coupling Rules via Decisions Log

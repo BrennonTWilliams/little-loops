@@ -12,6 +12,7 @@ labels:
   - harness
   - evaluation
   - captured
+parent: EPIC-1744
 ---
 
 # FEAT-1689: add ll-harness CLI for one-shot runner evaluation

@@ -7,6 +7,7 @@ captured_at: "2026-05-29T20:55:00Z"
 discovered_date: "2026-05-29"
 discovered_by: capture-issue
 labels: [bug, skills, audit-issue-conflicts]
+parent: EPIC-1745
 ---
 
 # BUG-1799: audit-issue-conflicts scans terminal (done/deferred) issues alongside active ones

@@ -15,6 +15,7 @@ labels:
   - telemetry
   - cost
 relates_to: [FEAT-1689, ENH-1726]
+parent: EPIC-1744
 ---
 
 # ENH-1797: Cost / token telemetry per FSM state in loop runs

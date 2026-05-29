@@ -7,6 +7,7 @@ captured_at: "2026-05-29T20:55:00Z"
 discovered_date: "2026-05-29"
 discovered_by: capture-issue
 labels: [enhancement, skills, audit-issue-conflicts]
+parent: EPIC-1745
 ---
 
 # ENH-1801: audit-issue-conflicts intra-batch design misses cross-theme conflicts at scale

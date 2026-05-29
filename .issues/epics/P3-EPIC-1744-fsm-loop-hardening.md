@@ -7,7 +7,7 @@ captured_at: "2026-05-27T00:00:00Z"
 discovered_date: "2026-05-27"
 discovered_by: manual
 labels: [epic, loops, fsm, resilience]
-relates_to: [ENH-1677, ENH-1678, ENH-1701, ENH-1735, ENH-1684]
+relates_to: [ENH-1677, ENH-1678, ENH-1701, ENH-1735, ENH-1684, ENH-1797, FEAT-1689]
 ---
 
 # EPIC-1744: FSM Loop Hardening
@@ -51,6 +51,8 @@ Observed pain points from production loop runs:
 - **ENH-1735** — Persist plan step index before execute for crash recovery in `general-task` loop
 - **ENH-1684** — Add timestamp suffix to `deep-research` run directory to prevent silent overwrite
 - **ENH-1701** — Show artifact paths in `ll-loop run` output
+- **ENH-1797** — Cost / token telemetry per FSM state in loop runs
+- **FEAT-1689** — add ll-harness CLI for one-shot runner evaluation
 
 ## Implementation Order
 

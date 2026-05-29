@@ -6,7 +6,7 @@ status: open
 captured_at: '2026-05-25T20:53:43Z'
 discovered_date: '2026-05-25'
 discovered_by: capture-issue
-relates_to: [FEAT-1692, FEAT-1695, FEAT-1696, FEAT-1697, FEAT-1287, FEAT-1283, FEAT-1285, FEAT-1286, EPIC-1663, FEAT-1738, FEAT-1739, ENH-1740, ENH-1741, FEAT-1742, FEAT-1743]
+relates_to: [FEAT-1692, FEAT-1695, FEAT-1696, FEAT-1697, FEAT-1287, FEAT-1283, FEAT-1285, FEAT-1286, EPIC-1663, FEAT-1738, FEAT-1739, ENH-1740, ENH-1741, FEAT-1742, FEAT-1743, FEAT-1798]
 ---
 
 # EPIC-1694: Built-in FSM Loops Powered by the Learning-Test Registry
@@ -44,6 +44,7 @@ This constraint is why FEAT-1695 (`ready-to-implement-gate`) is shell-driven rat
 - **FEAT-1743** — wire learning-tests as an opt-in feature flag in `/ll:init` and `config-schema.json`; provides the master switch every EPIC-1694 surface checks before activating
 - **ENH-1741** — refactor `ready-to-implement-gate` to use `type: learning` states, making it the canonical built-in exemplar of the primitive
 - **ENH-1740** — `assumption-firewall` — record untestable claims via `--assume` flag
+- **FEAT-1798** — Specialist-role harness template (Plan → Research → Implement → Report)
 
 ## Scope
 

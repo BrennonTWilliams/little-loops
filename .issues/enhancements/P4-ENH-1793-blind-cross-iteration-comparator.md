@@ -8,6 +8,7 @@ discovered_by: capture-issue
 status: open
 depends_on: [ENH-1792]
 labels: [enhancement, loops, evaluator, regression-detection]
+parent: EPIC-1663
 ---
 
 # ENH-1793: Blind Cross-Iteration Comparator

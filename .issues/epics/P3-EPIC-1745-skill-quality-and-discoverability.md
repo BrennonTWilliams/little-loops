@@ -7,7 +7,7 @@ captured_at: "2026-05-27T00:00:00Z"
 discovered_date: "2026-05-27"
 discovered_by: manual
 labels: [epic, skills, context-engineering, routing]
-relates_to: [ENH-1617, ENH-1618, ENH-977, ENH-494]
+relates_to: [ENH-1617, ENH-1618, ENH-977, ENH-494, BUG-1799, BUG-1800, ENH-1801, ENH-1802]
 ---
 
 # EPIC-1745: Skill Quality & Discoverability
@@ -53,6 +53,10 @@ ENH-494 (companion files) and ENH-977 (lint CLI) are the size-discipline side of
 - **ENH-1618** — Consolidate audit-* skills into a single meta-skill entry point
 - **ENH-494** — Enforce 500-Line SKILL.md limit with flat companion files
 - **ENH-977** — Add `ll-verify-skills` CLI lint command (depends on ENH-494)
+- **BUG-1799** — audit-issue-conflicts scans terminal (done/deferred) issues alongside active ones
+- **BUG-1800** — audit-issue-conflicts `git add .issues/` stages unrelated untracked files
+- **ENH-1801** — audit-issue-conflicts intra-batch design misses cross-theme conflicts at scale
+- **ENH-1802** — audit-issue-conflicts re-appends Scope Boundary section on every run
 
 ## Implementation Order
 

@@ -15,6 +15,7 @@ labels:
   - templates
   - create-loop
 relates_to: [ENH-1796]
+parent: EPIC-1694
 ---
 
 # FEAT-1798: Specialist-role harness template (Plan → Research → Implement → Report)
