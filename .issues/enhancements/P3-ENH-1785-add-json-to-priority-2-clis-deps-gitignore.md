@@ -20,6 +20,21 @@ Add `--json` flag support to `ll-deps validate` and `ll-gitignore`. Each follows
 
 Decomposed from ENH-1780: Add --json flag consistently across all ll-* CLIs
 
+## Current Behavior
+
+`ll-deps validate` and `ll-gitignore` output human-readable text only. No `--json` flag or structured output format is currently supported, which forces automation pipelines to parse human-readable text.
+
+## Expected Behavior
+
+Both CLIs support `--json` / `-j` flags that produce structured JSON output on stdout, following the same pattern used by 15+ other `ll-*` subcommands (using `add_json_arg()` from ENH-1783 and `print_json()`). Default text output is unchanged; JSON is opt-in.
+
+## Motivation
+
+This enhancement would:
+- Improve agent composability by enabling structured output consumption in automation pipelines (ll-auto, ll-parallel, ll-sprint)
+- Align these CLIs with the 15+ other `ll-*` subcommands that already support `--json`
+- Reduce parsing fragility — agents currently parse human-readable output, which is brittle across format changes
+
 ## Proposed Solution
 
 Follow the existing `--json` pattern (consistent across 15+ subcommands):
@@ -33,27 +48,44 @@ Output validation results as structured JSON. Follow pattern from `ll-verify-doc
 ### ll-gitignore
 Output suggestion data as structured JSON.
 
-## Files to Modify
+## Scope Boundaries
 
-- `scripts/little_loops/cli/deps.py` — validate subcommand (line 141)
-- `scripts/little_loops/cli/gitignore.py` — dry-run/apply output
+- **In scope**: Adding `--json` flag to `ll-deps validate` and `ll-gitignore` (dry-run and apply output)
+- **Out of scope**: Other `ll-deps` subcommands (`analyze` already has `--format json`), other CLIs not in priority 2, changing default output format
 
 ## Pre-requisite
 
 - ENH-1783: `add_json_arg()` shared helper must exist before starting this work.
 
-## Tests
+## Integration Map
 
-Per CLI verification checklist:
+### Files to Modify
+- `scripts/little_loops/cli/deps.py` — validate subcommand (line 141)
+- `scripts/little_loops/cli/gitignore.py` — dry-run/apply output
+
+### Dependent Files (Callers/Importers)
+- N/A — these are CLI entry points; no internal callers beyond argcomplete registration in pyproject.toml
+
+### Similar Patterns
+- `scripts/little_loops/cli/docs.py:87-94` — format-function dispatch with `--json`
+- 15+ other `ll-*` subcommands using `add_json_arg()` + `print_json()` pattern
+
+### Tests
+- `scripts/tests/test_dependency_mapper.py` — JSON output tests for `validate --json` in `TestMainCLI` (line 1299). Verify no conflict with `analyze --format json`. Existing test at line 1499 (`test_validate_json_output_includes_new_fields`) uses `--format json` on `analyze` — verify no interaction.
+- `scripts/tests/test_gitignore_cmd.py` — JSON output tests for dry-run/apply. Follow Pattern B (capsys + `json.loads()`).
+
+Verification checklist per CLI:
 - `--json` flag appears in `--help` output
 - Short flag `-j` works equivalently
 - Valid JSON output (parse with `json.loads()`)
 - No ANSI escape codes in JSON output
 - Exit code is 0
 
-Test files to update:
-- `scripts/tests/test_dependency_mapper.py` — JSON output tests for `validate --json` in `TestMainCLI` (line 1299). Verify no conflict with `analyze --format json`. Existing test at line 1499 (`test_validate_json_output_includes_new_fields`) uses `--format json` on `analyze` — verify no interaction.
-- `scripts/tests/test_gitignore_cmd.py` — JSON output tests for dry-run/apply. Follow Pattern B (capsys + `json.loads()`).
+### Documentation
+- N/A
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -63,6 +95,15 @@ Test files to update:
 4. Add JSON output tests to `test_gitignore_cmd.py` — test dry-run and apply with `--json`.
 5. Verify each CLI: `--json` in help, `-j` short flag, parseable JSON, no ANSI codes, exit 0.
 
+## Success Metrics
+
+- All 5 verification checklist items pass for both CLIs (--json in help, -j short flag, valid JSON, no ANSI codes, exit 0)
+- Existing tests continue to pass with no regressions
+
+## API/Interface
+
+N/A — No new public API changes. Adds `--json` / `-j` CLI flags to existing subcommands only.
+
 ## Impact
 
 - **Priority**: P3
@@ -71,4 +112,5 @@ Test files to update:
 - **Breaking Change**: No
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-29T04:48:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0b5cfe53-7b19-494a-9182-134b022182d9.jsonl`
 - `/ll:issue-size-review` - 2026-05-28T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc1fcf00-8ef7-4a3a-94b4-7099b5095eec.jsonl`

@@ -147,6 +147,37 @@ Six weeks later, Developer B starts integrating with Snowflake and changes their
 2. Update `skills/init/SKILL.md` documentation to mention the new question.
 3. Update `skills/configure/SKILL.md` to surface `learning_tests.enabled` as a togglable setting.
 
+## Integration Map
+
+### Files to Modify
+- `config-schema.json:847-858` — Extend `learning_tests` schema with `enabled` and `discoverability` properties
+- `scripts/little_loops/config.py` — Config loader defaults for `learning_tests.enabled`
+- `skills/init/SKILL.md` — Add opt-in question and scaffold handlers
+- `skills/configure/SKILL.md` — Surface `learning_tests.enabled` as togglable setting
+- `docs/guides/LEARNING_TESTS_GUIDE.md` — Add "Getting Started" section
+
+### New Files
+- `scripts/little_loops/learning_tests/__init__.py` — Helper: `is_learning_tests_enabled(config) -> bool`
+- `scripts/tests/test_init_learning_tests.py` — Tests for yes-path, no-path, re-prompt suppression, default-false
+
+### Dependent Files (Callers/Importers)
+- FEAT-1742 (discoverability hook) — Reads `learning_tests.enabled` and `discoverability.mode`
+- FEAT-1739 (learning-tests-audit loop) — Checks `enabled` before running
+- `proof-first-task`, `assumption-firewall`, `ready-to-implement-gate` — Log hint when disabled
+
+### Similar Patterns
+- FEAT-749 — Allowed-tools registration in init; this issue follows the same wiring pattern
+
+### Tests
+- `scripts/tests/test_init_learning_tests.py` — New test file
+
+### Documentation
+- `docs/guides/LEARNING_TESTS_GUIDE.md` — "Getting Started" section linking to init flow
+
+### Configuration
+- `.ll/ll-config.json` — `learning_tests` block written by init
+- `.claude/settings.json` — allowed-tools registration for `ll-learning-tests` and `Skill(ll:explore-api)`
+
 ## Implementation Steps
 
 1. Read `config-schema.json:847-858` and the current `/ll:init` skill (`skills/init/SKILL.md`).
@@ -169,6 +200,30 @@ Six weeks later, Developer B starts integrating with Snowflake and changes their
 - Test file `scripts/tests/test_init_learning_tests.py` covers yes-path, no-path, re-prompt suppression, and default-false semantics.
 - `LEARNING_TESTS_GUIDE.md` has a "Getting Started" section linking to the init flow.
 
+## API/Interface
+
+### Config Schema Extension
+
+`config-schema.json` — `learning_tests` block extended with:
+
+- `enabled` (`boolean`, default: `false`) — Master switch. When `false`, all LT-related surfaces are silenced.
+- `discoverability.mode` (`enum: "off" | "warn" | "block"`, default: `"warn"`) — Controls how learning-test gaps are surfaced during implementation.
+- `discoverability.skip_packages` (`array<string>`, default: `["std", "typing", "os", "sys"]`) — Packages excluded from discoverability checks.
+
+### New Helper
+
+```python
+# scripts/little_loops/learning_tests/__init__.py
+def is_learning_tests_enabled(config: dict) -> bool:
+    """Return True if the learning-tests registry is opted-in via config."""
+```
+
+Returns `False` when the `learning_tests` block is absent or `enabled` is unset/false.
+
+### Init Skill
+
+`skills/init/SKILL.md` — One new `AskUserQuestion` prompt (Yes/No) offering learning-test registry opt-in during project setup.
+
 ## Dependencies
 
 - **FEAT-1742** (discoverability hook) consumes `learning_tests.enabled` and `learning_tests.discoverability.mode` from this schema. Either issue can ship first, but FEAT-1742 should not be considered complete until this issue's schema is in place — otherwise the hook has no master switch.
@@ -177,6 +232,13 @@ Six weeks later, Developer B starts integrating with Snowflake and changes their
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+## Impact
+
+- **Priority**: P3 — Important onboarding/plumbing for the EPIC-1694 learning-tests ecosystem, but not blocking critical user-facing functionality. All existing projects are backward-compatible (implicit opt-out via absent config block).
+- **Effort**: Medium — Touches config schema, config loader, init skill, configure skill, a new helper module, tests, and documentation across ~8 files.
+- **Risk**: Low — New schema properties default to `false` (opt-out), preserving all existing behavior. No breaking changes to existing APIs or CLI contracts.
+- **Breaking Change**: No
 
 ## Labels
 
@@ -187,4 +249,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-05-27 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-29T02:45:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f33cbf4f-64fd-4485-8964-c58bfa3f4303.jsonl`
 - `/ll:capture-issue` - 2026-05-27T18:24:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5d67c925-b04f-4086-8575-fc25fa08257e.jsonl`
