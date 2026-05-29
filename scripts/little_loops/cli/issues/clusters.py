@@ -247,6 +247,9 @@ def _render_cluster_diagram(
 
     # Annotate gap rows with arrow characters and colored edge labels.
     # Only draw connectors when a real edge exists between consecutive nodes.
+    # Arrow head direction matches the semantic edge direction, not the
+    # topo-sort layout order: ▼ when top→bottom matches the edge, ▲ when
+    # the edge goes bottom→top (reverse of the visual stack).
     arrow_labels: dict[int, str] = {}
     for i in range(n - 1):
         a_id = ordered_ids[i]
@@ -258,7 +261,8 @@ def _render_cluster_diagram(
             if gap_row < grid_h:
                 grid[gap_row][center_col] = "│"
             if gap_row + 1 < grid_h:
-                grid[gap_row + 1][center_col] = "▼"
+                forward = (a_id, b_id) in edge_map
+                grid[gap_row + 1][center_col] = "▼" if forward else "▲"
             color = EDGE_COLOR.get(rel, "37")
             arrow_labels[gap_row] = colorize(f" {rel}", color)
 
