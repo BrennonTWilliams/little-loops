@@ -105,23 +105,42 @@ class TestParseFrontmatter:
         assert result == {"key": "value"}
         assert "Unsupported YAML list syntax" in caplog.text
 
-    def test_block_scalar_pipe_emits_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Block scalar '|' values should emit a warning and store None."""
+    def test_block_scalar_pipe_collects_value(self) -> None:
+        """Block scalar '|' collects indented lines as a dedented string."""
+        content = "---\ndescription: |\n  line one\n  line two\nkey: value\n---\n\n"
+        result = parse_frontmatter(content)
+        assert result["description"] == "line one\nline two"
+        assert result["key"] == "value"
+
+    def test_block_scalar_folded_collects_value(self) -> None:
+        """Block scalar '>' collects indented lines, folded to single line."""
+        content = "---\ndescription: >\n  line one\n  line two\nkey: value\n---\n\n"
+        result = parse_frontmatter(content)
+        assert result["description"] == "line one line two"
+        assert result["key"] == "value"
+
+    def test_block_scalar_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Block scalars no longer emit a warning."""
         content = "---\ndescription: |\n  line one\nkey: value\n---\n\n"
         with caplog.at_level("WARNING", logger="little_loops.frontmatter"):
             result = parse_frontmatter(content)
-        assert result["description"] is None
-        assert result["key"] == "value"
-        assert "Unsupported YAML block scalar" in caplog.text
+        assert result["description"] == "line one"
+        assert "Unsupported YAML block scalar" not in caplog.text
 
-    def test_block_scalar_folded_emits_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Block scalar '>' values should emit a warning and store None."""
-        content = "---\ndescription: >\n  folded\nkey: value\n---\n\n"
-        with caplog.at_level("WARNING", logger="little_loops.frontmatter"):
-            result = parse_frontmatter(content)
-        assert result["description"] is None
+    def test_block_scalar_with_colon_in_value(self) -> None:
+        """Block scalar value containing a colon does not create bogus keys."""
+        content = "---\ncancelled_reason: |\n  See run.py:264 for details\n  deferred to FEAT-1789.\nkey: value\n---\n\n"
+        result = parse_frontmatter(content)
+        assert result["cancelled_reason"] == "See run.py:264 for details\ndeferred to FEAT-1789."
         assert result["key"] == "value"
-        assert "Unsupported YAML block scalar" in caplog.text
+        assert "(run.py" not in result
+
+    def test_block_scalar_empty(self) -> None:
+        """Block scalar with no indented lines stores empty string."""
+        content = "---\ndescription: |\nkey: value\n---\n\n"
+        result = parse_frontmatter(content)
+        assert result["description"] == ""
+        assert result["key"] == "value"
 
     def test_block_sequence_parsed_as_list(self) -> None:
         """Block sequence syntax parses correctly as a list."""

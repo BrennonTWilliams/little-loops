@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import textwrap
 from typing import Any
 
 import yaml
@@ -29,9 +30,10 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
     """Extract YAML frontmatter from content.
 
     Looks for content between opening and closing '---' markers.
-    Parses a subset of YAML: simple ``key: value`` pairs and YAML block
-    sequences (``key:`` followed by ``- item`` lines). Block scalars and
-    nested structures are not supported and will emit a ``logging.WARNING``.
+    Parses a subset of YAML: simple ``key: value`` pairs, YAML block
+    sequences (``key:`` followed by ``- item`` lines), and block scalars
+    (``key: |`` or ``key: >`` followed by indented lines). Nested
+    structures are not supported and will emit a ``logging.WARNING``.
     Returns empty dict if no frontmatter found.
 
     Args:
@@ -52,8 +54,11 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
 
     result: dict[str, Any] = {}
     current_list_key: str | None = None
-    for line in frontmatter_text.split("\n"):
-        line = line.strip()
+    lines = frontmatter_text.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        i += 1
         if not line or line.startswith("#"):
             continue
         if line.startswith("- "):
@@ -71,8 +76,23 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
             key = key.strip()
             value = value.strip()
             if value.startswith("|") or value.startswith(">"):
-                logger.warning("Unsupported YAML block scalar in frontmatter: %r", line)
-                result[key] = None
+                # Block scalar: collect indented continuation lines
+                block_type = value[0]
+                block_lines: list[str] = []
+                while i < len(lines):
+                    next_line = lines[i]
+                    if next_line and (next_line[0] == " " or next_line[0] == "\t"):
+                        block_lines.append(next_line)
+                        i += 1
+                    else:
+                        break
+                if block_lines:
+                    dedented = textwrap.dedent("\n".join(block_lines))
+                    if block_type == ">":
+                        dedented = re.sub(r"\s+", " ", dedented).strip()
+                    result[key] = dedented
+                else:
+                    result[key] = ""
                 continue
             if value.startswith("[") and value.endswith("]"):
                 inner = value[1:-1].strip()
