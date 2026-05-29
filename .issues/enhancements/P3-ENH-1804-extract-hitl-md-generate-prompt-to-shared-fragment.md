@@ -48,6 +48,25 @@ The 16KB action size likely contributed to the `2026-05-29T213409` run failure (
 2. Replace the inlined spec in the generate action with a reference to read the file
 3. The loop YAML keeps only the file-path references and context wiring
 
+## Success Metrics
+
+- **File size**: `loops/hitl-md.yaml` generate action reduces from ~16KB to <1KB reference
+- **Loop reliability**: `ll-loop run hitl-md` completes generate state without template interpolation errors
+- **Maintainability**: Design specification can be iterated independently without touching loop YAML
+
+## Scope Boundaries
+
+- **In scope**: Extracting the design specification from `hitl-md.yaml` generate action to a shared prompt file
+- **In scope**: Updating the generate state to reference the external file
+- **In scope**: Adding `on_error: failed` to generate state (see BUG-1803)
+- **Out of scope**: Changing the design specification content itself
+- **Out of scope**: Modifying other loops (hitl-compare, html-anything) to use the shared fragment
+- **Out of scope**: General loop YAML refactoring beyond generate state
+
+## API/Interface
+
+N/A - No public API changes. Internal loop refactoring only.
+
 ## Integration Map
 
 ### Files to Modify
@@ -96,6 +115,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loop-fragment`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-29T22:00:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c276e230-d4ed-4934-9b72-d81b4c8c08a1.jsonl`
 
 - `/ll:capture-issue` — 2026-05-29T21:57:08Z — `64ba091c-1c65-464a-81b6-237b5a702007.jsonl`
 
