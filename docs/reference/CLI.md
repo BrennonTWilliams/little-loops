@@ -25,6 +25,7 @@ These flags appear across multiple tools:
 | `--timeout` | `-t` | Timeout in seconds per issue | `ll-parallel`, `ll-sprint run` |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100, default: from config) | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-loop resume` |
 | `--context-limit` | | Override context window token estimate (default: from config or model-detected) | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-loop resume` |
+| `--json` | `-j` | Output as JSON (structured, machine-readable) | Most `ll-*` CLIs — see individual tool sections |
 | `--format` | `-f` | Output format: `text`, `json`, `markdown` | `ll-history`, `ll-deps`, `ll-verify-docs`, `ll-check-links` |
 
 ---
@@ -403,6 +404,7 @@ Run a loop.
 | `--worktree` | | Run loop in an isolated git worktree on a new branch named `TIMESTAMP-LOOP-NAME`; worktree and branch are removed on exit. **Cannot be combined with `--background`** — passing both exits with an error. |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
+| `--no-lock` | | Run without acquiring the scope lock, bypassing the conflict check. **Caution:** this allows concurrent runs that may interfere with each other on shared resources. Use when you need parallel runs that operate on disjoint paths or when testing a loop that would otherwise be blocked by a stale lock you cannot clear. |
 
 > **Note:** `agent:` and `tools:` are per-state YAML fields, not CLI flags. See [Subprocess Agent and Tool Scoping](../guides/LOOPS_GUIDE.md#subprocess-agent-and-tool-scoping) in the Loops Guide for per-state agent and tool scoping options.
 
@@ -440,6 +442,8 @@ In addition to structural checks (reachability, evaluator fields, routing consis
 
 Both rules are suppressed by setting `meta_self_eval_ok: true` at the loop top-level (with a justifying comment).
 
+- **Zero-retry counter pattern (WARNING)**: Detects states whose `retry` config sets `max_retries: 0` alongside a non-zero `retry_count` counter variable, or `retry_count` that is never incremented in any on-error transition. A zero-retry counter pattern means the state will never actually retry despite having retry infrastructure wired — this is almost always a configuration mistake. Does not block validation.
+
 #### `ll-loop list` / `ll-loop l`
 
 List available loops. Discovery is recursive: runnable loops nested under subdirectories of `loops/` (e.g. `oracles/oracle-capture-issue`) are included, while library fragments under `loops/lib/` are filtered out via `is_runnable_loop()`. Output is grouped by `category` with blank-line separators between groups. Loop names are column-aligned for scanability. Descriptions are truncated with `…` at terminal width. Labels appear as `[label]` badges between the description and `[built-in]` tag. Project loops use bold cyan names while built-in loops use dimmer (non-bold) cyan. The `[built-in]` tag is always positioned on the same line as the name.
@@ -452,7 +456,7 @@ For nested loops, the displayed identifier is the **relative path** without the 
 | `--builtin` | | Only show built-in loops (exclude project `.loops/`) |
 | `--category <cat>` | `-c` | Filter to loops with the given category (e.g. `apo`, `issue-management`, `code-quality`) |
 | `--label <tag>` | `-l` | Filter to loops that carry the given label tag; repeat for multiple tags (OR match) |
-| `--json` / `-j` | | Output as JSON array. Without `--running`: each entry includes `name` (relative-path identifier — e.g. `oracles/oracle-capture-issue` for nested loops, `fix-quality-and-tests` for top-level), `path`, `category`, `labels`, and `built_in`. With `--running`: each entry is a `LoopState` object (`loop_name`, `status`, `current_state`, `iteration`, `updated_at`, etc.); `instance_id` is **absent** from this output — use `ll-loop status <loop> --json` to resolve per-instance details |
+| `--json` / `-j` | | Output as JSON array. Without `--running`: each entry includes `name` (relative-path identifier — e.g. `oracles/oracle-capture-issue` for nested loops, `fix-quality-and-tests` for top-level), `path`, `category`, `labels`, `description`, and `built_in`. With `--running`: each entry is a `LoopState` object (`loop_name`, `status`, `current_state`, `iteration`, `updated_at`, etc.); `instance_id` is **absent** from this output — use `ll-loop status <loop> --json` to resolve per-instance details |
 
 #### `ll-loop status <loop>` / `ll-loop st <loop>`
 
@@ -684,7 +688,7 @@ List issues with optional filters.
 | `--group-by` | Group output by `type` (default, existing four-bucket view) or `epic` (group child issues under their parent ID, with an "Unparented" bucket for issues without a `parent:` field) |
 | `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all`. Note: synonyms in on-disk frontmatter are normalized on read, but `--status` arguments must use canonical values (argparse validates choices before normalization runs). |
 | `--flat` | Output flat list for scripting |
-| `--json` / `-j` | Output as JSON array; each entry includes `id`, `title`, `priority`, `type`, `status`, `path`, `labels`, and `milestone` |
+| `--json` / `-j` | Output as JSON array; each entry includes `id`, `title`, `priority`, `type`, `status`, `path`, `labels`, `milestone`, and `parent` (the parent EPIC or issue ID when set) |
 | `--limit` / `-n` | Cap output at N issues (must be ≥ 1) |
 | `--config` | Path to project root |
 
@@ -737,7 +741,7 @@ Search issues with filters and sorting.
 | `--asc` / `--desc` | Sort direction |
 | `--format` | Output format: `table` (default), `list`, `ids` |
 | `--limit` | Cap results at N |
-| `--json` / `-j` | Output as JSON array |
+| `--json` / `-j` | Output as JSON array; each entry includes `id`, `title`, `priority`, `type`, `status`, `path`, `labels`, `milestone`, and `parent` |
 
 #### `ll-issues sequence` / `ll-issues seq`
 
@@ -1075,11 +1079,12 @@ Full dependency analysis combining file overlaps and validation.
 
 #### `ll-deps validate`
 
-Validate existing dependency references only (broken refs, cycles).
+Validate existing dependency references only (broken refs, cycles, stale completed refs).
 
-| Flag | Description |
-|------|-------------|
-| `--sprint` | Restrict validation to named sprint |
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | `-j` | Output as JSON (serializes `ValidationResult` fields) |
+| `--sprint` | | Restrict validation to named sprint |
 
 #### `ll-deps fix`
 
@@ -1108,6 +1113,7 @@ ll-deps analyze --format json         # JSON output
 ll-deps analyze --graph               # Include ASCII dependency graph
 ll-deps analyze --sprint my-sprint    # Analyze only sprint issues
 ll-deps validate                      # Validation only
+ll-deps validate --json               # JSON output
 ll-deps validate --sprint my-sprint   # Validate sprint issue deps
 ll-deps fix                           # Auto-fix broken refs and backlinks
 ll-deps fix --dry-run                 # Preview fixes
@@ -1236,6 +1242,10 @@ Sync local `.issues/` files with GitHub Issues.
 
 Show sync status between local issues and GitHub.
 
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | `-j` | Output as JSON (serializes `SyncStatus.to_dict()`) |
+
 #### `ll-sync push [issue_ids...]`
 
 Push local issues to GitHub. If no IDs given, pushes all. When an issue has a `milestone:` frontmatter field, `ll-sync push` passes it to `gh issue create/edit --milestone <name>` to assign the issue to the matching GitHub milestone (by title).
@@ -1251,6 +1261,10 @@ Pull GitHub Issues to local.
 #### `ll-sync diff [issue_id]`
 
 Show differences between local and GitHub issues. Omit `issue_id` for a summary of all synced issues.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | `-j` | Output as JSON (serializes `SyncResult.to_dict()`) |
 
 #### `ll-sync close [issue_ids...]`
 
@@ -1271,11 +1285,13 @@ Reopen GitHub issues for locally-active issues. After a successful reopen, the i
 **Examples:**
 ```bash
 ll-sync status                    # Show sync status
+ll-sync status --json             # Sync status as JSON
 ll-sync push                      # Push all local issues to GitHub
 ll-sync push BUG-123              # Push specific issue
 ll-sync pull                      # Pull GitHub Issues to local
 ll-sync diff BUG-123              # Show diff for specific issue
 ll-sync diff                      # Diff summary for all synced issues
+ll-sync diff --json               # Diff summary as JSON
 ll-sync close ENH-123             # Close GitHub issue for ENH-123
 ll-sync close --all-completed     # Close all completed issues on GitHub
 ll-sync reopen BUG-042            # Reopen GitHub issue for BUG-042
@@ -1340,6 +1356,12 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `tail` | Stream live events from an active loop session |
 | `extract` | Extract ll-relevant JSONL records to `logs/<slug>/<session-id>.jsonl` |
 
+**`discover` flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | `-j` | Output as JSON: `{"paths": [...]}` |
+
 **`tail` flags:**
 
 | Flag | Description |
@@ -1359,6 +1381,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 **Examples:**
 ```bash
 ll-logs discover                          # List all projects with ll activity
+ll-logs discover --json                   # Output paths as JSON array
 ll-logs tail --loop my-loop              # Stream live events from an active loop session
 ll-logs extract --all                    # Extract all projects to logs/
 ll-logs extract --project /path/to/proj  # Extract one project to logs/<slug>/
@@ -1391,6 +1414,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 |------|-------------|
 | `--fts QUERY` | FTS5 match query (required) |
 | `--limit N` | Maximum results (default: 20) |
+| `--json` | `-j` | Output results as a JSON array |
 
 **`recent` flags:**
 
@@ -1417,12 +1441,14 @@ Suggest and apply `.gitignore` patterns based on untracked files.
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--dry-run` | `-n` | Preview suggestions without modifying `.gitignore` |
+| `--json` | `-j` | Output as JSON (serializes `GitignoreSuggestion` fields) |
 | `--quiet` | `-q` | Suppress non-essential output |
 | `--config` | | Path to project root (default: current directory) |
 
 **Examples:**
 ```bash
 ll-gitignore                  # Show suggestions and apply approved patterns
+ll-gitignore --json           # Output suggestions as JSON
 ll-gitignore --dry-run        # Preview suggestions without modifying .gitignore
 ll-gitignore --quiet          # Suppress non-essential output
 ```
@@ -1545,6 +1571,7 @@ Scans all `skills/*/SKILL.md` frontmatter `description` fields. Skips skills wit
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--threshold` | | Token budget threshold (default: 2000; overrides ll-config.json) |
+| `--json` | `-j` | Output as JSON |
 | `--directory` | `-C` | Base directory (default: current directory) |
 
 **Exit codes:** `0` = under budget, `1` = over budget
@@ -1552,6 +1579,7 @@ Scans all `skills/*/SKILL.md` frontmatter `description` fields. Skips skills wit
 **Examples:**
 ```bash
 ll-verify-skill-budget                # Check against default 2000-token budget
+ll-verify-skill-budget --json          # Output as JSON
 ll-verify-skill-budget --threshold 1500  # Custom threshold
 ```
 

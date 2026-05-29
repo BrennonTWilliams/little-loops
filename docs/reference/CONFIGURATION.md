@@ -489,10 +489,49 @@ Each category requires a `files` array of relative paths. The optional `descript
 
 Design system token settings for artifact-generating loops. When enabled, `ll-loop run` and `ll-loop resume` pre-inject the resolved token set into the FSM initial context before the first state is entered.
 
+<!-- TODO: update-docs stub — ENH-1768 — drafted 2026-05-29 -->
+#### Multi-Profile System (ENH-1768)
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in profile layout, selector behavior, and migration from flat config.
+
+Design tokens are organized into **profiles** under `path/profiles/`. Each profile is a self-contained directory with its own `primitives.json`, `semantic.json`, `spacing.json`, `typography.json`, and `themes/` subdirectory.
+
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `enabled` | `bool` | `true` | Enable design-token context injection into FSM loops. |
-| `path` | `str` | `".ll/design-tokens"` | Directory containing token definition files. |
+| `active_profile` | `str` | `"default"` | Name of the active profile; must match a subdirectory in `path/profiles/`. |
+
+Built-in profiles:
+- `default` — WCAG AA accessible palette
+- `editorial-mono` — monochrome editorial theme
+- `warm-paper` — warm paper-like palette
+
+**Profile directory layout:**
+```
+.ll/design-tokens/profiles/
+├── default/
+│   ├── primitives.json
+│   ├── semantic.json
+│   ├── spacing.json
+│   ├── typography.json
+│   └── themes/
+│       ├── light.json
+│       └── dark.json
+├── editorial-mono/
+│   └── ...
+└── warm-paper/
+    └── ...
+```
+
+Run `/ll:configure design-tokens` to interactively set up profiles and select the active one.
+
+<!-- END TODO stub -->
+
+**Legacy flat structure (pre-ENH-1768):**
+
+When no `profiles/` directory is present, the resolver falls back to the flat layout:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
 | `primitives_file` | `str` | `"primitives.json"` | Filename for primitive (raw) token values within `path`. |
 | `semantic_file` | `str` | `"semantic.json"` | Filename for semantic (aliased) token values within `path`. |
 | `themes_dir` | `str` | `"themes"` | Subdirectory of `path` containing per-theme override files. |
@@ -503,15 +542,34 @@ Design system token settings for artifact-generating loops. When enabled, `ll-lo
   "design_tokens": {
     "enabled": true,
     "path": ".ll/design-tokens",
-    "primitives_file": "primitives.json",
-    "semantic_file": "semantic.json",
-    "themes_dir": "themes",
-    "active_theme": "light"
+    "active_profile": "default"
   }
 }
 ```
 
-Run `/ll:configure design-tokens` to interactively set up the design-tokens directory and initialize the default WCAG AA palette template.
+<!-- TODO: update-docs stub — FEAT-1743 — drafted 2026-05-29 -->
+### `learning_tests`
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details about the registry path, record format, and how `enabled` gates downstream skills/loops.
+
+Master switch for the learning test registry feature. When enabled, skills and loops can query `.ll/learning-tests/` via `ll-learning-tests` to check whether a target API or pattern is already proven before re-doing the work.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | `bool` | `false` | Enable the learning test registry and `ll-learning-tests` CLI. When disabled, `ll-learning-tests` exits with a message and skills skip proof checks. |
+
+```json
+{
+  "learning_tests": {
+    "enabled": false
+  }
+}
+```
+
+Run `/ll:configure learning-tests` to enable and set up the registry directory.
+
+See [LEARNING_TESTS_GUIDE.md](../guides/LEARNING_TESTS_GUIDE.md) for the full workflow.
+<!-- END TODO stub -->
 
 ### `loops`
 
