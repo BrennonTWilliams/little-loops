@@ -256,6 +256,17 @@ Examples:
         return 1
 
     if not issues:
+        if getattr(args, "json", False):
+            print_json({
+                "has_issues": False,
+                "broken_refs": [],
+                "missing_backlinks": [],
+                "cycles": [],
+                "stale_completed_refs": [],
+                "broken_depends_on_refs": [],
+                "broken_relates_to_refs": [],
+            })
+            return 0
         logger.warning("No active issues found.")
         return 0
 

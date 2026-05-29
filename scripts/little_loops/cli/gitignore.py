@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from little_loops.cli_args import add_config_arg, add_dry_run_arg, add_json_arg, add_quiet_arg
 from little_loops.cli.output import print_json
+from little_loops.cli_args import add_config_arg, add_dry_run_arg, add_json_arg, add_quiet_arg
 from little_loops.git_operations import (
     GitignorePattern,
     add_patterns_to_gitignore,
