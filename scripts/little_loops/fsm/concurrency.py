@@ -130,6 +130,7 @@ class LockManager:
 
             # Create lock file
             lock_file = self.running_dir / f"{instance_id or loop_name}.lock"
+            lock_file.parent.mkdir(parents=True, exist_ok=True)
             lock = ScopeLock(
                 loop_name=loop_name,
                 scope=scope,

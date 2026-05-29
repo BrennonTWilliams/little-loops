@@ -1029,6 +1029,7 @@ def run_background(
     if context_limit is not None:
         cmd.extend(["--context-limit", str(context_limit)])
 
+    log_file.parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "w") as log_fh:
         process = subprocess.Popen(
             cmd,
@@ -1089,6 +1090,7 @@ def run_foreground(
     _log_fh: Any = None
     if instance_id is not None and not getattr(args, "foreground_internal", False):
         _log_path = (running_dir or Path(".running")) / f"{instance_id}.log"
+        _log_path.parent.mkdir(parents=True, exist_ok=True)
         _log_fh = open(_log_path, "w")
         sys.stdout = _TeeWriter(_orig_stdout, _log_fh)  # type: ignore[assignment]
         sys.stderr = _TeeWriter(_orig_stderr, _log_fh)  # type: ignore[assignment]

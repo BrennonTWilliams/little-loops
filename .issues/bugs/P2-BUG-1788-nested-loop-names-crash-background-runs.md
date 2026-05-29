@@ -2,8 +2,9 @@
 id: BUG-1788
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-05-29T18:15:43Z'
+completed_at: '2026-05-29T18:47:42Z'
 discovered_date: 2026-05-29
 discovered_by: capture-issue
 labels:
@@ -235,11 +236,33 @@ None of these require changes for this fix (purely additive `mkdir`, no signatur
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-29T18:42:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b79d26c2-7bdd-48ba-bfdc-61a0c2766408.jsonl`
 - `/ll:format-issue` - 2026-05-29T18:18:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f127c13f-f3ae-42e3-9336-412b5a4bae5c.jsonl`
 - `/ll:capture-issue` - 2026-05-29T18:15:43Z - `d35a26a9-3177-4d2e-8170-e362468eca30.jsonl`
 - `/ll:refine-issue` - 2026-05-29T18:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d31db26-f673-42e7-b06f-c352e7f3e83d.jsonl`
 - `/ll:wire-issue` - 2026-05-29T18:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d31db26-f673-42e7-b06f-c352e7f3e83d.jsonl`
 - `/ll:confidence-check` - 2026-05-29T13:35:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d6ccc1e-b9ff-4db2-8494-fead3e4fd7cb.jsonl`
+- `/ll:manage-issue` - 2026-05-29T18:47:42Z - `a6f64bc4-e378-4918-9646-7c5a63fec7f0.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-05-29
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/loop/_helpers.py` — Added `log_file.parent.mkdir(parents=True, exist_ok=True)` before `open(log_file, "w")` in `run_background()` and `_log_path.parent.mkdir(parents=True, exist_ok=True)` before `open(_log_path, "w")` in `run_foreground()` (BUG-1788)
+- `scripts/little_loops/cli/loop/run.py` — Added `pid_file.parent.mkdir(parents=True, exist_ok=True)` before `pid_file.write_text()` in `cmd_run()` foreground path (BUG-1788)
+- `scripts/little_loops/cli/loop/lifecycle.py` — Added `pid_file.parent.mkdir(parents=True, exist_ok=True)` before `pid_file.write_text()` in `cmd_resume()` (BUG-1788)
+- `scripts/little_loops/fsm/concurrency.py` — Added `lock_file.parent.mkdir(parents=True, exist_ok=True)` before `open(lock_file, "w")` in `LockManager.acquire()` (BUG-1788)
+- `scripts/tests/test_cli_loop_background.py` — Added `test_nested_loop_name_creates_files_in_subdirectory` test (BUG-1788)
+
+### Verification Results
+- Tests: PASS (221 passed, including new test)
+- Lint: PASS
+- Types: PASS
 
 ---
 

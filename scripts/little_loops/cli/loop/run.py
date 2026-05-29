@@ -252,6 +252,7 @@ def cmd_run(
     foreground_pid_file: Path | None = pid_file
 
     if not getattr(args, "foreground_internal", False):
+        pid_file.parent.mkdir(parents=True, exist_ok=True)
         pid_file.write_text(str(os.getpid()))
 
     def _cleanup_pid() -> None:

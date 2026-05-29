@@ -932,6 +932,33 @@ class TestCmdStatusWithPid:
 class TestMainModuleEntryPoint:
     """Tests that __main__.py enables `python -m little_loops.cli.loop` invocation (BUG-891)."""
 
+    def test_nested_loop_name_creates_files_in_subdirectory(self, tmp_path: Path) -> None:
+        """Nested loop names (e.g., generated/test) create log/PID in subdirectory (BUG-1788)."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        nested_dir = loops_dir / "generated"
+        nested_dir.mkdir(parents=True, exist_ok=True)
+        (nested_dir / "test.yaml").write_text(
+            "name: test\ninitial: start\nstates:\n  start:\n    terminal: true\n"
+        )
+        args = argparse.Namespace(
+            max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 99
+            from little_loops.cli.loop._helpers import run_background
+
+            result = run_background("generated/test", args, loops_dir)
+
+        assert result == 0
+        log_files = list((loops_dir / ".running").glob("generated/test-*.log"))
+        assert len(log_files) == 1, f"Expected 1 log file, found {len(log_files)}"
+        pid_files = list((loops_dir / ".running").glob("generated/test-*.pid"))
+        assert len(pid_files) == 1, f"Expected 1 PID file, found {len(pid_files)}"
+        assert pid_files[0].read_text() == "99"
+
     def test_main_module_is_importable(self) -> None:
         """__main__.py must exist so `python -m little_loops.cli.loop` works."""
         import importlib.util
