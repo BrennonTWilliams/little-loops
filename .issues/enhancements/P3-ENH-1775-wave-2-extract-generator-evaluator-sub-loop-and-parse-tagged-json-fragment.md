@@ -85,7 +85,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 The FSM engine supports sub-loop invocation via the `loop:` key on a `StateConfig` (`scripts/little_loops/fsm/schema.py:384`). The executor's `_execute_sub_loop()` method (`executor.py:494`) handles the full lifecycle:
 
-1. **Resolution** — interpolates the loop name, resolves to file path via `resolve_loop_path()` (`cli/loop/_helpers.py:820`)
+1. **Resolution** — interpolates the loop name, resolves to file path via `resolve_loop_path()` (`cli/loop/_helpers.py:811`)
 2. **Loading** — calls `load_and_validate()` which resolves `from:` inheritance, `flow:` shorthand, and `fragment:` references before parsing into `FSMLoop`
 3. **Context binding** — `with:` bindings merge parent expressions into child parameters (with declared defaults for unbound optional params); or `context_passthrough: true` passes all parent context + captured outputs
 4. **Execution** — creates a child `FSMExecutor` sharing the parent's `action_runner` and circuit breaker; clamps child timeout to parent's remaining wall-clock budget
@@ -187,7 +187,7 @@ The `incremental-refactor.yaml:34-37` outlier uses `action_type: slash_command` 
 - `scripts/little_loops/cli/loop_cmd.py` — `ll-loop validate` must resolve oracle sub-loops and new fragment
 - `scripts/little_loops/fsm/executor.py:494` — `_execute_sub_loop()` resolves, loads, and runs child FSMs; `with:` bindings merge parent context into child parameters
 - `scripts/little_loops/fsm/fragments.py:64` — `resolve_fragments()` expands `fragment:` references at parse time via deep-merge; `resolve_inheritance()` at line 147 handles `from:` templates
-- `scripts/little_loops/fsm/validation.py:1164` — `load_and_validate()` calls fragment resolution before `FSMLoop.from_dict()`; `_validate_with_bindings()` cross-validates sub-loop `with:` keys against child `parameters:`
+- `scripts/little_loops/fsm/validation.py:1161` — `load_and_validate()` calls fragment resolution before `FSMLoop.from_dict()`; `_validate_with_bindings()` cross-validates sub-loop `with:` keys against child `parameters:`
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/persistence.py` — imports `FSMExecutor, ExecutionResult`; affected if sub-loop execution lifecycle changes
@@ -195,7 +195,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/doc_counts.py` — `is_runnable_loop()` used for loop counting; new oracle sub-loop must be recognized
 - `scripts/little_loops/cli/loop/testing.py` — imports `DefaultActionRunner, SimulationActionRunner, FSMExecutor`; affected if executor interfaces change
 - `scripts/little_loops/fsm/__init__.py` — re-exports `FSMExecutor`, `load_and_validate`, `StateConfig`, `FSMLoop` in `__all__`; no changes needed but awareness required
-- `scripts/little_loops/cli/loop/_helpers.py:820` — `resolve_loop_path()` resolves sub-loop names to file paths; new `oracles/generator-evaluator.yaml` resolves via built-in path
+- `scripts/little_loops/cli/loop/_helpers.py:811` — `resolve_loop_path()` resolves sub-loop names to file paths; new `oracles/generator-evaluator.yaml` resolves via built-in path
 - `scripts/little_loops/cli/loop/lifecycle.py:440,586` — calls `resolve_loop_path()` during lifecycle operations; path-agnostic, no changes needed
 
 ### Similar Patterns
@@ -339,6 +339,7 @@ _Added by `/ll:confidence-check` on 2026-05-29_
 - Co-deliverable ordering: implement tests first so the validation chain is in place before loop refactoring — lib/harness.yaml must be created before the sub-loop can validate
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-29T08:11:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76b633ba-2671-4457-8679-cc688d74ce8c.jsonl`
 - `/ll:refine-issue` - 2026-05-29T06:51:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b19fe53-455f-4868-8b8e-6929aa73c9c6.jsonl`
 - `/ll:confidence-check` - 2026-05-29T19:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad84c1f4-e1cb-4d1e-9db8-e1661e645a49.jsonl`
 - `/ll:refine-issue` - 2026-05-29T06:15:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86848890-e72e-4e0f-b94e-c336729af630.jsonl`

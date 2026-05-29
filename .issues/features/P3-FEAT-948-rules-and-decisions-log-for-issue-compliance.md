@@ -265,6 +265,99 @@ ll-issues decisions sync                        # write active required rules to
 
 `feature`, `issue-management`, `automation`, `compliance`, `captured`
 
+## PM-Layer Carry-Over (Schema Extension)
+
+_Added 2026-05-29 from PM-layer integration discussion. Additive on top of the MVP; existing entries remain valid without modification._
+
+Two optional fields on `decision` entries that let `decisions.yaml` carry medium-horizon (roadmap/quarter) decisions and post-ship outcome data — closing the loop between *what we decided* and *did it work*. Without these, the planned `/ll:pm-tick` conductor would either need a parallel store or lose the structured-decision benefit of FEAT-948.
+
+**Rationale**: today a `decision` entry anchors to a single `issue:`. Roadmap-level bets (e.g., "Q3 focus: multi-host CLI parity") and outcome tracking ("we shipped FEAT-X but the metric didn't move") have no clean home. Rather than a new entry type or a parallel YAML store, extending the existing schema keeps one queryable substrate for all decision data. Auto-capture pipelines (`/ll:decide-issue`, `/ll:tradeoff-review-issues`, `/ll:go-no-go`) remain unchanged for the MVP; `/ll:pm-tick` (separate ENH) is the primary writer of the new shapes.
+
+### New Fields on `decision` Entries
+
+| Field | Type | Default | Purpose |
+|---|---|---|---|
+| `scope` | enum: `issue \| sprint \| quarter \| project` | `issue` | Horizon/anchor of the decision. `issue` preserves current behavior. |
+| `outcome` | object (optional) | `null` | Post-fact record of what happened. Populated after enough time has passed to judge. |
+| `outcome.result` | enum: `worked \| did_not_work \| mixed \| reversed` | required if `outcome` present | Coarse verdict. |
+| `outcome.measured_at` | ISO-8601 timestamp | required if `outcome` present | When the verdict was recorded. |
+| `outcome.notes` | string | optional | Free-text explanation; what evidence supported the verdict. |
+
+**Backward compatibility**: existing entries without `scope` or `outcome` are valid and treated as `scope: issue, outcome: null`. The `issue:` field becomes optional iff `scope != issue`; for `scope: issue` (default), `issue:` is still required.
+
+### Updated YAML Examples
+
+```yaml
+# Roadmap-scope decision (no single issue anchor)
+- id: "ROADMAP-001"
+  type: decision
+  timestamp: "2026-05-29T00:00:00Z"
+  category: roadmap
+  labels: [pm-review, quarterly]
+  scope: quarter
+  issue: null
+  rule: "Q3 focus: multi-host CLI parity (claude/codex/opencode)."
+  rationale: "Three of last quarter's top-five user complaints were host-specific bugs."
+  alternatives_rejected: "Continued plugin-feature investment; deferred until host parity stabilizes."
+  enforcement: advisory
+
+# Issue-scope decision with outcome populated post-ship
+- id: "TOOLING-002"
+  type: decision
+  timestamp: "2026-04-04T00:00:00Z"
+  category: tooling
+  labels: [persistence]
+  scope: issue
+  issue: "P3-FEAT-948-rules-and-decisions-log-for-issue-compliance.md"
+  rule: "Single YAML file with type field rather than separate rules.yaml / decisions.yaml."
+  rationale: "One file is sufficient; type field provides the constitution/research distinction."
+  alternatives_rejected: "Two-file split adds overhead without benefit at current scale."
+  enforcement: advisory
+  outcome:
+    result: worked
+    measured_at: "2026-07-15T00:00:00Z"
+    notes: "Six months in: zero migration friction; queries remain fast under 200 entries."
+```
+
+### New CLI Surface
+
+```
+ll-issues decisions outcome <ID> --result=worked|did_not_work|mixed|reversed \
+    [--notes="..."] [--measured-at=<ISO-8601>] [--force]
+    # Default measured-at = now. Refuses to overwrite an existing outcome without --force.
+
+ll-issues decisions list --no-outcome [--before=<date>] [--scope=<scope>]
+    # Find decisions lacking outcome records; primary consumer is /ll:pm-tick,
+    # which surfaces decisions that need follow-up after enough time has passed.
+```
+
+### Addendum Acceptance Criteria
+
+- [ ] `decision` entries support optional `scope` field with values `issue | sprint | quarter | project`; defaults to `issue` when absent
+- [ ] When `scope != issue`, the `issue` field MAY be `null`; validation does not require an issue anchor
+- [ ] When `scope == issue` (default), the `issue` field remains required
+- [ ] `decision` entries support optional `outcome` object with required `result` (enum) and `measured_at` (ISO-8601), and optional `notes`
+- [ ] `ll-issues decisions outcome <ID> --result=... [--notes=...] [--measured-at=...]` populates the outcome on an existing decision
+- [ ] `outcome` overwrite is refused without `--force`
+- [ ] `ll-issues decisions list --no-outcome [--before=<date>] [--scope=<s>]` filters decisions missing outcome records
+- [ ] Existing decision entries without `scope` or `outcome` continue to load and validate without modification (backward compatible)
+
+### Implementation Step Adjustments
+
+The existing 11-step plan stands. Affected steps:
+
+- **Step 1 (Design + schema)** — add `scope: Optional[str]` and `outcome: Optional[DecisionOutcome]` to `DecisionEntry`; add `@dataclass DecisionOutcome` with `result: str`, `measured_at: str`, `notes: Optional[str]`.
+- **Step 3 (Core CRUD)** — add `set_outcome(entry_id, result, measured_at, notes, force=False)` to `decisions.py`; respect the no-overwrite-without-force contract.
+- **Step 4 (CLI subcommand)** — add `outcome` sub-sub-command (`ll-issues decisions outcome`) and `--no-outcome`, `--before`, `--scope` flags to `list`.
+- **Step 6 (Skill-level capture)** — `/ll:tradeoff-review-issues` and `/ll:go-no-go` continue to write `scope: issue` decisions; no change needed for MVP. The planned `/ll:pm-tick` (separate ENH) is the primary writer of `scope: quarter | project` entries.
+- **Step 10 (Tests)** — add coverage for: optional fields load/save round-trip; `scope: quarter` entries omitting `issue`; outcome population; outcome overwrite refusal without `--force`; `list --no-outcome --before=...` filtering.
+
+### Out of Scope (for this addendum)
+
+- `supersedes` on `decision` entries — `outcome.result: reversed` covers the explicit-undo case; rule-style supersession for decisions is a separate refinement if needed.
+- `/ll:pm-tick` itself — separate ENH; this addendum only ensures FEAT-948's schema can carry what `/ll:pm-tick` will write and query.
+- Outcome-result taxonomy beyond the four values listed — keeping the enum small avoids bikeshedding; finer-grained evidence belongs in `notes`.
+
 ---
 
 ## Status

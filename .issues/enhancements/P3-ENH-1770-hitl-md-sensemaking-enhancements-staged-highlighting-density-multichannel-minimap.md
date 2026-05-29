@@ -1,10 +1,21 @@
 ---
 id: ENH-1770
 status: open
-captured_at: "2026-05-28T17:00:00Z"
-discovered_date: "2026-05-28"
+captured_at: '2026-05-28T17:00:00Z'
+discovered_date: '2026-05-28'
 discovered_by: capture-issue
-labels: [enhancement, hitl-md, ui, sensemaking, captured]
+labels:
+- enhancement
+- hitl-md
+- ui
+- sensemaking
+- captured
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1770: hitl-md sensemaking enhancements — staged highlighting, density control, multi-channel saliency, schema-switching, minimap, and calibrated friction
@@ -130,8 +141,13 @@ N/A — no public API changes. All changes are internal to the hitl-md loop YAML
 
 ### Documentation
 - `docs/development/sensemaking-hitl-md.md` — sensemaking research synthesis with 8 patterns across 3 tiers; ENH-1770 implements Tier 1 (CSS/JS only) and Tier 2 (segment model pipeline) enhancements
-- `docs/guides/LOOPS_GUIDE.md:1134-1188` — hitl-md loop documentation (technique, usage, FSM flow)
+- `docs/guides/LOOPS_GUIDE.md:1134-1188` — hitl-md loop documentation (technique, usage, FSM flow); rubric criteria names (6→12) and feature descriptions become stale
+- `docs/guides/LOOPS_GUIDE.md:993` — Harness Examples table row; one-line summary needs updating for new features
 - `scripts/little_loops/loops/README.md:134` — built-in loops catalog entry
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:742` — "See Also" bullet listing hitl-md; summary becomes stale [Agent 2 finding]
+- `CHANGELOG.md` — new entry needed post-implementation for the 6 sensemaking enhancements [Agent 2 finding]
 
 ### Configuration
 - N/A — no config changes needed
@@ -152,8 +168,17 @@ N/A — no public API changes. All changes are internal to the hitl-md loop YAML
 6. **Add schema-switching toolbar** — view mode toggles with JS re-grouping/re-rendering. Group segments by heading, saliency tier, claim type, or anomaly score. Pure JS DOM manipulation — no new data needed beyond what `segments.json` already provides.
 7. **Add minimap + State Rail** — Canvas-based proportional minimap with `IntersectionObserver` for viewport tracking, `click` handler for navigation (scroll to position), and `localStorage`-backed visit heatmap. Fixed-position `<canvas>` on the right edge, redrawn on `scroll`/`resize`. All constructs (`<canvas>`, `getContext('2d')`, `IntersectionObserver`, `localStorage`) are new to the codebase.
 8. **Update score rubric** — add 6 new evaluation criteria to the `score` state (`hitl-md.yaml:293-370`), one per feature, with individual 1-10 thresholds. Follow the existing rubric pattern: criterion name, threshold, description of what to evaluate. The `ALL_PASS` mechanism requires all criteria to meet their thresholds.
+
+    > **Risk: PASS token collision** — `test_no_bare_pass_token_in_output_contains` (`test_builtin_loops.py:130`) guards against bare `"PASS"` tokens because they match per-criterion annotations like `"design_quality: 8/10 — PASS"`. The `ALL_PASS` compound token must remain the gate pattern. Per-criterion PASS/FAIL annotations in the new LLM output must not collide with the `output_contains` pattern field. [Agent 2 finding]
 9. **Add structural tests** — add validation tests to `TestHitlMdLoop` in `scripts/tests/test_builtin_loops.py:3467` for: segment state produces `channels` and `length_normalized` fields, generate state references new browser APIs, score state includes new criteria. Follow existing test patterns (YAML fixture loading, string containment checks, routing assertions).
 10. **Verify end-to-end** — run `ll-loop run hitl-md` with a test document and confirm all six features work under `file://`. The `evaluate` state (`hitl-md.yaml:277-291`) runs Playwright screenshot; visual verification confirms features render correctly.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+11. **Update documentation** — `docs/guides/LOOPS_GUIDE.md:1134-1188` (rubric criteria names expand 6→12, feature descriptions for staged highlighting/density slider/multi-channel/minimap/trust calibration), `docs/guides/LOOPS_GUIDE.md:993` (Harness Examples table row), `docs/development/sensemaking-hitl-md.md` (note patterns 1-6 moved from proposed to implemented), `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:742` ("See Also" bullet), `scripts/little_loops/loops/README.md:135` (one-line catalog entry). [Agent 2 finding]
+12. **Add CHANGELOG entry** — per convention, new entry for the 6 sensemaking enhancements under a dated release section. [Agent 2 finding]
 
 ## Impact
 
@@ -171,8 +196,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `hitl-md`, `ui`, `sensemaking`, `captured`
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-29T18:30:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/174d6d2b-73db-4379-829e-28085556667d.jsonl`
 - `/ll:refine-issue` - 2026-05-29T05:02:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67b57fec-0cce-4cf6-8ad3-3e79d6cd8777.jsonl`
 - `/ll:format-issue` - 2026-05-29T02:27:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2337e492-f7f1-44fd-a9a4-27d67af90051.jsonl`
 - `/ll:capture-issue` - 2026-05-28T17:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1814a47-ceda-478f-aac4-3e3bf601d202.jsonl`
+- `/ll:confidence-check` - 2026-05-29T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d6ccc1e-b9ff-4db2-8494-fead3e4fd7cb.jsonl`
 
 **Open** | Created: 2026-05-28 | Priority: P3

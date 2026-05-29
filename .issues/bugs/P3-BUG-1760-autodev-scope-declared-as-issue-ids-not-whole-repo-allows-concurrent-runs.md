@@ -23,16 +23,52 @@ labels:
 ## Root Cause
 
 - **File**: `scripts/little_loops/fsm/concurrency.py`
-- **Function**: `LockManager._scopes_overlap()`
-- **Explanation**: Scope is intended to represent "what filesystem paths does this loop touch." If the autodev loop definition declares `scope: [<issue-ids>]` (treating issue IDs as path tokens) rather than `scope: ["."]`, two autodev runs with disjoint issue sets will have non-overlapping scopes and bypass the conflict guard. All autodev runs operate on the same repo root regardless of which issues they process.
+- **Function**: `LockManager._scopes_overlap()` (line 242) → `_paths_overlap()` (line 250)
+- **Explanation**: The overlap algorithm at `concurrency.py:242-248` performs a Cartesian product comparison of every path in scope1 against every path in scope2 via `_paths_overlap()`. That method (`concurrency.py:250-275`) detects overlap as (a) exact path equality or (b) one path is a parent directory of the other (bidirectional `Path.relative_to()`). There is **no loop-name-based conflict detection** anywhere in `LockManager`. Two instances of the same loop with disjoint scope tokens are siblings under path comparison and always return no-conflict.
 
-## Observed Behavior
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Current autodev.yaml state**: `scripts/little_loops/loops/autodev.yaml` has **no `scope:` field** (confirmed by `git log` — never has). It defaults to `["."]` via `cmd_run()` at `scripts/little_loops/cli/loop/run.py:264` (`scope = fsm.scope or ["."]`) and the redundant fallback in `LockManager.acquire()` at `concurrency.py:109-111`. With the default, two autodev instances resolve `"."` to the same absolute project path and `_paths_overlap()` returns True — so they DO conflict under current code.
+- **The real vulnerability is architectural**: `_paths_overlap()` (`concurrency.py:250-275`) is purely a filesystem-path comparison (`Path.relative_to()`). It has zero awareness of what the paths represent semantically. If any loop YAML (or a user-level `.loops/autodev.yaml` override) declared `scope:` tokens that are not shared filesystem paths — e.g., issue IDs like `["ENH-1699", "ENH-1700"]` — they would normalize to sibling paths that `_paths_overlap()` classifies as non-overlapping. Neither path needs to exist on disk for the non-overlap verdict.
+- **CWD sensitivity**: `_normalize_path()` (`concurrency.py:277-279`) uses `Path(path).resolve()`, which resolves relative to process CWD. If two `ll-loop run autodev` invocations were started from significantly different working directories, `"."` would resolve to different absolute paths and could potentially bypass the overlap check if those directories are siblings rather than parent-child.
+- **ENH-1354 conflict**: `test_concurrent_same_name_non_overlapping_scopes_both_acquire` at `scripts/tests/test_concurrency.py:545` explicitly validates that two instances of the same loop name with non-overlapping scopes BOTH succeed — this is intentional design. A blanket loop-name-based conflict would break this. Any name-based guard must be opt-in (e.g., a `singleton: true` YAML field).
+- **Only 2 of ~60 loop YAMLs declare explicit scope**: `dead-code-cleanup.yaml` (`scope: ["scripts/"]`) and `docs-sync.yaml` (`scope: ["docs/", "*.md"]`). All others (including autodev) rely on the `["."]` default.
+
+## Current Behavior
 
 During the 2026-05-27 incident: a second `ll-loop run autodev BUG-031` was started at 7:14 PM while `ll-loop run autodev ENH-1699,ENH-1700,ENH-1701,ENH-1702` was still running (since 3:42 PM). Both acquired `.lock` files in `.loops/.running/` without conflict. Both had active lock files simultaneously.
+
+## Steps to Reproduce
+
+1. Start a long-running autodev session with multiple issues: `ll-loop run autodev ENH-1699,ENH-1700,ENH-1701,ENH-1702`
+2. While that session is still running, start a second autodev session with different issues: `ll-loop run autodev BUG-031`
+3. Observe: Both sessions acquire `.lock` files in `.loops/.running/` without conflict
+4. Observe: Both instances operate concurrently on the same git repo, racing on git operations and state files
 
 ## Expected Behavior
 
 Only one autodev instance should run at a time because all autodev runs share the git working tree. A second `ll-loop run autodev` should either block (if `--queue`) or exit with a clear conflict message.
+
+## Motivation
+
+This bug fix would:
+- Prevent concurrent autodev runs from corrupting git repository state and `.loops/.running/` state files
+- Ensure issue status writes are serialized correctly when multiple autodev instances target the same repo
+- Eliminate a class of hard-to-diagnose race condition bugs caused by concurrent harness operations on shared filesystem state
+
+## Proposed Solution
+
+Fix the scope declaration in the autodev loop YAML to reflect the actual filesystem footprint (the entire repo), so any two autodev runs correctly conflict:
+
+```yaml
+# Change scope from issue-ID-based tokens to repo-root-based path:
+scope:
+  - "."
+```
+
+Alternatively (or additionally), update `LockManager._scopes_overlap()` in `scripts/little_loops/fsm/concurrency.py` to detect conflicts by matching loop name — two instances of the same loop always conflict regardless of declared scope.
 
 ## Implementation Steps
 
@@ -56,6 +92,46 @@ scope:
   - "ENH-1700"
 ```
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/fsm/concurrency.py` — `LockManager._scopes_overlap()` method
+- `.loops/autodev.yaml` (or similar) — autodev loop definition YAML
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/loop/run.py:264` — `cmd_run()` resolves `scope = fsm.scope or ["."]`, passes to `acquire()` at line 271
+- `scripts/little_loops/cli/loop/_helpers.py:959` — `run_background()` pre-flight `find_conflict()` check using the same `fsm.scope or ["."]` resolution
+- `scripts/little_loops/fsm/__init__.py:69-78` — re-exports `LockManager` and `ScopeLock` as public API
+- `scripts/little_loops/fsm/schema.py:874` — `FSMLoop.scope: list[str]` field definition; line 989 — `from_dict()` extraction with `data.get("scope", [])` default
+- `scripts/little_loops/fsm/persistence.py:460` — `_reconcile_stale_runs()` mirrors `find_conflict()` stale-lock cleanup strategy for `.state.json` files
+
+### Similar Patterns
+- `scripts/little_loops/loops/dead-code-cleanup.yaml:8-9` — explicit `scope: ["scripts/"]` (only loop with subdirectory scope)
+- `scripts/little_loops/loops/docs-sync.yaml:8-10` — explicit `scope: ["docs/", "*.md"]` (only loop with multi-path scope; glob not expanded — literal `*` char)
+- All other ~58 loop YAMLs omit `scope:` entirely, relying on the `["."]` default at `run.py:264`
+- `scripts/tests/test_concurrency.py:517-581` — `TestMultiInstanceSameName` class: ENH-1354 deliberately allows same-name concurrent instances on non-overlapping scopes
+
+### Tests
+- `scripts/tests/test_concurrency.py:452-514` — `TestPathOverlap`: unit tests for `_paths_overlap()` and `_scopes_overlap()` (same, parent/child, sibling, empty)
+- `scripts/tests/test_concurrency.py:517-581` — `TestMultiInstanceSameName`: `test_concurrent_same_name_non_overlapping_scopes_both_acquire` (line 545) — explicitly asserts both succeed
+- `scripts/tests/test_concurrency.py:60-255` — `TestLockManager`: acquire/release, conflict detection, stale lock cleanup, empty scope default
+- `scripts/tests/test_concurrency.py:256-398` — `TestLockManagerRaceConditions`: TOCTOU fixes (BUG-525 sentinel, BUG-423 missing_ok)
+- `scripts/tests/test_cli_loop_background.py:560-613` — `test_scope_conflict_returns_1`, `test_queue_bypasses_preflight_check` (BUG-1771 pre-flight pattern)
+
+### Documentation
+- `docs/guides/LOOPS_GUIDE.md:1697-1721` — "Scope-Based Concurrency" section documenting `scope:` field, `--queue`, FIFO ordering
+- `docs/reference/API.md:4803-4837` — `ScopeLock` dataclass and `LockManager` class API docs
+
+### Configuration
+- N/A
+
+## Impact
+
+- **Priority**: P3 — Can corrupt repo state if concurrent autodev runs collide on git operations and state files; requires specific timing to trigger
+- **Effort**: Small — Primary fix is a one-line YAML scope change; lock-semantics update is a few lines in `_scopes_overlap()`
+- **Risk**: Low — Well-understood locking mechanism; scope change is configuration-only with no code path changes
+- **Breaking Change**: No
+
 ## Related Issues
 
 - BUG-232: TOCTOU race in scope-lock acquisition — different (race during acquire, not scope definition)
@@ -63,4 +139,7 @@ scope:
 - BUG-1359 (done): outer-loop-eval scope conflict with sub-loop — different direction (sub-loop blocked by parent, not two peers)
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-29T18:30:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c853141-e354-40cd-b5da-dc4005c2b086.jsonl`
 - `/ll:capture-issue` - 2026-05-28T00:42:55Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+
+**Open** | Created: 2026-05-28 | Priority: P3
