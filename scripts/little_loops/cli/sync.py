@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from little_loops.cli_args import add_config_arg, add_dry_run_arg, add_json_arg, add_quiet_arg
 from little_loops.cli.output import print_json
+from little_loops.cli_args import add_config_arg, add_dry_run_arg, add_json_arg, add_quiet_arg
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
 from little_loops.sync import GitHubSyncManager, SyncResult, SyncStatus

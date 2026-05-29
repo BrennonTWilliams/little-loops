@@ -394,7 +394,7 @@ class TestBoxConstants:
         assert len(BOX_V) == 1
 
     def test_corners_are_distinct(self) -> None:
-        from little_loops.cli.output import BOX_TL, BOX_TR, BOX_BL, BOX_BR
+        from little_loops.cli.output import BOX_BL, BOX_BR, BOX_TL, BOX_TR
 
         assert len({BOX_TL, BOX_TR, BOX_BL, BOX_BR}) == 4
 
@@ -579,7 +579,7 @@ class TestStatusBlock:
         result = status_block({"A": "1", "BBB": "2"})
         lines = result.split("\n")
         # Find lines with values
-        val_lines = [l for l in lines if l.strip()]
+        val_lines = [line for line in lines if line.strip()]
         if len(val_lines) >= 2:
             # Both value positions should be aligned
             pos1 = val_lines[0].find("1")

@@ -2127,12 +2127,14 @@ class TestLearningTestsConfig:
 
     def test_discoverability_from_dict(self) -> None:
         """discoverability sub-config is read from config dict (FEAT-1743)."""
-        config = LearningTestsConfig.from_dict({
-            "discoverability": {
-                "mode": "block",
-                "skip_packages": ["std", "os"],
-            },
-        })
+        config = LearningTestsConfig.from_dict(
+            {
+                "discoverability": {
+                    "mode": "block",
+                    "skip_packages": ["std", "os"],
+                },
+            }
+        )
         assert config.discoverability.mode == "block"
         assert config.discoverability.skip_packages == ["std", "os"]
 

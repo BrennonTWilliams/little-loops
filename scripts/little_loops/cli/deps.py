@@ -257,15 +257,17 @@ Examples:
 
     if not issues:
         if getattr(args, "json", False):
-            print_json({
-                "has_issues": False,
-                "broken_refs": [],
-                "missing_backlinks": [],
-                "cycles": [],
-                "stale_completed_refs": [],
-                "broken_depends_on_refs": [],
-                "broken_relates_to_refs": [],
-            })
+            print_json(
+                {
+                    "has_issues": False,
+                    "broken_refs": [],
+                    "missing_backlinks": [],
+                    "cycles": [],
+                    "stale_completed_refs": [],
+                    "broken_depends_on_refs": [],
+                    "broken_relates_to_refs": [],
+                }
+            )
             return 0
         logger.warning("No active issues found.")
         return 0
@@ -339,15 +341,21 @@ Examples:
         result = validate_dependencies(issues, completed_ids, all_known_ids)
 
         if args.json:
-            print_json({
-                "has_issues": result.has_issues,
-                "broken_refs": [list(pair) for pair in result.broken_refs],
-                "missing_backlinks": [list(pair) for pair in result.missing_backlinks],
-                "cycles": result.cycles,
-                "stale_completed_refs": [list(pair) for pair in result.stale_completed_refs],
-                "broken_depends_on_refs": [list(pair) for pair in result.broken_depends_on_refs],
-                "broken_relates_to_refs": [list(pair) for pair in result.broken_relates_to_refs],
-            })
+            print_json(
+                {
+                    "has_issues": result.has_issues,
+                    "broken_refs": [list(pair) for pair in result.broken_refs],
+                    "missing_backlinks": [list(pair) for pair in result.missing_backlinks],
+                    "cycles": result.cycles,
+                    "stale_completed_refs": [list(pair) for pair in result.stale_completed_refs],
+                    "broken_depends_on_refs": [
+                        list(pair) for pair in result.broken_depends_on_refs
+                    ],
+                    "broken_relates_to_refs": [
+                        list(pair) for pair in result.broken_relates_to_refs
+                    ],
+                }
+            )
             return 0
 
         if not result.has_issues:

@@ -51,8 +51,8 @@ def strip_ansi(text: str) -> str:
 # Box-drawing character constants (Unicode box-drawing set)
 # ---------------------------------------------------------------------------
 
-BOX_H = "─"   # ─
-BOX_V = "│"   # │
+BOX_H = "─"  # ─
+BOX_V = "│"  # │
 BOX_TL = "┌"  # ┌
 BOX_TR = "┐"  # ┐
 BOX_BL = "└"  # └
@@ -65,9 +65,8 @@ BOX_MR = "┤"  # ┤
 # ANSI color helpers — suppressed when NO_COLOR=1 or stdout is not a TTY
 # ---------------------------------------------------------------------------
 
-_USE_COLOR: bool = (
-    os.environ.get("FORCE_COLOR", "") == "1"
-    or (sys.stdout.isatty() and os.environ.get("NO_COLOR", "") == "")
+_USE_COLOR: bool = os.environ.get("FORCE_COLOR", "") == "1" or (
+    sys.stdout.isatty() and os.environ.get("NO_COLOR", "") == ""
 )
 
 PRIORITY_COLOR: dict[str, str] = {
@@ -173,11 +172,11 @@ def format_relative_time(seconds: float) -> str:
 # ---------------------------------------------------------------------------
 
 _ICONS: dict[str, str] = {
-    "success": "✓",   # ✓
-    "error": "✗",     # ✗
-    "warning": "⚠",   # ⚠
-    "info": "ℹ",      # ℹ
-    "hint": "›",      # ›
+    "success": "✓",  # ✓
+    "error": "✗",  # ✗
+    "warning": "⚠",  # ⚠
+    "info": "ℹ",  # ℹ
+    "hint": "›",  # ›
 }
 
 
@@ -247,7 +246,9 @@ def table(headers: list[str], rows: list[list[str]], max_col_width: int = 40) ->
 
     lines: list[str] = []
     lines.append(_sep(BOX_TL, "┬", BOX_TR))
-    lines.append(BOX_V + BOX_V.join(_cell(h, w) for h, w in zip(headers, col_widths, strict=True)) + BOX_V)
+    lines.append(
+        BOX_V + BOX_V.join(_cell(h, w) for h, w in zip(headers, col_widths, strict=True)) + BOX_V
+    )
     lines.append(_sep(BOX_ML, "┼", BOX_MR))
 
     for row in rows:

@@ -557,7 +557,6 @@ class TestRunBackground:
         cmd = mock_popen.call_args[0][0]
         assert "--program-md" not in cmd
 
-
     def test_scope_conflict_returns_1(self, tmp_path: Path, capsys) -> None:
         """Returns 1 and prints conflict to stderr when scope is already locked."""
         import argparse
@@ -626,8 +625,13 @@ class TestRunBackground:
         lm.acquire("blocker", ["."])
 
         args = argparse.Namespace(
-            max_iterations=None, no_llm=False, llm_model=None, quiet=False,
-            queue=False, no_lock=True, input=None,
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            no_lock=True,
+            input=None,
         )
 
         with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
@@ -646,12 +650,23 @@ class TestRunBackground:
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir(parents=True, exist_ok=True)
         args = argparse.Namespace(
-            max_iterations=None, no_llm=False, llm_model=None, quiet=False,
-            queue=False, no_lock=True, input=None, verbose=False,
-            show_diagrams=None, diagram_edge_labels=None,
-            diagram_state_detail=None, diagram_scope=None,
-            context=None, program_md=None, delay=None,
-            handoff_threshold=None, context_limit=None,
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            no_lock=True,
+            input=None,
+            verbose=False,
+            show_diagrams=None,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+            context=None,
+            program_md=None,
+            delay=None,
+            handoff_threshold=None,
+            context_limit=None,
         )
 
         with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:

@@ -1057,9 +1057,7 @@ class TestZeroRetryCounterValidation:
 
     def test_no_warn_non_counter_action(self) -> None:
         """Plain echo without increment is not a counter pattern."""
-        fsm = self._fsm_with_counter(
-            operator="lt", target=1, action='echo "hello" > /tmp/out.txt'
-        )
+        fsm = self._fsm_with_counter(operator="lt", target=1, action='echo "hello" > /tmp/out.txt')
         errors = _validate_zero_retry_counter(fsm)
         assert errors == []
 
@@ -1117,5 +1115,7 @@ class TestZeroRetryCounterValidation:
         """validate_fsm() includes zero-retry counter warnings."""
         fsm = self._fsm_with_counter(operator="lt", target=1)
         errors = validate_fsm(fsm)
-        warnings = [e for e in errors if "zero" in e.message.lower() or "retry" in e.message.lower()]
+        warnings = [
+            e for e in errors if "zero" in e.message.lower() or "retry" in e.message.lower()
+        ]
         assert len(warnings) >= 1

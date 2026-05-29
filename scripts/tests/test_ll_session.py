@@ -72,7 +72,9 @@ class TestMainSession:
         transport = SQLiteTransport(db)
         transport.send({"event": "state_enter", "loop_name": "ratelimit", "state": "wait"})
         transport.close()
-        with patch("sys.argv", ["ll-session", "--db", str(db), "search", "--fts", "ratelimit", "--json"]):
+        with patch(
+            "sys.argv", ["ll-session", "--db", str(db), "search", "--fts", "ratelimit", "--json"]
+        ):
             assert main_session() == 0
         data = json.loads(capsys.readouterr().out)
         assert isinstance(data, list)
@@ -81,13 +83,17 @@ class TestMainSession:
         assert "kind" in data[0]
         assert "ratelimit" in data[0]["content"]
 
-    def test_search_json_short_flag(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_search_json_short_flag(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """search -j works equivalently to --json."""
         db = tmp_path / "session.db"
         transport = SQLiteTransport(db)
         transport.send({"event": "state_enter", "loop_name": "ratelimit", "state": "wait"})
         transport.close()
-        with patch("sys.argv", ["ll-session", "--db", str(db), "search", "--fts", "ratelimit", "-j"]):
+        with patch(
+            "sys.argv", ["ll-session", "--db", str(db), "search", "--fts", "ratelimit", "-j"]
+        ):
             assert main_session() == 0
         data = json.loads(capsys.readouterr().out)
         assert isinstance(data, list)
@@ -98,7 +104,9 @@ class TestMainSession:
         """search --json with no matches outputs empty JSON array."""
         db = tmp_path / "session.db"
         ensure_db(db)
-        with patch("sys.argv", ["ll-session", "--db", str(db), "search", "--fts", "zzznope", "--json"]):
+        with patch(
+            "sys.argv", ["ll-session", "--db", str(db), "search", "--fts", "zzznope", "--json"]
+        ):
             assert main_session() == 0
         data = json.loads(capsys.readouterr().out)
         assert data == []

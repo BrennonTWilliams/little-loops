@@ -481,9 +481,7 @@ class StateFeedRenderer:
         self.facets: DiagramFacets | None = resolve_facets(args)
         self.show_diagrams: bool = self.facets is not None
         self.clear_screen: bool = getattr(args, "clear", False)
-        self.in_pinned_mode: bool = (
-            self.show_diagrams and self.clear_screen and sys.stdout.isatty()
-        )
+        self.in_pinned_mode: bool = self.show_diagrams and self.clear_screen and sys.stdout.isatty()
 
         # Mutable state (was closure-captured in run_foreground)
         self.current_iteration: list[int] = [0]
@@ -540,12 +538,7 @@ class StateFeedRenderer:
             state = event.get("state", "")
             elapsed_str = self._elapsed_str() if not self.quiet else ""
             # Non-pinned --clear path keeps the bare full-screen clear.
-            if (
-                self.clear_screen
-                and sys.stdout.isatty()
-                and depth == 0
-                and not self.in_pinned_mode
-            ):
+            if self.clear_screen and sys.stdout.isatty() and depth == 0 and not self.in_pinned_mode:
                 print("\033[2J\033[H", end="", flush=True)
             # Update last-known state at this depth and clear stale deeper entries.
             old_state = self.last_state_at_depth.get(depth)
@@ -630,7 +623,9 @@ class StateFeedRenderer:
                         else (self.child_fsm_stack.get(active_depth_diag - 2) or self.fsm).name
                     )
                     imm_parent_state = self.last_state_at_depth.get(active_depth_diag - 1, "")
-                    header_text = f"== loop: {active_fsm_diag.name} ({imm_parent_name} › {imm_parent_state}) "
+                    header_text = (
+                        f"== loop: {active_fsm_diag.name} ({imm_parent_name} › {imm_parent_state}) "
+                    )
                 else:
                     header_text = f"== loop: {self.fsm.name} "
                 header = header_text + "=" * max(0, tw - len(header_text))
@@ -666,9 +661,7 @@ class StateFeedRenderer:
                             print(f"{indent}       {line}", flush=True)
                     else:
                         first_line = lines[0] if lines else ""
-                        preview = (
-                            first_line[:60] + "..." if len(first_line) > 60 else first_line
-                        )
+                        preview = first_line[:60] + "..." if len(first_line) > 60 else first_line
                         print(
                             f"{indent} -> {colorize(prompt_badge, '2')} {colorize(preview, '2')}",
                             flush=True,
@@ -770,9 +763,7 @@ class StateFeedRenderer:
             if not self.quiet:
                 summary_state = event.get("summary_state", "")
                 iters = event.get("iterations", 0)
-                msg = (
-                    f"iteration cap reached ({iters}); running summary state '{summary_state}'"
-                )
+                msg = f"iteration cap reached ({iters}); running summary state '{summary_state}'"
                 print(f"{indent}       {colorize(msg, '38;5;208')}", flush=True)
 
         elif event_type == "stall_detected":

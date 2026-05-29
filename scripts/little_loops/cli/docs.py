@@ -175,27 +175,29 @@ Exit codes:
     result = check_skill_budget(base_dir=base_dir, threshold_tokens=threshold)
 
     if args.json:
-        print_json({
-            "under_budget": result.under_budget,
-            "total_tokens": result.total_tokens,
-            "threshold_tokens": result.threshold_tokens,
-            "skills": [
-                {
-                    "name": path.parent.name,
-                    "char_count": len(desc),
-                    "token_estimate": tokens,
-                }
-                for path, desc, tokens in result.skill_breakdown
-            ],
-            "violations": [
-                {
-                    "name": path.parent.name,
-                    "char_count": len(desc),
-                    "token_estimate": tokens,
-                }
-                for path, desc, tokens in result.violations
-            ],
-        })
+        print_json(
+            {
+                "under_budget": result.under_budget,
+                "total_tokens": result.total_tokens,
+                "threshold_tokens": result.threshold_tokens,
+                "skills": [
+                    {
+                        "name": path.parent.name,
+                        "char_count": len(desc),
+                        "token_estimate": tokens,
+                    }
+                    for path, desc, tokens in result.skill_breakdown
+                ],
+                "violations": [
+                    {
+                        "name": path.parent.name,
+                        "char_count": len(desc),
+                        "token_estimate": tokens,
+                    }
+                    for path, desc, tokens in result.violations
+                ],
+            }
+        )
         return 0 if result.under_budget else 1
 
     # Per-skill breakdown header

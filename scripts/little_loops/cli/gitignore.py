@@ -52,20 +52,22 @@ Examples:
     suggestion = suggest_gitignore_patterns(repo_root=repo_root, logger=logger)
 
     if args.json:
-        print_json({
-            "has_suggestions": suggestion.has_suggestions,
-            "summary": suggestion.summary,
-            "suggestions": [
-                {
-                    "pattern": p.pattern,
-                    "category": p.category,
-                    "description": p.description,
-                    "files_matched": p.files_matched,
-                    "priority": p.priority,
-                }
-                for p in suggestion.patterns
-            ],
-        })
+        print_json(
+            {
+                "has_suggestions": suggestion.has_suggestions,
+                "summary": suggestion.summary,
+                "suggestions": [
+                    {
+                        "pattern": p.pattern,
+                        "category": p.category,
+                        "description": p.description,
+                        "files_matched": p.files_matched,
+                        "priority": p.priority,
+                    }
+                    for p in suggestion.patterns
+                ],
+            }
+        )
         return 0
 
     if not suggestion.has_suggestions:

@@ -1003,10 +1003,7 @@ def _validate_zero_retry_counter(fsm: FSMLoop) -> list[ValidationError]:
 
 def _is_counter_action(action: str) -> bool:
     """Return True if the action string contains a counter-increment pattern."""
-    return bool(
-        _COUNTER_FILE_WRITE_RE.search(action)
-        and _COUNTER_INCREMENT_RE.search(action)
-    )
+    return bool(_COUNTER_FILE_WRITE_RE.search(action) and _COUNTER_INCREMENT_RE.search(action))
 
 
 def _suggested_target(operator: str, target: float) -> str:

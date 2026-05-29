@@ -1535,9 +1535,7 @@ class TestMainCLI:
         ll_dir.mkdir()
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
-        with patch.object(
-            sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]
-        ):
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]):
             main()
         captured = capsys.readouterr()  # type: ignore[union-attr]
         data = json.loads(captured.out)
@@ -1562,9 +1560,7 @@ class TestMainCLI:
         ll_dir.mkdir()
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
-        with patch.object(
-            sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "-j"]
-        ):
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "-j"]):
             main()
         captured = capsys.readouterr()  # type: ignore[union-attr]
         data = json.loads(captured.out)
@@ -1587,9 +1583,7 @@ class TestMainCLI:
         ll_dir.mkdir()
         (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
-        with patch.object(
-            sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]
-        ):
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]):
             main()
         captured = capsys.readouterr()  # type: ignore[union-attr]
         data = json.loads(captured.out)

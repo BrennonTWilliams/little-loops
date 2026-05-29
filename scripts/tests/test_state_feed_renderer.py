@@ -74,9 +74,7 @@ class TestStateFeedRendererInit:
 class TestStateFeedRendererHandleEvent:
     """Tests for StateFeedRenderer.handle_event output formatting."""
 
-    def test_state_enter_prints_iteration_line(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_state_enter_prints_iteration_line(self, capsys: pytest.CaptureFixture[str]) -> None:
         """state_enter event prints iteration count and state name."""
         fsm = _make_test_fsm()
         args = _make_args()
@@ -88,9 +86,7 @@ class TestStateFeedRendererHandleEvent:
         assert "[1/50]" in captured.out
         assert "start" in captured.out
 
-    def test_action_start_prints_preview(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_action_start_prints_preview(self, capsys: pytest.CaptureFixture[str]) -> None:
         """action_start event prints action preview."""
         fsm = _make_test_fsm()
         args = _make_args()
@@ -101,9 +97,7 @@ class TestStateFeedRendererHandleEvent:
         captured = capsys.readouterr()
         assert "echo hello world" in captured.out
 
-    def test_action_start_prompt_shows_preview(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_action_start_prompt_shows_preview(self, capsys: pytest.CaptureFixture[str]) -> None:
         """action_start with is_prompt=True shows preview with diamond marker."""
         fsm = _make_test_fsm()
         args = _make_args()
@@ -119,22 +113,16 @@ class TestStateFeedRendererHandleEvent:
         captured = capsys.readouterr()
         assert "Please analyze" in captured.out
 
-    def test_action_output_prints_line(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_action_output_prints_line(self, capsys: pytest.CaptureFixture[str]) -> None:
         """action_output event prints the output line."""
         fsm = _make_test_fsm()
         args = _make_args()
         renderer = StateFeedRenderer(fsm, args)
-        renderer.handle_event(
-            {"event": "action_output", "line": "hello from action", "depth": 0}
-        )
+        renderer.handle_event({"event": "action_output", "line": "hello from action", "depth": 0})
         captured = capsys.readouterr()
         assert "hello from action" in captured.out
 
-    def test_action_complete_shows_duration(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_action_complete_shows_duration(self, capsys: pytest.CaptureFixture[str]) -> None:
         """action_complete event prints duration."""
         fsm = _make_test_fsm()
         args = _make_args()
@@ -159,9 +147,7 @@ class TestStateFeedRendererHandleEvent:
         assert "timed out" in captured.out
         assert "exit: 124" not in captured.out
 
-    def test_action_complete_nonzero_exit_shown(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_action_complete_nonzero_exit_shown(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Non-124 non-zero exit codes display 'exit: N'."""
         fsm = _make_test_fsm()
         args = _make_args()
@@ -172,9 +158,7 @@ class TestStateFeedRendererHandleEvent:
         captured = capsys.readouterr()
         assert "exit: 1" in captured.out
 
-    def test_evaluate_yes_shows_checkmark(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_evaluate_yes_shows_checkmark(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Yes verdict shows checkmark symbol."""
         fsm = _make_test_fsm()
         args = _make_args()
@@ -191,22 +175,24 @@ class TestStateFeedRendererHandleEvent:
         captured = capsys.readouterr()
         assert "0.95" in captured.out
 
-    def test_evaluate_no_shows_xmark(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_evaluate_no_shows_xmark(self, capsys: pytest.CaptureFixture[str]) -> None:
         """No verdict shows x-mark symbol."""
         fsm = _make_test_fsm()
         args = _make_args()
         renderer = StateFeedRenderer(fsm, args)
         renderer.handle_event(
-            {"event": "evaluate", "verdict": "no", "confidence": 0.2, "reason": "not ready", "depth": 0}
+            {
+                "event": "evaluate",
+                "verdict": "no",
+                "confidence": 0.2,
+                "reason": "not ready",
+                "depth": 0,
+            }
         )
         captured = capsys.readouterr()
         assert "0.20" in captured.out
 
-    def test_evaluate_error_shows_raw_preview(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_evaluate_error_shows_raw_preview(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Error verdict shows raw_preview content."""
         fsm = _make_test_fsm()
         args = _make_args()
@@ -224,22 +210,16 @@ class TestStateFeedRendererHandleEvent:
         assert "raw:" in captured.out
         assert '{"is_error": false' in captured.out
 
-    def test_route_shows_transition(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_route_shows_transition(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Route event shows transition arrow to target state."""
         fsm = _make_test_fsm()
         args = _make_args()
         renderer = StateFeedRenderer(fsm, args)
-        renderer.handle_event(
-            {"event": "route", "to": "done", "depth": 0}
-        )
+        renderer.handle_event({"event": "route", "to": "done", "depth": 0})
         captured = capsys.readouterr()
         assert "done" in captured.out
 
-    def test_max_iterations_summary(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_max_iterations_summary(self, capsys: pytest.CaptureFixture[str]) -> None:
         """max_iterations_summary event prints summary message."""
         fsm = _make_test_fsm()
         args = _make_args()
@@ -256,9 +236,7 @@ class TestStateFeedRendererHandleEvent:
         assert "check_status" in captured.out
         assert "50" in captured.out
 
-    def test_stall_detected_shows_message(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_stall_detected_shows_message(self, capsys: pytest.CaptureFixture[str]) -> None:
         """stall_detected event prints stall info."""
         fsm = _make_test_fsm()
         args = _make_args()
@@ -278,9 +256,7 @@ class TestStateFeedRendererHandleEvent:
         assert "stall_detected" in captured.out
         assert "start" in captured.out
 
-    def test_quiet_mode_suppresses_output(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_quiet_mode_suppresses_output(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Quiet mode suppresses most event output."""
         fsm = _make_test_fsm()
         args = _make_args(quiet=True)

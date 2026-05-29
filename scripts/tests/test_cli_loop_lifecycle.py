@@ -2320,9 +2320,7 @@ class TestCmdMonitor:
         output = " ".join(str(c) for c in mock_print.call_args_list)
         assert "failed" in output
 
-    def test_attach_forwards_events_to_renderer_and_ctrl_c_returns_0(
-        self, tmp_path: Path
-    ) -> None:
+    def test_attach_forwards_events_to_renderer_and_ctrl_c_returns_0(self, tmp_path: Path) -> None:
         """Live attach tails events.jsonl → renderer.handle_event, Ctrl-C exits 0."""
         state = self._make_state(status="running")
         args = self._make_args()
@@ -2333,8 +2331,7 @@ class TestCmdMonitor:
         events_file = running_dir / "test-loop.events.jsonl"
         # Pre-existing line — must be skipped by seek-to-end.
         events_file.write_text(
-            json.dumps({"event": "state_enter", "state": "old", "iteration": 1, "depth": 0})
-            + "\n"
+            json.dumps({"event": "state_enter", "state": "old", "iteration": 1, "depth": 0}) + "\n"
         )
 
         mock_renderer = MagicMock()
@@ -2415,9 +2412,7 @@ class TestCmdMonitor:
         assert result == 0
         mock_kill.assert_not_called()
 
-    def test_events_file_missing_when_running_falls_back_to_state(
-        self, tmp_path: Path
-    ) -> None:
+    def test_events_file_missing_when_running_falls_back_to_state(self, tmp_path: Path) -> None:
         """If events.jsonl is absent (race / archived), fall back to last-known-state."""
         state = self._make_state(status="running")
         args = self._make_args()
