@@ -92,6 +92,11 @@ parse_assumptions → classify_assumptions → record_untestable → flatten_tes
 
 +2 states (`classify_assumptions`, `record_untestable`), 1 state renamed (`flatten_targets` → `flatten_testable`). Total: ~9 states.
 
+## Scope Boundaries
+
+- **In scope**: Classification of extracted assumptions into testable/untestable; recording untestable claims via `--assume` flag as LT records; routing changes for the empty-testable case (all assumptions untestable → `no_external_deps`).
+- **Out of scope**: Automatically resolving or retrying untestable claims later; changing the `--assume` flag behavior itself; modifying the LT record schema; handling assumptions that become testable in future environments.
+
 ## Implementation Steps
 
 1. Read `scripts/little_loops/loops/assumption-firewall.yaml` in full.
@@ -104,6 +109,35 @@ parse_assumptions → classify_assumptions → record_untestable → flatten_tes
 8. Update `scripts/tests/test_builtin_loops.py::TestAssumptionFirewallLoop` — add assertions for the new states.
 9. Update `docs/guides/LEARNING_TESTS_GUIDE.md` — note in "Pre-Seeding Assumptions" section that `assumption-firewall` now records untestable claims automatically.
 
+## Success Metrics
+
+- `ll-loop validate assumption-firewall` reports 0 ERRORs after the change.
+- 0 false blocks caused by untestable assumptions (previously: all untestable assumptions caused gate blocks).
+- 100% of untestable assumptions produce an LT record with `result: untested`.
+- `TestAssumptionFirewallLoop` passes with updated state assertions.
+- Existing behavior preserved: testable-only assumptions route identically to FEAT-1696 baseline.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/assumption-firewall.yaml` — Add `classify_assumptions` and `record_untestable` states, rename `flatten_targets` → `flatten_testable`, update routing
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/ready-to-implement-gate.yaml` — Receives `flatten_testable` output (indirect dependency, no change expected)
+- `scripts/little_loops/learning_tests.py` — `ll-action invoke explore-api` calls the LT subsystem
+
+### Similar Patterns
+- `loops/oracles/` — Other oracle loops that classify before routing; check for reusable classification patterns
+
+### Tests
+- `scripts/tests/test_builtin_loops.py::TestAssumptionFirewallLoop` — Add assertions for new states and routing branches
+
+### Documentation
+- `docs/guides/LEARNING_TESTS_GUIDE.md` — Note in "Pre-Seeding Assumptions" that assumption-firewall now auto-records untestable claims
+
+### Configuration
+- N/A
+
 ## Acceptance Criteria
 
 - `ll-loop validate assumption-firewall` reports no ERRORs after the change.
@@ -111,6 +145,13 @@ parse_assumptions → classify_assumptions → record_untestable → flatten_tes
 - When issue has both testable and untestable assumptions: testable ones go through `ready-to-implement-gate`; untestable ones are recorded as `untested` and do not block.
 - When issue has only testable assumptions: behavior is unchanged from FEAT-1696 baseline.
 - `TestAssumptionFirewallLoop` passes with updated state assertions.
+
+## Impact
+
+- **Priority**: P3 - Moderate; unblocks assumption-firewall from false-blocking on untestable assumptions, but a manual workaround exists (invoking `--assume` directly).
+- **Effort**: Medium - Adds 2 states to an existing loop YAML plus a shell state with inline Python; touches one core file and its tests.
+- **Risk**: Low - Changes are additive within an existing loop; no existing behavior paths are removed or altered.
+- **Breaking Change**: No
 
 ## Labels
 
@@ -121,4 +162,5 @@ parse_assumptions → classify_assumptions → record_untestable → flatten_tes
 **Open** | Created: 2026-05-27 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-29T19:35:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80e34915-6ade-4d27-95fc-5b7654bf3076.jsonl`
 - `/ll:capture-issue` - 2026-05-27T18:08:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55979bca-15d7-443c-b4d3-a76d29148106.jsonl`

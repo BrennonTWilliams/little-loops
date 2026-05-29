@@ -12,6 +12,12 @@ labels:
 - fsm
 - concurrency
 - scope
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1787: FSM scope should support context template variables for file-level locking
@@ -106,6 +112,8 @@ scope:
 
 ### Files to Modify
 - `scripts/little_loops/fsm/concurrency.py` — add `resolve_scope()` function
+- `scripts/little_loops/fsm/__init__.py` — export `resolve_scope` in imports (line 75), `__all__` (near line 189), and module docstring (near line 68)  
+  _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/loop/run.py` — call `resolve_scope()` at line ~264 before `lock_manager.acquire()`
 - `scripts/little_loops/cli/loop/_helpers.py` — call `resolve_scope()` in `run_background()` pre-flight check
 - `scripts/little_loops/loops/rn-refine.yaml` — add `scope: ["${context.plan_file}"]`
@@ -129,6 +137,11 @@ scope:
 - `docs/guides/LOOPS_GUIDE.md` — document template variable support in scope section
 - `docs/reference/CLI.md` — update `ll-loop run` scope documentation
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — add `resolve_scope` entry to concurrency module section (near line 4805); update `FSMLoop.scope` attribute doc (line 3982) to note `${context.<var>}` template support [Agent 2 finding]
+- `docs/generalized-fsm-loop.md` — update "Concurrency and Locking" section (lines 1411-1442) with template variable scope example [Agent 2 finding]
+- `skills/create-loop/reference.md` — document `${context.<var>}` template support in scope field reference (lines 571-579) [Agent 2 finding]
+
 ### Configuration
 - N/A
 
@@ -141,6 +154,15 @@ scope:
 5. Add unit tests for `resolve_scope()` in `test_concurrency.py` — follow the `TestScopeLock` class pattern (line 18): test static passthrough, context var resolution, unresolved var preservation, mixed static+template
 6. Add integration test in `test_cli_loop_background.py` — model after `test_scope_conflict_returns_1` (line 561): two `run_background()` calls with different context values for the same template var should produce disjoint scopes and not conflict
 7. Run existing concurrency and background tests to verify no regressions
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Export `resolve_scope` from `scripts/little_loops/fsm/__init__.py` — add to import block (line 75), `__all__` (near line 189), and module docstring "Concurrency Control" section (near line 68) [Agent 1 + 2 finding]
+9. Update `docs/reference/API.md` — add `resolve_scope` function entry in the `little_loops.fsm.concurrency` section; note `${context.<var>}` support in `FSMLoop.scope` attribute description [Agent 2 finding]
+10. Update `docs/generalized-fsm-loop.md` — add template variable example to "Concurrency and Locking" section [Agent 2 finding]
+11. Update `skills/create-loop/reference.md` — document template variable support in scope field reference [Agent 2 finding]
 
 ## Success Metrics
 
@@ -180,9 +202,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **No existing loops use `scope:`**: All current loops default to `["."]` (whole-project lock). The `rn-refine.yaml` change in this issue will be the first use of the `scope:` field in a committed loop.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-29T20:04:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/abdc7cdc-bdc0-4301-8614-cf927bab7407.jsonl`
 - `/ll:refine-issue` - 2026-05-29T06:48:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cce38edf-049a-436e-a20e-74ea5a16ea27.jsonl`
 - `/ll:format-issue` - 2026-05-29T06:38:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0074390b-f718-4916-9a17-f29727630895.jsonl`
 - `/ll:capture-issue` - 2026-05-29T06:08:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b88328d9-b43a-4afd-b941-7bc140700c24.jsonl`
+- `/ll:confidence-check` - 2026-05-29T22:09:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42d54349-d303-49ce-a074-ab7903bdc951.jsonl`
 
 ---
 

@@ -101,6 +101,35 @@ impl_failed (terminal)
 | `issue_file` | `""` | Path to issue file for assumption extraction; optional (gate skipped if empty/missing) |
 | `impl_loop` | `"general-task"` | Name of the impl loop to run after the gate passes |
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/proof-first-task.yaml` — new FSM loop definition
+- `scripts/tests/test_builtin_loops.py` — add to expected loop set + structural test class
+- `README.md` — update loop count
+- `CONTRIBUTING.md` — update loop count
+- `docs/guides/LOOPS_GUIDE.md` — add built-in loops table row
+
+### Dependent Files (Callers/Importers)
+- `assumption-firewall` loop (via sub-loop call)
+- User-specified impl loop (e.g., `general-task`, `autodev`) via dynamic sub-loop
+- `ll-loop` CLI (entry point for running the loop)
+
+### Similar Patterns
+- `general-task` — existing built-in loop that this wraps
+- `scan-and-implement` — another mainstream loop that could benefit from this wrapper pattern
+
+### Tests
+- `scripts/tests/test_builtin_loops.py` — add `TestProofFirstTaskLoop` class and `"proof-first-task"` to `expected` set
+
+### Documentation
+- `docs/guides/LOOPS_GUIDE.md` — built-in loops table
+- `README.md` — loop count
+- `CONTRIBUTING.md` — loop count
+
+### Configuration
+- N/A
+
 ## Implementation Steps
 
 1. Draft `scripts/little_loops/loops/proof-first-task.yaml` with the four-state design above.
@@ -121,6 +150,32 @@ impl_failed (terminal)
 - When `issue_file` is empty or missing: gate is skipped, impl loop runs directly.
 - `context.impl_loop` defaults to `"general-task"` and is overridable per-run.
 
+## API/Interface
+
+```bash
+ll-loop run proof-first-task \
+  --context task="<task description>" \
+  --context issue_file="<path to issue file>" \
+  --context impl_loop="<loop name>"
+```
+
+**Context variables:**
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `task` | yes | — | Natural-language task description passed to the impl loop |
+| `issue_file` | no | `""` | Path to issue file for assumption extraction; gate skipped if empty/missing |
+| `impl_loop` | no | `"general-task"` | Name of the impl loop to run after the gate passes |
+
+**Terminal states:** `done`, `blocked`, `impl_failed`
+
+## Impact
+
+- **Priority**: P3 — Opt-in, additive feature. No existing behavior modified. Users who don't invoke `proof-first-task` are unaffected.
+- **Effort**: Small — One new YAML loop file (~60 lines), test additions in one file, and documentation updates.
+- **Risk**: Low — Standalone file with no imports from or to other Python modules. Failure mode is contained to the wrapper itself.
+- **Breaking Change**: No
+
 ## Labels
 
 `feat`, `loop`, `learning-tests`, `fsm`, `gate-consumer`, `proof-first`, `opt-in`
@@ -130,4 +185,5 @@ impl_failed (terminal)
 **Open** | Created: 2026-05-27 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-29T20:02:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a846596c-487a-4d83-8770-0975057857d0.jsonl`
 - `/ll:capture-issue` - 2026-05-27T18:08:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55979bca-15d7-443c-b4d3-a76d29148106.jsonl`

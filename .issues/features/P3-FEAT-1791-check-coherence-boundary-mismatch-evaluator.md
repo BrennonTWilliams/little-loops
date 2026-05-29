@@ -15,6 +15,26 @@ labels: [feature, loops, evaluator, qa, integration]
 
 Add a new evaluator kind (`check_coherence` / `evaluate.type: coherence`) that reads two related artifacts simultaneously and asserts contract alignment between them — API response shape ↔ consumer hook type, file path ↔ link `href`, state-transition map ↔ actual `.update({status})` calls. Designed as a stronger replacement for `check_semantic` in build-feature harnesses where "did this PR break the contract between producer and consumer?" is the actual quality bar.
 
+## Current Behavior
+
+The loop FSM currently provides these evaluator types:
+
+- **Mechanical**: `exit_code`, `output_numeric`, `mcp_result`, `convergence`, `diff_stall`
+- **Semantic**: `llm_structured` (evaluates a single output blob against a prompt)
+
+None of these evaluators read *both sides of an interface simultaneously*. When a harness implements a producer (e.g., API endpoint) and a consumer (e.g., front-end hook), there is no built-in way to assert that their contracts align. Harness authors must hand-roll paired checks inside `check_semantic` prompts, which are single-output evaluators by design and tend to evaluate one artifact at a time.
+
+## Expected Behavior
+
+A new `coherence` evaluator type (`evaluate.type: coherence`) is available. Harness authors declare one or more `(producer, consumer)` pairs with optional regex extraction patterns and a contract rule. The evaluator:
+
+1. Reads both files in each pair
+2. Applies optional regex to extract the relevant slices
+3. Composes a focused LLM judge prompt with both slices side-by-side
+4. Returns a per-pair verdict and routes the FSM accordingly
+
+Verdicts: `yes` (all pairs aligned → `on_yes`), `no` (any pair fails → `on_no`), `error` (file unreadable or regex no-match → `on_no`).
+
 ## Motivation
 
 `revfactory/harness`'s `qa-agent-guide.md` documents (with 7 production bug case studies from SatangSlide) a failure class our current evaluators miss: **boundary mismatch** — two components each correctly implemented but disagreeing at the integration seam. Static type checks and existence checks miss these because:
@@ -86,6 +106,31 @@ Verdicts: `yes` (all pairs aligned), `no` (any pair fails), `error` (file unread
 5. **Docs** — add `check_coherence` section to `AUTOMATIC_HARNESSING_GUIDE.md` under "Evaluation Phases Explained", placed between `check_mcp` and `check_skill` (it's deterministic-input + LLM-judged, cheaper than `check_skill`'s full agentic session).
 6. **Example loop** — add a `loops/examples/coherence-demo.yaml` or extend `harness-multi-item.yaml` with a commented `check_coherence` block.
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/evaluators/coherence.py` (new)
+- `scripts/little_loops/loops/schema.py` (extend evaluator type enum)
+- `scripts/little_loops/loops/runner.py` (wire new evaluator)
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/loop_runner.py` — imports evaluator registry
+- `scripts/little_loops/cli/ll_loop.py` — `validate` subcommand imports schema
+
+### Similar Patterns
+- Existing evaluators in `scripts/little_loops/evaluators/` for structural conventions
+- `check_semantic` evaluator for LLM judge call patterns
+
+### Tests
+- `scripts/tests/test_coherence_evaluator.py` (new) — aligned, mismatched, file-missing, regex-no-match cases
+
+### Documentation
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add `check_coherence` section between `check_mcp` and `check_skill`
+
+### Configuration
+- N/A
+
 ## Acceptance Criteria
 
 - [ ] `ll-loop validate` accepts the new schema and rejects malformed `pairs:` blocks with clear errors
@@ -93,6 +138,13 @@ Verdicts: `yes` (all pairs aligned), `no` (any pair fails), `error` (file unread
 - [ ] Multi-pair states report which specific pair failed
 - [ ] Documentation added to AUTOMATIC_HARNESSING_GUIDE.md with placement guidance
 - [ ] Tests cover aligned, mismatched, file-missing, regex-no-match cases
+
+## Impact
+
+- **Priority**: P3 — Important for harness quality but not blocking existing workflows; `check_semantic` is an available workaround
+- **Effort**: Medium — New evaluator module (~100-150 lines), schema extension, tests, and docs; no changes to existing evaluators
+- **Risk**: Low — Net-new code path behind `action_type: coherence`; existing loops and evaluators unaffected
+- **Breaking Change**: No
 
 ## Out of Scope
 
@@ -108,6 +160,7 @@ Verdicts: `yes` (all pairs aligned), `no` (any pair fails), `error` (file unread
 | `scripts/little_loops/loops/harness-multi-item.yaml` | Example loop to extend with `check_coherence` demo |
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-29T19:28:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aea29468-dd94-4692-a4e8-f97561c7c2a7.jsonl`
 - `/ll:capture-issue` - 2026-05-29T19:08:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
 
 ---

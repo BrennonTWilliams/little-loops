@@ -50,6 +50,8 @@ Every line in a `SKILL.md` is loaded into the context window when that skill is 
 - **In scope**: Auditing skill sizes, extracting overflow to flat companion files, documenting the convention
 - **Out of scope**: Changing skill logic or rewriting skill content substantively
 
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-29): This issue owns the **body** of `audit-claude-config/SKILL.md` — it extracts Task 3 prompt and settings table sections into companion files. ENH-1618 owns the **frontmatter** of the same file (adding `llm_discoverable: false`). The two changes target non-overlapping sections; ENH-1618's one-line frontmatter edit is trivial to rebase on top of this issue's body extraction.
+
 ## Implementation Steps
 
 1. ~~Run `wc -l skills/*/SKILL.md | sort -n` to identify oversized skills~~ (**Done — see Research Findings below**)
@@ -200,6 +202,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-29T20:07:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7409b034-0513-44ad-a2a1-f3e47126e95b.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:verify-issues` - 2026-05-18T04:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2807bd8b-4e79-4b76-994d-e6f6cae14245.jsonl`
 - `/ll:verify-issues` - 2026-05-17T17:04:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/907d2d29-7e38-4120-a77d-deb597ac2df4.jsonl`

@@ -16,6 +16,18 @@ labels: [feature, loops, harness, evaluation, ab-testing, meta-loop]
 
 Add an opt-in baseline-comparison mode to `ll-loop run` that executes the harness's `execute` action twice in parallel — once with the harness's evaluation gates active, once as an ungated bare-skill invocation — and logs the delta in pass-rate, tokens, and duration to `.loops/runs/<id>/ab.json`. Produces measurable evidence that the harness improves on the bare skill, rather than relying on LLM self-grades.
 
+## Current Behavior
+
+`ll-loop run` executes a harness's `execute` action with evaluation gates active (retrying on failed evals). There is no native way to measure whether the harness improves output quality over a bare skill invocation. Meta-loop authors rely on LLM self-grades for harness quality, which are ~33–55% accurate (SHOR Table 1; Sonnet 4.6 = 33.4%). The harness's value is asserted, not measured.
+
+## Expected Behavior
+
+When `--baseline` is passed, `ll-loop run` executes both arms in parallel:
+1. **Harness arm** — normal gated execution with eval chain and retries
+2. **Baseline arm** — single-shot skill invocation with no eval gates or retries
+
+Both outputs are fed to `check_semantic` blind (anonymized as A/B, randomized per item). Results — pass-rate, tokens, duration for each arm — are written to `.loops/runs/<id>/ab.json` and summarized on the terminal with delta calculations.
+
 ## Motivation
 
 EPIC-1663's MR-1 rule (CLAUDE.md § Loop Authoring) requires meta-loops to pair LLM judges with non-LLM external evidence because LLM self-grades on harness updates are ~33–55% accurate (SHOR Table 1; Sonnet 4.6 = 33.4%). The rule catches *missing* non-LLM evidence but doesn't *produce* the evidence — authors still have no native way to demonstrate that a harness beats the underlying skill.
@@ -95,6 +107,38 @@ Output:
 - [ ] Tests cover all four pass/fail combinations
 - [ ] Documentation updated with usage example
 
+## Impact
+
+- **Priority**: P2 — High value for harness authors validating their loops; unblocks downstream issues (non-discriminating evaluator detection, blind comparator) that depend on paired with/without data
+- **Effort**: Medium — CLI flag wiring, parallel execution, blind evaluation, token/timing capture, aggregation, tests, and docs across 7 implementation phases
+- **Risk**: Low — Additive feature behind an opt-in `--baseline` flag; no changes to existing `ll-loop run` behavior when flag is omitted
+- **Breaking Change**: No
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/ll_loop.py` — argparse wiring and runner dispatch for `--baseline` / `--baseline-skill` / `--items` flags
+- `scripts/little_loops/loop_runner.py` — parallel execution orchestration, blind evaluator, timing/token capture
+- `scripts/little_loops/ab_writer.py` (new) — `ab.json` schema, writer, and summary aggregation
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/host_runner.py` — baseline arm uses `HostInvocation` / `build_streaming()`
+- `scripts/little_loops/session_log.py` — session log entries for baseline runs
+
+### Similar Patterns
+- N/A — first A/B comparison feature in the loop runner
+
+### Tests
+- `scripts/tests/test_ll_loop.py` — `test_baseline_happy_path`, `test_baseline_blind`, `test_baseline_ab_json_schema`
+- Mock host runner for both-pass, harness-only-pass, baseline-only-pass, both-fail cases
+
+### Documentation
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add "Validating Your Harness" section with `--baseline` usage
+- `.claude/CLAUDE.md` — cross-reference in § Loop Authoring
+
+### Configuration
+- N/A — no config changes required
+
 ## Out of Scope
 
 - Multi-iteration improvement tracking (covered by ENH "Cross-iteration comparator").
@@ -110,6 +154,7 @@ Output:
 | `.issues/enhancements/P2-ENH-1665-ll-loop-validate-meta-loop-lint-rules.md` | Sibling rule-enforcement work under EPIC-1663 |
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-29T19:24:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5eabe11-4b00-427f-9af0-61ff507f3409.jsonl`
 - `/ll:capture-issue` - 2026-05-29T19:08:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
 
 ---
