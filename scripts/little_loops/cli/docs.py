@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from little_loops.cli.output import configure_output, use_color_enabled
+from little_loops.cli.output import configure_output, print_json, use_color_enabled
+from little_loops.cli_args import add_json_arg
 from little_loops.logger import Logger
 
 
@@ -148,6 +149,8 @@ Exit codes:
         help="Base directory (default: current directory)",
     )
 
+    add_json_arg(parser)
+
     args = parser.parse_args()
 
     configure_output()
@@ -170,6 +173,30 @@ Exit codes:
             threshold = _DEFAULT_BUDGET_TOKENS
 
     result = check_skill_budget(base_dir=base_dir, threshold_tokens=threshold)
+
+    if args.json:
+        print_json({
+            "under_budget": result.under_budget,
+            "total_tokens": result.total_tokens,
+            "threshold_tokens": result.threshold_tokens,
+            "skills": [
+                {
+                    "name": path.parent.name,
+                    "char_count": len(desc),
+                    "token_estimate": tokens,
+                }
+                for path, desc, tokens in result.skill_breakdown
+            ],
+            "violations": [
+                {
+                    "name": path.parent.name,
+                    "char_count": len(desc),
+                    "token_estimate": tokens,
+                }
+                for path, desc, tokens in result.violations
+            ],
+        })
+        return 0 if result.under_budget else 1
 
     # Per-skill breakdown header
     print("Skill Description Token Budget Check")
