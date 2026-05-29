@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from little_loops.cli.output import configure_output, use_color_enabled
+from little_loops.cli.output import configure_output, print_json, use_color_enabled
+from little_loops.cli_args import add_json_arg
 from little_loops.logger import Logger
 
 
@@ -148,6 +149,7 @@ Examples:
         default=None,
         help="Restrict validation to issues in the named sprint",
     )
+    add_json_arg(validate_parser)
 
     # fix subcommand
     fix_parser = subparsers.add_parser(
@@ -324,6 +326,18 @@ Examples:
 
     if args.command == "validate":
         result = validate_dependencies(issues, completed_ids, all_known_ids)
+
+        if args.json:
+            print_json({
+                "has_issues": result.has_issues,
+                "broken_refs": [list(pair) for pair in result.broken_refs],
+                "missing_backlinks": [list(pair) for pair in result.missing_backlinks],
+                "cycles": result.cycles,
+                "stale_completed_refs": [list(pair) for pair in result.stale_completed_refs],
+                "broken_depends_on_refs": [list(pair) for pair in result.broken_depends_on_refs],
+                "broken_relates_to_refs": [list(pair) for pair in result.broken_relates_to_refs],
+            })
+            return 0
 
         if not result.has_issues:
             logger.info("No validation issues found.")

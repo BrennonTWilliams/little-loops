@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from little_loops.cli_args import add_config_arg, add_dry_run_arg, add_quiet_arg
+from little_loops.cli_args import add_config_arg, add_dry_run_arg, add_json_arg, add_quiet_arg
+from little_loops.cli.output import print_json
 from little_loops.git_operations import (
     GitignorePattern,
     add_patterns_to_gitignore,
@@ -37,6 +38,7 @@ Examples:
     add_dry_run_arg(parser)
     add_quiet_arg(parser)
     add_config_arg(parser)
+    add_json_arg(parser)
 
     args = parser.parse_args()
 
@@ -48,6 +50,23 @@ Examples:
         logger.info("[DRY RUN] Showing suggestions without modifying .gitignore")
 
     suggestion = suggest_gitignore_patterns(repo_root=repo_root, logger=logger)
+
+    if args.json:
+        print_json({
+            "has_suggestions": suggestion.has_suggestions,
+            "summary": suggestion.summary,
+            "suggestions": [
+                {
+                    "pattern": p.pattern,
+                    "category": p.category,
+                    "description": p.description,
+                    "files_matched": p.files_matched,
+                    "priority": p.priority,
+                }
+                for p in suggestion.patterns
+            ],
+        })
+        return 0
 
     if not suggestion.has_suggestions:
         logger.info("No .gitignore suggestions — your repo looks clean.")
