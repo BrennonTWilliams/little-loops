@@ -16,6 +16,18 @@ labels: [enhancement, loops, evaluator, meta-loop, validation, analytics]
 
 Add a "non-discriminating evaluator" diagnostic that scans `.loops/runs/*/` history and surfaces evaluator states whose verdict has near-zero variance — i.e., always `yes` or always `no` — across many runs. A state that never distinguishes good from bad isn't a quality gate; it's noise (or self-bias). Surfaces via `ll-loop analyze <loop>` (or new `ll-loop diagnose-evaluators`) and integrates with `loop-specialist`'s self-evaluation-bias diagnosis.
 
+## Current Behavior
+
+MR-1 validation in `ll-loop validate` detects evaluator states that are missing non-LLM evidence — but there is no mechanism to detect evaluator states that are present yet non-discriminating. An evaluator that always returns the same verdict (100% pass or 100% fail) across many runs produces no signal. These toothless evaluators survive validation because the gate only checks for their existence, not their effectiveness. Common causes:
+
+- `check_semantic` states with overly vague judge prompts where the LLM returns `yes` almost universally
+- `output_numeric` states with targets far from actual run values (e.g., `target: 50` on a skill that produces diffs of 12 lines)
+- `exit_code` states gating on commands that never fail (e.g., `echo done`)
+
+## Expected Behavior
+
+`ll-loop diagnose-evaluators <loop>` surfaces evaluators with near-zero verdict variance from run history, with per-state pass rate, Bernoulli variance `p*(1-p)`, and pattern-matched recommendations for improving discriminating power. The `loop-specialist` agent automatically includes variance findings in diagnosis artifacts when run history meets the minimum-run threshold.
+
 ## Motivation
 
 `revfactory/harness`'s testing methodology (`references/skill-testing-guide.md` §4-3) explicitly identifies "non-discriminating assertions" — checks that pass for *both* with-skill and without-skill runs — as having no signal value. The reframing: an evaluator whose verdict has near-zero variance across runs isn't measuring anything useful.
@@ -88,11 +100,43 @@ Two surfaces:
 - [ ] Tests with synthetic verdict fixtures cover all-pass, all-fail, mixed, insufficient-data cases
 - [ ] Docs link from `AUTOMATIC_HARNESSING_GUIDE.md` and `agents/loop-specialist.md`
 
-## Out of Scope
+## Success Metrics
 
-- Automatic prompt tuning to improve discriminating power (could be a future meta-loop on top of this signal).
-- Cross-loop comparisons (this scopes per-loop; cross-loop benchmarks are a separate feature).
-- Real-time evaluation during a run (this is retrospective only).
+- `ll-loop diagnose-evaluators` correctly flags states with variance < 0.05 across ≥10 runs
+- All three failure patterns detected: high-pass+`llm_structured`, 100%+`output_numeric`, 100%+`exit_code`
+- JSON output validates against expected schema
+- Tests cover all-pass, all-fail, mixed, and insufficient-data scenarios
+
+## Scope Boundaries
+
+- **In scope**: Per-loop run-history-based variance analysis, per-state pass rates and Bernoulli variance, pattern-matched recommendations, JSON output for downstream consumption, `loop-specialist` integration in diagnosis artifacts
+- **Out of scope**: Automatic prompt tuning to improve discriminating power (could be a future meta-loop on top of this signal), cross-loop comparisons (per-loop only; cross-loop benchmarks are a separate feature), real-time evaluation during a run (retrospective only)
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/analytics/` — new run-history reader + variance calculator module
+- `scripts/little_loops/cli/loop.py` — new `diagnose-evaluators` subcommand + `analyze` extension
+
+### Dependent Files (Callers/Importers)
+- `agents/loop-specialist.md` — consumer of variance findings in diagnosis artifacts
+
+### Tests
+- `scripts/tests/` — synthetic `.loops/runs/` fixtures with known verdict distributions
+
+### Documentation
+- `AUTOMATIC_HARNESSING_GUIDE.md` — troubleshooting section
+- `agents/loop-specialist.md` — cross-reference
+
+### Configuration
+- N/A — no new config keys; threshold and min-runs are CLI flags
+
+## Impact
+
+- **Priority**: P3 — addresses self-evaluation bias detection (known paper-level reliability issue), but MR-1 already provides partial coverage
+- **Effort**: Medium — 7 implementation steps across analytics module, CLI wiring, and integration
+- **Risk**: Low — purely additive analytics reading run history; no changes to loop execution
+- **Breaking Change**: No
 
 ## Related Key Documentation
 
@@ -104,6 +148,7 @@ Two surfaces:
 | `.issues/features/P2-FEAT-1790-ab-baseline-mode-for-ll-loop-run.md` | Stronger signal source — paired with/without runs amplify the variance read |
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-29T19:36:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22fa3793-04ed-422e-a858-92ebec183578.jsonl`
 - `/ll:capture-issue` - 2026-05-29T19:08:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
 
 ---
