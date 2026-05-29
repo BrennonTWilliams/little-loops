@@ -35,6 +35,17 @@ Agents composing CLI calls need structured, parseable output. CLI-Anything manda
 
 Quantified: every `ll-*` command without `--json` is a command an agent can't reliably compose into a pipeline.
 
+## Success Metrics
+
+- All `ll-*` CLI commands that produce data output accept `--json` (target: 0 remaining without support)
+- Agent workflows can query structured data from every CLI without text parsing
+- Zero agent pipeline failures caused by human-format output parsing
+
+## Scope Boundaries
+
+- **In scope**: Adding `--json` to data-emitting commands across all `ll-*` CLIs; creating shared `json_option` decorator; adding JSON output tests
+- **Out of scope**: Changing default output format (human-readable stays default); modifying JSON schema of commands that already support `--json`; adding `--json` to purely imperative commands (e.g., `ll-loop run`) that produce no data output; TUI/interactive commands
+
 ## Proposed Solution
 
 1. Audit all `ll-*` CLIs for `--json` support gaps. Priority targets based on agent usage:
@@ -55,6 +66,16 @@ Quantified: every `ll-*` command without `--json` is a command an agent can't re
 
 3. Add JSON output formatters alongside existing human-readable output in each CLI.
 
+## API/Interface
+
+```python
+# Shared decorator in scripts/little_loops/cli_utils.py
+def json_option(f):
+    """Add --json flag to a Click command. Sets output_format to 'json' when passed."""
+    return click.option("--json", "output_format", flag_value="json",
+                        help="Output as JSON")(f)
+```
+
 ## Integration Map
 
 ### Files to Modify
@@ -70,6 +91,9 @@ Quantified: every `ll-*` command without `--json` is a command an agent can't re
 
 ### Documentation
 - `docs/reference/API.md` — document the universal `--json` contract
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -95,6 +119,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `cli`, `agent-composability`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-29T02:28:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e23d1bf-3385-43d7-80c9-602fafbaf867.jsonl`
 - `/ll:capture-issue` - 2026-05-29T02:23:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b24cba6-684e-4420-9519-de98c8b4822b.jsonl`
 
 ---

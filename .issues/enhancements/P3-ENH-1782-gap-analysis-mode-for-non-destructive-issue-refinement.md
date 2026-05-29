@@ -38,6 +38,17 @@ Core contract: "Refine never removes existing content — it only adds or enhanc
 
 CLI-Anything's `/refine` command demonstrates that additive-only refinement builds user trust — the user knows running refinement won't destroy their work. Current `/ll:refine-issue` carries risk of content loss, which discourages iterative refinement. A gap-analysis mode makes refinement safe to run repeatedly, steadily improving issue quality over time.
 
+## Success Metrics
+
+- Zero content loss during gap-analysis refinement (existing sections preserved verbatim)
+- Gap reports are actionable: ≥80% of reported gaps are resolved by the user or auto-fill
+- Users run refinement iteratively (≥2 refinement passes on the same issue) without reported data loss
+
+## Scope Boundaries
+
+- **In scope**: Gap inventory and reporting; additive-only content application; stale reference detection (missing files, broken anchors); edge case coverage analysis; `--gap-analysis` flag and routing
+- **Out of scope**: Full-rewrite refinement (existing behavior, preserved behind `--full-rewrite` flag); modifying issue structure beyond identified gaps; changing sections the user didn't approve; removing any existing content under any circumstance
+
 ## Proposed Solution
 
 Add a `--gap-analysis` flag to `/ll:refine-issue` (or make it the default behavior, with `--full-rewrite` for the legacy mode). The gap-analysis flow:
@@ -51,6 +62,10 @@ Add a `--gap-analysis` flag to `/ll:refine-issue` (or make it the default behavi
 3. **Score** each gap by impact (critical / high / medium / low)
 4. **Report** findings to user with specific suggestions
 5. **Apply** approved additions via Edit (append-only)
+
+## API/Interface
+
+N/A — This is a skill instruction change, not a Python API change. The `--gap-analysis` flag is a CLI argument consumed by the skill's argument parser, not a new public Python interface.
 
 ## Integration Map
 
@@ -69,6 +84,9 @@ Add a `--gap-analysis` flag to `/ll:refine-issue` (or make it the default behavi
 
 ### Documentation
 - Update `/ll:refine-issue` skill description
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -95,6 +113,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `issues`, `refinement`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-29T02:28:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e23d1bf-3385-43d7-80c9-602fafbaf867.jsonl`
 - `/ll:capture-issue` - 2026-05-29T02:23:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b24cba6-684e-4420-9519-de98c8b4822b.jsonl`
 
 ---

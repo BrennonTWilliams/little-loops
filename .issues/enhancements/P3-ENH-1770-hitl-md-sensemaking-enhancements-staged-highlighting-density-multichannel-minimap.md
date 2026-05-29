@@ -50,6 +50,13 @@ A parallel problem is the **LLM Fallacy** [37]: the fluency of AI-generated text
 
 These six enhancements together address the full spectrum of cognitive failure modes in linear AI-output review — both the under-supported sensemaking cycle and the over-trust problem that fluent text creates.
 
+## Success Metrics
+
+- **Review efficiency**: Time-to-completion for document review tasks should decrease as staged highlighting reduces initial cognitive overload (fewer segments competing for attention on first load)
+- **Schema switching frequency**: Number of distinct analytical views used per review session — target: 2+ schema switches per session (baseline: 0, no switching currently supported)
+- **Density control engagement**: Density slider usage rate — users actively adjusting threshold indicates the feature is being used for cognitive load management rather than ignored
+- **Trust calibration**: Reduced correlation between segment length and user confidence ratings — length-normalized confidence display should weaken the fluency-as-credibility bias documented in Steyvers et al. 2024
+
 ## Proposed Solution
 
 All six enhancements live in the `generate` state's HTML template (no runner changes). The data model (`segments.json`) needs minor enrichment:
@@ -81,6 +88,15 @@ These are populated during the `segment` state by the LLM. The HTML renders colo
 - Click-to-reveal gate on segments where `saliency > 0.7` AND `confidence < 0.5` — the content is hidden behind a "Review this claim" button with the confidence badge visible
 - Length-normalized confidence indicator: segments longer than the document median get a visual marker (e.g., a subtle ruler icon) next to the confidence badge, since longer text gets an unwarranted credibility boost
 - All interventions are opt-in via a "Trust calibration" toggle in the toolbar; default is passive (badge-before-content only, no gating)
+
+## Scope Boundaries
+
+- **In scope**: The six named enhancements (staged highlighting, density slider, multi-channel saliency, schema-switching toolbar, minimap + State Rail, calibrated friction) within the hitl-md loop's `generate` state HTML template; segment schema enrichment in the `segment` state prompt; score rubric updates in the `score` state
+- **Out of scope**: Runner or infrastructure changes (`scripts/little_loops/` Python code); backend processing changes beyond the loop YAML; new loop states; changes to other loops; server-side rendering (all features work under `file://`)
+
+## API/Interface
+
+N/A — no public API changes. All changes are internal to the hitl-md loop YAML (`generate` state HTML/JS/CSS template, `segment` state prompt, `score` state rubric).
 
 ## Integration Map
 
@@ -130,6 +146,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `hitl-md`, `ui`, `sensemaking`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-29T02:27:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2337e492-f7f1-44fd-a9a4-27d67af90051.jsonl`
 - `/ll:capture-issue` - 2026-05-28T17:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1814a47-ceda-478f-aac4-3e3bf601d202.jsonl`
 
 **Open** | Created: 2026-05-28 | Priority: P3
