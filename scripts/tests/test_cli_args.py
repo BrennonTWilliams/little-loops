@@ -20,6 +20,7 @@ from little_loops.cli_args import (
     add_config_arg,
     add_dry_run_arg,
     add_idle_timeout_arg,
+    add_json_arg,
     add_label_arg,
     add_max_workers_arg,
     add_only_arg,
@@ -476,6 +477,45 @@ class TestAddSkipArg:
         add_skip_arg(parser)
         args = parser.parse_args([])
         assert args.skip is None
+
+
+class TestAddJsonArg:
+    """Tests for add_json_arg() function."""
+
+    def test_adds_json_flag(self) -> None:
+        """Adds --json and -j flags as store_true."""
+        parser = argparse.ArgumentParser()
+        add_json_arg(parser)
+        args = parser.parse_args(["--json"])
+        assert args.json is True
+
+    def test_short_flag(self) -> None:
+        """Short -j flag works."""
+        parser = argparse.ArgumentParser()
+        add_json_arg(parser)
+        args = parser.parse_args(["-j"])
+        assert args.json is True
+
+    def test_default_is_false(self) -> None:
+        """Default value is False."""
+        parser = argparse.ArgumentParser()
+        add_json_arg(parser)
+        args = parser.parse_args([])
+        assert args.json is False
+
+    def test_custom_help_text(self) -> None:
+        """Uses custom help text when provided."""
+        parser = argparse.ArgumentParser()
+        add_json_arg(parser, help_text="Custom JSON output")
+        help_text = parser.format_help()
+        assert "Custom JSON output" in help_text
+
+    def test_default_help_text(self) -> None:
+        """Uses default help text when not specified."""
+        parser = argparse.ArgumentParser()
+        add_json_arg(parser)
+        help_text = parser.format_help()
+        assert "Output as JSON" in help_text
 
 
 class TestParsePriorities:

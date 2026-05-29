@@ -194,6 +194,16 @@ def add_max_issues_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_json_arg(parser: argparse.ArgumentParser, help_text: str = "Output as JSON") -> None:
+    """Add --json/-j argument for machine-readable output.
+
+    Args:
+        parser: The argument parser to add the argument to
+        help_text: Optional custom help text. If not provided, uses default.
+    """
+    parser.add_argument("-j", "--json", action="store_true", help=help_text)
+
+
 def parse_issue_ids(value: str | None) -> set[str] | None:
     """Parse comma-separated issue IDs into a set.
 
@@ -431,6 +441,7 @@ __all__ = [
     "add_skip_arg",
     "add_type_arg",
     "add_priority_arg",
+    "add_json_arg",
     "add_label_arg",
     "add_max_workers_arg",
     "add_timeout_arg",
