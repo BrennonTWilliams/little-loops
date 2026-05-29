@@ -89,6 +89,18 @@ These are populated during the `segment` state by the LLM. The HTML renders colo
 - Length-normalized confidence indicator: segments longer than the document median get a visual marker (e.g., a subtle ruler icon) next to the confidence badge, since longer text gets an unwarranted credibility boost
 - All interventions are opt-in via a "Trust calibration" toggle in the toolbar; default is passive (badge-before-content only, no gating)
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **No prior art for 5 of 6 enhancements.** Canvas (`<canvas>`/`getContext`), `IntersectionObserver`, `localStorage`, CSS `transition`/`animation`, and `<input type="range">` do not exist in any of the 50+ built-in loop YAMLs. ENH-1770 introduces all five browser APIs to the loop ecosystem for the first time. The minimap, staged highlighting, density slider, and visit heatmap all depend on these new-to-codebase APIs.
+- **Existing `data-*` attribute pattern.** The current `generate` state prompt (line 165) already uses `data-id`, `data-color`, `data-saliency`, `data-type` attributes on `.seg` elements. Multi-channel saliency should extend this pattern with `data-channel-importance`, `data-channel-anomaly`, `data-channel-confidence`, and `data-claim-type` (or a single `data-channels` JSON attribute). JS access pattern: `element.dataset.saliency` → `element.dataset.channelImportance`.
+- **Data flow is filesystem-based.** The `segment` state writes `segments.json` to `${captured.run_dir.output}/`; the `generate` state reads it via LLM tool call. No runner code parses or validates `segments.json`. The FSM executor (`scripts/little_loops/fsm/executor.py:943`) resolves `${captured.run_dir.output}` through `InterpolationContext` (`scripts/little_loops/fsm/interpolation.py:37`). The enriched segment schema (adding `channels` and `length_normalized`) requires no runner changes — the LLM reads the JSON directly.
+- **Design tokens are injected into context.** `cmd_run()` in `scripts/little_loops/cli/loop/run.py:183` injects `design_tokens_context` into the loop's context before execution. The `generate` state prompt already references `${context.design_tokens_context}`. The new features should use design token CSS custom properties where applicable for color consistency.
+- **All 6 features are independently toggleable.** Each enhancement is a separate JS/CSS module within the single `index.html` file. The existing architecture (single-page LLM-generated HTML, no shared state between features except `segments.json`) means a bug in the minimap can't break highlighting, a broken density slider doesn't affect schema-switching, etc. The "Trust calibration" toggle is the only cross-cutting control.
+- **Score rubric needs 6 new criteria.** The current `score` state (line 293) evaluates 6 criteria with independent 1-10 thresholds. Each new feature needs a corresponding criterion (e.g., `staged_highlighting`, `density_control`, `multi_channel_saliency`, `schema_switching`, `minimap_state_rail`, `trust_calibration`). The existing `ALL_PASS` mechanism (all criteria meet individual thresholds) extends naturally.
+- **Tests are structural only.** The `TestHitlMdLoop` class (`test_builtin_loops.py:3467`) validates YAML schema (state existence, routing, action content, context fields). No rendering or behavioral tests exist for the generated HTML. Verification of the 6 new features depends on manual testing via `ll-loop run hitl-md` and Playwright screenshot comparison in the `evaluate` state.
+
 ## Scope Boundaries
 
 - **In scope**: The six named enhancements (staged highlighting, density slider, multi-channel saliency, schema-switching toolbar, minimap + State Rail, calibrated friction) within the hitl-md loop's `generate` state HTML template; segment schema enrichment in the `segment` state prompt; score rubric updates in the `score` state
@@ -101,22 +113,34 @@ N/A — no public API changes. All changes are internal to the hitl-md loop YAML
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/hitl-md.yaml` — `segment` state prompt (add multi-channel fields), `generate` state prompt (six new features), `score` state rubric (add criterion checks)
+- `scripts/little_loops/loops/hitl-md.yaml` — `segment` state (line 53): add multi-channel fields to prompt; `generate` state (line 124): add six new features to HTML generation prompt; `score` state (line 293): add criterion checks for new features
+- `scripts/tests/test_builtin_loops.py` — `TestHitlMdLoop` class (line 3467): add structural tests for new segment fields and generate-state directives
 
 ### Dependent Files (Callers/Importers)
-- N/A — standalone loop, no callers
+- N/A — standalone loop, no callers. Confirmed by codebase analysis: no other loops or Python modules reference hitl-md.
 
 ### Similar Patterns
-- Existing segment saliency infrastructure (`segments.json` structure, class-based highlighting in HTML) extends naturally to multi-channel
+- Existing segment saliency infrastructure (`segments.json` structure, `data-*` attribute pattern on `.seg` elements) extends naturally to multi-channel — add `data-channels` JSON attribute alongside `data-saliency`, `data-color`, `data-type`
+- Sibling harness loops (`hitl-compare.yaml`, `html-anything.yaml`, `html-website-generator.yaml`) share the same `generate → evaluate → score` GAN-style architecture
+- FSM variable interpolation (`scripts/little_loops/fsm/interpolation.py`) uses `${captured.run_dir.output}` namespace for filesystem data passing between states
 
 ### Tests
-- `scripts/tests/` — HITL-MD loop tests if they exist; or manual verification via `ll-loop run hitl-md`
+- `scripts/tests/test_builtin_loops.py:3467` — `TestHitlMdLoop` class with 20+ structural tests (state existence, routing rules, action content checks, context validation). All tests are YAML schema validation; no rendering/behavioral tests exist for generated HTML.
+- New structural tests needed: segment state writes `channels` and `length_normalized` fields; generate state references canvas, IntersectionObserver, localStorage, CSS transitions, range input, and trust calibration patterns
 
 ### Documentation
-- N/A — loop description in YAML is self-documenting
+- `docs/development/sensemaking-hitl-md.md` — sensemaking research synthesis with 8 patterns across 3 tiers; ENH-1770 implements Tier 1 (CSS/JS only) and Tier 2 (segment model pipeline) enhancements
+- `docs/guides/LOOPS_GUIDE.md:1134-1188` — hitl-md loop documentation (technique, usage, FSM flow)
+- `scripts/little_loops/loops/README.md:134` — built-in loops catalog entry
 
 ### Configuration
-- N/A
+- N/A — no config changes needed
+
+### Related Issues (Wave Sub-Issues)
+- `ENH-1774` — Wave 1: extract shared `ll_commit` and `playwright_screenshot` fragments
+- `ENH-1775` — Wave 2: extract `generate → evaluate → score` cycle into shared sub-loop
+- `ENH-1776` — Wave 3: extract `ll_rubric_score` fragment and add convergence gate
+- `FEAT-1613` — Original feature that created the hitl-md loop
 
 ## Implementation Steps
 
