@@ -570,7 +570,9 @@ class BRConfig:
                 "glyphs": self._loops.glyphs.to_dict(),
             },
             "learning_tests": {
+                "enabled": self._learning_tests.enabled,
                 "stale_after_days": self._learning_tests.stale_after_days,
+                "discoverability": self._learning_tests.discoverability.to_dict(),
             },
             "design_tokens": {
                 "enabled": self._design_tokens.enabled,

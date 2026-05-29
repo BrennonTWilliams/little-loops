@@ -29,8 +29,8 @@ class TestFeat1756InitWiring:
 
     def test_total_is_eight(self) -> None:
         content = INIT_INTERACTIVE.read_text()
-        assert "TOTAL = 8" in content, (
-            "skills/init/interactive.md must set TOTAL = 8 after adding mandatory Round 7 (design tokens)"
+        assert "TOTAL = 9" in content, (
+            "skills/init/interactive.md must set TOTAL = 9 after adding mandatory Round 8 (learning tests)"
         )
 
     def test_skill_md_references_design_tokens(self) -> None:
@@ -42,7 +42,7 @@ class TestFeat1756InitWiring:
 
     def test_skill_md_round_count_updated(self) -> None:
         content = INIT_SKILL.read_text()
-        assert "7–8 rounds" in content, (
-            "skills/init/SKILL.md must say '7–8 rounds' (not '6–7 rounds') "
-            "after adding mandatory Round 7 (design tokens)"
+        assert "8–9 rounds" in content, (
+            "skills/init/SKILL.md must say '8–9 rounds' (not '7–8 rounds') "
+            "after adding mandatory Round 8 (learning tests)"
         )

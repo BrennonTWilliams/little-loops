@@ -10,11 +10,12 @@ Before starting the wizard, initialize these counters:
 
 ```
 STEP = 0      # Current round number (incremented before each round)
-TOTAL = 8     # Working total (mandatory rounds: 1, 2, 3a, 4, 6, 7, 12, 13)
+TOTAL = 9     # Working total (mandatory rounds: 1, 2, 3a, 4, 6, 7, 8, 13, 14)
               # Round 3b is silent (automation always enabled, no user prompt)
               # Round 4 is mandatory (product analysis opt-in)
               # Round 5a is conditional (only if parallel processing selected)
-              # Round 8 is silent (advanced settings always skipped)
+              # Round 8 is mandatory (learning tests opt-in)
+              # Round 9 is silent (advanced settings always skipped)
               # Hooks are always active via the plugin system — no installation round needed
 ```
 
@@ -545,17 +546,50 @@ If left blank or "Skip":
 {"design_tokens": {"enabled": false}}
 ```
 
-**After completing Round 7, proceed to Round 8 (Extended Config Gate).**
+**After completing Round 7, proceed to Round 8 (Learning Tests).**
 
-## Round 8: Extended Configuration Gate (Auto-Skipped)
+---
+
+## Round 8: Learning Tests (Proof-First Development) — MANDATORY, ALWAYS RUNS
+
+**CRITICAL**: You MUST execute this round. The wizard is NOT complete until you have asked about the Learning Test Registry. If you skipped here without asking, GO BACK and ask it now.
+
+Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Learning Tests
+
+Ask the user a single question using AskUserQuestion:
+
+```
+Question: "Enable learning-test registry for proof-first development? Learning tests let you prove third-party API behavior before writing integration code. A gate primitive can block implementation loops when assumptions are unproven."
+
+Options:
+  - label: "Yes, I want proof-first development on this project"
+    description: "Creates .ll/learning-tests/, enables discoverability nudge, wires allowed-tools"
+  - label: "No, skip (you can enable later with /ll:configure)"
+    description: "Explicit opt-out — records learning_tests.enabled: false in config"
+```
+
+**If "Yes" selected:**
+- Include `"learning_tests": { "enabled": true, "stale_after_days": 30 }` in the generated config
+- Track: `LEARNING_TESTS_ENABLED=true` (signals Step 8 to create `.ll/learning-tests/` directory and Step 10 to conditionally append `Skill(ll:explore-api)` to allowed-tools)
+
+**If "No" selected:**
+- Include `"learning_tests": { "enabled": false }` in the generated config (explicit opt-out)
+- Track: `LEARNING_TESTS_ENABLED=false`
+
+**MANDATORY NEXT STEP - DO NOT SKIP:**
+After completing Round 8, you MUST immediately proceed to **Round 9 (Extended Config Gate)** below.
+
+---
+
+## Round 9: Extended Configuration Gate (Auto-Skipped)
 
 Advanced settings are always skipped during init — no user input required. Do NOT increment STEP or prompt the user.
 
 # Always skip advanced settings — configurable via /ll:configure
-Proceed to Round 12 (Allowed Tools). Rounds 9–11 are never shown during init.
+Proceed to Round 13 (Allowed Tools). Rounds 10–12 are never shown during init.
 Users can access test directory, build command, continuation, and prompt optimization settings via `/ll:configure`.
 
-## Round 9: Project Advanced (Optional)
+## Round 10: Project Advanced (Optional)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
 
@@ -623,7 +657,7 @@ questions:
 
 Use the actual `test_cmd` and `lint_cmd` values selected in Round 1 for these commands.
 
-## Round 10: Continuation Behavior (Optional)
+## Round 11: Continuation Behavior (Optional)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
 
@@ -674,7 +708,7 @@ questions:
 - "48 hours" -> `prompt_expiry_hours: 48`
 - "No expiry" -> `prompt_expiry_hours: 168`
 
-## Round 11: Prompt Optimization (Optional)
+## Round 12: Prompt Optimization (Optional)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
 
@@ -714,7 +748,7 @@ questions:
 
 **Configuration:** Only include `prompt_optimization` section if any value differs from schema defaults.
 
-## Round 12: Allowed Tools — ALWAYS RUNS
+## Round 13: Allowed Tools — ALWAYS RUNS
 
 **CRITICAL**: You MUST execute this round. The wizard is NOT complete until you have asked the user about allowed tools.
 
@@ -781,7 +815,7 @@ questions:
 
 **Record the result** (chosen target file or "skip") — used by SKILL.md Step 10 to perform the actual merge.
 
-## Round 13: CLAUDE.md Documentation — ALWAYS RUNS
+## Round 14: CLAUDE.md Documentation — ALWAYS RUNS
 
 **CRITICAL**: You MUST execute this round. The wizard is NOT complete until you have asked the user about CLAUDE.md documentation.
 
@@ -832,7 +866,7 @@ questions:
 
 ## Interactive Mode Summary
 
-**Total interaction rounds: 7–8 (8 only if parallel processing selected)**
+**Total interaction rounds: 8–9 (9 only if parallel processing selected)**
 
 | Round | Group | Questions | Conditions |
 |-------|-------|-----------|------------|
@@ -843,12 +877,13 @@ questions:
 | 5a | Advanced (dynamic) | worktree_files, parallel_workers | Only if "Parallel processing" selected in Round 3a |
 | **6** | **Document Tracking** | **docs (auto-detect or custom categories)** | **Always** |
 | **7** | **Design Tokens** | **design_tokens (enabled/path)** | **Always** |
-| 8 | Extended Config Gate | **Silent** — always skips; Rounds 9–11 never shown | Always (no prompt) |
-| 9 | Project Advanced (optional) | test_dir, build_cmd, run_cmd, impl_hooks | Never shown (use /ll:configure) |
-| 10 | Continuation (optional) | auto_detect, include, expiry | Never shown (use /ll:configure) |
-| 11 | Prompt Optimization (optional) | enabled, mode, confirm | Never shown (use /ll:configure) |
-| **12** | **Allowed Tools** | **target settings file (settings.local.json / settings.json / skip)** | **Always** |
-| **13** | **CLAUDE.md Docs** | **add ll- CLI commands to CLAUDE.md (yes/skip)** | **Always in --interactive** |
+| **8** | **Learning Tests** | **learning_tests (enabled)** | **Always** |
+| 9 | Extended Config Gate | **Silent** — always skips; Rounds 10–12 never shown | Always (no prompt) |
+| 10 | Project Advanced (optional) | test_dir, build_cmd, run_cmd, impl_hooks | Never shown (use /ll:configure) |
+| 11 | Continuation (optional) | auto_detect, include, expiry | Never shown (use /ll:configure) |
+| 12 | Prompt Optimization (optional) | enabled, mode, confirm | Never shown (use /ll:configure) |
+| **13** | **Allowed Tools** | **target settings file (settings.local.json / settings.json / skip)** | **Always** |
+| **14** | **CLAUDE.md Docs** | **add ll- CLI commands to CLAUDE.md (yes/skip)** | **Always in --interactive** |
 
 **Key behavior**:
 - Wait for each group's AskUserQuestion response before proceeding to the next

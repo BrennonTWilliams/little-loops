@@ -135,7 +135,7 @@ Strip the `_meta` and `$schema` sections. Do NOT strip `product` â€” in `--yes` 
 
 ### 5. Interactive Mode (if --interactive)
 
-If `--interactive` flag is set, follow the interactive wizard flow in [interactive.md](interactive.md) which guides the user through 7â€“8 rounds of configuration questions, with a progress indicator shown at each step.
+If `--interactive` flag is set, follow the interactive wizard flow in [interactive.md](interactive.md) which guides the user through 8â€“9 rounds of configuration questions, with a progress indicator shown at each step.
 
 ### 6. Display Summary
 
@@ -200,6 +200,10 @@ Configuration Summary:
   [DOCUMENTS]                             # Only show if enabled
   documents.enabled: true
   documents.categories: [architecture, product]  # List category names
+
+  [LEARNING TESTS]                        # Only show if enabled
+  learning_tests.enabled: true
+  learning_tests.stale_after_days: [days]
 
   [CONTINUATION]                          # Only show if configured (non-defaults)
   continuation.auto_detect_on_session_start: [true/false]
@@ -316,6 +320,7 @@ Skip all Write, Edit, and Bash(mkdir) tool calls. Skip Steps 9, 10, 11, and 12 â
    - Omit `sync` section entirely if user did not select "GitHub sync" (disabled is the default)
    - Omit `product` section if user selected "No, skip" (disabled is the default)
    - Omit `documents` section if user selected "Skip" (disabled is the default)
+   - Include `learning_tests` section with `enabled: true` or `enabled: false` based on Round 8 selection (always write this section to record the explicit choice)
    - Omit `continuation` section if all values match schema defaults
    - Omit `prompt_optimization` section if all values match schema defaults
 
@@ -339,6 +344,19 @@ Skip all Write, Edit, and Bash(mkdir) tool calls. Skip Steps 9, 10, 11, and 12 â
 
    Skip silently if `.ll/design-tokens/profiles/` already exists (never overwrite).
    Track outcome: `DESIGN_TOKENS_CREATED=true`
+
+7. Create learning-tests directory if learning tests are enabled (FEAT-1743):
+   If `LEARNING_TESTS_ENABLED=true` AND `.ll/learning-tests/` does not already exist:
+   - Create `.ll/learning-tests/` directory:
+     ```bash
+     mkdir -p .ll/learning-tests
+     ```
+   - Create `.ll/learning-tests/.gitkeep`:
+     Write an empty file to `.ll/learning-tests/.gitkeep`
+   - Print next steps hint: *"Run `/ll:explore-api <api-name>` to record your first proof, or run `proof-first-task` instead of `general-task` for any issue that touches a third-party API."*
+
+   Skip silently if `.ll/learning-tests/` already exists (never overwrite).
+   Track outcome: `LEARNING_TESTS_DIR_CREATED=true`
 
 ### 8.5. Install Codex CLI Hook Adapter (Conditional)
 
@@ -532,6 +550,10 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
      "Bash(ll-adapt-agents-for-codex:*)",
      "Write(.ll/ll-continue-prompt.md)"
      ```
+   - **If `LEARNING_TESTS_ENABLED=true`**, also append `"Skill(ll:explore-api)"` to the allow list after the canonical entries, before `"Write(.ll/ll-continue-prompt.md)"`:
+     ```json
+     "Skill(ll:explore-api)"
+     ```
    - Create `.claude/` directory first if needed
    - Write result back with 2-space indent, preserving all top-level keys (`$schema`, `env`, etc.)
 
@@ -645,6 +667,7 @@ INITIALIZATION COMPLETE
 Created: .ll/ll-config.json
 Created: .ll/ll-goals.md (product goals template)  # Only show if product enabled
 Created: .ll/design-tokens/profiles/{default,editorial-mono,warm-paper}/ (3 starter profiles)  # Only show if DESIGN_TOKENS_CREATED=true
+Created: .ll/learning-tests/.gitkeep (learning test registry)  # Only show if LEARNING_TESTS_DIR_CREATED=true
 Created: {{config.issues.base_dir}}/{bugs,features,enhancements,completed,deferred}
 Updated: .gitignore (added state file exclusions)
 Updated: .claude/settings.local.json (added ll- CLI tool permissions)  # Only show if user opted in
@@ -657,10 +680,11 @@ Next steps:
   2. Try a command: /ll:check-code
   3. Configure product goals: .ll/ll-goals.md      # Only show if product enabled
   4. Run parallel processing: ll-parallel      # Only show if parallel configured
-  5. Sync with GitHub: /ll:sync-issues push   # Only show if sync enabled
-  6. Run sprint processing: ll-sprint run [sprint-file]   # Only show if sprint management selected
-  7. Run FSM loop: ll-loop run [loop-file]               # Only show if FSM loops selected
-  8. Run sequential automation: ll-auto                  # Only show if sequential automation selected
+  5. Record your first learning test: /ll:explore-api <api-name>  # Only show if LEARNING_TESTS_DIR_CREATED=true
+  6. Sync with GitHub: /ll:sync-issues push   # Only show if sync enabled
+  7. Run sprint processing: ll-sprint run [sprint-file]   # Only show if sprint management selected
+  8. Run FSM loop: ll-loop run [loop-file]               # Only show if FSM loops selected
+  9. Run sequential automation: ll-auto                  # Only show if sequential automation selected
 
 Additional settings for sprints, loops, and automation can be customized via:
   /ll:configure                                          # Only show if any automation feature selected

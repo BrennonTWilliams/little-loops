@@ -2109,6 +2109,33 @@ class TestLearningTestsConfig:
         config = LearningTestsConfig.from_dict({})
         assert config.stale_after_days == 30
 
+    def test_enabled_defaults_to_false(self) -> None:
+        """enabled defaults to False when absent (FEAT-1743)."""
+        config = LearningTestsConfig.from_dict({})
+        assert config.enabled is False
+
+    def test_enabled_from_dict(self) -> None:
+        """enabled is read from config dict (FEAT-1743)."""
+        config = LearningTestsConfig.from_dict({"enabled": True})
+        assert config.enabled is True
+
+    def test_discoverability_defaults(self) -> None:
+        """discoverability sub-config defaults when absent (FEAT-1743)."""
+        config = LearningTestsConfig.from_dict({})
+        assert config.discoverability.mode == "warn"
+        assert config.discoverability.skip_packages == ["std", "typing", "os", "sys"]
+
+    def test_discoverability_from_dict(self) -> None:
+        """discoverability sub-config is read from config dict (FEAT-1743)."""
+        config = LearningTestsConfig.from_dict({
+            "discoverability": {
+                "mode": "block",
+                "skip_packages": ["std", "os"],
+            },
+        })
+        assert config.discoverability.mode == "block"
+        assert config.discoverability.skip_packages == ["std", "os"]
+
 
 class TestBRConfigLearningTestsIntegration:
     """Tests for BRConfig.learning_tests integration."""
@@ -2126,6 +2153,22 @@ class TestBRConfigLearningTestsIntegration:
 
         config = BRConfig(temp_project_dir)
         assert config.learning_tests.stale_after_days == 7
+
+    def test_learning_tests_enabled_defaults_false(self, temp_project_dir: Path) -> None:
+        """BRConfig.learning_tests.enabled defaults to False (FEAT-1743)."""
+        config = BRConfig(temp_project_dir)
+        assert config.learning_tests.enabled is False
+
+    def test_learning_tests_round_trip_to_dict(self, temp_project_dir: Path) -> None:
+        """learning_tests key appears in to_dict() with correct structure (FEAT-1743)."""
+        config = BRConfig(temp_project_dir)
+        d = config.to_dict()
+        assert "learning_tests" in d
+        lt = d["learning_tests"]
+        assert lt["enabled"] is False
+        assert lt["stale_after_days"] == 30
+        assert "discoverability" in lt
+        assert lt["discoverability"]["mode"] == "warn"
 
 
 class TestDesignTokensConfig:

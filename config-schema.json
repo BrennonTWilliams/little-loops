@@ -848,11 +848,33 @@
       "type": "object",
       "description": "Learning test registry settings",
       "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Master switch for the Learning Test Registry. When false, all LT-related surfaces (discoverability hook, gate-loop hints) are silenced. Set via /ll:init or /ll:configure.",
+          "default": false
+        },
         "stale_after_days": {
           "type": "integer",
           "description": "Number of days after which a learning test record is considered stale",
           "default": 30,
           "minimum": 1
+        },
+        "discoverability": {
+          "type": "object",
+          "description": "Controls how learning-test gaps are surfaced during implementation.",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["off", "warn", "block"],
+              "default": "warn"
+            },
+            "skip_packages": {
+              "type": "array",
+              "items": {"type": "string"},
+              "default": ["std", "typing", "os", "sys"]
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

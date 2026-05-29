@@ -133,6 +133,25 @@ class TestConfigSchema:
         assert "stale_after_days" in lt_props
         assert lt_props["stale_after_days"]["type"] == "integer"
 
+        # FEAT-1743: enabled master switch
+        assert "enabled" in lt_props, (
+            "learning_tests.enabled is missing from config-schema.json; "
+            "FEAT-1743 requires a boolean master switch"
+        )
+        assert lt_props["enabled"]["type"] == "boolean"
+        assert lt_props["enabled"].get("default") is False
+
+        # FEAT-1743: discoverability sub-object
+        assert "discoverability" in lt_props, (
+            "learning_tests.discoverability is missing from config-schema.json; "
+            "FEAT-1743 requires discoverability settings"
+        )
+        disc_props = lt_props["discoverability"]["properties"]
+        assert "mode" in disc_props
+        assert disc_props["mode"]["type"] == "string"
+        assert "skip_packages" in disc_props
+        assert disc_props["skip_packages"]["type"] == "array"
+
     def test_design_tokens_in_schema(self) -> None:
         """design_tokens block must be declared in config-schema.json (FEAT-1747).
 

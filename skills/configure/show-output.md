@@ -192,3 +192,14 @@ Design Tokens Configuration
 
 Edit: /ll:configure design-tokens
 ```
+
+## learning_tests --show
+
+Learning Tests Configuration
+------------------------------
+  enabled:               {{config.learning_tests.enabled}}               (default: false)
+  stale_after_days:      {{config.learning_tests.stale_after_days}}      (default: 30)
+  discoverability.mode:  {{config.learning_tests.discoverability.mode}}  (default: warn)
+
+Edit: /ll:configure learning-tests
+```

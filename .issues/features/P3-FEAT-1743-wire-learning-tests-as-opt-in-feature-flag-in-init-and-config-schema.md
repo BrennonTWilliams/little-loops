@@ -2,10 +2,12 @@
 id: FEAT-1743
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-27T18:24:59Z'
+completed_at: '2026-05-29T05:42:15Z'
 discovered_date: '2026-05-27'
 discovered_by: capture-issue
+decision_needed: false
 parent: EPIC-1694
 relates_to:
 - EPIC-1694
@@ -14,6 +16,12 @@ relates_to:
 - FEAT-1287
 - FEAT-1286
 - FEAT-749
+confidence_score: 100
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1743: Wire learning-tests as opt-in feature flag in `/ll:init` and `config-schema.json`
@@ -147,32 +155,82 @@ Six weeks later, Developer B starts integrating with Snowflake and changes their
 2. Update `skills/init/SKILL.md` documentation to mention the new question.
 3. Update `skills/configure/SKILL.md` to surface `learning_tests.enabled` as a togglable setting.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Config file restructured**: The config module is now `scripts/little_loops/config/features.py` (not a single `config.py`). `LearningTestsConfig` is at line 322, the `feature_enabled()` helper at line 13, and the `SyncConfig` pattern (`enabled: bool = False`) at line 427.
+- **Schema constraint**: `config-schema.json:847-858` sets `"additionalProperties": false` — this must be removed or the new `enabled` and `discoverability` properties will be rejected against existing config files.
+- **`feature_enabled()` already exists**: `scripts/little_loops/config/features.py:13-34` provides `feature_enabled(config_dict, "learning_tests.enabled")` that traverses raw dicts and returns `False` for missing keys. The new `is_learning_tests_enabled()` wrapper proposed in Phase 1 is a semantic convenience, not a new capability. Downstream callers that already have access to a raw config dict can use `feature_enabled()` directly; the `BRConfig` property path (`config.learning_tests.enabled`) is preferred for typed access.
+- **Init skill structure**: `skills/init/interactive.md` has `TOTAL = 8` (line 15) and 8 mandatory rounds. Adding a learning_tests round means incrementing to `TOTAL = 9`. Round 4 (Product Analysis, lines 232-258) is the structural template to replicate.
+- **Allowed-tools canonical list**: `skills/init/SKILL.md` Step 10 (lines 510-534) already includes `Bash(ll-learning-tests:*)` in its canonical list — no change needed there. It does NOT include `Skill(ll:explore-api)`, which the Yes path should append separately (not baked into the canonical list, since it's conditional on opt-in).
+- **Learning tests module**: Currently `scripts/little_loops/learning_tests.py` is a single file, not a package. Creating `scripts/little_loops/learning_tests/__init__.py` will shadow the existing module. The existing code must be migrated into the package (rename `learning_tests.py` → `learning_tests/records.py` or similar) or the new helper should go in a different location.
+- **Doc-wiring tests**: `scripts/tests/test_feat1756_init_wiring.py` and `scripts/tests/test_feat1757_configure_wiring.py` establish the pattern for asserting that skill docs contain expected round/section references — a similar test file should be created for this feature.
+- **Serialization**: `BRConfig.to_dict()` at `core.py:572-573` only serializes `stale_after_days` — it needs to export `enabled` and `discoverability` when the fields are added.
+
 ## Integration Map
 
 ### Files to Modify
-- `config-schema.json:847-858` — Extend `learning_tests` schema with `enabled` and `discoverability` properties
-- `scripts/little_loops/config.py` — Config loader defaults for `learning_tests.enabled`
-- `skills/init/SKILL.md` — Add opt-in question and scaffold handlers
-- `skills/configure/SKILL.md` — Surface `learning_tests.enabled` as togglable setting
+- `config-schema.json:847-858` — Extend `learning_tests` schema with `enabled` and `discoverability` properties; remove `"additionalProperties": false`
+- `scripts/little_loops/config/features.py:322-332` — Extend `LearningTestsConfig` dataclass with `enabled: bool = False` and `DiscoverabilityConfig` sub-dataclass
+- `scripts/little_loops/config/core.py:202-204` — `_parse_config()` wiring (already dispatches to `LearningTestsConfig.from_dict()`, no change needed if `from_dict` handles new fields)
+- `scripts/little_loops/config/core.py:572-573` — `to_dict()` must export `enabled` and `discoverability` in addition to `stale_after_days`
+- `skills/init/SKILL.md` — Add opt-in question, scaffold handlers, and Step 6 summary display entry
+- `skills/init/interactive.md` — Add new round for learning_tests opt-in (following Round 4 Product Analysis pattern); increment `TOTAL` counter
+- `skills/configure/SKILL.md` — Add `learning-tests` to argument-hint list and area mapping table
+- `skills/configure/areas.md` — Add per-area handler for `learning_tests` section (enable/disable + sub-property config)
 - `docs/guides/LEARNING_TESTS_GUIDE.md` — Add "Getting Started" section
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_config_schema.py:120-134` — extend `test_learning_tests_in_schema` with `enabled` and `discoverability` property assertions
+- `skills/configure/show-output.md` — add `## learning_tests --show` section (following `## design_tokens --show` pattern at line 178)
+
 ### New Files
-- `scripts/little_loops/learning_tests/__init__.py` — Helper: `is_learning_tests_enabled(config) -> bool`
+- `scripts/little_loops/learning_tests/__init__.py` — Package init with `is_learning_tests_enabled(config) -> bool` helper. NOTE: `scripts/little_loops/learning_tests.py` currently exists as a single-file module. Creating `learning_tests/` as a package will shadow it. Either migrate the existing code into the package (e.g., `learning_tests/records.py`) or place the helper elsewhere (e.g., `scripts/little_loops/config/features.py` alongside the existing `feature_enabled()`).
 - `scripts/tests/test_init_learning_tests.py` — Tests for yes-path, no-path, re-prompt suppression, default-false
+- `scripts/tests/test_feat1743_init_wiring.py` — Doc-wiring test asserting: init interactive.md has new round, TOTAL incremented, init SKILL.md references learning_tests, configure areas.md has learning-tests section (following `test_feat1756_init_wiring.py` and `test_feat1757_configure_wiring.py` patterns)
 
 ### Dependent Files (Callers/Importers)
 - FEAT-1742 (discoverability hook) — Reads `learning_tests.enabled` and `discoverability.mode`
 - FEAT-1739 (learning-tests-audit loop) — Checks `enabled` before running
-- `proof-first-task`, `assumption-firewall`, `ready-to-implement-gate` — Log hint when disabled
+- `scripts/little_loops/loops/assumption-firewall.yaml` — Gate loop; should log hint when `learning_tests.enabled: false`
+- `scripts/little_loops/loops/ready-to-implement-gate.yaml` — Gate sub-loop; same hint pattern
+- `scripts/little_loops/loops/integrate-sdk.yaml` — Integration loop; same hint pattern
+- `scripts/little_loops/loops/adopt-third-party-api.yaml` — Third-party API loop; same hint pattern
+- `scripts/little_loops/config/core.py:202-204` — `BRConfig._parse_config()` loads `learning_tests` section via `LearningTestsConfig.from_dict()`
+- `scripts/little_loops/config/core.py:572-573` — `BRConfig.to_dict()` serializes `learning_tests`; must export new fields
+- `scripts/little_loops/config/__init__.py:47` — Re-exports `LearningTestsConfig` in public API
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/cli/__init__.py:30,47,84` — docstring mentions `ll-learning-tests`; imports and re-exports `main_learning_tests` (if CLI registration surface changes)
 
 ### Similar Patterns
 - FEAT-749 — Allowed-tools registration in init; this issue follows the same wiring pattern
+- `skills/init/interactive.md:232-258` — Round 4 (Product Analysis) opt-in question; structurally identical Yes/No flow to replicate for learning_tests
+- `config-schema.json:954-1014` — `sync` section with `"enabled": false` default; opt-in schema pattern to follow
+- `scripts/little_loops/config/features.py:427-442` — `SyncConfig` dataclass with `enabled: bool = False`; exact `from_dict` pattern to replicate in `LearningTestsConfig`
+- `scripts/little_loops/config/features.py:13-34` — `feature_enabled(config_data, dot_path)` helper already exists and works on raw dicts; the new `is_learning_tests_enabled()` can wrap it for semantic clarity
+- `scripts/tests/test_feat1756_init_wiring.py` + `test_feat1757_configure_wiring.py` — doc-wiring test pattern to verify init/configure docs reference the new round/area
 
 ### Tests
-- `scripts/tests/test_init_learning_tests.py` — New test file
+- `scripts/tests/test_init_learning_tests.py` — New test file for init flow (yes/no paths, re-prompt suppression, default-false)
+- `scripts/tests/test_feat1743_init_wiring.py` — New doc-wiring regression test (round presence, TOTAL counter, cross-references)
+- `scripts/tests/test_config.py:2098-2128` — Extend `TestLearningTestsConfig` and `TestBRConfigLearningTestsIntegration` with `enabled` and `discoverability` field tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_config_schema.py:120-134` — extend `test_learning_tests_in_schema` with assertions for `enabled` and `discoverability` properties (following `test_design_tokens_in_schema` at line 136 as pattern)
+- `scripts/tests/test_config.py:2113-2128` — add `test_learning_tests_round_trip_to_dict` to `TestBRConfigLearningTestsIntegration` (follows `test_design_tokens_round_trip_to_dict` at line 2190; no `to_dict` coverage exists for learning_tests today)
 
 ### Documentation
-- `docs/guides/LEARNING_TESTS_GUIDE.md` — "Getting Started" section linking to init flow
+- `docs/guides/LEARNING_TESTS_GUIDE.md` — Add "Getting Started" section linking to init flow
+- `docs/reference/CONFIGURATION.md:556-572` — Document new `learning_tests.enabled` and `learning_tests.discoverability` fields
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/ARCHITECTURE.md:247` — update directory tree if `learning_tests.py` becomes `learning_tests/` package (the implementation may avoid this by placing the helper in `config/features.py` instead — confirm approach before touching this file)
 
 ### Configuration
 - `.ll/ll-config.json` — `learning_tests` block written by init
@@ -180,14 +238,26 @@ Six weeks later, Developer B starts integrating with Snowflake and changes their
 
 ## Implementation Steps
 
-1. Read `config-schema.json:847-858` and the current `/ll:init` skill (`skills/init/SKILL.md`).
-2. Extend `learning_tests` schema with `enabled`, `discoverability.mode`, `discoverability.skip_packages`.
-3. Add config loader helper for the master switch.
-4. Add the init question + Yes/No handlers; gate the scaffold steps on Yes.
-5. Add allowed-tools wiring for `ll-learning-tests` and `Skill(ll:explore-api)` (model after FEAT-749 implementation).
-6. Update FEAT-1742 (when implemented) and FEAT-1739 to consult the switch; add the soft hint to direct-invocation paths in `proof-first-task` / `assumption-firewall` / `ready-to-implement-gate`.
-7. Add tests in `scripts/tests/test_init_learning_tests.py` covering: yes-path scaffolds config + dir + allowed-tools; no-path writes explicit opt-out; re-running init does not re-prompt; switch defaults to false when block is absent.
-8. Update `LEARNING_TESTS_GUIDE.md` and `init` / `configure` skill docs.
+1. **Schema**: Read `config-schema.json:847-858`. Add `enabled` (boolean, default `false`), `discoverability` sub-object with `mode` (enum `"off"|"warn"|"block"`, default `"warn"`) and `skip_packages` (array<string>). Follow `sync` section pattern at `config-schema.json:954-1014`. Remove `"additionalProperties": false` so new fields are accepted.
+2. **Config dataclass**: In `scripts/little_loops/config/features.py:322-332`, add `enabled: bool = False` to `LearningTestsConfig` and a `DiscoverabilityConfig` sub-dataclass (model after `SyncConfig` at line 427). Update `from_dict()` to read both new fields.
+3. **Serialization**: Update `BRConfig.to_dict()` at `scripts/little_loops/config/core.py:572-573` to export `enabled` and `discoverability` alongside `stale_after_days`.
+4. **Feature flag helper**: Add `is_learning_tests_enabled(config) -> bool` — either as a standalone function wrapping the existing `feature_enabled()` at `features.py:13`, or placed directly in `config/features.py`. Returns `False` when block is absent or `enabled` is false.
+5. **Init skill — interactive.md**: Add a new round for learning_tests opt-in, following the Round 4 (Product Analysis) pattern at `skills/init/interactive.md:232-258`. Use `AskUserQuestion` with Yes/No. Increment `TOTAL` counter at line 15. On Yes: track `LEARNING_TESTS_ENABLED=true`.
+6. **Init skill — SKILL.md**: Add scaffold handlers in Step 8 (Write Configuration) following the conditional template deployment pattern at lines 327-341. On Yes: create `.ll/learning-tests/.gitkeep`, write `learning_tests: { enabled: true, ... }` to config. On No: write `learning_tests: { enabled: false }`. Add `[LEARNING TESTS]` section to Step 6 summary display (lines 142-214). In Step 10 (Allowed Tools, lines 510-534), conditionally append `Skill(ll:explore-api)` to the allow list when Yes was selected. Update Step 12 completion message.
+7. **Configure skill**: Add `learning-tests` to the area mapping table and argument-hint list in `skills/configure/SKILL.md`. Add per-area handler in `skills/configure/areas.md` (following `allowed-tools` area pattern at line 780). Surface `enabled`, `stale_after_days`, and `discoverability.mode` as togglable.
+8. **Downstream consumers** (Phase 3): Update `scripts/little_loops/loops/assumption-firewall.yaml`, `ready-to-implement-gate.yaml`, `integrate-sdk.yaml`, `adopt-third-party-api.yaml` to add an initial state checking `learning_tests.enabled` — route to hint log + continue (don't block). Wire FEAT-1742 discoverability hook and FEAT-1739 audit loop to consult the switch when those issues are implemented.
+9. **Tests**: Create `scripts/tests/test_init_learning_tests.py` covering yes-path, no-path, re-prompt suppression, default-false. Extend `scripts/tests/test_config.py` `TestLearningTestsConfig` (line 2098) and `TestBRConfigLearningTestsIntegration` (line 2113) with new field tests. Create `scripts/tests/test_feat1743_init_wiring.py` for doc-wiring assertions (following `test_feat1756_init_wiring.py` pattern).
+10. **Docs**: Update `docs/guides/LEARNING_TESTS_GUIDE.md` with Getting Started section; update `docs/reference/CONFIGURATION.md:556-572` to document new schema fields.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+11. **Schema test extension**: In `scripts/tests/test_config_schema.py:120-134`, extend `test_learning_tests_in_schema` to assert `enabled` (boolean) and `discoverability` (object with `mode` and `skip_packages`) exist in the schema properties. Follow the `test_design_tokens_in_schema` pattern at line 136.
+12. **Round-trip serialization test**: Add `test_learning_tests_round_trip_to_dict` to `TestBRConfigLearningTestsIntegration` in `scripts/tests/test_config.py` (after line 2128). Follow `test_design_tokens_round_trip_to_dict` at line 2190 — write a config file, load `BRConfig`, call `to_dict()`, and assert `enabled` and `discoverability` keys are present with correct values.
+13. **Configure show-output**: Add a `## learning_tests --show` section to `skills/configure/show-output.md`, following the `## design_tokens --show` pattern at line 178. Display `enabled`, `stale_after_days`, and `discoverability.mode`.
+14. **CLI init registration**: Verify `scripts/little_loops/cli/__init__.py:30,47,84` — no changes needed unless the CLI entry-point signature changes, but confirm `ll-learning-tests` remains correctly registered after the feature flag is added.
+15. **ARCHITECTURE.md**: If the implementation converts `learning_tests.py` into `learning_tests/` package, update `docs/ARCHITECTURE.md:247` directory tree. If the helper is placed in `config/features.py` instead (avoiding the shadowing problem), this step is not applicable.
 
 ## Acceptance Criteria
 
@@ -246,8 +316,32 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-05-27 | Priority: P3
+**Done** | Created: 2026-05-27 | Priority: P3
+
+## Resolution
+
+Implemented `learning_tests.enabled` master switch across config schema, dataclass, init skill, and configure skill.
+
+### Changes Made
+- **config-schema.json**: Added `enabled` (boolean, default false) and `discoverability` (object with `mode` and `skip_packages`) to `learning_tests` block
+- **features.py**: Added `DiscoverabilityConfig` sub-dataclass and `enabled: bool = False` + `discoverability` fields to `LearningTestsConfig`
+- **core.py**: Updated `to_dict()` to serialize `enabled` and `discoverability`
+- **interactive.md**: Added Round 8 (Learning Tests opt-in), bumped TOTAL to 9, renumbered subsequent rounds
+- **init/SKILL.md**: Added [LEARNING TESTS] summary, materialization handler (Step 8 item 7), conditional `Skill(ll:explore-api)` wiring (Step 10), completion message entries (Step 12), updated round count to 8–9
+- **configure/SKILL.md**: Added `learning-tests` to argument-hint, area mapping, interactive pagination, --list output, arguments list
+- **configure/areas.md**: Added `## Area: learning_tests` handler with enable/stale_days/discoverability config
+- **configure/show-output.md**: Added `## learning_tests --show` section
+- **test_config_schema.py**: Extended `test_learning_tests_in_schema` with enabled/discoverability assertions
+- **test_config.py**: Added enabled/discoverability tests + round-trip to_dict test
+- **test_feat1743_init_wiring.py**: New doc-wiring regression test (round, TOTAL, references, round count)
+- **test_feat1743_configure_wiring.py**: New doc-wiring regression test (area mapping, args, areas, show-output)
+- **test_feat1756_init_wiring.py**: Updated `TOTAL = 9` and `8–9 rounds` assertions for bumped round count
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-29T05:26:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e745131-624d-49cb-98a7-3efb2d40ebc0.jsonl`
+- `/ll:wire-issue` - 2026-05-29T05:21:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff8ff2f7-0c9f-4d20-9728-5e8161811fb0.jsonl`
+- `/ll:refine-issue` - 2026-05-29T05:10:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b69922a-cfcc-4ebf-9ec9-2af756567dc9.jsonl`
 - `/ll:format-issue` - 2026-05-29T02:45:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f33cbf4f-64fd-4485-8964-c58bfa3f4303.jsonl`
 - `/ll:capture-issue` - 2026-05-27T18:24:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5d67c925-b04f-4086-8575-fc25fa08257e.jsonl`
+- `/ll:confidence-check` - 2026-05-29T05:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c770381-3da1-4222-96c6-b14e2da38bfc.jsonl`
+- `/ll:manage-issue feature implement FEAT-1743` - 2026-05-29T05:42:15Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73cb6551-c995-43ba-ab5d-f74023697a2e.jsonl`

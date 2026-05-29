@@ -939,6 +939,72 @@ Then execute the chosen sub-command.
 
 ---
 
+## Area: learning_tests
+
+### Current Values
+
+```
+Current Learning Tests Configuration
+-------------------------------------
+  enabled:               {{config.learning_tests.enabled}}
+  stale_after_days:      {{config.learning_tests.stale_after_days}}
+  discoverability.mode:  {{config.learning_tests.discoverability.mode}}
+```
+
+### Round 1
+
+```yaml
+questions:
+  - header: "Learning Tests"
+    question: "Enable the Learning Test Registry for proof-first development?"
+    options:
+      - label: "Enable (turn on)"
+        description: "Activate learning-test registry, discoverability nudge, and gate-loop hints"
+      - label: "Disable (turn off)"
+        description: "Silence all learning-test surfaces — hooks, hints, and audit loops become no-ops"
+      - label: "Keep current ({{config.learning_tests.enabled}})"
+        description: "No change"
+    multiSelect: false
+
+  - header: "Stale Days"
+    question: "How many days before a learning test record is considered stale? (current: {{config.learning_tests.stale_after_days}})"
+    options:
+      - label: "7 (aggressive)"
+        description: "Mark tests stale after one week — tight CI feedback"
+      - label: "30 (default)"
+        description: "Mark tests stale after one month"
+      - label: "90 (relaxed)"
+        description: "Mark tests stale after three months — long-lived proofs"
+      - label: "Keep {{config.learning_tests.stale_after_days}}"
+        description: "No change"
+    multiSelect: false
+
+  - header: "Discoverability"
+    question: "How should learning-test gaps be surfaced during implementation? (current: {{config.learning_tests.discoverability.mode}})"
+    options:
+      - label: "warn (default)"
+        description: "Show a warning when unfamiliar API code is encountered"
+      - label: "block"
+        description: "Halt implementation until the API is proven via a learning test"
+      - label: "off"
+        description: "No discoverability nudge — tests run silently"
+      - label: "Keep {{config.learning_tests.discoverability.mode}}"
+        description: "No change"
+    multiSelect: false
+```
+
+### Configuration Result
+
+Based on selections, update `.ll/ll-config.json`:
+
+- If "Enable" selected: set `learning_tests.enabled: true`
+- If "Disable" selected: set `learning_tests.enabled: false`
+- If "Keep current" selected: preserve existing `enabled` value
+- Map "Stale Days" choice to `learning_tests.stale_after_days` (omit if default 30)
+- Map "Discoverability" choice to `learning_tests.discoverability.mode` (omit if default `warn`)
+
+---
+
 ## Area: design_tokens
 
 ### Current Values

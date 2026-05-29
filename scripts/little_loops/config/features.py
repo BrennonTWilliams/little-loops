@@ -319,16 +319,43 @@ class SprintsConfig:
 
 
 @dataclass
+class DiscoverabilityConfig:
+    """Controls how learning-test gaps are surfaced during implementation."""
+
+    mode: str = "warn"
+    skip_packages: list[str] = field(default_factory=lambda: ["std", "typing", "os", "sys"])
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DiscoverabilityConfig:
+        """Create DiscoverabilityConfig from dictionary."""
+        return cls(
+            mode=data.get("mode", "warn"),
+            skip_packages=data.get("skip_packages", ["std", "typing", "os", "sys"]),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize DiscoverabilityConfig to dictionary."""
+        return {
+            "mode": self.mode,
+            "skip_packages": list(self.skip_packages),
+        }
+
+
+@dataclass
 class LearningTestsConfig:
     """Learning test registry configuration."""
 
+    enabled: bool = False
     stale_after_days: int = 30
+    discoverability: DiscoverabilityConfig = field(default_factory=DiscoverabilityConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LearningTestsConfig:
         """Create LearningTestsConfig from dictionary."""
         return cls(
+            enabled=data.get("enabled", False),
             stale_after_days=data.get("stale_after_days", 30),
+            discoverability=DiscoverabilityConfig.from_dict(data.get("discoverability", {})),
         )
 
 
