@@ -6,19 +6,18 @@ description: |
 category: routing
 input_key: goal
 initial: discover_loops
-max_iterations: 25
-timeout: 7200
+max_iterations: 50
+timeout: 345600
 on_handoff: spawn
 
 context:
-  goal: ""                    # populated via input_key: the natural language task description
-  auto: "true"                # "true" = dispatch top candidate without HITL confirmation
-  auto_create: "false"        # "true" = invoke create-loop when branch C (propose_new) fires
+  goal: "" # populated via input_key: the natural language task description
+  auto: "true" # "true" = dispatch top candidate without HITL confirmation
+  auto_create: "false" # "true" = invoke create-loop when branch C (propose_new) fires
   confidence_threshold: "0.7" # minimum score to auto-dispatch without HITL
-  exclude: ""                 # comma-separated loop names to exclude from the catalog
+  exclude: "" # comma-separated loop names to exclude from the catalog
 
 states:
-
   # ─── Phase 1: Catalog Discovery ─────────────────────────────────────────────
 
   discover_loops:
