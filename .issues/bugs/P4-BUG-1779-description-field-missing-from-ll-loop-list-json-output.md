@@ -1,17 +1,18 @@
 ---
 id: BUG-1779
 type: BUG
-status: open
+status: done
 priority: P4
 created_date: 2026-05-28
-captured_at: "2026-05-29T01:36:37Z"
+captured_at: '2026-05-29T01:36:37Z'
+completed_at: '2026-05-29T02:02:57Z'
 discovered_date: 2026-05-28
 discovered_by: capture-issue
 labels:
-  - bug
-  - cli
-  - json
-  - captured
+- bug
+- cli
+- json
+- captured
 ---
 
 # BUG-1779: description field missing from ll-loop `list --json` output
@@ -127,6 +128,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `cli`, `json`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-29T02:01:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/291ad43f-07bd-47b9-bbb7-a79dd116d511.jsonl`
 - `/ll:format-issue` - 2026-05-29T01:42:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3503f9ee-b935-4a47-a95f-613e88e853a9.jsonl`
 - `/ll:capture-issue` - 2026-05-29T01:36:37Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10ec9212-23d4-4181-8984-005063bcc13e.jsonl`
 

@@ -188,6 +188,7 @@ def cmd_list(
                 "path": str(lp["path"]),
                 "category": lp["category"],
                 "labels": lp["labels"],
+                "description": lp["description"],
             }
             if lp["builtin"]:
                 item["built_in"] = True

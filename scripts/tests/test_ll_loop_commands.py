@@ -342,6 +342,7 @@ class TestCmdList:
         for item in data:
             assert "name" in item
             assert "path" in item
+            assert "description" in item
 
     def test_list_json_empty(
         self,
