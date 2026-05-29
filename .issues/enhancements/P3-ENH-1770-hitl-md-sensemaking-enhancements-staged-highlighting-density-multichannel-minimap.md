@@ -1,7 +1,8 @@
 ---
 id: ENH-1770
-status: open
+status: done
 captured_at: '2026-05-28T17:00:00Z'
+completed_at: '2026-05-29T19:13:53Z'
 discovered_date: '2026-05-28'
 discovered_by: capture-issue
 labels:
@@ -213,7 +214,24 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `hitl-md`, `ui`, `sensemaking`, `captured`
 
+## Resolution
+
+Implemented as designed. The six sensemaking features and the new segment schema land in `scripts/little_loops/loops/hitl-md.yaml`:
+
+- **`segment` state** — extended to emit `channels` (importance / anomaly / claim_type / confidence) and a `length_normalized` flag per segment, plus a `median_segment_length` summary field in `segments.json`.
+- **`generate` state** — appended a "Sensemaking layer (ENH-1770)" section instructing the LLM to render staged dynamic highlighting (IntersectionObserver waves), an adaptive density slider (`<input type="range">`), multi-channel saliency with toggle controls + new `data-channel-*` attributes, a schema-switching toolbar, a fixed-position canvas minimap with `localStorage`-backed visit heatmap, and calibrated friction (confidence-before-content DOM order, click-to-reveal gating for high-saliency low-confidence claims, length-normalized credibility markers). All feature styles are required to source colors / spacing / motion / typography / radii from design token CSS custom properties via `${context.design_tokens_context}`.
+- **`score` state** — extended from 6 to 13 criteria with the 7 new ENH-1770 evaluations (`staged_highlighting`, `density_control`, `multi_channel_saliency`, `schema_switching`, `minimap_state_rail`, `trust_calibration`, `design_token_consistency`). Per-criterion annotations are required to use lowercase descriptive text to avoid colliding with the compound `ALL_PASS` gate token (BUG-1675-style guard, `test_no_bare_pass_token_in_output_contains`).
+
+Structural tests added to `TestHitlMdLoop` (`scripts/tests/test_builtin_loops.py:3624`) cover: segment channels + length_normalized, generate-state staged highlighting + density slider + multi-channel data attributes + schema-switching + minimap (canvas/localStorage) + calibrated friction + design tokens reference, score-state new criteria + preserved original criteria + ALL_PASS compound token. All 35 `TestHitlMdLoop` tests pass.
+
+Documentation updated: `docs/guides/LOOPS_GUIDE.md` (table row + harness section now describes the 13-criterion rubric and the 6 new features), `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` "See Also" bullet, `scripts/little_loops/loops/README.md` catalog entry, and `docs/development/sensemaking-hitl-md.md` (added implementation-status note marking patterns 1, 2, 5, 6, 7 plus calibrated friction as wired).
+
+CHANGELOG entry deferred to the next release prep per the maintainer convention (entries go in a dated `## [X.Y.Z]` section, not under `[Unreleased]`).
+
+Pre-existing test failures unrelated to ENH-1770 (`test_no_bare_bash_variable_in_shell_actions` and `test_expected_loops_exist`, both regarding `cli-anything-bootstrap.yaml`) were observed on `main` before this change and remain.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-05-29T19:13:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010b6d0-c5ea-42f5-b7da-dacb34c4bb15.jsonl`
 - `/ll:ready-issue` - 2026-05-29T18:51:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97af05f4-024d-4e1b-8b35-cbcf8ccdca06.jsonl`
 - `/ll:wire-issue` - 2026-05-29T18:30:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/174d6d2b-73db-4379-829e-28085556667d.jsonl`
 - `/ll:refine-issue` - 2026-05-29T05:02:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67b57fec-0cce-4cf6-8ad3-3e79d6cd8777.jsonl`
@@ -221,4 +239,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:capture-issue` - 2026-05-28T17:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1814a47-ceda-478f-aac4-3e3bf601d202.jsonl`
 - `/ll:confidence-check` - 2026-05-29T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d6ccc1e-b9ff-4db2-8494-fead3e4fd7cb.jsonl`
 
-**Open** | Created: 2026-05-28 | Priority: P3
+**Done** | Created: 2026-05-28 | Completed: 2026-05-29 | Priority: P3

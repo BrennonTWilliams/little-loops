@@ -1,5 +1,13 @@
 Synthesis: 8 Sensemaking Patterns for hitl-md
 
+  **Implementation status (ENH-1770, 2026-05-29):** Patterns 1, 2, 5, 6, 7, and an
+  additional calibrated-friction pattern (confidence badges before content,
+  click-to-reveal gating, length-normalized credibility markers per Steyvers et al.
+  2024 / Kim et al. 2026) are now wired into the `hitl-md` loop YAML's `segment`,
+  `generate`, and `score` states. Patterns 3 (bookmark sidebar) and 4 (section-by-
+  section mode) and 8 (gist-on-hover) remain proposed. See `scripts/little_loops/
+  loops/hitl-md.yaml` and the `TestHitlMdLoop` structural tests for the wiring.
+
   Tier 1: Add now (CSS/JS changes only, no generation pipeline changes)
 
   1. Staged dynamic highlighting — HCEye research (Das et al., 2024) shows static highlighting loses effectiveness under cognitive load. Instead of painting all

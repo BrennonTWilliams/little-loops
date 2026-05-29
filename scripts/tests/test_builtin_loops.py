@@ -3621,6 +3621,162 @@ class TestHitlMdLoop:
         assert "critique.md" in action, "done.action must reference critique.md"
         assert "screenshot.png" in action, "done.action must reference screenshot.png"
 
+    # ENH-1770: sensemaking enhancements — staged highlighting, density control,
+    # multi-channel saliency, schema-switching, minimap, calibrated friction
+
+    def test_segment_action_emits_channels(self, data: dict) -> None:
+        """segment state must instruct the LLM to emit a `channels` object per segment
+        (multi-channel saliency: importance, anomaly, claim_type, confidence)."""
+        action = data["states"].get("segment", {}).get("action", "")
+        assert "channels" in action, (
+            "segment.action must reference the 'channels' field for multi-channel saliency"
+        )
+        for channel in ("importance", "anomaly", "claim_type", "confidence"):
+            assert channel in action, (
+                f"segment.action must describe the '{channel}' channel"
+            )
+
+    def test_segment_action_emits_length_normalized(self, data: dict) -> None:
+        """segment state must instruct the LLM to emit a length_normalized flag
+        for segments exceeding the document median length (Steyvers et al. 2024)."""
+        action = data["states"].get("segment", {}).get("action", "")
+        assert "length_normalized" in action, (
+            "segment.action must reference length_normalized flag for trust calibration"
+        )
+
+    def test_generate_action_has_staged_highlighting(self, data: dict) -> None:
+        """generate state must instruct LLM to use IntersectionObserver-based staged
+        highlight reveal (HCEye dynamic-appearance finding)."""
+        action = data["states"].get("generate", {}).get("action", "")
+        assert "IntersectionObserver" in action, (
+            "generate.action must reference IntersectionObserver for staged highlighting"
+        )
+        assert "staged" in action.lower() or "wave" in action.lower(), (
+            "generate.action must describe staged/waved highlight reveal"
+        )
+
+    def test_generate_action_has_density_slider(self, data: dict) -> None:
+        """generate state must instruct LLM to render an adaptive density slider
+        (input type='range') filtering highlights by saliency threshold."""
+        action = data["states"].get("generate", {}).get("action", "")
+        assert 'type="range"' in action or "type='range'" in action, (
+            "generate.action must reference a range input for the density slider"
+        )
+        assert "density" in action.lower(), (
+            "generate.action must describe the density control"
+        )
+
+    def test_generate_action_has_multi_channel_saliency(self, data: dict) -> None:
+        """generate state must instruct LLM to render multi-channel saliency
+        (anomaly, claim_type, confidence channels) with toggle controls."""
+        action = data["states"].get("generate", {}).get("action", "")
+        # New data attributes per the issue's integration map
+        for attr in (
+            "data-channel-importance",
+            "data-channel-anomaly",
+            "data-channel-confidence",
+            "data-claim-type",
+        ):
+            assert attr in action, (
+                f"generate.action must reference the {attr} attribute"
+            )
+
+    def test_generate_action_has_schema_switching(self, data: dict) -> None:
+        """generate state must instruct LLM to render a schema-switching toolbar
+        (re-group by heading, saliency, claim type, anomaly)."""
+        action = data["states"].get("generate", {}).get("action", "")
+        assert "schema" in action.lower() and "switch" in action.lower(), (
+            "generate.action must describe schema-switching toggles"
+        )
+
+    def test_generate_action_has_minimap(self, data: dict) -> None:
+        """generate state must instruct LLM to render a canvas-based minimap
+        with localStorage-backed visit heatmap (Reddy Keyhole Effect)."""
+        action = data["states"].get("generate", {}).get("action", "")
+        assert "minimap" in action.lower(), (
+            "generate.action must reference the minimap feature"
+        )
+        assert "canvas" in action.lower(), (
+            "generate.action must reference canvas for minimap rendering"
+        )
+        assert "localStorage" in action, (
+            "generate.action must reference localStorage for visit heatmap"
+        )
+
+    def test_generate_action_has_calibrated_friction(self, data: dict) -> None:
+        """generate state must instruct LLM to render calibrated friction —
+        confidence badges before content, click-to-reveal for low-confidence
+        high-saliency claims, length-normalized credibility marker (Kim et al. 2026,
+        Steyvers et al. 2024)."""
+        action = data["states"].get("generate", {}).get("action", "")
+        assert "trust calibration" in action.lower() or "calibrated friction" in action.lower(), (
+            "generate.action must describe the trust calibration / calibrated friction toggle"
+        )
+        assert "click-to-reveal" in action.lower() or "click to reveal" in action.lower(), (
+            "generate.action must describe the click-to-reveal gate"
+        )
+        assert "length_normalized" in action or "length-normalized" in action.lower(), (
+            "generate.action must reference length-normalized confidence display"
+        )
+
+    def test_generate_action_references_design_tokens(self, data: dict) -> None:
+        """generate state must instruct LLM to source colors/spacing/motion from
+        design token CSS custom properties rather than hardcoded values."""
+        action = data["states"].get("generate", {}).get("action", "")
+        assert "design_tokens_context" in action, (
+            "generate.action must reference ${context.design_tokens_context}"
+        )
+        # The new features must reference CSS custom property syntax
+        assert "var(--" in action, (
+            "generate.action must instruct use of CSS custom properties for token consistency"
+        )
+
+    def test_score_state_has_new_criteria(self, data: dict) -> None:
+        """score state must include the 7 new ENH-1770 criteria with thresholds:
+        staged_highlighting, density_control, multi_channel_saliency,
+        schema_switching, minimap_state_rail, trust_calibration,
+        design_token_consistency."""
+        action = data["states"].get("score", {}).get("action", "")
+        new_criteria = (
+            "staged_highlighting",
+            "density_control",
+            "multi_channel_saliency",
+            "schema_switching",
+            "minimap_state_rail",
+            "trust_calibration",
+            "design_token_consistency",
+        )
+        for criterion in new_criteria:
+            assert criterion in action, (
+                f"score.action must include the '{criterion}' criterion"
+            )
+
+    def test_score_state_preserves_original_criteria(self, data: dict) -> None:
+        """score state must retain all 6 original criteria so the existing
+        rubric isn't lost when the new criteria are added."""
+        action = data["states"].get("score", {}).get("action", "")
+        original_criteria = (
+            "document_readability",
+            "inline_highlighting",
+            "affordance_overlay",
+            "keyboard_reachability",
+            "inline_constraint",
+            "markdown_reconstruction",
+        )
+        for criterion in original_criteria:
+            assert criterion in action, (
+                f"score.action must retain the original '{criterion}' criterion"
+            )
+
+    def test_score_state_uses_compound_all_pass_token(self, data: dict) -> None:
+        """score state must keep ALL_PASS as the compound gate token — per-criterion
+        annotations must not collide with a bare 'PASS' token (see
+        test_no_bare_pass_token_in_output_contains guard)."""
+        evaluator = data["states"].get("score", {}).get("evaluate", {})
+        assert evaluator.get("pattern") == "ALL_PASS", (
+            "score evaluator must use the compound ALL_PASS token"
+        )
+
 
 class TestRlCodingAgentLoop:
     """Structural tests for the rl-coding-agent FSM loop."""
