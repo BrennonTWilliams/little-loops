@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 import textwrap
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from little_loops.config import CliConfig
@@ -35,10 +36,39 @@ def wrap_text(text: str, indent: str = "  ", width: int | None = None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# ANSI escape-sequence stripping
+# ---------------------------------------------------------------------------
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+
+def strip_ansi(text: str) -> str:
+    """Strip ANSI escape sequences from *text* and return plain text."""
+    return _ANSI_RE.sub("", text)
+
+
+# ---------------------------------------------------------------------------
+# Box-drawing character constants (Unicode box-drawing set)
+# ---------------------------------------------------------------------------
+
+BOX_H = "─"   # ─
+BOX_V = "│"   # │
+BOX_TL = "┌"  # ┌
+BOX_TR = "┐"  # ┐
+BOX_BL = "└"  # └
+BOX_BR = "┘"  # ┘
+BOX_ML = "├"  # ├
+BOX_MR = "┤"  # ┤
+
+
+# ---------------------------------------------------------------------------
 # ANSI color helpers — suppressed when NO_COLOR=1 or stdout is not a TTY
 # ---------------------------------------------------------------------------
 
-_USE_COLOR: bool = sys.stdout.isatty() and os.environ.get("NO_COLOR", "") == ""
+_USE_COLOR: bool = (
+    os.environ.get("FORCE_COLOR", "") == "1"
+    or (sys.stdout.isatty() and os.environ.get("NO_COLOR", "") == "")
+)
 
 PRIORITY_COLOR: dict[str, str] = {
     "P0": "38;5;208;1",
@@ -70,11 +100,14 @@ def configure_output(config: CliConfig | None = None) -> None:
     # NO_COLOR env var always takes precedence (industry convention)
     no_color_env = os.environ.get("NO_COLOR", "") != ""
 
+    # FORCE_COLOR=1 forces color even when stdout is not a TTY
+    force_color = os.environ.get("FORCE_COLOR", "") == "1"
+
     if config is None:
-        _USE_COLOR = sys.stdout.isatty() and not no_color_env
+        _USE_COLOR = not no_color_env and (force_color or sys.stdout.isatty())
         return
 
-    _USE_COLOR = config.color and sys.stdout.isatty() and not no_color_env
+    _USE_COLOR = config.color and not no_color_env and (force_color or sys.stdout.isatty())
 
     # Merge custom priority colors
     PRIORITY_COLOR.update(
@@ -131,3 +164,146 @@ def format_relative_time(seconds: float) -> str:
     d, rem = divmod(total, 86400)
     h = rem // 3600
     return f"{d}d ago" if h == 0 else f"{d}d {h}h ago"
+
+
+# ---------------------------------------------------------------------------
+# User-facing message helpers — simple, untimestamped, icon-prefixed.
+# Distinguished from Logger (logger.py) by: no timestamps, direct stdout/stderr,
+# icons only when color is enabled.
+# ---------------------------------------------------------------------------
+
+_ICONS: dict[str, str] = {
+    "success": "✓",   # ✓
+    "error": "✗",     # ✗
+    "warning": "⚠",   # ⚠
+    "info": "ℹ",      # ℹ
+    "hint": "›",      # ›
+}
+
+
+def success(msg: str) -> None:
+    """Print a success message to stdout."""
+    icon = f"{_ICONS['success']} " if _USE_COLOR else ""
+    print(f"{colorize(icon + msg, '32')}", flush=True)
+
+
+def error(msg: str) -> None:
+    """Print an error message to stderr."""
+    icon = f"{_ICONS['error']} " if _USE_COLOR else ""
+    print(f"{colorize(icon + msg, '38;5;208')}", file=sys.stderr, flush=True)
+
+
+def warning(msg: str) -> None:
+    """Print a warning message to stdout."""
+    icon = f"{_ICONS['warning']} " if _USE_COLOR else ""
+    print(f"{colorize(icon + msg, '33')}", flush=True)
+
+
+def info(msg: str) -> None:
+    """Print an informational message to stdout."""
+    icon = f"{_ICONS['info']} " if _USE_COLOR else ""
+    print(f"{colorize(icon + msg, '36')}", flush=True)
+
+
+def hint(msg: str) -> None:
+    """Print a hint / dim message to stdout."""
+    icon = f"{_ICONS['hint']} " if _USE_COLOR else ""
+    print(f"{colorize(icon + msg, '2')}", flush=True)
+
+
+# ---------------------------------------------------------------------------
+# Structured formatters — pure string-returning helpers
+# ---------------------------------------------------------------------------
+
+
+def table(headers: list[str], rows: list[list[str]], max_col_width: int = 40) -> str:
+    """Return an auto-width box-drawn table string.
+
+    Column widths are the lesser of *max_col_width* and the longest value
+    in each column. Values exceeding *max_col_width* are truncated.
+    """
+    if not headers:
+        return ""
+
+    ncols = len(headers)
+    all_cells = [headers] + rows
+
+    col_widths: list[int] = [0] * ncols
+    for row in all_cells:
+        for i, cell in enumerate(row):
+            if i < ncols:
+                col_widths[i] = max(col_widths[i], len(cell))
+
+    col_widths = [max(3, min(w, max_col_width)) for w in col_widths]
+
+    def _cell(text: str, width: int) -> str:
+        if len(text) <= width:
+            return text.ljust(width)
+        return text[: width - 1] + "…"
+
+    def _sep(left: str, mid: str, right: str) -> str:
+        parts = [BOX_H * w for w in col_widths]
+        return left + mid.join(parts) + right
+
+    lines: list[str] = []
+    lines.append(_sep(BOX_TL, "┬", BOX_TR))
+    lines.append(BOX_V + BOX_V.join(_cell(h, w) for h, w in zip(headers, col_widths, strict=True)) + BOX_V)
+    lines.append(_sep(BOX_ML, "┼", BOX_MR))
+
+    for row in rows:
+        padded = []
+        for i in range(ncols):
+            val = row[i] if i < len(row) else ""
+            padded.append(_cell(val, col_widths[i]))
+        lines.append(BOX_V + BOX_V.join(padded) + BOX_V)
+
+    lines.append(_sep(BOX_BL, "┴", BOX_BR))
+
+    return "\n".join(lines)
+
+
+def status_block(items: dict[str, str]) -> str:
+    """Return aligned key-value pairs.
+
+    Keys are right-padded so values align. Returns empty string for an empty dict.
+    """
+    if not items:
+        return ""
+
+    max_key = max(len(k) for k in items)
+    lines: list[str] = []
+    for key, value in items.items():
+        lines.append(f"{key.ljust(max_key)}: {value}")
+    return "\n".join(lines)
+
+
+def progress(current: int, total: int, width: int = 20) -> str:
+    """Return a ``|####`` |`` progress bar of *width* columns."""
+    if width < 3:
+        width = 3
+    inner = width - 2
+
+    if total <= 0:
+        filled = 0
+    else:
+        filled = max(0, min(inner, round(inner * current / total)))
+
+    return "|" + "#" * filled + " " * (inner - filled) + "|"
+
+
+# ---------------------------------------------------------------------------
+# Output mode toggling
+# ---------------------------------------------------------------------------
+
+_OUTPUT_MODE: Literal["human", "json", "plain"] = "human"
+
+
+def set_output_mode(mode: Literal["human", "json", "plain"]) -> None:
+    """Set the global output mode for all formatters."""
+    global _OUTPUT_MODE
+    _OUTPUT_MODE = mode
+
+
+def get_output_mode() -> Literal["human", "json", "plain"]:
+    """Return the current global output mode."""
+    return _OUTPUT_MODE

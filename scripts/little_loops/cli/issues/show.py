@@ -8,7 +8,14 @@ import textwrap
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, print_json, terminal_width
+from little_loops.cli.output import (
+    PRIORITY_COLOR,
+    TYPE_COLOR,
+    colorize,
+    print_json,
+    strip_ansi,
+    terminal_width,
+)
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -275,16 +282,9 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     }
 
 
-_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
-
-
-def _strip_ansi(text: str) -> str:
-    return _ANSI_RE.sub("", text)
-
-
 def _ljust(text: str, width: int) -> str:
     """Left-justify text accounting for invisible ANSI escape codes."""
-    pad = max(0, width - len(_strip_ansi(text)))
+    pad = max(0, width - len(strip_ansi(text)))
     return text + " " * pad
 
 

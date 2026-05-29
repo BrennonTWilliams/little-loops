@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -22,7 +21,7 @@ from little_loops.cli.loop.layout import (  # noqa: F401
     _colorize_label,
     _render_fsm_diagram,
 )
-from little_loops.cli.output import colorize, print_json, terminal_width
+from little_loops.cli.output import colorize, print_json, strip_ansi, terminal_width
 from little_loops.fsm import is_runnable_loop
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.validation import load_and_validate
@@ -236,7 +235,7 @@ def cmd_list(
 
             if suffix_parts:
                 suffix_raw = "  " + " ".join(suffix_parts)
-                suffix_visible = len(_strip_ansi(suffix_raw))
+                suffix_visible = len(strip_ansi(suffix_raw))
             else:
                 suffix_raw = ""
                 suffix_visible = 0
@@ -253,12 +252,6 @@ def cmd_list(
 
 
 _EVENT_TYPE_WIDTH = 16  # width of "handoff_detected"
-
-_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
-
-
-def _strip_ansi(text: str) -> str:
-    return _ANSI_RE.sub("", text)
 
 
 def _truncate(text: str, max_len: int) -> str:

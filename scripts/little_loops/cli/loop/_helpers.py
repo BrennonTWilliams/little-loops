@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import signal
 import subprocess
 import sys
@@ -19,7 +18,7 @@ from little_loops.cli.loop.diagram_modes import (
     DiagramFacets,
     resolve_facets,
 )
-from little_loops.cli.output import colorize, terminal_size, terminal_width
+from little_loops.cli.output import colorize, strip_ansi, terminal_size, terminal_width
 from little_loops.fsm.concurrency import LockManager, _process_alive
 from little_loops.logger import Logger
 
@@ -55,9 +54,6 @@ _needs_redraw: bool = False
 _original_sigwinch: Any = None
 
 
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[mABCDEFGHJKSTfhilmnprsu]")
-
-
 class _TeeWriter:
     """Wraps a stream, writing to both the original and a log file (ANSI stripped on log)."""
 
@@ -67,7 +63,7 @@ class _TeeWriter:
 
     def write(self, data: str) -> int:
         n = self._stream.write(data)
-        self._log_fh.write(_ANSI_RE.sub("", data))
+        self._log_fh.write(strip_ansi(data))
         return n
 
     def flush(self) -> None:

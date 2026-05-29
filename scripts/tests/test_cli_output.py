@@ -334,3 +334,377 @@ class TestIssueListNoColor:
         assert "\033[" not in captured.out
         assert "BUG-001" in captured.out
         assert "Test bug" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# ENH-1781: New shared output helpers — tests written before implementation
+# ---------------------------------------------------------------------------
+
+
+class TestStripAnsi:
+    """Tests for strip_ansi()."""
+
+    def test_strips_sgr_sequences(self) -> None:
+        """strip_ansi removes ANSI SGR escape codes."""
+        from little_loops.cli.output import strip_ansi
+
+        result = strip_ansi("\033[31mhello\033[0m")
+        assert result == "hello"
+
+    def test_passes_plain_text_unchanged(self) -> None:
+        """strip_ansi returns plain text as-is."""
+        from little_loops.cli.output import strip_ansi
+
+        result = strip_ansi("hello world")
+        assert result == "hello world"
+
+    def test_handles_empty_string(self) -> None:
+        """strip_ansi handles empty string."""
+        from little_loops.cli.output import strip_ansi
+
+        result = strip_ansi("")
+        assert result == ""
+
+    def test_strips_multi_byte_color_codes(self) -> None:
+        """strip_ansi removes 256-color escape sequences like 38;5;208."""
+        from little_loops.cli.output import strip_ansi
+
+        result = strip_ansi("\033[38;5;208mwarning\033[0m")
+        assert result == "warning"
+
+    def test_strips_bold_sequences(self) -> None:
+        """strip_ansi removes bold + color sequences."""
+        from little_loops.cli.output import strip_ansi
+
+        result = strip_ansi("\033[1;31mbold red\033[0m")
+        assert result == "bold red"
+
+
+class TestBoxConstants:
+    """Tests for box-drawing character constants."""
+
+    def test_horizontal_is_single_char(self) -> None:
+        from little_loops.cli.output import BOX_H
+
+        assert len(BOX_H) == 1
+
+    def test_vertical_is_single_char(self) -> None:
+        from little_loops.cli.output import BOX_V
+
+        assert len(BOX_V) == 1
+
+    def test_corners_are_distinct(self) -> None:
+        from little_loops.cli.output import BOX_TL, BOX_TR, BOX_BL, BOX_BR
+
+        assert len({BOX_TL, BOX_TR, BOX_BL, BOX_BR}) == 4
+
+    def test_all_box_chars_are_single_unicode(self) -> None:
+        from little_loops.cli.output import (
+            BOX_BL,
+            BOX_BR,
+            BOX_H,
+            BOX_ML,
+            BOX_MR,
+            BOX_TL,
+            BOX_TR,
+            BOX_V,
+        )
+
+        for char in (BOX_H, BOX_V, BOX_TL, BOX_TR, BOX_BL, BOX_BR, BOX_ML, BOX_MR):
+            assert len(char) == 1
+
+
+class FlushTracker:
+    """Minimal stream that tracks whether flush() was called."""
+
+    def __init__(self) -> None:
+        self.content: list[str] = []
+        self.flush_called = False
+
+    def write(self, s: str) -> None:
+        self.content.append(s)
+
+    def flush(self) -> None:
+        self.flush_called = True
+
+
+class TestMessageHelpers:
+    """Tests for success(), error(), warning(), info(), hint()."""
+
+    def test_success_prints_to_stdout(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """success() writes to stdout."""
+        from little_loops.cli.output import success
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            success("done")
+        captured = capsys.readouterr()
+        assert "done" in captured.out
+        assert captured.err == ""
+
+    def test_error_prints_to_stderr(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """error() writes to stderr."""
+        from little_loops.cli.output import error
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            error("fail")
+        captured = capsys.readouterr()
+        assert "fail" in captured.err
+
+    def test_warning_prints_to_stdout(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """warning() writes to stdout."""
+        from little_loops.cli.output import warning
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            warning("careful")
+        captured = capsys.readouterr()
+        assert "careful" in captured.out
+        assert captured.err == ""
+
+    def test_info_prints_to_stdout(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """info() writes to stdout."""
+        from little_loops.cli.output import info
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            info("note")
+        captured = capsys.readouterr()
+        assert "note" in captured.out
+        assert captured.err == ""
+
+    def test_hint_prints_to_stdout(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """hint() writes to stdout."""
+        from little_loops.cli.output import hint
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            hint("tip")
+        captured = capsys.readouterr()
+        assert "tip" in captured.out
+        assert captured.err == ""
+
+    def test_success_includes_icon_with_color(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """success() includes checkmark icon when color enabled."""
+        from little_loops.cli.output import success
+
+        with patch.object(output_mod, "_USE_COLOR", True):
+            success("done")
+        captured = capsys.readouterr()
+        assert "✓" in captured.out
+
+    def test_error_includes_icon_with_color(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """error() includes X icon when color enabled."""
+        from little_loops.cli.output import error
+
+        with patch.object(output_mod, "_USE_COLOR", True):
+            error("fail")
+        captured = capsys.readouterr()
+        assert "✗" in captured.err
+
+    def test_no_icon_when_color_disabled(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """No icon prefix when _USE_COLOR is False."""
+        from little_loops.cli.output import success
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            success("done")
+        captured = capsys.readouterr()
+        assert "✓" not in captured.out
+
+    def test_all_helpers_flush(self) -> None:
+        """All message helpers call flush() on their stream."""
+        from little_loops.cli.output import error, hint, info, success, warning
+
+        with patch.object(output_mod, "_USE_COLOR", False):
+            for func in (success, error, warning, info, hint):
+                tracker = FlushTracker()
+                stream_attr = "sys.stderr" if func is error else "sys.stdout"
+                with patch(stream_attr, tracker):
+                    func("test")
+                assert tracker.flush_called, f"{func.__name__}() must call flush()"
+
+
+class TestTable:
+    """Tests for table() structured formatter."""
+
+    def test_returns_string_with_headers(self) -> None:
+        """table() returns a string containing header text."""
+        from little_loops.cli.output import table
+
+        result = table(["Name", "Value"], [["foo", "bar"]])
+        assert "Name" in result
+        assert "Value" in result
+        assert "foo" in result
+        assert "bar" in result
+
+    def test_handles_empty_rows(self) -> None:
+        """table() with no rows returns headers only."""
+        from little_loops.cli.output import table
+
+        result = table(["Col1", "Col2"], [])
+        assert "Col1" in result
+        assert "Col2" in result
+        # Should still have box-drawing borders
+        assert len(result) > 0
+
+    def test_returns_string_type(self) -> None:
+        """table() returns str."""
+        from little_loops.cli.output import table
+
+        result = table(["A"], [["1"]])
+        assert isinstance(result, str)
+
+    def test_truncates_long_values(self) -> None:
+        """table() truncates values exceeding max_col_width."""
+        from little_loops.cli.output import table
+
+        result = table(["Header"], [["a" * 100]], max_col_width=10)
+        # Value should be truncated (10 chars + "..." = 13 chars max in cell)
+        assert "a" * 20 not in result
+
+
+class TestStatusBlock:
+    """Tests for status_block() structured formatter."""
+
+    def test_returns_string_with_keys_and_values(self) -> None:
+        """status_block() returns a string containing all keys and values."""
+        from little_loops.cli.output import status_block
+
+        result = status_block({"Status": "open", "Priority": "P1"})
+        assert "Status" in result
+        assert "open" in result
+        assert "Priority" in result
+        assert "P1" in result
+
+    def test_aligns_labels(self) -> None:
+        """status_block() pads shorter keys to align values."""
+        from little_loops.cli.output import status_block
+
+        result = status_block({"A": "1", "BBB": "2"})
+        lines = result.split("\n")
+        # Find lines with values
+        val_lines = [l for l in lines if l.strip()]
+        if len(val_lines) >= 2:
+            # Both value positions should be aligned
+            pos1 = val_lines[0].find("1")
+            pos2 = val_lines[1].find("2")
+            assert pos1 == pos2, f"Values not aligned: {val_lines[0]!r} vs {val_lines[1]!r}"
+
+    def test_handles_empty_dict(self) -> None:
+        """status_block() handles empty dict."""
+        from little_loops.cli.output import status_block
+
+        result = status_block({})
+        assert isinstance(result, str)
+        assert result == ""
+
+
+class TestProgress:
+    """Tests for progress() bar formatter."""
+
+    def test_returns_bar_string(self) -> None:
+        """progress() returns a |####  | style bar."""
+        from little_loops.cli.output import progress
+
+        bar = progress(5, 10, 10)
+        assert bar.startswith("|")
+        assert bar.endswith("|")
+
+    def test_full_bar(self) -> None:
+        """progress() at 100% is all filled."""
+        from little_loops.cli.output import progress
+
+        bar = progress(100, 100, 12)
+        assert "#" * 10 in bar
+
+    def test_empty_bar(self) -> None:
+        """progress() at 0% is all spaces."""
+        from little_loops.cli.output import progress
+
+        bar = progress(0, 100, 12)
+        assert "#" not in bar
+        assert " " * 10 in bar
+
+    def test_half_bar(self) -> None:
+        """progress() at 50% is half filled."""
+        from little_loops.cli.output import progress
+
+        bar = progress(50, 100, 12)
+        assert bar.count("#") == 5
+        assert bar.count(" ") == 5
+
+    def test_zero_total_handled(self) -> None:
+        """progress() with zero total returns empty bar."""
+        from little_loops.cli.output import progress
+
+        bar = progress(0, 0, 8)
+        assert bar == "|" + " " * 6 + "|"
+
+    def test_respects_custom_width(self) -> None:
+        """progress() respects custom width."""
+        from little_loops.cli.output import progress
+
+        bar = progress(10, 10, 5)
+        assert len(bar) == 5
+
+
+class TestForceColor:
+    """Tests for FORCE_COLOR env var support."""
+
+    def test_force_color_overrides_tty_detection(self) -> None:
+        """FORCE_COLOR=1 enables color even without TTY."""
+        from little_loops.cli.output import configure_output
+
+        with patch.dict("os.environ", {"FORCE_COLOR": "1"}, clear=True):
+            with patch("sys.stdout") as mock_stdout:
+                mock_stdout.isatty.return_value = False
+                configure_output(None)
+        assert output_mod._USE_COLOR is True
+
+    def test_no_color_overrides_force_color(self) -> None:
+        """NO_COLOR takes precedence over FORCE_COLOR."""
+        from little_loops.cli.output import configure_output
+
+        with patch.dict("os.environ", {"FORCE_COLOR": "1", "NO_COLOR": "1"}, clear=True):
+            with patch("sys.stdout") as mock_stdout:
+                mock_stdout.isatty.return_value = False
+                configure_output(None)
+        assert output_mod._USE_COLOR is False
+
+    def test_force_color_off_does_not_force(self) -> None:
+        """FORCE_COLOR=0 or absent does not force color."""
+        from little_loops.cli.output import configure_output
+
+        with patch.dict("os.environ", {}, clear=True):
+            with patch("sys.stdout") as mock_stdout:
+                mock_stdout.isatty.return_value = False
+                configure_output(None)
+        assert output_mod._USE_COLOR is False
+
+
+class TestOutputMode:
+    """Tests for set_output_mode() / get_output_mode()."""
+
+    def test_default_mode_is_human(self) -> None:
+        """Default output mode is 'human'."""
+        from little_loops.cli.output import get_output_mode
+
+        assert get_output_mode() == "human"
+
+    def test_set_mode_changes_get_mode(self) -> None:
+        """set_output_mode() changes get_output_mode() return value."""
+        from little_loops.cli.output import get_output_mode, set_output_mode
+
+        set_output_mode("json")
+        assert get_output_mode() == "json"
+
+    def test_set_mode_to_plain(self) -> None:
+        """set_output_mode('plain') works."""
+        from little_loops.cli.output import get_output_mode, set_output_mode
+
+        set_output_mode("plain")
+        assert get_output_mode() == "plain"
+
+    def test_set_mode_back_to_human(self) -> None:
+        """Can switch back to human mode."""
+        from little_loops.cli.output import get_output_mode, set_output_mode
+
+        set_output_mode("json")
+        set_output_mode("human")
+        assert get_output_mode() == "human"
