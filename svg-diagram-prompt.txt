@@ -1,5 +1,253 @@
-Create an SVG diagram featuring three concentric circular zones on a faint blue grid background. Use a clean, modern technical style. 
+Diagram:\
+\
+\`\`\`
 
-*   **Inner Circle (Main Context):** Light blue fill with a thicker dark blue border. Centered text reads 'Core Tools' with '(Always Available)' below it. Add four smaller text labels inside: 'Read', 'Write', 'Edit', and 'Bash'. Place four small, hollow blue circles on the border at the N, S, E, and W compass points.
-*   **Middle Ring (The Gateway):** A dark gray circular path with a clockwise arrow head indicating flow. At the bottom, place the text 'The Gateway'. On the top arc, insert a light gray hexagonal badge with the text 'Tool_Search'. Add three small, hollow gray squares on this ring at the N, S, and E compass points.
-*   **Outer Zone (Offloaded Ecosystem):** Bounded by a large, dashed gray circle. Place the text 'Offloaded Ecosystem' at the top. Fill the annular space between the middle ring and this dashed boundary with scattered, small gray dots.
+Plan  →  Define  →  Design  →  Build  →  Integrate  →  Test  →  Deploy  →  Operate  →  Iterate
+
+|----------------------- M1: Context & Foundations (cross-cutting) -----------------------|
+
+|---------- M2: Planning, Requirements & Design ----------|
+
+                              |-- M3: Build & Implementation --|
+
+                                         |- M4: Quality & Guardrails -|
+
+                                                              |-- M6: Deploy & Release --|
+
+                                                                          |---- M5: Operate & Iterate ----|
+
+|----------------------- Security & Compliance (cross-cutting, M4-owned) -----------------------|
+
+\`\`\`\
+\
+Use design tokens:\
+\
+\`\`\`\
+{
+
+  "headstorm": {
+
+    "color": {
+
+      "brand": {
+
+        "primary": { 
+
+          "$value": "#00b2e3", 
+
+          "$type": "color",
+
+          "$description": "Primary brand color, typically used for links and primary actions."
+
+        },
+
+        "secondary": { 
+
+          "$value": "#1a2b4c", 
+
+          "$type": "color",
+
+          "$description": "Secondary brand color, often used for footers and dark sections."
+
+        },
+
+        "accent": { 
+
+          "$value": "#00ffcc", 
+
+          "$type": "color",
+
+          "$description": "Accent color for high-visibility highlights (AI branding)."
+
+        }
+
+      },
+
+      "background": {
+
+        "base": { 
+
+          "$value": "#ffffff", 
+
+          "$type": "color" 
+
+        },
+
+        "dark": { 
+
+          "$value": "#0b0c10", 
+
+          "$type": "color" 
+
+        },
+
+        "surface": {
+
+          "$value": "#f3f4f6",
+
+          "$type": "color"
+
+        }
+
+      },
+
+      "text": {
+
+        "primary": { 
+
+          "$value": "#1f2937", 
+
+          "$type": "color" 
+
+        },
+
+        "secondary": { 
+
+          "$value": "#4b5563", 
+
+          "$type": "color" 
+
+        },
+
+        "inverse": { 
+
+          "$value": "#f9fafb", 
+
+          "$type": "color" 
+
+        }
+
+      }
+
+    },
+
+    "typography": {
+
+      "fontFamily": {
+
+        "heading": { 
+
+          "$value": "'Montserrat', sans-serif", 
+
+          "$type": "fontFamily" 
+
+        },
+
+        "body": { 
+
+          "$value": "'Inter', sans-serif", 
+
+          "$type": "fontFamily" 
+
+        }
+
+      },
+
+      "fontSize": {
+
+        "sm": { "$value": "0.875rem", "$type": "dimension" },
+
+        "base": { "$value": "1rem", "$type": "dimension" },
+
+        "lg": { "$value": "1.125rem", "$type": "dimension" },
+
+        "xl": { "$value": "1.25rem", "$type": "dimension" },
+
+        "2xl": { "$value": "1.5rem", "$type": "dimension" },
+
+        "3xl": { "$value": "2rem", "$type": "dimension" },
+
+        "4xl": { "$value": "2.5rem", "$type": "dimension" }
+
+      },
+
+      "fontWeight": {
+
+        "regular": { "$value": 400, "$type": "fontWeight" },
+
+        "medium": { "$value": 500, "$type": "fontWeight" },
+
+        "semibold": { "$value": 600, "$type": "fontWeight" },
+
+        "bold": { "$value": 700, "$type": "fontWeight" }
+
+      },
+
+      "lineHeight": {
+
+        "tight": { "$value": "1.2", "$type": "number" },
+
+        "base": { "$value": "1.5", "$type": "number" },
+
+        "relaxed": { "$value": "1.625", "$type": "number" }
+
+      }
+
+    },
+
+    "spacing": {
+
+      "xs": { "$value": "0.25rem", "$type": "dimension" },
+
+      "sm": { "$value": "0.5rem", "$type": "dimension" },
+
+      "md": { "$value": "1rem", "$type": "dimension" },
+
+      "lg": { "$value": "1.5rem", "$type": "dimension" },
+
+      "xl": { "$value": "2rem", "$type": "dimension" },
+
+      "2xl": { "$value": "3rem", "$type": "dimension" },
+
+      "3xl": { "$value": "4rem", "$type": "dimension" },
+
+      "section": { "$value": "6rem", "$type": "dimension" }
+
+    },
+
+    "borderRadius": {
+
+      "none": { "$value": "0px", "$type": "dimension" },
+
+      "sm": { "$value": "0.125rem", "$type": "dimension" },
+
+      "md": { "$value": "0.25rem", "$type": "dimension" },
+
+      "lg": { "$value": "0.5rem", "$type": "dimension" },
+
+      "full": { "$value": "9999px", "$type": "dimension" }
+
+    },
+
+    "shadow": {
+
+      "sm": { 
+
+        "$value": "0 1px 2px 0 rgba(0, 0, 0, 0.05)", 
+
+        "$type": "shadow" 
+
+      },
+
+      "md": { 
+
+        "$value": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)", 
+
+        "$type": "shadow" 
+
+      },
+
+      "lg": { 
+
+        "$value": "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)", 
+
+        "$type": "shadow" 
+
+      }
+
+    }
+
+  }
+
+}\
+\`\`\`
