@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from little_loops.cli_args import add_config_arg, add_dry_run_arg, add_quiet_arg
+from little_loops.cli_args import add_config_arg, add_dry_run_arg, add_json_arg, add_quiet_arg
+from little_loops.cli.output import print_json
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
 from little_loops.sync import GitHubSyncManager, SyncResult, SyncStatus
@@ -41,7 +42,8 @@ Examples:
     subparsers = parser.add_subparsers(dest="action", help="Sync action")
 
     # Status subcommand
-    subparsers.add_parser("status", help="Show sync status")
+    status_parser = subparsers.add_parser("status", help="Show sync status")
+    add_json_arg(status_parser)
 
     # Push subcommand
     push_parser = subparsers.add_parser("push", help="Push local issues to GitHub")
@@ -69,6 +71,7 @@ Examples:
         nargs="?",
         help="Specific issue ID to diff (e.g., BUG-123). Omit for summary of all.",
     )
+    add_json_arg(diff_parser)
 
     # Close subcommand
     close_parser = subparsers.add_parser(
@@ -126,7 +129,10 @@ Examples:
 
     if args.action == "status":
         status = manager.get_status()
-        _print_sync_status(status, logger)
+        if getattr(args, "json", False):
+            print_json(status.to_dict())
+        else:
+            _print_sync_status(status, logger)
         return 0
 
     elif args.action == "push":
@@ -149,9 +155,13 @@ Examples:
         issue_id = getattr(args, "issue_id", None)
         if issue_id:
             result = manager.diff_issue(issue_id)
-            _print_diff_result(result, logger)
         else:
             result = manager.diff_all()
+        if getattr(args, "json", False):
+            print_json(result.to_dict())
+        elif issue_id:
+            _print_diff_result(result, logger)
+        else:
             _print_sync_result(result, logger)
         return 0 if result.success else 1
 

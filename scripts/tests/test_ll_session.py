@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -64,6 +65,43 @@ class TestMainSession:
         with patch("sys.argv", ["ll-session", "--db", str(db), "search", "--fts", "zzznope"]):
             assert main_session() == 0
         assert "No matches" in capsys.readouterr().out
+
+    def test_search_json_output(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """search --json outputs valid JSON array."""
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        transport.send({"event": "state_enter", "loop_name": "ratelimit", "state": "wait"})
+        transport.close()
+        with patch("sys.argv", ["ll-session", "--db", str(db), "search", "--fts", "ratelimit", "--json"]):
+            assert main_session() == 0
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert "content" in data[0]
+        assert "kind" in data[0]
+        assert "ratelimit" in data[0]["content"]
+
+    def test_search_json_short_flag(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """search -j works equivalently to --json."""
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        transport.send({"event": "state_enter", "loop_name": "ratelimit", "state": "wait"})
+        transport.close()
+        with patch("sys.argv", ["ll-session", "--db", str(db), "search", "--fts", "ratelimit", "-j"]):
+            assert main_session() == 0
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert "content" in data[0]
+
+    def test_search_json_no_match(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """search --json with no matches outputs empty JSON array."""
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "search", "--fts", "zzznope", "--json"]):
+            assert main_session() == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data == []
 
     def test_recent_loop(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         db = tmp_path / "session.db"

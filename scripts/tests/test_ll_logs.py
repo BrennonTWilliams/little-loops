@@ -317,6 +317,101 @@ class TestDiscover:
         lines = [line.strip() for line in captured.out.strip().splitlines()]
         assert str(project_path) not in lines
 
+    def test_discover_json_output(self, capsys) -> None:
+        """discover --json outputs valid JSON with paths array."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            project_path = home / "jsonproject"
+            project_path.mkdir()
+            encoded = str(project_path).replace("/", "-")
+            proj_dir = claude_projects / encoded
+            proj_dir.mkdir()
+
+            jsonl_file = proj_dir / "session.jsonl"
+            with open(jsonl_file, "w") as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "type": "queue-operation",
+                            "operation": "enqueue",
+                            "content": "/ll:manage-issue",
+                            "timestamp": "2026-01-01T00:00:00Z",
+                            "sessionId": "abc123",
+                        }
+                    )
+                    + "\n"
+                )
+
+            with (
+                patch("sys.argv", ["ll-logs", "discover", "--json"]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert "paths" in data
+        assert isinstance(data["paths"], list)
+        assert str(project_path) in data["paths"]
+
+    def test_discover_json_short_flag(self, capsys) -> None:
+        """discover -j works equivalently to --json."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            project_path = home / "shortflagproject"
+            project_path.mkdir()
+            encoded = str(project_path).replace("/", "-")
+            proj_dir = claude_projects / encoded
+            proj_dir.mkdir()
+
+            jsonl_file = proj_dir / "session.jsonl"
+            with open(jsonl_file, "w") as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "type": "queue-operation",
+                            "operation": "enqueue",
+                            "content": "/ll:manage-issue",
+                            "timestamp": "2026-01-01T00:00:00Z",
+                            "sessionId": "abc123",
+                        }
+                    )
+                    + "\n"
+                )
+
+            with (
+                patch("sys.argv", ["ll-logs", "discover", "-j"]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert "paths" in data
+
+    def test_discover_json_empty(self, capsys) -> None:
+        """discover --json with no projects outputs empty paths array."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            with (
+                patch("sys.argv", ["ll-logs", "discover", "--json"]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data == {"paths": []}
+
 
 class TestTail:
     """Integration tests for the tail subcommand."""

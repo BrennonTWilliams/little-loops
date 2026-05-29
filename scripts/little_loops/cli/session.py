@@ -16,6 +16,7 @@ import argparse
 from pathlib import Path
 
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
+from little_loops.cli_args import add_json_arg
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, backfill, recent, search
 
@@ -48,6 +49,7 @@ Examples:
     search_parser.add_argument(
         "--limit", type=int, default=20, metavar="N", help="Maximum results (default: 20)"
     )
+    add_json_arg(search_parser)
 
     recent_parser = subparsers.add_parser("recent", help="Recent events by kind")
     recent_parser.add_argument(
@@ -95,6 +97,9 @@ def main_session() -> int:
         except ValueError as exc:
             logger.error(str(exc))
             return 1
+        if args.json:
+            print_json(list(results))
+            return 0
         if not results:
             print("No matches.")
             return 0

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from little_loops.cli.sync import _print_sync_result, _print_sync_status, main_sync
 from little_loops.sync import SyncResult, SyncStatus
@@ -333,3 +336,116 @@ class TestPrintSyncResult:
         info_text = " ".join(str(c) for c in logger.info.call_args_list)
         assert "Created: 0" in info_text
         assert "Updated: 0" in info_text
+
+
+class TestMainSyncJson:
+    """Tests for --json flag on sync status and diff subcommands."""
+
+    def test_status_json_output(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Status --json outputs valid JSON with SyncStatus fields."""
+        mock_config = MagicMock()
+        mock_config.sync.enabled = True
+
+        mock_status = SyncStatus(
+            provider="github",
+            repo="owner/repo",
+            local_total=10,
+            local_synced=8,
+            local_unsynced=2,
+            github_total=9,
+            github_only=1,
+        )
+
+        with (
+            patch("sys.argv", ["ll-sync", "status", "--json"]),
+            patch("little_loops.cli.sync.BRConfig", return_value=mock_config),
+            patch("little_loops.cli.sync.GitHubSyncManager") as mock_manager_cls,
+        ):
+            mock_manager_cls.return_value.get_status.return_value = mock_status
+            result = main_sync()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["provider"] == "github"
+        assert data["repo"] == "owner/repo"
+        assert data["local_total"] == 10
+        assert data["local_synced"] == 8
+
+    def test_status_json_short_flag(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Status -j works equivalently to --json."""
+        mock_config = MagicMock()
+        mock_config.sync.enabled = True
+
+        mock_status = SyncStatus(
+            provider="github",
+            repo="owner/repo",
+            local_total=5,
+            local_synced=3,
+            local_unsynced=2,
+            github_total=5,
+            github_only=0,
+        )
+
+        with (
+            patch("sys.argv", ["ll-sync", "status", "-j"]),
+            patch("little_loops.cli.sync.BRConfig", return_value=mock_config),
+            patch("little_loops.cli.sync.GitHubSyncManager") as mock_manager_cls,
+        ):
+            mock_manager_cls.return_value.get_status.return_value = mock_status
+            result = main_sync()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["provider"] == "github"
+
+    def test_diff_json_output(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Diff --json outputs valid JSON with SyncResult fields."""
+        mock_config = MagicMock()
+        mock_config.sync.enabled = True
+
+        mock_result = SyncResult(
+            action="diff",
+            success=True,
+            created=["BUG-001"],
+            updated=["BUG-002"],
+        )
+
+        with (
+            patch("sys.argv", ["ll-sync", "diff", "--json"]),
+            patch("little_loops.cli.sync.BRConfig", return_value=mock_config),
+            patch("little_loops.cli.sync.GitHubSyncManager") as mock_manager_cls,
+        ):
+            mock_manager_cls.return_value.diff_all.return_value = mock_result
+            result = main_sync()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["action"] == "diff"
+        assert data["success"] is True
+        assert "BUG-001" in data["created"]
+        assert "BUG-002" in data["updated"]
+
+    def test_diff_with_issue_id_json(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Diff <id> --json outputs valid JSON with SyncResult fields."""
+        mock_config = MagicMock()
+        mock_config.sync.enabled = True
+
+        mock_result = SyncResult(
+            action="diff",
+            success=True,
+            created=["+ new line"],
+            updated=["some diff output"],
+        )
+
+        with (
+            patch("sys.argv", ["ll-sync", "diff", "BUG-001", "--json"]),
+            patch("little_loops.cli.sync.BRConfig", return_value=mock_config),
+            patch("little_loops.cli.sync.GitHubSyncManager") as mock_manager_cls,
+        ):
+            mock_manager_cls.return_value.diff_issue.return_value = mock_result
+            result = main_sync()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["action"] == "diff"
+        assert data["success"] is True

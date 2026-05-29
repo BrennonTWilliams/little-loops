@@ -13,7 +13,8 @@ from pathlib import Path
 from little_loops.cli.loop.info import (  # private symbol: cross-module coupling; verify signature on upgrade
     _format_history_event,
 )
-from little_loops.cli.output import configure_output, use_color_enabled
+from little_loops.cli.output import configure_output, print_json, use_color_enabled
+from little_loops.cli_args import add_json_arg
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
 from little_loops.user_messages import get_project_folder
@@ -311,10 +312,11 @@ Examples:
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
-    subparsers.add_parser(
+    discover_parser = subparsers.add_parser(
         "discover",
         help="List all Claude projects with ll activity (one path per line, sorted)",
     )
+    add_json_arg(discover_parser)
 
     tail_parser = subparsers.add_parser(
         "tail",
@@ -370,8 +372,11 @@ def main_logs() -> int:
 
     if args.command == "discover":
         projects = discover_all_projects(logger)
-        for path in projects:
-            print(path)
+        if args.json:
+            print_json({"paths": [str(p) for p in projects]})
+        else:
+            for path in projects:
+                print(path)
         return 0
 
     if args.command == "tail":
