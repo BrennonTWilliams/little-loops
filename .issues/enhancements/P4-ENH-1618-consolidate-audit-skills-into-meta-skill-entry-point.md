@@ -7,6 +7,7 @@ discovered_date: 2026-05-22
 discovered_by: capture-issue
 status: open
 parent: EPIC-1745
+depends_on: [ENH-494]
 ---
 
 # ENH-1618: Consolidate audit-* skills into a single meta-skill entry point
@@ -98,6 +99,7 @@ Optionally set `llm_discoverable: false` on the 4 sub-skills to demote them to T
 `enhancement`, `skills`, `architecture`, `context-engineering`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-29T20:48:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-29T20:07:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7409b034-0513-44ad-a2a1-f3e47126e95b.jsonl`
 - `/ll:format-issue` - 2026-05-24T02:22:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2328e8ba-c60a-43cf-b563-f9a69957b379.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`

@@ -6,6 +6,7 @@ captured_at: '2026-05-29T19:08:54Z'
 discovered_date: '2026-05-29'
 discovered_by: capture-issue
 status: open
+depends_on: [ENH-1792]
 labels: [enhancement, loops, evaluator, regression-detection]
 ---
 
@@ -161,6 +162,7 @@ Baseline management: on `yes`, optionally promote current outputs to baseline (c
 | `.issues/enhancements/P3-ENH-1792-detect-non-discriminating-evaluators-from-history.md` | Variance diagnostics that motivate having a regression-sensitive gate |
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-29T20:48:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
 - `/ll:format-issue` - 2026-05-29T19:41:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fbb9c3ab-f0e7-4ee0-b9e9-75aa887611e6.jsonl`
 - `/ll:capture-issue` - 2026-05-29T19:08:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
 

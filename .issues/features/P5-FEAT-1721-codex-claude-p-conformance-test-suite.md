@@ -7,7 +7,7 @@ captured_at: "2026-05-26T02:23:05Z"
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1463
-depends_on: [FEAT-1481]
+depends_on: [FEAT-1481, ENH-1718]
 relates_to: [FEAT-1716]
 labels: [codex, testing, host-compat, conformance]
 ---
@@ -65,4 +65,5 @@ No test exercises `ll-auto`, `ll-sprint`, `ll-loop`, or `ll-action` end-to-end a
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-29T20:48:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
 - `/ll:capture-issue` - 2026-05-26T02:23:05Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e210ff4-bcab-4372-9c8c-a0ba98da62d5.jsonl`

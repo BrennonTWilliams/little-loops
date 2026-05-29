@@ -9,6 +9,7 @@ discovered_date: "2026-05-26"
 discovered_by: capture-issue
 relates_to: [ENH-1710, ENH-1711]
 parent: EPIC-1707
+blocked_by: [ENH-1752]
 ---
 
 # FEAT-1712: LCM-style hierarchical summary DAG over session history
@@ -112,4 +113,5 @@ Update `ll-history` to navigate via summary DAG when answering cross-session que
 open
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-29T20:48:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
 - `/ll:capture-issue` - 2026-05-26T01:31:23Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5d0765b0-9906-45d9-a15b-8eadbab154a7.jsonl`

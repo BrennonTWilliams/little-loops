@@ -95,6 +95,7 @@ Each disambiguation adds ~20-40 chars; verify total description stays within bud
 `enhancement`, `skills`, `context-engineering`, `routing`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-29T20:48:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
 - `/ll:format-issue` - 2026-05-24T02:22:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2328e8ba-c60a-43cf-b563-f9a69957b379.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
 - `/ll:capture-issue` - 2026-05-22T19:19:39Z - conversation analysis
