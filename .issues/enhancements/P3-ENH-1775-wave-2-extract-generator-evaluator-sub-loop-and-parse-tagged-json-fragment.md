@@ -10,6 +10,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
 implementation_order_risk: true
+decision_needed: true
 ---
 
 # ENH-1775: Wave 2 — Extract `generator-evaluator` Sub-loop and Add `parse_tagged_json` Fragment
@@ -127,6 +128,13 @@ The sub-loop interface must abstract over: (a) whether run_dir comes from `conte
 
 The Playwright `evaluate` state is structurally identical across all 5 loops — only the file URL path and `on_error` target differ. The `score` state varies only in the rubric text (criteria names, weights, thresholds) and `on_error` target.
 
+_Refinement note (2026-05-29): The Playwright screenshot command has two structural variants:_
+
+- _Variant A (`html-website-generator.yaml:82`): Uses `${context.run_dir}` directly with `$(pwd)/` prefix, no `2>&1` stderr redirect._
+- _Variant B (all other loops): Uses `${captured.run_dir.output}` (resolved from an `init` state), includes `2>&1` stderr redirect, no `$(pwd)/` prefix._
+
+_Both emit `echo "CAPTURED"` and evaluate via `output_contains`. The `playwright_screenshot` fragment must parameterize the file path source (context vs. captured) and the source filename (`index.html` vs. `image.svg`)._
+
 #### Tagged-JSON Parsing Pattern
 
 All 3 integration loops share an identical algorithm:
@@ -139,7 +147,19 @@ All 3 integration loops share an identical algorithm:
 
 Tag strings per loop: `ENUMERATE_JSON:` (adopt-third-party-api, integrate-sdk), `ASSUMPTIONS_JSON:` (assumption-firewall).
 
-All three also share an identical `flatten_targets` state that converts the JSON targets list to a comma-separated string for the `ready-to-implement-gate` sub-loop — a separate candidate for future fragment extraction.
+All three also share a JSON-targets-to-comma-separated-list conversion pattern: `flatten_targets` in `adopt-third-party-api.yaml` and `assumption-firewall.yaml`, `flatten_surfaces` in `integrate-sdk.yaml`. Functionally identical python3 heredocs that convert the JSON targets list to a comma-separated string for the `ready-to-implement-gate` sub-loop. A separate candidate for future fragment extraction.
+
+_Refinement note (2026-05-29): The issue previously claimed the state name was identical (`flatten_targets`) across all three loops. `integrate-sdk.yaml:163` uses `flatten_surfaces`. The code is functionally equivalent but the state name differs._
+
+#### ll_commit Fragment Design Constraints
+
+_Added by `/ll:refine-issue` on 2026-05-29 — based on codebase analysis:_
+
+The 5 `action_type: prompt` commit states each include a **loop-specific commit message** in their action text (e.g., `"refactor: remove dead code identified by scan"`, `"test: add coverage for <module/function name>"`, `"docs: sync documentation with codebase state"`). The `ll_commit` fragment must parameterize the commit message via a context variable (e.g., `${context.commit_message}`) so callers can supply their own message.
+
+The `incremental-refactor.yaml:34-37` outlier uses `action_type: slash_command` with the bare literal `"/ll:commit"` (no message parameterization). This loop lets the LLM determine the commit message at runtime via the slash command flow. The fragment's deep-merge behavior means `incremental-refactor.yaml` can override `action_type` at the state level while still composing from the fragment for other fields.
+
+**Test compatibility constraint** (see Tests section for details): `test_all_fragments_are_shell_type:879` and `test_all_fragments_have_exit_code_evaluate:886` in `test_fsm_fragments.py` assert ALL cli.yaml fragments have `action_type: shell` and `evaluate.type: exit_code`. The proposed `action_type: prompt` for `ll_commit` would violate both. Options: (a) use `action_type: shell` invoking `ll-commit` CLI, (b) add an allowlist exemption to the iteration tests, or (c) place `ll_commit` in a separate fragment library.
 
 ## Integration Map
 
@@ -196,6 +216,7 @@ _Wiring pass added by `/ll:wire-issue` — tests that will need updating:_
 
 - `scripts/tests/test_fsm_fragments.py:TestCommonYamlNewFragments:523` — needs `parse_tagged_json` presence test added
 - `scripts/tests/test_fsm_fragments.py:TestCliYamlFragments:824` — needs `ll_commit` fragment test added; `test_all_fragments_are_shell_type:879` and `test_all_fragments_have_exit_code_evaluate:886` iterate ALL fragments and will assert on new `ll_commit`
+- `scripts/tests/test_fsm_fragments.py:TestCliYamlFragments:824` — **DESIGN CONSTRAINT**: `test_all_fragments_are_shell_type:879` asserts `action_type == "shell"` for ALL cli.yaml fragments; `test_all_fragments_have_exit_code_evaluate:886` asserts `evaluate.type == "exit_code"` for ALL fragments. The `ll_commit` fragment proposed in this issue uses `action_type: prompt` — this would violate both tests. Options: (a) make `ll_commit` use `action_type: shell` invoking the `ll-commit` CLI binary instead of `/ll:commit` slash command, (b) modify the two iteration tests to exempt `ll_commit` (add an allowlist), or (c) place `ll_commit` in a different fragment library (e.g., a new `lib/prompt-fragments.yaml`). No existing cli.yaml fragment uses `action_type: prompt`.
 - `scripts/tests/test_fsm_fragments.py:TestDescriptionStrippedFromFragments:978` — `test_all_common_yaml_fragments_have_description:1068` and `test_all_cli_yaml_fragments_have_description:1082` require `description:` on every new fragment
 - `scripts/tests/test_fsm_fragments.py` — **new test class needed** for `playwright_screenshot` fragment in the new `lib/harness.yaml` library (follow `TestCommonYamlNewFragments:523` pattern)
 - `scripts/tests/test_builtin_loops.py` — **new test class needed** `TestGeneratorEvaluatorOracle` for `oracles/generator-evaluator.yaml` (follow `TestReadyToImplementGateLoop:3779` pattern for sub-loop structure, or `TestRefineToReadyIssueSubLoop:605` for parameter+context assertions)
@@ -219,6 +240,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/ARCHITECTURE.md:112` — references `loops/` directory composable as sub-loops; awareness but no change needed
 - `skills/create-loop/loop-types.md:1330,1341` — `context_passthrough` usage examples; awareness but no change needed
 - No user-facing docs changes needed
+- `scripts/little_loops/loops/README.md:128-130` — documents `html-website-generator` and `svg-image-generator` as generator-evaluator harness loops; needs updating after thin-wrapper conversion
 
 ### Configuration
 
@@ -317,6 +339,7 @@ _Added by `/ll:confidence-check` on 2026-05-29_
 - Co-deliverable ordering: implement tests first so the validation chain is in place before loop refactoring — lib/harness.yaml must be created before the sub-loop can validate
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-29T06:51:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b19fe53-455f-4868-8b8e-6929aa73c9c6.jsonl`
 - `/ll:confidence-check` - 2026-05-29T19:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad84c1f4-e1cb-4d1e-9db8-e1661e645a49.jsonl`
 - `/ll:refine-issue` - 2026-05-29T06:15:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86848890-e72e-4e0f-b94e-c336729af630.jsonl`
 - `/ll:format-issue` - 2026-05-29T01:15:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29882a14-54b1-4f76-8bb9-fe34f236114f.jsonl`

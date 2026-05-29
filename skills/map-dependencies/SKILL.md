@@ -103,7 +103,10 @@ ll-deps validate --sprint my-sprint
 Check existing dependency references for broken refs, cycles, and missing backlinks:
 ```bash
 ll-deps validate
+ll-deps validate --json
 ```
+
+> **Note:** `ll-deps validate` uses `--json`/`-j` for structured output (consistent with most `ll-*` CLIs), while `ll-deps analyze` uses `--format json`. This is a known pattern inconsistency — `analyze` predates the universal `--json` contract.
 
 ### Custom Issues Directory
 

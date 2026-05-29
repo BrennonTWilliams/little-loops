@@ -115,7 +115,10 @@ scope:
 
 ### Similar Patterns
 - Context variable interpolation already exists in `action:` fields via the FSM runner — scope resolution follows the same pattern
-- Template resolution in `scripts/little_loops/fsm/executor.py` — check for existing variable expansion utilities to reuse
+- `VARIABLE_PATTERN` at `scripts/little_loops/fsm/interpolation.py:25` — the canonical regex (`r"\$\{([^}]+)\}"`) for template variable extraction; `interpolate()` at line 169 handles all `${namespace.path}` resolution
+- `_ctx_var_re` at `scripts/little_loops/cli/loop/run.py:215` — existing pattern that scans for `${context.<var>}` in action/evaluate templates before execution; directly analogous to what scope resolution needs
+- `run_dir` auto-injection at `scripts/little_loops/cli/loop/run.py:159-162` — closest "resolve at runtime" analogue: a context value is computed and injected into `fsm.context` before lock acquisition so `${context.run_dir}` resolves in YAML templates
+- `_compute_progress_fingerprint()` at `scripts/little_loops/fsm/executor.py:677` — interpolates file paths from context for stall detection; same pattern of runtime path resolution from context variables
 
 ### Tests
 - `scripts/tests/test_concurrency.py` — add `test_resolve_scope_static`, `test_resolve_scope_with_context_var`, `test_resolve_scope_unresolved_var`, `test_resolve_scope_mixed`
@@ -131,12 +134,12 @@ scope:
 
 ## Implementation Steps
 
-1. Add `resolve_scope()` to `scripts/little_loops/fsm/concurrency.py`
-2. Wire resolution into `cmd_run()` in `run.py` before the lock acquisition block
-3. Wire resolution into `run_background()` in `_helpers.py` before the pre-flight check
+1. Add `resolve_scope()` to `scripts/little_loops/fsm/concurrency.py` — pure function that takes `list[str]` + `dict[str, Any]`, returns resolved `list[str]`; use regex matching the existing `VARIABLE_PATTERN` at `interpolation.py:25`
+2. Wire resolution into `cmd_run()` in `run.py` between context population (~line 162) and lock acquisition (~line 264): `scope = resolve_scope(fsm.scope or ["."], fsm.context)`
+3. Wire resolution into `run_background()` in `_helpers.py` — CRITICAL: `run_background()` does NOT currently apply `--context` to the local `fsm` before the pre-flight check at line 967-974; context is only forwarded to the child process via CLI args (line 1026-1027). Step 3 must also parse `args.context` into a local dict and pass it to `resolve_scope()` for the pre-flight `find_conflict()` call. The child process will independently resolve scope in `cmd_run()`.
 4. Add `scope: ["${context.plan_file}"]` to `rn-refine.yaml`
-5. Add unit tests for `resolve_scope()` in `test_concurrency.py`
-6. Add integration test in `test_cli_loop_background.py` for scope resolution before spawn
+5. Add unit tests for `resolve_scope()` in `test_concurrency.py` — follow the `TestScopeLock` class pattern (line 18): test static passthrough, context var resolution, unresolved var preservation, mixed static+template
+6. Add integration test in `test_cli_loop_background.py` — model after `test_scope_conflict_returns_1` (line 561): two `run_background()` calls with different context values for the same template var should produce disjoint scopes and not conflict
 7. Run existing concurrency and background tests to verify no regressions
 
 ## Success Metrics
@@ -165,7 +168,20 @@ scope:
 - [LOOPS_GUIDE - Scope-Based Concurrency](../docs/guides/LOOPS_GUIDE.md) — current scope documentation
 - [API Reference](../docs/reference/API.md) — LockManager and FSM concurrency docs
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Reusable regex**: `VARIABLE_PATTERN` at `interpolation.py:25` (`r"\$\{([^}]+)\}"`) is the canonical template extraction regex — `resolve_scope()` should use the same pattern for consistency, or a simpler `${context.<var>}`-specific regex
+- **Pre-existing context scan pattern**: `_ctx_var_re` at `run.py:215` already scans action/evaluate templates for `${context.<var>}` — the same approach applies to scope entries
+- **`run_background()` context gap**: The pre-flight scope check at `_helpers.py:967-974` runs before context from `--context` is applied to the local `fsm` (context is only forwarded to the child process at line 1026). Scope resolution in `run_background()` must independently parse `args.context` into a dict and pass it to `resolve_scope()`.
+- **`cmd_resume()` foreground path** (`lifecycle.py:361`): Does NOT acquire locks — scope resolution changes don't affect this code path
+- **`LockManager` normalization ordering**: `_normalize_path()` at `concurrency.py:277` calls `Path(path).resolve()`, which would turn a literal `${context.plan_file}` into an absolute path containing the literal template string. Resolution MUST happen before `LockManager` receives the scope list, confirming the issue's design decision to resolve at the CLI layer.
+- **No existing loops use `scope:`**: All current loops default to `["."]` (whole-project lock). The `rn-refine.yaml` change in this issue will be the first use of the `scope:` field in a committed loop.
+
 ## Session Log
+- `/ll:refine-issue` - 2026-05-29T06:48:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cce38edf-049a-436e-a20e-74ea5a16ea27.jsonl`
+- `/ll:format-issue` - 2026-05-29T06:38:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0074390b-f718-4916-9a17-f29727630895.jsonl`
 - `/ll:capture-issue` - 2026-05-29T06:08:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b88328d9-b43a-4afd-b941-7bc140700c24.jsonl`
 
 ---

@@ -144,15 +144,16 @@ N/A — no public API changes. All changes are internal to the hitl-md loop YAML
 
 ## Implementation Steps
 
-1. **Enrich segment schema** — update the `segment` state prompt to produce `channels` object per segment (importance, anomaly, claim_type, confidence) and a `length_normalized` flag for segments exceeding document median length
-2. **Implement staged highlighting** — JS tiered reveal logic + CSS transitions in the `generate` HTML
-3. **Add density slider** — range input filtering highlighted segments by saliency threshold
-4. **Build multi-channel rendering** — channel toggle controls, per-channel color coding, CSS class switching
-5. **Add calibrated friction** — confidence-before-content DOM ordering, click-to-reveal gate for high-saliency/low-confidence segments, length-normalized confidence markers, "Trust calibration" toolbar toggle
-6. **Add schema-switching toolbar** — view mode toggles with JS re-grouping/re-rendering
-7. **Add minimap + State Rail** — Canvas-based proportional minimap with IntersectionObserver, click-to-navigate, and visit heatmap
-8. **Update score rubric** — add evaluation criteria for each new feature to the `score` state
-9. **Verify end-to-end** — run `ll-loop run hitl-md` and confirm all six features work under file://
+1. **Enrich segment schema** — update the `segment` state prompt (`hitl-md.yaml:94-113`) to produce `channels` object per segment (importance, anomaly, claim_type, confidence) and a `length_normalized` flag for segments exceeding document median length. The `channels` object follows the same pattern as the existing per-segment fields (`id`, `type`, `saliency_score`, `color`). See `hitl-md.yaml:97-113` for the current JSON schema instructions.
+2. **Implement staged highlighting** — JS tiered reveal logic + CSS transitions in the `generate` HTML. The `generate` state prompt (`hitl-md.yaml:124-275`) already instructs the LLM to produce self-contained HTML. Add staged-reveal instructions: `IntersectionObserver` with tiered reveal groups (top 3-5 on load, next tier fades in on scroll), CSS `transition` on `opacity` and `background-color` for fade-in animation. No prior art in any loop — all constructs are new to the codebase.
+3. **Add density slider** — `<input type="range">` filtering highlighted segments by saliency threshold, defaulting to sparse (Top 10-25%). The slider is rendered in a fixed toolbar alongside the existing "Copy AI prompt" and "Copy updated markdown" controls. New to codebase — no existing loop uses range inputs.
+4. **Build multi-channel rendering** — channel toggle controls, per-channel color coding, CSS class switching. Extend the existing `data-*` attribute pattern (`hitl-md.yaml:165-172`) with `data-channel-importance`, `data-channel-anomaly`, `data-channel-confidence`, `data-claim-type`. Use design tokens CSS custom properties (`${context.design_tokens_context}`) for per-channel colors.
+5. **Add calibrated friction** — confidence-before-content DOM ordering, click-to-reveal gate for high-saliency/low-confidence segments, length-normalized confidence markers, "Trust calibration" toolbar toggle. All pure JS/CSS changes within the `generate` state HTML. The toggle defaults to passive (badge-before-content only, no gating).
+6. **Add schema-switching toolbar** — view mode toggles with JS re-grouping/re-rendering. Group segments by heading, saliency tier, claim type, or anomaly score. Pure JS DOM manipulation — no new data needed beyond what `segments.json` already provides.
+7. **Add minimap + State Rail** — Canvas-based proportional minimap with `IntersectionObserver` for viewport tracking, `click` handler for navigation (scroll to position), and `localStorage`-backed visit heatmap. Fixed-position `<canvas>` on the right edge, redrawn on `scroll`/`resize`. All constructs (`<canvas>`, `getContext('2d')`, `IntersectionObserver`, `localStorage`) are new to the codebase.
+8. **Update score rubric** — add 6 new evaluation criteria to the `score` state (`hitl-md.yaml:293-370`), one per feature, with individual 1-10 thresholds. Follow the existing rubric pattern: criterion name, threshold, description of what to evaluate. The `ALL_PASS` mechanism requires all criteria to meet their thresholds.
+9. **Add structural tests** — add validation tests to `TestHitlMdLoop` in `scripts/tests/test_builtin_loops.py:3467` for: segment state produces `channels` and `length_normalized` fields, generate state references new browser APIs, score state includes new criteria. Follow existing test patterns (YAML fixture loading, string containment checks, routing assertions).
+10. **Verify end-to-end** — run `ll-loop run hitl-md` with a test document and confirm all six features work under `file://`. The `evaluate` state (`hitl-md.yaml:277-291`) runs Playwright screenshot; visual verification confirms features render correctly.
 
 ## Impact
 
@@ -170,6 +171,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `hitl-md`, `ui`, `sensemaking`, `captured`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-29T05:02:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67b57fec-0cce-4cf6-8ad3-3e79d6cd8777.jsonl`
 - `/ll:format-issue` - 2026-05-29T02:27:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2337e492-f7f1-44fd-a9a4-27d67af90051.jsonl`
 - `/ll:capture-issue` - 2026-05-28T17:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1814a47-ceda-478f-aac4-3e3bf601d202.jsonl`
 
