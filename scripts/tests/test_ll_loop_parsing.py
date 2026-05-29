@@ -38,6 +38,7 @@ class TestLoopArgumentParsing:
         parser.add_argument("--quiet", "-q", action="store_true")
         parser.add_argument("--follow", "-f", action="store_true")
         parser.add_argument("--no-llm", action="store_true")
+        parser.add_argument("--no-lock", action="store_true")
         parser.add_argument("--llm-model", type=str)
         parser.add_argument("--context", action="append", default=[], metavar="KEY=VALUE")
         parser.add_argument("--program-md", type=Path, default=None)
@@ -171,6 +172,18 @@ class TestLoopArgumentParsing:
         parser = self._create_run_parser()
         args = parser.parse_args(["test-loop"])
         assert args.no_llm is False
+
+    def test_no_lock_flag_parsed_correctly(self) -> None:
+        """--no-lock flag sets no_lock to True."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop", "--no-lock"])
+        assert args.no_lock is True
+
+    def test_no_lock_default_is_false(self) -> None:
+        """--no-lock defaults to False when not specified."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop"])
+        assert args.no_lock is False
 
     def test_llm_model_flag_parsed_correctly(self) -> None:
         """--llm-model accepts model string."""

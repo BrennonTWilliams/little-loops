@@ -613,6 +613,56 @@ class TestRunBackground:
         assert result == 0
         mock_popen.assert_called_once()
 
+    def test_no_lock_bypasses_scope_conflict(self, tmp_path: Path) -> None:
+        """--no-lock allows a second loop to start when another holds a conflicting lock."""
+        import argparse
+
+        from little_loops.fsm.concurrency import LockManager
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+
+        lm = LockManager(loops_dir)
+        lm.acquire("blocker", ["."])
+
+        args = argparse.Namespace(
+            max_iterations=None, no_llm=False, llm_model=None, quiet=False,
+            queue=False, no_lock=True, input=None,
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 42
+            from little_loops.cli.loop._helpers import run_background
+
+            result = run_background("my-loop", args, loops_dir)
+
+        assert result == 0
+        mock_popen.assert_called_once()
+
+    def test_no_lock_forwards_to_child(self, tmp_path: Path) -> None:
+        """--no-lock appears in child re-exec command."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+        args = argparse.Namespace(
+            max_iterations=None, no_llm=False, llm_model=None, quiet=False,
+            queue=False, no_lock=True, input=None, verbose=False,
+            show_diagrams=None, diagram_edge_labels=None,
+            diagram_state_detail=None, diagram_scope=None,
+            context=None, program_md=None, delay=None,
+            handoff_threshold=None, context_limit=None,
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 42
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--no-lock" in cmd
+
 
 class TestCmdStopWithPid:
     """Tests for cmd_stop with PID-based process termination."""

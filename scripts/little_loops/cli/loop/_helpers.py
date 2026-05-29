@@ -939,7 +939,7 @@ def run_background(
     lock_manager = LockManager(loops_dir)
     scope = fsm.scope or ["."]
     conflict = lock_manager.find_conflict(scope)
-    if conflict and not getattr(args, "queue", False):
+    if conflict and not getattr(args, "queue", False) and not getattr(args, "no_lock", False):
         print(f"Scope conflict with running loop: {conflict.loop_name}", file=sys.stderr)
         print(f"  Conflicting scope: {conflict.scope}", file=sys.stderr)
         print("  Use --queue to wait for it to finish", file=sys.stderr)
@@ -993,6 +993,8 @@ def run_background(
         cmd.append("--quiet")
     if getattr(args, "queue", False):
         cmd.append("--queue")
+    if getattr(args, "no_lock", False):
+        cmd.append("--no-lock")
     for kv in getattr(args, "context", None) or []:
         cmd.extend(["--context", kv])
     program_md = getattr(args, "program_md", None)

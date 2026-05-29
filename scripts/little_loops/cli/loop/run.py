@@ -268,60 +268,61 @@ def cmd_run(
         if _queue_entry_file is not None:
             _queue_entry_file.unlink(missing_ok=True)
 
-    if not lock_manager.acquire(fsm.name, scope, instance_id=instance_id):
-        conflict = lock_manager.find_conflict(scope)
-        if conflict and getattr(args, "queue", False):
-            # Write queue entry so dashboard shows the waiting loop
-            queue_dir = loops_dir / ".queue"
-            queue_dir.mkdir(parents=True, exist_ok=True)
-            entry_id = str(uuid.uuid4())
-            entry = {
-                "id": entry_id,
-                "loopName": loop_name,
-                "enqueuedAt": datetime.now(UTC).isoformat(),
-                "context": {
-                    "waitingFor": conflict.loop_name,
-                    "scope": conflict.scope,
-                    "pid": os.getpid(),
-                },
-            }
-            _queue_entry_file = queue_dir / f"{entry_id}.json"
-            _queue_entry_file.write_text(json.dumps(entry, indent=2))
-            atexit.register(_cleanup_queue_entry)
+    if not getattr(args, "no_lock", False):
+        if not lock_manager.acquire(fsm.name, scope, instance_id=instance_id):
+            conflict = lock_manager.find_conflict(scope)
+            if conflict and getattr(args, "queue", False):
+                # Write queue entry so dashboard shows the waiting loop
+                queue_dir = loops_dir / ".queue"
+                queue_dir.mkdir(parents=True, exist_ok=True)
+                entry_id = str(uuid.uuid4())
+                entry = {
+                    "id": entry_id,
+                    "loopName": loop_name,
+                    "enqueuedAt": datetime.now(UTC).isoformat(),
+                    "context": {
+                        "waitingFor": conflict.loop_name,
+                        "scope": conflict.scope,
+                        "pid": os.getpid(),
+                    },
+                }
+                _queue_entry_file = queue_dir / f"{entry_id}.json"
+                _queue_entry_file.write_text(json.dumps(entry, indent=2))
+                atexit.register(_cleanup_queue_entry)
 
-            logger.info(f"Waiting for conflicting loop '{conflict.loop_name}' to finish...")
-            # Retry loop: when N waiters are released simultaneously, only one wins
-            # acquire(); losers loop back and wait again rather than exiting (BUG-1281).
-            acquired = False
-            _wait_start = time.time()
-            _budget = _config.loops.queue_wait_timeout_seconds
-            while time.time() - _wait_start < _budget:
-                _remaining = _budget - (time.time() - _wait_start)
-                if not lock_manager.wait_for_scope(scope, timeout=int(_remaining)):
+                logger.info(f"Waiting for conflicting loop '{conflict.loop_name}' to finish...")
+                # Retry loop: when N waiters are released simultaneously, only one wins
+                # acquire(); losers loop back and wait again rather than exiting (BUG-1281).
+                acquired = False
+                _wait_start = time.time()
+                _budget = _config.loops.queue_wait_timeout_seconds
+                while time.time() - _wait_start < _budget:
+                    _remaining = _budget - (time.time() - _wait_start)
+                    if not lock_manager.wait_for_scope(scope, timeout=int(_remaining)):
+                        _cleanup_queue_entry()
+                        logger.error("Timeout waiting for scope to become available")
+                        return 1
+                    if not _is_earliest_waiter(entry_id, queue_dir):
+                        time.sleep(1)
+                        continue
+                    if lock_manager.acquire(fsm.name, scope, instance_id=instance_id):
+                        acquired = True
+                        break
+                if not acquired:
                     _cleanup_queue_entry()
-                    logger.error("Timeout waiting for scope to become available")
+                    logger.error("Failed to acquire lock after waiting")
                     return 1
-                if not _is_earliest_waiter(entry_id, queue_dir):
-                    time.sleep(1)
-                    continue
-                if lock_manager.acquire(fsm.name, scope, instance_id=instance_id):
-                    acquired = True
-                    break
-            if not acquired:
+                # Lock acquired - no longer queued
                 _cleanup_queue_entry()
-                logger.error("Failed to acquire lock after waiting")
+            elif conflict:
+                logger.error(f"Scope conflict with running loop: {conflict.loop_name}")
+                logger.info(f"  Conflicting scope: {conflict.scope}")
+                logger.info("  Use --queue to wait for it to finish")
                 return 1
-            # Lock acquired - no longer queued
-            _cleanup_queue_entry()
-        elif conflict:
-            logger.error(f"Scope conflict with running loop: {conflict.loop_name}")
-            logger.info(f"  Conflicting scope: {conflict.scope}")
-            logger.info("  Use --queue to wait for it to finish")
-            return 1
-        else:
-            # Unexpected: find_conflict returned None but acquire failed
-            logger.error("Failed to acquire scope lock (unknown reason)")
-            return 1
+            else:
+                # Unexpected: find_conflict returned None but acquire failed
+                logger.error("Failed to acquire scope lock (unknown reason)")
+                return 1
 
     executor: PersistentExecutor | None = None
     try:
@@ -401,4 +402,5 @@ def cmd_run(
     finally:
         if executor is not None:
             executor.close_transports()
-        lock_manager.release(fsm.name, instance_id=instance_id)
+        if not getattr(args, "no_lock", False):
+            lock_manager.release(fsm.name, instance_id=instance_id)

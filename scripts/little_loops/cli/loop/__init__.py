@@ -197,6 +197,9 @@ Examples:
         "--queue", "-q", action="store_true", help="Wait for conflicting loops to finish"
     )
     run_parser.add_argument(
+        "--no-lock", action="store_true", help="Skip scope lock (for demos/recordings)"
+    )
+    run_parser.add_argument(
         "--context",
         action="append",
         default=[],

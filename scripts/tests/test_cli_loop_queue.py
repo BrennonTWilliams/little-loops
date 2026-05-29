@@ -29,6 +29,7 @@ def _make_args(**kwargs: object) -> argparse.Namespace:
         "diagram_scope": None,
         "clear": False,
         "queue": True,
+        "no_lock": False,
         "handoff_threshold": None,
         "program_md": None,
         "worktree": False,
@@ -337,4 +338,32 @@ class TestCmdRunTransportWiring:
             except KeyboardInterrupt:
                 pass
 
+        mock_exec.close_transports.assert_called_once()
+
+    def test_no_lock_skips_acquire_and_proceeds_directly(self, tmp_path: Path) -> None:
+        """cmd_run skips LockManager.acquire() and release() when no_lock=True."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = _make_loop(tmp_path)
+        logger = Logger(use_color=False)
+        args = _make_args(queue=False, no_lock=True)
+
+        with (
+            patch("little_loops.fsm.concurrency.LockManager") as mock_lm_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.cli.loop.run.register_loop_signal_handlers"),
+            patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+            patch("little_loops.extension.wire_extensions"),
+            patch("little_loops.transport.wire_transports"),
+        ):
+            mock_lm = MagicMock()
+            mock_lm_cls.return_value = mock_lm
+            mock_exec = MagicMock()
+            mock_exec_cls.return_value = mock_exec
+
+            cmd_run("test-loop", args, loops_dir, logger)
+
+        mock_lm.acquire.assert_not_called()
+        mock_lm.release.assert_not_called()
         mock_exec.close_transports.assert_called_once()
