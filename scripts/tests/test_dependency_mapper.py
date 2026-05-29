@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 from pathlib import Path
@@ -1518,6 +1519,108 @@ class TestMainCLI:
         captured = capsys.readouterr()  # type: ignore[union-attr]
         assert "broken_depends_on_refs" in captured.out
         assert "broken_relates_to_refs" in captured.out
+
+    def test_validate_json_flag(self, tmp_path: Path, capsys: object) -> None:
+        """ll-deps validate --json outputs valid JSON with expected keys."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        feat_dir = issues_dir / "features"
+        feat_dir.mkdir()
+        (issues_dir / "bugs").mkdir()
+        (issues_dir / "enhancements").mkdir()
+
+        (feat_dir / "P1-FEAT-001-test.md").write_text("# FEAT-001: Test\n")
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]
+        ):
+            main()
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        data = json.loads(captured.out)
+        assert isinstance(data, dict)
+        assert "has_issues" in data
+        assert data["has_issues"] is False
+        assert data["broken_refs"] == []
+        assert data["cycles"] == []
+
+    def test_validate_json_short_flag(self, tmp_path: Path, capsys: object) -> None:
+        """ll-deps validate -j works equivalently to --json."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        feat_dir = issues_dir / "features"
+        feat_dir.mkdir()
+        (issues_dir / "bugs").mkdir()
+        (issues_dir / "enhancements").mkdir()
+
+        (feat_dir / "P1-FEAT-001-test.md").write_text("# FEAT-001: Test\n")
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "-j"]
+        ):
+            main()
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        data = json.loads(captured.out)
+        assert "has_issues" in data
+
+    def test_validate_json_with_broken_refs(self, tmp_path: Path, capsys: object) -> None:
+        """ll-deps validate --json reports broken refs in JSON output."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        feat_dir = issues_dir / "features"
+        feat_dir.mkdir()
+        (issues_dir / "bugs").mkdir()
+        (issues_dir / "enhancements").mkdir()
+
+        (feat_dir / "P1-FEAT-001-test.md").write_text(
+            "# FEAT-001: Test\n\n## Blocked By\n\n- FEAT-999\n"
+        )
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate", "--json"]
+        ):
+            main()
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        data = json.loads(captured.out)
+        assert data["has_issues"] is True
+        assert len(data["broken_refs"]) > 0
+
+    def test_validate_json_no_conflict_with_analyze_format_json(
+        self, tmp_path: Path, capsys: object
+    ) -> None:
+        """ll-deps analyze --format json still works alongside validate --json."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        feat_dir = issues_dir / "features"
+        feat_dir.mkdir()
+        (issues_dir / "bugs").mkdir()
+        (issues_dir / "enhancements").mkdir()
+
+        (feat_dir / "P1-FEAT-001-test.md").write_text("# FEAT-001: Test\n")
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze", "--format", "json"]
+        ):
+            main()
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        data = json.loads(captured.out)
+        assert "proposals" in data
+        assert "validation" in data
 
 
 # =============================================================================

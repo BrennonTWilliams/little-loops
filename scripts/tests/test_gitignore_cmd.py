@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -181,3 +182,92 @@ class TestMainGitignoreApply:
 
         call_kwargs = mock_add.call_args[1]
         assert call_kwargs["repo_root"] == Path("/some/path")
+
+
+class TestMainGitignoreJson:
+    """Tests for ll-gitignore --json flag."""
+
+    def test_json_no_suggestions(self) -> None:
+        """--json with no suggestions outputs valid JSON."""
+        empty = _make_suggestion()
+        with (
+            patch("sys.argv", ["ll-gitignore", "--json"]),
+            patch("little_loops.cli.gitignore.suggest_gitignore_patterns", return_value=empty),
+        ):
+            result = main_gitignore()
+        assert result == 0
+
+    def test_json_with_suggestions(self, capsys) -> None:
+        """--json with suggestions outputs structured JSON."""
+        patterns = [
+            GitignorePattern(
+                pattern="*.log",
+                category="logs",
+                description="Log files",
+                files_matched=["app.log", "error.log"],
+                priority=1,
+            ),
+            GitignorePattern(
+                pattern=".env",
+                category="environment",
+                description="Environment files",
+                files_matched=[".env"],
+                priority=2,
+            ),
+        ]
+        suggestion = _make_suggestion(patterns)
+
+        with (
+            patch("sys.argv", ["ll-gitignore", "--json"]),
+            patch("little_loops.cli.gitignore.suggest_gitignore_patterns", return_value=suggestion),
+        ):
+            result = main_gitignore()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["has_suggestions"] is True
+        assert isinstance(data["summary"], str)
+        assert len(data["suggestions"]) == 2
+        assert data["suggestions"][0]["pattern"] == "*.log"
+        assert data["suggestions"][0]["category"] == "logs"
+        assert data["suggestions"][0]["files_matched"] == ["app.log", "error.log"]
+        assert data["suggestions"][0]["priority"] == 1
+
+    def test_json_short_flag(self, capsys) -> None:
+        """-j works equivalently to --json."""
+        patterns = [
+            GitignorePattern(
+                pattern="*.tmp",
+                category="temp",
+                description="Temporary files",
+                files_matched=["temp.tmp"],
+                priority=3,
+            )
+        ]
+        suggestion = _make_suggestion(patterns)
+
+        with (
+            patch("sys.argv", ["ll-gitignore", "-j"]),
+            patch("little_loops.cli.gitignore.suggest_gitignore_patterns", return_value=suggestion),
+        ):
+            result = main_gitignore()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["has_suggestions"] is True
+        assert len(data["suggestions"]) == 1
+
+    def test_json_empty_suggestions(self, capsys) -> None:
+        """--json with no patterns outputs empty suggestions list."""
+        empty = _make_suggestion()
+        with (
+            patch("sys.argv", ["ll-gitignore", "--json"]),
+            patch("little_loops.cli.gitignore.suggest_gitignore_patterns", return_value=empty),
+        ):
+            result = main_gitignore()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["has_suggestions"] is False
+        assert isinstance(data["suggestions"], list)
+        assert len(data["suggestions"]) == 0

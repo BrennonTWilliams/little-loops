@@ -2,12 +2,23 @@
 id: ENH-1785
 title: Add --json to Priority 2 CLIs (deps validate, gitignore)
 type: enh
-status: open
+status: done
 priority: P3
 parent: ENH-1780
+completed_at: '2026-05-28'
 labels:
 - cli
 - agent-composability
+---
+
+## Resolution
+
+Added `--json`/`-j` flag support via `add_json_arg()` to two CLIs:
+- `ll-deps validate --json` — serializes `ValidationResult` fields (broken_refs, missing_backlinks, cycles, stale_completed_refs, broken_depends_on_refs, broken_relates_to_refs)
+- `ll-gitignore --json` — serializes `GitignoreSuggestion` fields (has_suggestions, summary, suggestions with pattern/category/description/files_matched/priority)
+
+No conflict with `ll-deps analyze --format json` (verified by test). 8 new tests added across `test_dependency_mapper.py` and `test_gitignore_cmd.py`.
+
 ---
 
 # ENH-1785: Add --json to Priority 2 CLIs (deps validate, gitignore)
