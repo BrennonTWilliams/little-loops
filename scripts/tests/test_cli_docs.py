@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -426,3 +427,61 @@ class TestMainVerifySkillBudget:
 
         call_kwargs = mock_check.call_args[1]
         assert call_kwargs["base_dir"] == tmp_path
+
+    def test_json_flag_under_budget(self, capsys) -> None:
+        """--json outputs valid JSON when under budget."""
+        mock_result = self._make_budget_result(under_budget=True)
+        mock_result.skill_breakdown = [
+            (Path("skills/test-skill/SKILL.md"), "desc text", 100),
+        ]
+
+        with (
+            patch("sys.argv", ["ll-verify-skill-budget", "--json"]),
+            patch(
+                "little_loops.doc_counts.check_skill_budget",
+                return_value=mock_result,
+            ),
+        ):
+            result = main_verify_skill_budget()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["under_budget"] is True
+        assert data["total_tokens"] == 800
+        assert data["threshold_tokens"] == 2000
+        assert len(data["skills"]) == 1
+
+    def test_json_flag_over_budget(self, capsys) -> None:
+        """--json outputs valid JSON and returns 1 when over budget."""
+        mock_result = self._make_budget_result(under_budget=False)
+
+        with (
+            patch("sys.argv", ["ll-verify-skill-budget", "--json"]),
+            patch(
+                "little_loops.doc_counts.check_skill_budget",
+                return_value=mock_result,
+            ),
+        ):
+            result = main_verify_skill_budget()
+
+        assert result == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["under_budget"] is False
+        assert data["total_tokens"] == 2400
+
+    def test_json_short_flag(self, capsys) -> None:
+        """-j works equivalently to --json."""
+        mock_result = self._make_budget_result(under_budget=True)
+
+        with (
+            patch("sys.argv", ["ll-verify-skill-budget", "-j"]),
+            patch(
+                "little_loops.doc_counts.check_skill_budget",
+                return_value=mock_result,
+            ),
+        ):
+            result = main_verify_skill_budget()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["under_budget"] is True

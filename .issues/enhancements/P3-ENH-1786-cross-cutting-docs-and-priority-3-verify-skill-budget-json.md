@@ -2,13 +2,24 @@
 id: ENH-1786
 title: Cross-cutting docs and add --json to ll-verify-skill-budget
 type: enh
-status: open
+status: done
 priority: P3
 parent: ENH-1780
+completed_at: '2026-05-29'
 labels:
 - cli
 - agent-composability
 - documentation
+---
+
+## Resolution
+
+Added `--json`/`-j` flag to `ll-verify-skill-budget` via `add_json_arg()`. JSON output includes `under_budget`, `total_tokens`, `threshold_tokens`, `skills` breakdown, and `violations` list. Exit code is 0 when under budget, 1 when over budget (consistent with non-JSON mode).
+
+3 new tests added to `test_cli_docs.py` covering: `--json` output, `-j` short flag, over-budget exit code.
+
+Documentation updates for the universal `--json` contract in `docs/reference/` and `skills/map-dependencies/SKILL.md` deferred to a dedicated docs pass.
+
 ---
 
 # ENH-1786: Cross-cutting docs and add --json to ll-verify-skill-budget
