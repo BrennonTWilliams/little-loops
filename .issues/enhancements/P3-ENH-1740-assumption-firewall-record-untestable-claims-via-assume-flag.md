@@ -10,6 +10,8 @@ relates_to:
 - FEAT-1696
 - FEAT-1695
 - EPIC-1694
+parent: EPIC-1694
+depends_on: [FEAT-1743]
 ---
 
 # ENH-1740: `assumption-firewall` — record untestable claims via `--assume` flag

@@ -111,3 +111,5 @@ Optionally set `llm_discoverable: false` on the 4 sub-skills to demote them to T
 ## Scope Boundaries
 
 **Note** (added by `/ll:audit-issue-conflicts`): ENH-1617 (negative routing instructions for Tier 1 skill descriptions) has been made to depend on this issue. Resolve the audit-skill consolidation in ENH-1618 first so ENH-1617 knows which audit skills remain Tier 1 and actually need routing disambiguation. If this issue is deferred or cancelled, remove the `depends_on: ENH-1618` from ENH-1617 and unblock it.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-28): `audit-issue-conflicts` MUST remain Tier 1 (exempt from demotion). FEAT-948 introduces `decisions.yaml` as a project governance layer, and FEAT-1736 adds load-bearing coupling entries that wire-issue consumes at runtime. As the governance surface grows, `audit-issue-conflicts` becomes the primary cross-validation tool for decisions.yaml configurations — demoting it to Tier 2 would make this critical validator undiscoverable at exactly the moment its surface area expands.

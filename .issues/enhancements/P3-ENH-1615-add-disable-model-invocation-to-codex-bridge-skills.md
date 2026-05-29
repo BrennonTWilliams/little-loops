@@ -59,7 +59,7 @@ for skill_dir in Path("skills").glob("ll-*/SKILL.md"):
 
 - **Priority**: P3 — structural budget waste, no user-facing bug
 - **Effort**: Small — bulk `disable-model-invocation: true` insertion into 28 SKILL.md frontmatter blocks
-- **Risk**: None — additive field only; does not change invocation behavior for Claude Code or Codex
+- **Risk**: Low — additive field only; does not change invocation behavior for Codex users. Note: BUG-1754 demonstrates that `disable-model-invocation: true` prevents Skill tool invocation in pipeline commands (workflow-automation-proposer). The 28 ll-* bridge skills are not themselves pipeline-invoked, so the implementation is safe, but future commands must not invoke ll-* bridge stubs via the Skill tool or they will hit the same failure mode.
 - **Breaking Change**: No
 
 ## Integration Map

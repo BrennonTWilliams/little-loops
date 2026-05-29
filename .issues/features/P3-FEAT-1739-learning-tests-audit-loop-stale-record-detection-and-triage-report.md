@@ -159,6 +159,12 @@ done_empty (terminal)
 
 ---
 
+## Scope Extension
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-28): This issue's automated stale-detection pipeline intentionally extends beyond FEAT-1282's original scope boundary, which excluded "automatic staleness enforcement." The decomposed children of FEAT-1282 (FEAT-1285/1286/1287) shipped the registry infrastructure (`ll-learning-tests check`, `list`, `mark-stale` CLI) that makes automated detection feasible — the registry is no longer a raw file store but a queryable system with version metadata. This issue builds on that shipped infrastructure.
+
+## Status
+
 **Open** | Created: 2026-05-27 | Priority: P3
 
 ## Session Log

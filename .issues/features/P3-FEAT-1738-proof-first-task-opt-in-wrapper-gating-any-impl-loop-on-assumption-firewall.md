@@ -7,6 +7,7 @@ captured_at: '2026-05-27T18:08:06Z'
 discovered_date: '2026-05-27'
 discovered_by: capture-issue
 parent: EPIC-1694
+depends_on: [FEAT-1743]
 relates_to:
 - EPIC-1694
 - FEAT-1696

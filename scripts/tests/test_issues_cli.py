@@ -361,6 +361,7 @@ class TestIssuesCLIList:
         assert "type" in item
         assert "title" in item
         assert "path" in item
+        assert "parent" in item
         ids = [entry["id"] for entry in data]
         assert "BUG-001" in ids
         assert "FEAT-001" in ids
@@ -711,6 +712,31 @@ class TestIssuesCLIList:
         assert len(data) > 0
         for item in data:
             assert "milestone" in item
+
+    def test_list_json_output_contains_parent_key(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --json output includes 'parent' key on every item."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert len(data) > 0
+        for item in data:
+            assert "parent" in item
 
     def test_list_group_by_epic_parented(
         self,

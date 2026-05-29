@@ -424,6 +424,7 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
                     "path": str(issue.path),
                     "status": stat,
                     "discovered_date": d.date().isoformat() if d else None,
+                    "parent": issue.parent,
                     "labels": lbls,
                 }
                 for issue, stat, d, lbls in zip(

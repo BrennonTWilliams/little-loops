@@ -8,6 +8,7 @@ discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1713
 relates_to: [FEAT-992, FEAT-1478]
+depends_on: [FEAT-1476]
 labels: [feat, captured, pi-adapter, hooks, host-compat, upstream-coordination]
 ---
 

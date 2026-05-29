@@ -43,6 +43,7 @@ This constraint is why FEAT-1695 (`ready-to-implement-gate`) is shell-driven rat
 - **FEAT-1742** — discoverability surface (PreToolUse hook or `/ll:confidence-check` probe) that nudges users toward `proof-first-task` when mainstream impl loops touch unfamiliar APIs
 - **FEAT-1743** — wire learning-tests as an opt-in feature flag in `/ll:init` and `config-schema.json`; provides the master switch every EPIC-1694 surface checks before activating
 - **ENH-1741** — refactor `ready-to-implement-gate` to use `type: learning` states, making it the canonical built-in exemplar of the primitive
+- **ENH-1740** — `assumption-firewall` — record untestable claims via `--assume` flag
 
 ## Scope
 

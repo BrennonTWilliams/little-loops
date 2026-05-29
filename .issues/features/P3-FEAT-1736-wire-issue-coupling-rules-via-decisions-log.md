@@ -2,7 +2,7 @@
 discovered_date: 2026-05-27
 discovered_by: capture-issue
 captured_at: "2026-05-27T04:46:43Z"
-blocked_by: []
+blocked_by: [ENH-494]
 depends_on: FEAT-948
 ---
 

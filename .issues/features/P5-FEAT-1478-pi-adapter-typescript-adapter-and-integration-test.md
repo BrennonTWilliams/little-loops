@@ -118,6 +118,10 @@ Template reference: `test_opencode_adapter.py:TestOpenCodeAdapterIntegration.tes
 - **Effort**: Small-Medium
 - **Risk**: Low — pure creation, no modifications to existing files
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-28): The README.md event-mapping table is a **baseline** reflecting only the 2 Pi SDK events known at implementation time (`session_start`, `session_before_compact`). A full parity matrix documenting 6+ unsupported hook intents (PreToolUse, PostToolUse, UserPromptSubmit, Stop, SessionEnd, post_compact) will be added by FEAT-1715, which layers on top of this baseline. The adapter ships knowing its own limits.
+
 ## Status
 
 **Open** | Created: 2026-05-15 | Priority: P5

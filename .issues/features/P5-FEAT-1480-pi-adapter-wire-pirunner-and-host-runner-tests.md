@@ -5,6 +5,7 @@ priority: P5
 status: open
 parent: EPIC-1622
 relates_to: FEAT-1476
+depends_on: [FEAT-1714]
 ---
 
 # FEAT-1480: Pi Adapter — Wire PiRunner and Host Runner Tests

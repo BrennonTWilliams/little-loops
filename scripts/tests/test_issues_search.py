@@ -787,6 +787,7 @@ class TestSearchOutputFormats:
             assert "path" in item
             assert "status" in item
             assert "discovered_date" in item
+            assert "parent" in item
 
     def test_ids_format(
         self,

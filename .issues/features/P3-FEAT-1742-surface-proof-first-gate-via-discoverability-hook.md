@@ -7,6 +7,7 @@ captured_at: '2026-05-27T18:18:58Z'
 discovered_date: '2026-05-27'
 discovered_by: capture-issue
 parent: EPIC-1694
+depends_on: [FEAT-1743]
 relates_to:
 - EPIC-1694
 - FEAT-1738
@@ -103,21 +104,7 @@ A reasonable compromise: ship B first as a low-risk surface, then ship A as a fo
 
 ### Configuration surface
 
-```json
-{
-  "learning_tests": {
-    "discoverability": {
-      "enabled": true,
-      "mode": "warn",
-      "skip_packages": ["std", "typing", "os", "sys"]
-    }
-  }
-}
-```
-
-- `mode: off` — fully disabled
-- `mode: warn` — print suggestion, do not block (default)
-- `mode: block` — refuse the tool call until user opts out or re-runs via `proof-first-task`
+The canonical `learning_tests` configuration schema is defined by FEAT-1743 in `config-schema.json`. This issue references that schema and does not define its own. The discoverability hook checks `learning_tests.enabled` (master switch) and `learning_tests.discoverability.mode` (warn/block) as defined by FEAT-1743.
 
 ### Package detection heuristic
 

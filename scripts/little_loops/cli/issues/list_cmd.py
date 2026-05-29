@@ -118,6 +118,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                     "path": str(issue.path),
                     "status": stat,
                     "discovered_date": disc_date.date().isoformat() if disc_date else None,
+                    "parent": issue.parent,
                     "labels": lbls,
                     "milestone": issue.milestone,
                 }

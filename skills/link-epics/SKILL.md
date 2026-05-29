@@ -73,12 +73,18 @@ ll-issues list --status open --type FEAT --json
 ll-issues list --status open --type ENH --json
 ```
 
-For each issue returned, read its file and check the `parent:` frontmatter field.
-Keep only issues where `parent:` is absent or null — these are **orphaned issues**.
+Filter orphans directly from the JSON output: the `parent` key is `null` when
+absent. Keep only issues where `parent` is `null` — these are **orphaned issues**.
+
+```python
+orphans = [i for i in data if not i.get("parent")]
+```
+
+No per-file reads needed for orphan detection.
 
 For each orphan:
-1. Record its `id`, `path`, and `title`.
-2. Read the file content.
+1. Record its `id`, `path`, and `title` from the JSON.
+2. Read the file content (needed for summary extraction in scoring).
 3. Extract summary text (same pattern as Step 2).
 4. Build score text: `orphan_score_text = orphan_title + " " + summary_text`.
 

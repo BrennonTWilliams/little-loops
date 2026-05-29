@@ -3,10 +3,16 @@ id: ENH-1636
 type: ENH
 priority: P4
 status: open
-captured_at: 2026-05-23T12:00:00Z
+captured_at: 2026-05-23 12:00:00+00:00
 discovered_date: 2026-05-23
 discovered_by: capture-issue
 parent: EPIC-1663
+confidence_score: 96
+outcome_confidence: 91
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 20
+score_change_surface: 25
 ---
 
 # ENH-1636: `ll-loop validate` lint for zero-retry counter pattern
@@ -37,14 +43,45 @@ Warning message should suggest the likely intended `target:` value.
 
 ## Proposed Solution
 
-Add a lint pass in `scripts/little_loops/cli/loop/_helpers.py` (or a dedicated `lints/` module) that walks loaded loop YAML, identifies counter-pattern states, and raises a `LintWarning` on the pattern above. Wire into the existing `ll-loop validate` output (or expose via `ll-loop lint`).
+Add a `_validate_zero_retry_counter()` function in `scripts/little_loops/fsm/validation.py` following the `_validate_meta_loop_evaluation()` pattern — a private function that takes `FSMLoop`, iterates `fsm.states.values()`, inspects `state.action` + `state.evaluate` for the counter pattern, and returns `list[ValidationError]` with `severity=ValidationSeverity.WARNING`. Wire into `validate_fsm()` via `errors.extend(_validate_zero_retry_counter(fsm))`.
+
+No new dataclass or module is needed — reuse the existing `ValidationError` / `ValidationSeverity` infrastructure (validation.py:33-58). No CLI changes needed either; `cmd_validate()` in `config_cmds.py` already prints warnings returned by `load_and_validate()`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Integration point**: `validate_fsm()` at `validation.py:710` orchestrates all `_validate_*()` calls. Add `errors.extend(_validate_zero_retry_counter(fsm))` alongside the existing `_validate_meta_loop_evaluation()` call (line 932).
+- **Pattern to follow**: `_validate_meta_loop_evaluation()` at `validation.py:883-935` — cross-state heuristic that iterates `fsm.states.values()`, inspects evaluator configs, returns `list[ValidationError]`.
+- **Counter pattern in the wild**: The canonical `retry_counter` fragment lives at `loops/lib/common.yaml:23-38` — reads counter file (default 0), increments (`N=$((N + 1))`), writes back, echoes. States using this fragment with `target: 1` and `operator: lt` have zero effective retries.
+- **Detection heuristic**: The action string must contain a `printf`/`echo` writing to a file AND an increment pattern (`$((... + 1))`, `++`, `+=1`). The evaluator must be `output_numeric` with an operator/target combo where the first post-increment value fails the condition. Specifically:
+  - `operator: lt, target: 0` → counter 0→1, `1 < 0 == false` → zero retries
+  - `operator: lt, target: 1` → counter 0→1, `1 < 1 == false` → zero retries
+  - `operator: le, target: 0` → counter 0→1, `1 <= 0 == false` → zero retries
+  - `operator: eq, target: 0` → counter 0→1, `1 == 0 == false` → zero retries (counter never matches)
+- **Operator semantics**: `_NUMERIC_OPERATORS` at `evaluators.py:88-95` defines all six operators. `evaluate_output_numeric()` at `evaluators.py:120-156` parses stdout as float and applies the operator lambda.
+- **Warning emission**: `ValidationError.__str__()` at `validation.py:54-58` formats as `[WARNING] states.<name>.evaluate: <message>`. Use `path=f"states.{state_name}.evaluate"` for consistency with existing evaluator warnings.
+- **Test location**: Existing validation tests live in `scripts/tests/test_fsm_validation.py` (187 test methods, programmatic FSM construction). Use `make_state()` helper (line 33) and `validate_fsm()` for unit tests. The `test_fsm_schema.py:1085` `TestEvaluatorValidation` class is the reference for evaluator-specific tests.
 
 ## Implementation Steps
 
-1. Define a `CounterStateLint` heuristic that matches the action+evaluator pair.
-2. Compute the effective retry budget given `operator`/`target`.
-3. Emit a warning with the suggested fix when budget == 0.
-4. Add unit tests covering: `lt target=1` (warn), `lt target=2` (no warn), `lte target=0` (warn), non-counter actions (no warn).
+1. Add `_validate_zero_retry_counter(fsm: FSMLoop) -> list[ValidationError]` in `scripts/little_loops/fsm/validation.py`. The function should:
+   - Iterate `fsm.states.items()` to inspect each `(state_name, StateConfig)`
+   - Skip states without both `action` and `evaluate` (early continue)
+   - Skip states where `evaluate.type != "output_numeric"` or `evaluate.operator`/`evaluate.target` is `None`
+   - Regex-match `state.action` for a counter-increment pattern: `printf`/`echo` writing to a file path AND an arithmetic increment (`$((... + 1))`, `++`, `+=1`, `awk ...++`)
+   - Compute the zero-retry condition: given counter starts at 0 and increments by 1 before evaluation, check whether `_NUMERIC_OPERATORS[operator](1, target)` is `False` (i.e., the first post-increment value already fails the condition)
+   - For each match, yield `ValidationError(message="...", path=f"states.{state_name}.evaluate", severity=ValidationSeverity.WARNING)` with a suggested-fix message (e.g., `"Zero retry budget: operator=lt target=1 means 1 < 1 is already false after one increment. Did you mean target=2?"`)
+2. Wire into `validate_fsm()` at `validation.py:932` by adding `errors.extend(_validate_zero_retry_counter(fsm))` alongside the `_validate_meta_loop_evaluation()` call.
+3. Add unit tests in `scripts/tests/test_fsm_validation.py` following the existing `TestMetaLoopValidation` class pattern (programmatic FSM construction with `make_state()`):
+   - `lt target=1` with counter action → WARNING emitted
+   - `lt target=0` with counter action → WARNING emitted
+   - `le target=0` with counter action → WARNING emitted
+   - `lt target=2` with counter action → no warning (one retry allowed)
+   - `lt target=3` with counter action → no warning (two retries allowed)
+   - Non-counter action (plain `echo "hello"`) with `lt target=1` → no warning
+   - `output_numeric` with counter action but `operator: gt, target: 0` → no warning (valid budget)
+4. Run existing test suite to verify no regressions: `python -m pytest scripts/tests/test_fsm_validation.py scripts/tests/test_builtin_loops.py -v`
 
 ## Scope Boundaries
 
@@ -61,23 +98,34 @@ Out of scope:
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/_helpers.py` — wire the lint into the existing `ll-loop validate` path (or a new `ll-loop lint` subcommand).
-- New: `scripts/little_loops/fsm/lints/counter_state.py` (or equivalent module) — `CounterStateLint` heuristic.
+- `scripts/little_loops/fsm/validation.py` — add `_validate_zero_retry_counter()` and wire into `validate_fsm()` alongside `_validate_meta_loop_evaluation()`.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/loop/__init__.py` — registers `validate` subcommand; may need a `lint` registration if exposed separately.
+- None. `cmd_validate()` in `scripts/little_loops/cli/loop/config_cmds.py` already prints warnings returned by `load_and_validate()`. No CLI changes needed.
 
 ### Similar Patterns
-- Existing FSM schema validators in `scripts/little_loops/fsm/schema.py` — match warning emission style so output is consistent with current `ll-loop validate` messages.
+- `_validate_meta_loop_evaluation()` at `validation.py:883` — cross-state heuristic that iterates `fsm.states.values()`, inspects evaluator configs, returns `list[ValidationError]`. Follow this pattern for the new lint.
 
 ### Tests
-- `scripts/tests/fsm/` — new test module covering `lt target=1` (warn), `lt target=2` (no warn), `lte target=0` (warn), and non-counter actions (no warn).
+- `scripts/tests/test_fsm_validation.py` — add test class following `TestMetaLoopValidation` pattern, using `make_state()` helper (line 33). Cover: `lt target=1` (warn), `lt target=0` (warn), `le target=0` (warn), `lt target=2` (no warn), `lt target=3` (no warn), non-counter action with `lt target=1` (no warn), counter action with `gt target=0` (no warn).
 
 ### Documentation
 - `docs/reference/` lint/validate documentation — add a brief note describing the new warning and its suggested-fix output.
 
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Primary file to modify**: `scripts/little_loops/fsm/validation.py` (not `_helpers.py`). All validation logic lives here — `validate_fsm()` at line 710, `_validate_meta_loop_evaluation()` at line 883 (the pattern to follow), `ValidationError` at line 40, `ValidationSeverity` at line 33.
+- **No new module needed**: There is no existing `lints/` directory. The codebase convention is private `_validate_*()` functions within `validation.py`, called from `validate_fsm()`. No `LintWarning` class exists — reuse `ValidationError` with `severity=ValidationSeverity.WARNING`.
+- **No CLI changes needed**: `cmd_validate()` in `config_cmds.py:11-34` already prints warnings returned by `load_and_validate()`. Adding the check to `validate_fsm()` is sufficient.
+- **Corrected Similar Patterns reference**: The existing "Similar Patterns" in Integration Map references `schema.py`, but `schema.py` contains dataclasses (`EvaluateConfig`, `StateConfig`, `FSMLoop`), not validators. The validators live in `validation.py`. Match the `_validate_meta_loop_evaluation()` pattern (cross-state heuristic scan, not per-state schema check).
+- **Corrected Tests path**: `scripts/tests/fsm/` does not exist. Validation tests are in `scripts/tests/test_fsm_validation.py` (187 test methods, programmatic FSM construction via `make_state()` helper at line 33). Evaluator config tests are in `scripts/tests/test_fsm_schema.py` (class `TestEvaluatorValidation` at line 1085).
+- **Retry counter fragment**: `loops/lib/common.yaml:23-38` defines the canonical `retry_counter` fragment — the exact pattern this lint targets.
+- **Evaluator internals**: `evaluate_output_numeric()` at `evaluators.py:120-156` parses stdout as float, looks up operator in `_NUMERIC_OPERATORS` dict (line 88), applies lambda. The operator set validated statically at `validation.py:97` (`VALID_OPERATORS`).
 
 ## Impact
 
@@ -99,6 +147,8 @@ Findings from `~/.claude/plans/we-are-running-little-loops-glistening-kitten.md`
 **Open** | Created: 2026-05-23 | Priority: P4
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-28T20:44:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/013a1bb3-99f0-42ec-9dbf-77c1b3c719e3.jsonl`
+- `/ll:refine-issue` - 2026-05-29T01:27:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0cd0c8c-d567-4316-be67-67df2787e79f.jsonl`
 - `/ll:format-issue` - 2026-05-23T19:19:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/900e25aa-792d-43a3-87b5-3b2b3c76ada1.jsonl`
 
 - `/ll:capture-issue` — 2026-05-23T12:00:00Z

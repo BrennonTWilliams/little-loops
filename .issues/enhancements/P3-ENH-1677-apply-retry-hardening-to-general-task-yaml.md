@@ -8,6 +8,7 @@ discovered_by: capture-issue
 status: open
 parent: EPIC-1744
 labels: [fsm-loops, general-task, resilience, loop-config]
+depends_on: [ENH-1678]
 ---
 
 # ENH-1677: Apply retry hardening to `general-task.yaml` using existing `max_retries`
