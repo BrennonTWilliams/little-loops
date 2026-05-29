@@ -578,7 +578,14 @@ Examples:
     monitor_parser.add_argument(
         "--clear",
         action="store_true",
-        help="Clear terminal before each iteration (useful with --show-diagrams); uses the alternate screen buffer when combined with --show-diagrams to avoid scrollback contamination",
+        default=True,
+        help="Clear terminal before each iteration (default: on). Uses the alternate screen buffer when combined with --show-diagrams to avoid scrollback contamination",
+    )
+    monitor_parser.add_argument(
+        "--no-clear",
+        action="store_false",
+        dest="clear",
+        help="Disable terminal clearing between iterations (scroll output instead)",
     )
     monitor_parser.add_argument(
         "--quiet", "--qt", action="store_true", help="Suppress progress output"

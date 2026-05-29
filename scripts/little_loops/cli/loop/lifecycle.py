@@ -560,7 +560,7 @@ def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
         ("quiet", False),
         ("verbose", False),
         ("show_diagrams", None),
-        ("clear", False),
+        ("clear", True),
         ("diagram_edge_labels", None),
         ("diagram_state_detail", None),
         ("diagram_scope", None),
