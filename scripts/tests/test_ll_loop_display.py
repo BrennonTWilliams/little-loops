@@ -3690,10 +3690,13 @@ class TestShowDiagramsSubprocessReemit:
             handoff_threshold=None,
             context_limit=None,
         )
-        with patch("subprocess.Popen", side_effect=fake_popen):
-            with patch("builtins.open"):
-                with patch("pathlib.Path.write_text"):
-                    run_background("my-loop", args_ns, Path("/tmp/fake-loops"))
+        mock_fsm = MagicMock()
+        mock_fsm.scope = None
+        with patch("little_loops.cli.loop._helpers.load_loop", return_value=mock_fsm):
+            with patch("subprocess.Popen", side_effect=fake_popen):
+                with patch("builtins.open"):
+                    with patch("pathlib.Path.write_text"):
+                        run_background("my-loop", args_ns, Path("/tmp/fake-loops"))
         return captured["cmd"]
 
     def test_preset_summary_reemitted_to_cmd(self) -> None:
