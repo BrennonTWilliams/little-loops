@@ -1,0 +1,441 @@
+name: cli-anything-bootstrap
+category: harness
+input_key: target
+description: |
+  Meta-loop that bootstraps an agent-native CLI for a target software (local path or
+  repo URL) by delegating to CLI-Anything's /cli-anything skill, bakes a per-target
+  rubric, caches the result, and emits a project-local task loop to .loops/generated/
+  that downstream loops invoke to drive the target software toward user goals.
+
+  Two outputs per successful run:
+  1. Cached CLI at ${context.cache_dir}/<target-hash>/ (configurable; default run-local)
+  2. Generated task loop at ${context.generated_dir}/<target-name>-task.yaml
+
+  Transient per-run artifacts (classification.yaml, rubric draft, verify metrics, score
+  outputs) live under .loops/runs/cli-anything-bootstrap/<run-id>/ via context.run_dir.
+
+  Per MR-1 (meta-loop discipline): every LLM-proposed artifact is paired with a non-LLM
+  external evaluator — pip install exit code, --help walker exit code, pytest pass rate.
+  The LLM score-bootstrap state judges measured numbers, not its own generated artifacts.
+
+  Prerequisites:
+  - CLI-Anything plugin installed (provides /cli-anything and /cli-anything:refine skills)
+  - Target software accessible at the given path or repo URL
+  - Python 3.10+ available for venv install
+initial: init
+max_iterations: 5       # one initial bootstrap + up to 4 refine cycles
+timeout: 7200           # 2h — CLI-Anything's full 7-phase pipeline takes 20-30 min
+
+context:
+  target: ""                              # required — local path or repo URL
+  cache_dir: ".loops/cli-anything"        # configurable; default project-local
+  generated_dir: ".loops/generated"       # where emitted task loops land
+  force_rebuild: "false"                  # set "true" to ignore an existing cache
+  min_test_pass_rate: "0.85"
+  min_help_coverage: "0.9"
+
+states:
+
+  init:
+    # HARNESS: setup. Captures runner-injected run_dir as absolute path and ensures
+    # generated_dir exists so emit-task-loop has a write target.
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      mkdir -p "${context.generated_dir}"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: compute-hash
+
+  compute-hash:
+    # HARNESS: derive a stable cache key from target identity + a version marker
+    # (git HEAD if available, else mtime of entry files). Target updates invalidate
+    # the cache naturally without needing force_rebuild for routine version bumps.
+    action_type: shell
+    action: |
+      TARGET="${context.target}"
+      if [ -z "$TARGET" ]; then
+        echo "ERROR: context.target is required" >&2
+        exit 1
+      fi
+      if [ -d "$TARGET" ]; then
+        if [ -d "$TARGET/.git" ]; then
+          VERSION=$(git -C "$TARGET" rev-parse HEAD 2>/dev/null || echo "no-head")
+        else
+          VERSION=$(find "$TARGET" -maxdepth 2 -type f \( -name "*.py" -o -name "*.toml" -o -name "package.json" \) -exec stat -f "%m" {} \; 2>/dev/null | sort -n | tail -1)
+        fi
+      else
+        VERSION="$TARGET"
+      fi
+      HASH=$(printf "%s|%s" "$TARGET" "$VERSION" | shasum -a 256 | cut -c1-12)
+      CACHE_BASE="${context.cache_dir}"
+      [ -z "$CACHE_BASE" ] && CACHE_BASE=".loops/cli-anything"
+      CACHE_PATH="$(pwd)/$CACHE_BASE/$HASH"
+      mkdir -p "$CACHE_BASE"
+      echo "$CACHE_PATH"
+    capture: cache_path
+    next: check-cache
+
+  check-cache:
+    # HARNESS: route around the loop when a fresh cached CLI exists. A valid cache
+    # has setup.py (or pyproject.toml), rubric.yaml, and a manifest.yaml written by
+    # a prior publish-cache. force_rebuild=true forces re-bootstrap regardless.
+    action_type: shell
+    action: |
+      FORCE="${context.force_rebuild}"
+      CACHE_PATH="${captured.cache_path.output}"
+      if [ "$FORCE" = "true" ]; then
+        exit 1
+      fi
+      if [ -f "$CACHE_PATH/manifest.yaml" ] && [ -f "$CACHE_PATH/rubric.yaml" ] && \
+         { [ -f "$CACHE_PATH/setup.py" ] || [ -f "$CACHE_PATH/pyproject.toml" ]; }; then
+        echo "CACHE_HIT"
+        exit 0
+      fi
+      exit 1
+    evaluate:
+      type: exit_code
+    on_yes: emit-task-loop
+    on_no: classify-target
+
+  classify-target:
+    # HARNESS: lightweight pre-classification used ONLY to select the task-loop
+    # template branch in emit-task-loop. CLI-Anything does its own deeper analysis
+    # inside its phase 1 — we don't second-guess theirs.
+    action_type: prompt
+    action: |
+      You are classifying a software target for the cli-anything-bootstrap loop.
+
+      Target: ${context.target}
+
+      Inspect the target (read README, top-level dirs, entry points if local; summarize
+      from the repo URL if remote). Classify into ONE of:
+
+      - desktop-gui      (visual app — GIMP, Blender, Krita; verified by screenshot)
+      - stateful-service (queryable state — Calibre, Obsidian, Zotero, n8n; verified by CLI query)
+      - data-lib         (deterministic lib/binary — Python package, ffmpeg-style tool; verified by assert)
+
+      Write ${captured.run_dir.output}/classification.yaml in this exact format:
+
+      ```yaml
+      target: ${context.target}
+      target_name: <short kebab-case, e.g. gimp, calibre, blender>
+      classification: <desktop-gui | stateful-service | data-lib>
+      rationale: <one sentence>
+      oracle_hint: <what CLI command type verifies output for this software>
+      ```
+
+      Be decisive. Do not equivocate.
+    next: bake-rubric
+
+  bake-rubric:
+    # HARNESS: write the per-target rubric BEFORE delegating. This is the bar the
+    # generated CLI must meet, fixed at planning time and scored against after delivery.
+    # Mirrors html-anything's static-rubric-then-iterate pattern.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/classification.yaml.
+
+      Write ${captured.run_dir.output}/rubric.yaml with 4-6 criteria appropriate for
+      the classification. Use this exact format (YAML inside a fenced block):
+
+      ```yaml
+      target_name: <from classification>
+      classification: <from classification>
+      criteria:
+        - name: install_clean
+          weight: 2
+          threshold: 1.0
+          description: pip install -e exits with code 0
+        - name: help_coverage
+          weight: 2
+          threshold: ${context.min_help_coverage}
+          description: fraction of subcommands with parseable --help
+        - name: test_pass_rate
+          weight: 2
+          threshold: ${context.min_test_pass_rate}
+          description: pytest pass rate from generated test suite
+        # then classification-specific criteria:
+      ```
+
+      Classification-specific criteria (add to the list above):
+
+      desktop-gui:
+        - screenshot_oracle   (weight 2, threshold 1.0 — CLI has ≥1 render/export command)
+        - file_io_safety      (weight 1, threshold 1.0 — destructive ops require --confirm)
+
+      stateful-service:
+        - query_oracle        (weight 2, threshold 1.0 — read commands exist to verify state)
+        - transaction_safety  (weight 1, threshold 1.0 — write ops separate from reads)
+
+      data-lib:
+        - json_output         (weight 2, threshold 1.0 — every command supports --json)
+        - deterministic       (weight 1, threshold 1.0 — same inputs yield same outputs)
+    next: delegate-bootstrap
+
+  delegate-bootstrap:
+    # HARNESS: hand off the actual 7-phase CLI generation to CLI-Anything's
+    # /cli-anything skill. We're a thin orchestration layer: caching, rubric, and
+    # task-loop emission are ours; the CLI generation itself is theirs. This keeps
+    # us out of the CLI-generation business and lets us upgrade by tracking their releases.
+    action_type: prompt
+    action: |
+      You will delegate CLI generation to the CLI-Anything plugin.
+
+      Target: ${context.target}
+      Output directory (where the generated CLI must end up): ${captured.cache_path.output}
+
+      Step 1 — Use the Bash tool to create a clean working directory:
+        mkdir -p "${captured.run_dir.output}/cli-anything-workdir"
+      and cd into it.
+
+      Step 2 — Invoke the /cli-anything skill with the target. If the skill is not
+      available, write "CLI_ANYTHING_PLUGIN_MISSING" to ${captured.run_dir.output}/delegate-error.txt
+      and stop — do NOT attempt to reimplement the 7-phase pipeline manually.
+
+      Step 3 — Once the skill completes, locate the generated CLI directory inside the
+      working directory (look for setup.py or pyproject.toml). Use the Bash tool to move
+      its contents to ${captured.cache_path.output}/ (create the dir if needed).
+
+      Step 4 — Copy the rubric into the cache:
+        cp "${captured.run_dir.output}/rubric.yaml" "${captured.cache_path.output}/rubric.yaml"
+
+      Step 5 — Report the final path to the operator and confirm setup.py (or pyproject.toml)
+      exists at the cache path.
+    next: verify-cli
+
+  verify-cli:
+    # HARNESS: external evaluator #1 — does the generated CLI install cleanly under a
+    # fresh venv, and how many subcommands expose parseable --help? Writes measurable
+    # numbers to verify-cli.txt for score-bootstrap to read. Always proceeds to score
+    # on failure so the iteration decision lives in one place.
+    action_type: shell
+    action: |
+      CACHE_PATH="${captured.cache_path.output}"
+      RUN_DIR="${captured.run_dir.output}"
+
+      if [ ! -f "$CACHE_PATH/setup.py" ] && [ ! -f "$CACHE_PATH/pyproject.toml" ]; then
+        printf "install_rc=99\nhelp_coverage=0.0\nreason=MISSING_SETUP\n" > "$RUN_DIR/verify-cli.txt"
+        exit 1
+      fi
+
+      VENV="$CACHE_PATH/.venv"
+      python3 -m venv "$VENV" >/dev/null 2>&1
+      "$VENV/bin/pip" install -e "$CACHE_PATH" > "$RUN_DIR/install.log" 2>&1
+      INSTALL_RC=$?
+      if [ $INSTALL_RC -ne 0 ]; then
+        printf "install_rc=%d\nhelp_coverage=0.0\nreason=INSTALL_FAILED\n" "$INSTALL_RC" > "$RUN_DIR/verify-cli.txt"
+        tail -20 "$RUN_DIR/install.log" >> "$RUN_DIR/verify-cli.txt"
+        exit 1
+      fi
+
+      CLI_NAME=$(ls "$VENV/bin" | grep -v -E '^(python|pip|activate|wheel)' | head -1)
+      if [ -z "$CLI_NAME" ]; then
+        printf "install_rc=0\nhelp_coverage=0.0\nreason=NO_ENTRY_POINT\n" > "$RUN_DIR/verify-cli.txt"
+        exit 1
+      fi
+
+      "$VENV/bin/$CLI_NAME" --help > "$RUN_DIR/help-root.txt" 2>&1
+      ROOT_RC=$?
+      SUBCOMMANDS=$("$VENV/bin/$CLI_NAME" --help 2>/dev/null | awk '/^Commands:/,0' | tail -n +2 | awk '{print $1}' | grep -v '^$')
+      TOTAL=0; OK=0
+      for SUB in $SUBCOMMANDS; do
+        TOTAL=$((TOTAL+1))
+        "$VENV/bin/$CLI_NAME" "$SUB" --help >/dev/null 2>&1 && OK=$((OK+1))
+      done
+      if [ $TOTAL -eq 0 ]; then COVERAGE="0.0"; else COVERAGE=$(python3 -c "print(round($OK / $TOTAL, 3))"); fi
+      printf "install_rc=%d\nhelp_root_rc=%d\nhelp_coverage=%s\nsubcommand_total=%d\nsubcommand_ok=%d\ncli_name=%s\n" \
+        "$INSTALL_RC" "$ROOT_RC" "$COVERAGE" "$TOTAL" "$OK" "$CLI_NAME" > "$RUN_DIR/verify-cli.txt"
+      cat "$RUN_DIR/verify-cli.txt"
+    evaluate:
+      type: exit_code
+    on_yes: run-cli-tests
+    on_no: score-bootstrap
+
+  run-cli-tests:
+    # HARNESS: external evaluator #2 — does the generated test suite pass? Writes
+    # test_pass_rate to test-results.txt for score-bootstrap. Routes to score on any
+    # outcome (success or failure) so the iteration decision is centralized.
+    action_type: shell
+    action: |
+      CACHE_PATH="${captured.cache_path.output}"
+      RUN_DIR="${captured.run_dir.output}"
+      VENV="$CACHE_PATH/.venv"
+
+      if [ ! -d "$CACHE_PATH/tests" ]; then
+        printf "pytest_rc=99\ntest_total=0\ntest_passed=0\ntest_pass_rate=0.0\nreason=NO_TESTS_DIR\n" > "$RUN_DIR/test-results.txt"
+        exit 0
+      fi
+
+      "$VENV/bin/pip" install pytest pytest-json-report >/dev/null 2>&1
+      cd "$CACHE_PATH" && "$VENV/bin/pytest" --json-report --json-report-file="$RUN_DIR/pytest.json" > "$RUN_DIR/pytest.log" 2>&1
+      PYTEST_RC=$?
+
+      if [ -f "$RUN_DIR/pytest.json" ]; then
+        TOTAL=$(python3 -c "import json; d=json.load(open('$RUN_DIR/pytest.json')); print(d['summary'].get('total', 0))")
+        PASSED=$(python3 -c "import json; d=json.load(open('$RUN_DIR/pytest.json')); print(d['summary'].get('passed', 0))")
+        if [ "$TOTAL" = "0" ]; then RATE="0.0"; else RATE=$(python3 -c "print(round($PASSED / $TOTAL, 3))"); fi
+      else
+        TOTAL=0; PASSED=0; RATE="0.0"
+      fi
+      printf "pytest_rc=%d\ntest_total=%d\ntest_passed=%d\ntest_pass_rate=%s\n" \
+        "$PYTEST_RC" "$TOTAL" "$PASSED" "$RATE" > "$RUN_DIR/test-results.txt"
+      tail -30 "$RUN_DIR/pytest.log" >> "$RUN_DIR/test-results.txt"
+      cat "$RUN_DIR/test-results.txt" | head -5
+    evaluate:
+      type: exit_code
+    on_yes: score-bootstrap
+    on_no: score-bootstrap
+
+  score-bootstrap:
+    # HARNESS: LLM judge reads MEASURED evidence (install_rc, help_coverage, test_pass_rate)
+    # against rubric thresholds. Per MR-1, the judge does NOT self-grade the generated CLI
+    # source — it checks whether external evaluators cleared the thresholds. Routes via
+    # output_contains: ALL_PASS, same robust pattern as html-anything.
+    action_type: prompt
+    action: |
+      Read these files in order:
+      - ${captured.run_dir.output}/rubric.yaml          (acceptance criteria)
+      - ${captured.run_dir.output}/verify-cli.txt       (install + help-walk metrics)
+      - ${captured.run_dir.output}/test-results.txt     (pytest metrics)
+
+      For each criterion in rubric.yaml, evaluate whether the measured metrics meet the
+      threshold. Do NOT inspect the generated CLI source code to form an opinion — use
+      ONLY the measured numbers in the .txt files. The rubric thresholds are the bar.
+
+      Write ${captured.run_dir.output}/critique.md in this exact format:
+
+      ```
+      # Bootstrap Score
+
+      target: <target_name from rubric>
+
+      <criterion_name>: PASS|FAIL — measured: <number>, threshold: <number>
+
+      <repeat for each criterion in rubric.yaml>
+
+      ## Refinement Focus
+      [If any FAILED, list SPECIFIC areas /cli-anything:refine should target. Be
+       concrete: "expand image filter commands", "add JSON output to layer commands".
+       If all passed, write "No refinement needed."]
+      ```
+
+      If ALL criteria are PASS, output exactly: ALL_PASS
+      Otherwise output: ITERATE
+    evaluate:
+      type: output_contains
+      pattern: "ALL_PASS"
+    on_yes: publish-cache
+    on_no: delegate-refine
+    on_error: diagnose
+
+  delegate-refine:
+    # HARNESS: hand back to CLI-Anything's /cli-anything:refine with the specific focus
+    # from critique.md. Re-enters verify→test→score cycle. Counts against max_iterations.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/critique.md and extract the "Refinement Focus" section.
+
+      Invoke the /cli-anything:refine skill with:
+        target: ${captured.cache_path.output}
+        focus:  <the refinement focus text from critique.md>
+
+      Wait for the skill to complete. If the skill is unavailable, write
+      "CLI_ANYTHING_PLUGIN_MISSING" to ${captured.run_dir.output}/delegate-error.txt and stop.
+    next: verify-cli
+
+  publish-cache:
+    # HARNESS: bootstrap accepted — write the manifest that marks this cache as ready.
+    # Future check-cache runs detect a valid cache by the presence of manifest.yaml.
+    action_type: shell
+    action: |
+      CACHE_PATH="${captured.cache_path.output}"
+      RUN_DIR="${captured.run_dir.output}"
+      cp "$RUN_DIR/classification.yaml" "$CACHE_PATH/classification.yaml"
+      cp "$RUN_DIR/rubric.yaml"          "$CACHE_PATH/rubric.yaml"
+      cp "$RUN_DIR/critique.md"          "$CACHE_PATH/last-critique.md"
+      cat > "$CACHE_PATH/manifest.yaml" <<EOF
+      bootstrapped_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+      target: ${context.target}
+      cache_path: $CACHE_PATH
+      EOF
+      echo "$CACHE_PATH/manifest.yaml"
+    next: emit-task-loop
+
+  emit-task-loop:
+    # HARNESS: render the per-target task loop YAML via deterministic sed substitution
+    # against a template under lib/task-templates/, picked by classification.yaml.
+    # Output is project-local (${context.generated_dir}). The emitted loop is NOT a
+    # meta-loop — it uses the bootstrapped CLI to drive the target toward a user goal
+    # with the classification-specific oracle:
+    #   desktop-gui      → screenshot evaluator   (lib/task-templates/desktop-gui-task.yaml.tmpl)
+    #   stateful-service → CLI query evaluator    (lib/task-templates/stateful-service-task.yaml.tmpl)
+    #   data-lib         → assert/exit-code gate  (lib/task-templates/data-lib-task.yaml.tmpl)
+    # Deterministic substitution (not LLM-rendered) keeps this state safe under MR-1
+    # since the emitted file IS a harness artifact and would otherwise need a gate.
+    action_type: shell
+    action: |
+      CACHE_PATH="${captured.cache_path.output}"
+      RUN_DIR="${captured.run_dir.output}"
+      GEN_DIR="${context.generated_dir}"
+      mkdir -p "$GEN_DIR"
+
+      TARGET_NAME=$(awk -F': *' '/^target_name:/ {print $2}' "$CACHE_PATH/classification.yaml" | tr -d '"')
+      CLASSIFICATION=$(awk -F': *' '/^classification:/ {print $2}' "$CACHE_PATH/classification.yaml" | tr -d '"')
+      CLI_NAME=$(awk -F= '/^cli_name=/ {print $2}' "$RUN_DIR/verify-cli.txt")
+      CLI_PATH="$CACHE_PATH/.venv/bin/$CLI_NAME"
+
+      TEMPLATE="scripts/little_loops/loops/lib/task-templates/${CLASSIFICATION}-task.yaml.tmpl"
+      if [ ! -f "$TEMPLATE" ]; then
+        echo "ERROR: template not found: $TEMPLATE (classification=$CLASSIFICATION)" >&2
+        exit 1
+      fi
+      if [ -z "$TARGET_NAME" ] || [ -z "$CLI_NAME" ]; then
+        echo "ERROR: missing target_name ($TARGET_NAME) or cli_name ($CLI_NAME)" >&2
+        exit 1
+      fi
+
+      OUT="$GEN_DIR/${TARGET_NAME}-task.yaml"
+      sed -e "s|{{target_name}}|${TARGET_NAME}|g" \
+          -e "s|{{cli_path}}|${CLI_PATH}|g" \
+          "$TEMPLATE" > "$OUT"
+      echo "TASK_LOOP_EMITTED: $OUT"
+    next: done
+
+  done:
+    # HARNESS: terminal — both artifacts produced (cached CLI + generated task loop).
+    action_type: prompt
+    action: |
+      The cli-anything-bootstrap loop completed successfully.
+
+      Artifacts:
+      - Cached CLI:          ${captured.cache_path.output}/
+      - Bootstrap rubric:    ${captured.cache_path.output}/rubric.yaml
+      - Last critique:       ${captured.cache_path.output}/last-critique.md
+      - Cache manifest:      ${captured.cache_path.output}/manifest.yaml
+      - Generated task loop: ${context.generated_dir}/<target_name>-task.yaml
+
+      Tell the operator they can now run the task loop with:
+        ll-loop run <target_name>-task --input "<their goal in natural language>"
+    terminal: true
+
+  diagnose:
+    action_type: prompt
+    action: |
+      The cli-anything-bootstrap loop terminated with an unrecoverable error.
+
+      Diagnose by reading whichever of these exist:
+      - ${captured.run_dir.output}/delegate-error.txt   (plugin missing / skill failure)
+      - ${captured.run_dir.output}/verify-cli.txt       (install / help-walk failure)
+      - ${captured.run_dir.output}/test-results.txt     (pytest failure)
+      - ${captured.run_dir.output}/critique.md          (last score state)
+
+      Most common failures: CLI-Anything plugin not installed, target inaccessible,
+      upstream software missing (e.g. bootstrapping GIMP CLI without GIMP installed).
+
+      Write a one-paragraph diagnostic the operator can use to re-run or adjust inputs.
+    next: failed
+
+  failed:
+    terminal: true

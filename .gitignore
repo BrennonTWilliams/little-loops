@@ -80,6 +80,8 @@ docs/demo
 .loops/runs/
 .loops/diagnostics/
 .loops/reviews/
+.loops/generated/
+.loops/cli-anything/
 *.Cast
 
 # Debug output files

@@ -1,0 +1,119 @@
+name: {{target_name}}-task
+category: generated
+input_key: goal
+description: |
+  Generated task loop for {{target_name}} (stateful-service classification).
+  Emitted by cli-anything-bootstrap. Drives the cached CLI at {{cli_path}}
+  toward a user goal, using the CLI's own read commands as the verification
+  oracle (no external evaluator needed — the CLI is its own truth source).
+
+  Substitution variables filled at emission:
+    {{target_name}} — short kebab-case name of the target software
+    {{cli_path}}    — absolute path to the bootstrapped CLI binary
+initial: init
+max_iterations: 8
+timeout: 1800
+
+context:
+  goal: ""
+  cli_path: "{{cli_path}}"
+  pass_threshold: 7
+
+states:
+
+  init:
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: snapshot-initial
+
+  snapshot-initial:
+    action_type: prompt
+    action: |
+      CLI: ${context.cli_path}
+      Goal: ${context.goal}
+
+      Use the {{target_name}} CLI's read commands to capture state relevant to the goal.
+      Prefer --json output. Write the snapshot to ${captured.run_dir.output}/state-before.json
+      (or .yaml/.txt if the CLI does not support JSON).
+
+      Choose queries broadly enough that any goal-relevant change will show up in the
+      after-snapshot — the score state will diff before vs after.
+    next: plan
+
+  plan:
+    action_type: prompt
+    action: |
+      Goal: ${context.goal}
+      CLI: ${context.cli_path}
+      Initial state: ${captured.run_dir.output}/state-before.json
+
+      Write ${captured.run_dir.output}/plan.sh — a sequence of CLI commands that
+      mutates state to satisfy the goal. If ${captured.run_dir.output}/critique.md
+      exists, address its "Issues to Address" section first.
+    next: execute
+
+  execute:
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      bash "$RUN_DIR/plan.sh" > "$RUN_DIR/execute.log" 2>&1
+      EXEC_RC=$?
+      printf "exec_rc=%d\n" "$EXEC_RC"
+      tail -15 "$RUN_DIR/execute.log"
+      exit $EXEC_RC
+    evaluate:
+      type: exit_code
+    on_yes: query-state
+    on_no: score
+
+  query-state:
+    action_type: prompt
+    action: |
+      Re-run the same {{target_name}} CLI read queries from snapshot-initial.
+      Write the post-execution state to ${captured.run_dir.output}/state-after.json
+      using the same format and structure so before/after are diff-comparable.
+    next: score
+
+  score:
+    action_type: prompt
+    action: |
+      Goal: ${context.goal}
+      Compare:
+        ${captured.run_dir.output}/state-before.json
+        ${captured.run_dir.output}/state-after.json
+        ${captured.run_dir.output}/execute.log
+
+      Did the state delta satisfy the goal? Write ${captured.run_dir.output}/critique.md:
+
+      ```
+      # Score
+      goal: ${context.goal}
+      result_score: N/10
+      state_delta: <one-line summary of what changed>
+      reasoning: <one paragraph>
+
+      ## Issues to Address
+      [Specific, actionable critique for the planner. Empty if goal met.]
+      ```
+
+      If result_score >= ${context.pass_threshold}, output exactly: GOAL_MET
+      Otherwise output: ITERATE
+    evaluate:
+      type: output_contains
+      pattern: "GOAL_MET"
+    on_yes: done
+    on_no: plan
+    on_error: done
+
+  done:
+    action_type: prompt
+    action: |
+      {{target_name}}-task completed.
+      Output: ${captured.run_dir.output}/
+      State snapshots: state-before.json, state-after.json
+      Plan: plan.sh
+    terminal: true
