@@ -1040,7 +1040,7 @@ def _render_layered_diagram(
             y += 1  # self-loop marker row
 
         if li < len(layers) - 1:
-            y += 3  # arrow gap: │, label, ▼
+            y += 2 if suppress_labels else 3  # arrow gap: suppress_labels skips label row
 
     total_height = y
 
