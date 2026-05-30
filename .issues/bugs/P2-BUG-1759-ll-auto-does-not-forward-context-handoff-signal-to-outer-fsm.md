@@ -29,7 +29,17 @@ When the autodev FSM runs `ll-auto` as a subprocess action, `ll-auto` internally
 
 ## Observed Behavior
 
-During the 2026-05-27 autodev stuck incident: ENH-1702's Claude subprocess hit context limit (301%), spawned a continuation session, and completed the work. But `ll-auto` (PID 31860) kept running waiting for the inner process; the outer autodev FSM never received a handoff signal and hung in `implement_current` for 4+ hours with no events since 6:56 PM.
+**Incident 1 (2026-05-27, ENH-1702):** Claude subprocess hit context limit (301%), spawned a continuation session, and completed the work. But `ll-auto` (PID 31860) kept running waiting for the inner process; the outer autodev FSM never received a handoff signal and hung in `implement_current` for 4+ hours with no events since 6:56 PM.
+
+**Incident 2 (2026-05-30, BUG-1799):** Same chain — `ll-loop run autodev BUG-1799` → `ll-auto --only BUG-1799` → `claude`. BUG-1799 was completed and committed (`2311d7f4`, status: `done`) before the claude session hit its context limit. The continuation prompt told the fresh session to "continue from the interruption point" and "close the issue as usual," but the issue was already done. The new session began implementing *unrelated* issues (ENH-1805, BUG-1800, ENH-1769), burning tokens on work `ll-auto --only BUG-1799` never requested. All three processes (`ll-loop`, `ll-auto`, `claude`) remained alive in a wait chain with no progress.
+
+### Continuation prompt design flaw
+
+The "fresh session continuation" prompt unconditionally instructs the new session to "continue implementation from the interruption point" and "Complete normally: test, commit, close the issue as usual." It does not check whether the target issue was already resolved before the context limit was hit. When the issue is already `done`, the continuation session invents new work — implementing other issues that the parent `ll-auto --only <ID>` invocation never asked for. This turns a context-limit handoff into unbounded scope creep.
+
+### Orphan accumulation
+
+Each stuck iteration leaves behind a `claude` child process that `ll-auto` is waiting on. When the outer loop eventually times out or is killed, `ll-auto` exits but its claude child may detach and persist. Over repeated autodev runs, orphaned claude processes accumulate across TTYs (5 observed during the BUG-1799 incident across `s003`, `s010`, `s012`, `s013`, `s015`, `s033`). Neither `ll-auto` nor `ll-loop` has a cleanup mechanism for prior stuck iterations before starting a new one.
 
 ## Expected Behavior
 
@@ -46,10 +56,13 @@ Alternatively, the autodev FSM's `implement_current` state should have a mandato
 3. Alternatively: add a handoff exit code (e.g. 75) that the autodev FSM's `implement_current` state routes to a terminal path
 4. Update autodev loop YAML to handle the handoff route if using exit code approach
 5. Add test covering: `ll-auto` child emits `CONTEXT_HANDOFF:` → outer FSM detects it
+6. **Continuation prompt guard**: before spawning a continuation session, `ll-auto` should check whether the target issue is already `status: done` (or `cancelled`). If so, skip the continuation and exit cleanly — the work is complete regardless of how the prior session ended
+7. **Orphan cleanup**: `ll-loop` (or `ll-auto`) should detect and warn about prior claude processes still running for the same loop/issue before starting a new iteration, and provide a `--kill-orphans` flag to clean them up
 
 ## Related Issues
 
 - BUG-1723: Wire idle_timeout through FSM schema — complementary fix; idle_timeout would unblock the hang even without signal propagation
+- BUG-1799 (done): audit-issue-conflicts scans terminal issues — the issue whose autodev run triggered Incident 2 on 2026-05-30; already completed but the continuation session didn't know that
 - BUG-819 (done): Missed handoff in WorkerPool silently continues as success — different code path (parallel worker pool, not FSM action runner)
 
 ## Session Log
