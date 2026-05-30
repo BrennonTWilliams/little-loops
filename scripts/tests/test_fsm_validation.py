@@ -1119,3 +1119,66 @@ class TestZeroRetryCounterValidation:
             e for e in errors if "zero" in e.message.lower() or "retry" in e.message.lower()
         ]
         assert len(warnings) >= 1
+
+
+class TestRetryableExitCodesValidation:
+    """ENH-1678: retryable_exit_codes validation."""
+
+    def test_retryable_exit_codes_without_on_error_is_error(self) -> None:
+        """retryable_exit_codes requires on_error."""
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="run.sh",
+                    on_yes="done",
+                    retryable_exit_codes=[1, 137],
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        errors = [e for e in validate_fsm(fsm) if e.severity == ValidationSeverity.ERROR]
+        assert any("retryable_exit_codes" in e.message.lower() for e in errors)
+
+    def test_retryable_exit_codes_with_on_error_passes(self) -> None:
+        """retryable_exit_codes with on_error set produces no retryable_exit_codes errors."""
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="run.sh",
+                    on_error="work",
+                    max_retries=2,
+                    on_retry_exhausted="done",
+                    retryable_exit_codes=[1, 137],
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        errors = [e for e in validate_fsm(fsm) if e.severity == ValidationSeverity.ERROR]
+        rc_errors = [e for e in errors if "retryable_exit_codes" in e.message.lower()]
+        assert rc_errors == []
+
+    def test_non_positive_exit_code_is_rejected(self) -> None:
+        """retryable_exit_codes entries must be positive integers."""
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="run.sh",
+                    on_error="work",
+                    max_retries=1,
+                    on_retry_exhausted="done",
+                    retryable_exit_codes=[0, -1, 1],
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        errors = [e for e in validate_fsm(fsm) if e.severity == ValidationSeverity.ERROR]
+        assert any(
+            "positive" in e.message.lower() and "retryable_exit_codes" in e.message.lower()
+            for e in errors
+        )

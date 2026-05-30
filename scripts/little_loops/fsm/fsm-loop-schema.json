@@ -322,6 +322,14 @@
           "type": "string",
           "description": "State to transition to when max_retries consecutive re-entries are exceeded. Required when max_retries is set."
         },
+        "retryable_exit_codes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "Optional filter: only these exit codes trigger a retry when on_error routes back to the same state. Non-matching codes bypass the retry counter and route to on_retry_exhausted (if set) or on_error directly. Requires on_error."
+        },
         "max_rate_limit_retries": {
           "type": "integer",
           "minimum": 1,

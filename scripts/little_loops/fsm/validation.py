@@ -537,6 +537,28 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
             )
         )
 
+    # Validate retryable_exit_codes: requires on_error; all codes must be positive ints
+    if state.retryable_exit_codes is not None:
+        if state.on_error is None:
+            errors.append(
+                ValidationError(
+                    message="'retryable_exit_codes' requires 'on_error' to also be set",
+                    path=path,
+                )
+            )
+        for code in state.retryable_exit_codes:
+            if not isinstance(code, int) or code < 1:
+                errors.append(
+                    ValidationError(
+                        message=(
+                            f"'retryable_exit_codes' entries must be positive "
+                            f"integers, got {code!r}"
+                        ),
+                        path=f"{path}.retryable_exit_codes",
+                    )
+                )
+                break
+
     # Validate rate-limit retry field pairing (mirrors max_retries/on_retry_exhausted)
     if state.max_rate_limit_retries is not None and state.on_rate_limit_exhausted is None:
         errors.append(

@@ -823,7 +823,18 @@ class FSMExecutor:
                     return None
                 # Non-zero exit: if on_error is defined, treat next as success path only
                 if result.exit_code != 0 and state.on_error:
-                    return interpolate(state.on_error, ctx)
+                    error_target = interpolate(state.on_error, ctx)
+                    if (
+                        state.retryable_exit_codes is not None
+                        and result.exit_code is not None
+                        and result.exit_code not in state.retryable_exit_codes
+                    ):
+                        # Non-retryable exit code — bypass retry, route to
+                        # on_retry_exhausted (if set) or on_error directly.
+                        if state.on_retry_exhausted:
+                            return state.on_retry_exhausted
+                        return error_target
+                    return error_target
             return interpolate(state.next, ctx)
 
         # Execute action if present
@@ -926,6 +937,22 @@ class FSMExecutor:
         # configured target wins over the eval verdict.
         if stall_route_target is not None:
             return stall_route_target
+
+        # Non-retryable exit code filter for eval-based error routing. When a
+        # state uses retryable_exit_codes and the action fails with a code that
+        # is NOT retryable, bypass the normal error route (which may be a
+        # self-retry) and go directly to on_retry_exhausted (or on_error).
+        if (
+            verdict == "error"
+            and state.retryable_exit_codes is not None
+            and action_result is not None
+            and action_result.exit_code is not None
+            and action_result.exit_code not in state.retryable_exit_codes
+        ):
+            if state.on_retry_exhausted:
+                return state.on_retry_exhausted
+            if state.on_error:
+                return interpolate(state.on_error, ctx)
 
         for interceptor in self._interceptors:
             if hasattr(interceptor, "before_route"):

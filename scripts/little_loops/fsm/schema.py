@@ -376,6 +376,7 @@ class StateConfig:
     on_maintain: str | None = None
     max_retries: int | None = None
     on_retry_exhausted: str | None = None
+    retryable_exit_codes: list[int] | None = None
     max_rate_limit_retries: int | None = None
     on_rate_limit_exhausted: str | None = None
     rate_limit_backoff_base_seconds: int | None = None
@@ -430,6 +431,8 @@ class StateConfig:
             result["max_retries"] = self.max_retries
         if self.on_retry_exhausted is not None:
             result["on_retry_exhausted"] = self.on_retry_exhausted
+        if self.retryable_exit_codes is not None:
+            result["retryable_exit_codes"] = self.retryable_exit_codes
         if self.max_rate_limit_retries is not None:
             result["max_rate_limit_retries"] = self.max_rate_limit_retries
         if self.on_rate_limit_exhausted is not None:
@@ -519,6 +522,7 @@ class StateConfig:
             on_maintain=data.get("on_maintain"),
             max_retries=data.get("max_retries"),
             on_retry_exhausted=data.get("on_retry_exhausted"),
+            retryable_exit_codes=data.get("retryable_exit_codes"),
             max_rate_limit_retries=data.get("max_rate_limit_retries"),
             on_rate_limit_exhausted=data.get("on_rate_limit_exhausted"),
             rate_limit_backoff_base_seconds=data.get("rate_limit_backoff_base_seconds"),

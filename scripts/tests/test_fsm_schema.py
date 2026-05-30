@@ -472,6 +472,24 @@ class TestStateConfig:
         assert restored.capture == original.capture
         assert restored.timeout == original.timeout
 
+    def test_retryable_exit_codes_roundtrip(self) -> None:
+        """retryable_exit_codes survives to_dict/from_dict roundtrip."""
+        original = StateConfig(
+            action="do work",
+            on_error="do_work",
+            max_retries=3,
+            on_retry_exhausted="diagnose",
+            retryable_exit_codes=[1, 137],
+        )
+        restored = StateConfig.from_dict(original.to_dict())
+        assert restored.retryable_exit_codes == [1, 137]
+        assert restored.max_retries == 3
+        assert restored.on_retry_exhausted == "diagnose"
+
+    def test_retryable_exit_codes_is_none_by_default(self) -> None:
+        state = StateConfig(action="do work")
+        assert state.retryable_exit_codes is None
+
     def test_action_type_field(self) -> None:
         """State with explicit action_type."""
         state = StateConfig(

@@ -3720,6 +3720,128 @@ class TestPerStateRetryLimits:
         assert executor.current_state == "done"
 
 
+class TestRetryableExitCodes:
+    """Tests for ENH-1678: retryable_exit_codes filter on state retry config."""
+
+    def test_nonretryable_code_routes_to_exhaustion(self) -> None:
+        """Non-retryable exit code bypasses retry counter, routes to on_retry_exhausted."""
+        fsm = FSMLoop(
+            name="retry-code-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="do_work.sh",
+                    on_error="execute",
+                    max_retries=2,
+                    on_retry_exhausted="skip_item",
+                    retryable_exit_codes=[1],
+                ),
+                "skip_item": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        runner.results = [
+            ("do_work.sh", {"exit_code": 2}),  # non-retryable → should exhaust immediately
+            # skip_item runs
+        ]
+        runner.use_indexed_order = True
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        # Exit code 2 is not in retryable_exit_codes [1], so it should bypass
+        # retries and go directly to on_retry_exhausted (skip_item)
+        assert result.terminated_by == "terminal"
+        assert "do_work.sh" in runner.calls
+        # Only called once — no retries consumed for non-retryable code
+        assert runner.calls.count("do_work.sh") == 1
+
+    def test_retryable_code_retries_normally(self) -> None:
+        """Retryable exit code triggers normal retry counter, exhausts at max."""
+        fsm = FSMLoop(
+            name="retry-code-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="do_work.sh",
+                    on_error="execute",
+                    max_retries=1,
+                    on_retry_exhausted="skip_item",
+                    retryable_exit_codes=[1],
+                ),
+                "skip_item": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        runner.results = [
+            ("do_work.sh", {"exit_code": 1}),  # retryable → runs once
+            ("do_work.sh", {"exit_code": 1}),  # retryable → exhausts (max_retries=1)
+        ]
+        runner.use_indexed_order = True
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert runner.calls.count("do_work.sh") == 2  # initial + 1 retry
+
+    def test_mixed_retryable_and_nonretryable(self) -> None:
+        """Retryable codes retry; first non-retryable code exhausts immediately."""
+        fsm = FSMLoop(
+            name="retry-code-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="do_work.sh",
+                    on_error="execute",
+                    max_retries=3,
+                    on_retry_exhausted="skip_item",
+                    retryable_exit_codes=[1],
+                ),
+                "skip_item": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        runner.results = [
+            ("do_work.sh", {"exit_code": 1}),  # retryable → retry 1
+            ("do_work.sh", {"exit_code": 1}),  # retryable → retry 2
+            ("do_work.sh", {"exit_code": 2}),  # non-retryable → exhaust immediately
+        ]
+        runner.use_indexed_order = True
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        # 3 calls: 2 retryable failures + 1 non-retryable that triggers exhaustion
+        assert runner.calls.count("do_work.sh") == 3
+
+    def test_retryable_exit_codes_none_has_no_effect(self) -> None:
+        """When retryable_exit_codes is None, all errors retry normally (backwards compat)."""
+        fsm = FSMLoop(
+            name="retry-code-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="do_work.sh",
+                    on_error="execute",
+                    max_retries=1,
+                    on_retry_exhausted="skip_item",
+                    retryable_exit_codes=None,
+                ),
+                "skip_item": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        runner.results = [
+            ("do_work.sh", {"exit_code": 99}),  # any error triggers retry
+            ("do_work.sh", {"exit_code": 99}),  # exhausts normally
+        ]
+        runner.use_indexed_order = True
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert runner.calls.count("do_work.sh") == 2
+
+
 class TestInterpolationErrorHandling:
     """Tests for friendly InterpolationError messages in the executor."""
 
