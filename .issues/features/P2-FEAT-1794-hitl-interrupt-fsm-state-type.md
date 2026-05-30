@@ -14,6 +14,7 @@ labels:
   - hitl
   - loops
 relates_to: [FEAT-1545, FEAT-1613]
+decision_needed: true
 ---
 
 # FEAT-1794: HITL interrupt FSM state type (`action_type: human_approval`)
@@ -141,6 +142,43 @@ TBD — requires investigation of:
   state has no `timeout:` AND the loop is referenced by ll-auto /
   ll-sprint (where unattended deadlock is a real risk).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Implementation approach — two options identified:**
+
+**Option A: Hardcoded dispatch (mcp_tool pattern)**
+Add `human_approval` as a built-in action type in the executor core, following the exact pattern `action_type: mcp_tool` used:
+- `_action_mode()` at `executor.py:1280` — add `if state.action_type == "human_approval": return "human_approval"` (before the heuristic fallthrough)
+- `_execute_state()` at `executor.py:772` — add dispatch branch before line 831 (similar to learning-state dispatch at line 797): `if state.action_type == "human_approval": return self._execute_human_approval_state(state, ctx)`
+- New method `_execute_human_approval_state()`: emit event via `self._emit()`, block with `_interruptible_sleep()`-style polling (existing pattern at `executor.py:1463`), route by verdict
+- Pros: simpler, single-file executor change, follows existing pattern
+- Cons: couples HITL logic to executor core
+
+**Option B: Extension-based (ActionProviderExtension)**
+Implement as a contributed action via the extension protocol:
+- Register via `ActionProviderExtension.provided_actions()` (`extension.py:81`)
+- Wired through `wire_extensions()` at `extension.py:246` which populates `executor._contributed_actions`
+- The executor already dispatches contributed actions in `_action_mode()` (line 1288) and `_run_action()` (line 980)
+- Pros: decoupled, testable in isolation, follows extension architecture
+- Cons: the contributed-action path runs through `_run_action()` which assumes fire-and-evaluate semantics — blocking on external response requires either extending the protocol or adding a dispatch branch in `_execute_state()` anyway
+
+**Key corrections to issue assumptions:**
+- **PushNotification does NOT exist** in the codebase (confirmed by grep). The `EventBus` (`events.py:70`) + transports (`transport.py`) are the closest notification infrastructure. v1 should render to terminal + emit an `LLEvent`; PushNotification/IM adapter is v2 scope.
+- **`timeout` field already exists** on `StateConfig` at `schema.py:375` — can be reused for the HITL timeout without adding a new field.
+- **`extra_routes`** on `StateConfig` (`schema.py:389`) already catches unrecognized `on_*` keys as dynamic routes — `on_edit` could be handled via `extra_routes` instead of a dedicated field, simplifying the schema change.
+- **No `interactive` capability flag** exists on `HostCapabilities` (`host_runner.py:74`). Headless detection for the `LL_HOST_CLI=codex` requirement needs a new flag or a `sys.stdin.isatty()` check (currently only `sys.stdout.isatty()` checks exist in the codebase).
+- **`ll-auto` and `ll-sprint` do NOT directly load FSM loop YAMLs** — they invoke Claude CLI slash commands. The "referenced by unattended automation" validation check would need a cross-reference mechanism that doesn't currently exist in `validate_fsm()`. Simplest v1 approach: warn whenever a `human_approval` state has no `timeout`, regardless of context.
+
+**Reusable infrastructure identified:**
+- `_interruptible_sleep()` at `executor.py:1463` — polling sleep with shutdown-signal respect, directly reusable for the HITL wait loop
+- `_emit()` at `executor.py:1339` — event emission, emit `human_approval_request` on state entry
+- `EventBus.register()` at `events.py:81` — subscribe to `human_response` events with glob filter
+- `UnixSocketTransport._accept_loop()` at `transport.py:177` — socket-based polling with timeout, pattern for out-of-band response channel
+- `SignalDetector` in `signal_detector.py` — detects in-band signals from action output; a `human_response` signal type could reuse this path
+- `HandoffHandler` at `handoff_handler.py:68` — existing pause/spawn semantics; the HITL interrupt has analogous pause/resume behavior
+
 ## API/Interface
 
 New FSM state schema (`action_type: human_approval`):
@@ -188,51 +226,57 @@ accept the default.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loop_runner.py` (executor dispatch on
-  `action_type`) — TBD line range
-- `scripts/little_loops/loop_validator.py` — add `human_approval`
-  to known action types; add a warning for missing `timeout`
-- `scripts/little_loops/loops_schema.py` (or equivalent) — schema entry
-- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add a new "HITL phase"
-  section between `check_skill` and `check_semantic`
-- `skills/create-loop/loop-types.md` — wizard question to include the
-  phase
-- `templates/feat-sections.json` — N/A
+- `scripts/little_loops/fsm/schema.py:309` — `StateConfig` dataclass: add `on_edit: str | None`, `on_timeout: str | None` fields; add `"on_edit"` and `"on_timeout"` to `_known_on_keys` set (line ~485); update `to_dict()`/`from_dict()`/`get_referenced_states()` (lines 395-575)
+- `scripts/little_loops/fsm/executor.py:772` — `_execute_state()`: add dispatch branch for `action_type == "human_approval"` (before the generic action path at line 831, following the learning-state dispatch pattern at line 797)
+- `scripts/little_loops/fsm/executor.py:1280` — `_action_mode()`: add `"human_approval"` to mode classification
+- `scripts/little_loops/fsm/executor.py:943` — `_run_action()`: add branch for the new mode (emit `LLEvent`, block on external response, route by verdict)
+- `scripts/little_loops/fsm/validation.py:374` — `_validate_state_action()`: add human_approval validations (warn if no `timeout`, require `on_yes`/`on_no`)
+- `scripts/little_loops/fsm/validation.py:78` — Add `"human_approval"` to `NON_LLM_EVALUATOR_TYPES` awareness (it IS a non-LLM evaluator per MR-1)
+- `scripts/little_loops/fsm/fsm-loop-schema.json:247` — Document `human_approval` as valid `action_type`, add `on_edit`/`on_timeout` properties
+- `scripts/little_loops/host_runner.py:74` — `HostCapabilities`: add `interactive: bool` flag for headless detection
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add a new "HITL phase" section
+- `skills/create-loop/reference.md:415` — document `human_approval` action_type and new routing fields
 
 ### Dependent Files (Callers/Importers)
-- TBD — grep for `action_type` dispatch sites
+- `scripts/little_loops/cli/loop/run.py:391` — `wire_extensions()`: may register human_approval if implemented as extension
+- `scripts/little_loops/extension.py:81` — `ActionProviderExtension` protocol: alternative implementation path (contributed action)
+- `scripts/little_loops/extension.py:246` — `wire_extensions()` populates `_contributed_actions` dict
+- `scripts/little_loops/fsm/schema.py:539` — `get_referenced_states()`: must include `on_edit` and `on_timeout` targets
 
 ### Similar Patterns
-- `action_type: mcp_tool` was a recent addition — same shape of work
-- Existing `PushNotification` tool is the cleanest reference for the
-  notification side
+- `action_type: mcp_tool` was added across 4 files (schema + executor + validator + JSON schema) — the exact pattern to follow. See `executor.py:1282` for the `_action_mode()` branch, `executor.py:967` for the `_run_action()` dispatch, `validation.py:388` for the `params`-only-with-mcp_tool check.
+- `executor.py:1463` — `_interruptible_sleep()`: existing polling-with-timeout pattern for blocking while respecting shutdown signals — directly reusable for the HITL wait loop
+- `executor.py:1339` — `_emit()`: existing event emission pattern — emit `human_approval_request` on state entry
+- `events.py:70` — `EventBus` with `register()`/`emit()`/`add_transport()`: existing pub/sub infrastructure
+- `transport.py:115` — `UnixSocketTransport._accept_loop()`: socket polling with timeout — pattern for out-of-band response channel
+- `schema.py:389` — `extra_routes: dict[str, str]`: catches unrecognized `on_*` keys — `on_edit` could be handled via `extra_routes` instead of a dedicated field, simplifying the schema change
+- **Correction**: `PushNotification` does NOT exist in the codebase (confirmed by grep). The event bus + `WebhookTransport` (`transport.py`) is the closest notification infrastructure. v1 should use terminal output + event bus; PushNotification/IM adapter is v2 scope.
 
 ### Tests
-- `scripts/tests/test_loop_runner.py` — new test class
-- `scripts/tests/test_loop_validator.py` — schema/timeout validation
+- `scripts/tests/test_fsm_executor.py:401` — `TestActionTypeMcpTool`: model new `TestActionTypeHumanApproval` class after this pattern (mock event callback, verify approve/reject/edit/timeout routing)
+- `scripts/tests/test_fsm_schema.py:1801` — `TestMcpToolSchema`: model new `TestHumanApprovalSchema` class after this (field acceptance, round-trip, validation pass/fail)
+- `scripts/tests/test_fsm_validation.py` — add tests for timeout warning on `human_approval` without `timeout:`
+- `scripts/tests/test_fsm_executor.py:4246` — `TestContributedActionDispatch`: pattern if implementing as extension-based action type
 
 ### Documentation
-- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` (phase chain table,
-  decision guide, troubleshooting)
-- `skills/create-loop/reference.md` (FSM field reference)
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` (phase chain table, decision guide, troubleshooting)
+- `skills/create-loop/reference.md` (FSM field reference, line ~415 for `action_type` docs)
 
 ### Configuration
-- `.ll/ll-config.json` — optional `hitl.default_timeout` and
-  `hitl.notification_channel` keys (defer if not needed for v1)
+- `.ll/ll-config.json` — optional `hitl.default_timeout` and `hitl.notification_channel` keys (defer if not needed for v1)
+- `LL_HOST_CLI` env var — already used by `host_runner.py:751` `resolve_host()` for host detection; headless hosts (codex) should force timeout path
 
 ## Implementation Steps
 
-1. Define the `human_approval` action schema and add it to the
-   validator with a warning for missing `timeout`.
-2. Implement the runner dispatch: render prompt → notify → block on
-   response → route. Start with terminal-only notification.
-3. Add a `human_response` LLEvent type and wire the runner to consume
-   from the event bus, so an out-of-band tool (CLI helper or future
-   IM adapter) can resolve the wait.
-4. Add documentation + a small example loop under `loops/examples/`.
-5. Write tests covering approve / reject / edit / timeout paths.
-6. Decide v2 scope: PushNotification integration, IM adapter, multi-user
-   approval quorum.
+1. **Schema** (`fsm/schema.py:309`): Add `on_edit: str | None` and `on_timeout: str | None` to `StateConfig`; add `"on_edit"` and `"on_timeout"` to `_known_on_keys` (~line 485); update `to_dict()`/`from_dict()`/`get_referenced_states()`. Also update `fsm-loop-schema.json:247` to document `human_approval` as valid `action_type`.
+   - Alternative: use `extra_routes` (`schema.py:389`) for `on_edit`/`on_timeout` to avoid schema changes — unrecognized `on_*` keys are already captured there.
+2. **Validator** (`fsm/validation.py:374`): In `_validate_state_action()`, add: require `on_yes`/`on_no` when `action_type == "human_approval"`; WARNING if no `timeout` is set; add `"human_approval"` to `NON_LLM_EVALUATOR_TYPES` awareness at line 78 (it IS a non-LLM evaluator per MR-1).
+3. **Executor dispatch** (`fsm/executor.py`): Add `"human_approval"` to `_action_mode()` (line 1280, before the heuristic fallthrough). In `_execute_state()` (line 772), add a dispatch branch before the generic action path at line 831 — follow the learning-state dispatch pattern at line 797: `if state.action_type == "human_approval": return self._execute_human_approval_state(state, ctx)`.
+4. **HITL handler** (new method `_execute_human_approval_state()` in `fsm/executor.py`): Render prompt with `${captured.*}` interpolation, emit `human_approval_request` event via `self._emit()` (existing pattern at line 1339), block on response using `_interruptible_sleep()`-style polling (existing pattern at line 1463), route based on verdict/timeout. Terminal-only notification for v1.
+5. **Host capability** (`host_runner.py:74`): Add `interactive: bool` flag to `HostCapabilities`. Set based on `sys.stdin.isatty()` (existing pattern in `hooks/__init__.py:111`). In the HITL handler, if not interactive, short-circuit to `on_timeout`/`on_no`.
+6. **Tests**: Add `TestActionTypeHumanApproval` in `test_fsm_executor.py` (model after `TestActionTypeMcpTool` at line 401) — mock event callback, verify approve/reject/edit/timeout routing. Add `TestHumanApprovalSchema` in `test_fsm_schema.py` (model after `TestMcpToolSchema` at line 1801). Add timeout-warning test in `test_fsm_validation.py`.
+7. **Docs**: Add HITL phase section to `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`; document `human_approval` action_type and new routing fields in `skills/create-loop/reference.md:415`; add example loop under `loops/examples/`.
+8. **v2 scope** (defer): PushNotification integration (does not exist today), IM adapter (Slack/Telegram), multi-user approval quorum.
 
 ## Impact
 
@@ -262,5 +306,6 @@ accept the default.
 **Open** | Created: 2026-05-29 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-30T04:16:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e2daf50-26d6-4657-859b-a4e70fd08209.jsonl`
 - `/ll:format-issue` - 2026-05-29T21:13:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b9fd7ee-19a7-49f3-85a1-70addaba91a5.jsonl`
 - `/ll:capture-issue` - 2026-05-29T20:37:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2a0c61b-6b34-41d4-98fb-c566ba046de6.jsonl`
