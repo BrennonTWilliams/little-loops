@@ -2898,3 +2898,41 @@ class TestMetaSelfEvalOk:
             }
         )
         assert fsm.meta_self_eval_ok is False
+
+
+class TestSharedStateOk:
+    """MR-3: shared_state_ok field round-trip serialization."""
+
+    def test_shared_state_ok_true_round_trips(self) -> None:
+        """shared_state_ok=True is present in to_dict() and restored by from_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            shared_state_ok=True,
+        )
+        d = fsm.to_dict()
+        assert d.get("shared_state_ok") is True
+        restored = FSMLoop.from_dict(d)
+        assert restored.shared_state_ok is True
+
+    def test_shared_state_ok_false_omitted_from_dict(self) -> None:
+        """shared_state_ok=False (default) is omitted from to_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "shared_state_ok" not in d
+
+    def test_shared_state_ok_defaults_false(self) -> None:
+        """FSMLoop.from_dict() without shared_state_ok defaults to False."""
+        fsm = FSMLoop.from_dict(
+            {
+                "name": "test",
+                "initial": "s",
+                "states": {"s": {"terminal": True}},
+            }
+        )
+        assert fsm.shared_state_ok is False

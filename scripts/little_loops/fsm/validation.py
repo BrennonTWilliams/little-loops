@@ -94,6 +94,11 @@ _META_LOOP_ACTION_TOKENS: frozenset[str] = frozenset({"yaml_state_editor", "repl
 # Import paths that identify a loop as a meta-loop (harness optimization framework)
 _META_LOOP_IMPORT_TRIGGERS: frozenset[str] = frozenset({"lib/benchmark.yaml"})
 
+# MR-3: shared-tmp path detector. The runner injects ${context.run_dir} resolving
+# to .loops/runs/<loop>-<timestamp>/; loops that hardcode .loops/tmp/ instead
+# cause state corruption under concurrent runs (ll-parallel, retries, etc.).
+_SHARED_TMP_PATH_RE = re.compile(r"\.loops/tmp/[\w./-]+")
+
 # Valid comparison operators
 VALID_OPERATORS = {"eq", "ne", "lt", "le", "gt", "ge"}
 
@@ -124,6 +129,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "targets",
         "circuit",
         "meta_self_eval_ok",
+        "shared_state_ok",
         "import",
         "fragments",
         "from",
@@ -871,6 +877,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_meta_loop_evaluation(fsm))
 
+    errors.extend(_validate_artifact_isolation(fsm))
+
     errors.extend(_validate_zero_retry_counter(fsm))
 
     errors.extend(_validate_on_max_iterations(fsm, defined_states))
@@ -1038,6 +1046,55 @@ def _suggested_target(operator: str, target: float) -> str:
         return "1"
     # For other cases, suggest target+1 as a default nudge
     return str(int(target) + 1)
+
+
+def _find_shared_tmp_writes(fsm: FSMLoop) -> list[tuple[str, str]]:
+    """Return (state_name, matched_path) for every action referencing shared .loops/tmp/.
+
+    Scans `state.action` only. Prompts and sub-loop bindings can also reference
+    paths, but those are out of static-scan reach: action strings are the
+    place where loop YAMLs directly encode artifact paths.
+    """
+    findings: list[tuple[str, str]] = []
+    for state_name, state in fsm.states.items():
+        if not state.action:
+            continue
+        for match in _SHARED_TMP_PATH_RE.finditer(state.action):
+            findings.append((state_name, match.group(0)))
+    return findings
+
+
+def _validate_artifact_isolation(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule MR-3: loops must isolate artifacts to ${context.run_dir}.
+
+    The runner injects ${context.run_dir} pointing at .loops/runs/<loop>-<ts>/
+    and creates the folder before execution. Loops that write intermediate
+    state (queues, checkpoints, generated files) to shared .loops/tmp/ paths
+    will corrupt each other under concurrent runs (ll-parallel workers, retries,
+    repeated invocations).
+
+    Suppressed by `shared_state_ok: true` at the loop top-level for loops that
+    intentionally share state across runs.
+    """
+    if fsm.shared_state_ok:
+        return []
+    errors: list[ValidationError] = []
+    for state_name, path in _find_shared_tmp_writes(fsm):
+        errors.append(
+            ValidationError(
+                message=(
+                    f"State writes to shared '{path}' instead of "
+                    "'${context.run_dir}/...'. Concurrent runs of this loop "
+                    "(e.g., under ll-parallel) will corrupt each other's state. "
+                    "Use the runner-injected `${context.run_dir}` for per-run "
+                    "artifact paths, or set `shared_state_ok: true` at the loop "
+                    "top-level if cross-run sharing is intentional."
+                ),
+                path=f"states.{state_name}.action",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+    return errors
 
 
 def _has_baseline_reference(fsm: FSMLoop, capture_names: set[str]) -> bool:

@@ -22,6 +22,7 @@ from little_loops.fsm.schema import (
 )
 from little_loops.fsm.validation import (
     ValidationSeverity,
+    _validate_artifact_isolation,
     _validate_evaluator,
     _validate_meta_loop_evaluation,
     _validate_parameters,
@@ -902,6 +903,107 @@ class TestMetaLoopValidation:
             "description: A meta-loop with escape hatch\n"
             "initial: work\n"
             "meta_self_eval_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
+
+
+class TestArtifactIsolation:
+    """MR-3: loops must isolate artifacts to ${context.run_dir}, not shared .loops/tmp/."""
+
+    def _simple_fsm(self, action: str, *, shared_state_ok: bool = False) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": make_state(action=action, on_yes="done", on_no="work"),
+                "done": make_state(terminal=True),
+            },
+            shared_state_ok=shared_state_ok,
+        )
+
+    def test_mr3_fires_when_loop_writes_to_shared_tmp(self) -> None:
+        """MR-3 WARNING fires for any state action referencing .loops/tmp/<path>."""
+        fsm = self._simple_fsm("echo hi > .loops/tmp/queue.txt")
+        errors = _validate_artifact_isolation(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert ".loops/tmp/queue.txt" in errors[0].message
+        assert errors[0].path == "states.work.action"
+
+    def test_mr3_does_not_fire_when_loop_uses_context_run_dir(self) -> None:
+        """MR-3 does not fire when the action uses ${context.run_dir} for artifacts."""
+        fsm = self._simple_fsm('echo hi > "${context.run_dir}/queue.txt"')
+        errors = _validate_artifact_isolation(fsm)
+        assert errors == []
+
+    def test_mr3_does_not_fire_for_issues_dir(self) -> None:
+        """MR-3 does not fire for legitimate .issues/ writes."""
+        fsm = self._simple_fsm("echo content > .issues/bugs/new.md")
+        errors = _validate_artifact_isolation(fsm)
+        assert errors == []
+
+    def test_mr3_does_not_fire_for_diagnostics_dir(self) -> None:
+        """MR-3 does not fire for legitimate .loops/diagnostics/ writes."""
+        fsm = self._simple_fsm("echo log > .loops/diagnostics/report.md")
+        errors = _validate_artifact_isolation(fsm)
+        assert errors == []
+
+    def test_mr3_does_not_fire_for_actionless_states(self) -> None:
+        """States without an action (e.g., terminal or sub-loop states) do not trigger MR-3."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="s",
+            states={"s": make_state(terminal=True)},
+        )
+        errors = _validate_artifact_isolation(fsm)
+        assert errors == []
+
+    def test_mr3_fires_once_per_occurrence(self) -> None:
+        """An action with multiple shared-tmp paths emits one warning per path."""
+        fsm = self._simple_fsm(
+            "cat .loops/tmp/a.txt > .loops/tmp/b.txt && rm .loops/tmp/c.txt"
+        )
+        errors = _validate_artifact_isolation(fsm)
+        assert len(errors) == 3
+        matched = sorted(e.message.split("'")[1] for e in errors)
+        assert matched == [".loops/tmp/a.txt", ".loops/tmp/b.txt", ".loops/tmp/c.txt"]
+
+    def test_mr3_suppressed_by_shared_state_ok(self) -> None:
+        """shared_state_ok: true suppresses MR-3 entirely."""
+        fsm = self._simple_fsm(
+            "echo hi > .loops/tmp/queue.txt", shared_state_ok=True
+        )
+        errors = _validate_artifact_isolation(fsm)
+        assert errors == []
+
+    def test_mr3_runs_via_validate_fsm(self) -> None:
+        """validate_fsm() wires in MR-3 (end-to-end, not just direct call)."""
+        fsm = self._simple_fsm("echo hi > .loops/tmp/queue.txt")
+        errors = validate_fsm(fsm)
+        mr3 = [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING
+            and ".loops/tmp/queue.txt" in e.message
+        ]
+        assert len(mr3) == 1
+
+    def test_shared_state_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level shared_state_ok produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop that intentionally shares cross-run state\n"
+            "initial: work\n"
+            "shared_state_ok: true\n"
             "states:\n"
             "  work:\n"
             "    action: run.sh\n"

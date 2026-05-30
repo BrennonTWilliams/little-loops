@@ -106,10 +106,24 @@ follow stricter design rules than data-operating loops:
    ~33–55% accurate (SHOR Table 1; Sonnet 4.6 = 33.4%) — pair with
    measurable external evidence or the loop will optimize for what the
    judge prompt rewards, not what users observe.
+3. **Per-run artifact isolation.** Loops MUST write intermediate artifacts
+   (queues, checkpoints, generated files) under `${context.run_dir}/`, not
+   bare `.loops/tmp/`. The runner injects `run_dir` as
+   `.loops/runs/<loop>-<timestamp>/` and creates the folder before
+   execution. Writing to shared `.loops/tmp/` causes state corruption when
+   two instances of the same loop run concurrently (e.g., under
+   `ll-parallel`, retries that re-enter the loop, or a user re-running it
+   in a worktree while another instance is mid-flight). Legitimate
+   cross-instance artifacts (`.issues/`, `.loops/diagnostics/`,
+   `thoughts/`) are exempt — only `.loops/tmp/` is flagged.
 
 `ll-loop validate` enforces rule 2 as ERROR severity (rule MR-1). Use
 `meta_self_eval_ok: true` at the loop top-level to suppress the check in
 the rare case where you have a justified reason. See ENH-1665.
+
+`ll-loop validate` enforces rule 3 as WARNING severity (rule MR-3). Use
+`shared_state_ok: true` at the loop top-level to suppress the check when
+cross-run sharing is intentional.
 
 The `loop-specialist` agent diagnoses violations post-hoc as
 `self-evaluation bias` / `feature-stubbing` failure modes

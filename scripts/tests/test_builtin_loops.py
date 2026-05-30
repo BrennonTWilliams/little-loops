@@ -101,6 +101,9 @@ class TestBuiltinLoopFiles:
             "eval-driven-development",
             "greenfield-builder",
             "outer-loop-eval",
+            "p5js-sketch-generator",
+            "pixi-data-viz",
+            "pixi-generative-art",
             "auto-refine-and-implement",
             "autodev",
             "scan-and-implement",
@@ -125,6 +128,7 @@ class TestBuiltinLoopFiles:
             "integrate-sdk",
             "proof-first-task",
             "cli-anything-bootstrap",
+            "worktree-health",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -755,17 +759,17 @@ class TestRefineToReadyIssueSubLoop:
         )
 
     def test_write_broke_down_action_writes_flag(self, data: dict) -> None:
-        """write_broke_down action must write to the recursive-refine-broke-down flag file."""
+        """write_broke_down action must write to the refine-broke-down flag file."""
         state = data["states"].get("write_broke_down", {})
-        assert "recursive-refine-broke-down" in state.get("action", ""), (
-            "write_broke_down action must write to '.loops/tmp/recursive-refine-broke-down'"
+        assert "refine-broke-down" in state.get("action", ""), (
+            "write_broke_down action must write to '${context.run_dir}/refine-broke-down'"
         )
 
     def test_broke_down_flag_initialized_in_resolve_issue(self, data: dict) -> None:
-        """resolve_issue action must initialize the recursive-refine-broke-down flag file."""
+        """resolve_issue action must initialize the refine-broke-down flag file."""
         state = data["states"].get("resolve_issue", {})
-        assert "recursive-refine-broke-down" in state.get("action", ""), (
-            "resolve_issue action must initialize '.loops/tmp/recursive-refine-broke-down' flag"
+        assert "refine-broke-down" in state.get("action", ""), (
+            "resolve_issue action must initialize '${context.run_dir}/refine-broke-down' flag"
         )
 
     def test_breakdown_issue_on_error_is_diagnose(self, data: dict) -> None:

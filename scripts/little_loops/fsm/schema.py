@@ -893,6 +893,7 @@ class FSMLoop:
     targets: list[TargetFileSpec] = field(default_factory=list)
     circuit: CircuitConfig | None = None
     meta_self_eval_ok: bool = False
+    shared_state_ok: bool = False
     # Populated from the raw `import:` list by from_dict(); not serialized by to_dict()
     imports: list[str] = field(default_factory=list)
 
@@ -956,6 +957,8 @@ class FSMLoop:
 
         if self.meta_self_eval_ok:
             result["meta_self_eval_ok"] = self.meta_self_eval_ok
+        if self.shared_state_ok:
+            result["shared_state_ok"] = self.shared_state_ok
 
         return result
 
@@ -1008,6 +1011,7 @@ class FSMLoop:
             targets=[TargetFileSpec.from_dict(t) for t in (data.get("targets") or [])],
             circuit=circuit,
             meta_self_eval_ok=data.get("meta_self_eval_ok", False),
+            shared_state_ok=data.get("shared_state_ok", False),
             imports=data.get("import", []),
         )
 
