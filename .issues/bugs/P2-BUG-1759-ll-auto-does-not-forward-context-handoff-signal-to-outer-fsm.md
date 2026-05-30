@@ -87,6 +87,35 @@ Modify `ll-auto`'s child process output handling to detect and forward `CONTEXT_
 6. **Continuation prompt guard**: before spawning a continuation session, `ll-auto` should check whether the target issue is already `status: done` (or `cancelled`). If so, skip the continuation and exit cleanly — the work is complete regardless of how the prior session ended
 7. **Orphan cleanup**: `ll-loop` (or `ll-auto`) should detect and warn about prior claude processes still running for the same loop/issue before starting a new iteration, and provide a `--kill-orphans` flag to clean them up
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/auto.py` — primary: add signal detection on child stdout
+- `scripts/little_loops/fsm/executor.py` — may need handoff exit code routing
+- `scripts/little_loops/fsm/signal_detector.py` — signal detection logic
+
+### Dependent Files (Callers/Importers)
+- TBD - use grep to find references: `grep -r "CONTEXT_HANDOFF" scripts/`
+
+### Similar Patterns
+- BUG-819 (done): Missed handoff in WorkerPool silently continues as success — different code path but same signal-propagation concern
+
+### Tests
+- TBD - add test for `ll-auto` forwarding `CONTEXT_HANDOFF:` to its stdout
+
+### Documentation
+- TBD - docs that need updates
+
+### Configuration
+- N/A
+
+## Impact
+
+- **Priority**: P2 - Blocks autodev loops from self-recovering on context limits; causes indefinite hangs and orphan process accumulation
+- **Effort**: Medium - Requires changes to subprocess output handling in `ll-auto` and signal routing in autodev FSM
+- **Risk**: Medium - Changes to subprocess handling could affect other automation pipelines (`ll-parallel`, `ll-sprint`)
+- **Breaking Change**: No
+
 ## Related Issues
 
 - BUG-1723: Wire idle_timeout through FSM schema — complementary fix; idle_timeout would unblock the hang even without signal propagation
@@ -94,4 +123,5 @@ Modify `ll-auto`'s child process output handling to detect and forward `CONTEXT_
 - BUG-819 (done): Missed handoff in WorkerPool silently continues as success — different code path (parallel worker pool, not FSM action runner)
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-30T23:36:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f878fcc-40e2-4d99-8681-841f1031656c.jsonl`
 - `/ll:capture-issue` - 2026-05-28T00:42:55Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
