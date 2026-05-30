@@ -124,6 +124,7 @@ class TestBuiltinLoopFiles:
             "adopt-third-party-api",
             "integrate-sdk",
             "proof-first-task",
+            "cli-anything-bootstrap",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual

@@ -199,12 +199,95 @@ def load_design_tokens(
 
 
 def render_as_prompt_context(tokens: DesignTokens) -> str:
-    """Return a compact markdown snippet listing resolved token values."""
-    lines = ["**Design tokens** (resolved values):"]
-    lines.append("```")
+    """Return a compact markdown snippet listing resolved token values,
+    grouped by semantic role with contrast guardrails.
+
+    When semantic color tokens exist, raw primitives (color.*) are excluded
+    and the output is grouped so the LLM knows which tokens are for surfaces,
+    text, borders, and actions. Falls back to a flat sorted list when
+    semantic tokens are absent (legacy profiles).
+    """
+    has_semantic_colors = (
+        isinstance(tokens.semantic, dict)
+        and "color" in tokens.semantic
+        and isinstance(tokens.semantic["color"], dict)
+        and any(
+            k in tokens.semantic["color"] for k in ("surface", "text", "border", "action")
+        )
+    )
+
+    if not has_semantic_colors:
+        lines: list[str] = ["**Design tokens** (resolved values):", "```"]
+        for name, value in sorted(tokens.resolved.items()):
+            if name.startswith("_"):
+                continue
+            lines.append(f"{name}: {value}")
+        lines.append("```")
+        return "\n".join(lines)
+
+    surfaces: dict[str, str] = {}
+    text_colors: dict[str, str] = {}
+    border_colors: dict[str, str] = {}
+    actions: dict[str, str] = {}
+    typography: dict[str, str] = {}
+    layout: dict[str, str] = {}
+
+    # Semantic color tokens are flattened as color.<role>.<name>.
+    _SEMANTIC_ROLE_PREFIXES = {
+        "color.surface.": surfaces,
+        "color.text.": text_colors,
+        "color.border.": border_colors,
+        "color.action.": actions,
+    }
+    # Raw primitives to exclude (only semantic color tokens are shown).
+    _PRIMITIVE_COLOR_PREFIXES = (
+        "color.neutral.", "color.brand.", "color.accent.",
+        "color.success.", "color.warning.", "color.danger.",
+    )
+
     for name, value in sorted(tokens.resolved.items()):
-        lines.append(f"{name}: {value}")
-    lines.append("```")
+        if name.startswith("_"):
+            continue
+        matched = False
+        for prefix, bucket in _SEMANTIC_ROLE_PREFIXES.items():
+            if name.startswith(prefix):
+                bucket[name] = value
+                matched = True
+                break
+        if matched:
+            continue
+        if name.startswith("font."):
+            typography[name] = value
+        elif any(name.startswith(p) for p in ("space.", "radius.", "shadow.", "border.width.")):
+            layout[name] = value
+        elif name.startswith(_PRIMITIVE_COLOR_PREFIXES):
+            continue  # raw primitive — covered by semantic tokens above
+
+    lines = [
+        "**Design tokens** (semantic — each token's role is noted; use the token name, not a raw hex value)",
+        "",
+        "Contrast guardrail: pair color.text.* tokens ON color.surface.* tokens. "
+        "Never use a surface color for text, or a text color for backgrounds.",
+        "",
+    ]
+
+    def _emit_group(heading: str, items: dict[str, str]) -> None:
+        if not items:
+            return
+        lines.append(f"**{heading}**")
+        lines.append("```")
+        for n, v in items.items():
+            lines.append(f"  {n}: {v}")
+        lines.append("```")
+        lines.append("")
+
+    _emit_group("Surfaces (backgrounds)", surfaces)
+    _emit_group("Text", text_colors)
+    _emit_group("Borders", border_colors)
+    _emit_group("Actions (buttons, links, interactive)", actions)
+    _emit_group("Typography", typography)
+    _emit_group("Layout (spacing, radii, shadows)", layout)
+
     return "\n".join(lines)
 
 

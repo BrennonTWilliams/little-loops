@@ -386,7 +386,7 @@ states:
       CLI_NAME=$(awk -F= '/^cli_name=/ {print $2}' "$RUN_DIR/verify-cli.txt")
       CLI_PATH="$CACHE_PATH/.venv/bin/$CLI_NAME"
 
-      TEMPLATE="scripts/little_loops/loops/lib/task-templates/${CLASSIFICATION}-task.yaml.tmpl"
+      TEMPLATE="scripts/little_loops/loops/lib/task-templates/$${CLASSIFICATION}-task.yaml.tmpl"
       if [ ! -f "$TEMPLATE" ]; then
         echo "ERROR: template not found: $TEMPLATE (classification=$CLASSIFICATION)" >&2
         exit 1
@@ -396,9 +396,9 @@ states:
         exit 1
       fi
 
-      OUT="$GEN_DIR/${TARGET_NAME}-task.yaml"
-      sed -e "s|{{target_name}}|${TARGET_NAME}|g" \
-          -e "s|{{cli_path}}|${CLI_PATH}|g" \
+      OUT="$GEN_DIR/$${TARGET_NAME}-task.yaml"
+      sed -e "s|{{target_name}}|$${TARGET_NAME}|g" \
+          -e "s|{{cli_path}}|$${CLI_PATH}|g" \
           "$TEMPLATE" > "$OUT"
       echo "TASK_LOOP_EMITTED: $OUT"
     next: done
