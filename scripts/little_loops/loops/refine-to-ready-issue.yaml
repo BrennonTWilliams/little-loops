@@ -22,9 +22,9 @@ import:
 states:
   resolve_issue:
     action: >-
-      mkdir -p .loops/tmp &&
-      printf '0' > .loops/tmp/refine-to-ready-refine-count &&
-      printf '0' > .loops/tmp/refine-to-ready-wire-done &&
+      mkdir -p ${context.run_dir} &&
+      printf '0' > ${context.run_dir}/refine-to-ready-refine-count &&
+      printf '0' > ${context.run_dir}/refine-to-ready-wire-done &&
       printf '0' > ${context.run_dir}/refine-broke-down &&
       { [ -n "${context.input}" ] && printf '%s' "${context.input}" ||
       ll-issues next-issue; } | tr -d '\n\r '
@@ -84,7 +84,7 @@ states:
 
   check_wire_done:
     action: |
-      cat .loops/tmp/refine-to-ready-wire-done 2>/dev/null || echo 0
+      cat ${context.run_dir}/refine-to-ready-wire-done 2>/dev/null || echo 0
     action_type: shell
     evaluate:
       type: output_numeric
@@ -101,7 +101,7 @@ states:
     on_error: confidence_check  # wiring failure is non-fatal
 
   mark_wire_done:
-    action: printf '1' > .loops/tmp/refine-to-ready-wire-done
+    action: printf '1' > ${context.run_dir}/refine-to-ready-wire-done
     action_type: shell
     next: confidence_check
     on_error: confidence_check
@@ -282,7 +282,7 @@ states:
 
   check_refine_limit:
     action: |
-      FILE=".loops/tmp/refine-to-ready-refine-count"
+      FILE="${context.run_dir}/refine-to-ready-refine-count"
       N=$(cat "$FILE" 2>/dev/null || echo 0)
       N=$((N + 1))
       printf '%s' "$N" > "$FILE"
