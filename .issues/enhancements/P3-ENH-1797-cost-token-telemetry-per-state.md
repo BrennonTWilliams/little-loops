@@ -47,6 +47,20 @@ This enhancement would:
 - `ll-ctx-stats` exists for the project level but doesn't slice by FSM
   state.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- Usage **is already parsed** from the `claude` stream-json `result` event in `run_claude_command()` at `scripts/little_loops/subprocess_utils.py:362-369`. The four available fields per event are `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`.
+- The parse path uses an optional `on_usage` callback typed as `UsageCallback = Callable[[int, int], None]` (`subprocess_utils.py:33`). The two-int signature collapses `input_tokens + cache_read_input_tokens` into a single number and **drops `cache_creation_input_tokens` entirely** — ENH-1797 must widen this signature (or add a parallel four-field callback) to preserve all fields.
+- The FSM runner **does not pass `on_usage`** when calling `run_claude_command()`. The drop site is `DefaultActionRunner.run()` in `scripts/little_loops/fsm/runners.py` at the `run_claude_command(command=action, timeout=..., stream_callback=..., ...)` call (lines 102-110). Usage data reaches Python and is then discarded.
+- `ActionResult` (`fsm/runners.py`) has only `output`, `stderr`, `exit_code`, `duration_ms` — no token fields. The `action_complete` event payload assembled in `FSMExecutor._run_action()` (`fsm/executor.py:1024-1034`) likewise carries no token fields.
+- `action_type: mcp_tool` does **not** go through the runner; it dispatches to `FSMExecutor._run_subprocess()` (raw `subprocess.Popen`). Token capture for mcp_tool requires a separate hook — usage data is not surfaced by the MCP transport layer at all today.
+- `action_type: shell` invocations have no host-CLI involvement and produce no token data; the per-state summary should skip them (or report `n/a`).
+- The `.loops/runs/<instance_id>/` directory (per ENH-1726) is created in `cmd_run()` at `scripts/little_loops/cli/loop/run.py:380` and surfaced to states via `fsm.context["run_dir"]`. The runner itself currently writes **nothing** to this directory — loop YAML action scripts write artifacts (`report.md`, `plan.md`, etc.) there. `usage.jsonl` would be the first runner-authored file in this directory.
+- Distinct from `run_dir`: the FSM event log lives at `.loops/.running/<instance_id>.events.jsonl` (written by `StatePersistence.append_event()` in `fsm/persistence.py:373`) and archives to `.loops/.history/<run_id>-<loop_name>/events.jsonl`. ENH-1797 should write `usage.jsonl` under `run_dir`, not the `.running`/`.history` namespace, to keep ENH-1726's per-run grouping coherent.
+- There is **no `MODEL_PRICING` table anywhere in the codebase** — `ll-ctx-stats` only tracks bytes, not cost. ENH-1797 must introduce a per-model `$/Mtok` pricing constant for the `est_cost` column.
+
 ## Expected Behavior
 
 1. Runner captures input/output/cache tokens from each `action_type:
@@ -86,8 +100,14 @@ Pipe host-adapter token usage through the runner's action execution layer into a
 ### New file format: `.loops/runs/<id>/usage.jsonl`
 
 ```jsonl
-{"iteration": 0, "state": "check_skill", "action_type": "slash_command", "input_tokens": 1234, "output_tokens": 567, "cache_tokens": 890, "timestamp": "..."}
+{"iteration": 0, "state": "check_skill", "action_type": "slash_command", "input_tokens": 1234, "output_tokens": 567, "cache_read_tokens": 890, "cache_creation_tokens": 200, "model": "claude-opus-4-7", "timestamp": "..."}
 ```
+
+Field choices grounded by codebase research: the raw `claude` event already exposes four token fields (`input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`); journal all four so a future re-pricing pass against historical runs is possible. The `model` field is the host-reported model ID, needed for cost estimation against the per-model `$/Mtok` table.
+
+### Callback signature widening
+
+The existing `UsageCallback = Callable[[int, int], None]` at `scripts/little_loops/subprocess_utils.py:33` collapses cache-read into input and drops cache-creation. ENH-1797 must widen this to a four-int callback (or introduce a parallel `Callable[[TokenUsage], None]` where `TokenUsage` is a small dataclass with the four fields plus `model`). The existing two-int callsite (`context-monitor.sh` hook via the shell path is the only current consumer) needs back-compat, so a parallel callback is the cleaner shape.
 
 ### End-of-run summary table (stdout from `ll-loop run`)
 
@@ -109,6 +129,44 @@ as a sub-table under the iteration log.
 3. Add per-state aggregation in the end-of-run reporter (`ll-loop run` summary)
 4. Wire the per-run reporter (`ll-loop runs show <id>`) to surface usage breakdown
 5. Add tests: verify `usage.jsonl` is written, aggregation is correct, table output renders
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — concrete implementation surface:_
+
+1. **Widen the callback in `subprocess_utils.py`** (around line 33 / lines 362-369). Either:
+   - Extend `UsageCallback` to `Callable[[int, int, int, int, str], None]` (input/output/cache_read/cache_creation/model), or
+   - Add a parallel `on_usage_detailed: Callable[[TokenUsage], None]` taking a small dataclass. The dataclass shape is cleaner because future fields (e.g. `service_tier`) won't break callers.
+   At the `etype == "result"` branch, also pull `event.get("usage", {})` plus `event.get("model")` and fire the new callback unconditionally (drop the `if on_usage and usage:` short-circuit for the new path so empty-usage events still record a zero row).
+2. **Wire the callback at `DefaultActionRunner.run()`** in `scripts/little_loops/fsm/runners.py` (the `run_claude_command(...)` call at ~lines 102-110). Allocate a `_usage_accumulator` list inside `run()`, pass its `.append` as the callback, then attach the collected list onto a new `ActionResult.usage_events: list[TokenUsage]` field (extend the dataclass).
+3. **Enrich the `action_complete` payload** in `FSMExecutor._run_action()` at `scripts/little_loops/fsm/executor.py:1024-1034` so journalled events carry token totals: add `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, and `model` fields aggregated from `result.usage_events`.
+4. **Write `usage.jsonl`** by extending `PersistentExecutor._handle_event()` in `scripts/little_loops/fsm/persistence.py` to also write to `Path(fsm.context["run_dir"]) / "usage.jsonl"` when handling `action_complete` events with usage fields. Use the existing JSONL idiom (`with open(..., "a", encoding="utf-8") as f: f.write(json.dumps(entry) + "\n")`) seen in `StatePersistence.append_event()` (line 373) and `_write_meta_eval_entry()` (line 678).
+5. **Aggregate by state** using the `ctx_stats.py` pattern at `_aggregate_tool_events()` (lines 129-144): `per_state: dict[str, dict[str, int]] = defaultdict(lambda: {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0, "invocations": 0, "est_cost_cents": 0})` and `+=` accumulate.
+6. **Print the summary table** in `run_foreground()` at `scripts/little_loops/cli/loop/_helpers.py:1196-1217`, immediately before the existing `print(f"{completion_prefix}: ...")` line. Follow the `_render()` style from `cli/ctx_stats.py:196-201`: plain f-string column padding with `{state:<20} {input:>8} {output:>8} {cache_read:>8} {est_cost:>10}` — no `rich` library is used anywhere in the project.
+7. **Introduce a pricing constant** in a new module (e.g. `scripts/little_loops/pricing.py`) or as a top-level constant in `cli/loop/_helpers.py`. Suggested shape: `MODEL_PRICING: dict[str, dict[str, float]] = {"claude-opus-4-7": {"input": 15.0, "output": 75.0, "cache_read": 1.50, "cache_creation": 18.75}, ...}` in $/Mtok. Fall back to `"unknown"` model bucket emitting `est_cost: None` (display as `n/a`).
+8. **Tests** (new files `scripts/tests/test_usage_journal.py` and `scripts/tests/test_usage_reporter.py`):
+   - Journal test: follow `test_fsm_persistence.py:test_append_events()` (line 274) and `test_events_file_is_append_only()` (line 331) — write via the new hook, then `path.read_text().splitlines()` + `json.loads()` per line, assert dict fields.
+   - Reporter test: follow `test_cli_ctx_stats.py:_capture_print()` (line 23) — pass a print stub, assert `any("check_skill" in line for line in lines)` and `any("$0.0" in line for line in lines)`.
+   - Skip-paths test: confirm `action_type: shell` and `action_type: mcp_tool` invocations either record `n/a`-marked rows or are skipped from `usage.jsonl` (decide explicitly).
+9. **Run the test suite**: `python -m pytest scripts/tests/test_usage_journal.py scripts/tests/test_usage_reporter.py scripts/tests/test_fsm_executor.py scripts/tests/test_fsm_persistence.py -v`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+10. **Add `usage_events` field to `ActionResult` in `scripts/little_loops/fsm/types.py` (line 58 area)** — NOT `runners.py`. Use `usage_events: list[TokenUsage] = field(default_factory=list)`. This is the canonical dataclass definition; all kwargs-based constructors in tests and runtime remain back-compat.
+11. **Update `scripts/little_loops/fsm/__init__.py`** — re-exports `ActionResult` via `__all__`; if the package docstring lists field names, update it.
+12. **Verify back-compat for two-int `UsageCallback` consumers** — `issue_manager.py` (lines 105, 172, 460) and `parallel/worker_pool.py` (line 647). Preferred: keep `on_usage: Callable[[int, int], None]` unchanged and add parallel `on_usage_detailed: Callable[[TokenUsage], None]` in `subprocess_utils.py`. This avoids cascading changes to both files. Alternative: widen in place and update all callers + their tests.
+13. **Update `docs/reference/schemas/action_complete.json`** — add new optional fields under `properties`: `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `model`. Leave them out of `required` since shell/mcp_tool invocations won't have them. Then run `ll-generate-schemas` to verify.
+14. **Update `docs/reference/EVENT-SCHEMA.md`** — `### action_complete` field table + both JSON examples (shell and prompt). Add token fields to the prompt example only (shell has no usage).
+15. **Update `docs/reference/loops.md` and `docs/guides/LOOPS_GUIDE.md`** — document `usage.jsonl` as a runner-written artifact under `run_dir`.
+16. **Decide and document archive policy** — `StatePersistence.archive_run()` does NOT currently copy `usage.jsonl` to `.history/`. Recommended: leave at `.loops/runs/<id>/` permanently. Add a `test_usage_journal_not_archived` test to pin the decision.
+17. **Decide and document skip-paths** — `action_type: shell` and `action_type: mcp_tool` produce no token data. Recommended: skip them from `usage.jsonl` entirely (no `n/a` row). Add a `test_shell_action_skipped_from_journal` and `test_mcp_tool_action_skipped_from_journal` test in `test_usage_journal.py`.
+18. **Update `scripts/tests/test_subprocess_utils.py`** — depending on callback-signature decision in step 12: if parallel callback added, add a new `test_on_usage_detailed_callback_called_with_result_event` test; if in-place widened, update existing `test_on_usage_callback_called_with_result_event` (line 1505) to assert the new 4-int/dataclass shape.
+19. **Update `scripts/tests/test_generate_schemas.py`** — extend `test_action_complete_schema` (line 150) to assert the new token field properties exist after schema regen.
+20. **Extend `scripts/tests/test_ll_loop_display.py`** — add `test_run_foreground_prints_usage_summary_table` and `test_run_foreground_omits_table_when_no_usage` to `TestRunForegroundResumeMode` (or a new class). Use `capsys` like existing tests.
+21. **Update skills/cleanup-loops/SKILL.md** — if Step 6 bash needs to know about `usage.jsonl` (depends on step 16 decision), update the snippet; otherwise add a one-line note that `usage.jsonl` lives under `.loops/runs/<id>/`.
+22. **Document host-adapter gap** — add a note in `docs/reference/HOST_COMPATIBILITY.md` (or create `HostCapabilities.usage_reporting` flag) that codex/opencode adapters do not yet expose usage events.
 
 ## Integration Map
 
@@ -132,8 +190,87 @@ as a sub-table under the iteration log.
 - `docs/reference/API.md` — document new `usage.jsonl` format
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add cost-awareness section
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/EVENT-SCHEMA.md` — update the `### action_complete` section: field table and both JSON examples (shell and prompt) must add the new token fields (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `model`). [Agent 2 finding]
+- `docs/reference/schemas/action_complete.json` — JSON Schema for the `action_complete` event. Currently lists only 5 properties; add the new optional token fields (or regenerate via `ll-generate-schemas`). [Agent 2 finding]
+- `docs/reference/loops.md` — add a "Runner-Written Files" section documenting `usage.jsonl` as the first runner-authored file under `run_dir` (today the doc only lists user-written artifacts like `report.md`, `plan.md`). [Agent 2 finding]
+- `docs/guides/LOOPS_GUIDE.md` — per-loop "Output artifacts" tables document user-written files only; add a parallel "Runner-written files" entry for `usage.jsonl`. [Agent 2 finding]
+- `docs/reference/CLI.md` — currently has no `ll-loop run` stdout examples, so no doc breaks; consider adding an example showing the new per-state summary table. [Agent 2 finding]
+- `docs/reference/HOST_COMPATIBILITY.md` — document the codex/opencode adapter gap (no usage exposed today) so the deferred adapter work is discoverable. [Agent 2 finding]
+- `skills/cleanup-loops/SKILL.md` — Steps 3 and 6 show manual archive bash that moves only `state.json` and `events.jsonl`; if `usage.jsonl` archive behavior changes (see Configuration below), update the skill's bash; otherwise note that `usage.jsonl` lives at `.loops/runs/<id>/` permanently. [Agent 2 finding]
+
 ### Configuration
 - N/A — no new config keys in this issue (`max_cost` is deferred to a follow-up)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **Archive policy decision** — `StatePersistence.archive_run()` in `fsm/persistence.py` currently copies `state.json`, `events.jsonl`, `meta-eval.jsonl` to `.loops/.history/<run_id>-<loop_name>/`. Decide and document: does `usage.jsonl` get archived too? Recommended: leave at `.loops/runs/<id>/usage.jsonl` permanently (consistent with ENH-1726's per-run grouping). Pin via test in `test_fsm_persistence.py`. [Wiring decision]
+- **Callback signature decision** — `UsageCallback` in-place widen vs. parallel `on_usage_detailed`. Per refine notes, parallel is cleaner (preserves back-compat for `issue_manager.py` and `parallel/worker_pool.py` two-int callers). Pin via test in `test_subprocess_utils.py`. [Wiring decision]
+- **Schema regen** — after editing `docs/reference/schemas/action_complete.json`, run `ll-generate-schemas` to ensure consistency with `LLEvent` Python types. [Agent 2 finding]
+- `pyproject.toml` — no change required; new `little_loops/pricing.py` module is auto-discovered. Documenting for completeness only. [Agent 2 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — the planning-time paths above are partly fictional; corrected list:_
+
+**Files to actually modify (verified to exist):**
+- `scripts/little_loops/subprocess_utils.py` — extend `UsageCallback` (line 33) and the `result`-event parse block (lines 362-369) so all four token fields plus model ID flow through. **(Replaces the imagined `host_runner.py` work — `HostInvocation` is a pure argv descriptor with no usage field; parsing happens in `subprocess_utils.py`.)**
+- `scripts/little_loops/fsm/runners.py` — `DefaultActionRunner.run()` (lines 56-170): wire the new callback at the `run_claude_command(...)` call (~lines 102-110) and collect events into the new `ActionResult.usage_events` field.
+- `scripts/little_loops/fsm/executor.py` — `FSMExecutor._run_action()` (~lines 1024-1034): add token fields to the `action_complete` event payload so journal consumers receive them. **(Replaces the imagined `loop_runner.py` — the runner lives under `fsm/`, not at module top-level.)**
+- `scripts/little_loops/fsm/persistence.py` — `PersistentExecutor._handle_event()` (uses `StatePersistence.append_event()` pattern at line 373): on `action_complete` events with usage, also append to `Path(fsm.context["run_dir"]) / "usage.jsonl"`.
+- `scripts/little_loops/cli/loop/_helpers.py` — `run_foreground()` (lines 1196-1217): print the per-state aggregation table before the existing completion line. **(Replaces the imagined `loop_reporter.py` — there is no dedicated reporter module; post-run printing lives inline here.)**
+- _Possibly new:_ `scripts/little_loops/pricing.py` — `MODEL_PRICING` constant (no such table exists anywhere in the codebase today).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **`scripts/little_loops/fsm/types.py`** — `ActionResult` dataclass actually lives here at line 58, NOT in `runners.py`. The new `usage_events: list[TokenUsage] = field(default_factory=list)` field must be added on the dataclass definition. `TokenUsage` is the proposed parallel-callback dataclass shape (input/output/cache_read/cache_creation tokens + model + service_tier). All existing call sites construct `ActionResult(...)` with kwargs, so a defaulted new field is back-compat. [Agent 2 finding]
+- **`scripts/little_loops/fsm/__init__.py`** — re-exports `ActionResult` via `__all__`; the package docstring lists `ActionResult` fields. Update both if the docstring is normative. [Agent 1 finding]
+- **`scripts/little_loops/cli/loop/testing.py`** — `cmd_test()` constructs `ActionResult(output=f"[simulated output...]", ...)` for slash-command simulation. Verify back-compat after adding `usage_events`. [Agent 2 finding]
+- **`scripts/little_loops/issue_manager.py`** — uses `Callable[[int, int], None]` for `on_usage` at lines 105, 172, 460 (`run_claude_command`, `run_with_continuation`, `process_issue`) with `_on_usage_writer(input_tokens, output_tokens)` closure. **Decision required**: if `UsageCallback` widens in-place, this needs the wider signature; if a parallel `on_usage_detailed` is added (preferred per refine notes), this file is unchanged. [Agent 2 finding]
+- **`scripts/little_loops/parallel/worker_pool.py`** — uses `Callable[[int, int], None]` for `on_usage` at line 647 (`_run_claude_command`) and `_run_with_continuation`, with `_usage_tracker` closure. Same back-compat decision applies. [Agent 2 finding]
+- **`hooks/scripts/context-monitor.sh`** — shell consumer of token usage at lines 114-122, 288-290. Not a Python `UsageCallback` consumer (reads Claude Code's native hook JSON directly), so unaffected by callback widening, but documents the existing two-int contract. No change needed. [Agent 1 finding]
+- **`docs/reference/schemas/action_complete.json`** — JSON Schema file for the `action_complete` event. Currently declares `required: ["event", "ts", "exit_code", "duration_ms", "is_prompt"]` and lists five `properties` — the new `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `model` fields are not present. `additionalProperties: true` so validators won't reject, but the schema is factually incomplete after the change. Regenerate via `ll-generate-schemas` or update manually. [Agent 2 finding]
+- **`docs/reference/EVENT-SCHEMA.md`** — `### action_complete` section has a field table and two JSON examples (shell and prompt). Both must add the new token fields. [Agent 2 finding]
+- **`scripts/little_loops/host_runner.py`** — `HostCapabilities` dataclass has no `usage_reporting` flag. Codex/opencode adapter gaps are deferred per issue scope, but documenting the missing capability flag (or noting in `docs/reference/HOST_COMPATIBILITY.md`) prevents the gap from being silently re-discovered. [Agent 2 finding]
+- **`scripts/little_loops/fsm/persistence.py`** — `StatePersistence.archive_run()` copies only `state.json`, `events.jsonl`, `meta-eval.jsonl` to `.loops/.history/<run_id>-<loop_name>/`. **Decision required**: archive `usage.jsonl` from `run_dir` to `.history/` too, or leave it permanently at `.loops/runs/<instance_id>/usage.jsonl`? Issue scope implies the latter (consistent with ENH-1726 layout), but the decision must be explicit. [Agent 2 finding]
+
+**Dependent files (callers/importers verified):**
+- `scripts/little_loops/fsm/executor.py` imports `ActionResult` from `fsm/types.py` (re-exported via `fsm/__init__.py`) — extending the dataclass touches one call site at most.
+- `scripts/little_loops/cli/loop/lifecycle.py:cmd_resume()` (line 453) re-injects `run_dir` on resume; verify that journal writes survive a resume.
+- No external (out-of-repo) consumers of `ActionResult` — it's an internal dataclass.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/extension.py` — imports `ActionRunner` protocol (line 28); not directly affected by `usage_events` addition but documents the extension surface. [Agent 1 finding]
+- `scripts/little_loops/cli/loop/run.py` — `cmd_run()` creates `run_dir` at line 380 and sets `fsm.context["run_dir"]`; no change required but confirms the directory exists before `_handle_event` tries to write `usage.jsonl`. [Agent 1 finding]
+- `scripts/little_loops/cli/loop/info.py` — displays `action_complete` event details; will naturally surface new token fields once payload widens (no code change required, but visual side-effect to be aware of). [Agent 1 finding]
+- `scripts/little_loops/transport.py` — transports `action_complete` events; payload is opaque dict so additional keys flow through automatically. [Agent 1 finding]
+- `scripts/little_loops/extension.py` — `EventBus`/`LLExtension` observers receive `action_complete` events; external extensions pattern-matching on payload keys will see additional keys (tolerated since payload is plain dict, no schema validation). [Agent 2 finding]
+- `scripts/little_loops/cli/loop/_helpers.py:StateFeedRenderer` — processes `action_complete` events for display; will receive new fields and may want to surface them in the per-state feed. [Agent 1 finding]
+
+**Tests to add (mirror existing patterns):**
+- `scripts/tests/test_usage_journal.py` — model after `test_fsm_persistence.py:test_append_events()` (line 274) and `test_events_file_is_append_only()` (line 331).
+- `scripts/tests/test_usage_reporter.py` — model after `test_cli_ctx_stats.py:_capture_print()` (line 23) for stdout-table assertions. (Alternative: use pytest `capsys` fixture like `test_ll_loop_display.py:TestRunForegroundResumeMode` — same coverage, simpler pattern, already used for `run_foreground()` assertions.)
+
+**Tests to extend:**
+- `scripts/tests/test_fsm_executor.py:TestDefaultActionRunnerProcessTracking` (line 3376) — assert `DefaultActionRunner.run()` now collects usage events. **Correction**: `scripts/tests/test_fsm_runners.py` does NOT exist in the repo. The canonical `DefaultActionRunner` test class lives inside `test_fsm_executor.py`. Use the existing patch target `patch("little_loops.fsm.runners.run_claude_command", side_effect=fake_run_claude_command)` (pattern at line 3419) and fire `kwargs["on_usage"](...)` (or new-name callback) inside the fake.
+- `scripts/tests/test_fsm_executor.py` — assert `action_complete` events carry the new token fields. Existing pattern at line 1975-1997 uses targeted key access (`action_complete["exit_code"]`), so additions are non-breaking; extend with positive assertions for new keys.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **`scripts/tests/test_subprocess_utils.py`** — **likely-break risk**. `TestRunClaudeCommandModelDetection.test_on_usage_callback_called_with_result_event` (line 1505) asserts `usage_calls == [(1500, 200)]`, the exact two-int tuple. If `UsageCallback` widens in place, the assertion shape must change. If a parallel `on_usage_detailed` callback is added and the two-int contract is preserved (preferred per refine notes), the test passes unchanged. Adjacent test `test_on_usage_not_called_when_result_has_no_usage` (line 1530) is should-extend only. [Agent 3 finding]
+- **`scripts/tests/test_generate_schemas.py`** — `test_action_complete_schema` (line 150) uses `in` checks (not exhaustive), so adding new fields won't break it. Extend to positively assert the new `input_tokens`/`output_tokens`/`cache_read_tokens`/`cache_creation_tokens`/`model` properties exist after `ll-generate-schemas` regenerates the JSON Schema. [Agent 3 finding]
+- **`scripts/tests/test_ll_loop_display.py`** — `TestDisplayProgressEvents` (line 1645) and `TestRunForegroundResumeMode` (line 2846) use `capsys`-based substring checks. The new summary table is additive (printed before completion line) and existing assertions use `in`/`not in` — low break risk, but extend with new tests that assert the table renders correctly when usage data is present, and is absent (or shows `n/a`) when usage data is empty. [Agent 3 finding]
+- **`scripts/tests/test_fsm_persistence.py`** — extend `TestPersistentExecutor` (around line 651) with a `_handle_event` test that injects an `action_complete` event with token fields and a `tmp_path`-based `run_dir`, then asserts `(run_dir / "usage.jsonl").read_text().splitlines()` decodes to expected JSON. Existing `test_run_archives_to_history_on_completion` (line 991) does NOT check `run_dir`, so won't break — but add a partner test that pins whether `usage.jsonl` is archived to `.history/` (currently it is NOT — `StatePersistence.archive_run()` copies only state.json/events.jsonl/meta-eval.jsonl). [Agent 3 finding]
+- **`scripts/tests/test_ll_loop_execution.py`** — constructs `ActionResult(output=..., stderr=..., exit_code=..., duration_ms=...)` at multiple sites (lines ~954, ~993, ~1040) when building `RouteContext` for routing tests. All use kwargs, so the defaulted `usage_events` field is back-compat. No break, but verify after change. [Agent 2 finding]
+- **`scripts/tests/test_learning_state.py`** — imports `ActionResult` (line 22), uses kwargs-style construction. Back-compat with new field default. [Agent 1 finding]
+- **`scripts/tests/test_cli_loop_worktree.py`** — patches `run_foreground` entirely at lines 612/648 (`patch("little_loops.cli.loop.run.run_foreground", return_value=0)`). Summary-table changes are invisible here — no risk. [Agent 3 finding]
+- **Skip-paths test gap (decision-pinning test)** — no current test pins whether `action_type: shell` and `action_type: mcp_tool` invocations produce a `usage.jsonl` row marked `n/a` or are skipped entirely. The issue's step 8 bullet 3 says "decide explicitly." Add the decision-pinning test in `test_usage_journal.py`. [Agent 3 finding]
+- **Archive-decision test gap** — pin via a new test in `test_fsm_persistence.py` whether `StatePersistence.archive_run()` copies `usage.jsonl` to `.history/` or leaves it permanently at `.loops/runs/<id>/`. [Wiring decision]
+
+**Similar patterns (verified):**
+- `scripts/little_loops/cli/ctx_stats.py:_aggregate_tool_events()` (lines 129-144) — `defaultdict(lambda: {...})` accumulation idiom.
+- `scripts/little_loops/cli/ctx_stats.py:_render()` (lines 196-201) — column-padded `print()` style for the summary table (no `rich` library in use anywhere).
+- `scripts/little_loops/fsm/persistence.py:append_event()` (line 373) — JSONL append idiom (`with open(..., "a") as f: f.write(json.dumps(entry) + "\n")`).
+
+**EPIC siblings (EPIC-1744 — FSM Loop Hardening):**
+- ENH-1677, ENH-1678, ENH-1735, ENH-1684, ENH-1701, FEAT-1689 — ENH-1797 lives among these; coordinate with any of them touching the same runner/persistence files.
 
 ## Impact
 
@@ -181,5 +318,7 @@ as a sub-table under the iteration log.
 **Open** | Created: 2026-05-29 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-30T21:49:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cef1c26e-c8c0-44a3-ad97-7b7a90baf186.jsonl`
+- `/ll:refine-issue` - 2026-05-30T21:37:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87dc942-b337-46e9-a574-9cadac23728c.jsonl`
 - `/ll:format-issue` - 2026-05-29T21:14:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf11edc6-7c38-44c6-bc14-9d68aba363ce.jsonl`
 - `/ll:capture-issue` - 2026-05-29T20:37:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2a0c61b-6b34-41d4-98fb-c566ba046de6.jsonl`
