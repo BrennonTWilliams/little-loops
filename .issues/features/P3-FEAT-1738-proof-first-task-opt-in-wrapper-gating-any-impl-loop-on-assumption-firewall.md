@@ -2,16 +2,24 @@
 id: FEAT-1738
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-27T18:08:06Z'
+completed_at: '2026-05-30T03:19:04Z'
 discovered_date: '2026-05-27'
 discovered_by: capture-issue
 parent: EPIC-1694
-depends_on: [FEAT-1743]
+depends_on:
+- FEAT-1743
 relates_to:
 - EPIC-1694
 - FEAT-1696
 - FEAT-1695
+confidence_score: 95
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1738: `proof-first-task` — opt-in wrapper that gates any impl loop on assumption-firewall
@@ -101,6 +109,17 @@ impl_failed (terminal)
 | `issue_file` | `""` | Path to issue file for assumption extraction; optional (gate skipped if empty/missing) |
 | `impl_loop` | `"general-task"` | Name of the impl loop to run after the gate passes |
 
+#### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Sub-loop terminal routing is binary** (`fsm/executor.py:_execute_sub_loop():587-600`): Only `final_state == "done"` routes to `on_yes` (→ `on_success`). All other terminal states — including `no_external_deps` from assumption-firewall — route to `on_no` (→ `on_failure`). **Design consideration**: The Proposed Solution comment "# done or no_external_deps" on `on_success: run_impl` won't work as written; `no_external_deps` would incorrectly route to `blocked` terminal. Two approaches: **(A)** Add `capture: gate_result` on the gate state, then a post-gate `check_gate_blocked` shell state that parses `final_state` from captured JSON to route `no_external_deps` → `run_impl` vs `blocked` → `blocked` terminal. **(B)** Accept the limitation — route both `blocked` and `no_external_deps` to the same terminal with diagnostic output from the sub-loop.
+- **`on_success`/`on_failure` are YAML aliases** (`fsm/schema.py:StateConfig.from_dict():510-511`): Mapped to `on_yes`/`on_no` at deserialization. Both forms valid in loop YAML. The `assumption-firewall.yaml` and `adopt-third-party-api.yaml` loops use these aliases.
+- **No default-value syntax in templates** (`fsm/interpolation.py`): Missing `${context.*}` variables raise `InterpolationError`. Defaults come from the top-level `context:` block or sub-loop `with:` bindings — not from template syntax.
+- **`with:` is the preferred sub-loop binding** (`fsm/executor.py:_execute_sub_loop():513-533`): Interpolates bindings and validates against child's `parameters:` declarations. Alternative `context_passthrough: true` (legacy, line 534) merges entire parent context — use `with:` for explicit, auditable bindings.
+- **Loop discovery** (`cli/loop/_helpers.py:resolve_loop_path():811`): Searches project `.loops/` first, then falls back to `scripts/little_loops/loops/`. New YAML file in built-in dir is auto-discovered.
+- **Validation scope**: `ll-loop validate` checks state references and routing consistency but does NOT verify sub-loops exist on disk (lazy, checked at runtime).
+
 ## Integration Map
 
 ### Files to Modify
@@ -118,12 +137,19 @@ impl_failed (terminal)
 ### Similar Patterns
 - `general-task` — existing built-in loop that this wraps
 - `scan-and-implement` — another mainstream loop that could benefit from this wrapper pattern
+- `adopt-third-party-api.yaml` — **exact analog**: wraps `ready-to-implement-gate` as sub-loop with `with:` + `on_success`/`on_failure`, then delegates to impl phase; identical structural pattern to follow
+- `integrate-sdk.yaml` — **exact analog**: same gate-then-delegate pattern with identical sub-loop syntax
+- `outer-loop-eval.yaml:55` — uses `loop: "${context.input}"` for dynamic sub-loop dispatch, the exact mechanism needed for `${context.impl_loop}`
+- `loop-router.yaml:335` — uses `loop: "${captured.chosen.output}"` for runtime dispatch; confirms dynamic `loop:` interpolation works
+- `lib/common.yaml:15` — `shell_exit` fragment providing `action_type: shell` + `evaluate: { type: exit_code }`; reusable via `fragment: shell_exit` for the `check_issue_file` state
+- `test_builtin_loops.py:3989` — `TestAssumptionFirewallLoop` class is the structural test pattern to model `TestProofFirstTaskLoop` after
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — add `TestProofFirstTaskLoop` class and `"proof-first-task"` to `expected` set
 
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md` — built-in loops table
+- `scripts/little_loops/loops/README.md` — built-in loops catalog, add row in API Adoption section
 - `README.md` — loop count
 - `CONTRIBUTING.md` — loop count
 
@@ -132,14 +158,16 @@ impl_failed (terminal)
 
 ## Implementation Steps
 
-1. Draft `scripts/little_loops/loops/proof-first-task.yaml` with the four-state design above.
-2. Wire `check_issue_file` as a shell state using `test -n` + `test -f` with `exit_code` evaluator.
-3. Wire `gate` as a sub-loop call to `assumption-firewall` — confirm terminal state names (`done`, `blocked`, `no_external_deps`) route correctly via `on_success`.
-4. Wire `run_impl` as a dynamic sub-loop call using `loop: "${context.impl_loop}"`.
-5. Run `ll-loop validate proof-first-task` and iterate until no ERRORs.
-6. Update `scripts/tests/test_builtin_loops.py` — add `"proof-first-task"` to `expected` set and a `TestProofFirstTaskLoop` structural test class.
+1. Draft `scripts/little_loops/loops/proof-first-task.yaml` (~70 lines). Model structure after `assumption-firewall.yaml` (114 lines) — same top-level metadata fields (`name`, `category: gate`, `description`, `initial`, `max_iterations`, `timeout`, `on_handoff`), `context:` block with defaults, and bare terminal states. Reference `adopt-third-party-api.yaml` for the sub-loop delegation pattern.
+2. Wire `check_issue_file` as a shell state. Use `fragment: shell_exit` (from `lib/common.yaml:15`) to inherit `action_type: shell` + `evaluate: { type: exit_code }`. Action: `test -n "${context.issue_file}" && test -f "${context.issue_file}"`. Route `on_yes: gate`, `on_no: run_impl`.
+3. Wire `gate` as a sub-loop call to `assumption-firewall`. Use `loop: assumption-firewall` with `with: { input: "${context.issue_file}" }`. Route `on_success: run_impl`, `on_failure: blocked`, `on_error: blocked`. See `assumption-firewall.yaml:97-104` (`run_gate` state) for the exact syntax. **Routing note**: Per `fsm/executor.py:587-600`, only `final_state == "done"` → `on_success`; `no_external_deps` and `blocked` both → `on_failure`. Consider approach (A) from Codebase Research Findings above if `no_external_deps` → `run_impl` is required.
+4. Wire `run_impl` as a dynamic sub-loop: `loop: "${context.impl_loop}"` with `with: { input: "${context.task}" }`. Pattern confirmed by `outer-loop-eval.yaml:55-63` (`run_sub_loop` state). Route `on_success: done`, `on_failure: impl_failed`, `on_error: impl_failed`.
+5. Run `ll-loop validate proof-first-task` and iterate until no ERRORs. Validation checks state references, routing consistency, and `with:` binding cross-references but does NOT verify sub-loop file existence.
+6. Update `scripts/tests/test_builtin_loops.py`:
+   - Add `"proof-first-task"` to `expected` set at `TestBuiltinLoopFiles.test_expected_loops_exist` (line ~66-128)
+   - Add `TestProofFirstTaskLoop` class modeled after `TestAssumptionFirewallLoop` (line 3989): `LOOP_FILE` constant, `data` fixture loading YAML, structural assertions for `check_issue_file` (fragment + routing), `gate` (sub-loop delegation + `with:` bindings), `run_impl` (dynamic loop + `with:` bindings), and terminal flags (`done`, `blocked`, `impl_failed`)
 7. Update numeric loop counts in `README.md` and `CONTRIBUTING.md` (tracked by `ll-verify-docs`).
-8. Add a row to `docs/guides/LOOPS_GUIDE.md` built-in loops table under an "API Adoption" or "Proof-First" section.
+8. Add row to `docs/guides/LOOPS_GUIDE.md` built-in loops table. Add a "Proof-First" row to the API Adoption section (lines ~377-380) with name, category, and description. Also update `scripts/little_loops/loops/README.md` built-in loops table.
 
 ## Acceptance Criteria
 
@@ -184,6 +212,49 @@ ll-loop run proof-first-task \
 
 **Open** | Created: 2026-05-27 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-29_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 75/100 → MODERATE
+
+### Concerns
+- **no_external_deps routing ambiguity**: Per fsm/executor.py:587-600, only `final_state == "done"` routes to `on_success`. The Proposed Solution assumes `no_external_deps` → `run_impl` but sub-loop binary routing means it would go to `on_failure` → `blocked`. Implementation Step 3 flags this. Resolve before or during YAML authoring (Approach A: capture + post-gate shell; Approach B: accept limitation).
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-30T03:13:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43c48749-cb46-486e-a602-2111ee564bbc.jsonl`
+- `/ll:confidence-check` - 2026-05-29T21:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/638aa818-bcbd-46e3-90c3-b9639455e91c.jsonl`
+- `/ll:wire-issue` - 2026-05-30T03:07:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62d239ef-cdb9-4e10-91c4-b7e6d7ebb096.jsonl`
+- `/ll:refine-issue` - 2026-05-30T03:01:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10099c1b-8e47-48e1-b15b-3ee2a2da4e58.jsonl`
 - `/ll:format-issue` - 2026-05-29T20:02:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a846596c-487a-4d83-8770-0975057857d0.jsonl`
 - `/ll:capture-issue` - 2026-05-27T18:08:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55979bca-15d7-443c-b4d3-a76d29148106.jsonl`
+- `/ll:manage-issue feature implement FEAT-1738` - 2026-05-30T03:19:04Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43c48749-cb46-486e-a602-2111ee564bbc.jsonl`
+---
+---
+## Resolution
+
+**Completed**: 2026-05-30T03:19:04Z
+
+### Changes Made
+
+1. **`scripts/little_loops/loops/proof-first-task.yaml`** (new): FSM loop definition with four states:
+   - `check_issue_file`: Shell gate using `fragment: shell_exit`; skips to `run_impl` when no issue file provided
+   - `gate`: Sub-loop delegation to `assumption-firewall` with `with: { input }` binding; captures result for post-gate routing
+   - `check_gate_blocked`: Post-gate shell state distinguishing `no_external_deps` (count=0 → `run_impl`) from `blocked` (count>0 → `blocked` terminal)
+   - `run_impl`: Dynamic sub-loop dispatch to `${context.impl_loop}` with `with: { input }` binding
+   - Terminals: `done`, `blocked`, `impl_failed`
+
+2. **`scripts/tests/test_builtin_loops.py`**: Added `"proof-first-task"` to expected set and `TestProofFirstTaskLoop` class (10 structural tests)
+
+3. **Documentation**: Added row to `scripts/little_loops/loops/README.md` API Adoption section, `docs/guides/LOOPS_GUIDE.md` API Adoption section, and updated loop count in `CONTRIBUTING.md` (56→59)
+
+### Design Decision: `no_external_deps` Routing
+
+Used Approach A from the codebase research findings. The sub-loop executor (`fsm/executor.py:587-600`) only routes `final_state == "done"` to `on_success`; `no_external_deps` would incorrectly route to `blocked`. Solved by capturing the gate sub-loop result and adding a `check_gate_blocked` shell state that parses the captured JSON: count=0 → `run_impl`, count>0 → `blocked`.
+
+### Verification
+
+- `ll-loop validate proof-first-task` — no ERRORs
+- `TestProofFirstTaskLoop` — 10/10 pass (structural assertions for fragment, sub-loop delegation, dynamic dispatch, terminals)
+- Pre-existing `test_expected_loops_exist` failure (missing `cli-anything-bootstrap` in expected set) — not caused by this change

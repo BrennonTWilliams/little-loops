@@ -123,6 +123,7 @@ class TestBuiltinLoopFiles:
             "assumption-firewall",
             "adopt-third-party-api",
             "integrate-sdk",
+            "proof-first-task",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -4035,6 +4036,82 @@ class TestAssumptionFirewallLoop:
         state = data["states"].get("no_external_deps", {})
         assert state.get("terminal") is True, (
             f"no_external_deps.terminal should be True, got {state.get('terminal')!r}"
+        )
+
+
+class TestProofFirstTaskLoop:
+    """Tests that proof-first-task.yaml has correct structure and routing."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "proof-first-task.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_description_is_nonempty(self, data: dict) -> None:
+        """Loop must have a non-empty description."""
+        assert data.get("description"), "proof-first-task must have a non-empty description"
+
+    def test_check_issue_file_uses_shell_exit_fragment(self, data: dict) -> None:
+        """check_issue_file must use the shell_exit fragment."""
+        state = data["states"].get("check_issue_file", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"check_issue_file.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_gate_delegates_to_assumption_firewall(self, data: dict) -> None:
+        """gate must delegate to assumption-firewall sub-loop."""
+        state = data["states"].get("gate", {})
+        assert state.get("loop") == "assumption-firewall", (
+            f"gate.loop should be 'assumption-firewall', got {state.get('loop')!r}"
+        )
+
+    def test_gate_captures_result(self, data: dict) -> None:
+        """gate must capture output for post-gate routing check."""
+        state = data["states"].get("gate", {})
+        assert state.get("capture") == "gate_result", (
+            f"gate.capture should be 'gate_result', got {state.get('capture')!r}"
+        )
+
+    def test_gate_with_binds_input(self, data: dict) -> None:
+        """gate with: must bind input from context.issue_file."""
+        state = data["states"].get("gate", {})
+        with_ = state.get("with", {})
+        assert "input" in with_, f"gate.with must contain 'input', got {list(with_.keys())}"
+
+    def test_run_impl_uses_dynamic_loop(self, data: dict) -> None:
+        """run_impl must use dynamic loop dispatch from context.impl_loop."""
+        state = data["states"].get("run_impl", {})
+        assert state.get("loop") == "${context.impl_loop}", (
+            f"run_impl.loop should be '${{context.impl_loop}}', got {state.get('loop')!r}"
+        )
+
+    def test_run_impl_with_binds_input(self, data: dict) -> None:
+        """run_impl with: must bind input from context.task."""
+        state = data["states"].get("run_impl", {})
+        with_ = state.get("with", {})
+        assert "input" in with_, f"run_impl.with must contain 'input', got {list(with_.keys())}"
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        state = data["states"].get("done", {})
+        assert state.get("terminal") is True, (
+            f"done.terminal should be True, got {state.get('terminal')!r}"
+        )
+
+    def test_blocked_is_terminal(self, data: dict) -> None:
+        """blocked state must have terminal: true."""
+        state = data["states"].get("blocked", {})
+        assert state.get("terminal") is True, (
+            f"blocked.terminal should be True, got {state.get('terminal')!r}"
+        )
+
+    def test_impl_failed_is_terminal(self, data: dict) -> None:
+        """impl_failed state must have terminal: true."""
+        state = data["states"].get("impl_failed", {})
+        assert state.get("terminal") is True, (
+            f"impl_failed.terminal should be True, got {state.get('terminal')!r}"
         )
 
 

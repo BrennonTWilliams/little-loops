@@ -64,6 +64,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 |---|---|
 | `adopt-third-party-api` | Scrape a vendor docs URL via `/ll:scrape-docs`, enumerate up to 7 significant endpoints/features, prove each via `ready-to-implement-gate`, and write a citation-linked integration playbook to `docs/integration-<domain>.md`; partial coverage (some targets refuted/exhausted) still produces a playbook with a top warning block. |
 | `integrate-sdk` | Proof-driven SDK integration: branch on existing usage vs. greenfield, enumerate required surfaces (up to 7), prove each via `ready-to-implement-gate`, then scaffold integration code with `# Verified: .ll/learning-tests/<slug>.md` citations; blocks with a structured diagnosis if any surface is refuted or citations don't resolve to proven records. |
+| `proof-first-task` | Opt-in wrapper that gates any implementation loop on `assumption-firewall` — extracts external-API assumptions from an issue file, proves each against the Learning-Test Registry, then delegates to a caller-specified impl loop (default `general-task`). When no `issue_file` is given, skips the gate and runs the impl loop directly. |
 
 ## General Purpose
 
