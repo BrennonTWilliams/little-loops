@@ -49,3 +49,12 @@ class TestAuditIssueConflictsSkillExists:
         """Skill must reference the config.issues.base_dir glob pattern."""
         assert SKILL_FILE.exists(), "Skill file not found"
         assert "{{config.issues.base_dir}}" in SKILL_FILE.read_text()
+
+    def test_phase1_filters_by_status(self) -> None:
+        """Phase 1 must filter to open|in_progress|blocked via awk, not bare find (BUG-1799)."""
+        assert SKILL_FILE.exists(), "Skill file not found"
+        content = SKILL_FILE.read_text()
+        assert "awk '/^---$/{n++; next} n==1 && /^status:/" in content
+        assert "open|in_progress|blocked)" in content
+        assert "TERMINAL_COUNT" in content
+        assert "excluded $TERMINAL_COUNT terminal issues" in content

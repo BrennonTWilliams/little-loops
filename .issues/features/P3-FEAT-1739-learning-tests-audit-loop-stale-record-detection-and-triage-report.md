@@ -11,6 +11,12 @@ relates_to:
 - EPIC-1694
 - FEAT-1695
 - FEAT-1696
+confidence_score: 100
+outcome_confidence: 71
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # FEAT-1739: `learning-tests-audit` loop — stale record detection and triage report
@@ -122,6 +128,52 @@ done_empty (terminal)
 2. **`classify_packages`** — LLM maps human-readable target strings to canonical package names using the installed package list as disambiguation context. Handles compound slugs (`anthropic-sdk-streaming` → `anthropic`), namespaced packages (`@anthropic-ai/sdk`), and multi-word descriptions (`Stripe webhook signature` → `stripe`). Records mapped to `ecosystem: unknown` are skipped — no false stale-marks.
 3. **`check_versions`** — queries PyPI (`https://pypi.org/pypi/<pkg>/json`) or npm registry (`https://registry.npmjs.org/<pkg>`) to get per-version publish dates. Compares against the record's `date` field to find versions released after the record was written. Registry API errors degrade gracefully to `stale_candidate: false` with a `detection_note`.
 
+## Integration Map
+
+### Files to Create
+- `scripts/little_loops/loops/learning-tests-audit.yaml` — new FSM loop YAML (7 states)
+
+### Files to Modify
+- `scripts/tests/test_builtin_loops.py` — add `"learning-tests-audit"` to `expected` set in `test_expected_loops_exist()` (line ~68); add `TestLearningTestsAuditLoop` structural test class
+- `scripts/little_loops/loops/README.md` — add `learning-tests-audit` row under "API Adoption" section (between `integrate-sdk` and `proof-first-task`)
+- `docs/guides/LOOPS_GUIDE.md` — add row under "API Adoption" section
+- `docs/guides/LEARNING_TESTS_GUIDE.md` — add note under "Troubleshooting" section
+- `README.md` — update loop count (58 → 59)
+- `CONTRIBUTING.md` — update loop count (59 → 60)
+
+### Integration Surface
+- `scripts/little_loops/learning_tests.py` — registry module:
+  - `list_records(base_dir)` (line 117) — returns `list[LearnTestRecord]`; used by `list_records` state
+  - `mark_stale(target_slug, base_dir)` (line 130) — patches `status: stale` via `update_frontmatter()`; used by `mark_stale_candidates` state
+  - `check_learning_test(target, base_dir)` (line 140) — slugifies target then calls `read_record()`
+  - `LearnTestRecord` dataclass (line 44) — fields: `target`, `date`, `status`, `assertions`, `raw_output_path`
+  - `Assertion` dataclass — fields: `claim`, `result` (`"pass"` | `"fail"` | `"untested"`)
+- `scripts/little_loops/cli/learning_tests.py` — CLI entry point:
+  - `cmd_list()` — `ll-learning-tests list` outputs JSON array of all records
+  - `cmd_mark_stale()` — `ll-learning-tests mark-stale <target>` patches one record; exit 1 if target not found
+  - `cmd_check()` — `ll-learning-tests check <target>` outputs single record as JSON; exit 1 if not found
+
+### Similar Patterns
+- `scripts/little_loops/loops/issue-staleness-review.yaml` — closest analog: discovers stale items via shell command, reviews with prompt, routes to action (close/reprioritize). Same "scan → evaluate → act → loop" shape.
+- `scripts/little_loops/loops/dead-code-cleanup.yaml` — scan-and-report pattern: `count_findings` state uses `output_json` on shell-generated JSON to gate on zero vs non-zero findings.
+- `scripts/little_loops/loops/ready-to-implement-gate.yaml` — extensively calls `ll-learning-tests check` from shell states via `subprocess.run()` in Python heredocs.
+
+### FSM Schema Reference
+- `scripts/little_loops/fsm/schema.py` — `FSMLoop`, `StateConfig`, `EvaluateConfig` dataclasses
+- `scripts/little_loops/fsm/evaluators.py` — 9 evaluator types: `exit_code`, `output_json`, `output_contains`, `output_numeric`, `llm_structured`, `convergence`, `diff_stall`, `mcp_result`, `harbor_scorer`
+- `scripts/little_loops/fsm/validation.py` — `load_and_validate()` enforces required fields, state reachability, evaluator field requirements
+
+### Tests
+- `scripts/tests/test_builtin_loops.py` — structural test class pattern: `TestEvaluationQualityLoop` (line 398) with `LOOP_FILE`, `data` fixture, and assertions for required states, terminal flags, capture names, routing edges, evaluator types
+- `scripts/tests/test_learning_tests.py` — existing `mark_stale` tests (line 167); no new tests needed for the registry module
+- `scripts/tests/test_cli_learning_tests.py` — existing CLI tests for `check`, `list`, `mark-stale` (line 128); no new CLI tests needed
+
+### Documentation
+- `docs/guides/LOOPS_GUIDE.md` — add `learning-tests-audit` row under "API Adoption" section
+- `docs/guides/LEARNING_TESTS_GUIDE.md` — add troubleshooting note pointing to this loop for bulk staleness management
+- `scripts/little_loops/loops/README.md` — add `learning-tests-audit` row under "API Adoption" section
+- `docs/reference/CLI.md` — no changes expected (loop invoked via `ll-loop run`, no new CLI surface)
+
 ## Implementation Steps
 
 1. Draft `scripts/little_loops/loops/learning-tests-audit.yaml` with the seven-state design above.
@@ -139,6 +191,25 @@ done_empty (terminal)
 10. Update loop counts in `README.md` and `CONTRIBUTING.md`.
 11. Add row to `docs/guides/LOOPS_GUIDE.md` under "API Adoption" section.
 12. Add a note to `docs/guides/LEARNING_TESTS_GUIDE.md` under "Troubleshooting" pointing to this loop for bulk staleness management.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+13. Update `scripts/little_loops/loops/README.md` — add a `learning-tests-audit` row under the "API Adoption" table (between `integrate-sdk` and `proof-first-task`), following the same `| \`loop-name\` | Description |` format.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Step 1-2 (loop YAML + enumerate_installed):** Follow existing shell-state patterns in `ready-to-implement-gate.yaml:15-21` (Python heredoc producing JSON). Use `mkdir -p .loops/tmp` in shell actions following convention in `evaluation-quality.yaml:51`. The `enumerate_installed` state should emit `{pip: [...], npm: {...}}` as a single JSON object via `python3 << 'PYEOF'`.
+- **Step 3 (classify_packages prompt):** Model after `backlog-flow-optimizer.yaml:34-61` (diagnostic tag emission). Inject captured data via `${captured.enumerate_installed.output}`. Use `evaluate: {type: output_json, path: ".length", operator: gte, target: 0}` for the routing gate — classification always produces output, so this always routes to `on_yes`.
+- **Step 4 (check_versions shell):** Use Python heredoc pattern (`python3 << 'PYEOF'`) from `adopt-third-party-api.yaml:59-88`. Inject `${captured.classify_packages.output}`. Call `urllib.request.urlopen()` for PyPI/npm APIs. On `URLError`, set `stale_candidate: false, detection_note: "registry unavailable"`.
+- **Step 5 (mark_stale_candidates shell):** Use `subprocess.run(["ll-learning-tests", "mark-stale", target])` pattern from `ready-to-implement-gate.yaml:33-43`. Capture results as JSON for the report.
+- **Step 6 (build_report prompt):** Model after `evaluation-quality.yaml:167-195` (report writing via prompt state). Pre-create output directory with `mkdir -p .loops/runs/learning-tests-audit/` in a preceding shell action or inline in the prompt state action.
+- **Step 9 (tests):** Follow `TestEvaluationQualityLoop` class structure at `test_builtin_loops.py:398-498`: `LOOP_FILE` class attribute, `data` fixture with `yaml.safe_load()`, and assertions for required states, terminal flag, capture names, routing edges (`on_yes`/`on_no`/`on_error`), evaluator types/operators/targets, fragment usage, and action string contents.
+- **Loop metadata conventions:** Set `category: "api-adoption"` (consistent with `adopt-third-party-api.yaml` and `integrate-sdk.yaml`). Include `max_iterations`, `timeout`, and `on_handoff: spawn` as standard top-level fields. Set `description` — required for built-in loops per ENH-1331 regression guard (tested in `test_all_have_description_field()`).
+- **Validation pitfalls:** `ll-loop validate` enforces evaluator field requirements — `output_json` needs `path`, `operator`, `target`. Prompt states need `on_error` and `on_blocked` routing. Shell actions must escape bare `${VAR}` as `$${VAR}` (BUG-1675 regression guard tested in `test_no_bare_bash_variable_in_shell_actions()`).
 
 ## Acceptance Criteria
 
@@ -167,5 +238,20 @@ done_empty (terminal)
 
 **Open** | Created: 2026-05-27 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-29_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Outcome Risk Factors
+- 7-site enumeration across 4 subsystems (loop YAML, tests, docs, root docs) — individually mechanical but breadth creates coordination risk; missing one site produces stale references
+- New loop YAML gets structural validation tests but no runtime integration test — check_versions inline Python logic and classify_packages prompt quality can only be verified manually or through production use
+- Change surface spans 6 existing files with varying modification types (set addition, table row, count bump, test class) — verification requires checking every site
+
 ## Session Log
+- `/ll:confidence-check` - 2026-05-29T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a99f544-bd0d-4ac3-a506-f33ffd4a0bf7.jsonl`
+- `/ll:wire-issue` - 2026-05-30T03:35:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a79d03a-934b-4752-a81b-96cb9e93728e.jsonl`
+- `/ll:refine-issue` - 2026-05-30T03:27:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a1d51e1b-fa76-4e37-b9b8-b2f75b1951eb.jsonl`
 - `/ll:capture-issue` - 2026-05-27T18:08:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55979bca-15d7-443c-b4d3-a76d29148106.jsonl`

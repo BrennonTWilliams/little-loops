@@ -58,12 +58,17 @@ Collect all active issue files:
 
 ```bash
 declare -a ISSUE_FILES
+declare -i TERMINAL_COUNT=0
 for dir in {{config.issues.base_dir}}/{bugs,features,enhancements}/; do
-    if [ -d "$dir" ]; then
-        while IFS= read -r file; do
-            ISSUE_FILES+=("$file")
-        done < <(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | sort)
-    fi
+    [ -d "$dir" ] || continue
+    for f in "$dir"*.md; do
+        [ -f "$f" ] || continue
+        status=$(awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' "$f")
+        case "${status:-open}" in
+            open|in_progress|blocked) ISSUE_FILES+=("$f") ;;
+            *) TERMINAL_COUNT=$((TERMINAL_COUNT + 1)) ;;
+        esac
+    done
 done
 
 if [[ ${#ISSUE_FILES[@]} -eq 0 ]]; then
@@ -71,7 +76,7 @@ if [[ ${#ISSUE_FILES[@]} -eq 0 ]]; then
     exit 0
 fi
 
-echo "Found ${#ISSUE_FILES[@]} active issues to evaluate"
+echo "Found ${#ISSUE_FILES[@]} active issues (excluded $TERMINAL_COUNT terminal issues)"
 ```
 
 For each file, parse from the filename:
