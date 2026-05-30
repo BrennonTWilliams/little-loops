@@ -7,6 +7,7 @@ focus_area: large-files
 confidence_score: 100
 outcome_confidence: 71
 milestone: refined-ready
+parent: EPIC-1812
 ---
 
 # ENH-839: Split layout.py diagram rendering into focused modules

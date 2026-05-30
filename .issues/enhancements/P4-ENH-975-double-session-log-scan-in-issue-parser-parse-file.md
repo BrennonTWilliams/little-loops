@@ -3,6 +3,7 @@ discovered_commit: 96d74cda12b892bac305b81a527c66021302df6a
 discovered_branch: main
 discovered_date: 2026-04-06T15:57:51Z
 discovered_by: scan-codebase
+parent: EPIC-1812
 ---
 
 # ENH-975: `IssueParser.parse_file` double-scans content for session log data

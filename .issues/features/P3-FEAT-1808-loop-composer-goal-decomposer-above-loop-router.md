@@ -1,0 +1,82 @@
+---
+id: FEAT-1808
+type: FEAT
+priority: P3
+status: open
+parent: EPIC-1811
+captured_at: "2026-05-30T06:48:30Z"
+discovered_date: 2026-05-30
+discovered_by: capture-issue
+---
+
+# FEAT-1808: `loop-composer` — Goal Decomposer Built-in FSM Loop (One Level Above `loop-router`)
+
+## Summary
+
+Add a new built-in FSM loop `loop-composer` that accepts a natural-language goal too large for a single existing loop, decomposes it into an ordered DAG of `loop-router` calls (or direct sub-loop invocations), then walks the plan to execution. Each node in the plan is an existing loop; the composer is purely an orchestration layer that turns "I want to ship feature X" into "refine → wire → plan → implement → review → PR".
+
+## Motivation
+
+`loop-router` (FEAT-1654, done) solved *one-goal → one-loop*. The next layer up is *one-goal → many-loops*. Today users compose multi-loop workflows manually by chaining slash commands, calling `ll-sprint`, or wiring a bespoke loop for each recurring multi-step pattern. The catalog has the right *primitives* but no composer to sequence them from intent.
+
+**Why:** Plenty of real goals ("ship the auth migration", "audit and harden the loops directory") naturally fan out across 3–6 existing loops; there is no general entry point for them.
+**How to apply:** This is purely an orchestration layer — the composer never *does* work, it only sequences other loops. All actual work stays in the leaf loops `loop-router` already knows how to dispatch.
+
+## Proposed Solution
+
+`scripts/little_loops/loops/loop-composer.yaml` with a `decompose → plan → execute → review` shape:
+
+1. **`discover_loops`** — same catalog discovery as `loop-router` (reuse the shell heredoc; consider extracting to `loops/lib/`).
+2. **`decompose_goal`** — Tier 2 LLM prompt that emits a JSON plan: an ordered list of `{step_id, loop_name, input, depends_on: [step_ids]}` entries forming a DAG. Prompt instructs the model to prefer `loop-router` as the leaf when uncertain (let router pick), and to use direct loop names when the fit is obvious.
+3. **`validate_plan`** — `action_type: shell` that parses the plan, checks loop names exist in the catalog, detects cycles, enforces a per-plan node cap (e.g. ≤8 nodes to start). Exits non-zero on invalid plan → re-decompose (bounded retries).
+4. **`present_plan`** (HITL gate) — if `${context.auto}` is `false` or plan cost-estimate exceeds threshold, show the plan and ask the user to approve/edit/CANCEL. (Mirrors `loop-router::present_choices`.)
+5. **`execute_plan`** — walk the DAG. For the MVP, execute sequentially in topological order (parallelism is FEAT-1809 territory). Each node is a sub-loop dispatch (`loop: <node.loop_name>`, `with: {input: <node.input>}`, `capture: step_N_output`). Step outputs are stored in `${context.plan_state}` (JSON blob) so later step `input` strings can interpolate prior results.
+6. **`review_chain`** — synthesize a summary across all step outputs (similar to `loop-router::review` but multi-step).
+7. **`present_result`** — emit structured JSON: `{plan, step_results, success, summary}`.
+
+**Key design choices that need calling out:**
+- **Plan is inspectable.** A pure-shell executor walks a YAML/JSON manifest. The plan is logged, dumped to `.loops/tmp/loop-composer-plan.json`, and survives re-runs. This is the deliberate *non*-reactive choice — see FEAT-1809 for the reactive variant.
+- **Sequential MVP, DAG semantics in the schema.** Plan entries carry `depends_on:` from day 1 even though the executor walks them in topo order; this leaves room for parallel fan-out without a plan-format change.
+- **`loop-router` as the universal leaf.** The composer's prompt is biased toward emitting `loop-router` nodes when the model is uncertain about loop choice. This pushes uncertainty to the routing layer where it already has a confidence/HITL gate, instead of duplicating that logic at the composer level.
+- **State interpolation between steps.** Step N+1's `input` string can reference `${plan_state.step_3.output}` so plans can express "feed step 3's output into step 5". This is the load-bearing part — without it, the composer is just a fancy `ll-sprint`.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/loop-composer.yaml` (new)
+- `scripts/little_loops/loops/README.md` — append composer entry
+- `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles::test_expected_loops_exist` — add `"loop-composer"` to the `expected` set
+- `docs/guides/LOOPS_GUIDE.md` — note composer as the multi-loop entry point sitting above `loop-router`
+
+### Similar Patterns
+- `scripts/little_loops/loops/loop-router.yaml` — direct ancestor; reuse catalog discovery and HITL shape
+- `scripts/little_loops/loops/outer-loop-eval.yaml` — orchestrating-loop pattern (FEAT-933)
+- `scripts/little_loops/loops/recursive-refine.yaml` — multi-state loop with sub-loop dispatch
+- `ll-sprint` runner — closest existing multi-issue orchestrator (different shape: it walks issues, not loops)
+
+### Tests
+- `scripts/tests/test_loop_composer.py` (new) — schema validation, plan-parsing tests, structural assertions on the state graph, optional `@pytest.mark.slow` live-LLM class.
+
+### Configuration
+- Consider `orchestration.composer.max_plan_nodes` (default 8) and `orchestration.composer.auto` (default false — composer should HITL by default given blast radius).
+
+## Open Questions
+
+1. **Plan schema format.** YAML inline vs. dedicated JSON blob. Probably JSON because the LLM emits it and we already have JSON tooling.
+2. **Failure semantics.** When step 4 of 6 fails, do we stop, continue, or re-plan the tail? For the MVP: stop and report. Re-planning is FEAT-1809.
+3. **Reusing `recursive-refine`'s shape?** That loop already does "decompose → recurse → terminate" with sub-loops. Worth a side-by-side comparison before committing to a brand-new state graph.
+
+## Relationship to Sibling Issues
+
+- **FEAT-1809 (adaptive composer)** — natural v2 evolution: same plan-then-execute spine but adds re-plan-on-failure. Start with this issue (1808), graduate to 1809 once the static planner is solid.
+- **FEAT-1810 (goal-cluster orchestrator)** — different input shape (a *list* of goals, e.g. a sprint), not a single goal. Composer might dispatch goal-cluster as a child, or vice versa. Worth checking before either lands.
+
+## Session Log
+- `/ll:capture-issue` - 2026-05-30T06:48:30Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6be17ec6-da10-4c91-9b41-f2c0b3be4efb.jsonl`
+
+---
+
+## Status
+
+- **State**: open
+- **Created**: 2026-05-30
