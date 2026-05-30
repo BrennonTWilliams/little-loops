@@ -67,6 +67,7 @@ Public exports:
     # Concurrency Control
     ScopeLock: Dataclass representing a scope lock
     LockManager: Manager for acquiring/releasing scope locks
+    resolve_scope: Resolve ${context.<var>} templates in scope paths
 
     # Circuit Breaker
     RateLimitCircuit: Shared circuit-breaker state for cross-worktree 429 coordination
@@ -75,6 +76,7 @@ Public exports:
 from little_loops.fsm.concurrency import (
     LockManager,
     ScopeLock,
+    resolve_scope,
 )
 from little_loops.fsm.evaluators import (
     DEFAULT_LLM_PROMPT,
@@ -188,6 +190,7 @@ __all__ = [
     "LLMConfig",
     "LockManager",
     "ParameterSpec",
+    "resolve_scope",
     "LoopState",
     "PersistentExecutor",
     "RESUMABLE_STATUSES",

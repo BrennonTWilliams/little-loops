@@ -577,6 +577,7 @@ The `scope` field declares which files or directories a loop operates on. It is 
 - If another loop's scope overlaps, the second loop waits until the first releases its lock
 - An empty `scope` (or omitting it) is treated as the whole project — it will conflict with any other scoped loop
 - Paths are compared by prefix overlap, so `scope: ["src/"]` conflicts with `scope: ["src/utils/"]`
+- Scope paths support `${context.<var>}` template variables that are resolved at runtime against the loop's context. This enables file-level locking: two instances of the same loop with different context values (e.g., different `plan_file` paths) produce disjoint scopes and can run concurrently.
 
 **When to use:**
 - You run multiple loops concurrently via `ll-parallel` and each loop touches distinct areas of the codebase

@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from little_loops.fsm.concurrency import LockManager, ScopeLock
+from little_loops.fsm.concurrency import LockManager, ScopeLock, resolve_scope
 
 
 class TestScopeLock:
@@ -578,3 +578,72 @@ class TestMultiInstanceSameName:
         assert results.count(True) == 2, (
             f"Both non-overlapping instances should acquire; got: {results}"
         )
+
+
+class TestResolveScope:
+    """Tests for resolve_scope() template variable resolution."""
+
+    def test_static_passthrough(self) -> None:
+        """Static paths pass through unchanged."""
+        scope = ["src/", "docs/", "*.md"]
+        result = resolve_scope(scope, {"plan_file": "foo.md"})
+        assert result == ["src/", "docs/", "*.md"]
+
+    def test_with_context_var(self) -> None:
+        """${context.var} is resolved to the context value."""
+        scope = ["${context.plan_file}"]
+        result = resolve_scope(scope, {"plan_file": "path/to/plan.md"})
+        assert result == ["path/to/plan.md"]
+
+    def test_unresolved_var_preserved(self) -> None:
+        """Unknown ${context.var} is kept as literal."""
+        scope = ["${context.unknown}"]
+        result = resolve_scope(scope, {})
+        assert result == ["${context.unknown}"]
+
+    def test_mixed_static_and_template(self) -> None:
+        """Mixed static and template paths both resolve correctly."""
+        scope = ["src/", "${context.out_dir}", "*.md"]
+        result = resolve_scope(scope, {"out_dir": "build/"})
+        assert result == ["src/", "build/", "*.md"]
+
+    def test_empty_scope(self) -> None:
+        """Empty scope list returns empty list."""
+        result = resolve_scope([], {"plan_file": "x.md"})
+        assert result == []
+
+    def test_empty_context(self) -> None:
+        """All templates with empty context are preserved as literals."""
+        scope = ["${context.a}", "${context.b}"]
+        result = resolve_scope(scope, {})
+        assert result == ["${context.a}", "${context.b}"]
+
+    def test_partial_template_in_path(self) -> None:
+        """Template var can appear as part of a larger path string."""
+        scope = ["${context.base_dir}/src/"]
+        result = resolve_scope(scope, {"base_dir": "/home/user/project"})
+        assert result == ["/home/user/project/src/"]
+
+    def test_multiple_templates_in_path(self) -> None:
+        """Multiple templates in a single path are all resolved."""
+        scope = ["${context.root}/${context.sub}/"]
+        result = resolve_scope(scope, {"root": "/a", "sub": "b"})
+        assert result == ["/a/b/"]
+
+    def test_partial_unresolved_template(self) -> None:
+        """Path with mixed resolved and unresolved templates keeps unresolved parts."""
+        scope = ["${context.known}/${context.unknown}"]
+        result = resolve_scope(scope, {"known": "data"})
+        assert result == ["data/${context.unknown}"]
+
+    def test_non_context_template_not_resolved(self) -> None:
+        """Only ${context.*} templates are resolved; other namespaces are left alone."""
+        scope = ["${env.HOME}", "${captured.x}"]
+        result = resolve_scope(scope, {"HOME": "/home/user", "x": "val"})
+        assert result == ["${env.HOME}", "${captured.x}"]
+
+    def test_context_var_int_value(self) -> None:
+        """Context variable with int value is stringified."""
+        scope = ["${context.port}"]
+        result = resolve_scope(scope, {"port": 8080})
+        assert result == ["8080"]

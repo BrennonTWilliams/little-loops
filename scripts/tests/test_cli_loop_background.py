@@ -678,6 +678,124 @@ class TestRunBackground:
         cmd = mock_popen.call_args[0][0]
         assert "--no-lock" in cmd
 
+    def test_scope_resolution_disjoint_contexts_no_conflict(
+        self, tmp_path: Path
+    ) -> None:
+        """Two run_background() calls with different context values for the same
+        template var produce disjoint scopes and do not conflict."""
+        import argparse
+
+        from little_loops.fsm.concurrency import LockManager
+        from little_loops.fsm.schema import FSMLoop, StateConfig
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+
+        # Pre-acquire a lock on file_a.md
+        lm = LockManager(loops_dir)
+        lm.acquire("rn-refine", [str(tmp_path / "file_a.md")])
+
+        # Build an FSMLoop with template scope
+        mock_fsm = FSMLoop(
+            name="rn-refine",
+            initial="done",
+            states={"done": StateConfig(terminal=True)},
+            scope=["${context.plan_file}"],
+        )
+        mock_fsm.context["plan_file"] = ""
+
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            no_lock=None,
+            context=["plan_file=" + str(tmp_path / "file_b.md")],
+            input=None,
+            verbose=False,
+            show_diagrams=None,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+            program_md=None,
+            delay=None,
+            handoff_threshold=None,
+            context_limit=None,
+        )
+
+        with patch("little_loops.cli.loop._helpers.load_loop", return_value=mock_fsm):
+            with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+                mock_popen.return_value.pid = 42
+                from little_loops.cli.loop._helpers import run_background
+
+                result = run_background("rn-refine", args, loops_dir)
+
+        # No conflict because file_b.md != file_a.md
+        assert result == 0
+        mock_popen.assert_called_once()
+
+    def test_scope_resolution_same_context_conflicts(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """Two run_background() calls with the same context value for a template var
+        produce overlapping scopes and correctly conflict."""
+        import argparse
+
+        from little_loops.fsm.concurrency import LockManager
+        from little_loops.fsm.schema import FSMLoop, StateConfig
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+
+        plan_file = str(tmp_path / "plan.md")
+
+        # Pre-acquire a lock on plan.md
+        lm = LockManager(loops_dir)
+        lm.acquire("rn-refine", [plan_file])
+
+        # Build an FSMLoop with template scope
+        mock_fsm = FSMLoop(
+            name="rn-refine",
+            initial="done",
+            states={"done": StateConfig(terminal=True)},
+            scope=["${context.plan_file}"],
+        )
+        mock_fsm.context["plan_file"] = ""
+
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            no_lock=None,
+            context=["plan_file=" + plan_file],
+            input=None,
+            verbose=False,
+            show_diagrams=None,
+            diagram_edge_labels=None,
+            diagram_state_detail=None,
+            diagram_scope=None,
+            program_md=None,
+            delay=None,
+            handoff_threshold=None,
+            context_limit=None,
+        )
+
+        with patch("little_loops.cli.loop._helpers.load_loop", return_value=mock_fsm):
+            with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+                mock_popen.return_value.pid = 42
+                from little_loops.cli.loop._helpers import run_background
+
+                result = run_background("rn-refine", args, loops_dir)
+
+        # Conflict because both resolve to the same plan.md
+        assert result == 1
+        mock_popen.assert_not_called()
+        captured = capsys.readouterr()
+        assert "Scope conflict" in captured.err
+
 
 class TestCmdStopWithPid:
     """Tests for cmd_stop with PID-based process termination."""

@@ -7,6 +7,8 @@ description: |
   state, then iteratively researches and refines until all dimensions reach
   VERY-HIGH or max_iterations is exhausted.
   Run as: ll-loop run rn-refine "path/to/plan.md"
+scope:
+  - "${context.plan_file}"
 initial: init
 max_iterations: 30
 timeout: 7200

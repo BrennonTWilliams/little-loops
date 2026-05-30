@@ -1421,6 +1421,14 @@ scope:
   - "tests/api/"
 ```
 
+Scope paths support `${context.<var>}` template variables that are resolved at runtime:
+
+```yaml
+name: "rn-refine"
+scope:
+  - "${context.plan_file}"    # resolves to the actual plan file path at runtime
+```
+
 | Declaration | Behavior |
 |-------------|----------|
 | Explicit paths | Loop claims those paths |

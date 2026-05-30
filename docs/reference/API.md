@@ -4836,6 +4836,14 @@ Manage scope-based locks for concurrent loop execution. Lock files are stored in
 | `list_locks()` | `list[ScopeLock]` | List all active locks; cleans stale locks |
 | `wait_for_scope(scope, timeout=300)` | `bool` | Wait until scope is available; `False` on timeout |
 
+#### resolve_scope
+
+```python
+def resolve_scope(scope: list[str], context: dict[str, Any]) -> list[str]
+```
+
+Resolve `${context.<var>}` template expressions in scope paths. Each template referencing a context variable is replaced with the variable's value. Unresolved templates are preserved as literal strings. Static paths (no templates) pass through unchanged.
+
 ---
 
 ### little_loops.fsm.rate_limit_circuit

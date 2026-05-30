@@ -92,7 +92,7 @@ def cmd_run(
     logger: Logger,
 ) -> int:
     """Run a loop."""
-    from little_loops.fsm.concurrency import LockManager
+    from little_loops.fsm.concurrency import LockManager, resolve_scope
     from little_loops.fsm.persistence import PersistentExecutor, _reconcile_stale_runs
     from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
     from little_loops.fsm.validation import load_and_validate
@@ -262,7 +262,7 @@ def cmd_run(
 
     # Scope-based locking
     lock_manager = LockManager(loops_dir)
-    scope = fsm.scope or ["."]
+    scope = resolve_scope(fsm.scope or ["."], fsm.context)
     _queue_entry_file: Path | None = None
 
     def _cleanup_queue_entry() -> None:

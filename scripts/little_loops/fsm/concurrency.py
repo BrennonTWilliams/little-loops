@@ -6,6 +6,7 @@ the same files or directories through file-based locking.
 Public exports:
     ScopeLock: Dataclass representing a scope lock
     LockManager: Manager for acquiring/releasing scope locks
+    resolve_scope: Resolve ${context.<var>} templates in scope paths
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import errno
 import fcntl
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -21,6 +23,29 @@ from pathlib import Path
 from typing import Any
 
 RUNNING_DIR = ".running"
+
+# Match ${context.<var>} templates in scope paths
+_CONTEXT_VAR_RE = re.compile(r"\$\{context\.([^}]+)\}")
+
+
+def resolve_scope(scope: list[str], context: dict[str, Any]) -> list[str]:
+    """Resolve ${context.<var>} templates in scope paths.
+
+    Each template expression referencing a context variable is replaced
+    with the variable's value. Templates referencing unknown variables
+    are left as-is (the literal string becomes the path, which
+    Path.resolve() will turn into an absolute path).
+
+    Static paths (no templates) pass through unchanged.
+    """
+    resolved: list[str] = []
+    for path in scope:
+        def _replace(m: re.Match[str]) -> str:
+            var = m.group(1)
+            return str(context[var]) if var in context else m.group(0)
+
+        resolved.append(_CONTEXT_VAR_RE.sub(_replace, path))
+    return resolved
 
 
 def _process_alive(pid: int) -> bool:

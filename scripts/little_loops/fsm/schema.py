@@ -855,7 +855,7 @@ class FSMLoop:
         initial: Starting state name
         states: Mapping from state name to StateConfig
         context: User-defined shared variables
-        scope: Paths this loop operates on (for concurrency control)
+        scope: Paths this loop operates on (for concurrency control). Supports ${context.<var>} template variables that are resolved at runtime.
         max_iterations: Safety limit for loop iterations
         backoff: Seconds between iterations
         timeout: Max total runtime in seconds (loop-level)

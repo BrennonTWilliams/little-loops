@@ -19,7 +19,7 @@ from little_loops.cli.loop.diagram_modes import (
     resolve_facets,
 )
 from little_loops.cli.output import colorize, strip_ansi, terminal_size, terminal_width
-from little_loops.fsm.concurrency import LockManager, _process_alive
+from little_loops.fsm.concurrency import LockManager, _process_alive, resolve_scope
 from little_loops.logger import Logger
 
 if TYPE_CHECKING:
@@ -956,7 +956,14 @@ def run_background(
         return 1
 
     lock_manager = LockManager(loops_dir)
-    scope = fsm.scope or ["."]
+    # Build context for scope resolution: YAML defaults + CLI --context overrides.
+    # CLI --context is only forwarded to the child process (line ~1018); we parse
+    # it locally so resolve_scope() can use it for the pre-flight conflict check.
+    scope_context = dict(fsm.context)
+    for kv in getattr(args, "context", None) or []:
+        key, _, value = kv.partition("=")
+        scope_context[key.strip()] = value.strip()
+    scope = resolve_scope(fsm.scope or ["."], scope_context)
     conflict = lock_manager.find_conflict(scope)
     if conflict and not getattr(args, "queue", False) and not getattr(args, "no_lock", False):
         print(f"Scope conflict with running loop: {conflict.loop_name}", file=sys.stderr)
