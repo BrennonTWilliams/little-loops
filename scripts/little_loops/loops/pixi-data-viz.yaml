@@ -1,0 +1,305 @@
+name: pixi-data-viz
+category: harness
+input_key: description
+description: |
+  Generator-evaluator harness for animated PixiJS data visualizations.
+  Generates a single self-contained HTML file that embeds synthetic but
+  plausible data and renders it through a deterministic PixiJS animation,
+  then judges across multi-frame screenshots whether the encoding reads
+  clearly and whether motion *aids* comprehension rather than obscuring it.
+  Unlike pixi-generative-art (which rewards aesthetic impact),
+  this loop hard-gates encoding_clarity at threshold 7 — a beautiful
+  chart with unlabeled axes still fails.
+initial: init
+max_iterations: 20
+on_handoff: spawn
+timeout: 7200
+
+# HARNESS: Context variables control quality threshold and frame sampling.
+# sample_frames defaults to "0,120,240" so the evaluator sees: initial render
+# (axes/chrome only), mid-transition, and settled state — the three moments
+# that diagnose animation legibility.
+context:
+  description: ""             # populated from loop_input via input_key: description
+  pass_threshold: 6           # minimum score per criterion (1-10) for non-gated criteria
+  sample_frames: "0,120,240"  # comma-separated __loopFrame values to screenshot
+  design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
+
+states:
+
+  init:
+    # HARNESS: Setup phase — captures the runner-injected run_dir as an absolute
+    # path so all subsequent states write to the same isolated per-run directory.
+    # Using $(pwd) ensures the captured path is valid for file:// URIs.
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: plan
+
+  plan:
+    # HARNESS: Planner phase — expands the one-line description into a viz brief.
+    # Unlike a generative-art brief, the viz brief must commit to concrete data
+    # semantics: dataset shape, encoding (with perceptual justification), what
+    # motion teaches, and required annotations. This prevents the generator from
+    # defaulting to "data viz aesthetic" without actually encoding anything
+    # meaningfully.
+    action_type: prompt
+    action: |
+      Write a visualization brief to ${captured.run_dir.output}/brief.md for the
+      following PixiJS data viz:
+      "${context.description}"
+
+      The brief must include:
+      - **Dataset shape**: what kind of data is being visualized — time-series
+        of N metrics, weighted graph of M nodes, geographic point cloud,
+        hierarchical tree, categorical bar comparison, etc. Specify dimensions
+        (N rows × M columns, or |V| nodes and |E| edges, etc.). The data is
+        synthetic but should be plausible for the described domain.
+      - **Synthetic dataset spec**: enough specificity that the generator can
+        deterministically fabricate the data inline as a JSON literal. List
+        the categories, the value ranges, and any structure (trends, clusters,
+        anomalies) that the visualization is meant to surface.
+      - **Encoding**: what visual variable carries which data variable —
+        position (most accurate per Cleveland-McGill), length, angle, area,
+        color hue, color saturation, opacity (least accurate). Justify the
+        choice by referencing the perceptual ranking: e.g. "use position-x
+        for time and length for value because position+length rank above
+        color for ratio judgments".
+      - **Animation purpose**: what does motion *teach* the viewer? Valid
+        purposes: transition between two states to reveal a delta, sweep to
+        reveal ordering, sustained pulse to highlight anomalies, accumulation
+        to show buildup over time. Animation for its own sake is an explicit
+        anti-pattern — if motion doesn't carry information, the chart should
+        be static.
+      - **Annotations**: axes (with units), legend, title, value labels for
+        notable points. List the exact text strings for each. Required, not
+        optional.
+      - **Visual palette**: 3–6 hex colors. Specify the palette TYPE
+        (sequential, diverging, categorical, or qualitative) and confirm it
+        matches the data type — sequential palettes for ordered scalar data,
+        diverging for data with a meaningful midpoint, categorical for
+        unordered groups.
+      - **Anti-patterns to avoid**: unlabeled axes; rainbow-jet colormap for
+        sequential data; 3D pie charts; spinning anything; motion that
+        out-paces reading speed; bouncing or easing applied to data points as
+        decoration (motion must encode something or it doesn't belong);
+        legends without units; truncated y-axes that exaggerate small deltas.
+
+      Be specific and opinionated. The generator will use this brief as its
+      primary reference, and the encoding_clarity criterion is gated at a
+      higher threshold than the aesthetic criteria — so axes, legend, and
+      units are non-negotiable.
+    next: generate
+
+  generate:
+    # HARNESS: Generator phase — creates or refines a single self-contained
+    # HTML file that embeds a PixiJS v8 visualization.
+    #
+    # Pixi-specific rules (shared with pixi-generative-art):
+    # 1. Pixi v8 is loaded from CDN; sketch body wrapped in IIFE async function.
+    # 2. Sketch exposes window.__loopFrame for the screenshot harness.
+    # 3. Deterministic seeding required.
+    #
+    # Data-viz-specific rules:
+    # 4. The synthetic dataset must be embedded as a JSON literal at the top
+    #    of the inline script. Same seed → same numbers across runs.
+    # 5. Axes, legend, and labels are rendered with Pixi `Text` (or
+    #    `BitmapText`) — fonts and label rendering are part of the eval.
+    # 6. Frame 0 must already show the chart chrome (axes, title, legend).
+    #    Data animates in over subsequent frames.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/brief.md for the visualization brief.
+
+      A previous iteration may have written ${captured.run_dir.output}/critique.md.
+      If that file exists, read it and address every issue in its "Issues to
+      Address" section specifically and completely. If it does not exist,
+      proceed silently — do not narrate the check.
+
+      ${context.design_tokens_context}
+
+      Write a single self-contained HTML file to
+      ${captured.run_dir.output}/index.html that:
+      - Loads PixiJS v8 via CDN in the <head>:
+          <script src="https://pixijs.download/release/pixi.js"></script>
+        (This is the only external resource permitted. All other code stays
+        inline.)
+      - Embeds the entire sketch in an inline <script> block in the <body>,
+        wrapped in an IIFE async function because Pixi v8's `app.init({...})`
+        is asynchronous:
+          (async () => {
+            const DATA = [ /* JSON literal of the synthetic dataset */ ];
+            const app = new PIXI.Application();
+            await app.init({ width: 1200, height: 800, background: '#fafafa', antialias: true });
+            document.body.appendChild(app.canvas);
+            // ... build axes, legend, title using PIXI.Text — render chrome FIRST ...
+            window.__loopFrame = 0;
+            app.ticker.add(() => {
+              window.__loopFrame++;
+              // ... animate data marks using window.__loopFrame ...
+            });
+          })();
+      - Initializes with `width: 1200, height: 800` or larger.
+      - Embeds the synthetic dataset as a JSON literal at the top of the
+        script. Same seed → same numbers. Do not call `Math.random()` to
+        generate the dataset at runtime — fabricate the values once during
+        generation and inline them.
+      - Seeds a small deterministic PRNG once (e.g. mulberry32 with a
+        constant integer seed) for any runtime randomness (e.g. jitter for
+        overlapping points). Drive all animation from `window.__loopFrame`,
+        never from `Date.now()` or unseeded `Math.random()` inside the
+        ticker.
+      - Renders chart chrome FIRST (before any animation) — axes (with tick
+        marks and tick labels), title, legend, axis labels with units. These
+        must be visible at frame 0. Use `PIXI.Text` (or `PIXI.BitmapText` if
+        a specific face is requested in the brief) for all text. Antialiased
+        strokes for axes.
+      - Implements the encoding from the brief literally. If the brief says
+        "position-x for time, length for value", the chart must use those
+        encodings — do not silently swap to color for value because it looks
+        nicer.
+      - Animates the data marks in over the early frames in a way that
+        teaches the viewer something — a transition revealing delta, a sweep
+        revealing ordering, a pulse highlighting anomalies. Animation must
+        encode information, not decorate. Settled state should be reached by
+        frame 240.
+      - If design tokens are provided above, use their semantic names and
+        resolved values for the palette; do not invent new color values
+        outside the token palette.
+      - If critique exists, resolves every specific issue before introducing
+        new ideas.
+    next: evaluate
+
+  evaluate:
+    # HARNESS: Multi-frame screenshot gate. Three frames capture three viz
+    # phases: initial render (chrome only), mid-transition (motion in
+    # progress), and settled state (final read). The evaluator uses the
+    # contrast across frames to judge animation legibility.
+    #
+    # Routes: on_yes → score, on_no → generate (retry transient renders),
+    # on_error → failed (missing/broken Playwright bails cleanly).
+    action_type: shell
+    action: |
+      python3 -c "
+      import subprocess, sys
+      frames = '${context.sample_frames}'.split(',')
+      url = 'file://${captured.run_dir.output}/index.html'
+      for f in frames:
+          f = f.strip()
+          out = '${captured.run_dir.output}/frame_' + f + '.png'
+          subprocess.run(['playwright', 'screenshot',
+                          '--wait-for-function', 'window.__loopFrame >= ' + f,
+                          url, out], check=True)
+      " && echo "CAPTURED"
+    evaluate:
+      type: output_contains
+      pattern: "CAPTURED"
+    on_yes: score
+    on_no: generate
+    on_error: failed
+
+  score:
+    # HARNESS: Evaluator phase — LLM judges the three-frame strip against four
+    # data-viz-specific criteria. Critically, encoding_clarity is gated at a
+    # HARD-CODED threshold of 7 (not ${context.pass_threshold}) because
+    # encoding is the platform constraint for a data viz — a chart that
+    # scores 9/10 visual_design but has unlabeled axes is still a broken
+    # data viz, and a uniform pass_threshold of 6 would let that pass. This
+    # mirrors how html-anything gates inline_styles or dimensional_accuracy
+    # at 7-8 while letting aesthetic criteria sit at 6.
+    # Uses output_contains: "ALL_PASS" for routing.
+    action_type: prompt
+    action: |
+      Read the frame strip captured by the evaluate state. The filenames
+      correspond to the __loopFrame values in ${context.sample_frames}:
+        ${captured.run_dir.output}/frame_0.png   — initial render (chrome only)
+        ${captured.run_dir.output}/frame_120.png — mid-transition
+        ${captured.run_dir.output}/frame_240.png — settled state
+      Also read ${captured.run_dir.output}/brief.md to recall the viz intent,
+      and ${captured.run_dir.output}/index.html if you need to inspect the
+      data, encoding, or confirm a perceptual justification was followed.
+
+      Score the visualization on each criterion from 1 to 10 and write the
+      evaluation to ${captured.run_dir.output}/critique.md using this exact
+      format:
+
+      ```
+      # Evaluation
+
+      encoding_clarity: N/10 — [explanation: can a viewer figure out what
+        the data means from the visual alone? Required: axes labeled with
+        units, legend present (if categorical or multi-series), scale
+        appropriate, no truncated y-axis exaggerations, no rainbow-jet on
+        sequential data. The encoding from the brief must be literally
+        implemented (position for what the brief says, length for what the
+        brief says). Anything below 7 here is a hard fail regardless of how
+        attractive the chart is.]
+      animation_legibility: N/10 — [explanation: does motion AID
+        comprehension? Compare frame_0, frame_120, and frame_240. A good
+        animation reveals delta, ordering, or anomalies between the initial
+        and settled states; motion that out-paces reading speed, decorative
+        bounce/easing, or jitter applied to data points without encoding
+        anything = fail.]
+      visual_design: N/10 — [explanation: aesthetic coherence; palette
+        appropriate to data type — sequential for ordered scalars, diverging
+        for data with a meaningful midpoint, categorical for unordered
+        groups. Penalize muddy palettes or palette/data-type mismatches.]
+      craft: N/10 — [explanation: technical execution — typography hierarchy
+        (title > axis labels > tick labels), spacing consistency, alignment,
+        anti-aliasing of axes and strokes, label legibility at rendered
+        size.]
+
+      ## Issues to Address
+      [Specific, actionable critique for the generator. List each problem
+       concisely so the generator can address it directly on the next pass.
+       If all scores meet their thresholds, write "No issues — all criteria
+       pass."]
+      ```
+
+      After writing the file, evaluate the scores against their individual
+      thresholds. Use per-criterion thresholds, NOT a weighted average — a
+      beautiful chart with unlabeled axes must still fail:
+      - encoding_clarity     threshold 7   (HARD-GATED — the platform constraint)
+      - animation_legibility threshold ${context.pass_threshold}
+      - visual_design        threshold ${context.pass_threshold}
+      - craft                threshold ${context.pass_threshold}
+
+      If encoding_clarity >= 7 AND the other three are >=
+      ${context.pass_threshold}, output exactly: ALL_PASS
+      Otherwise output: ITERATE
+    evaluate:
+      type: output_contains
+      pattern: "ALL_PASS"
+    on_yes: done
+    on_no: generate
+    on_error: failed
+
+  done:
+    # HARNESS: Success terminal — reached when all criteria pass or
+    # max_iterations exhausted. The final visualization is at
+    # ${captured.run_dir.output}/index.html and can be opened directly in a
+    # browser. The frame strip and critique remain in the run dir for
+    # reference.
+    action_type: prompt
+    action: |
+      The PixiJS data viz loop has completed successfully.
+
+      Final output files:
+      - ${captured.run_dir.output}/index.html   — the generated visualization (open in a browser)
+      - ${captured.run_dir.output}/brief.md     — the viz planning brief
+      - ${captured.run_dir.output}/critique.md  — the final evaluation scores and notes
+      - ${captured.run_dir.output}/frame_*.png  — the last captured frame strip
+
+      Report these paths to the user and confirm the visualization is ready.
+    terminal: true
+
+  failed:
+    # HARNESS: Failure terminal — reached when the screenshot tool or LLM
+    # judge errors out. Signals an explicit failure (vs. silent
+    # max_iterations exhaustion) so the outer loop / log reader can
+    # distinguish "loop bailed cleanly" from "loop is still iterating". The
+    # last artifacts remain in ${captured.run_dir.output} for inspection.
+    terminal: true

@@ -1,0 +1,291 @@
+name: pixi-generative-art
+category: harness
+input_key: description
+description: |
+  Generator-evaluator harness for PixiJS generative art sketches.
+  Iteratively generates a single self-contained HTML file embedding a
+  deterministic, GPU-accelerated PixiJS sketch and judges it across
+  multi-frame screenshots so motion is evaluated, not just composition.
+  Mirrors the p5.js sketch generator but rewards Pixi-distinctive idioms —
+  filters, blend modes, container hierarchies, particle systems.
+initial: init
+max_iterations: 20
+on_handoff: spawn
+timeout: 7200
+
+# HARNESS: Context variables control quality threshold and frame sampling.
+# Mirrors p5js-sketch-generator but targets Pixi-specific GPU features.
+context:
+  description: ""             # populated from loop_input via input_key: description
+  pass_threshold: 6           # minimum score per criterion (1-10) to pass
+  sample_frames: "0,90,240"   # comma-separated __loopFrame values to screenshot
+  design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
+
+states:
+
+  init:
+    # HARNESS: Setup phase — captures the runner-injected run_dir as an absolute
+    # path so all subsequent states write to the same isolated per-run directory.
+    # Using $(pwd) ensures the captured path is valid for file:// URIs.
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: plan
+
+  plan:
+    # HARNESS: Planner phase — expands the one-line description into a sketch
+    # brief. The brief commits to a specific generative rule, palette, GPU
+    # strategy, and motion behavior, giving the generator strong direction on
+    # the first iteration. GPU strategy is the discriminator from the p5.js
+    # variant: a Pixi sketch that doesn't use filters, blend modes, or
+    # container hierarchies is wasting the runtime.
+    action_type: prompt
+    action: |
+      Write a sketch brief to ${captured.run_dir.output}/brief.md for the
+      following PixiJS generative art sketch:
+      "${context.description}"
+
+      The brief must include:
+      - **Generative concept**: the specific rule or system being explored —
+        flow field, recursive subdivision, agent-based simulation,
+        signed-distance composition, particle accumulation, reaction-diffusion,
+        etc. Name the mechanism precisely; the more specific the rule, the
+        more identity the sketch has.
+      - **Visual palette**: 3–6 hex colors, background color, stroke weights,
+        and the blend mode(s) used (`'add'`, `'multiply'`, `'screen'`,
+        `'normal'`). Be specific.
+      - **GPU strategy**: which Pixi feature does the heavy aesthetic lift?
+        Pick deliberately from: built-in `Filter` (BlurFilter,
+        DisplacementFilter, ColorMatrixFilter, NoiseFilter), custom GLSL
+        fragment shader via `Filter.from(...)`, additive blend layering of
+        many low-alpha sprites, `ParticleContainer` for dense agent counts,
+        or `Container` hierarchies with per-layer transforms. Naming the GPU
+        strategy is what makes this a PixiJS sketch rather than a generic 2D
+        canvas piece.
+      - **Motion behavior**: how the sketch evolves frame-to-frame. What does
+        frame 0 look like vs frame 90 vs frame 240? Does it accumulate,
+        decay, loop, drift, bloom, collapse? Motion is the discriminator — a
+        static composition is failure.
+      - **Unique creative angle**: what makes this sketch distinctive? Avoid
+        clichés.
+      - **Anti-patterns to avoid**: bare `Graphics` over a white background;
+        no filters or blend modes used; canned Pixi tutorial output (the
+        bunny demo, the fish-pond, the spinning logo); rainbow HSL cycling
+        for its own sake; tiny default canvases; frame-by-frame jitter that
+        simulates motion without actual evolution.
+
+      Be specific and opinionated. The generator will use this brief as its
+      primary reference.
+    next: generate
+
+  generate:
+    # HARNESS: Generator phase — creates or refines a single self-contained
+    # HTML file that embeds a PixiJS v8 sketch. On the first pass it uses
+    # only the brief; on subsequent iterations it also addresses the
+    # evaluator's critique.
+    #
+    # Three Pixi-specific rules differ from the p5 harness:
+    # 1. Pixi v8 is loaded from CDN (the only external resource permitted)
+    #    and initializes asynchronously, so the sketch body must be wrapped
+    #    in an IIFE async function.
+    # 2. Pixi has no global frameCount, so the sketch must expose its own
+    #    monotonically-increasing counter on window.__loopFrame for the
+    #    screenshot harness to poll.
+    # 3. Deterministic seeding is required (a seeded PRNG plus all motion
+    #    driven by __loopFrame). Without this, screenshots at "frame 90"
+    #    would differ run-to-run and the critique would chase noise.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/brief.md for the sketch brief.
+
+      A previous iteration may have written ${captured.run_dir.output}/critique.md.
+      If that file exists, read it and address every issue in its "Issues to
+      Address" section specifically and completely. If it does not exist,
+      proceed silently — do not narrate the check.
+
+      ${context.design_tokens_context}
+
+      Write a single self-contained HTML file to
+      ${captured.run_dir.output}/index.html that:
+      - Loads PixiJS v8 via CDN in the <head>:
+          <script src="https://pixijs.download/release/pixi.js"></script>
+        (This is the only external resource permitted. All other code stays
+        inline.)
+      - Embeds the entire sketch in an inline <script type="module"> block
+        in the <body>. Wrap the sketch body in an IIFE async function because
+        Pixi v8's `app.init({...})` is asynchronous:
+          (async () => {
+            const app = new PIXI.Application();
+            await app.init({ width: 1200, height: 800, background: '#0a0a0a', antialias: true });
+            document.body.appendChild(app.canvas);
+            // ... sketch setup: filters, containers, sprites ...
+            window.__loopFrame = 0;
+            app.ticker.add(() => {
+              window.__loopFrame++;
+              // ... draw using window.__loopFrame as the time variable ...
+            });
+          })();
+      - Initializes with `width: 1200, height: 800` or larger — never the
+        Pixi default.
+      - Seeds a small deterministic PRNG once (e.g. mulberry32 with a
+        constant integer seed) and uses it for ALL randomness. Drive all
+        motion from `window.__loopFrame`, never from `Date.now()`,
+        `performance.now()`, or unseeded `Math.random()` calls inside the
+        ticker. The screenshot harness captures specific __loopFrame values
+        and requires the same input to produce the same pixels.
+      - Implements the generative concept AND the GPU strategy from the
+        brief — no unmodified Pixi tutorial code, no bare `Graphics` calls
+        over a white background. If the brief specifies a filter or blend
+        mode, use it; the gpu_craft criterion explicitly inspects index.html
+        for evidence of Pixi-native features.
+      - If design tokens are provided above, use their semantic names and
+        resolved values for the palette; do not invent new color values
+        outside the token palette.
+      - Achieves a distinctive, museum-quality aesthetic — avoid AI-slop
+        patterns (vanilla Perlin gradients, rainbow HSL cycling for its own
+        sake, the default Pixi bunny demo, anything that looks like a
+        screenshot of a tutorial).
+      - If critique exists, resolves every specific issue before introducing
+        new ideas.
+    next: evaluate
+
+  evaluate:
+    # HARNESS: Multi-frame screenshot gate. Unlike a static page, an animated
+    # sketch needs more than one frame for the evaluator to judge motion. We
+    # loop over the frame indices in context.sample_frames, invoking
+    # `playwright screenshot` with --wait-for-function once per frame so each
+    # PNG corresponds to a known __loopFrame value. Deterministic seeding in
+    # the generate state is what makes this reproducible across iterations.
+    #
+    # Routes match p5js-sketch-generator: on_yes → score, on_no → generate
+    # (retry transient render issues with fresh HTML), on_error → failed
+    # (missing/broken Playwright bails cleanly instead of spinning until
+    # max_iterations).
+    action_type: shell
+    action: |
+      python3 -c "
+      import subprocess, sys
+      frames = '${context.sample_frames}'.split(',')
+      url = 'file://${captured.run_dir.output}/index.html'
+      for f in frames:
+          f = f.strip()
+          out = '${captured.run_dir.output}/frame_' + f + '.png'
+          subprocess.run(['playwright', 'screenshot',
+                          '--wait-for-function', 'window.__loopFrame >= ' + f,
+                          url, out], check=True)
+      " && echo "CAPTURED"
+    evaluate:
+      type: output_contains
+      pattern: "CAPTURED"
+    on_yes: score
+    on_no: generate
+    on_error: failed
+
+  score:
+    # HARNESS: Evaluator phase — LLM judges the captured frame strip against
+    # four PixiJS-specific criteria and writes structured critique for the
+    # generator's next iteration. The criteria diverge from
+    # p5js-sketch-generator: gpu_craft replaces generic craft because Pixi's
+    # defining feature is GPU acceleration — a sketch that doesn't visibly
+    # leverage filters, blend modes, or container hierarchies is wasting the
+    # runtime, and the LLM must inspect index.html to confirm a Pixi-native
+    # feature is actually used (not just claimed).
+    # Uses output_contains: "ALL_PASS" for routing — simple and robust vs
+    # JSON parsing. PNGs are read as multimodal image inputs.
+    action_type: prompt
+    action: |
+      Read the frame strip captured by the evaluate state. The filenames
+      correspond to the __loopFrame values in ${context.sample_frames}:
+        ${captured.run_dir.output}/frame_0.png   — sketch at first draw
+        ${captured.run_dir.output}/frame_90.png  — sketch ~1.5 seconds in
+        ${captured.run_dir.output}/frame_240.png — sketch ~4 seconds in
+      Also read ${captured.run_dir.output}/brief.md to recall the sketch
+      intent and ${captured.run_dir.output}/index.html to inspect the
+      generative rule AND confirm a Pixi-native feature (filter, blend mode,
+      ParticleContainer, custom shader) is actually used.
+
+      Score the sketch on each criterion from 1 to 10 and write the
+      evaluation to ${captured.run_dir.output}/critique.md using this exact
+      format:
+
+      ```
+      # Evaluation
+
+      visual_impact: N/10 — [explanation: composition, palette, density
+        across the frames. Does the sketch hold the eye? Strong color and
+        form combination creates a distinct mood. Penalize: muddy palettes,
+        empty canvases, default Pixi styling, anything that looks
+        unfinished.]
+      originality: N/10 — [explanation: evidence of a specific generative
+        idea vs tutorial output? Best sketches are museum-quality. Penalize:
+        vanilla Perlin flow fields, rainbow HSL cycling without purpose,
+        default Pixi examples (bunny, fish-pond, spinning logo), anything
+        that could be the first Google result for "pixijs example".]
+      motion_quality: N/10 — [explanation: does the sketch meaningfully
+        EVOLVE between frame 0, frame 90, and frame 240? Static (same
+        composition at all three) is failure. Jittery without direction is
+        failure. Look for accumulation, decay, drift, growth, collapse —
+        visible time-based change. If frames 0/90/240 look interchangeable,
+        score ≤3.]
+      gpu_craft: N/10 — [explanation: does the sketch visibly leverage
+        Pixi's GPU strengths? Inspect index.html for evidence of `Filter`
+        use (BlurFilter, DisplacementFilter, custom GLSL via Filter.from),
+        explicit blend modes ('add', 'multiply', 'screen'), `Container`
+        hierarchy with per-layer transforms, or `ParticleContainer` for
+        density. A sketch that could have been drawn with a 2D canvas
+        context and look identical scores ≤4 on this criterion — that's the
+        bar that distinguishes PixiJS work from generic creative coding.]
+
+      ## Issues to Address
+      [Specific, actionable critique for the generator. List each problem
+       concisely so the generator can address it directly on the next pass.
+       If all scores meet threshold, write "No issues — all criteria pass."]
+      ```
+
+      After writing the file, evaluate the scores:
+      - visual_impact weight:   2× (threshold ${context.pass_threshold})
+      - originality weight:     2× (threshold ${context.pass_threshold})
+      - motion_quality weight:  1× (threshold ${context.pass_threshold})
+      - gpu_craft weight:       1× (threshold ${context.pass_threshold})
+
+      If ALL four individual scores are >= ${context.pass_threshold}, output
+      exactly: ALL_PASS
+      Otherwise output: ITERATE
+    evaluate:
+      type: output_contains
+      pattern: "ALL_PASS"
+    on_yes: done
+    on_no: generate
+    on_error: failed
+
+  done:
+    # HARNESS: Success terminal — reached when all criteria pass or
+    # max_iterations exhausted. The final sketch is at
+    # ${captured.run_dir.output}/index.html and can be opened directly in a
+    # browser. The frame strip and critique remain in the run dir for
+    # reference.
+    action_type: prompt
+    action: |
+      The PixiJS generative art loop has completed successfully.
+
+      Final output files:
+      - ${captured.run_dir.output}/index.html   — the generated sketch (open in a browser)
+      - ${captured.run_dir.output}/brief.md     — the sketch planning brief
+      - ${captured.run_dir.output}/critique.md  — the final evaluation scores and notes
+      - ${captured.run_dir.output}/frame_*.png  — the last captured frame strip
+
+      Report these paths to the user and confirm the sketch is ready.
+    terminal: true
+
+  failed:
+    # HARNESS: Failure terminal — reached when the screenshot tool or LLM
+    # judge errors out. Signals an explicit failure (vs. silent
+    # max_iterations exhaustion) so the outer loop / log reader can
+    # distinguish "loop bailed cleanly" from "loop is still iterating". The
+    # last artifacts (brief.md, any partial index.html, the last critique.md
+    # if one was written, and any frame_*.png already captured) remain in
+    # ${captured.run_dir.output} for inspection.
+    terminal: true
