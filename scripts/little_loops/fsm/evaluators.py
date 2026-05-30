@@ -772,6 +772,26 @@ def evaluate(
             details={"exit_code": exit_code, "error": "action timed out"},
         )
 
+    # BUG-1815: Non-timeout non-zero exit codes short-circuit to "error" for
+    # evaluator types that don't intrinsically check exit codes. Exit-code-aware
+    # evaluators (exit_code, mcp_result, harbor_scorer, diff_stall, llm_structured)
+    # are exempt because they handle exit codes via their own logic.
+    _EXIT_CODE_AWARE_EVALUATORS: frozenset[str] = frozenset({
+        "exit_code",
+        "mcp_result",
+        "harbor_scorer",
+        "diff_stall",
+        "llm_structured",
+    })
+    if exit_code != 0 and eval_type not in _EXIT_CODE_AWARE_EVALUATORS:
+        return EvaluationResult(
+            verdict="error",
+            details={
+                "exit_code": exit_code,
+                "error": f"action exited with code {exit_code}",
+            },
+        )
+
     if eval_type == "exit_code":
         return evaluate_exit_code(exit_code)
 

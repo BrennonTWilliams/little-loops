@@ -578,16 +578,64 @@ class TestEvaluateDispatcher:
         result = evaluate(config, output="", exit_code=124, context=ctx)
         assert result.verdict == "timeout"
 
-    def test_dispatch_exit_code_124_does_not_affect_success_cases(self) -> None:
-        """BUG-1640: short-circuit only fires on 124; other exit codes route normally."""
+    def test_dispatch_nonzero_exit_short_circuits_to_error(self) -> None:
+        """BUG-1815: non-zero exit codes short-circuit to 'error' before type dispatch."""
         config = EvaluateConfig(type="output_contains", pattern="YES")
         ctx = InterpolationContext()
-        # exit_code=0 with matching output → yes (no short-circuit)
+        # exit_code=0 with matching output → yes (normal path)
         result_yes = evaluate(config, output="YES we found it", exit_code=0, context=ctx)
         assert result_yes.verdict == "yes"
-        # exit_code=1 with non-matching output → no (no short-circuit)
-        result_no = evaluate(config, output="missing", exit_code=1, context=ctx)
-        assert result_no.verdict == "no"
+        # exit_code=1 with non-matching output → error (exit-code short-circuit)
+        result_error = evaluate(config, output="missing", exit_code=1, context=ctx)
+        assert result_error.verdict == "error"
+        assert result_error.details["exit_code"] == 1
+        assert "exited with code 1" in result_error.details["error"].lower()
+        # exit_code=127 with non-matching output → error (exit-code short-circuit)
+        result_error2 = evaluate(config, output="missing", exit_code=127, context=ctx)
+        assert result_error2.verdict == "error"
+        assert result_error2.details["exit_code"] == 127
+
+    @pytest.mark.parametrize(
+        "eval_type",
+        [
+            "output_contains",
+            "output_numeric",
+            "output_json",
+            "convergence",
+        ],
+    )
+    def test_dispatch_nonzero_exit_generalized_short_circuit(self, eval_type: str) -> None:
+        """BUG-1815: non-zero exit codes short-circuit to 'error' for all exit-code-blind evaluators."""
+        # Minimal configs — short-circuit fires before type-specific validation
+        config = EvaluateConfig(type=eval_type, pattern="YES", target=0)  # type: ignore[arg-type]
+        ctx = InterpolationContext()
+        result = evaluate(config, output="", exit_code=1, context=ctx)
+        assert result.verdict == "error", (
+            f"{eval_type}: expected 'error' on exit_code=1, got {result.verdict!r}"
+        )
+        assert result.details["exit_code"] == 1
+        assert "exited with code 1" in result.details["error"].lower()
+
+    @pytest.mark.parametrize(
+        "eval_type",
+        [
+            "exit_code",
+            "mcp_result",
+            "harbor_scorer",
+        ],
+    )
+    def test_dispatch_nonzero_exit_does_not_affect_exit_code_aware_evaluators(
+        self, eval_type: str
+    ) -> None:
+        """BUG-1815: exit-code-aware evaluators are exempt from the non-zero short-circuit."""
+        config = EvaluateConfig(type=eval_type)  # type: ignore[arg-type]
+        ctx = InterpolationContext()
+        result = evaluate(config, output="", exit_code=1, context=ctx)
+        # These evaluators handle exit codes intrinsically; should not be short-circuited
+        assert result.verdict != "error" or "exited with code" not in str(result.details), (
+            f"{eval_type}: should not be short-circuited, got verdict={result.verdict!r} "
+            f"details={result.details}"
+        )
 
 
 class TestLLMStructuredEvaluator:

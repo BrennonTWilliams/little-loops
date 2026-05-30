@@ -1,15 +1,16 @@
 ---
 id: BUG-1815
 captured_at: '2026-05-30T22:06:48Z'
+completed_at: 2026-05-30T23:18:03Z
 discovered_date: 2026-05-30
 discovered_by: capture-issue
-status: open
+status: done
 decision_needed: false
-confidence_score: 95
-outcome_confidence: 86
+confidence_score: 100
+outcome_confidence: 93
 score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -293,10 +294,28 @@ _Wiring pass added by `/ll:wire-issue`:_
 `bug`, `fsm`, `evaluator`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-30T23:10:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37dc0fa2-69de-4c73-8606-df616796b8d7.jsonl`
 - `/ll:decide-issue` - 2026-05-30T23:06:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbda27d0-eb96-41bf-84ef-12db76d68753.jsonl`
 - `/ll:format-issue` - 2026-05-30T22:38:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb689b57-45bf-4714-8ea8-266ad6b30908.jsonl`
 - `/ll:capture-issue` - 2026-05-30T22:06:48Z - this session
 - `/ll:refine-issue` - 2026-05-30T22:52:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e8a5f881-12a5-4d61-b54a-da5f2e99c84f.jsonl`
 - `/ll:confidence-check` - 2026-05-30T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0614b9f-d2aa-497b-beeb-c56b629c3c48.jsonl`
+- `/ll:confidence-check` - 2026-05-30T23:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9adc7ab4-a19f-48cf-b379-93ab04f802a5.jsonl`
+- `/ll:manage-issue` - 2026-05-30T23:18:03Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5ae2df2-a9c3-4666-9be2-38ba725cda75.jsonl`
 
-**Open** | Created: 2026-05-30 | Priority: P2
+## Resolution
+
+**Completed** | 2026-05-30T23:18:03Z
+
+### Changes Made
+
+- **`scripts/little_loops/fsm/evaluators.py:775-790`**: Added BUG-1815 guard in `evaluate()` dispatch — non-timeout non-zero exit codes short-circuit to `verdict="error"` for evaluator types that don't intrinsically handle exit codes (`output_contains`, `output_numeric`, `output_json`, `convergence`). Preserves existing BUG-1640 timeout (exit_code=124) short-circuit unchanged. Exit-code-aware evaluators (`exit_code`, `mcp_result`, `harbor_scorer`, `diff_stall`, `llm_structured`) are exempt.
+- **`scripts/tests/test_fsm_evaluators.py:581-633`**: Replaced `test_dispatch_exit_code_124_does_not_affect_success_cases` with `test_dispatch_nonzero_exit_short_circuits_to_error` (asserts exit_code=1 and 127 route to "error"). Added `test_dispatch_nonzero_exit_generalized_short_circuit` (parametrized across all exit-code-blind evaluator types). Added `test_dispatch_nonzero_exit_does_not_affect_exit_code_aware_evaluators` (verifies exempt evaluators not short-circuited).
+- **`scripts/tests/test_fsm_executor.py:2068-2136`**: Added `test_action_nonzero_exit_with_output_contains_routes_to_on_error` (verifies FSM routes exit 1 to `on_error` terminal) and `test_action_zero_exit_with_missing_pattern_still_routes_to_on_no` (regression guard confirming exit 0 with absent pattern still routes `on_no`).
+
+### Verification
+
+- 152/152 evaluator tests pass
+- 12/12 timeout-handling integration tests pass (including 2 new)
+- 37/37 evaluator-related executor tests pass
+- No regressions in full test suite

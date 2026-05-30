@@ -2065,6 +2065,78 @@ class TestTimeoutHandling:
         # After fix: final_state == "error" (on_error, because exit 124 short-circuits).
         assert result.final_state == "error"
 
+    def test_action_nonzero_exit_with_output_contains_routes_to_on_error(self) -> None:
+        """BUG-1815: non-zero exit code (not timeout) with output_contains routes via on_error.
+
+        Before the fix, a shell action exiting non-zero with absent output would
+        produce verdict "no" (pattern not found), routing through on_no instead of
+        the on_error: branch the loop author declared.
+        """
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="failing_command.sh",
+                    evaluate=EvaluateConfig(type="output_contains", pattern="SUCCESS"),
+                    on_yes="pass",
+                    on_no="retry",
+                    on_error="error",
+                ),
+                "pass": StateConfig(terminal=True),
+                "retry": StateConfig(terminal=True),
+                "error": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result(
+            "failing_command.sh",
+            output="",
+            exit_code=1,
+            stderr="command not found",
+        )
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        # Before fix: final_state == "retry" (on_no, because pattern missing).
+        # After fix: final_state == "error" (on_error, because exit non-zero short-circuits).
+        assert result.final_state == "error"
+
+    def test_action_zero_exit_with_missing_pattern_still_routes_to_on_no(self) -> None:
+        """BUG-1815: exit_code=0 with absent pattern still routes via on_no (regression guard).
+
+        The non-zero short-circuit must not affect the normal path where the action
+        succeeded (exit 0) but the output pattern wasn't found.
+        """
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="ok_command.sh",
+                    evaluate=EvaluateConfig(type="output_contains", pattern="SUCCESS"),
+                    on_yes="pass",
+                    on_no="retry",
+                    on_error="error",
+                ),
+                "pass": StateConfig(terminal=True),
+                "retry": StateConfig(terminal=True),
+                "error": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result(
+            "ok_command.sh",
+            output="nope",
+            exit_code=0,
+        )
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.final_state == "retry"
+
     def test_loop_timeout_stops_execution(self) -> None:
         """Loop terminates when total time exceeds timeout."""
         fsm = FSMLoop(
