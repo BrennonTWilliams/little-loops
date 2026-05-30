@@ -58,3 +58,12 @@ class TestAuditIssueConflictsSkillExists:
         assert "open|in_progress|blocked)" in content
         assert "TERMINAL_COUNT" in content
         assert "excluded $TERMINAL_COUNT terminal issues" in content
+
+    def test_phase5_stages_only_modified_files(self) -> None:
+        """Phase 5 must stage only Phase 4b-tracked files, not sweep untracked (BUG-1800)."""
+        assert SKILL_FILE.exists(), "Skill file not found"
+        content = SKILL_FILE.read_text()
+        assert "MODIFIED_FILES=()" in content
+        assert "MODIFIED_FILES+=(" in content
+        assert 'for f in "${MODIFIED_FILES[@]}"; do' in content
+        assert "git add {{config.issues.base_dir}}/" not in content

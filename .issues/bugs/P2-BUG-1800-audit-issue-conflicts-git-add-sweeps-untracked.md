@@ -2,8 +2,9 @@
 id: BUG-1800
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: "2026-05-29T20:55:00Z"
+completed_at: "2026-05-30T06:45:00Z"
 discovered_date: "2026-05-29"
 discovered_by: capture-issue
 labels: [bug, skills, audit-issue-conflicts, git]

@@ -270,6 +270,12 @@ questions:
 
 ## Phase 4b: Execute Approved Changes
 
+Track every modified file path so Phase 5 stages only audit-touched files:
+
+```bash
+MODIFIED_FILES=()
+```
+
 For each approved recommendation:
 
 ### merge / deprecate
@@ -304,13 +310,19 @@ For each approved recommendation:
 
 4. Update the closed issue's frontmatter `status: done` using the Edit tool.
 
-5. Append session log to closed issue:
+5. Track both modified files:
+
+```bash
+MODIFIED_FILES+=("[kept-issue-path]" "[closed-issue-path]")
+```
+
+6. Append session log to closed issue:
 
 ```bash
 ll-issues append-log "[issue-file-path]" /ll:audit-issue-conflicts
 ```
 
-6. Append session log to kept issue:
+7. Append session log to kept issue:
 
 ```bash
 ll-issues append-log "[kept-issue-path]" /ll:audit-issue-conflicts
@@ -318,7 +330,13 @@ ll-issues append-log "[kept-issue-path]" /ll:audit-issue-conflicts
 
 ### add_dependency
 
-Append either `blocked_by: [ISSUE-B]` (hard stop — must complete first) or `depends_on: [ISSUE-B]` (soft ordering — preferred when no hard dependency exists) to the frontmatter of the dependent issue file using Edit, according to the user's choice from the interactive prompt. Then append session log:
+Append either `blocked_by: [ISSUE-B]` (hard stop — must complete first) or `depends_on: [ISSUE-B]` (soft ordering — preferred when no hard dependency exists) to the frontmatter of the dependent issue file using Edit, according to the user's choice from the interactive prompt. Track the modified file:
+
+```bash
+MODIFIED_FILES+=("[issue-path]")
+```
+
+Then append session log:
 
 ```bash
 ll-issues append-log "[issue-path]" /ll:audit-issue-conflicts
@@ -337,9 +355,10 @@ Append a scope boundary note to each affected issue file:
 **Note** (added by `/ll:audit-issue-conflicts`): [Specific scope clarification. E.g., "This issue covers X only. Related issue [OTHER-ID] covers Y."]
 ```
 
-Then append session log to each modified file:
+Then track each modified file and append session log:
 
 ```bash
+MODIFIED_FILES+=("[issue-path]")
 ll-issues append-log "[issue-path]" /ll:audit-issue-conflicts
 ```
 
@@ -347,10 +366,12 @@ ll-issues append-log "[issue-path]" /ll:audit-issue-conflicts
 
 ## Phase 5: Cleanup
 
-After all approved changes are applied, stage everything in one shot:
+Stage only files that were modified during Phase 4b — never stage untracked files the audit did not touch:
 
 ```bash
-git add {{config.issues.base_dir}}/
+for f in "${MODIFIED_FILES[@]}"; do
+    git add "$f"
+done
 ```
 
 ---
