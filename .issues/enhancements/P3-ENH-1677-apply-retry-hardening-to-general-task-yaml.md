@@ -5,7 +5,8 @@ priority: P3
 captured_at: "2026-05-24T13:15:53Z"
 discovered_date: 2026-05-24
 discovered_by: capture-issue
-status: open
+status: done
+completed_at: '2026-05-29T23:55:00Z'
 parent: EPIC-1744
 labels: [fsm-loops, general-task, resilience, loop-config]
 depends_on: [ENH-1678]

@@ -152,7 +152,9 @@ states:
     action_type: prompt
     capture: work_result
     next: verify_step
-    on_error: diagnose
+    on_error: do_work
+    max_retries: 2
+    on_retry_exhausted: continue_work
     timeout: 900
 
   verify_step:
@@ -391,7 +393,9 @@ states:
       step already covers the criterion).
     action_type: prompt
     next: select_step
-    on_error: diagnose
+    on_error: continue_work
+    max_retries: 3
+    on_retry_exhausted: diagnose
 
   summarize_partial:
     action_type: prompt

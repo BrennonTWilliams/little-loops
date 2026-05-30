@@ -314,8 +314,15 @@ class TestENH1732StateSplit:
     def test_do_work_routes_to_verify_step(self, raw_data: dict) -> None:
         assert raw_data["states"]["do_work"]["next"] == "verify_step"
 
-    def test_do_work_routes_error_to_diagnose(self, raw_data: dict) -> None:
-        assert raw_data["states"]["do_work"]["on_error"] == "diagnose"
+    def test_do_work_retries_on_error(self, raw_data: dict) -> None:
+        assert raw_data["states"]["do_work"]["on_error"] == "do_work"
+        assert raw_data["states"]["do_work"]["max_retries"] == 2
+        assert raw_data["states"]["do_work"]["on_retry_exhausted"] == "continue_work"
+
+    def test_continue_work_retries_on_error(self, raw_data: dict) -> None:
+        assert raw_data["states"]["continue_work"]["on_error"] == "continue_work"
+        assert raw_data["states"]["continue_work"]["max_retries"] == 3
+        assert raw_data["states"]["continue_work"]["on_retry_exhausted"] == "diagnose"
 
     def test_do_work_timeout(self, raw_data: dict) -> None:
         timeout = raw_data["states"]["do_work"].get("timeout", 0)
