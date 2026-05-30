@@ -281,6 +281,7 @@ def _build_pinned_pane(
     prev_highlight: str | None = None,
     prev_state_at_depth: dict[int, str] | None = None,
     loop_path: Path | None = None,
+    model: str | None = None,
 ) -> str:
     """Compose the pinned pane (header + diagram(s) + state line + separator).
 
@@ -358,6 +359,8 @@ def _build_pinned_pane(
     lines.append(header_text + "=" * max(0, cols - len(header_text)))
     for key, value in _artifact_lines(fsm, loop_path):
         lines.append(f"  {key}: {colorize(value, '2')}")
+    if model is not None:
+        lines.append(f"  model: {colorize(model, '2')}")
     diagram = _render_one(active_fsm, active_state, active_prev)
     if diagram:
         lines.extend(diagram.split("\n"))
@@ -381,6 +384,7 @@ def _render_pinned_pane(
     min_action_rows: int = MIN_ACTION_ROWS,
     prev_state_at_depth: dict[int, str] | None = None,
     loop_path: Path | None = None,
+    model: str | None = None,
 ) -> int:
     """Render the pinned pane to stdout and set the scroll region beneath it.
 
@@ -414,6 +418,7 @@ def _render_pinned_pane(
             prev_highlight=prev_map.get(0),
             prev_state_at_depth=prev_map,
             loop_path=loop_path,
+            model=model,
         )
 
     # Build the fallback ladder based on facets source and topology.
@@ -466,6 +471,7 @@ class StateFeedRenderer:
         badges: dict[str, str] | None = None,
         loops_dir: Path | None = None,
         loop_path: Path | None = None,
+        model: str | None = None,
     ) -> None:
         self.fsm = fsm
         self.args = args
@@ -474,6 +480,7 @@ class StateFeedRenderer:
         self.badges = badges
         self.loops_dir = loops_dir or Path(".")
         self.loop_path = loop_path
+        self.model = model
 
         # Derived from args
         self.quiet: bool = getattr(args, "quiet", False)
@@ -516,6 +523,7 @@ class StateFeedRenderer:
             badges=self.badges,
             prev_state_at_depth=self.prev_state_at_depth,
             loop_path=self.loop_path,
+            model=self.model,
         )
 
     def handle_event(self, event: dict) -> None:
@@ -634,6 +642,8 @@ class StateFeedRenderer:
                     print(fallback_note, flush=True)
                 for key, value in _artifact_lines(self.fsm, self.loop_path):
                     print(f"  {key}: {colorize(value, '2')}", flush=True)
+                if self.model is not None:
+                    print(f"  model: {colorize(self.model, '2')}", flush=True)
                 print(diagram, flush=True)
             # In pinned mode the iteration line is part of the pinned pane;
             # only print it inline for non-pinned paths.
@@ -1067,6 +1077,7 @@ def run_foreground(
     instance_id: str | None = None,
     running_dir: Path | None = None,
     loop_path: Path | None = None,
+    model: str | None = None,
 ) -> int:
     """Run loop with progress display.
 
@@ -1112,12 +1123,15 @@ def run_foreground(
             badges=badges,
             loops_dir=getattr(executor, "loops_dir", Path(".")),
             loop_path=loop_path,
+            model=model,
         )
         if not renderer.quiet:
             print(f"Running loop: {colorize(fsm.name, '1')}")
             print(f"Max iterations: {colorize(str(fsm.max_iterations), '2')}")
             for key, value in _artifact_lines(fsm, loop_path):
                 print(f"  {key}: {colorize(value, '2')}")
+            if model is not None:
+                print(f"  model: {colorize(model, '2')}")
             print()
 
         # Wire progress display via the EventBus on PersistentExecutor

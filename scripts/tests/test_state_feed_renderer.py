@@ -291,6 +291,33 @@ class TestStateFeedRendererHandleEvent:
         assert loop_pos >= 0
         assert header_pos < loop_pos
 
+    def test_non_pinned_handle_event_prints_model_when_provided(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Non-pinned handle_event renders model line when model kwarg is set."""
+        fsm = _make_test_fsm()
+        args = _make_args(show_diagrams=True)
+        renderer = StateFeedRenderer(fsm, args, model="claude-opus-4-7")
+        renderer.handle_event(
+            {"event": "state_enter", "state": "start", "iteration": 1, "depth": 0}
+        )
+        captured = capsys.readouterr()
+        assert "  model:" in captured.out
+        assert "claude-opus-4-7" in captured.out
+
+    def test_non_pinned_handle_event_omits_model_when_none(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Non-pinned handle_event does not render model line when model is None."""
+        fsm = _make_test_fsm()
+        args = _make_args(show_diagrams=True)
+        renderer = StateFeedRenderer(fsm, args)
+        renderer.handle_event(
+            {"event": "state_enter", "state": "start", "iteration": 1, "depth": 0}
+        )
+        captured = capsys.readouterr()
+        assert "  model:" not in captured.out
+
 
 class TestArtifactLines:
     """Tests for _artifact_lines helper."""

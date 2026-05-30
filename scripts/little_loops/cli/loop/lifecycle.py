@@ -524,6 +524,7 @@ def cmd_resume(
             instance_id=instance_id,
             running_dir=running_dir,
             loop_path=loop_path,
+            model=fsm.llm.model,
         )
     finally:
         executor.close_transports()
@@ -597,7 +598,7 @@ def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
         _restore_sigwinch_handler,
     )
 
-    renderer = StateFeedRenderer(fsm, args, loops_dir=loops_dir, loop_path=loop_path)
+    renderer = StateFeedRenderer(fsm, args, loops_dir=loops_dir, loop_path=loop_path, model=fsm.llm.model)
 
     events_file = running_dir / f"{stem}.events.jsonl"
 

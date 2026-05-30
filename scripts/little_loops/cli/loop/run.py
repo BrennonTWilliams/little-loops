@@ -400,6 +400,7 @@ def cmd_run(
             instance_id=instance_id,
             loop_path=path,
             running_dir=running_dir,
+            model=fsm.llm.model,
         )
     finally:
         if executor is not None:

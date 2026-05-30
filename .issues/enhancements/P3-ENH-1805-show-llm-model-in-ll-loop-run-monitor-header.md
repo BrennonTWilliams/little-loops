@@ -1,9 +1,10 @@
 ---
 id: ENH-1805
-status: open
+status: done
 priority: P3
 type: ENH
 captured_at: '2026-05-30T04:12:22Z'
+completed_at: '2026-05-30T06:30:00Z'
 discovered_date: 2026-05-29
 discovered_by: capture-issue
 ---

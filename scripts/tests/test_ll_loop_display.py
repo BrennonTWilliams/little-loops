@@ -2681,6 +2681,29 @@ class TestDisplayProgressEvents:
         assert loop_pos >= 0
         assert max_iter_pos < loop_pos
 
+    def test_run_foreground_startup_shows_model_when_provided(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """run_foreground startup prints model line when model is provided."""
+        events: list[dict[str, Any]] = []
+        executor = MockExecutor(events)
+        fsm = self._make_fsm()
+        run_foreground(executor, fsm, self._make_args(), model="claude-opus-4-7")
+        captured = capsys.readouterr()
+        assert "  model:" in captured.out
+        assert "claude-opus-4-7" in captured.out
+
+    def test_run_foreground_startup_omits_model_when_none(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """run_foreground startup does not print model line when model is None."""
+        events: list[dict[str, Any]] = []
+        executor = MockExecutor(events)
+        fsm = self._make_fsm()
+        run_foreground(executor, fsm, self._make_args())
+        captured = capsys.readouterr()
+        assert "  model:" not in captured.out
+
 
 class TestRunForegroundExitCodes:
     """Tests for run_foreground exit code mapping (BUG-605)."""
