@@ -155,10 +155,15 @@ states:
   evaluate:
     # HARNESS: Multi-frame screenshot gate. Unlike a static page, an animated
     # sketch needs more than one frame for the evaluator to judge motion. We
-    # loop over the frame indices in context.sample_frames, invoking
-    # `playwright screenshot` with --wait-for-function once per frame so each
-    # PNG corresponds to a known __loopFrame value. Deterministic seeding in
-    # the generate state is what makes this reproducible across iterations.
+    # loop over the frame indices in context.sample_frames, using Playwright's
+    # JS API `page.waitForFunction` once per frame so each PNG corresponds to
+    # a known __loopFrame value. (The `playwright screenshot` CLI lacks
+    # --wait-for-function, so we invoke the JS API directly via `node -e`.)
+    # Deterministic seeding in the generate state is what makes this
+    # reproducible across iterations.
+    #
+    # NODE_PATH points node at the global npm modules so
+    # `require('@playwright/test')` resolves without a local install.
     #
     # Routes match p5js-sketch-generator: on_yes → score, on_no → generate
     # (retry transient render issues with fresh HTML), on_error → failed
@@ -166,17 +171,22 @@ states:
     # max_iterations).
     action_type: shell
     action: |
-      python3 -c "
-      import subprocess, sys
-      frames = '${context.sample_frames}'.split(',')
-      url = 'file://${captured.run_dir.output}/index.html'
-      for f in frames:
-          f = f.strip()
-          out = '${captured.run_dir.output}/frame_' + f + '.png'
-          subprocess.run(['playwright', 'screenshot',
-                          '--wait-for-function', 'window.__loopFrame >= ' + f,
-                          url, out], check=True)
-      " && echo "CAPTURED"
+      NODE_PATH="$(npm root -g)" node -e "
+      const { chromium } = require('@playwright/test');
+      const frames = '${context.sample_frames}'.split(',').map(s => s.trim());
+      const url = 'file://${captured.run_dir.output}/index.html';
+      (async () => {
+        const browser = await chromium.launch();
+        const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+        await page.goto(url);
+        for (const f of frames) {
+          await page.waitForFunction(([n]) => window.__loopFrame >= Number(n), [f], { timeout: 30000 });
+          await page.screenshot({ path: '${captured.run_dir.output}/frame_' + f + '.png' });
+        }
+        await browser.close();
+        console.log('CAPTURED');
+      })().catch(e => { console.error('SCREENSHOT_FAIL:', e.message); process.exit(1); });
+      "
     evaluate:
       type: output_contains
       pattern: "CAPTURED"

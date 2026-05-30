@@ -177,23 +177,31 @@ states:
     # HARNESS: Multi-frame screenshot gate. Three frames capture three viz
     # phases: initial render (chrome only), mid-transition (motion in
     # progress), and settled state (final read). The evaluator uses the
-    # contrast across frames to judge animation legibility.
+    # contrast across frames to judge animation legibility. We use Playwright's
+    # JS API `page.waitForFunction` via `node -e` because the CLI lacks
+    # --wait-for-function. NODE_PATH points node at the global npm modules so
+    # `require('@playwright/test')` resolves without a local install.
     #
     # Routes: on_yes → score, on_no → generate (retry transient renders),
     # on_error → failed (missing/broken Playwright bails cleanly).
     action_type: shell
     action: |
-      python3 -c "
-      import subprocess, sys
-      frames = '${context.sample_frames}'.split(',')
-      url = 'file://${captured.run_dir.output}/index.html'
-      for f in frames:
-          f = f.strip()
-          out = '${captured.run_dir.output}/frame_' + f + '.png'
-          subprocess.run(['playwright', 'screenshot',
-                          '--wait-for-function', 'window.__loopFrame >= ' + f,
-                          url, out], check=True)
-      " && echo "CAPTURED"
+      NODE_PATH="$(npm root -g)" node -e "
+      const { chromium } = require('@playwright/test');
+      const frames = '${context.sample_frames}'.split(',').map(s => s.trim());
+      const url = 'file://${captured.run_dir.output}/index.html';
+      (async () => {
+        const browser = await chromium.launch();
+        const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+        await page.goto(url);
+        for (const f of frames) {
+          await page.waitForFunction(([n]) => window.__loopFrame >= Number(n), [f], { timeout: 30000 });
+          await page.screenshot({ path: '${captured.run_dir.output}/frame_' + f + '.png' });
+        }
+        await browser.close();
+        console.log('CAPTURED');
+      })().catch(e => { console.error('SCREENSHOT_FAIL:', e.message); process.exit(1); });
+      "
     evaluate:
       type: output_contains
       pattern: "CAPTURED"
