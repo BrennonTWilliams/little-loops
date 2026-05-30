@@ -311,6 +311,7 @@ Context knobs:
 | `greenfield-builder` | End-to-end greenfield project builder: spec analysis → tech research → design artifacts → eval harness → issue decomposition → refinement → eval-driven improvement cycle |
 | `eval-driven-development` | Reusable eval-driven development cycle: implement issues, run eval harness, capture issues from failures, refine, and iterate until the harness passes |
 | `refine-to-ready-issue` | Single-issue refinement pipeline — refine → wire → confidence-check until the issue reaches ready status |
+| `cli-anything-bootstrap` | Meta-loop that bootstraps an agent-native CLI for target software (local path or repo URL), bakes a per-target rubric, caches the result, and emits a project-local task loop to `.loops/generated/` that downstream loops invoke to drive the target toward user goals |
 
 The `general-task` loop requires the `input` context variable — a natural-language description of the task to complete:
 
@@ -1376,6 +1377,41 @@ init → plan → generate → evaluate
 - To customize scoring criteria, install the loop locally (`ll-loop install svg-textgrad`) and edit the `score` state's prompt (writes `critique.md`) and the `verify_score` state's shell arithmetic (controls the pass threshold computation and routing). To customize gradient computation, edit the `compute_gradient` state's prompt.
 - The generator enforces a strict 250-line SVG size limit — use `<circle>`, `<path>`, and `<text>` with `<g transform="">` for repeated elements rather than verbose repeated markup.
 - Prefer `svg-image-generator` for quick iterations; reach for `svg-textgrad` when you see the same failure pattern repeating across iterations.
+
+<!-- TODO: update-docs stub — cli-anything-bootstrap — drafted 2026-05-30 -->
+### `cli-anything-bootstrap` — Agent-Native CLI Bootstrapper
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in FSM flow diagram, context variable table, output artifact descriptions, and example run output.
+
+**Technique**: Meta-loop that bootstraps an agent-native CLI wrapper for target software (local path or repo URL) by delegating to CLI-Anything's `/cli-anything` skill, baking a per-target rubric with non-LLM evaluators (pip install exit code, `--help` coverage, pytest pass rate), caching the CLI, and emitting a project-local task loop to `.loops/generated/<target>-task.yaml`.
+
+**When to use**: When you need a repeatable, agent-drivable CLI interface for a third-party tool or library. The generated task loop can be invoked by downstream loops to drive the target software toward user goals without re-bootstrapping.
+
+**Prerequisites**:
+- CLI-Anything plugin installed (provides `/cli-anything` and `/cli-anything:refine` skills)
+- Target software accessible at the given path or repo URL
+- Python 3.10+ available for venv install
+
+**Usage:**
+
+```bash
+ll-loop run cli-anything-bootstrap --context target="https://github.com/user/repo"
+# Bootstraps CLI → bakes rubric → caches to .loops/cli-anything/
+# → emits .loops/generated/repo-task.yaml
+```
+
+**Two outputs per successful run:**
+1. Cached CLI at `.loops/cli-anything/<target-hash>/`
+2. Generated task loop at `.loops/generated/<target-name>-task.yaml`
+
+**Task templates:** Three bundled `.tmpl` templates in `loops/lib/task-templates/` are selected by the loop based on target classification:
+- `data-lib-task.yaml.tmpl` — for data-processing libraries
+- `desktop-gui-task.yaml.tmpl` — for GUI applications
+- `stateful-service-task.yaml.tmpl` — for servers and daemons
+
+**Meta-loop discipline (MR-1)**: Every LLM-proposed artifact is paired with a non-LLM external evaluator — the LLM score-bootstrap state judges measured numbers, not its own generated artifacts.
+
+<!-- END TODO stub -->
 
 ## Beyond the Basics
 

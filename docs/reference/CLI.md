@@ -406,6 +406,23 @@ Run a loop.
 | `--context-limit` | | Override context window token estimate |
 | `--no-lock` | | Run without acquiring the scope lock, bypassing the conflict check. **Caution:** this allows concurrent runs that may interfere with each other on shared resources. Use when you need parallel runs that operate on disjoint paths or when testing a loop that would otherwise be blocked by a stale lock you cannot clear. |
 
+<!-- TODO: update-docs stub — ENH-1805 — drafted 2026-05-30 -->
+##### Model Header Display (ENH-1805)
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in screen output example and interaction with `--llm-model`.
+
+`ll-loop run` and `ll-loop monitor` print a header line showing the active LLM model name on startup, detected from the Claude CLI `stream-json` init event (same mechanism as `ll-auto`). The model name appears in the first output line after the logo banner:
+
+```
+ll-loop run general-task "fix the lint warnings"
+  model: claude-sonnet-4-6
+  [state transitions follow]
+```
+
+When `--llm-model` is passed, the header reflects the override model. When the detection fails (e.g., non-Claude host), the field shows `unknown`.
+
+<!-- END TODO stub -->
+
 > **Note:** `agent:` and `tools:` are per-state YAML fields, not CLI flags. See [Subprocess Agent and Tool Scoping](../guides/LOOPS_GUIDE.md#subprocess-agent-and-tool-scoping) in the Loops Guide for per-state agent and tool scoping options.
 
 ##### Queue entries (`.loops/.queue/`)

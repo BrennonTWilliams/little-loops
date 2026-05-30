@@ -547,6 +547,29 @@ When no `profiles/` directory is present, the resolver falls back to the flat la
 }
 ```
 
+<!-- TODO: update-docs stub — ENH-1769 — drafted 2026-05-30 -->
+#### W3C DTCG `$value` Format (ENH-1769)
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in format details, migration path, and example.
+
+The design token loader supports the [W3C Design Tokens Community Group](https://tr.designtokens.org/) `$value` format in addition to the legacy flat key-value layout. When a token file contains `$value` keys (e.g., `{"color-primary": {"$value": "#A3B59A"}}`), the loader normalizes them to the internal representation automatically.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `dtcg_mode` | `str` | `"auto"` | Format detection mode: `"auto"` (detect from file content), `"dtcg"` (force DTCG `$value` parsing), or `"flat"` (legacy key-value only). |
+
+**Example DTCG token file:**
+```json
+{
+  "color-primary": { "$value": "#A3B59A" },
+  "spacing-md": { "$value": "16px" }
+}
+```
+
+**See also**: [Design Tokens Community Group specification](https://tr.designtokens.org/)
+
+<!-- END TODO stub -->
+
 <!-- TODO: update-docs stub — FEAT-1743 — drafted 2026-05-29 -->
 ### `learning_tests`
 
