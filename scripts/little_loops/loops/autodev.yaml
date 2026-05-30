@@ -27,7 +27,7 @@ import:
 states:
   init:
     # Validate input, reset autodev tmp files, and seed the unified queue from
-    # the comma-separated context.input. The same .loops/tmp/autodev-queue.txt
+    # the comma-separated context.input. The same ${context.run_dir}/autodev-queue.txt
     # serves both refinement and implementation throughout — there is no
     # separate impl queue.
     action: |
@@ -36,15 +36,15 @@ states:
         exit 1
       fi
       mkdir -p .loops/tmp
-      printf '' > .loops/tmp/autodev-passed.txt
-      printf '' > .loops/tmp/autodev-skipped.txt
-      rm -f .loops/tmp/autodev-broke-down
-      rm -f .loops/tmp/autodev-inflight
+      printf '' > ${context.run_dir}/autodev-passed.txt
+      printf '' > ${context.run_dir}/autodev-skipped.txt
+      rm -f ${context.run_dir}/autodev-broke-down
+      rm -f ${context.run_dir}/autodev-inflight
       echo "${context.input}" | tr ',' '\n' \
         | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
         | grep -v '^[[:space:]]*$' \
-        > .loops/tmp/autodev-queue.txt
-      COUNT=$(wc -l < .loops/tmp/autodev-queue.txt | tr -d ' ')
+        > ${context.run_dir}/autodev-queue.txt
+      COUNT=$(wc -l < ${context.run_dir}/autodev-queue.txt | tr -d ' ')
       echo "Queued $COUNT issue(s) for autodev"
     fragment: shell_exit
     on_yes: dequeue_next
@@ -58,20 +58,20 @@ states:
     # 'input' so context_passthrough forwards it to refine-to-ready-issue as
     # context.input. Exits 1 (→ done) when the queue is empty.
     action: |
-      if [ ! -s .loops/tmp/autodev-queue.txt ]; then
+      if [ ! -s ${context.run_dir}/autodev-queue.txt ]; then
         exit 1
       fi
-      CURRENT=$(head -1 .loops/tmp/autodev-queue.txt)
-      tail -n +2 .loops/tmp/autodev-queue.txt > .loops/tmp/autodev-queue.tmp
-      mv .loops/tmp/autodev-queue.tmp .loops/tmp/autodev-queue.txt
+      CURRENT=$(head -1 ${context.run_dir}/autodev-queue.txt)
+      tail -n +2 ${context.run_dir}/autodev-queue.txt > ${context.run_dir}/autodev-queue.tmp
+      mv ${context.run_dir}/autodev-queue.tmp ${context.run_dir}/autodev-queue.txt
 
       # BUG-1226: record the in-flight issue so `done` can surface it if the
       # loop terminates before this issue reaches a clean resolution
       # (enqueue_or_skip / enqueue_children / next dequeue_next overwrite).
-      printf '%s' "$CURRENT" > .loops/tmp/autodev-inflight
+      printf '%s' "$CURRENT" > ${context.run_dir}/autodev-inflight
 
-      rm -f .loops/tmp/recursive-refine-broke-down .loops/tmp/autodev-broke-down
-      rm -f .loops/tmp/autodev-decide-ran
+      rm -f ${context.run_dir}/refine-broke-down ${context.run_dir}/autodev-broke-down
+      rm -f ${context.run_dir}/autodev-decide-ran
       (ll-issues list --json | python3 -c "
       import json, sys
       try:
@@ -80,7 +80,7 @@ states:
               print(i)
       except Exception:
           pass
-      " > .loops/tmp/autodev-pre-ids.txt) || true
+      " > ${context.run_dir}/autodev-pre-ids.txt) || true
 
       echo "$CURRENT"
     fragment: shell_exit
@@ -114,22 +114,22 @@ states:
     # receives a signal/crash (on_error). Mirrors the skip_and_continue pattern
     # in auto-refine-and-implement.yaml.
     action: |
-      echo "${captured.input.output}" >> .loops/tmp/autodev-skipped.txt
-      rm -f .loops/tmp/autodev-inflight
+      echo "${captured.input.output}" >> ${context.run_dir}/autodev-skipped.txt
+      rm -f ${context.run_dir}/autodev-inflight
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
 
   copy_broke_down:
-    # Handshake: refine-to-ready-issue writes .loops/tmp/recursive-refine-broke-down
-    # (0 at resolve_issue start, 1 at write_broke_down). Copy it into autodev's
-    # namespace so the rest of the state machine reads autodev-* temp files and
-    # so concurrent recursive-refine runs don't overwrite our view mid-iteration.
+    # Handshake: refine-to-ready-issue writes ${context.run_dir}/refine-broke-down
+    # (0 at resolve_issue start, 1 at write_broke_down) via context_passthrough.
+    # Copy it into autodev's namespace so the rest of the state machine reads
+    # autodev-* temp files consistently.
     action: |
-      if [ -f .loops/tmp/recursive-refine-broke-down ]; then
-        cp .loops/tmp/recursive-refine-broke-down .loops/tmp/autodev-broke-down
+      if [ -f ${context.run_dir}/refine-broke-down ]; then
+        cp ${context.run_dir}/refine-broke-down ${context.run_dir}/autodev-broke-down
       else
-        printf '0' > .loops/tmp/autodev-broke-down
+        printf '0' > ${context.run_dir}/autodev-broke-down
       fi
     action_type: shell
     next: check_decision_after_refine
@@ -155,7 +155,7 @@ states:
       ll-issues check-readiness ${captured.input.output} \
         --readiness ${context.readiness_threshold} \
         --outcome ${context.outcome_threshold} \
-        && echo "${captured.input.output}" >> .loops/tmp/autodev-passed.txt
+        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-passed.txt
     fragment: shell_exit
     on_yes: implement_current
     on_no: triage_outcome_failure
@@ -169,7 +169,7 @@ states:
     # on_yes), short-circuit straight to implement_current if decide already
     # ran in this iteration. The flag is cleared per-issue at dequeue_next.
     action: |
-      if [ -f .loops/tmp/autodev-decide-ran ]; then
+      if [ -f ${context.run_dir}/autodev-decide-ran ]; then
         exit 1
       fi
       ll-issues check-flag ${captured.input.output} decision_needed
@@ -196,7 +196,7 @@ states:
     # recheck_after_size_review → on_yes: decide_current. The flag is cleared
     # per-issue at dequeue_next.
     action: |
-      printf '1' > .loops/tmp/autodev-decide-ran
+      printf '1' > ${context.run_dir}/autodev-decide-ran
     action_type: shell
     next: rerun_confidence_after_decide
     on_error: rerun_confidence_after_decide
@@ -228,7 +228,7 @@ states:
       ll-issues check-readiness ${captured.input.output} \
         --readiness ${context.readiness_threshold} \
         --outcome ${context.outcome_threshold} \
-        && echo "${captured.input.output}" >> .loops/tmp/autodev-passed.txt
+        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-passed.txt
     fragment: shell_exit
     on_yes: implement_current
     on_no: snap_and_size_review
@@ -249,7 +249,7 @@ states:
               print(i)
       except Exception:
           pass
-      " > .loops/tmp/autodev-pre-ids.txt
+      " > ${context.run_dir}/autodev-pre-ids.txt
     action_type: shell
     next: run_size_review
     on_error: run_size_review
@@ -311,11 +311,11 @@ states:
       issues = json.load(sys.stdin)
       for i in sorted(i['id'] for i in issues):
           print(i)
-      " | sort > .loops/tmp/autodev-post-ids.txt
+      " | sort > ${context.run_dir}/autodev-post-ids.txt
 
-      comm -13 .loops/tmp/autodev-pre-ids.txt \
-               .loops/tmp/autodev-post-ids.txt \
-               > .loops/tmp/autodev-diff-ids.txt
+      comm -13 ${context.run_dir}/autodev-pre-ids.txt \
+               ${context.run_dir}/autodev-post-ids.txt \
+               > ${context.run_dir}/autodev-diff-ids.txt
 
       PARENT_ID="${captured.input.output}"
       while IFS= read -r child_id; do
@@ -324,11 +324,11 @@ states:
         if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
           echo "$child_id"
         fi
-      done < .loops/tmp/autodev-diff-ids.txt \
-        > .loops/tmp/autodev-new-children.txt
+      done < ${context.run_dir}/autodev-diff-ids.txt \
+        > ${context.run_dir}/autodev-new-children.txt
 
-      if [ -s .loops/tmp/autodev-new-children.txt ]; then
-        cat .loops/tmp/autodev-new-children.txt
+      if [ -s ${context.run_dir}/autodev-new-children.txt ]; then
+        cat ${context.run_dir}/autodev-new-children.txt
         exit 0
       else
         exit 1
@@ -345,23 +345,23 @@ states:
     # decomposed, not refined to ready) and moves the parent file to
     # .issues/completed/ to mirror recursive-refine's cleanup discipline.
     action: |
-      CHILDREN=$(cat .loops/tmp/autodev-new-children.txt)
-      EXISTING=$(cat .loops/tmp/autodev-queue.txt 2>/dev/null || true)
+      CHILDREN=$(cat ${context.run_dir}/autodev-new-children.txt)
+      EXISTING=$(cat ${context.run_dir}/autodev-queue.txt 2>/dev/null || true)
       { echo "$CHILDREN"; echo "$EXISTING"; } \
         | grep -v '^[[:space:]]*$' \
-        > .loops/tmp/autodev-queue.txt
-      echo "${captured.input.output}" >> .loops/tmp/autodev-skipped.txt
+        > ${context.run_dir}/autodev-queue.txt
+      echo "${captured.input.output}" >> ${context.run_dir}/autodev-skipped.txt
       PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
       if [ -n "$PARENT_FILE" ]; then
         mkdir -p .issues/completed
         git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
           || mv "$PARENT_FILE" .issues/completed/
       fi
-      CHILD_COUNT=$(wc -l < .loops/tmp/autodev-new-children.txt | tr -d ' ')
+      CHILD_COUNT=$(wc -l < ${context.run_dir}/autodev-new-children.txt | tr -d ' ')
       echo "Parent ${captured.input.output} decomposed; enqueued $CHILD_COUNT child issue(s)"
       # BUG-1226: parent is resolved (decomposed); clear the in-flight flag
       # so `done` does not warn about it.
-      rm -f .loops/tmp/autodev-inflight
+      rm -f ${context.run_dir}/autodev-inflight
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
@@ -371,9 +371,9 @@ states:
     # post-ids) so the enqueue_or_skip diff reflects only what the explicit
     # size-review creates, not children already created by the sub-loop.
     action: |
-      if [ -f .loops/tmp/autodev-post-ids.txt ]; then
-        cp .loops/tmp/autodev-post-ids.txt \
-           .loops/tmp/autodev-pre-ids.txt
+      if [ -f ${context.run_dir}/autodev-post-ids.txt ]; then
+        cp ${context.run_dir}/autodev-post-ids.txt \
+           ${context.run_dir}/autodev-pre-ids.txt
       fi
     action_type: shell
     next: check_broke_down
@@ -389,8 +389,8 @@ states:
     # BUG-1079 "no double size-review" invariant because flag=1 AND children
     # exist still shortcuts past run_size_review.
     action: |
-      FLAG=$(cat .loops/tmp/autodev-broke-down 2>/dev/null || echo 0)
-      if [ "$FLAG" = "1" ] && [ -s .loops/tmp/autodev-new-children.txt ]; then
+      FLAG=$(cat ${context.run_dir}/autodev-broke-down 2>/dev/null || echo 0)
+      if [ "$FLAG" = "1" ] && [ -s ${context.run_dir}/autodev-new-children.txt ]; then
         echo 1
       else
         echo 0
@@ -413,7 +413,7 @@ states:
       ll-issues check-readiness ${captured.input.output} \
         --readiness ${context.readiness_threshold} \
         --outcome ${context.outcome_threshold} \
-        && echo "${captured.input.output}" >> .loops/tmp/autodev-passed.txt
+        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-passed.txt
     fragment: shell_exit
     on_yes: decide_current
     on_no: check_decision_before_size_review
@@ -479,11 +479,11 @@ states:
       issues = json.load(sys.stdin)
       for i in sorted(i['id'] for i in issues):
           print(i)
-      " | sort > .loops/tmp/autodev-post-ids.txt
+      " | sort > ${context.run_dir}/autodev-post-ids.txt
 
-      comm -13 .loops/tmp/autodev-pre-ids.txt \
-               .loops/tmp/autodev-post-ids.txt \
-               > .loops/tmp/autodev-diff-ids.txt
+      comm -13 ${context.run_dir}/autodev-pre-ids.txt \
+               ${context.run_dir}/autodev-post-ids.txt \
+               > ${context.run_dir}/autodev-diff-ids.txt
 
       PARENT_ID="${captured.input.output}"
       while IFS= read -r child_id; do
@@ -492,26 +492,26 @@ states:
         if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
           echo "$child_id"
         fi
-      done < .loops/tmp/autodev-diff-ids.txt \
-        > .loops/tmp/autodev-new-children.txt
+      done < ${context.run_dir}/autodev-diff-ids.txt \
+        > ${context.run_dir}/autodev-new-children.txt
 
-      if [ -s .loops/tmp/autodev-new-children.txt ]; then
-        CHILDREN=$(cat .loops/tmp/autodev-new-children.txt)
-        EXISTING=$(cat .loops/tmp/autodev-queue.txt 2>/dev/null || true)
+      if [ -s ${context.run_dir}/autodev-new-children.txt ]; then
+        CHILDREN=$(cat ${context.run_dir}/autodev-new-children.txt)
+        EXISTING=$(cat ${context.run_dir}/autodev-queue.txt 2>/dev/null || true)
         { echo "$CHILDREN"; echo "$EXISTING"; } \
           | grep -v '^[[:space:]]*$' \
-          > .loops/tmp/autodev-queue.txt
-        echo "${captured.input.output}" >> .loops/tmp/autodev-skipped.txt
+          > ${context.run_dir}/autodev-queue.txt
+        echo "${captured.input.output}" >> ${context.run_dir}/autodev-skipped.txt
         PARENT_FILE=$(find .issues -name "*-${captured.input.output}-*" ! -path "*/completed/*" 2>/dev/null | head -1)
         if [ -n "$PARENT_FILE" ]; then
           mkdir -p .issues/completed
           git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
             || mv "$PARENT_FILE" .issues/completed/
         fi
-        CHILD_COUNT=$(wc -l < .loops/tmp/autodev-new-children.txt | tr -d ' ')
+        CHILD_COUNT=$(wc -l < ${context.run_dir}/autodev-new-children.txt | tr -d ' ')
         echo "Parent ${captured.input.output} decomposed by size-review; enqueued $CHILD_COUNT child issue(s)"
         # BUG-1226: parent resolved by decomposition; clear in-flight flag.
-        rm -f .loops/tmp/autodev-inflight
+        rm -f ${context.run_dir}/autodev-inflight
         exit 0
       else
         # No children: let recheck_after_size_review decide whether to implement or skip.
@@ -531,10 +531,10 @@ states:
       if ll-issues check-readiness ${captured.input.output} \
           --readiness ${context.readiness_threshold} \
           --outcome ${context.outcome_threshold}; then
-        echo "${captured.input.output}" >> .loops/tmp/autodev-passed.txt
+        echo "${captured.input.output}" >> ${context.run_dir}/autodev-passed.txt
       else
-        echo "${captured.input.output}" >> .loops/tmp/autodev-skipped.txt
-        rm -f .loops/tmp/autodev-inflight
+        echo "${captured.input.output}" >> ${context.run_dir}/autodev-skipped.txt
+        rm -f ${context.run_dir}/autodev-inflight
         exit 1
       fi
     fragment: shell_exit
@@ -549,9 +549,9 @@ states:
     # executor flushed copy_broke_down but the wall-clock timeout fired before
     # resolution completed), the user knows which issue needs re-queueing.
     action: |
-      PASSED_IDS=$(cat .loops/tmp/autodev-passed.txt 2>/dev/null \
+      PASSED_IDS=$(cat ${context.run_dir}/autodev-passed.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
-      SKIPPED_IDS=$(cat .loops/tmp/autodev-skipped.txt 2>/dev/null \
+      SKIPPED_IDS=$(cat ${context.run_dir}/autodev-skipped.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
 
       PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
@@ -560,7 +560,7 @@ states:
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
 
-      INFLIGHT=$(cat .loops/tmp/autodev-inflight 2>/dev/null | tr -d '[:space:]' || true)
+      INFLIGHT=$(cat ${context.run_dir}/autodev-inflight 2>/dev/null | tr -d '[:space:]' || true)
 
       printf '\n=== Autodev Summary ===\n\n'
       printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"

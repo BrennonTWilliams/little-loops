@@ -152,7 +152,7 @@ states:
     # an explicit size-review run. Clear the broke-down flag so each issue
     # iteration starts clean.
     action: |
-      rm -f .loops/tmp/recursive-refine-broke-down
+      rm -f ${context.run_dir}/refine-broke-down
       ll-issues list --json | python3 -c "
       import json, sys
       issues = json.load(sys.stdin)
@@ -346,7 +346,7 @@ states:
     # the BUG-1079 "no double size-review" invariant because flag=1 AND
     # children exist still shortcuts past run_size_review.
     action: |
-      FLAG=$(cat .loops/tmp/recursive-refine-broke-down 2>/dev/null || echo 0)
+      FLAG=$(cat ${context.run_dir}/refine-broke-down 2>/dev/null || echo 0)
       if [ "$FLAG" = "1" ] && [ -s .loops/tmp/recursive-refine-new-children.txt ]; then
         echo 1
       else

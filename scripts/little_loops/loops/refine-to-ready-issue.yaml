@@ -25,7 +25,7 @@ states:
       mkdir -p .loops/tmp &&
       printf '0' > .loops/tmp/refine-to-ready-refine-count &&
       printf '0' > .loops/tmp/refine-to-ready-wire-done &&
-      printf '0' > .loops/tmp/recursive-refine-broke-down &&
+      printf '0' > ${context.run_dir}/refine-broke-down &&
       { [ -n "${context.input}" ] && printf '%s' "${context.input}" ||
       ll-issues next-issue; } | tr -d '\n\r '
     action_type: shell
@@ -339,7 +339,7 @@ states:
     on_error: diagnose
 
   write_broke_down:
-    action: printf '1' > .loops/tmp/recursive-refine-broke-down
+    action: printf '1' > ${context.run_dir}/refine-broke-down
     action_type: shell
     next: done
     on_error: done
