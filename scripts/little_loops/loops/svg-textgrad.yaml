@@ -23,13 +23,15 @@ states:
   init:
     # HARNESS: Setup phase — captures the runner-injected run_dir as an absolute path.
     # Also initializes gradients.md and scores.md so compute_gradient can safely read
-    # both on iteration 1 without file-not-found errors.
+    # both on iteration 1 without file-not-found errors. Resets playwright_fails.txt
+    # so the FA-1 capture-failure counter starts at 0 on every run.
     action_type: shell
     action: |
       DIR="${context.run_dir}"
       mkdir -p "$DIR"
       touch "$DIR/gradients.md"
       touch "$DIR/scores.md"
+      echo 0 > "$DIR/playwright_fails.txt"
       echo "$(pwd)/$DIR"
     capture: run_dir
     next: plan
@@ -80,13 +82,13 @@ states:
       - STRICT SIZE LIMIT: Keep the SVG under 250 lines. Prefer <circle>, <path>, and
         <text> elements over verbose repeated markup. Use <g> with transform for repeated
         elements. Conciseness is a hard requirement.
-    next: evaluate
+    next: screenshot
 
-  evaluate:
+  screenshot:
     # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// SVG.
-    # Routes to score on success; routes back to generate on failure or error so the loop
-    # can continue regardless of Playwright availability.
-    # on_no: re-generates from the unchanged brief without scoring — no evaluation occurs.
+    # Routes to score on success; routes to check_capture_fails on failure or error so a
+    # persistent Playwright outage escalates to diagnose instead of spinning until
+    # max_iterations. on_no: re-generates from the unchanged brief without scoring.
     action_type: shell
     action: |
       playwright screenshot "file://${captured.run_dir.output}/image.svg" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
@@ -94,8 +96,28 @@ states:
       type: output_contains
       pattern: "CAPTURED"
     on_yes: score
-    on_no: generate
-    on_error: generate
+    on_no: check_capture_fails
+    on_error: check_capture_fails
+
+  check_capture_fails:
+    # FA-1: Playwright failure counter — escalates to diagnose after 3 capture failures
+    # in this run. Counter file lives under captured.run_dir.output so it is scoped to
+    # this run and reset by init at the start of every new run. Prevents the screenshot
+    # ↔ generate cycle from burning all 40 iterations when Playwright is unavailable.
+    action_type: shell
+    action: |
+      DIR="${captured.run_dir.output}"
+      COUNT=$(cat "$DIR/playwright_fails.txt" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$DIR/playwright_fails.txt"
+      echo "$COUNT"
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 3
+    on_yes: generate
+    on_no: diagnose
+    on_error: diagnose
 
   score:
     # HARNESS: Evaluator phase — LLM judges the screenshot against four SVG-specific
@@ -163,10 +185,10 @@ states:
       type: output_contains
       pattern: "SHELL_PASS"
     on_yes: done
-    on_no: record_scores
-    on_error: record_scores
+    on_no: track_best
+    on_error: track_best
 
-  record_scores:
+  track_best:
     # TEXTGRAD: Best-artifact tracking — runs after verify_score.on_no (SHELL_ITERATE).
     # scores.md append was moved to verify_score so every scored iteration is recorded
     # regardless of routing path. This state only preserves the best-scoring SVG and brief
