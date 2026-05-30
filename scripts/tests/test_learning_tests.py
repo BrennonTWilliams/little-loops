@@ -89,6 +89,34 @@ class TestLearnTestRecord:
         record = LearnTestRecord.from_dict(d)
         assert record.assertions == []
 
+    def test_round_trip_untested_assertions(self) -> None:
+        """Round-trip a record with only 'untested' assertions through from_dict/to_dict."""
+        d = {
+            "target": "Stripe rate limits",
+            "date": "2026-05-30",
+            "status": "proven",
+            "assertions": [
+                {"claim": "Rate limit is 100 req/s per endpoint", "result": "untested"},
+                {"claim": "Webhook retry is 3x with exponential backoff", "result": "untested"},
+            ],
+        }
+        record = LearnTestRecord.from_dict(d)
+        assert len(record.assertions) == 2
+        assert record.assertions[0].claim == "Rate limit is 100 req/s per endpoint"
+        assert record.assertions[0].result == "untested"
+        assert record.assertions[1].result == "untested"
+        assert record.status == "proven"
+        # Round-trip: to_dict → from_dict should preserve all assertions
+        restored = LearnTestRecord.from_dict(record.to_dict())
+        assert len(restored.assertions) == 2
+        assert restored.assertions[0].result == "untested"
+        assert restored.assertions[1].result == "untested"
+
+    def test_from_dict_defaults_result_to_untested(self) -> None:
+        """Assertion.from_dict should default missing result to 'untested'."""
+        assertion = Assertion.from_dict({"claim": "Some claim without result"})
+        assert assertion.result == "untested"
+
 
 class TestWriteRecord:
     """Tests for write_record function."""
@@ -162,6 +190,27 @@ class TestReadRecord:
         assert len(restored.assertions) == 2
         assert restored.assertions[0].claim == "streaming events are dicts with a `type` key"
         assert restored.assertions[0].result == "pass"
+
+    def test_read_record_preserves_untested_assertions(
+        self, learning_tests_dir: Path
+    ) -> None:
+        """Records with untested assertions survive write/read round-trip."""
+        record = LearnTestRecord(
+            target="Stripe rate limits",
+            date="2026-05-30",
+            status="proven",
+            assertions=[
+                Assertion(claim="Rate limit is 100 req/s per endpoint", result="untested"),
+            ],
+            raw_output_path=None,
+        )
+        write_record(record, base_dir=learning_tests_dir)
+        restored = read_record("stripe-rate-limits", base_dir=learning_tests_dir)
+        assert restored is not None
+        assert restored.status == "proven"
+        assert len(restored.assertions) == 1
+        assert restored.assertions[0].claim == "Rate limit is 100 req/s per endpoint"
+        assert restored.assertions[0].result == "untested"
 
 
 class TestMarkStale:

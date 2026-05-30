@@ -4039,6 +4039,115 @@ class TestAssumptionFirewallLoop:
             f"no_external_deps.terminal should be True, got {state.get('terminal')!r}"
         )
 
+    def test_classify_assumptions_exists(self, data: dict) -> None:
+        """classify_assumptions state must exist with action_type: prompt."""
+        state = data["states"].get("classify_assumptions", {})
+        assert state, "classify_assumptions state must exist"
+        assert state.get("action_type") == "prompt", (
+            f"classify_assumptions.action_type should be 'prompt', got {state.get('action_type')!r}"
+        )
+
+    def test_classify_assumptions_has_non_llm_evaluator(self, data: dict) -> None:
+        """classify_assumptions must have a non-LLM evaluator (output_contains, satisfying MR-1)."""
+        state = data["states"].get("classify_assumptions", {})
+        ev = state.get("evaluate", {})
+        assert ev.get("type") == "output_contains", (
+            f"classify_assumptions.evaluate.type should be 'output_contains', got {ev.get('type')!r}"
+        )
+        assert "CLASSIFIED_JSON:" in str(ev.get("pattern", "")), (
+            f"classify_assumptions evaluate pattern should contain CLASSIFIED_JSON:, got {ev.get('pattern')!r}"
+        )
+
+    def test_record_untestable_exists(self, data: dict) -> None:
+        """record_untestable state must exist with action_type: shell."""
+        state = data["states"].get("record_untestable", {})
+        assert state, "record_untestable state must exist"
+        assert state.get("action_type") == "shell", (
+            f"record_untestable.action_type should be 'shell', got {state.get('action_type')!r}"
+        )
+
+    def test_record_untestable_calls_ll_action_explore_api_assume(self, data: dict) -> None:
+        """record_untestable action must invoke ll-action explore-api with --assume."""
+        state = data["states"].get("record_untestable", {})
+        action = state.get("action", "")
+        assert "ll-action" in action, (
+            f"record_untestable.action should invoke ll-action, got {action!r}"
+        )
+        assert "explore-api" in action, (
+            f"record_untestable.action should invoke explore-api, got {action!r}"
+        )
+        assert "--assume" in action, (
+            f"record_untestable.action should use --assume flag, got {action!r}"
+        )
+
+    def test_flatten_testable_exists(self, data: dict) -> None:
+        """flatten_testable state must exist (renamed from flatten_targets)."""
+        state = data["states"].get("flatten_testable", {})
+        assert state, "flatten_testable state must exist"
+        assert state.get("action_type") == "shell", (
+            f"flatten_testable.action_type should be 'shell', got {state.get('action_type')!r}"
+        )
+
+    def test_flatten_targets_removed(self, data: dict) -> None:
+        """flatten_targets state must NOT exist (renamed to flatten_testable)."""
+        assert "flatten_targets" not in data["states"], (
+            "flatten_targets must be renamed to flatten_testable"
+        )
+
+    def test_parse_assumptions_routes_to_classify_assumptions(self, data: dict) -> None:
+        """parse_assumptions on_yes must route to classify_assumptions."""
+        state = data["states"].get("parse_assumptions", {})
+        assert state.get("on_yes") == "classify_assumptions", (
+            f"parse_assumptions.on_yes should be 'classify_assumptions', got {state.get('on_yes')!r}"
+        )
+
+    def test_classify_assumptions_routes_to_record_untestable(self, data: dict) -> None:
+        """classify_assumptions on_yes and on_no must both route to record_untestable."""
+        state = data["states"].get("classify_assumptions", {})
+        assert state.get("on_yes") == "record_untestable", (
+            f"classify_assumptions.on_yes should be 'record_untestable', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "record_untestable", (
+            f"classify_assumptions.on_no should be 'record_untestable', got {state.get('on_no')!r}"
+        )
+
+    def test_record_untestable_routes_to_flatten_testable(self, data: dict) -> None:
+        """record_untestable next must route to flatten_testable."""
+        state = data["states"].get("record_untestable", {})
+        assert state.get("next") == "flatten_testable", (
+            f"record_untestable.next should be 'flatten_testable', got {state.get('next')!r}"
+        )
+
+    def test_flatten_testable_reads_from_classified(self, data: dict) -> None:
+        """flatten_testable must read from captured.raw_classified, not captured.extracted."""
+        state = data["states"].get("flatten_testable", {})
+        action = state.get("action", "")
+        assert "captured.raw_classified" in action, (
+            f"flatten_testable.action should reference captured.raw_classified, got {action!r}"
+        )
+        assert "captured.extracted" not in action, (
+            f"flatten_testable.action should NOT reference captured.extracted, got {action!r}"
+        )
+
+    def test_flatten_testable_routes_to_no_external_deps_and_run_gate(self, data: dict) -> None:
+        """flatten_testable evaluator must route on_yes: no_external_deps, on_no: run_gate."""
+        state = data["states"].get("flatten_testable", {})
+        assert state.get("on_yes") == "no_external_deps", (
+            f"flatten_testable.on_yes should be 'no_external_deps', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "run_gate", (
+            f"flatten_testable.on_no should be 'run_gate', got {state.get('on_no')!r}"
+        )
+
+    def test_run_gate_targets_refers_to_flatten_testable(self, data: dict) -> None:
+        """run_gate.with.targets must interpolate from captured.targets (from flatten_testable)."""
+        state = data["states"].get("run_gate", {})
+        with_ = state.get("with", {})
+        targets_val = with_.get("targets", "")
+        assert "${captured.targets.output}" in targets_val, (
+            f"run_gate.with.targets should reference ${{captured.targets.output}}, got {targets_val!r}"
+        )
+
 
 class TestProofFirstTaskLoop:
     """Tests that proof-first-task.yaml has correct structure and routing."""

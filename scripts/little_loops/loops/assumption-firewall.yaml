@@ -1,6 +1,6 @@
 name: assumption-firewall
 category: gate
-description: Gates an issue against the Learning-Test Registry; extracts external-API assumptions (max 7) via LLM, delegates proof to ready-to-implement-gate, routes done/blocked/no_external_deps.
+description: Gates an issue against the Learning-Test Registry; extracts external-API assumptions (max 7) via LLM, classifies each as testable/untestable, records untestable claims via --assume flag, delegates testable claims to ready-to-implement-gate, routes done/blocked/no_external_deps.
 initial: read_issue
 max_iterations: 100
 timeout: 7200
@@ -79,20 +79,111 @@ states:
       path: ".count"
       operator: gt
       target: 0
-    on_yes: flatten_targets
+    on_yes: classify_assumptions
     on_no: no_external_deps
 
-  flatten_targets:
+  classify_assumptions:
+    action_type: prompt
+    timeout: 300
+    action: |
+      You are an assumption classifier. Classify each extracted API assumption as testable or untestable.
+
+      A testable assumption CAN be proven with a local proof script using only public documentation,
+      offline-available SDK behavior, or standard HTTP requests (no authentication required).
+      An untestable assumption CANNOT be proven cheaply because it requires live API credentials,
+      rate-limited endpoints, long-running behavior, vendor-only environments, or paid tier access.
+
+      EXTRACTED ASSUMPTIONS:
+      ${captured.extracted.output}
+
+      Instructions:
+      1. Review each target in the extracted list.
+      2. Classify each as "testable" (can prove with local script) or "untestable" (needs live access).
+      3. If all assumptions are untestable, testable list will be empty.
+      4. Provide a brief rationale for each classification.
+
+      Output your analysis, then on the LAST LINE output exactly:
+      CLASSIFIED_JSON:{"testable": ["..."], "untestable": ["..."], "rationale": "<one paragraph>"}
+
+      If no testable assumptions exist:
+      CLASSIFIED_JSON:{"testable": [], "untestable": ["..."], "rationale": "..."}
+    capture: raw_classified
+    evaluate:
+      type: output_contains
+      pattern: "CLASSIFIED_JSON:"
+    on_yes: record_untestable
+    on_no: record_untestable
+
+  record_untestable:
     action_type: shell
     action: |
       python3 << 'PYEOF'
-      import json
-      data = json.loads("""${captured.extracted.output}""")
-      print(",".join(data["targets"]))
+      import json, subprocess, re
+
+      output = """${captured.raw_classified.output}"""
+      found = None
+      for line in reversed(output.split('\n')):
+          line = line.strip()
+          if line.startswith('CLASSIFIED_JSON:'):
+              found = line[len('CLASSIFIED_JSON:'):]
+              break
+
+      if not found:
+          print(json.dumps({"recorded": [], "errors": ["Failed to parse classification output."]}))
+      else:
+          try:
+              classified = json.loads(found)
+              recorded = []
+              errors = []
+              for claim in classified.get("untestable", []):
+                  try:
+                      subprocess.run(
+                          ["ll-action", "invoke", "explore-api",
+                           "--args", f"{claim} --assume {claim!r}"],
+                          check=False, capture_output=True, text=True
+                      )
+                      recorded.append(claim)
+                  except Exception as e:
+                      errors.append(f"Failed to record '{claim}': {e}")
+              print(json.dumps({"recorded": recorded, "errors": errors}))
+          except (json.JSONDecodeError, ValueError) as e:
+              print(json.dumps({"recorded": [], "errors": [f"JSON parse error: {e}"]}))
+      PYEOF
+    capture: untestable_result
+    on_error: flatten_testable
+    next: flatten_testable
+
+  flatten_testable:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, re
+
+      classified_output = """${captured.raw_classified.output}"""
+      found = None
+      for line in reversed(classified_output.split('\n')):
+          line = line.strip()
+          if line.startswith('CLASSIFIED_JSON:'):
+              found = line[len('CLASSIFIED_JSON:'):]
+              break
+
+      if not found:
+          print("")
+      else:
+          try:
+              data = json.loads(found)
+              print(",".join(data.get("testable", [])))
+          except (json.JSONDecodeError, ValueError):
+              print("")
       PYEOF
     capture: targets
-    on_error: blocked
-    next: run_gate
+    evaluate:
+      type: output_numeric
+      path: output_length
+      operator: eq
+      target: 0
+    on_yes: no_external_deps
+    on_no: run_gate
 
   run_gate:
     loop: ready-to-implement-gate

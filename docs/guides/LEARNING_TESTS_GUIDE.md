@@ -142,6 +142,8 @@ ll-learning-tests mark-stale "Anthropic SDK streaming"
 
 Why bother recording something you didn't test? Because an `untested` claim is a structured TODO, not a comment. It travels with the record, shows up in `ll-learning-tests check` output, and gets upgraded to `pass` or `fail` automatically if a future proof script happens to cover it. Use it for claims you believe to be true but can't cheaply test now — typically because they require expensive setup, depend on long-running behavior, or are stated by vendor docs without a local way to falsify them.
 
+The `assumption-firewall` loop (see [LOOPS_GUIDE.md](LOOPS_GUIDE.md#api-adoption)) now auto-records untestable claims via `--assume`: after extracting API assumptions from an issue file, it classifies each as testable or untestable, and records the untestable ones as structured TODOs in the Learning-Test Registry. This eliminates false gate blocks from assumptions that require live credentials or vendor-only environments.
+
 ```bash
 /ll:explore-api "Claude API tool use" \
   --assume "tools is a list of objects with name and input_schema" \

@@ -93,6 +93,34 @@ class TestMainLearningTestsCheck:
         assert "assertions" in data
         assert isinstance(data["assertions"], list)
 
+    def test_check_shows_untested_assertions(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """CLI check output must include assertions with result: untested."""
+        record = LearnTestRecord(
+            target="Stripe rate limits",
+            date="2026-05-30",
+            status="proven",
+            assertions=[
+                Assertion(claim="Rate limit is 100 req/s per endpoint", result="untested"),
+            ],
+            raw_output_path=None,
+        )
+        with patch("sys.argv", ["ll-learning-tests", "check", "Stripe rate limits"]):
+            with patch(
+                "little_loops.learning_tests.check_learning_test",
+                return_value=record,
+            ):
+                result = main_learning_tests()
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["status"] == "proven"
+        assertions = data["assertions"]
+        assert any(a["result"] == "untested" for a in assertions), (
+            f"Expected an assertion with result='untested', got {assertions}"
+        )
+
 
 class TestMainLearningTestsList:
     def test_list_empty_prints_array(self, capsys: pytest.CaptureFixture[str]) -> None:

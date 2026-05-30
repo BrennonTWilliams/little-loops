@@ -377,7 +377,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 |------|-------------|
 | `adopt-third-party-api` | End-to-end API adoption pipeline — scrapes a vendor docs URL via `/ll:scrape-docs`, enumerates up to 7 significant endpoints/features, proves each via `ready-to-implement-gate`, and writes a citation-linked integration playbook to `docs/integration-<domain>.md`. Partial coverage (some targets refuted or exhausted) still produces a playbook with a top warning block listing unverified sections. |
 | `ready-to-implement-gate` | Sub-loop primitive — given a list of external-API targets, proves each against the Learning-Test Registry via `/ll:explore-api`; routes `done` when all targets are proven, `blocked` when any are refuted or exhausted. Used as a child by `adopt-third-party-api` and `assumption-firewall`, but runnable standalone to gate any pre-implementation proof step. |
-| `assumption-firewall` | Issue gating loop — extracts up to 7 external-API assumptions from an issue file via LLM, delegates proof of each assumption to `ready-to-implement-gate`, and routes `done` (all proven), `blocked` (any refuted), or `no_external_deps` (no assumptions found). Use before starting implementation on issues that touch unfamiliar third-party APIs. |
+| `assumption-firewall` | Issue gating loop — extracts up to 7 external-API assumptions from an issue file via LLM, classifies each as testable (proven via `ready-to-implement-gate`) or untestable (recorded via `--assume` flag as `result: untested` in the Learning-Test Registry), and routes `done` (all testable proven), `blocked` (any testable refuted), or `no_external_deps` (no testable assumptions found). Use before starting implementation on issues that touch unfamiliar third-party APIs. |
 | `integrate-sdk` | Proof-driven SDK integration — branches on existing usage (code branch) vs. greenfield (docs branch), enumerates up to 7 required API surfaces, proves each via `ready-to-implement-gate`, then scaffolds integration code with `# Verified: .ll/learning-tests/<slug>.md` citations. Blocks with a structured diagnosis if any surface is refuted or citations don't resolve to proven records. |
 | `proof-first-task` | Opt-in wrapper that gates any implementation loop on `assumption-firewall` — extracts external-API assumptions from an issue file, proves each against the Learning-Test Registry, then delegates to a caller-specified impl loop (default `general-task`). When no `issue_file` is given, skips the gate and runs the impl loop directly. |
 
@@ -388,7 +388,7 @@ ll-loop run adopt-third-party-api "https://manual.raycast.com/extensions"
 
 # Gate an issue against the LT registry before implementing
 ll-loop run assumption-firewall --context issue_file=".issues/features/P2-FEAT-1234-my-feature.md"
-# Extracts API assumptions → proves each → routes done/blocked/no_external_deps
+# Extracts API assumptions → classifies testable/untestable → proves testable, records untestable via --assume → routes done/blocked/no_external_deps
 
 # Prove a specific list of targets standalone
 ll-loop run ready-to-implement-gate --context targets="stripe.PaymentIntent stripe.Webhook"
