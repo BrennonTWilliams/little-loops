@@ -16,7 +16,8 @@ labels:
   - create-loop
 relates_to: [ENH-1796]
 parent: EPIC-1694
-decision_needed: true
+decision_needed: false
+decision: Option B — omit HITL gates, ship as autonomous pipeline (Plan → Research → Implement → Report without human gates). Simplest, works today. Include commented-out HITL block for future activation when FEAT-1794 lands. Upgrade to Option C after FEAT-1794.
 ---
 
 # FEAT-1798: Specialist-role harness template (Plan → Research → Implement → Report)

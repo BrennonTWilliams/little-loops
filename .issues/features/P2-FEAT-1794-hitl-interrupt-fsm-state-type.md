@@ -14,7 +14,8 @@ labels:
   - hitl
   - loops
 relates_to: [FEAT-1545, FEAT-1613]
-decision_needed: true
+decision_needed: false
+decision: Option A — hardcoded dispatch following the mcp_tool pattern. Simpler single-file executor change, follows existing conventions. Extension-based path (Option B) deferred as future refactor.
 ---
 
 # FEAT-1794: HITL interrupt FSM state type (`action_type: human_approval`)
