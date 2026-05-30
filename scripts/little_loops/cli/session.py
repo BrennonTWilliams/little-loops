@@ -5,9 +5,10 @@ search and inspect the per-project ``.ll/history.db`` without re-parsing the
 scattered JSON/markdown sources the analyze-* skills read.
 
 Subcommands:
-    search   FTS5 full-text query with BM25-ranked results
+    search   FTS5 full-text query with BM25-ranked results and optional --kind filter
     recent   most recent rows for an event kind (tool, file, issue, loop, correction)
     backfill seed the database from existing on-disk sources
+    related  issue events for a given issue ID
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ from pathlib import Path
 
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
 from little_loops.cli_args import add_json_arg
+from little_loops.history_reader import related_issue_events
+from little_loops.history_reader import search as history_search
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, backfill, recent, search
 
@@ -29,9 +32,11 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s search --fts "rate limit"   # Full-text search, BM25-ranked
-  %(prog)s recent --kind loop          # Recent loop events
-  %(prog)s backfill                    # Seed the database from on-disk sources
+  %(prog)s search --fts "rate limit"              # Full-text search, BM25-ranked
+  %(prog)s search --fts "error" --kind loop       # FTS5 search filtered by kind
+  %(prog)s recent --kind loop                     # Recent loop events
+  %(prog)s related BUG-1759                       # Events for a specific issue
+  %(prog)s backfill                               # Seed the database from on-disk sources
 """,
     )
     parser.add_argument(
@@ -46,6 +51,12 @@ Examples:
 
     search_parser = subparsers.add_parser("search", help="FTS5 full-text search")
     search_parser.add_argument("--fts", required=True, metavar="QUERY", help="FTS5 match query")
+    search_parser.add_argument(
+        "--kind",
+        choices=["tool", "file", "issue", "loop", "correction", "message"],
+        default=None,
+        help="Filter results by event kind",
+    )
     search_parser.add_argument(
         "--limit", type=int, default=20, metavar="N", help="Maximum results (default: 20)"
     )
@@ -64,6 +75,15 @@ Examples:
     recent_parser.add_argument(
         "--json", action="store_true", dest="json", help="Output as JSON array"
     )
+
+    related_parser = subparsers.add_parser("related", help="Issue events for an issue ID")
+    related_parser.add_argument(
+        "issue_id", metavar="ISSUE_ID", help="Issue ID (e.g., BUG-1759)"
+    )
+    related_parser.add_argument(
+        "--limit", type=int, default=20, metavar="N", help="Maximum results (default: 20)"
+    )
+    add_json_arg(related_parser)
 
     subparsers.add_parser("backfill", help="Seed the database from existing on-disk sources")
 
@@ -92,20 +112,49 @@ def main_session() -> int:
         return 1
 
     if args.command == "search":
-        try:
-            results = search(args.db, query=args.fts, limit=args.limit)
-        except ValueError as exc:
-            logger.error(str(exc))
-            return 1
+        if args.kind:
+            results = history_search(args.fts, kind=args.kind, limit=args.limit, db=args.db)
+        else:
+            try:
+                results = search(args.db, query=args.fts, limit=args.limit)
+            except ValueError as exc:
+                logger.error(str(exc))
+                return 1
         if args.json:
+            if isinstance(results, list) and results and hasattr(results[0], "__dataclass_fields__"):
+                from dataclasses import asdict
+
+                results = [asdict(r) for r in results]
             print_json(list(results))
             return 0
         if not results:
             print("No matches.")
             return 0
         for row in results:
-            anchor = f"  ({row['anchor']})" if row.get("anchor") else ""
-            print(f"[{row['kind']}] {row['content']}{anchor}")
+            if hasattr(row, "__dataclass_fields__"):
+                anchor = f"  ({row.anchor})" if row.anchor else ""
+                print(f"[{row.kind}] {row.content}{anchor}")
+            else:
+                anchor = f"  ({row['anchor']})" if row.get("anchor") else ""
+                print(f"[{row['kind']}] {row['content']}{anchor}")
+        return 0
+
+    if args.command == "related":
+        events = related_issue_events(args.issue_id, limit=args.limit, db=args.db)
+        if args.json:
+            from dataclasses import asdict
+            print_json([asdict(e) for e in events])
+            return 0
+        if not events:
+            print(f"No events for {args.issue_id}.")
+            return 0
+        for e in events:
+            fields = ", ".join(
+                f"{k}={getattr(e, k)}"
+                for k in ("ts", "transition", "issue_type", "priority")
+                if getattr(e, k)
+            )
+            print(fields)
         return 0
 
     if args.command == "recent":

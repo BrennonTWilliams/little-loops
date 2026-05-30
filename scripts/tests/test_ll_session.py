@@ -172,3 +172,83 @@ class TestMainSession:
         with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "message"]):
             assert main_session() == 0
         assert "No message events" in capsys.readouterr().out
+
+    # --- search --kind (ENH-1752) ---
+
+    def test_search_kind_arg_accepted(self) -> None:
+        with patch("sys.argv", ["ll-session", "search", "--fts", "x", "--kind", "loop"]):
+            args = _parse_args()
+        assert args.command == "search"
+        assert args.kind == "loop"
+        assert args.fts == "x"
+
+    def test_search_kind_rejects_invalid(self) -> None:
+        with patch("sys.argv", ["ll-session", "search", "--fts", "x", "--kind", "bogus"]):
+            with pytest.raises(SystemExit):
+                _parse_args()
+
+    def test_search_with_kind_filter(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        transport.send({"event": "state_enter", "loop_name": "deploy", "state": "wait"})
+        transport.close()
+        with patch(
+            "sys.argv", ["ll-session", "--db", str(db), "search", "--fts", "deploy", "--kind", "loop"]
+        ):
+            assert main_session() == 0
+        assert "deploy" in capsys.readouterr().out
+
+    def test_search_kind_json_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        transport.send({"event": "state_enter", "loop_name": "deploy", "state": "wait"})
+        transport.close()
+        with patch(
+            "sys.argv",
+            ["ll-session", "--db", str(db), "search", "--fts", "deploy", "--kind", "loop", "--json"],
+        ):
+            assert main_session() == 0
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert len(data) > 0
+
+    # --- related (ENH-1752) ---
+
+    def test_related_arg_parsing(self) -> None:
+        with patch("sys.argv", ["ll-session", "related", "BUG-123"]):
+            args = _parse_args()
+        assert args.command == "related"
+        assert args.issue_id == "BUG-123"
+
+    def test_related_outputs_events(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        transport.send({"event": "issue.completed", "issue_id": "BUG-456"})
+        transport.close()
+        with patch("sys.argv", ["ll-session", "--db", str(db), "related", "BUG-456"]):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "BUG-456" in out or "done" in out
+
+    def test_related_no_match(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "related", "NOPE-000"]):
+            assert main_session() == 0
+        assert "No events for NOPE-000" in capsys.readouterr().out
+
+    def test_related_json_output(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        transport.send({"event": "issue.completed", "issue_id": "BUG-789"})
+        transport.close()
+        with patch(
+            "sys.argv", ["ll-session", "--db", str(db), "related", "BUG-789", "--json"]
+        ):
+            assert main_session() == 0
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert data[0]["issue_id"] == "BUG-789"

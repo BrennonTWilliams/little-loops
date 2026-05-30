@@ -2,7 +2,8 @@
 id: ENH-1752
 type: ENH
 priority: P2
-status: open
+status: done
+completed_at: '2026-05-29T23:30:00Z'
 parent: EPIC-1707
 discovered_date: 2026-05-27
 captured_at: "2026-05-27T20:37:30Z"
