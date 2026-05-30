@@ -59,6 +59,16 @@ Running two independent autodev sessions (e.g. `autodev BUG-031` and `autodev EN
 
 3. **Worktree isolation for implementation**: When an issue reaches `implement_current`, either acquire the full-repo lock, or spawn implementation in an isolated worktree so it doesn't block refinement of other issues.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis._
+
+- **Approach #1 (temp file scoping)**: Two viable scoping targets. (a) Scope within `.loops/tmp/` as `autodev-{instance_id}-*` — simpler but note that `.loops/tmp/` was intentionally kept as shared cross-run scratch by ENH-1726; scoping here adds clutter to the shared space. (b) Move to `${context.run_dir}` (`.loops/runs/{instance_id}/`) — aligns with ENH-1726's per-run isolation design and uses the already-injected `run_dir` context variable. Does NOT require injecting `instance_id` into `fsm.context` since `run_dir` already derives from it. Trade-off: temp files become subject to `.loops/runs/` cleanup policies.
+
+- **Approach #2 (split scope)**: Requires ENH-1787 (scope template variable support) as implemented dependency. Without `resolve_scope()`, autodev cannot declare per-issue scope — `scope: ["."]` is the only available value. After ENH-1787, refinement phases can use `scope: ["${context.run_dir}"]` so two instances with different `run_dir` values have non-overlapping scopes. Implementation phase retains `["."]` or worktree.
+
+- **Approach #3 (worktree isolation)**: `worktree_utils.py:21` (`setup_worktree()`) already creates isolated git worktrees with per-process markers (`worktree_utils.py:99` writes `.ll-session-{pid}`). Currently used at whole-loop level via `--worktree` flag (`run.py:330`). For per-state use within autodev, `implement_current` (autodev.yaml line 290) would need to wrap `ll-auto --only` in setup/teardown. Alternatively, implement a simpler lock handoff: refinement holds per-issue scope, `implement_current` upgrades to `["."]` scope — serializes implementation but is simpler.
+
 ## Acceptance Criteria
 
 - Two `ll-loop run autodev` invocations with disjoint issue sets can run refinement concurrently
@@ -79,6 +89,20 @@ Running two independent autodev sessions (e.g. `autodev BUG-031` and `autodev EN
 5. **Update tests**: Add concurrent execution test cases to `scripts/tests/test_builtin_loops.py`. Verify temp file isolation and disjointness detection.
 
 6. **Verify backward compatibility**: Run single-issue autodev to confirm behavior is unchanged.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis._
+
+- **Step 1 (instance_id plumbing)**: ENH-1354 already generates `instance_id` via `_make_instance_id()` at `_helpers.py:926` and propagates it through `LockManager.acquire()` and `PersistentExecutor.__init__()`. The gap: `instance_id` is NOT injected into `fsm.context`. ENH-1354 explicitly scoped this out. Two approaches: (a) add `fsm.context["instance_id"] = instance_id` alongside the existing `run_dir` injection at `run.py:162`; (b) use `${context.run_dir}` which already derives from instance_id (the ENH-1726 path). Approach (b) requires moving temp files from `.loops/tmp/` to `${context.run_dir}/`.
+
+- **Step 2 (temp file scoping)**: All 11 hardcoded `autodev-*` paths in `autodev.yaml` with line references: `autodev-queue.txt` (line 46), `autodev-passed.txt` (39, 158, 231, 416, 534), `autodev-skipped.txt` (40, 117, 353, 504, 536), `autodev-broke-down` (41, 130-132, 392), `autodev-inflight` (42, 71, 118, 364, 514, 563), `autodev-decide-ran` (74, 172, 199), `autodev-pre-ids.txt` (83, 252, 376), `autodev-post-ids.txt` (314), `autodev-diff-ids.txt` (318), `autodev-new-children.txt` (328), plus `recursive-refine-broke-down` (cross-loop handshake, line 129). Replace each `${loops.tmp}/autodev-*` with either `${loops.tmp}/autodev-${context.instance_id}-*` (if instance_id added to context) or `${context.run_dir}autodev-*` (using existing run_dir).
+
+- **Step 3 (split scope)**: Requires ENH-1787 (scope template variable support) first. After ENH-1787, autodev can declare `scope: ["${context.run_dir}"]` so concurrent instances with different `run_dir` values get non-overlapping scopes. Only 2 of 20+ existing loops declare `scope:` — `dead-code-cleanup.yaml` (`["scripts/"]`) and `docs-sync.yaml` (`["docs/", "*.md"]`). Implementation phase still serializes on `["."]` or worktree; the split is that refinement lock files live under per-instance paths, while implementation lock uses whole-repo scope.
+
+- **Step 4 (worktree isolation)**: `worktree_utils.py:21` (`setup_worktree()`) already creates isolated git worktrees. The `--worktree` flag at `run.py:330` works at whole-loop level. For per-state isolation, `implement_current` state (autodev.yaml line 290) runs `ll-auto --only ${captured.input.output}` directly on the main working tree. Option (a): wrap that shell command in worktree setup/teardown within the state — requires new worktree orchestration in autodev.yaml. Option (b): implement a lock handoff — refinement releases per-issue scope, `implement_current` acquires `["."]` scope — simpler but serializes implementation.
+
+- **Step 5 (tests)**: Follow concurrent test patterns in `scripts/tests/test_concurrency.py`: `TestLockManagerRaceConditions` (line 256) uses `threading.Barrier` for race-condition tests, `TestMultiInstanceSameName` (line 517) for same-name/different-instance lock isolation, `test_concurrent_same_name_non_overlapping_scopes_both_acquire` (line 545) for non-overlapping scope concurrent acquisition. Also `test_cli_loop_background.py:560` (`test_scope_conflict_returns_1`) for scope conflict behavior. Add temp file isolation tests to `test_builtin_loops.py:1270` (existing `TestAutodevInterleavedLoop` class).
 
 ## API/Interface
 
@@ -121,6 +145,30 @@ No public API changes. Internal contract changes:
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis._
+
+**Additional Files to Modify:**
+- `scripts/little_loops/cli/loop/_helpers.py:926` — `_make_instance_id()` generates instance_id; may need to inject into `fsm.context`
+- `scripts/little_loops/fsm/concurrency.py:98` — `LockManager.acquire()` already accepts `instance_id` kwarg; lock files at `.loops/.running/{instance_id}.lock` are already per-instance
+- `scripts/little_loops/fsm/concurrency.py:243` — `_scopes_overlap()` determines lock conflicts; ENH-1787's `resolve_scope()` would insert at `run.py:270` before `acquire()`
+- `scripts/little_loops/fsm/persistence.py:538` — `PersistentExecutor.__init__()` accepts `instance_id`; state/events files at `{instance_id}.state.json` already per-instance
+
+**Existing Infrastructure to Leverage:**
+- `scripts/little_loops/parallel/overlap_detector.py:42` — `OverlapDetector.check_overlap()` already detects file modification overlaps between issues using `FileHints.extract_file_hints()` (`file_hints.py:339`). Reusable for disjointness verification before allowing parallel implementation.
+- `scripts/little_loops/worktree_utils.py:21` — `setup_worktree()` creates isolated git worktrees; currently used at whole-loop level via `--worktree` flag (`run.py:330`), not per-state within autodev. For per-state isolation, `implement_current` would need to wrap `ll-auto --only` in worktree setup/teardown.
+- `scripts/little_loops/parallel/git_lock.py:28` — `GitLock` provides thread-safe git operations with `index.lock` retry; threading-only (not process-safe for cross-instance coordination).
+
+**ENH-1787 Dependency Detail:**
+- Status: `open`. Adds `resolve_scope()` to resolve `${context.*}` template variables in scope paths before `LockManager.acquire()`. Resolution happens at CLI layer (`cmd_run()` in `run.py`) after context population but before lock acquisition. Without this, autodev cannot declare per-issue scope paths — `scope: ["."]` is all that's available.
+
+**Architectural Note — `.loops/tmp/` vs `${context.run_dir}`:**
+- `.loops/tmp/` was intentionally kept as shared cross-run scratch by ENH-1726
+- `${context.run_dir}` (`.loops/runs/{instance_id}/`) already exists, is per-instance, and is available as `${context.run_dir}` in YAML shell commands
+- `instance_id` itself is NOT in `fsm.context` (ENH-1354 explicitly scoped this out); only `run_dir` is injected at `run.py:162`
+- Two isolation approaches: (a) scope paths within `.loops/tmp/` as `autodev-{instance_id}-*` — works but adds clutter to shared space; (b) move autodev temp files to `${context.run_dir}/` — aligns with existing per-run isolation design
+
 ## Related Issues
 
 - BUG-1760 (cancelled): original misdiagnosis that led to this feature request
@@ -131,4 +179,5 @@ No public API changes. Internal contract changes:
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-30T00:12:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2bd7f76-b0bd-4154-ac21-38679054df7a.jsonl`
 - `/ll:format-issue` - 2026-05-29T18:46:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e778a487-9894-450e-a694-a731058b51d1.jsonl`

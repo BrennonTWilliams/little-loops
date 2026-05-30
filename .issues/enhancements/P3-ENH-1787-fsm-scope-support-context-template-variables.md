@@ -117,9 +117,14 @@ scope:
 - `scripts/little_loops/cli/loop/run.py` — call `resolve_scope()` at line ~264 before `lock_manager.acquire()`
 - `scripts/little_loops/cli/loop/_helpers.py` — call `resolve_scope()` in `run_background()` pre-flight check
 - `scripts/little_loops/loops/rn-refine.yaml` — add `scope: ["${context.plan_file}"]`
+- `scripts/little_loops/fsm/schema.py` — update `FSMLoop.scope` field docstring (line ~858) from "Paths this loop operates on (for concurrency control)" to mention `${context.<var>}` template support [Agent 2 finding]
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_resume()` also calls `run_background()`; covered by the `_helpers.py` change
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/dead-code-cleanup.yaml` — has `scope:` field with static paths; verify template resolution doesn't affect existing static scopes [Agent 1 finding]
+- `scripts/little_loops/loops/docs-sync.yaml` — has `scope:` field with static paths; verify template resolution doesn't affect existing static scopes [Agent 1 finding]
 
 ### Similar Patterns
 - Context variable interpolation already exists in `action:` fields via the FSM runner — scope resolution follows the same pattern
@@ -132,6 +137,11 @@ scope:
 - `scripts/tests/test_concurrency.py` — add `test_resolve_scope_static`, `test_resolve_scope_with_context_var`, `test_resolve_scope_unresolved_var`, `test_resolve_scope_mixed`
 - `scripts/tests/test_cli_loop_background.py` — add `test_scope_resolution_before_spawn`: two `run_background()` calls with different context values should not conflict
 - `scripts/tests/test_cli_loop_run.py` — add integration test: two foreground runs with disjoint scopes don't conflict
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_loop_queue.py` — imports `ScopeLock` from concurrency; exercises lock acquire/conflict queue; verify no regressions after `resolve_scope` added [Agent 1 + 3 finding]
+- `scripts/tests/test_fsm_interpolation.py` — tests `VARIABLE_PATTERN` used by `resolve_scope()`; verify no regressions in template resolution [Agent 1 finding]
+- `scripts/tests/test_ll_loop_display.py` — `TestShowDiagramsSubprocessReemit._capture_cmd()` (line ~3694) sets `mock_fsm.scope = None`; implementation must call `resolve_scope()` AFTER `fsm.scope or ["."]` fallback to avoid None error [Agent 3 finding]
 
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md` — document template variable support in scope section
@@ -163,6 +173,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 9. Update `docs/reference/API.md` — add `resolve_scope` function entry in the `little_loops.fsm.concurrency` section; note `${context.<var>}` support in `FSMLoop.scope` attribute description [Agent 2 finding]
 10. Update `docs/generalized-fsm-loop.md` — add template variable example to "Concurrency and Locking" section [Agent 2 finding]
 11. Update `skills/create-loop/reference.md` — document template variable support in scope field reference [Agent 2 finding]
+12. Update `FSMLoop.scope` field docstring in `scripts/little_loops/fsm/schema.py` (line ~858) — change from "Paths this loop operates on (for concurrency control)" to include `${context.<var>}` template support [Agent 2 finding]
+13. Verify `scripts/little_loops/loops/dead-code-cleanup.yaml` and `scripts/little_loops/loops/docs-sync.yaml` — both have `scope:` fields with static paths; confirm template resolution is a no-op for static scopes [Agent 1 finding]
+14. Run `scripts/tests/test_cli_loop_queue.py` and `scripts/tests/test_fsm_interpolation.py` to verify no regressions from scope resolution changes [Agent 1 + 3 finding]
 
 ## Success Metrics
 
@@ -200,13 +213,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **`cmd_resume()` foreground path** (`lifecycle.py:361`): Does NOT acquire locks — scope resolution changes don't affect this code path
 - **`LockManager` normalization ordering**: `_normalize_path()` at `concurrency.py:277` calls `Path(path).resolve()`, which would turn a literal `${context.plan_file}` into an absolute path containing the literal template string. Resolution MUST happen before `LockManager` receives the scope list, confirming the issue's design decision to resolve at the CLI layer.
 - **No existing loops use `scope:`**: All current loops default to `["."]` (whole-project lock). The `rn-refine.yaml` change in this issue will be the first use of the `scope:` field in a committed loop.
+- **Correction** (_`/ll:wire-issue`_): `dead-code-cleanup.yaml` and `docs-sync.yaml` already have `scope:` fields with static paths. These loops must still work correctly after template resolution is added — static paths should pass through `resolve_scope()` unchanged (verified by `test_resolve_scope_static`).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-30T00:40:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7eddc41-f09a-4067-8b06-c318dcb4a0f3.jsonl`
 - `/ll:wire-issue` - 2026-05-29T20:04:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/abdc7cdc-bdc0-4301-8614-cf927bab7407.jsonl`
 - `/ll:refine-issue` - 2026-05-29T06:48:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cce38edf-049a-436e-a20e-74ea5a16ea27.jsonl`
 - `/ll:format-issue` - 2026-05-29T06:38:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0074390b-f718-4916-9a17-f29727630895.jsonl`
 - `/ll:capture-issue` - 2026-05-29T06:08:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b88328d9-b43a-4afd-b941-7bc140700c24.jsonl`
 - `/ll:confidence-check` - 2026-05-29T22:09:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42d54349-d303-49ce-a074-ab7903bdc951.jsonl`
+- `/ll:confidence-check` - 2026-05-29T23:55:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b6b1a25-9bd5-4bfa-b9af-3e66895667f1.jsonl`
 
 ---
 

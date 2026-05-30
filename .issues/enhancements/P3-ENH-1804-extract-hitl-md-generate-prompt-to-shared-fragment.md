@@ -3,10 +3,16 @@ id: ENH-1804
 type: ENH
 priority: P3
 status: done
-captured_at: "2026-05-29T21:57:08Z"
-completed_at: "2026-05-29T22:40:00Z"
+captured_at: '2026-05-29T21:57:08Z'
+completed_at: '2026-05-29T22:40:00Z'
 discovered_date: 2026-05-29
 discovered_by: capture-issue
+confidence_score: 95
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1804: Extract hitl-md 16KB generate prompt to shared file fragment
@@ -81,13 +87,30 @@ N/A - No public API changes. Internal loop refactoring only.
 ### Similar Patterns
 - ENH-1775 (Wave 2) — extracting generator-evaluator sub-loop and `parse_tagged_json` fragment
 - ENH-1774 (Wave 1) — adding `ll-commit` and Playwright screenshot as shared fragments
+- `scripts/little_loops/loops/lib/common.yaml:14` — YAML-level fragment library (`shell_exit`, `llm_gate`, `retry_counter`) — a different extraction approach (YAML state config reuse vs. prompt text extraction)
+- `hooks/prompts/optimize-prompt-hook.md` — analogous prompt-file extraction pattern using `{{HOOK_VARIABLE}}` template syntax
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **FSM Interpolation**: `scripts/little_loops/fsm/interpolation.py:169` — `interpolate()` resolves `${namespace.path}` patterns at runtime. `InterpolationContext.resolve()` (line 65) handles `context`, `captured`, `prev`, `result`, `state`, `loop`, `env` namespaces. Context variables like `${context.design_tokens_context}` stay in the YAML action text; the extracted prompt file contains only static instruction text.
+- **Executor on_error routing**: `scripts/little_loops/fsm/executor.py:1295` — `_run_action_or_route()` catches exceptions and routes to `state.on_error` if configured. Without it, exceptions propagate to `run()` line 491 which calls `_finish("error")` — hard termination.
+- **Runner context injection**: `scripts/little_loops/cli/loop/run.py:176-183` — `design_tokens_context` is injected at startup by `load_design_tokens()` / `render_as_prompt_context()` from `scripts/little_loops/design_tokens.py:136/201`.
+- **Test pattern**: `scripts/tests/test_builtin_loops.py:3478` — `generate_spec` fixture concatenates the YAML action text with `prompts/hitl-md-generate.md` content, so requirement tests (e.g., staged highlighting, density slider) search across both files.
+- **Prompt execution flow**: `action_type: prompt` states dispatch through `FSMExecutor._run_action()` (executor.py:943) → interpolate → `DefaultActionRunner.run()` (runners.py:56) → `run_claude_command()` which invokes the host CLI as a subprocess. The LLM reads `prompts/hitl-md-generate.md` using its standard file-reading tool during prompt execution.
 
 ### Tests
 - Re-run `ll-loop run hitl-md --input "PRD-Hermes-Integration-v3.md"` to verify no regression
 - Verify the generate prompt reads the external file correctly via template resolution
+- `scripts/tests/test_builtin_loops.py:3467` — `TestHitlMdLoop` class verifies structural integrity; `generate_spec` fixture (line 3478) concatenates YAML action + `prompts/hitl-md-generate.md` for cross-file requirement tests
+- `scripts/tests/test_builtin_loops.py:3598` — `test_generate_on_error_routes_to_failed` verifies the BUG-1803 `on_error: failed` fix
+- `scripts/tests/test_builtin_loops.py:3625` — `test_generate_action_writes_index_html` verifies generate action references `index.html`
+- `scripts/tests/test_fsm_executor.py:2730` — `test_interpolation_error_routes_to_on_error_when_set` verifies the executor-level on_error routing
 
 ### Documentation
-- N/A
+- `docs/development/sensemaking-hitl-md.md` — documents the 8 sensemaking patterns implemented in the generate spec
+- `docs/guides/LOOPS_GUIDE.md:2832` — fragment definitions and template inheritance patterns
 
 ### Configuration
 - N/A
@@ -100,6 +123,17 @@ N/A - No public API changes. Internal loop refactoring only.
 4. Validate: `ll-loop validate hitl-md`
 5. Re-run the failing invocation to confirm fix
 
+### Verification (Post-Implementation)
+
+_Added by `/ll:refine-issue` — codebase research confirms implementation is complete:_
+
+- `prompts/hitl-md-generate.md` exists at 274 lines — the full design specification extracted from the YAML
+- `scripts/little_loops/loops/hitl-md.yaml:166` — generate action includes `Read prompts/hitl-md-generate.md for the full design specification.`
+- `scripts/little_loops/loops/hitl-md.yaml:170` — `on_error: failed` is present on generate state
+- `scripts/tests/test_builtin_loops.py:3598` — `test_generate_on_error_routes_to_failed` passes, confirming the BUG-1803 fix
+- `scripts/tests/test_builtin_loops.py:3478` — `generate_spec` fixture verifies both YAML action and prompt file exist and concatenate correctly
+- Commit `9adc0f5a` — "refine(ENH-1804): extract hitl-md generate design spec to shared prompt file"
+
 ## Impact
 
 - **Priority**: P3 — Reduces fragility and improves maintainability; not blocking
@@ -109,7 +143,10 @@ N/A - No public API changes. Internal loop refactoring only.
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+- `docs/development/sensemaking-hitl-md.md` — documents the 8 sensemaking patterns (ENH-1770) whose requirements live in the extracted prompt file
+- `docs/guides/LOOPS_GUIDE.md` — loop authoring guide with fragment definitions and template inheritance patterns
+- `docs/generalized-fsm-loop.md` — general FSM loop design document
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — harness authoring guide referencing similar patterns
 
 ## Labels
 
@@ -120,6 +157,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 - `/ll:capture-issue` — 2026-05-29T21:57:08Z — `64ba091c-1c65-464a-81b6-237b5a702007.jsonl`
 - `/ll:manage-issue` — 2026-05-29T22:40:00Z — (implementation)
+- `/ll:confidence-check` - 2026-05-29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/61594731-05cd-4053-a702-bd2146f328e1.jsonl`
 
 ---
 
