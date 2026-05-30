@@ -9,6 +9,7 @@ description: |
   Anthropic's harness design article.
 initial: plan
 max_iterations: 30
+on_handoff: spawn
 timeout: 14400
 
 # HARNESS: Context variables control quality threshold.
@@ -68,15 +69,16 @@ states:
       - If design tokens are provided above, use their semantic names and resolved values
         for colors; do not invent new color values outside the token palette
       - If critique exists, resolves every specific issue before introducing new ideas
-    next: evaluate
+    next: capture
 
-  evaluate:
+  capture:
     # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// page.
     # Self-contained HTML (all CSS/JS inline) renders correctly under file:// without
     # an HTTP server, eliminating background process lifecycle issues entirely.
-    # Routes to score on success; routes back to generate on failure (e.g. Playwright
-    # not installed, or file missing) so the loop can still make progress via
-    # LLM-only scoring if the shell tool is unavailable.
+    # Routes to score on a successful capture; routes back to generate on a failed
+    # capture to retry with a fresh HTML file (transient Playwright/render issues).
+    # on_error routes to the failed terminal so a missing/broken Playwright binary
+    # bails cleanly instead of spinning until max_iterations.
     action_type: shell
     action: |
       playwright screenshot "file://$(pwd)/${context.run_dir}/index.html" "${context.run_dir}/screenshot.png" && echo "CAPTURED"
@@ -85,6 +87,7 @@ states:
       pattern: "CAPTURED"
     on_yes: score
     on_no: generate
+    on_error: failed
 
   score:
     # HARNESS: Evaluator phase — LLM judges the screenshot against four design criteria
@@ -131,9 +134,18 @@ states:
       pattern: "ALL_PASS"
     on_yes: done
     on_no: generate
+    on_error: failed
 
   done:
     # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
     # The final website is at ${context.run_dir}/index.html.
     # The last critique (with final scores) is at ${context.run_dir}/critique.md.
+    terminal: true
+
+  failed:
+    # HARNESS: Failure terminal — reached when the screenshot tool or LLM judge errors
+    # out. Signals an explicit failure (vs. silent max_iterations exhaustion) so the
+    # outer loop / log reader can distinguish "loop bailed cleanly" from "loop is still
+    # iterating". The last artifacts (brief.md, any partial index.html, the last
+    # critique.md if one was written) remain in ${context.run_dir} for inspection.
     terminal: true
