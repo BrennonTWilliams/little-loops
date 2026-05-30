@@ -6,7 +6,7 @@ status: open
 captured_at: '2026-05-25T20:53:43Z'
 discovered_date: '2026-05-25'
 discovered_by: capture-issue
-relates_to: [FEAT-1692, FEAT-1695, FEAT-1696, FEAT-1697, FEAT-1287, FEAT-1283, FEAT-1285, FEAT-1286, EPIC-1663, FEAT-1738, FEAT-1739, ENH-1740, ENH-1741, FEAT-1742, FEAT-1743, FEAT-1798]
+relates_to: [FEAT-1692, FEAT-1695, FEAT-1696, FEAT-1697, FEAT-1287, FEAT-1283, FEAT-1285, FEAT-1286, EPIC-1663, FEAT-1738, FEAT-1739, ENH-1740, ENH-1741, FEAT-1742, FEAT-1743, FEAT-1798, ENH-1284, FEAT-1813, ENH-1814]
 ---
 
 # EPIC-1694: Built-in FSM Loops Powered by the Learning-Test Registry
@@ -45,6 +45,11 @@ This constraint is why FEAT-1695 (`ready-to-implement-gate`) is shell-driven rat
 - **ENH-1741** — refactor `ready-to-implement-gate` to use `type: learning` states, making it the canonical built-in exemplar of the primitive
 - **ENH-1740** — `assumption-firewall` — record untestable claims via `--assume` flag
 - **FEAT-1798** — Specialist-role harness template (Plan → Research → Implement → Report)
+- **FEAT-1738** — `proof-first-task`: opt-in wrapper that gates any impl loop on `assumption-firewall` (already `done`)
+- **FEAT-1739** — `learning-tests-audit`: stale-record detection and triage report; closes the lifecycle gap
+- **ENH-1284** — Learning-Test Gate in Issue Lifecycle: `/ll:ready-issue`/`/ll:go-no-go` block on missing or stale proofs declared in issue frontmatter (un-deferred 2026-05-30)
+- **FEAT-1813** — `migrate-sdk-version`: bulk re-prove stale records and classify (still-valid / needs-upgrade / refuted); counterpart to FEAT-1739
+- **ENH-1814** — Docs pass for `LEARNING_TESTS_GUIDE.md` and `LOOPS_GUIDE.md` covering the EPIC-1694 surface
 
 ## Scope
 

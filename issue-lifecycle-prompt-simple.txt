@@ -1,0 +1,3 @@
+A particle simulation of .issues flowing through their lifecycle: pending → in_progress → done or cancelled. Each particle is an issue, color-coded by type (BUG=red, FEAT=blue,
+  ENH=green, EPIC=purple). Issues accumulate in status buckets, and particles drift between buckets over time. Show inflow at the top, outflow at the bottom. Include a subtle time
+  counter.

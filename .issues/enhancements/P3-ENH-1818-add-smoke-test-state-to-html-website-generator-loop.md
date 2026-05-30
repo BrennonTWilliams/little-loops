@@ -86,6 +86,10 @@ Route `score.on_yes` to `smoke_test` instead of directly to `done`.
 3. Run `ll-loop validate html-website-generator` to confirm no structural errors
 4. Manual smoke test: run loop with a simple description, verify `smoke_test` state executes
 
+## API/Interface
+
+N/A - No public API changes (loop-internal state addition only)
+
 ## Success Metrics
 
 - Loop completes `smoke_test` state before reaching `done` terminal
@@ -115,6 +119,7 @@ Route `score.on_yes` to `smoke_test` instead of directly to `done`.
 `loop-refinement`, `harness`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-30T22:46:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fabe793e-a48c-46ba-8f98-a5684209ca60.jsonl`
 - `/ll:capture-issue` - 2026-05-30T22:43:51Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a21d14e7-ea27-437a-b7be-dfdc28dd7d84.jsonl`
 
 ---

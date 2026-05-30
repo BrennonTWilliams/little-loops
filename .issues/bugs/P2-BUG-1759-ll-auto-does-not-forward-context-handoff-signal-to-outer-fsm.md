@@ -21,17 +21,27 @@ labels:
 
 When the autodev FSM runs `ll-auto` as a subprocess action, `ll-auto` internally spawns a Claude manage-issue session. If that Claude session hits its context limit and emits `CONTEXT_HANDOFF:` to its own stdout, `ll-auto` does not forward this signal to its own stdout. The outer autodev FSM's `signal_detector` only sees `ll-auto`'s stdout — so it never detects the handoff and cannot take any terminal action for that iteration.
 
+## Motivation
+
+This bug blocks autodev FSM loops from detecting when their child `ll-auto` processes hit context limits. Without signal forwarding, the outer loop cannot take terminal action (handoff, timeout, skip), causing:
+
+- Indefinite iteration hangs (4+ hours observed) on every context-limit encounter
+- Accumulation of orphaned `claude` child processes across TTYs (5 observed across one incident)
+- Scope creep from continuation prompts that don't check whether the target issue is already resolved
+
 ## Root Cause
 
 - **File**: `scripts/little_loops/fsm/signal_detector.py`, `scripts/little_loops/fsm/executor.py`
 - **Function**: `SignalDetector.detect_first()` / `_run_action()` `on_output_line` callback
 - **Explanation**: The `signal_detector` correctly detects `CONTEXT_HANDOFF:` in direct Claude action output (when `ll-loop run` calls Claude directly). But when the action is `ll-auto`, the subprocess chain is `autodev FSM → ll-auto → claude manage-issue`. The Claude process emits `CONTEXT_HANDOFF:` to `ll-auto`'s internal subprocess pipe, not to `ll-auto`'s own stdout. `ll-auto` does not surface this signal upward, so the autodev FSM's executor receives no handoff event and continues waiting.
 
-## Observed Behavior
+## Current Behavior
 
 **Incident 1 (2026-05-27, ENH-1702):** Claude subprocess hit context limit (301%), spawned a continuation session, and completed the work. But `ll-auto` (PID 31860) kept running waiting for the inner process; the outer autodev FSM never received a handoff signal and hung in `implement_current` for 4+ hours with no events since 6:56 PM.
 
 **Incident 2 (2026-05-30, BUG-1799):** Same chain — `ll-loop run autodev BUG-1799` → `ll-auto --only BUG-1799` → `claude`. BUG-1799 was completed and committed (`2311d7f4`, status: `done`) before the claude session hit its context limit. The continuation prompt told the fresh session to "continue from the interruption point" and "close the issue as usual," but the issue was already done. The new session began implementing *unrelated* issues (ENH-1805, BUG-1800, ENH-1769), burning tokens on work `ll-auto --only BUG-1799` never requested. All three processes (`ll-loop`, `ll-auto`, `claude`) remained alive in a wait chain with no progress.
+
+**Incident 3 (2026-05-30, BUG-1815):** Same chain — `ll-loop run autodev BUG-1815` → `ll-auto` → `claude`. BUG-1815 was already fixed and committed (`c5e5cf41`, status: `done`) in a prior session. The continuation prompt shipped the full 3.1M-token session history (1552% of context limit) into a fresh session, creating a continuation death spiral — the handoff prompt itself blows the context limit immediately on load. The `ll-loop` process (PID 11442) sat for 40+ minutes waiting on a claude child (PID 79771) that could never make progress. Killing the parent left the claude child orphaned and still running.
 
 ### Continuation prompt design flaw
 
@@ -41,6 +51,15 @@ The "fresh session continuation" prompt unconditionally instructs the new sessio
 
 Each stuck iteration leaves behind a `claude` child process that `ll-auto` is waiting on. When the outer loop eventually times out or is killed, `ll-auto` exits but its claude child may detach and persist. Over repeated autodev runs, orphaned claude processes accumulate across TTYs (5 observed during the BUG-1799 incident across `s003`, `s010`, `s012`, `s013`, `s015`, `s033`). Neither `ll-auto` nor `ll-loop` has a cleanup mechanism for prior stuck iterations before starting a new one.
 
+## Steps to Reproduce
+
+1. Run `ll-loop run autodev <issue-id>` which invokes `ll-auto` as a subprocess action
+2. The autodev FSM spawns `ll-auto --only <issue-id>`
+3. `ll-auto` spawns a Claude manage-issue session
+4. The Claude session hits its context limit and emits `CONTEXT_HANDOFF:` to its stdout
+5. Observe: `ll-auto` does not forward the signal to its own stdout
+6. Observe: The outer autodev FSM never detects the handoff, and the iteration hangs indefinitely (4+ hours)
+
 ## Expected Behavior
 
 When `ll-auto`'s child Claude process emits `CONTEXT_HANDOFF:`, `ll-auto` should either:
@@ -48,6 +67,15 @@ When `ll-auto`'s child Claude process emits `CONTEXT_HANDOFF:`, `ll-auto` should
 2. Exit with a specific exit code that the autodev FSM routes as a terminal/handoff state
 
 Alternatively, the autodev FSM's `implement_current` state should have a mandatory wall-clock timeout (via BUG-1723's `idle_timeout`) so a stuck `ll-auto` subprocess is killed after a configurable threshold regardless of signal propagation.
+
+## Proposed Solution
+
+Modify `ll-auto`'s child process output handling to detect and forward `CONTEXT_HANDOFF:` signals:
+
+1. In `scripts/little_loops/cli/auto.py`, add signal detection on the child Claude subprocess stdout — when `CONTEXT_HANDOFF:` is detected, print it to `ll-auto`'s own stdout and exit cleanly
+2. Alternative: exit with a specific handoff exit code (e.g., 75) that the autodev FSM's `implement_current` state routes to a terminal path
+3. Add a pre-continuation guard: before spawning a fresh Claude session, check whether the target issue is already `status: done` or `cancelled` — if so, skip the continuation and exit cleanly
+4. Add orphan detection: before starting a new iteration, `ll-loop` should detect and warn about prior claude processes still running for the same loop/issue
 
 ## Implementation Steps
 

@@ -99,6 +99,10 @@ Wire into `validate_fsm()` alongside the existing MR-1/MR-2/zero-retry-counter c
 ### Configuration
 - N/A
 
+## API/Interface
+
+N/A - no public API changes; new `_validate_harness_multimodal_evaluator_blind_spot()` is internal (called from existing `validate_fsm()`).
+
 ## Implementation Steps
 
 1. Add `_MULTIMODAL_EVAL_PATTERNS` regex tuple to `validation.py`
@@ -139,6 +143,7 @@ Wire into `validate_fsm()` alongside the existing MR-1/MR-2/zero-retry-counter c
 `validation`, `loop-authoring`, `harness`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-05-30T22:47:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/161b9a00-98fc-4a06-9eec-25494c352734.jsonl`
 - `/ll:capture-issue` - 2026-05-30T22:43:51Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a21d14e7-ea27-437a-b7be-dfdc28dd7d84.jsonl`
 
 ---

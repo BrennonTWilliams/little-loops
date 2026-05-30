@@ -5,13 +5,11 @@ priority: P4
 captured_at: "2026-04-25T18:06:01Z"
 discovered_date: "2026-04-25"
 discovered_by: capture-issue
-depends_on: [ENH-1282]
-deferred: true
-deferred_reason: "Lower leverage than ENH-1283; depends on registry maturity. Revisit after ENH-1282 ships."
-status: deferred
+parent: EPIC-1694
+status: open
 ---
 
-# ENH-1284: Learning Test Gate in Issue Lifecycle (Deferred)
+# ENH-1284: Learning Test Gate in Issue Lifecycle
 
 ## Summary
 
