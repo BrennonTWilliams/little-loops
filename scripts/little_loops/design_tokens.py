@@ -42,10 +42,21 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _flatten(obj: Any, prefix: str = "") -> dict[str, Any]:
-    """Recursively flatten a nested dict to dotted-key -> leaf-value pairs."""
+    """Recursively flatten a nested dict to dotted-key -> leaf-value pairs.
+
+    Supports both legacy flat layout (``{"key": "value"}``) and W3C DTCG
+    format (``{"key": {"$value": "value"}}``). When a dict has a ``$value``
+    key it is treated as a leaf and ``$``-prefixed metadata siblings
+    (``$type``, ``$description``, etc.) are ignored.
+    """
     result: dict[str, Any] = {}
     if isinstance(obj, dict):
+        if "$value" in obj:
+            result[prefix] = obj["$value"]
+            return result
         for key, value in obj.items():
+            if key.startswith("$"):
+                continue
             full_key = f"{prefix}.{key}" if prefix else key
             result.update(_flatten(value, full_key))
     else:
@@ -95,6 +106,19 @@ def _resolve_value(
         return _resolve_value(
             ref_name,
             flat[ref_name],
+            flat,
+            primitives_flat,
+            resolving | {key},
+        )
+    # Fallback for legacy partially-flattened DTCG inputs where a reference
+    # like {typography.fontFamily.heading} may need a .$value suffix lookup.
+    dv_ref = ref_name + ".$value"
+    if dv_ref in primitives_flat:
+        return str(primitives_flat[dv_ref])
+    if dv_ref in flat:
+        return _resolve_value(
+            dv_ref,
+            flat[dv_ref],
             flat,
             primitives_flat,
             resolving | {key},

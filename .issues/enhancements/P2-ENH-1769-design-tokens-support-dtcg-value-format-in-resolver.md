@@ -2,8 +2,9 @@
 id: ENH-1769
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: "2026-05-28T21:10:40Z"
+completed_at: "2026-05-30T06:50:00Z"
 discovered_date: 2026-05-28
 discovered_by: capture-issue
 labels: [enhancement, design-tokens, captured]

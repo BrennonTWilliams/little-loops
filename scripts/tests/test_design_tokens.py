@@ -91,6 +91,94 @@ class TestLoadDesignTokensHappyPath:
         assert result.source_path == token_dir
 
 
+class TestLoadDesignTokensDtcgFormat:
+    """DTCG $value format support (ENH-1769)."""
+
+    def test_flat_dtcg_leaf_value_extracted(self, tmp_path: Path) -> None:
+        """DTCG-format tokens with $value keys flatten correctly."""
+        _write_tokens(
+            tmp_path,
+            primitives={
+                "typography": {
+                    "fontFamily": {
+                        "heading": {"$value": "Inter"},
+                        "body": {"$value": "System UI"},
+                    }
+                }
+            },
+        )
+        config = _make_config(tmp_path)
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.resolved["typography.fontFamily.heading"] == "Inter"
+        assert result.resolved["typography.fontFamily.body"] == "System UI"
+
+    def test_dtcg_metadata_siblings_ignored(self, tmp_path: Path) -> None:
+        """DTCG $type, $description, and other $metadata are ignored during flattening."""
+        _write_tokens(
+            tmp_path,
+            primitives={
+                "color": {
+                    "brand": {
+                        "500": {
+                            "$value": "#4F46E5",
+                            "$type": "color",
+                            "$description": "Primary brand color",
+                        }
+                    }
+                }
+            },
+        )
+        config = _make_config(tmp_path)
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.resolved["color.brand.500"] == "#4F46E5"
+        # $type and $description must NOT appear as resolved keys
+        assert "color.brand.500.$type" not in result.resolved
+        assert "color.brand.500.$description" not in result.resolved
+
+    def test_dtcg_reference_resolves(self, tmp_path: Path) -> None:
+        """References resolve correctly when source uses DTCG format."""
+        _write_tokens(
+            tmp_path,
+            primitives={
+                "typography": {
+                    "fontFamily": {
+                        "heading": {"$value": "Inter"},
+                    }
+                }
+            },
+            semantic={
+                "typography": {
+                    "heading": {"fontFamily": "{typography.fontFamily.heading}"}
+                }
+            },
+        )
+        config = _make_config(tmp_path)
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.resolved["typography.heading.fontFamily"] == "Inter"
+
+    def test_mixed_dtcg_and_legacy(self, tmp_path: Path) -> None:
+        """Mixed DTCG and legacy formats coexist correctly."""
+        _write_tokens(
+            tmp_path,
+            primitives={
+                "color": {"brand": {"500": "#4F46E5"}},  # legacy flat
+                "space": {"sm": {"$value": "4px"}},  # DTCG
+            },
+            semantic={
+                "color": {"primary": "{color.brand.500}"},
+                "space": {"gap": "{space.sm}"},
+            },
+        )
+        config = _make_config(tmp_path)
+        result = load_design_tokens(config)
+        assert result is not None
+        assert result.resolved["color.primary"] == "#4F46E5"
+        assert result.resolved["space.gap"] == "4px"
+
+
 class TestLoadDesignTokensThemeOverride:
     def test_theme_value_overrides_semantic(self, tmp_path: Path) -> None:
         _write_tokens(
