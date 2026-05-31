@@ -455,14 +455,15 @@ Entries are short-lived and ephemeral — treat the directory as a live view, no
 
 Validate a loop definition file.
 
-In addition to structural checks (reachability, evaluator fields, routing consistency), validation applies two **meta-loop lint rules** when a loop is classified as a meta-loop (writes harness artifacts, imports `lib/benchmark.yaml`, or references `yaml_state_editor`/`replace_action`):
+In addition to structural checks (reachability, evaluator fields, routing consistency), validation applies **meta-loop lint rules** when a loop is classified as a meta-loop (writes harness artifacts, imports `lib/benchmark.yaml`, or references `yaml_state_editor`/`replace_action`):
 
 - **MR-1 (ERROR)**: A meta-loop must have at least one non-LLM evaluator (`exit_code`, `output_numeric`, `output_json`, `output_contains`, `convergence`, `diff_stall`, `harbor_scorer`, `mcp_result`). LLM self-grades on harness updates are unreliable (SHOR Table 1: 33–55% accuracy). Triggers a `ValueError` (exit code 1) that blocks the loop from running.
 - **MR-2 (WARNING)**: A meta-loop should reference a captured baseline value in a later evaluator (`evaluate.previous`, `evaluate.target`, or `evaluate.source`). This ensures a measure→propose→apply→re-measure spine is present. Does not block validation.
 
-Both rules are suppressed by setting `meta_self_eval_ok: true` at the loop top-level (with a justifying comment).
+MR-1, MR-2, and the multimodal evaluator blind-spot rule are suppressed by setting `meta_self_eval_ok: true` at the loop top-level (with a justifying comment).
 
 - **Zero-retry counter pattern (WARNING)**: Detects states whose `retry` config sets `max_retries: 0` alongside a non-zero `retry_count` counter variable, or `retry_count` that is never incremented in any on-error transition. A zero-retry counter pattern means the state will never actually retry despite having retry infrastructure wired — this is almost always a configuration mistake. Does not block validation.
+- **Multimodal evaluator blind-spot (WARNING)**: Detects harness-loop states that use an LLM multimodal prompt (screenshot/image) evaluated via `output_contains` as the sole gate routing directly to a terminal state. LLMs can silently fall back to text-only analysis when reading images, producing verdicts from incomplete information without the `output_contains` evaluator detecting the gap. Consider adding a shell-action verification state (e.g., functional smoke test) between scoring and the terminal. Does not block validation. Suppressed by `meta_self_eval_ok: true`.
 
 #### `ll-loop list` / `ll-loop l`
 
