@@ -48,7 +48,7 @@ from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
 from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.session_log import get_current_session_jsonl
-from little_loops.subprocess_utils import run_claude_command
+from little_loops.subprocess_utils import UsageCallback, run_claude_command
 
 # Maximum number of per-state rate-limit retries before emitting rate_limit_exhausted.
 _DEFAULT_RATE_LIMIT_RETRIES: int = 3
@@ -1362,6 +1362,7 @@ class FSMExecutor:
             action_text = interpolate(state.action, ctx)  # type: ignore[arg-type]
             baseline_skill_name = _extract_skill_from_action(action_text)
 
+        assert state.action is not None  # caller-guarded by `if state.action:`
         with ThreadPoolExecutor(max_workers=2) as pool:
             harness_future = pool.submit(
                 self._run_action, state.action, state, ctx, _on_harness_usage
