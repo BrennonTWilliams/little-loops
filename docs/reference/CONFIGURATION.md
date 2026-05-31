@@ -640,7 +640,7 @@ Learning test registry settings. Records are stored as YAML-frontmatter markdown
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `stale_after_days` | `30` | Days after which a record is considered stale and should be re-validated |
+| `stale_after_days` | `30` | Days after which a record is considered stale and should be re-validated. Used as a pre-filter by `ll-loop run learning-tests-audit` to skip recently-created records that can't be stale yet. |
 
 Example:
 

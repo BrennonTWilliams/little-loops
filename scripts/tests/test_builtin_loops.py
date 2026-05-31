@@ -73,6 +73,7 @@ class TestBuiltinLoopFiles:
             "issue-discovery-triage",
             "issue-refinement",
             "issue-staleness-review",
+            "learning-tests-audit",
             "backlog-flow-optimizer",
             "sprint-build-and-validate",
             "worktree-health",
@@ -496,6 +497,128 @@ class TestEvaluationQualityLoop:
         assert state.get("on_yes") == "prepare_report"
         evaluate = state.get("evaluate", {})
         assert "NONE" in evaluate.get("pattern", "")
+
+    def test_max_iterations_and_timeout(self, data: dict) -> None:
+        """Loop must define max_iterations and timeout."""
+        assert data.get("max_iterations", 0) > 0
+        assert data.get("timeout", 0) > 0
+
+
+class TestLearningTestsAuditLoop:
+    """Structural tests for the learning-tests-audit FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "learning-tests-audit.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, and states fields."""
+        assert data.get("name") == "learning-tests-audit"
+        assert data.get("initial") == "list_records"
+        assert isinstance(data.get("states"), dict)
+
+    def test_category_is_api_adoption(self, data: dict) -> None:
+        """Loop must be in the api-adoption category."""
+        assert data.get("category") == "api-adoption"
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {
+            "list_records",
+            "enumerate_installed",
+            "classify_packages",
+            "check_versions",
+            "mark_stale_candidates",
+            "prepare_report_path",
+            "build_report",
+            "done",
+            "done_empty",
+        }
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
+
+    def test_done_empty_state_is_terminal(self, data: dict) -> None:
+        """done_empty state must have terminal: true."""
+        state = data["states"].get("done_empty", {})
+        assert state.get("terminal") is True
+
+    def test_list_records_uses_output_json(self, data: dict) -> None:
+        """list_records must use output_json evaluator to gate on record count."""
+        state = data["states"].get("list_records", {})
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_json"
+        assert evaluate.get("path") == "output_length"
+        assert evaluate.get("operator") == "gt"
+        assert evaluate.get("target") == 0
+
+    def test_list_records_captures_records(self, data: dict) -> None:
+        """list_records must capture: records for downstream states."""
+        state = data["states"].get("list_records", {})
+        assert state.get("capture") == "records"
+
+    def test_enumerate_installed_uses_shell_exit_fragment(self, data: dict) -> None:
+        """enumerate_installed must use shell_exit fragment."""
+        state = data["states"].get("enumerate_installed", {})
+        assert state.get("fragment") == "shell_exit"
+
+    def test_classify_packages_uses_llm_gate_fragment(self, data: dict) -> None:
+        """classify_packages must use llm_gate fragment."""
+        state = data["states"].get("classify_packages", {})
+        assert state.get("fragment") == "llm_gate"
+
+    def test_classify_packages_has_on_partial_retry(self, data: dict) -> None:
+        """classify_packages must retry on partial classification."""
+        state = data["states"].get("classify_packages", {})
+        assert state.get("on_partial") == "classify_packages"
+
+    def test_check_versions_has_on_error(self, data: dict) -> None:
+        """check_versions must define on_error to prevent hangs on registry errors."""
+        state = data["states"].get("check_versions", {})
+        assert "on_error" in state
+
+    def test_mark_stale_candidates_has_on_error(self, data: dict) -> None:
+        """mark_stale_candidates must define on_error for CLI failures."""
+        state = data["states"].get("mark_stale_candidates", {})
+        assert "on_error" in state
+
+    def test_prepare_report_path_is_shell_state(self, data: dict) -> None:
+        """prepare_report_path must be a shell state for date expansion."""
+        state = data["states"].get("prepare_report_path", {})
+        assert state.get("action_type") == "shell"
+
+    def test_prepare_report_path_captures_report_path(self, data: dict) -> None:
+        """prepare_report_path must capture: report_path for build_report."""
+        state = data["states"].get("prepare_report_path", {})
+        assert state.get("capture") == "report_path"
+
+    def test_prepare_report_path_uses_run_dir(self, data: dict) -> None:
+        """prepare_report_path must use ${context.run_dir} for per-run isolation."""
+        action = data["states"].get("prepare_report_path", {}).get("action", "")
+        assert "${context.run_dir}" in action
+
+    def test_build_report_references_captured_report_path(self, data: dict) -> None:
+        """build_report must reference ${captured.report_path.output}."""
+        action = data["states"].get("build_report", {}).get("action", "")
+        assert "${captured.report_path.output}" in action
+
+    def test_build_report_uses_llm_gate_fragment(self, data: dict) -> None:
+        """build_report must use llm_gate fragment."""
+        state = data["states"].get("build_report", {})
+        assert state.get("fragment") == "llm_gate"
+
+    def test_context_stale_after_days_defined(self, data: dict) -> None:
+        """context block must define stale_after_days."""
+        ctx = data.get("context", {})
+        assert "stale_after_days" in ctx
 
     def test_max_iterations_and_timeout(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""

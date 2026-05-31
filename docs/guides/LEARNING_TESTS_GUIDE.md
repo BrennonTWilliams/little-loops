@@ -195,6 +195,16 @@ ll-learning-tests mark-stale "Anthropic SDK streaming"
 
 This sets `status: stale` and preserves every other field, so the prior assertions remain visible for context. `/ll:explore-api` treats `stale` like missing on the next run. Delete a record outright (`rm .ll/learning-tests/<slug>.md`) only when the target itself is no longer relevant to the project.
 
+**Bulk staleness detection**
+
+For automated detection of stale records across the entire registry — e.g., after a dependency upgrade or at sprint start — use the `learning-tests-audit` loop:
+
+```bash
+ll-loop run learning-tests-audit
+```
+
+The loop enumerates installed packages (pip + npm), uses the LLM to map record targets to canonical package names, queries PyPI and npm registries for newer versions, bulk-marks stale records via `ll-learning-tests mark-stale`, and produces a four-section triage report under `.loops/runs/learning-tests-audit/report-<timestamp>.md`. See `docs/guides/LOOPS_GUIDE.md` → API Adoption for details.
+
 **`/ll:explore-api` asks to overwrite a record I want to keep**
 
 Phase 1 (Ingest) prompts before overwriting. Answer "reuse" to short-circuit. To guard against this in scripts, run `ll-learning-tests check "<target>"` first and skip the skill call if exit code is 0.

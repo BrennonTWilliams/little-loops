@@ -3,8 +3,9 @@ id: FEAT-1739
 title: "`learning-tests-audit` loop \u2014 stale record detection and triage report"
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-27T18:08:06Z'
+completed_at: '2026-05-31T04:36:48Z'
 discovered_date: '2026-05-27'
 discovered_by: capture-issue
 parent: EPIC-1694
@@ -147,7 +148,7 @@ done_empty (terminal)
   - `list_records(base_dir)` (line 117) — returns `list[LearnTestRecord]`; used by `list_records` state
   - `mark_stale(target_slug, base_dir)` (line 130) — patches `status: stale` via `update_frontmatter()`; used by `mark_stale_candidates` state
   - `check_learning_test(target, base_dir)` (line 140) — slugifies target then calls `read_record()`
-  - `LearnTestRecord` dataclass (line 44) — fields: `target`, `date`, `status`, `assertions`, `raw_output_path`
+  - `LearnTestRecord` dataclass (line 45) — fields: `target`, `date`, `status`, `assertions`, `raw_output_path`
   - `Assertion` dataclass — fields: `claim`, `result` (`"pass"` | `"fail"` | `"untested"`)
 - `scripts/little_loops/cli/learning_tests.py` — CLI entry point:
   - `cmd_list()` — `ll-learning-tests list` outputs JSON array of all records
@@ -165,7 +166,7 @@ done_empty (terminal)
 - `scripts/little_loops/fsm/validation.py` — `load_and_validate()` enforces required fields, state reachability, evaluator field requirements
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py` — structural test class pattern: `TestEvaluationQualityLoop` (line 398) with `LOOP_FILE`, `data` fixture, and assertions for required states, terminal flags, capture names, routing edges, evaluator types
+- `scripts/tests/test_builtin_loops.py` — structural test class pattern: `TestEvaluationQualityLoop` (line 403) with `LOOP_FILE`, `data` fixture, and assertions for required states, terminal flags, capture names, routing edges, evaluator types
 - `scripts/tests/test_learning_tests.py` — existing `mark_stale` tests (line 167); no new tests needed for the registry module
 - `scripts/tests/test_cli_learning_tests.py` — existing CLI tests for `check`, `list`, `mark-stale` (line 128); no new CLI tests needed
 
@@ -233,7 +234,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Step 4 (check_versions shell):** Use Python heredoc pattern (`python3 << 'PYEOF'`) from `adopt-third-party-api.yaml:59-88`. Inject `${captured.classify_packages.output}`. Call `urllib.request.urlopen()` for PyPI/npm APIs. On `URLError`, set `stale_candidate: false, detection_note: "registry unavailable"`.
 - **Step 5 (mark_stale_candidates shell):** Use `subprocess.run(["ll-learning-tests", "mark-stale", target])` pattern from `ready-to-implement-gate.yaml:33-43`. Capture results as JSON for the report.
 - **Step 6 (build_report prompt):** Model after `evaluation-quality.yaml:167-195` (report writing via prompt state). Pre-create output directory with `mkdir -p .loops/runs/learning-tests-audit/` in a preceding shell action or inline in the prompt state action.
-- **Step 9 (tests):** Follow `TestEvaluationQualityLoop` class structure at `test_builtin_loops.py:398-498`: `LOOP_FILE` class attribute, `data` fixture with `yaml.safe_load()`, and assertions for required states, terminal flag, capture names, routing edges (`on_yes`/`on_no`/`on_error`), evaluator types/operators/targets, fragment usage, and action string contents.
+- **Step 9 (tests):** Follow `TestEvaluationQualityLoop` class structure at `test_builtin_loops.py:403-498`: `LOOP_FILE` class attribute, `data` fixture with `yaml.safe_load()`, and assertions for required states, terminal flag, capture names, routing edges (`on_yes`/`on_no`/`on_error`), evaluator types/operators/targets, fragment usage, and action string contents.
 - **Loop metadata conventions:** Set `category: "api-adoption"` (consistent with `adopt-third-party-api.yaml` and `integrate-sdk.yaml`). Include `max_iterations`, `timeout`, and `on_handoff: spawn` as standard top-level fields. Set `description` — required for built-in loops per ENH-1331 regression guard (tested in `test_all_have_description_field()`).
 - **Validation pitfalls:** `ll-loop validate` enforces evaluator field requirements — `output_json` needs `path`, `operator`, `target`. Prompt states need `on_error` and `on_blocked` routing. Shell actions must escape bare `${VAR}` as `$${VAR}` (BUG-1675 regression guard tested in `test_no_bare_bash_variable_in_shell_actions()`).
 - **Fragment library (`lib/common.yaml`):** `list_records` and `enumerate_installed` can use `fragment: shell_exit` from `lib/common.yaml:14-21` to simplify YAML — the fragment provides `action_type: shell` + `evaluate: {type: exit_code}`. State only needs to supply `action`, `on_yes`, `on_no`, and optionally `on_error`/`timeout`. Import with `import: [lib/common.yaml]` at the loop top level. Other useful fragments: `retry_counter` (exponential backoff), `llm_gate` (LLM-structured yes/no), `numeric_gate` (output_numeric comparison), `with_throttle` (tool-call rate limiting).
@@ -296,6 +297,7 @@ _Added by `/ll:confidence-check` on 2026-05-30_
 - Change surface spans 6 existing files with varying modification types (set addition, table row, count bump, test class) — verification requires checking every site
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-31T04:26:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee2d1106-3483-4188-b4d2-88a104011060.jsonl`
 - `/ll:wire-issue` - 2026-05-31T03:31:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99584557-a170-433a-8c61-eedd8d845509.jsonl`
 - `/ll:refine-issue` - 2026-05-31T03:23:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cda8a917-6813-4923-ad31-5889e7ef70df.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

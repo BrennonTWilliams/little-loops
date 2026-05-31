@@ -1,0 +1,320 @@
+name: learning-tests-audit
+category: api-adoption
+description: >
+  Scans the Learning Test Registry for stale records via a three-phase detection pipeline
+  (installed-package enumeration → LLM-assisted package classification → PyPI/npm registry
+  release-date comparison), bulk-marks stale records via ll-learning-tests mark-stale, and
+  produces a four-section triage report (newly stale, already stale, refuted, open TODOs).
+initial: list_records
+max_iterations: 30
+timeout: 3600
+on_handoff: spawn
+
+import:
+  - lib/common.yaml
+
+context:
+  stale_after_days: "30"
+
+states:
+  list_records:
+    action_type: shell
+    action: ll-learning-tests list
+    capture: records
+    evaluate:
+      type: output_json
+      path: output_length
+      operator: gt
+      target: 0
+    on_yes: enumerate_installed
+    on_no: done_empty
+    on_error: done_empty
+
+  enumerate_installed:
+    fragment: shell_exit
+    action: |
+      python3 << 'PYEOF'
+      import json, subprocess, sys
+      result = {"pip": [], "npm": {}}
+      try:
+          r = subprocess.run(["pip", "list", "--format=json"], capture_output=True, text=True)
+          if r.returncode == 0:
+              result["pip"] = json.loads(r.stdout)
+      except Exception:
+          pass
+      try:
+          r = subprocess.run(["npm", "ls", "--json", "--depth=0"], capture_output=True, text=True)
+          if r.returncode == 0:
+              deps = json.loads(r.stdout).get("dependencies", {})
+              result["npm"] = {k: v.get("version", "unknown") for k, v in deps.items()}
+      except Exception:
+          pass
+      print(json.dumps(result))
+      PYEOF
+    capture: installed
+    on_yes: classify_packages
+    on_no: classify_packages
+    on_error: classify_packages
+
+  classify_packages:
+    fragment: llm_gate
+    timeout: 300
+    action: |
+      You are a package classifier for the Learning Test Registry audit system.
+
+      Below is a list of learning test records (each with a `target` string, `date`, and `status`)
+      and a map of all currently installed packages (from `pip list` and `npm ls`).
+
+      RECORDS (JSON array):
+      ${captured.records.output}
+
+      INSTALLED PACKAGES (JSON object with `pip` and `npm` keys):
+      ${captured.installed.output}
+
+      For each RECORD whose `status` is `proven`, determine the canonical installable package name
+      and ecosystem by matching the `target` string against the installed packages. Use these rules:
+
+      - Compound slug targets like `anthropic-sdk-streaming` map to package `anthropic`
+        (pip ecosystem if `anthropic` appears in the pip list).
+      - Namespaced targets like `@anthropic-ai/sdk tool_use` map to package `@anthropic-ai/sdk`
+        (npm ecosystem if `@anthropic-ai/sdk` appears in npm dependencies).
+      - Multi-word description targets like `Stripe webhook signature` map to package `stripe`
+        (pip ecosystem if `stripe` appears in the pip list).
+      - If the target doesn't match any installed package, set `ecosystem: "unknown"` — do NOT
+        guess a package name for unknown targets.
+
+      Skip records whose `status` is not `proven` (stale, refuted, or untested records don't need
+      version checking).
+
+      On the LAST LINE of your response, output exactly:
+      CLASSIFY_JSON:[{"target": "...", "slug": "...", "package": "...", "ecosystem": "pip"|"npm"|"unknown"}, ...]
+    capture: classification
+    evaluate:
+      prompt: >
+        Does the response end with a CLASSIFY_JSON: line containing a valid JSON array where each
+        entry has the required `target`, `slug`, `package`, and `ecosystem` fields?
+      min_confidence: 0.5
+    on_yes: check_versions
+    on_no: check_versions
+    on_partial: classify_packages
+    on_blocked: check_versions
+    on_error: check_versions
+
+  check_versions:
+    action_type: shell
+    timeout: 120
+    action: |
+      python3 << 'PYEOF'
+      import json, urllib.request, urllib.error, sys
+
+      records_raw = """${captured.records.output}"""
+      installed_raw = """${captured.installed.output}"""
+      classification_raw = """${captured.classification.output}"""
+
+      records = json.loads(records_raw)
+      installed = json.loads(installed_raw)
+
+      # Parse CLASSIFY_JSON line from classification output
+      classified = []
+      for line in reversed(classification_raw.split('\n')):
+          line = line.strip()
+          if line.startswith('CLASSIFY_JSON:'):
+              try:
+                  classified = json.loads(line[len('CLASSIFY_JSON:'):])
+              except json.JSONDecodeError:
+                  pass
+              break
+
+      stale_candidates = []
+
+      for entry in classified:
+          if entry.get("ecosystem") == "unknown":
+              continue
+
+          pkg = entry.get("package", "")
+          ecosystem = entry.get("ecosystem", "")
+          target = entry.get("target", "")
+
+          # Look up installed version
+          installed_version = None
+          if ecosystem == "pip":
+              for p in installed.get("pip", []):
+                  if p.get("name", "").lower() == pkg.lower():
+                      installed_version = p.get("version")
+                      break
+          elif ecosystem == "npm":
+              npm_deps = installed.get("npm", {})
+              installed_version = npm_deps.get(pkg)
+
+          # Find the record's date
+          record_date = None
+          for rec in records:
+              if rec.get("target") == target:
+                  record_date = rec.get("date", "")
+                  break
+
+          if not record_date:
+              continue
+
+          # Query registry for newer versions
+          newer_versions = []
+          detection_note = None
+
+          try:
+              if ecosystem == "pip":
+                  url = f"https://pypi.org/pypi/{pkg}/json"
+                  req = urllib.request.Request(url, headers={"User-Agent": "ll-learning-tests-audit/1.0"})
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      data = json.loads(resp.read())
+                  releases = data.get("releases", {})
+                  for version, dists in releases.items():
+                      if dists and dists[0].get("upload_time", "")[:10] > record_date[:10]:
+                          newer_versions.append(version)
+              elif ecosystem == "npm":
+                  url = f"https://registry.npmjs.org/{pkg}"
+                  req = urllib.request.Request(url, headers={"User-Agent": "ll-learning-tests-audit/1.0"})
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      data = json.loads(resp.read())
+                  times = data.get("time", {})
+                  for version, timestamp in times.items():
+                      if version in ("created", "modified"):
+                          continue
+                      if timestamp[:10] > record_date[:10]:
+                          newer_versions.append(version)
+          except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, Exception):
+              detection_note = "registry unavailable"
+
+          stale_candidate = bool(newer_versions)
+          entry_result = {
+              "target": target,
+              "slug": entry.get("slug", ""),
+              "package": pkg,
+              "ecosystem": ecosystem,
+              "installed_version": installed_version,
+              "newer_versions": newer_versions,
+              "stale_candidate": stale_candidate,
+          }
+          if detection_note:
+              entry_result["detection_note"] = detection_note
+          stale_candidates.append(entry_result)
+
+      stale_count = sum(1 for c in stale_candidates if c.get("stale_candidate"))
+      print(json.dumps({"stale_count": stale_count, "candidates": stale_candidates}))
+      PYEOF
+    capture: version_check
+    evaluate:
+      type: output_json
+      path: ".stale_count"
+      operator: gt
+      target: 0
+    on_yes: mark_stale_candidates
+    on_no: prepare_report_path
+    on_error: prepare_report_path
+
+  mark_stale_candidates:
+    action_type: shell
+    timeout: 60
+    action: |
+      python3 << 'PYEOF'
+      import json, subprocess, sys
+
+      data = json.loads("""${captured.version_check.output}""")
+      candidates = data.get("candidates", [])
+
+      marked = []
+      errors = []
+
+      for entry in candidates:
+          if not entry.get("stale_candidate"):
+              continue
+          target = entry.get("target", "")
+          try:
+              r = subprocess.run(
+                  ["ll-learning-tests", "mark-stale", target],
+                  capture_output=True, text=True, check=False
+              )
+              if r.returncode == 0:
+                  marked.append(target)
+              else:
+                  errors.append({"target": target, "stderr": r.stderr.strip()})
+          except Exception as e:
+              errors.append({"target": target, "error": str(e)})
+
+      print(json.dumps({"marked": len(marked), "marked_targets": marked, "errors": errors}))
+      PYEOF
+    capture: stale_result
+    evaluate:
+      type: output_json
+      path: ".marked"
+      operator: gt
+      target: 0
+    on_yes: prepare_report_path
+    on_no: prepare_report_path
+    on_error: prepare_report_path
+
+  prepare_report_path:
+    action_type: shell
+    action: |
+      mkdir -p ${context.run_dir}
+      echo "${context.run_dir}/report-$(date +%Y-%m-%dT%H%M%S).md"
+    capture: report_path
+    next: build_report
+
+  build_report:
+    fragment: llm_gate
+    timeout: 300
+    action: |
+      Read the current state of the Learning Test Registry and write a triage report.
+
+      First, run `ll-learning-tests list` (shell) to get the most recent registry state reflecting
+      any records just marked stale by this audit run.
+
+      VERSION CHECK RESULTS (from this audit run):
+      ${captured.version_check.output}
+
+      STALE MARKING RESULTS (from this run):
+      ${captured.stale_result.output}
+
+      Write a markdown report to `${captured.report_path.output}` with these four sections:
+
+      ## Learning Test Registry Audit — $(date +%Y-%m-%d)
+
+      ### 1. Newly Stale
+      Records just marked stale by this audit run. For each, include:
+      - Target, slug, package name, ecosystem
+      - Installed version (from pip/npm)
+      - Newer versions found since the record's date (from version_check.candidates where
+        stale_candidate=true)
+      - Total count of newly stale records
+
+      ### 2. Already Stale
+      Records with `status: stale` that existed BEFORE this audit run (not touched by this run).
+      List each with target and date. If none, note "No previously stale records."
+
+      ### 3. Refuted
+      Records with `status: refuted` that have no follow-up action on record. List each with
+      target and date. Include recommendation to re-explore or close.
+
+      ### 4. Open TODOs
+      Proven records with at least one assertion whose `result` is `untested`. List each with
+      target, date, and count of untested assertions.
+
+      Include a **Summary** section at the top with:
+      - Total records scanned
+      - Count for each category
+      - Recommended next actions for the developer
+
+      Write the report now using the Write tool.
+    evaluate:
+      prompt: "Was the triage report successfully written to the file?"
+      min_confidence: 0.5
+    on_yes: done
+    on_no: done
+    on_blocked: done
+    on_error: done
+
+  done:
+    terminal: true
+
+  done_empty:
+    terminal: true
