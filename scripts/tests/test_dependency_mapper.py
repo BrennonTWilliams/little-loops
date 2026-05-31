@@ -346,6 +346,36 @@ class TestFindFileOverlaps:
         proposals, _ = find_file_overlaps(issues, contents)
         assert len(proposals) == 0
 
+    def test_cross_batch_nonadjacent_pair_detected(self) -> None:
+        """Issues in non-adjacent batches share files and are detected when passed together.
+
+        Phase 2b of audit-issue-conflicts calls ll-issues fingerprint on every issue then
+        passes all cross-batch pairs to find_file_overlaps. This test verifies detection
+        works for FEAT-001 and FEAT-005 — a pair separated by 3 other issues (would
+        never appear in the same 2-issue batch in linear chunking).
+        """
+        issues = [
+            make_issue("FEAT-001", priority="P1"),
+            make_issue("FEAT-002", priority="P2"),
+            make_issue("FEAT-003", priority="P2"),
+            make_issue("FEAT-004", priority="P3"),
+            make_issue("FEAT-005", priority="P3"),
+            make_issue("FEAT-006", priority="P4"),
+        ]
+        contents = {
+            "FEAT-001": "Fix ConfigParser in `scripts/config.py` and `scripts/utils.py`",
+            "FEAT-002": "Update `scripts/module_b.py` and `scripts/helper.py`",
+            "FEAT-003": "Refactor `scripts/module_c.py` and `scripts/module_d.py`",
+            "FEAT-004": "Add logging to `scripts/logger.py` and `scripts/output.py`",
+            "FEAT-005": "Update ConfigParser in `scripts/config.py` and `scripts/utils.py`",
+            "FEAT-006": "Fix `scripts/module_f.py` and `scripts/module_g.py`",
+        }
+        proposals, parallel_safe = find_file_overlaps(issues, contents)
+        # FEAT-001 and FEAT-005 share config.py + utils.py — cross-batch overlap
+        prop_pairs = {frozenset({p.source_id, p.target_id}) for p in proposals}
+        safe_pairs = {frozenset({p.issue_a, p.issue_b}) for p in parallel_safe}
+        assert frozenset({"FEAT-001", "FEAT-005"}) in prop_pairs | safe_pairs
+
 
 # =============================================================================
 # find_file_overlaps semantic analysis tests

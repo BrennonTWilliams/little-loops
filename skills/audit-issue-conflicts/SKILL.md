@@ -2,7 +2,7 @@
 name: audit-issue-conflicts
 description: Use when asked to detect conflicting requirements or incompatible decisions across open issues.
 disable-model-invocation: true
-argument-hint: "[--auto] [--dry-run]"
+argument-hint: "[--auto] [--dry-run] [--cross-theme]"
 model: sonnet
 allowed-tools:
   - Read
@@ -14,7 +14,7 @@ allowed-tools:
   - Bash(ll-issues:*)
 arguments:
   - name: flags
-    description: "Optional flags: --auto (apply all recommendations without prompting), --dry-run (report only, no changes)"
+    description: "Optional flags: --auto (apply all recommendations without prompting), --dry-run (report only, no changes), --cross-theme (add Phase 2b cross-batch fingerprint sweep to catch conflicts spanning thematic groups)"
     required: false
 metadata:
   short-description: Use when asked to detect conflicting requirements or incompatible decisions acro
@@ -36,6 +36,7 @@ This skill uses project configuration from `.ll/ll-config.json`:
 ```
 AUTO_MODE = false
 DRY_RUN = false
+CROSS_THEME = false
 
 # Auto-enable in automation contexts
 if ARGUMENTS contains "--dangerously-skip-permissions": AUTO_MODE = true
@@ -43,11 +44,13 @@ if ARGUMENTS contains "--dangerously-skip-permissions": AUTO_MODE = true
 # Explicit flags
 if ARGUMENTS contains "--auto": AUTO_MODE = true
 if ARGUMENTS contains "--dry-run": DRY_RUN = true
+if ARGUMENTS contains "--cross-theme": CROSS_THEME = true
 ```
 
 Log the active mode:
 - `--auto` → "Running in auto-apply mode: all recommendations will be applied without prompting."
 - `--dry-run` → "Running in dry-run mode: conflict report will be output, no files will be modified."
+- `--cross-theme` → "Cross-theme sweep enabled: Phase 2b will check for conflicts spanning thematic batch boundaries."
 - neither → "Running in interactive mode: each recommendation will require approval."
 
 ---
@@ -142,6 +145,46 @@ If no conflicts exist among this batch, return: []
 Wait for **all batch agents** to complete before proceeding.
 
 Handle agent failures: if a batch agent fails, retry once. If retry fails, log a warning for those issues and continue.
+
+---
+
+## Phase 2b: Cross-Theme Fingerprint Sweep (`--cross-theme` only)
+
+**Skip this phase unless `CROSS_THEME = true` (`--cross-theme` flag).**
+
+After Phase 2's intra-batch pass, run a fast non-LLM overlap check across all issue pairs — including pairs that span batch boundaries — and dispatch targeted single-pair agents for any cross-batch pair with file overlap.
+
+### Step 1: Extract Fingerprints
+
+For each issue file collected in Phase 1, extract its structured fingerprint:
+
+```bash
+ll-issues fingerprint <issue-path>
+```
+
+This outputs JSON: `{"id": "...", "files_to_modify": [...], "key_terms": [...]}`. Collect all fingerprints.
+
+### Step 2: Identify Cross-Batch Overlap Pairs
+
+For every pair `(A, B)` where A and B were in **different Phase 2 batches**, check:
+
+- **File overlap** (primary signal): `|A.files_to_modify ∩ B.files_to_modify| ≥ 2`
+  OR Jaccard `|A.files_to_modify ∩ B.files_to_modify| / |A.files_to_modify ∪ B.files_to_modify| ≥ 0.25`
+- **Key-term fallback**: if either issue has no `files_to_modify` entries, apply when Jaccard of `key_terms` ≥ 0.15
+
+Skip pairs already evaluated in Phase 2. Cap at **30 additional pairs** to bound token cost (≤30% overhead for ≤100 base issues in batches of 3–5).
+
+### Step 3: Dispatch Pair Agents
+
+For each pair above threshold, spawn one Task agent using the same conflict-detection prompt template as Phase 2, but with exactly those two issues as the batch. Spawn all cross-theme pair agents in a **single message** (parallel).
+
+Handle agent failures: if a pair agent fails, log a warning and skip that pair.
+
+### Step 4: Merge Cross-Theme Findings
+
+Collect all cross-theme conflict records. These feed into Phase 3's deduplication step without special handling — Phase 3 merges by `issues` pair membership regardless of whether the finding came from a Phase 2 batch or a Phase 2b pair agent.
+
+**Cost note**: Phase 2b dispatches one agent per overlapping cross-batch pair. For 50 issues in 10 batches of 5, expect ≤10 additional agents (≤20% overhead). The 30-pair cap bounds worst-case cost.
 
 ---
 
@@ -420,6 +463,12 @@ All changes staged in {{config.issues.base_dir}}/
 
 # Report only, no changes
 /ll:audit-issue-conflicts --dry-run
+
+# Cross-theme sweep: detect conflicts across thematic boundaries
+/ll:audit-issue-conflicts --cross-theme
+
+# Cross-theme dry-run: report only, no changes
+/ll:audit-issue-conflicts --dry-run --cross-theme
 ```
 
 ## Related Commands

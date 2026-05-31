@@ -15,6 +15,7 @@ def main_issues() -> int:
         Exit code (0 = success, 1 = error)
     """
     from little_loops.cli.issues.anchor_sweep import cmd_anchor_sweep
+    from little_loops.cli.issues.fingerprint import cmd_fingerprint
     from little_loops.cli.issues.append_log import cmd_append_log
     from little_loops.cli.issues.check_flag import cmd_check_flag
     from little_loops.cli.issues.check_readiness import cmd_check_readiness
@@ -63,6 +64,7 @@ Sub-commands:
   set-status       Transition an issue to a new status value
   skip             Deprioritize an issue by bumping its priority prefix
   anchor-sweep     Rewrite file:line references in active issue files to anchor form
+  fingerprint      Extract structured fingerprint (id, files, key_terms) from an issue file
 
 Examples:
   %(prog)s next-id
@@ -102,6 +104,8 @@ Examples:
   %(prog)s anchor-sweep --dry-run
   %(prog)s anchor-sweep --issues-dir .issues
   %(prog)s asw --dry-run
+  %(prog)s fingerprint .issues/enhancements/P3-ENH-1801-example.md
+  %(prog)s fp .issues/bugs/P2-BUG-042-example.md
   %(prog)s set-scores BUG-1307 --confidence 95 --outcome 80
   %(prog)s set-scores BUG-1307 --confidence 95 --outcome 80 --score-complexity 22 --score-test-coverage 20 --score-ambiguity 25 --score-change-surface 15
   %(prog)s set-status ENH-1725 in_progress
@@ -606,6 +610,15 @@ Examples:
     )
     add_config_arg(asw)
 
+    fp = subs.add_parser(
+        "fingerprint",
+        aliases=["fp"],
+        help="Extract structured fingerprint (id, files, key_terms) from an issue file",
+    )
+    fp.set_defaults(command="fingerprint")
+    fp.add_argument("issue_path", help="Path to the issue file (absolute or relative to project root)")
+    add_config_arg(fp)
+
     sk = subs.add_parser(
         "skip",
         help="Deprioritize an issue by bumping its priority prefix",
@@ -673,6 +686,8 @@ Examples:
         return cmd_set_status(config, args)
     if args.command == "anchor-sweep":
         return cmd_anchor_sweep(config, args)
+    if args.command == "fingerprint":
+        return cmd_fingerprint(config, args)
     if args.command == "skip":
         return cmd_skip(config, args)
     return 1

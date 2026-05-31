@@ -3131,6 +3131,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `append-log` | Append a session log entry to an issue file |
 | `clusters` | Visualize issue dependency clusters as box diagrams (`--include-orphans`, `--min-connections N`, `--json`, `--edges SET`, `--status SET`) |
 | `anchor-sweep` | Rewrite bare `file:line` references in active issue files to enclosing anchor form (`--dry-run`, `--issues-dir DIR`) |
+| `fingerprint` | Extract structured fingerprint (id, files_to_modify, key_terms) from an issue file as JSON; used by `audit-issue-conflicts` Phase 2b (`--cross-theme`) |
 | `check-flag` | Exit 0 if a named boolean frontmatter field equals `true`; takes `issue_id` and `field` positional args |
 | `check-readiness` | Exit 0 if `confidence_score` and `outcome_confidence` meet thresholds; reads from `ll-config.json` or `--readiness`/`--outcome` flags |
 

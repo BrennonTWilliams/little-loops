@@ -67,3 +67,16 @@ class TestAuditIssueConflictsSkillExists:
         assert "MODIFIED_FILES+=(" in content
         assert 'for f in "${MODIFIED_FILES[@]}"; do' in content
         assert "git add {{config.issues.base_dir}}/" not in content
+
+    def test_phase2b_cross_theme_header_present(self) -> None:
+        """Phase 2b cross-theme section must be present in the skill (ENH-1801)."""
+        assert SKILL_FILE.exists(), "Skill file not found"
+        content = SKILL_FILE.read_text()
+        assert "Phase 2b" in content
+        assert "--cross-theme" in content
+
+    def test_phase2b_uses_fingerprint_subcommand(self) -> None:
+        """Phase 2b must reference the ll-issues fingerprint subcommand (ENH-1801)."""
+        assert SKILL_FILE.exists(), "Skill file not found"
+        content = SKILL_FILE.read_text()
+        assert "ll-issues fingerprint" in content

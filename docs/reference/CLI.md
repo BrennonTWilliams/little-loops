@@ -1018,6 +1018,27 @@ ll-issues asw --dry-run
 
 ---
 
+#### `ll-issues fingerprint` / `ll-issues fp`
+
+Extract a structured fingerprint from an issue file for cross-theme conflict detection. Returns JSON with the issue id, `files_to_modify` (file paths from the Integration Map), and `key_terms` (significant words after stop-word filtering). Used by `/ll:audit-issue-conflicts --cross-theme` Phase 2b to identify cross-batch overlap pairs without an LLM call.
+
+| Argument | Description |
+|----------|-------------|
+| `issue_path` | Path to the issue file (absolute or relative to project root) |
+
+**Output (JSON):**
+```json
+{"id": "ENH-1801", "files_to_modify": ["scripts/config.py"], "key_terms": ["authentication", "conflict"]}
+```
+
+**Examples:**
+```bash
+ll-issues fingerprint .issues/enhancements/P3-ENH-1801-example.md
+ll-issues fp .issues/bugs/P2-BUG-042-example.md
+```
+
+---
+
 #### `ll-issues check-flag` / `ll-issues cf`
 
 Exit 0 if a named boolean frontmatter field in the issue equals `true`. Designed for use as a shell gate in FSM loop states.

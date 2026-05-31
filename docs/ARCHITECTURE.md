@@ -228,7 +228,8 @@ little-loops/
         │   │   ├── show.py          # show subcommand
         │   │   ├── refine_status.py # refine-status subcommand
         │   │   ├── append_log.py    # append-log subcommand
-        │   │   └── anchor_sweep.py  # anchor-sweep subcommand (CLI wrapper)
+        │   │   ├── anchor_sweep.py  # anchor-sweep subcommand (CLI wrapper)
+        │   │   └── fingerprint.py   # fingerprint subcommand (CLI wrapper)
         │   ├── loop/
         │   │   ├── __init__.py      # Entry point (main_loop) + argparse
         │   │   ├── _helpers.py      # Shared utilities
