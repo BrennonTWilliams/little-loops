@@ -1450,6 +1450,19 @@ class TestCmdSimulate:
             except SystemExit as e:
                 assert e.code == 0
 
+    def test_diagnose_evaluators_subcommand_registered(self) -> None:
+        """diagnose-evaluators subcommand is registered in known_subcommands."""
+        import sys as _sys
+        from unittest.mock import patch as mock_patch
+
+        with mock_patch.object(_sys, "argv", ["ll-loop", "diagnose-evaluators", "--help"]):
+            from little_loops.cli import main_loop
+
+            try:
+                main_loop()
+            except SystemExit as e:
+                assert e.code == 0
+
     def test_simulate_nonexistent_loop(
         self,
         tmp_path: Path,

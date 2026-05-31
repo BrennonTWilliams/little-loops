@@ -639,6 +639,25 @@ ll-loop audit-meta harness-optimize        # Human-readable summary table
 ll-loop audit-meta harness-optimize --json # JSON output for scripting
 ```
 
+#### `ll-loop diagnose-evaluators`
+
+Scan `.loops/.history/*-<loop>/events.jsonl` to detect non-discriminating evaluator states whose verdict has near-zero variance across runs. Flags states below `--threshold` (default 0.05) with pattern-matched recommendations for improving discriminating power.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--threshold` | | Variance floor below which a state is flagged (default: 0.05) |
+| `--min-runs` | | Minimum runs required for meaningful variance (default: 10) |
+| `--json` | `-j` | Output results as a JSON object |
+
+**Exit codes:** 0 = no low-variance states found or insufficient data; 1 = at least one non-discriminating evaluator flagged.
+
+**Examples:**
+```bash
+ll-loop diagnose-evaluators harness-refine-issue              # Human-readable report
+ll-loop diagnose-evaluators harness-refine-issue --json        # JSON output for scripting
+ll-loop diagnose-evaluators harness-refine-issue --threshold 0.1 --min-runs 5
+```
+
 **Examples:**
 ```bash
 ll-loop fix-types                     # Run loop (shorthand for run)

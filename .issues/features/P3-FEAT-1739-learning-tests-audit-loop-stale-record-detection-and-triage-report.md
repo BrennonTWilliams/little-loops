@@ -180,6 +180,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/LEARNING_TESTS_GUIDE.md` — add troubleshooting note pointing to this loop for bulk staleness management
 - `scripts/little_loops/loops/README.md` — add `learning-tests-audit` row under "API Adoption" section
 - `docs/reference/CLI.md` — no changes expected (loop invoked via `ll-loop run`, no new CLI surface)
+- `docs/ARCHITECTURE.md` — add one-line cross-reference in Learning Test Registry section (~line 1152) pointing to `ll-loop run learning-tests-audit` for automated staleness detection [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md` — note `learning-tests-audit` loop as a consumer of `stale_after_days` in the setting description (~line 637) [Agent 2 finding]
 
 ### Downstream Consumers (no changes needed)
 
@@ -211,14 +213,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 13. Update `scripts/little_loops/loops/README.md` — add a `learning-tests-audit` row under the "API Adoption" table (between `integrate-sdk` and `proof-first-task`), following the same `| \`loop-name\` | Description |` format.
+14. Update `docs/ARCHITECTURE.md` — add a one-line cross-reference in the Learning Test Registry section (~line 1152) pointing to `ll-loop run learning-tests-audit` for automated bulk staleness detection.
+15. Update `docs/reference/CONFIGURATION.md` — note `learning-tests-audit` loop as a consumer of `stale_after_days` in the setting description (~line 637).
 
 ### Verification Phase (added by `/ll:wire-issue`)
 
 _These integration checks were identified by wiring analysis and should be verified after implementation:_
 
-14. Verify `verify_learning_citations.sh` correctly rejects records the loop marks stale — run the loop against a test record with a known-older version, then run `bash scripts/verify_learning_citations.sh` and confirm exit 1 for the stale record.
-15. Verify the per-loop validation sweep (`test_all_validate_as_valid_fsm`, `test_all_parse_as_yaml`, `test_all_have_description_field`) passes with the new loop YAML in place — these tests automatically pick up new `.yaml` files in the built-in loops directory.
-16. Verify `test_expected_loops_exist` passes after adding `"learning-tests-audit"` to the expected set — strict set equality, no other loop names should be present or missing.
+16. Verify `verify_learning_citations.sh` correctly rejects records the loop marks stale — run the loop against a test record with a known-older version, then run `bash scripts/verify_learning_citations.sh` and confirm exit 1 for the stale record.
+17. Verify the per-loop validation sweep (`test_all_validate_as_valid_fsm`, `test_all_parse_as_yaml`, `test_all_have_description_field`) passes with the new loop YAML in place — these tests automatically pick up new `.yaml` files in the built-in loops directory.
+18. Verify `test_expected_loops_exist` passes after adding `"learning-tests-audit"` to the expected set — strict set equality, no other loop names should be present or missing.
 
 ### Codebase Research Findings
 
@@ -236,6 +240,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **`mark_stale` CLI slugify behavior:** `cmd_mark_stale()` at `cli/learning_tests.py:32-41` calls `mark_stale(slugify(args.target))` — slugification is applied internally by the CLI. The `mark_stale_candidates` shell state must pass the **raw target string** (from `classify_packages` output) directly to `subprocess.run(["ll-learning-tests", "mark-stale", target])`, NOT a pre-slugified value. Double-slugifying would produce incorrect paths.
 - **`subprocess.run` conventions:** Use `check=False` to prevent `CalledProcessError` on non-zero exit codes (the CLI returns exit 1 when target not found). Use `capture_output=True, text=True` for stdout/stderr capture. Always emit valid JSON to stdout even on error paths — never let a Python traceback reach the FSM evaluator.
 - **`output_json` path conventions:** Object key paths use `.` prefix (`.count`, `.verdict`, `.stale_count`). `output_length` is a built-in special field without dot prefix (used in `assumption-firewall.yaml:183` as `path: output_length` to check array length). Confirmed across 11 evaluator configurations in built-in loops.
+
+_Added by `/ll:refine-issue` 2026-05-30 — second research pass:_
+
+- **`stale_after_days` config integration:** `LearningTestsConfig` at `config/features.py:345` exposes `stale_after_days: int = 30`. This is a time-based staleness threshold separate from the loop's version-check pipeline. The loop could use it as a pre-filter (skip records newer than `stale_after_days` — they can't be stale yet) to reduce registry API calls. It could also serve as a fallback detection method: if the registry API is unreachable, check `(today - record.date) > stale_after_days` as a coarse signal. Config is accessible via `${context.learning_tests.stale_after_days}` when the loop YAML declares it in `context:`.
+- **Fragment library applicability by state:** Each state maps to a specific `lib/common.yaml` fragment:
+  - `list_records` → `fragment: shell_exit` (shell command, exit-code evaluation, no `output_json` needed)
+  - `enumerate_installed` → `fragment: shell_exit` (shell command that always succeeds; `on_no` routes to a degrade path rather than an error terminal)
+  - `classify_packages` → `fragment: llm_gate` (prompt state with `llm_structured` evaluator; state supplies `action` + `evaluate.prompt`; the fragment provides `action_type: prompt` + `evaluate.type: llm_structured`)
+  - `check_versions` → cannot use `shell_exit` because it needs `output_json` evaluation (`.stale_count > 0`), not exit-code. Use explicit `action_type: shell` + `evaluate: {type: output_json, path: ".stale_count", operator: gt, target: 0}`
+  - `mark_stale_candidates` → `fragment: numeric_gate` could work with `path: ".marked"` but easier to use explicit `output_json` since it also needs to capture results for the report. Use explicit `action_type: shell` + `evaluate: {type: output_json}`.
+  - `build_report` → `fragment: llm_gate` (prompt state routing on yes/no); the fragment provides `action_type: prompt` + `evaluate.type: llm_structured`. The state supplies the report-writing prompt as `action` and a yes/no question as `evaluate.prompt`. Follow `evaluation-quality.yaml:159-195` two-state pattern: a shell state computes the report path (`mkdir -p .loops/runs/learning-tests-audit/ && echo ".loops/runs/learning-tests-audit/report-$(date +%Y-%m-%dT%H%M%S).md"`), then the prompt state writes to `${captured.report_path.output}`.
+- **`min_confidence: 0.5` convention:** The standard threshold for `llm_structured` evaluators on JSON validation prompts across built-in loops (`adopt-third-party-api.yaml:56`, `assumption-firewall.yaml:46`). Use this for `classify_packages` and `build_report` evaluators.
+- **PyPI API response structure for `check_versions`:** `GET https://pypi.org/pypi/<package>/json` returns `{"releases": {"0.52.0": [{"upload_time": "2026-04-15T10:30:00"}], ...}}`. Each release key maps to a list of distribution metadata dicts; `[0]["upload_time"]` is the ISO 8601 upload timestamp. The npm registry returns `{"time": {"0.52.0": "2026-04-15T10:30:00.000Z", "created": "...", "modified": "..."}}` — filter out `"created"` and `"modified"` keys when iterating versions. Both APIs return ISO 8601 strings that support lexicographic comparison with record `date` strings (YYYY-MM-DD). For comparison: `if version_date[:10] > record["date"]` catches any version published on a day after the record date.
+- **`llm_structured` `on_partial` routing:** `fix-quality-and-tests.yaml:25` demonstrates the `on_partial` routing key for `llm_structured` evaluators — used when the LLM confidence is between `min_confidence` and a higher threshold. For `classify_packages`, add `on_partial: classify_packages` (retry once) to handle ambiguous package mappings.
+- **Shell variable escaping in YAML:** `$` in shell actions must be escaped as `$$` within YAML double-quoted strings to prevent YAML from interpreting them as anchors (BUG-1675 regression, tested by `test_no_bare_bash_variable_in_shell_actions()` at `test_builtin_loops.py:156`). Within single-quoted heredocs (`<< 'PYEOF'`), bash does NOT expand variables, so Python `$` usage is safe — but `${context.x}` and `${captured.y.z}` are FSM template variables resolved before the heredoc reaches bash, not bash variables. No escaping needed for FSM template variables.
 
 ## Acceptance Criteria
 
@@ -277,6 +296,8 @@ _Added by `/ll:confidence-check` on 2026-05-30_
 - Change surface spans 6 existing files with varying modification types (set addition, table row, count bump, test class) — verification requires checking every site
 
 ## Session Log
+- `/ll:wire-issue` - 2026-05-31T03:31:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99584557-a170-433a-8c61-eedd8d845509.jsonl`
+- `/ll:refine-issue` - 2026-05-31T03:23:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cda8a917-6813-4923-ad31-5889e7ef70df.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:confidence-check` - 2026-05-29T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a99f544-bd0d-4ac3-a506-f33ffd4a0bf7.jsonl`
 - `/ll:confidence-check` - 2026-05-30T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2210570a-56ab-4d7f-83a7-9929d3d9d025.jsonl`

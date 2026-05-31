@@ -41,8 +41,9 @@ Follow this seven-step protocol on every task. Skip a step only with an explicit
 1. **Monitor** — collect raw evidence about the loop's recent behavior.
    - `ll-loop history <name> --json` for machine-parseable iteration history
    - `ll-loop status <name> --json` for current state (if the loop is live)
+   - `ll-loop diagnose-evaluators <name>` to detect non-discriminating evaluators from run history
    - Read the loop YAML at `loops/<name>.yaml` to understand declared states, guards, and predicates
-2. **Analyze** — classify what is happening using the failure-mode taxonomy below. A run can match more than one mode; record every applicable mode.
+2. **Analyze** — classify what is happening using the failure-mode taxonomy below. Incorporate `diagnose-evaluators` findings when evaluator-trivial is suspected. A run can match more than one mode; record every applicable mode.
 3. **Contract** — write down the loop's *intended* contract in plain English: what input it expects, what observable outcome counts as success, what signals should cause termination.
 4. **Refine** — propose the smallest YAML change that addresses the diagnosed mode(s). Prefer tightening guards/predicates over adding new states.
 5. **Verify** — re-run a single real iteration with `ll-loop run <name> --max-iterations 1`. Do NOT use `ll-loop simulate --scenario` for verification — `SimulationActionRunner` returns synthetic strings and cannot evaluate content predicates.
@@ -61,7 +62,7 @@ Every diagnosis MUST classify the loop against these seven modes. Use the exact 
 | **feature-stubbing** | The loop claims it implemented X but only added a placeholder / comment / TODO; no real code change. | Add an external verification state (run tests, lint, or a smoke command) before allowing `success`. |
 | **drift** | Each iteration's output is internally consistent but diverges from the original goal; later iterations optimize for a different objective than the user asked for. | Re-anchor every iteration on the original goal text (pass the original prompt forward) rather than the previous iteration's output. |
 | **self-evaluation bias** | The same LLM both produces the output and judges whether it's good; judgments are systematically too generous. | Replace the self-judge with an external check (deterministic predicate, second-model review, or external test command). |
-| **evaluator-trivial** | The LLM evaluator agrees (`agreed: true`) for iterations where nothing actually changed (`diff_stats.files_changed == 0`); a long streak of such entries indicates the evaluator is rubber-stamping no-ops rather than catching them. | Add a non-LLM evaluator (`exit_code`, `output_numeric`, or `convergence`) paired with every `check_semantic` state in a meta-loop; see CLAUDE.md § Loop Authoring. Use `ll-loop audit-meta <name>` to inspect the streak. |
+| **evaluator-trivial** | The LLM evaluator agrees (`agreed: true`) for iterations where nothing actually changed (`diff_stats.files_changed == 0`); a long streak of such entries indicates the evaluator is rubber-stamping no-ops rather than catching them. Also covers evaluators whose verdict has near-zero variance across runs (always YES or always NO). | Add a non-LLM evaluator (`exit_code`, `output_numeric`, or `convergence`) paired with every `check_semantic` state in a meta-loop; see CLAUDE.md § Loop Authoring. Use `ll-loop audit-meta <name>` to inspect meta-eval streaks, or `ll-loop diagnose-evaluators <name>` to detect non-discriminating evaluators from run history. |
 
 ## Diagnosis Artifact
 
@@ -113,7 +114,7 @@ Use this structure:
 
 ## Auditing meta-loop telemetry
 
-For loops that run other LLM evaluators (meta-loops), each archived run may contain a `meta-eval.jsonl` file recording per-iteration agreement between the LLM judge and external checks. Use `ll-loop audit-meta <name>` to summarize this data:
+For loops that run other LLM evaluators (meta-loops), each archived run may contain a `meta-eval.jsonl` file recording per-iteration agreement between the LLM judge and external checks. For broader evaluator health checks, `ll-loop diagnose-evaluators <name>` computes per-state verdict variance from `events.jsonl` and flags states that never vary their verdict. Use `ll-loop audit-meta <name>` to summarize meta-eval agreement:
 
 ```
 ll-loop audit-meta harness-optimize

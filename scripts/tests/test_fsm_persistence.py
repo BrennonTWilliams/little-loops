@@ -14,6 +14,7 @@ from little_loops.fsm.persistence import (
     PersistentExecutor,
     StatePersistence,
     _reconcile_stale_runs,
+    _verdict_is_yes,
     get_archived_events,
     get_loop_history,
     list_run_history,
@@ -2426,3 +2427,43 @@ class TestReconcileStaleRuns:
         assert not (tmp_path / ".running").exists()
         count = _reconcile_stale_runs(tmp_path)
         assert count == 0
+
+
+class TestVerdictIsYes:
+    """Tests for _verdict_is_yes() — currently zero coverage, now consumed by analytics."""
+
+    def test_yes_exact(self) -> None:
+        """Exact 'yes' returns True."""
+        assert _verdict_is_yes("yes") is True
+
+    def test_yes_self_assessed(self) -> None:
+        """'yes (self-assessed)' returns True (starts with yes)."""
+        assert _verdict_is_yes("yes (self-assessed)") is True
+
+    def test_yes_prefix(self) -> None:
+        """Any verdict starting with 'yes' returns True."""
+        assert _verdict_is_yes("yes_uncertain") is True
+
+    def test_no(self) -> None:
+        """'no' returns False."""
+        assert _verdict_is_yes("no") is False
+
+    def test_progress(self) -> None:
+        """'progress' returns True."""
+        assert _verdict_is_yes("progress") is True
+
+    def test_success(self) -> None:
+        """'success' returns True."""
+        assert _verdict_is_yes("success") is True
+
+    def test_failure(self) -> None:
+        """'failure' returns False."""
+        assert _verdict_is_yes("failure") is False
+
+    def test_empty_string(self) -> None:
+        """Empty string returns False."""
+        assert _verdict_is_yes("") is False
+
+    def test_none_like_string(self) -> None:
+        """String 'None' returns False."""
+        assert _verdict_is_yes("None") is False

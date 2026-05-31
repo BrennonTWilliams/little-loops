@@ -704,6 +704,63 @@ def cmd_audit_meta(loop_name: str, args: argparse.Namespace, loops_dir: Path) ->
     return 1 if flags else 0
 
 
+def cmd_diagnose_evaluators(loop_name: str, args: argparse.Namespace, loops_dir: Path) -> int:
+    """Detect non-discriminating evaluators from run history.
+
+    Walks .loops/.history/*-{loop_name}/events.jsonl, computes per-state
+    Bernoulli variance p*(1-p) on verdicts, flags states below threshold
+    with pattern-matched recommendations.
+
+    Returns 0 if no states flagged, 1 if any low-variance evaluators found.
+    """
+    from little_loops.analytics.variance import compute_evaluator_variance
+
+    threshold = getattr(args, "threshold", 0.05)
+    min_runs = getattr(args, "min_runs", 10)
+    as_json = getattr(args, "json", False)
+
+    report = compute_evaluator_variance(loop_name, loops_dir, threshold, min_runs)
+
+    if report is None:
+        if not (loops_dir / ".history").exists():
+            print(f"No history for: {loop_name}")
+        elif len(list((loops_dir / ".history").glob(f"*-{loop_name}"))) < min_runs:
+            runs_found = len(list((loops_dir / ".history").glob(f"*-{loop_name}")))
+            print(
+                f"Insufficient history for: {loop_name} "
+                f"(found {runs_found} run(s), need {min_runs})"
+            )
+        else:
+            print(f"No evaluate events for: {loop_name}")
+        return 0
+
+    flagged = [s for s in report.states if s.variance < threshold]
+
+    if as_json:
+        print_json(report.to_dict())
+    else:
+        print(f"Evaluator Variance Report (n={report.total_runs} runs)")
+        if not report.states:
+            print("  No evaluator states found in run history.")
+        for state in report.states:
+            disc_label = (
+                "✓ discriminating"
+                if state.variance >= threshold
+                else "⚠ low variance"
+            )
+            print(
+                f"  {state.state:20s} pass_rate={state.pass_rate:.2f}  "
+                f"variance={state.variance:.2f}   {disc_label}"
+            )
+            if state.recommendation:
+                for line in state.recommendation.split("\n"):
+                    print(f"                   {line.strip()}")
+
+    if as_json:
+        return 0
+    return 1 if flagged else 0
+
+
 # ---------------------------------------------------------------------------
 # FSM diagram renderer — delegated to layout module (re-exported above)
 # ---------------------------------------------------------------------------

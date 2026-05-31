@@ -539,3 +539,21 @@ states:
             result = main_loop()
 
         assert result == 0
+
+    def test_diagnose_evaluators_no_history(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """diagnose-evaluators with no history prints no-history message."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".loops").mkdir()
+        with patch.object(sys, "argv", ["ll-loop", "diagnose-evaluators", "no-such-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No history" in captured.out

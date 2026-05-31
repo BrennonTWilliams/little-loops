@@ -129,6 +129,12 @@ The `loop-specialist` agent diagnoses violations post-hoc as
 `self-evaluation bias` / `feature-stubbing` failure modes
 (`agents/loop-specialist.md`); this section shifts the gate left.
 
+Use `ll-loop diagnose-evaluators <loop>` to validate discriminator health after
+MR-1 passes: a state can have a non-LLM evaluator paired correctly (MR-1
+satisfied) but still be toothless if its verdict never varies across runs.
+Bernoulli variance `p*(1-p)` below 0.05 across ≥10 runs flags an evaluator that
+isn't measuring anything useful.
+
 ## Issue File Format
 
 Files in `.issues/` follow: `P[0-5]-[TYPE]-[NNN]-description.md`

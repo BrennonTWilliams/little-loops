@@ -4061,3 +4061,159 @@ class TestCmdAuditMeta:
         assert data["agreed_count"] == 1
         assert data["agreement_rate"] == 0.5
         assert "flags" in data
+
+
+class TestCmdDiagnoseEvaluators:
+    """Tests for ll-loop diagnose-evaluators command."""
+
+    def _make_events_jsonl(self, run_dir: Path, events: list[dict[str, Any]]) -> None:
+        """Write a synthetic events.jsonl file in run_dir."""
+        run_dir.mkdir(parents=True, exist_ok=True)
+        with open(run_dir / "events.jsonl", "w") as f:
+            for entry in events:
+                f.write(json.dumps(entry) + "\n")
+
+    def _base_args(
+        self,
+        as_json: bool = False,
+        threshold: float = 0.05,
+        min_runs: int = 10,
+    ) -> argparse.Namespace:
+        return argparse.Namespace(json=as_json, threshold=threshold, min_runs=min_runs)
+
+    def test_no_history_returns_zero(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Returns 0 when no .history directory exists."""
+        from little_loops.cli.loop.info import cmd_diagnose_evaluators
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        result = cmd_diagnose_evaluators("my-loop", self._base_args(), loops_dir)
+        assert result == 0
+        assert "No history" in capsys.readouterr().out
+
+    def test_insufficient_runs_returns_zero(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Returns 0 when runs exist but count < min_runs."""
+        from little_loops.cli.loop.info import cmd_diagnose_evaluators
+
+        loops_dir = tmp_path / ".loops"
+        history_root = loops_dir / ".history"
+        run_dir = history_root / "20260101T000000-my-loop"
+        events = [
+            {"event": "state_enter", "state": "check", "iteration": 1},
+            {"event": "evaluate", "verdict": "yes"},
+        ]
+        self._make_events_jsonl(run_dir, events)
+        result = cmd_diagnose_evaluators(
+            "my-loop", self._base_args(min_runs=10), loops_dir
+        )
+        assert result == 0
+        assert "Insufficient" in capsys.readouterr().out
+
+    def test_all_pass_returns_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Returns 1 when a state has 100% pass rate (variance=0 < threshold)."""
+        from little_loops.cli.loop.info import cmd_diagnose_evaluators
+
+        loops_dir = tmp_path / ".loops"
+        history_root = loops_dir / ".history"
+
+        for i in range(10):
+            run_dir = history_root / f"20260101T0000{i:02d}-my-loop"
+            events = [
+                {"event": "state_enter", "state": "check", "iteration": 1},
+                {"event": "evaluate", "verdict": "yes"},
+            ]
+            self._make_events_jsonl(run_dir, events)
+
+        result = cmd_diagnose_evaluators(
+            "my-loop", self._base_args(min_runs=10), loops_dir
+        )
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "low variance" in out
+        assert "pass_rate=1.00" in out
+
+    def test_mixed_returns_zero(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Returns 0 when variance is above threshold (discriminating)."""
+        from little_loops.cli.loop.info import cmd_diagnose_evaluators
+
+        loops_dir = tmp_path / ".loops"
+        history_root = loops_dir / ".history"
+
+        verdicts = ["yes", "no"] * 5
+        for i, verdict in enumerate(verdicts):
+            run_dir = history_root / f"20260101T0000{i:02d}-my-loop"
+            events = [
+                {"event": "state_enter", "state": "check", "iteration": 1},
+                {"event": "evaluate", "verdict": verdict},
+            ]
+            self._make_events_jsonl(run_dir, events)
+
+        result = cmd_diagnose_evaluators(
+            "my-loop", self._base_args(min_runs=10), loops_dir
+        )
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "discriminating" in out
+
+    def test_json_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--json flag outputs parseable JSON with expected keys."""
+        from little_loops.cli.loop.info import cmd_diagnose_evaluators
+
+        loops_dir = tmp_path / ".loops"
+        history_root = loops_dir / ".history"
+
+        for i in range(10):
+            run_dir = history_root / f"20260101T0000{i:02d}-my-loop"
+            events = [
+                {"event": "state_enter", "state": "check", "iteration": 1},
+                {"event": "evaluate", "verdict": "yes"},
+            ]
+            self._make_events_jsonl(run_dir, events)
+
+        result = cmd_diagnose_evaluators(
+            "my-loop", self._base_args(as_json=True, min_runs=10), loops_dir
+        )
+        assert result == 0
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["loop"] == "my-loop"
+        assert data["total_runs"] == 10
+        assert len(data["states"]) == 1
+        assert data["states"][0]["state"] == "check"
+        assert data["states"][0]["variance"] == 0.0
+
+    def test_custom_threshold(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Custom --threshold flag is respected."""
+        from little_loops.cli.loop.info import cmd_diagnose_evaluators
+
+        loops_dir = tmp_path / ".loops"
+        history_root = loops_dir / ".history"
+
+        verdicts = ["yes", "yes", "yes", "yes", "no"] * 2
+        for i, verdict in enumerate(verdicts):
+            run_dir = history_root / f"20260101T0000{i:02d}-my-loop"
+            events = [
+                {"event": "state_enter", "state": "check", "iteration": 1},
+                {"event": "evaluate", "verdict": verdict},
+            ]
+            self._make_events_jsonl(run_dir, events)
+
+        # With threshold 0.1, variance 0.16 is fine (discriminating)
+        result = cmd_diagnose_evaluators(
+            "my-loop", self._base_args(threshold=0.1, min_runs=10), loops_dir
+        )
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "discriminating" in out

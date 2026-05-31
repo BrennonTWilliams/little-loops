@@ -726,6 +726,7 @@ states:
 | Loop runs but nothing changes across iterations | Skill is idempotent / "already done" | Add `check_stall` with `max_stall: 1` to skip no-op items |
 | `check_mcp` always routes to `not_found` | Server not registered in `.mcp.json` | Add the MCP server entry to `.mcp.json` or route `not_found` to the next phase to skip gracefully |
 | `check_skill` always returns NO | Skill prompt too broad or skill has no browser/nav capability | Narrow the skill instruction; ensure the skill has access to the target system; check timeout is long enough |
+| Evaluator passes too consistently (always YES or always NO) | Evaluator verdict has near-zero variance across runs; the gate isn't actually measuring anything | Run `ll-loop diagnose-evaluators <loop>` to identify non-discriminating states; tighten judge prompt, adjust numeric target, or replace `exit_code` evaluator with one that exercises the feature |
 
 ---
 

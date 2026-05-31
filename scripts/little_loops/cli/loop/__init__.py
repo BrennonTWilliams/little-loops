@@ -22,6 +22,7 @@ def main_loop() -> int:
     from little_loops.cli.loop.config_cmds import cmd_install, cmd_validate
     from little_loops.cli.loop.info import (
         cmd_audit_meta,
+        cmd_diagnose_evaluators,
         cmd_fragments,
         cmd_history,
         cmd_list,
@@ -58,6 +59,7 @@ def main_loop() -> int:
         "fragments",
         "next-loop",
         "audit-meta",
+        "diagnose-evaluators",
         "monitor",
         # aliases
         "r",
@@ -599,6 +601,29 @@ Examples:
         "--verbose", "-v", action="store_true", help="Show full prompt at action start"
     )
 
+    # Diagnose-evaluators subcommand
+    diagnose_eval_parser = subparsers.add_parser(
+        "diagnose-evaluators",
+        help="Detect non-discriminating evaluators from run history",
+    )
+    diagnose_eval_parser.set_defaults(command="diagnose-evaluators")
+    diagnose_eval_parser.add_argument("loop", help="Loop name")
+    diagnose_eval_parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.05,
+        help="Variance floor below which a state is flagged (default: 0.05)",
+    )
+    diagnose_eval_parser.add_argument(
+        "--min-runs",
+        type=int,
+        default=10,
+        help="Minimum runs required for meaningful variance (default: 10)",
+    )
+    diagnose_eval_parser.add_argument(
+        "-j", "--json", action="store_true", help="Output as JSON"
+    )
+
     args = parser.parse_args(argv)
 
     logger = Logger(verbose=not getattr(args, "quiet", False))
@@ -632,6 +657,8 @@ Examples:
         return cmd_next_loop(args, loops_dir, logger)
     elif args.command == "audit-meta":
         return cmd_audit_meta(args.loop, args, loops_dir)
+    elif args.command == "diagnose-evaluators":
+        return cmd_diagnose_evaluators(args.loop, args, loops_dir)
     elif args.command == "monitor":
         return cmd_monitor(args, loops_dir)
     else:
