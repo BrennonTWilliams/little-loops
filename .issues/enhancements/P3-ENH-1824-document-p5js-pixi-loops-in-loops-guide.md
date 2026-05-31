@@ -4,9 +4,11 @@ title: Document p5js-sketch-generator, pixi-data-viz, and pixi-generative-art in
 type: ENH
 priority: P3
 captured_at: '2026-05-31T00:00:00Z'
+completed_at: '2026-05-31T20:31:44Z'
 discovered_date: '2026-05-31'
 discovered_by: audit-docs
-status: open
+status: done
+testable: false
 labels:
 - enhancement
 - documentation
@@ -60,10 +62,10 @@ Key differentiators to call out in each section:
 
 ## Success Metrics
 
-- [ ] `docs/guides/LOOPS_GUIDE.md` Built-in Loops table includes rows for all three loops
-- [ ] Three `### <name>` detail sections added, each with Technique, When to use, Usage, Context variables, FSM flow, and Notes blocks
-- [ ] `ll-verify-docs` (if it checks loop counts) passes without changes
-- [ ] No broken markdown links introduced
+- [x] `docs/guides/LOOPS_GUIDE.md` Built-in Loops table includes rows for all three loops
+- [x] Three `### <name>` detail sections added, each with Technique, When to use, Usage, Context variables, FSM flow, and Notes blocks
+- [x] `ll-verify-docs` (if it checks loop counts) passes without changes
+- [x] No broken markdown links introduced (pre-existing broken link in cli-anything-bootstrap stub is unrelated)
 
 ## Scope Boundaries
 
@@ -108,5 +110,13 @@ Key differentiators to call out in each section:
 - Line number estimates in the issue (~1031 for table insert, ~1415 for section insert) are accurate.
 
 
+## Resolution
+
+Added documentation for all three loops to `docs/guides/LOOPS_GUIDE.md`:
+- Three table rows in the Harness Examples section (lines 1031–1033)
+- Updated GAN cross-reference line to include all three new loops
+- Three `### <name>` detail sections after `### svg-textgrad` — each with Technique, When to use, Usage, Context variables table, FSM flow, and Notes blocks (including evaluation criteria tables for p5js and pixi-generative-art, and per-criterion threshold table for pixi-data-viz)
+
 ## Session Log
+- `/ll:ready-issue` - 2026-05-31T20:27:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f77e782-e0ff-45fd-9f5a-a537a30487d3.jsonl`
 - `/ll:verify-issues` - 2026-05-31T06:12:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f18e015-8096-4bee-9b5a-4f1fdb6cf02c.jsonl`

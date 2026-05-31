@@ -1028,10 +1028,13 @@ run_eval → score_results → analyze_failures
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
 | `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI |
 | `svg-textgrad` | TextGrad-style SVG harness — optimizes the visual brief via structured gradient updates (FAILURE_PATTERN → ROOT_CAUSE → GRADIENT) rather than feeding raw critique to the generator; accumulates gradient history for repeated-failure escalation |
+| `p5js-sketch-generator` | Generator-evaluator harness for p5.js creative coding sketches — multi-frame screenshots at deterministic frameCounts evaluate motion, not just composition; GAN-style architecture with p5.js loaded from CDN |
+| `pixi-data-viz` | Generator-evaluator harness for animated PixiJS data visualizations — embeds synthetic-but-plausible data inline; hard-gates `encoding_clarity` at threshold 7; evaluates whether motion aids comprehension |
+| `pixi-generative-art` | Generator-evaluator harness for PixiJS generative art sketches — GPU-accelerated idioms (filters, blend modes, container hierarchies); rewards Pixi-distinctive patterns over p5.js conventions |
 | `loop-specialist-eval` | Behavioral eval harness for the `loop-specialist` agent — drives the agent against a seeded `broken-verify-loop.yaml` fixture (ambiguous-output failure mode) and verifies that the diagnosis artifact is written and the failure mode is correctly classified |
 | `adversarial-redesign` | Generator-vs-critic figure refinement demo using AutoFigure — a generator produces an SVG from a text concept, a critic returns structured complaints, the loop regenerates addressing each complaint and exits on score-improvement stall or SVG-diff convergence. Every round is persisted for demo playback. **Requires**: `pip install -e ./AutoFigure && playwright install chromium` + `OPENROUTER_API_KEY`. Example: `ll-loop run adversarial-redesign --input concept="how a transformer attends"` |
 
-For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, and `svg-textgrad`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
+For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, `svg-textgrad`, `p5js-sketch-generator`, `pixi-data-viz`, and `pixi-generative-art`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
 
 > **Design rule: Playwright failure routing.** In any harness that uses Playwright for screenshot capture, route the `evaluate` state's `on_no` and `on_error` to the `score` state (LLM-only evaluation) — never back to `generate`. Routing to `generate` creates an infinite cycle: `generate` routes unconditionally back to `evaluate`, which fails again, repeating until `max_iterations` is exhausted with zero useful output. Routing forward to `score` lets the evaluator assess the HTML source directly and produce actionable critique even when no screenshot is available.
 
@@ -1412,6 +1415,181 @@ init → plan → generate → evaluate
 - To customize scoring criteria, install the loop locally (`ll-loop install svg-textgrad`) and edit the `score` state's prompt (writes `critique.md`) and the `verify_score` state's shell arithmetic (controls the pass threshold computation and routing). To customize gradient computation, edit the `compute_gradient` state's prompt.
 - The generator enforces a strict 250-line SVG size limit — use `<circle>`, `<path>`, and `<text>` with `<g transform="">` for repeated elements rather than verbose repeated markup.
 - Prefer `svg-image-generator` for quick iterations; reach for `svg-textgrad` when you see the same failure pattern repeating across iterations.
+
+### `p5js-sketch-generator` — GAN-Style p5.js Sketch Loop
+
+> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`). Node.js must be available in `PATH` with `@playwright/test` in the global npm tree.
+
+**Technique**: GAN-style generator-evaluator harness adapted for time-based generative work. A **planner** expands the one-line description into a visual brief (generative concept, palette, motion behavior, anti-patterns to avoid); a **generator** writes a fully self-contained HTML file that loads p5.js from CDN and embeds the sketch in global mode with deterministic `randomSeed`/`noiseSeed` and all motion driven by `frameCount`; a multi-frame **evaluator** uses Playwright's JS API to wait for specific `window.frameCount` values and captures one PNG per frame; and a **scorer** judges the frame strip against four sketch-specific criteria, routing back to the generator with structured critique until all scores clear `pass_threshold`.
+
+**When to use**: When you want an animated p5.js generative sketch and need motion evaluated, not just composition. The multi-frame sampling (default frames 0, 90, 240) is the key differentiator from `svg-image-generator`: a static composition and a vibrantly-evolving system look identical at frame 0; sampling across time makes motion a first-class evaluation criterion. Use `pixi-generative-art` instead when GPU-accelerated idioms (filters, blend modes, particle containers) are central to the aesthetic.
+
+**Usage:**
+
+```bash
+ll-loop run p5js-sketch-generator "a particle accumulation field that blooms outward from a center attractor"
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `description` | (from `loop_input`) | Natural language sketch description — passed as the positional argument |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/p5js-sketch-generator-{timestamp}/`) for `index.html`, `brief.md`, `critique.md`, and `frame_*.png`; created automatically. Override with `--context run_dir=path/`. |
+| `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
+| `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
+| `sample_frames` | `"0,90,240"` | Comma-separated `frameCount` values to screenshot; controls which animation moments the evaluator judges |
+
+Override per-run:
+
+```bash
+ll-loop run p5js-sketch-generator "recursive subdivision bloom" \
+  --context pass_threshold=7 \
+  --context sample_frames="0,60,180,360"
+```
+
+**FSM flow:**
+
+```
+init → plan → generate → evaluate
+                            ├─ CAPTURED → score
+                            │              ├─ ALL_PASS → done
+                            │              ├─ ITERATE  → generate (with critique)
+                            │              └─ ERROR    → failed
+                            ├─ FAILED   → generate (retry transient render)
+                            └─ ERROR    → failed
+```
+
+**Evaluation criteria** (all four must meet `pass_threshold`):
+
+| Criterion | Weight | What it checks |
+|-----------|--------|----------------|
+| `visual_impact` | 2× | Composition, palette, density across the frame strip — does the sketch hold the eye? Penalizes muddy palettes, empty canvases, default p5 styling. |
+| `originality` | 2× | Evidence of a specific generative idea vs tutorial output. Penalizes vanilla Perlin flow fields with rainbow HSL cycling, unmodified Shiffman-tutorial aesthetics, anything that could be the first Google result for "p5.js sketch". |
+| `motion_quality` | 1× | Does the sketch meaningfully evolve between frame 0, 90, and 240? Frames that look interchangeable score ≤3. Jittery-without-direction is failure; look for accumulation, decay, drift, growth, or collapse. |
+| `craft` | 1× | Blend modes, sub-pixel rendering, edge handling, color harmony, stroke weights, intentional use of negative space. |
+
+**Notes:**
+- p5.js is loaded from CDN (`https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js`) — the only external resource permitted. All other code (sketch, helpers, CSS) is inline so the file renders correctly under a `file://` URL without a web server.
+- The sketch uses p5.js global mode (`function setup()` / `function draw()` at the top level), which exposes `window.frameCount` — the value the screenshot harness polls when waiting for each frame.
+- Deterministic seeding is required: `randomSeed(SEED)` and `noiseSeed(SEED)` called once in `setup()`, all motion driven by `frameCount`. Without seeding, screenshots at the same `frameCount` would differ run-to-run and the critique would chase noise.
+- Canvas size defaults to `createCanvas(1200, 800)` — override in the brief if the concept needs a different aspect ratio.
+- If Playwright is unavailable, the `evaluate` state's `on_no` route retries with fresh HTML rather than scoring without visual evidence.
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- To customize scoring criteria, install the loop locally (`ll-loop install p5js-sketch-generator`) and edit the `score` state's prompt.
+
+---
+
+### `pixi-data-viz` — PixiJS Data Visualization Loop
+
+> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`). Node.js must be available in `PATH` with `@playwright/test` in the global npm tree.
+
+**Technique**: GAN-style generator-evaluator harness for animated data visualizations rendered with PixiJS v8. A **planner** writes a detailed viz brief that commits to concrete data semantics — dataset shape, a synthetic-but-plausible dataset spec, encoding choices with perceptual justification (citing the Cleveland-McGill accuracy ranking), animation purpose, required annotations, and palette type; a **generator** writes a self-contained HTML file with the synthetic dataset embedded as a JSON literal and chart chrome (axes, title, legend) rendered at frame 0 before any data animation begins; a multi-frame **evaluator** captures frames 0 (chrome only), 120 (mid-transition), and 240 (settled state); and a **scorer** applies per-criterion thresholds with `encoding_clarity` hard-gated at 7 regardless of `pass_threshold` — mirroring how `html-anything` gates platform constraints above aesthetic criteria.
+
+**When to use**: When you need an animated, GPU-rendered data visualization with rigorous evaluation of encoding clarity, not just aesthetics. The hard gate on `encoding_clarity` is the key differentiator from `pixi-generative-art`: a beautiful chart with unlabeled axes still fails. Use `pixi-generative-art` when aesthetic impact matters more than data fidelity; use `p5js-sketch-generator` when the p5.js API (built-in `noise()`, global mode) is preferred over PixiJS.
+
+**Usage:**
+
+```bash
+ll-loop run pixi-data-viz "animated bar chart showing monthly revenue by product category over 12 months"
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `description` | (from `loop_input`) | Natural language visualization description — passed as the positional argument |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/pixi-data-viz-{timestamp}/`) for `index.html`, `brief.md`, `critique.md`, and `frame_*.png`; created automatically. Override with `--context run_dir=path/`. |
+| `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
+| `pass_threshold` | `6` | Minimum score for non-gated criteria (1–10); `encoding_clarity` is hard-gated at 7 regardless of this value |
+| `sample_frames` | `"0,120,240"` | Comma-separated `__loopFrame` values to screenshot; defaults capture initial chrome, mid-transition, and settled state |
+
+**FSM flow:**
+
+```
+init → plan → generate → evaluate
+                            ├─ CAPTURED → score
+                            │              ├─ ALL_PASS → done
+                            │              ├─ ITERATE  → generate (with critique)
+                            │              └─ ERROR    → failed
+                            ├─ FAILED   → generate (retry transient render)
+                            └─ ERROR    → failed
+```
+
+**Evaluation criteria:**
+
+| Criterion | Threshold | What it checks |
+|-----------|-----------|----------------|
+| `encoding_clarity` | **7** (hard-gated) | Axes labeled with units, legend present for multi-series data, scale appropriate, no truncated y-axes, no rainbow-jet on sequential data, encoding from brief implemented literally — the platform constraint for any data visualization |
+| `animation_legibility` | `pass_threshold` | Does motion aid comprehension? Compares frames at 0, 120, and 240; penalizes decorative bounce/easing that doesn't encode information and animation that out-paces reading speed |
+| `visual_design` | `pass_threshold` | Aesthetic coherence; palette type matches data type — sequential for ordered scalars, diverging for data with a meaningful midpoint, categorical for unordered groups |
+| `craft` | `pass_threshold` | Typography hierarchy (title > axis labels > tick labels), spacing consistency, alignment, anti-aliasing of axes and strokes |
+
+**Notes:**
+- PixiJS v8 is loaded from CDN (`https://pixijs.download/release/pixi.js`) — the only external resource. The sketch body must be wrapped in an IIFE async function because `app.init({...})` is asynchronous in PixiJS v8.
+- The synthetic dataset is embedded as a JSON literal at the top of the inline script — never generated with `Math.random()` at runtime. This ensures the same description always produces the same data across runs.
+- Frame 0 must show complete chart chrome (axes with tick labels and units, title, legend) before any data animation begins. The `evaluate` state's frame-0 screenshot is a direct test of this requirement.
+- The sketch exposes `window.__loopFrame` (not p5's `window.frameCount`) as the harness polling target; it must be incremented inside the PixiJS ticker. All animation is driven from `window.__loopFrame`.
+- A seeded deterministic PRNG (e.g. mulberry32 with a constant integer seed) is used for any runtime jitter — never unseeded `Math.random()` inside the ticker.
+- If Playwright is unavailable, the `evaluate` state's `on_no` route retries with fresh HTML rather than scoring without visual evidence.
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- To customize scoring thresholds or criteria, install the loop locally (`ll-loop install pixi-data-viz`) and edit the `score` state's prompt and threshold logic.
+
+---
+
+### `pixi-generative-art` — PixiJS Generative Art Loop
+
+> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`). Node.js must be available in `PATH` with `@playwright/test` in the global npm tree.
+
+**Technique**: GAN-style generator-evaluator harness for GPU-accelerated generative art, mirroring `p5js-sketch-generator` but targeting PixiJS idioms. A **planner** writes a sketch brief that explicitly commits to a **GPU strategy** — which PixiJS filter (`BlurFilter`, `DisplacementFilter`, `ColorMatrixFilter`, custom GLSL via `Filter.from`), blend mode (`'add'`, `'multiply'`, `'screen'`), container hierarchy, or `ParticleContainer` does the aesthetic heavy lifting; a **generator** writes a self-contained HTML file with PixiJS v8 loaded from CDN, a seeded deterministic PRNG, and all motion driven by `window.__loopFrame`; a multi-frame **evaluator** captures frames 0, 90, and 240; and a **scorer** applies a `gpu_craft` criterion that inspects the generated HTML source for evidence of PixiJS-native features — a sketch that could have been drawn with a plain 2D canvas context scores ≤4.
+
+**When to use**: When you want GPU-accelerated generative art and care that the result uses PixiJS-distinctive features rather than just canvas drawing calls in a PixiJS wrapper. Use `p5js-sketch-generator` when the p5.js ecosystem (built-in `noise()`, `random()`, global mode, the Processing community's idioms) is a better fit. Use `pixi-data-viz` when encoding data accurately is the goal rather than aesthetic impact.
+
+**Usage:**
+
+```bash
+ll-loop run pixi-generative-art "a bioluminescent deep-sea particle system with displacement filter bloom"
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `description` | (from `loop_input`) | Natural language sketch description — passed as the positional argument |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/pixi-generative-art-{timestamp}/`) for `index.html`, `brief.md`, `critique.md`, and `frame_*.png`; created automatically. Override with `--context run_dir=path/`. |
+| `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
+| `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
+| `sample_frames` | `"0,90,240"` | Comma-separated `__loopFrame` values to screenshot |
+
+**FSM flow:**
+
+```
+init → plan → generate → evaluate
+                            ├─ CAPTURED → score
+                            │              ├─ ALL_PASS → done
+                            │              ├─ ITERATE  → generate (with critique)
+                            │              └─ ERROR    → failed
+                            ├─ FAILED   → generate (retry transient render)
+                            └─ ERROR    → failed
+```
+
+**Evaluation criteria** (all four must meet `pass_threshold`):
+
+| Criterion | Weight | What it checks |
+|-----------|--------|----------------|
+| `visual_impact` | 2× | Composition, palette, density across the frame strip. Penalizes muddy palettes, empty canvases, default Pixi styling. |
+| `originality` | 2× | Evidence of a specific generative idea vs tutorial output. Penalizes Pixi demo clones (bunny, fish-pond, spinning logo) and anything that could be the first Google result for "pixijs example". |
+| `motion_quality` | 1× | Does the sketch meaningfully evolve between frame 0, 90, and 240? Frames that look interchangeable score ≤3. Look for accumulation, decay, drift, growth, or collapse. |
+| `gpu_craft` | 1× | Visible use of PixiJS GPU strengths — `Filter` instances (BlurFilter, DisplacementFilter, custom GLSL via `Filter.from`), explicit blend modes (`'add'`, `'multiply'`, `'screen'`), `Container` hierarchies with per-layer transforms, or `ParticleContainer` for dense agent counts. The evaluator **inspects `index.html`** to verify a PixiJS-native feature is actually used. A sketch that could have been drawn with a plain `<canvas>` 2D context scores ≤4 on this criterion. |
+
+**Notes:**
+- PixiJS v8 is loaded from CDN (`https://pixijs.download/release/pixi.js`) — the only external resource. The sketch body must be wrapped in an IIFE async function because `app.init({...})` is asynchronous.
+- The sketch exposes `window.__loopFrame` (not p5's `window.frameCount`) as the harness polling target; increment it inside the PixiJS ticker. All motion must be driven from `window.__loopFrame`, never from `Date.now()` or unseeded `Math.random()`.
+- A seeded deterministic PRNG (e.g. mulberry32 with a constant integer seed) is required for all randomness so screenshots at the same `__loopFrame` value are reproducible across iterations.
+- The `gpu_craft` criterion explicitly reads `index.html` source code — the evaluator verifies that a PixiJS-native feature is present in the code, not just claimed in the brief.
+- If Playwright is unavailable, the `evaluate` state's `on_no` route retries with fresh HTML rather than scoring without visual evidence.
+- The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
+- Prefer `p5js-sketch-generator` when the p5.js ecosystem (global mode, built-in `noise()`) is the right tool; reach for `pixi-generative-art` when GPU filters, blend modes, or `ParticleContainer` density are central to the aesthetic.
 
 <!-- TODO: update-docs stub — cli-anything-bootstrap — drafted 2026-05-30 -->
 ### `cli-anything-bootstrap` — Agent-Native CLI Bootstrapper
