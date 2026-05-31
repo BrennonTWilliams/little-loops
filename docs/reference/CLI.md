@@ -662,6 +662,22 @@ ll-loop diagnose-evaluators harness-refine-issue --json        # JSON output for
 ll-loop diagnose-evaluators harness-refine-issue --threshold 0.1 --min-runs 5
 ```
 
+#### `ll-loop promote-baseline`
+
+Promote the latest run's action output as the new comparator baseline. Reads `action_output` events from the most recent `.loops/.history/*-<loop>/events.jsonl` and writes the concatenated output to `.loops/baselines/<loop>/output.txt`. Use this to manually set the baseline after inspecting a run, as an alternative to `auto_promote: true`.
+
+**Arguments:**
+| Argument | Description |
+|----------|-------------|
+| `loop` | Loop name |
+
+**Exit codes:** 0 = baseline promoted successfully; 1 = no history found or no `action_output` events.
+
+**Examples:**
+```bash
+ll-loop promote-baseline my-loop    # Promote latest run as new baseline
+```
+
 **Examples:**
 ```bash
 ll-loop fix-types                     # Run loop (shorthand for run)

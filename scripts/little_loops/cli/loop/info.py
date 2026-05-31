@@ -757,6 +757,61 @@ def cmd_diagnose_evaluators(loop_name: str, args: argparse.Namespace, loops_dir:
     return 1 if flagged else 0
 
 
+def cmd_promote_baseline(loop_name: str, args: argparse.Namespace, loops_dir: Path) -> int:
+    """Promote the latest run's action output as the new comparator baseline.
+
+    Reads action_output events from the most recent .history entry and writes
+    the concatenated output to .loops/baselines/<loop>/output.txt.
+    """
+    import json as _json
+
+    history_base = loops_dir / ".history"
+    if not history_base.exists():
+        print(f"No history for: {loop_name}")
+        return 1
+
+    suffix = f"-{loop_name}"
+    matched = sorted(
+        [d for d in history_base.iterdir() if d.is_dir() and d.name.endswith(suffix)],
+        key=lambda d: d.name,
+        reverse=True,
+    )
+    if not matched:
+        print(f"No history for: {loop_name}")
+        return 1
+
+    latest = matched[0]
+    events_file = latest / "events.jsonl"
+    if not events_file.exists():
+        print(f"No events.jsonl in latest run: {latest.name}")
+        return 1
+
+    lines = []
+    with open(events_file) as f:
+        for raw in f:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                event = _json.loads(raw)
+            except _json.JSONDecodeError:
+                continue
+            if event.get("type") == "action_output":
+                line = event.get("line", "")
+                if line:
+                    lines.append(line)
+
+    if not lines:
+        print(f"No action_output events in latest run: {latest.name}")
+        return 1
+
+    target = Path(loops_dir) / "baselines" / loop_name / "output.txt"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(lines))
+    print(f"Promoted baseline for {loop_name}: {target}")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # FSM diagram renderer — delegated to layout module (re-exported above)
 # ---------------------------------------------------------------------------
@@ -870,7 +925,7 @@ _EVALUATE_TYPE_DISPLAY: dict[str, str] = {
     "convergence": "convergence",
     "diff_stall": "diff stall",
     "action_stall": "action stall",
-    "comparator": "comparator",
+    "comparator": "blind comparator",
 }
 
 

@@ -240,7 +240,7 @@ The wizard asks two follow-up questions when LLM-as-judge is selected: "What sho
 
 Uses a `comparator` evaluator to run one or more blind A/B comparisons between the current output and a stored baseline, then takes a majority vote. This prevents harness regressions: if a recent change makes outputs worse than a known-good baseline, the loop routes to retry rather than advancing.
 
-Baselines are stored under `.loops/baselines/<loop-name>/output.txt` — a sibling to `runs/` in the `.loops/` directory. The first successful run bootstraps the baseline automatically when `auto_promote: true` is set.
+Baselines are stored under `.loops/baselines/<loop-name>/output.txt` — a sibling to `runs/` in the `.loops/` directory. The first successful run bootstraps the baseline automatically when `auto_promote: true` is set. To manually promote a run as the new baseline after inspecting its output, use `ll-loop promote-baseline <loop>`.
 
 **When to use instead of `check_semantic`**: Use `check_comparator` when you have a known-good output and want to detect regressions; use `check_semantic` when you want a general LLM quality judgment without a reference baseline.
 

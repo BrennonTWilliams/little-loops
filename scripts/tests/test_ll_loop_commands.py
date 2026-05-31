@@ -4203,3 +4203,82 @@ class TestCmdDiagnoseEvaluators:
         assert result == 0
         out = capsys.readouterr().out
         assert "discriminating" in out
+
+
+class TestCmdPromoteBaseline:
+    """Tests for ll-loop promote-baseline command."""
+
+    def _write_events(self, run_dir: Path, events: list[dict]) -> None:  # type: ignore[type-arg]
+        """Write events.jsonl to run_dir."""
+        run_dir.mkdir(parents=True, exist_ok=True)
+        with open(run_dir / "events.jsonl", "w") as f:
+            for event in events:
+                f.write(json.dumps(event) + "\n")
+
+    def _base_args(self) -> argparse.Namespace:
+        return argparse.Namespace()
+
+    def test_no_history_returns_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Returns 1 when no .history directory exists."""
+        from little_loops.cli.loop.info import cmd_promote_baseline
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        result = cmd_promote_baseline("my-loop", self._base_args(), loops_dir)
+        assert result == 1
+        assert "No history" in capsys.readouterr().out
+
+    def test_no_action_output_events_returns_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Returns 1 when run exists but has no action_output events."""
+        from little_loops.cli.loop.info import cmd_promote_baseline
+
+        loops_dir = tmp_path / ".loops"
+        run_dir = loops_dir / ".history" / "20260101T000000-my-loop"
+        self._write_events(run_dir, [{"type": "state_enter", "state": "execute"}])
+        result = cmd_promote_baseline("my-loop", self._base_args(), loops_dir)
+        assert result == 1
+        assert "No action_output" in capsys.readouterr().out
+
+    def test_success_writes_baseline(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Writes output.txt and returns 0 when action_output events exist."""
+        from little_loops.cli.loop.info import cmd_promote_baseline
+
+        loops_dir = tmp_path / ".loops"
+        run_dir = loops_dir / ".history" / "20260101T000000-my-loop"
+        self._write_events(
+            run_dir,
+            [
+                {"type": "action_output", "line": "hello"},
+                {"type": "action_output", "line": "world"},
+            ],
+        )
+        result = cmd_promote_baseline("my-loop", self._base_args(), loops_dir)
+        assert result == 0
+        baseline = loops_dir / "baselines" / "my-loop" / "output.txt"
+        assert baseline.exists()
+        content = baseline.read_text()
+        assert "hello" in content
+        assert "world" in content
+        assert "Promoted baseline" in capsys.readouterr().out
+
+    def test_latest_run_used(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Uses the most recent run (highest timestamp) when multiple runs exist."""
+        from little_loops.cli.loop.info import cmd_promote_baseline
+
+        loops_dir = tmp_path / ".loops"
+        older_dir = loops_dir / ".history" / "20260101T000000-my-loop"
+        newer_dir = loops_dir / ".history" / "20260102T000000-my-loop"
+        self._write_events(older_dir, [{"type": "action_output", "line": "old output"}])
+        self._write_events(newer_dir, [{"type": "action_output", "line": "new output"}])
+        result = cmd_promote_baseline("my-loop", self._base_args(), loops_dir)
+        assert result == 0
+        baseline = loops_dir / "baselines" / "my-loop" / "output.txt"
+        assert "new output" in baseline.read_text()

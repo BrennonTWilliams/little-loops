@@ -557,3 +557,21 @@ states:
         assert result == 0
         captured = capsys.readouterr()
         assert "No history" in captured.out
+
+    def test_promote_baseline_no_runs(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """promote-baseline with no history exits 1 with informative message."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".loops").mkdir()
+        with patch.object(sys, "argv", ["ll-loop", "promote-baseline", "no-such-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "No history" in captured.out

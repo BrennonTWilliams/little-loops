@@ -26,6 +26,7 @@ def main_loop() -> int:
         cmd_fragments,
         cmd_history,
         cmd_list,
+        cmd_promote_baseline,
         cmd_show,
     )
     from little_loops.cli.loop.lifecycle import cmd_monitor, cmd_resume, cmd_status, cmd_stop
@@ -60,6 +61,7 @@ def main_loop() -> int:
         "next-loop",
         "audit-meta",
         "diagnose-evaluators",
+        "promote-baseline",
         "monitor",
         # aliases
         "r",
@@ -642,6 +644,14 @@ Examples:
     )
     diagnose_eval_parser.add_argument("-j", "--json", action="store_true", help="Output as JSON")
 
+    # Promote-baseline subcommand
+    promote_bl_parser = subparsers.add_parser(
+        "promote-baseline",
+        help="Promote the latest run's output as the new comparator baseline",
+    )
+    promote_bl_parser.set_defaults(command="promote-baseline")
+    promote_bl_parser.add_argument("loop", help="Loop name")
+
     args = parser.parse_args(argv)
 
     logger = Logger(verbose=not getattr(args, "quiet", False))
@@ -677,6 +687,8 @@ Examples:
         return cmd_audit_meta(args.loop, args, loops_dir)
     elif args.command == "diagnose-evaluators":
         return cmd_diagnose_evaluators(args.loop, args, loops_dir)
+    elif args.command == "promote-baseline":
+        return cmd_promote_baseline(args.loop, args, loops_dir)
     elif args.command == "monitor":
         return cmd_monitor(args, loops_dir)
     else:
