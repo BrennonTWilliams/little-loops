@@ -112,7 +112,7 @@ In addition to trajectory JSONL files written to `.ll/runs/harness-optimize/<run
 
 | File | Location | Description |
 |------|----------|-------------|
-| `<stem>.meta-eval.jsonl` | `.loops/.running/` (and archived to `.loops/.history/`) | One entry per iteration that passes through an `llm_structured` evaluate state, pairing the LLM self-grade verdict with the external evaluator result. Fields: `iteration`, `ts`, `loop`, `state`, `llm_verdict`, `llm_rationale`, `external_verdict`, `external_evaluator`, `agreed`, `diff_stats`. |
+| `<stem>.meta-eval.jsonl` | `.loops/.running/` (archived as `meta-eval.jsonl` under `.loops/.history/<run-id>-<loop-name>/`) | One entry per iteration that passes through an `llm_structured` evaluate state, pairing the LLM self-grade verdict with the external evaluator result. Fields: `iteration`, `ts`, `loop`, `state`, `llm_verdict`, `llm_rationale`, `external_verdict`, `external_state`, `external_evaluator`, `external_value`, `external_target`, `diff_stats`, `agreed`. |
 
 ---
 

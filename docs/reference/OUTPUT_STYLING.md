@@ -37,7 +37,7 @@ colored = colorize("P1", PRIORITY_COLOR["P1"])   # ANSI-wrapped or passthrough
 
 `colorize(text, code)` wraps text in `\033[{code}m...\033[0m`. Returns text unchanged when color is disabled.
 
-Color is enabled when `sys.stdout.isatty()` is `True` and `NO_COLOR` env var is unset. This is evaluated at import time into `_USE_COLOR`.
+Color is enabled when `sys.stdout.isatty()` is `True` and `NO_COLOR` env var is absent or empty. Setting `FORCE_COLOR=1` bypasses the TTY check and forces color on. This is evaluated at import time into `_USE_COLOR`.
 
 #### Default color codes
 

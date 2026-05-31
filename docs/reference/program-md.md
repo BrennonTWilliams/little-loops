@@ -24,7 +24,7 @@ to the loop's LLM states as the primary optimization goal.]
 
 ## Benchmark
 
-task_dir: evals/my-suite
+tasks_dir: evals/my-suite
 scorer: ./scripts/score.sh
 
 ## Budget
@@ -44,7 +44,7 @@ wall_clock: 8h
 |---------|----------------|-------|
 | `## Directive` | `directive` | Prose passed to the loop's LLM prompt as the primary goal |
 | `## Targets` | `targets` | Bullet list → space-separated string (matches `harness-optimize` `targets` context variable) |
-| `## Benchmark` | key:value pairs injected directly | `task_dir` → `task_dir`, `scorer` → `scorer`, etc. |
+| `## Benchmark` | key:value pairs injected directly | `tasks_dir` → `tasks_dir`, `scorer` → `scorer`, etc. |
 | `## Budget` | `budget` | Prose; interpretation is loop-specific |
 | `## Constraints` | `constraints` | Prose; interpretation is loop-specific |
 
@@ -92,7 +92,7 @@ explaining how they connect.
 
 ## Benchmark
 
-task_dir: evals/refine-issue
+tasks_dir: evals/refine-issue
 scorer: ./scripts/score.sh
 
 ## Budget
@@ -106,7 +106,7 @@ Then run overnight:
 ll-loop run harness-optimize
 ```
 
-The loop reads `.ll/program.md`, sets `targets`, `task_dir`, and `scorer` from
+The loop reads `.ll/program.md`, sets `targets`, `tasks_dir`, and `scorer` from
 the file, and feeds the Directive prose to each LLM proposal step so the model
 knows the optimization goal.
 
@@ -126,8 +126,7 @@ the parsed values are already present in `fsm.context` before execution begins.
 
 ## Notes
 
-- The file is gitignored by default in new projects (`.ll/` is personal config).
-  Commit it intentionally if you want a shared run configuration.
+- The file is **not gitignored by default**. Commit it intentionally to share a run configuration, or add `.ll/program.md` to your `.gitignore` to keep it personal.
 - No schema is enforced. Convention-over-spec: formalize only if section drift
   causes problems.
 - The `## Directive` section is the most important — it gives the LLM a goal.

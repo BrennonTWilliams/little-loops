@@ -173,8 +173,50 @@ All guides pass accuracy, completeness, consistency, and link checks. No open fi
 | `/ll:run-tests` reference in `ISSUE_MANAGEMENT_GUIDE.md:88` | Valid — `commands/run-tests.md` exists ✓ |
 | `ll-workflows analyze --input` default (`WORKFLOW_ANALYSIS_GUIDE.md:193`) | Matches `_DEFAULT_INPUT_PATH` in `scripts/little_loops/workflow_sequence/__init__.py:45` ✓ |
 | `examples-miner.yaml` defaults (`prompt_file: system.md`, `skill_name: capture-issue`) | Doc reports actual YAML values ✓ |
-| Current inventory | 26 skills, 28 commands, 42 loops — historical audit entries reflect counts at their date and were not rewritten |
+| Current inventory | 26 skills, 28 commands, 42 loops — historical counts at audit date; see 2026-05-31 entry for current |
 
 ### Current State (2026-04-18)
 
 All guides pass accuracy, completeness, consistency, and link checks after the single auto-fix above. No open findings.
+
+---
+
+## Audit: 2026-05-31
+
+**Auditor:** Claude Code (`/ll:audit-docs docs/guides`)
+**Scope:** All files in `docs/guides/`
+
+### Auto-fixes Applied
+
+| Fix | File | Change |
+|-----|------|--------|
+| Loop count | `AUDIT_REPORT.md:176` | `42 loops` → note updated to refer to 2026-05-31 entry |
+| Skill count | `AUDIT_REPORT.md:176` | note updated; see current inventory row below |
+
+### Verification Summary
+
+| Check | Result |
+|-------|--------|
+| File path references (all guides) | All targets exist ✓ |
+| `ARCHITECTURE.md#context-monitor-and-session-continuation` anchor | Valid ✓ |
+| Harness YAMLs (`harness-single-shot.yaml`, `harness-multi-item.yaml`) | Both exist ✓ |
+| `oracles/oracle-capture-issue.yaml` | Exists ✓ |
+| `skills/create-loop/{reference,loop-types}.md` | Both exist ✓ |
+| `commands/handoff.md`, `commands/resume.md` | Both exist ✓ |
+| `pip install little-loops` | Matches `pyproject.toml` ✓ |
+| `ll-messages` / `ll-workflows analyze` flags | Match `--help` ✓ |
+| APO loop count | 8 in table (apo-beam, apo-contrastive, apo-feedback-refinement, apo-opro, apo-textgrad, rn-plan-apo, examples-miner, prompt-regression-test) ✓ |
+| RL loops (rl-bandit, rl-coding-agent, rl-policy, rl-rlhf) | All documented in LOOPS_GUIDE.md ✓ |
+| Commands | 28 (unchanged) ✓ |
+| Current inventory | **31 native skills, 59 total (incl. 28 Codex bridge `ll-*` skills), 28 commands, 64 loops** |
+
+### Open Findings (not auto-fixed)
+
+| Priority | File | Finding |
+|----------|------|---------|
+| P3 ENH | `LOOPS_GUIDE.md` | 3 new loops undocumented: `p5js-sketch-generator` (multi-frame p5.js creative coding harness), `pixi-data-viz` (PixiJS animated data viz harness), `pixi-generative-art` (PixiJS generative art harness) — no table entry or detail section |
+| P4 ENH | `LOOPS_GUIDE.md` | 7 unfilled `TODO: update-docs stub` blocks open since May 2026 (lines 71, 548, 768, 1165, 1416, 1472, 1645, 2584): safety limits, rn-refine write-back, scan-and-implement expansion, base64 embedding in hitl-compare, cli-anything-bootstrap FSM flow, BUG-1815 exit-code short-circuit, `retryable_exit_codes`, server-error retry |
+
+### Current State (2026-05-31)
+
+Auto-fixes applied for stale inventory counts. Two non-auto-fixable findings remain open and need issues.

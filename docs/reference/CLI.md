@@ -17,7 +17,7 @@ These flags appear across multiple tools:
 | `--dry-run` | `-n` | Show what would happen without making changes | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-deps fix`, `ll-sync` |
 | `--resume` | `-r` | Resume from previous checkpoint | `ll-auto`, `ll-parallel`, `ll-sprint run` |
 | `--max-issues` | `-m` | Limit number of issues to process (0 = unlimited) | `ll-auto`, `ll-parallel` |
-| `--quiet` | `-q` | Suppress non-essential output | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-sync` |
+| `--quiet` | `-q` | Suppress non-essential output | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-sync` |
 | `--only` | | Comma-separated issue IDs to process exclusively | `ll-auto`, `ll-parallel`, `ll-sprint run` |
 | `--skip` | | Comma-separated issue IDs to exclude | `ll-auto`, `ll-parallel`, `ll-sprint` |
 | `--type` | | Comma-separated issue types: `BUG`, `FEAT`, `ENH`, `EPIC` | `ll-auto`, `ll-parallel`, `ll-sprint` |
@@ -393,9 +393,9 @@ Run a loop.
 | `--dry-run` | | Show execution plan without running. Diagram rendering is not suppressed — combine with `--show-diagrams` to preview both the FSM diagram and the execution plan. |
 | `--background` | `-b` | Run as background daemon |
 | `--follow` | `-f` | Stream FSM state transitions to stdout as they fire, in `ll-loop history` format. **Cannot be combined with `--background`** — passing both exits with an error; use `ll-logs tail` to watch a background loop instead. |
-| `--quiet` | `-q` | Suppress progress output |
+| `--quiet` / `--qt` | | Suppress progress output |
 | `--verbose` | `-v` | Stream all action output live; default shows a short response head preview |
-| `--queue` | | Wait for conflicting loops to finish; writes a queue entry to `<loops_dir>/.queue/<uuid>.json` while waiting (see [Queue entries](#queue-entries-loopsqueue)) |
+| `--queue` | `-q` | Wait for conflicting loops to finish; writes a queue entry to `<loops_dir>/.queue/<uuid>.json` while waiting (see [Queue entries](#queue-entries-loopsqueue)) |
 | `--show-diagrams[=MODE]` | | Display FSM diagram after each step. `MODE` is a topology (`layered`\|`neighborhood`\|`inline`) or preset (`detailed`\|`summary`\|`clean`\|`local`\|`slim`\|`oneline`). Bare flag selects `summary` (layered, main-path scope). Override individual facets with `--diagram-edge-labels=on\|off`, `--diagram-state-detail=title\|full`, `--diagram-scope=main\|full`. **Breaking (ENH-1672):** `main`→`summary`, `full`→`detailed`, `mini`→`clean`; old values error with migration hints. Viewport auto-degrades `layered→neighborhood→inline` for preset/default sources; explicit topology values disable degradation. |
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty). When combined with `--show-diagrams` on a tty, the screen splits into a pinned FSM diagram on top and a scrolling action-output region below; on terminals too short for the full diagram the pinned pane falls back to a 1-hop neighborhood view (predecessors → [active] → successors), then to a single-line `fsm: ... → [...] → ...` status. The pane redraws on SIGWINCH (terminal resize). When a parent loop spawns child loops, the pinned pane shows **only the deepest active child loop** rather than all nesting levels simultaneously — keeping the pane readable regardless of loop depth. |
 | `--builtin` | | Load loop from built-ins directory (bypasses project `.loops/` lookup) |
@@ -540,9 +540,9 @@ ll-loop monitor fix-types --log-file /tmp/custom.log # tail a custom log path
 | `--diagram-state-detail` | | Override state-detail level (`title`\|`full`). |
 | `--diagram-scope` | | Override diagram scope (`main`\|`full`). |
 | `--clear` | | Pin the FSM diagram and stream events below (TTY only). |
+| `--no-clear` | | Disable terminal clearing between iterations (scroll output instead). |
 | `--quiet` / `--qt` | | Suppress progress output. |
 | `--verbose` | `-v` | Show full prompt at action start. |
-| `--log-file PATH` | | Tail this log file instead of `.loops/.running/<instance-id>.log`. |
 
 #### `ll-loop history <loop>` / `ll-loop h <loop>`
 
@@ -729,6 +729,9 @@ List issues with optional filters.
 | `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all`. Note: synonyms in on-disk frontmatter are normalized on read, but `--status` arguments must use canonical values (argparse validates choices before normalization runs). |
 | `--flat` | Output flat list for scripting |
 | `--json` / `-j` | Output as JSON array; each entry includes `id`, `title`, `priority`, `type`, `status`, `path`, `labels`, `milestone`, and `parent` (the parent EPIC or issue ID when set) |
+| `--sort` / `-s` | Sort by field: `priority` (default), `id`, `type`, `title`, `created`, `completed`, `confidence`, `outcome`, `refinement` |
+| `--asc` | Sort ascending |
+| `--desc` | Sort descending |
 | `--limit` / `-n` | Cap output at N issues (must be ≥ 1) |
 | `--config` | Path to project root |
 
@@ -1447,20 +1450,22 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | `search` | FTS5 full-text query with BM25-ranked results |
 | `recent` | Most recent rows for an event kind |
 | `backfill` | Seed the database from existing on-disk sources |
+| `related` | Issue events for a given issue ID |
 
 **`search` flags:**
 
 | Flag | Description |
 |------|-------------|
 | `--fts QUERY` | FTS5 match query (required) |
+| `--kind {tool,file,issue,loop,correction,message}` | Filter results by event kind (optional) |
 | `--limit N` | Maximum results (default: 20) |
-| `--json` | `-j` | Output results as a JSON array |
+| `--json` / `-j` | Output results as a JSON array |
 
 **`recent` flags:**
 
 | Flag | Description |
 |------|-------------|
-| `--kind {tool,file,issue,loop,correction}` | Event kind to list (required) |
+| `--kind {tool,file,issue,loop,correction,message}` | Event kind to list (required) |
 | `--limit N` | Maximum rows (default: 20) |
 
 **Examples:**
