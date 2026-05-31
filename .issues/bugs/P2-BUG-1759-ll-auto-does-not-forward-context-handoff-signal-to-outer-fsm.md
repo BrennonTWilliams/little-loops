@@ -2,7 +2,7 @@
 id: BUG-1759
 title: ll-auto does not forward CONTEXT_HANDOFF signal to outer FSM loop
 type: BUG
-status: open
+status: done
 priority: P2
 captured_at: '2026-05-28T00:42:55Z'
 discovered_date: '2026-05-28'
@@ -20,6 +20,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 20
+completed_at: '2026-05-31T02:09:28Z'
 ---
 
 # BUG-1759: ll-auto does not forward CONTEXT_HANDOFF signal to outer FSM loop
@@ -234,6 +235,7 @@ _Added by `/ll:confidence-check` on 2026-05-30_
 - **Pre-continuation status guard adds scope**: Checking `status: done` before spawning a continuation is a separate feature from signal forwarding. Consider splitting into its own commit to keep the core fix (signal forward + exit) tight and reviewable.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-31T02:09:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cefa1fb-4e67-481d-955b-885520a4c623.jsonl`
 - `/ll:ready-issue` - 2026-05-31T01:27:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84fb9c7f-e55b-4071-bc1b-63119b40abe4.jsonl`
 - `/ll:wire-issue` - 2026-05-31T01:11:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae9f7939-88ee-4886-909f-5e840b3b5db9.jsonl`
 - `/ll:refine-issue` - 2026-05-31T01:03:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3819cba2-2022-4051-a877-a9dc4080f14d.jsonl`
@@ -244,3 +246,18 @@ _Added by `/ll:confidence-check` on 2026-05-30_
 - `/ll:decide-issue` - 2026-05-30 - no-op (decision already annotated, decision_needed already false)
 - `/ll:confidence-check` - 2026-05-31T04:23:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72e4be19-1b35-4aa2-bb5d-3146cbc394d2.jsonl`
 - `/ll:confidence-check` - 2026-05-31T05:01:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7fcee61f-b4a8-4f16-9894-1d0457fe7177.jsonl`
+- `/ll:ready-issue` - 2026-05-31T02:35:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84fb9c7f-e55b-4071-bc1b-63119b40abe4.jsonl`
+
+
+---
+
+## Resolution
+
+- **Status**: Closed - Already Fixed
+- **Closed**: 2026-05-30
+- **Reason**: already_fixed
+- **Closure**: Automated (ready-issue validation)
+
+### Closure Notes
+Issue was automatically closed during validation.
+The issue was determined to be invalid, already resolved, or not actionable.
