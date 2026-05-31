@@ -1,6 +1,6 @@
 ---
 id: FEAT-1739
-title: `learning-tests-audit` loop — stale record detection and triage report
+title: "`learning-tests-audit` loop \u2014 stale record detection and triage report"
 type: FEAT
 priority: P3
 status: open
@@ -13,11 +13,11 @@ relates_to:
 - FEAT-1695
 - FEAT-1696
 confidence_score: 100
-outcome_confidence: 71
+outcome_confidence: 79
 score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 25
-score_change_surface: 10
+score_change_surface: 18
 ---
 
 # FEAT-1739: `learning-tests-audit` loop — stale record detection and triage report
@@ -306,3 +306,4 @@ _Added by `/ll:confidence-check` on 2026-05-30_
 - `/ll:capture-issue` - 2026-05-27T18:08:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55979bca-15d7-443c-b4d3-a76d29148106.jsonl`
 - `/ll:refine-issue` - 2026-05-31T02:50:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9109a4b-4e94-4dd5-bb69-010258918170.jsonl`
 - `/ll:wire-issue` - 2026-05-30T04:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9109a4b-4e94-4dd5-bb69-010258918170.jsonl`
+- `/ll:confidence-check` - 2026-05-30T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d644c4c-dc2e-4c46-81ec-295af344b92f.jsonl`

@@ -12,6 +12,7 @@ labels:
 - ll-auto
 - process-management
 - orphan-cleanup
+decision_needed: false
 ---
 
 # ENH-1820: Kill orphaned Claude processes by default on ll-auto startup with --no-kill-orphans opt-out
@@ -65,6 +66,17 @@ Model after `WorkerPool.terminate_all_processes()` at `worker_pool.py:140`:
 
 `WorkerPool.terminate_all_processes()` (`worker_pool.py:140`) — registers processes via `self._processes.append(process)` on start and `self._processes.remove(process)` on end, with `terminate_all_processes()` iterating, sending SIGTERM, waiting, and escalating to SIGKILL.
 
+### Integration Point Detail
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+The `run_claude_command()` wrapper at `issue_manager.py:152` calls `_run_claude_base()` **without** passing `on_process_start` or `on_process_end` callbacks, even though `_run_claude_base()` (`subprocess_utils.py:221`) accepts them as parameters (`ProcessCallback` at line 27). The fix is to add these callbacks to both:
+
+1. `run_claude_command()` (`issue_manager.py:98-160`) — add `on_process_start`/`on_process_end` params, pass through to `_run_claude_base()` at line 152
+2. `run_with_continuation()` (`issue_manager.py:194-422`) — same; calls `run_claude_command()` at lines 269 and 381, which would transitively track via fix #1
+
+AutoManager would provide closures (like WorkerPool lines 671-691) that register/deregister processes in `self._child_processes` keyed by issue_id.
+
 ## API/Interface
 
 New CLI argument on `ll-auto`:
@@ -78,13 +90,39 @@ ll-auto --no-kill-orphans
 
 ## Implementation Steps
 
-1. Add `_child_processes: list[subprocess.Popen]` and `_process_lock` to `AutoManager`
-2. Wrap `run_claude_command` / `run_with_continuation` calls in `AutoManager.run()` to register/deregister child processes
-3. Implement `AutoManager.terminate_all_processes()` following `WorkerPool` pattern at `worker_pool.py:140`
-4. Add `--no-kill-orphans` argument to `main_auto()` argument parser in `scripts/little_loops/cli/auto.py`
-5. Implement orphan detection (default on): scan for `claude` processes with matching project path or issue/loop pattern in their command line, kill if found, log count
-6. Gate detection behind `--no-kill-orphans` check — skip entirely when flag is present
-7. Wire cleanup into `atexit` or signal handler for graceful shutdown
+1. **Add `_child_processes` tracking to `AutoManager.__init__()`** (`issue_manager.py:997`):
+   - `self._child_processes: dict[str, subprocess.Popen[str]]` (keyed by issue_id, mirroring `WorkerPool._active_processes` at `worker_pool.py:86`)
+   - `self._process_lock = threading.Lock()` (mirroring `worker_pool.py:89`)
+
+2. **Wire `on_process_start`/`on_process_end` callbacks through `run_claude_command()` and `run_with_continuation()`** (`issue_manager.py:98, 194`):
+   - Add `on_process_start`/`on_process_end` params to `run_claude_command()`, pass to `_run_claude_base()` at line 152
+   - `run_with_continuation()` calls `run_claude_command()` at lines 269 and 381 — transitively tracked via fix to `run_claude_command()`
+   - Caller (AutoManager) provides closures that register/deregister in `_child_processes` (mirroring `worker_pool.py:671-691`)
+
+3. **Implement `AutoManager.terminate_all_processes()`** following `WorkerPool` pattern at `worker_pool.py:140-167`:
+   - Acquire `_process_lock`, iterate snapshot of `_child_processes`
+   - Skip if `process.poll() is not None` (already dead)
+   - SIGTERM → `wait(timeout=5)` → SIGKILL on timeout → `wait(timeout=2)`
+   - Clear `_child_processes` on completion
+   - Reuse existing `_process_alive()` (`fsm/concurrency.py:51`) or `_kill_with_timeout()` (`cli/loop/lifecycle.py:86`) if suitable
+
+4. **Add `--no-kill-orphans` argument** to `main_auto()` in `scripts/little_loops/cli/auto.py`:
+   - `parser.add_argument("--no-kill-orphans", action="store_true", help="Skip orphan process detection and cleanup on startup")`
+   - Mirror the `--no-lock` flag pattern at `cli/loop/__init__.py:200`
+   - Access via `getattr(args, "no_kill_orphans", False)`
+
+5. **Implement orphan detection on startup** (before `AutoManager.run()`):
+   - Shell out to `ps` to find running `claude` processes (no `psutil` dependency in codebase)
+   - Filter by command-line match: project path + issue/loop pattern
+   - Verify liveness with `_process_alive()` at `fsm/concurrency.py:51`
+   - Kill matches via `AutoManager.terminate_all_processes()` escalation pattern, log count
+
+6. **Gate detection behind `--no-kill-orphans` check** — skip step 5 entirely when flag is present
+
+7. **Wire cleanup into signal handler** (`AutoManager._signal_handler()` at `issue_manager.py:1078`):
+   - Call `self.terminate_all_processes()` before setting `_shutdown_requested`
+   - Register `atexit` handler calling `terminate_all_processes()` for graceful shutdown
+   - Mirror `atexit.register()` pattern from `cli/loop/run.py:261`
 
 ## Scope Boundaries
 
@@ -115,6 +153,21 @@ ll-auto --no-kill-orphans
 ### Configuration
 - N/A
 
+### Reusable Utilities
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/fsm/concurrency.py:51` — `_process_alive(pid)` — canonical liveness check (`os.kill(pid, 0)`) used across the codebase; importable for orphan detection
+- `scripts/little_loops/cli/loop/lifecycle.py:86` — `_kill_with_timeout(pid, label, logger)` — SIGTERM → poll 10s → SIGKILL pattern; alternative escalation to mirror
+- `scripts/little_loops/subprocess_utils.py:27` — `ProcessCallback = Callable[[subprocess.Popen[str]], None]` — type alias for the callbacks AutoManager will use
+- `scripts/little_loops/cli/loop/__init__.py:200` — `--no-lock` flag — exact `action="store_true"` opt-out flag pattern to mirror for `--no-kill-orphans`
+
+### Orphan Detection Approach
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+The codebase has zero `psutil` usage. Process scanning is done via `os.kill(pid, 0)` for liveness and `subprocess.Popen` attributes. Orphan detection on startup will need to shell out to `ps` (macOS/Linux) to find running `claude` processes, then filter by command-line match (project path + issue/loop pattern). The `_process_alive()` utility at `fsm/concurrency.py:51` can verify liveness of candidates.
+
 ## Impact
 
 - **Priority**: P3 — Completes the BUG-1759 fix; orphan accumulation only occurs after repeated context-limit encounters, not every run
@@ -140,6 +193,7 @@ ll-auto --no-kill-orphans
 `enhancement`, `ll-auto`, `process-management`, `orphan-cleanup`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-05-31T03:22:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f72e0d74-36b8-470a-9d86-22b215931362.jsonl`
 - `/ll:format-issue` - 2026-05-31T03:05:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dde5e059-f5e9-4d77-8522-48c6692a972c.jsonl`
 - `/ll:capture-issue` - 2026-05-31T02:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/402d74eb-4a8a-4e98-8242-2b8c5e9efb08.jsonl`
 
