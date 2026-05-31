@@ -99,6 +99,14 @@ _META_LOOP_IMPORT_TRIGGERS: frozenset[str] = frozenset({"lib/benchmark.yaml"})
 # cause state corruption under concurrent runs (ll-parallel, retries, etc.).
 _SHARED_TMP_PATH_RE = re.compile(r"\.loops/tmp/[\w./-]+")
 
+# ENH-1819: Regex patterns for detecting multimodal evaluation in prompt actions
+_MULTIMODAL_EVAL_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r'Read the screenshot', re.IGNORECASE),
+    re.compile(r'view the (generated )?(website|page|image)', re.IGNORECASE),
+    re.compile(r'screenshot\.(png|jpg|jpeg|webp)'),
+    re.compile(r'\.(png|jpg|jpeg|webp)\b.*\b(read|view|evaluate|score|judge)', re.IGNORECASE),
+)
+
 # Valid comparison operators
 VALID_OPERATORS = {"eq", "ne", "lt", "le", "gt", "ge"}
 
@@ -879,6 +887,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_artifact_isolation(fsm))
 
+    errors.extend(_validate_harness_multimodal_evaluator_blind_spot(fsm))
+
     errors.extend(_validate_zero_retry_counter(fsm))
 
     errors.extend(_validate_on_max_iterations(fsm, defined_states))
@@ -1046,6 +1056,51 @@ def _suggested_target(operator: str, target: float) -> str:
         return "1"
     # For other cases, suggest target+1 as a default nudge
     return str(int(target) + 1)
+
+
+def _validate_harness_multimodal_evaluator_blind_spot(fsm: FSMLoop) -> list[ValidationError]:
+    """Warn when harness loops use LLM multimodal eval as sole gate to terminal.
+
+    LLMs can silently fall back to text-only analysis when reading images,
+    producing verdicts based on incomplete information. The output_contains
+    evaluator can verify the LLM wrote the pass string but not that it
+    actually processed the image. This is the same class of failure as MR-1
+    (LLM self-evaluation bias) applied to artifact evaluation rather than
+    harness modification.
+
+    Suppressed by ``meta_self_eval_ok: true`` at the loop top-level.
+    """
+    errors: list[ValidationError] = []
+    if fsm.meta_self_eval_ok or fsm.category != "harness":
+        return errors
+
+    terminal_states = fsm.get_terminal_states()
+
+    for state_name, state in fsm.states.items():
+        if state.action_type != "prompt" or not state.action:
+            continue
+        if state.evaluate is None or state.evaluate.type != "output_contains":
+            continue
+        if not any(p.search(state.action) for p in _MULTIMODAL_EVAL_PATTERNS):
+            continue
+        if state.on_yes not in terminal_states:
+            continue
+        errors.append(
+            ValidationError(
+                message=(
+                    f"State '{state_name}' evaluates a screenshot/image via LLM "
+                    "prompt and routes directly to a terminal on success. The "
+                    "output_contains evaluator can verify the LLM wrote the pass "
+                    "string but not that the LLM actually processed the image. "
+                    "Consider adding a shell-action verification state (e.g., "
+                    "functional smoke test) between scoring and the terminal."
+                ),
+                path=f"states.{state_name}",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+
+    return errors
 
 
 def _find_shared_tmp_writes(fsm: FSMLoop) -> list[tuple[str, str]]:

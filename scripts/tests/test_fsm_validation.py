@@ -24,6 +24,7 @@ from little_loops.fsm.validation import (
     ValidationSeverity,
     _validate_artifact_isolation,
     _validate_evaluator,
+    _validate_harness_multimodal_evaluator_blind_spot,
     _validate_meta_loop_evaluation,
     _validate_parameters,
     _validate_zero_retry_counter,
@@ -1283,4 +1284,118 @@ class TestRetryableExitCodesValidation:
         assert any(
             "positive" in e.message.lower() and "retryable_exit_codes" in e.message.lower()
             for e in errors
+        )
+
+
+class TestHarnessMultimodalEvaluatorBlindSpot:
+    """ENH-1819: WARNING when harness loops use LLM multimodal eval as sole gate to terminal."""
+
+    def _harness_fsm(self, **kwargs) -> FSMLoop:
+        """Build a minimal harness-category FSM."""
+        defaults: dict = {
+            "name": "test-harness",
+            "initial": "score",
+            "category": "harness",
+            "states": {
+                "score": make_state(
+                    action_type="prompt",
+                    action="Read the screenshot screenshot.png and judge the output.",
+                    evaluate=EvaluateConfig(type="output_contains", pattern="PASS"),
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        }
+        defaults.update(kwargs)
+        return FSMLoop(**defaults)
+
+    # --- positive control ---
+
+    def test_fires_for_harness_multimodal_prompt_to_terminal(self) -> None:
+        """WARNING fires when harness loop has multimodal prompt routing directly to terminal."""
+        fsm = self._harness_fsm()
+        errors = _validate_harness_multimodal_evaluator_blind_spot(fsm)
+        assert len(errors) == 1, f"Expected one WARNING, got: {errors}"
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert "score" in str(errors[0])
+
+    # --- negative controls ---
+
+    def test_does_not_fire_for_non_harness_loop(self) -> None:
+        """Does not fire when category is not harness."""
+        fsm = self._harness_fsm(category="oracle")
+        errors = _validate_harness_multimodal_evaluator_blind_spot(fsm)
+        assert errors == [], f"Expected no warnings for non-harness, got: {errors}"
+
+    def test_does_not_fire_when_on_yes_not_terminal(self) -> None:
+        """Does not fire when on_yes routes to a non-terminal state."""
+        fsm = self._harness_fsm(
+            states={
+                "score": make_state(
+                    action_type="prompt",
+                    action="Read the screenshot and evaluate.",
+                    evaluate=EvaluateConfig(type="output_contains", pattern="PASS"),
+                    on_yes="review",
+                ),
+                "review": make_state(action="echo check", on_yes="done"),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_harness_multimodal_evaluator_blind_spot(fsm)
+        assert errors == [], f"Expected no warnings when on_yes not terminal, got: {errors}"
+
+    def test_does_not_fire_when_shell_action_intervenes(self) -> None:
+        """Does not fire when a shell-action state sits between prompt and terminal."""
+        fsm = self._harness_fsm(
+            states={
+                "score": make_state(
+                    action_type="prompt",
+                    action="Read the screenshot and evaluate.",
+                    evaluate=EvaluateConfig(type="output_contains", pattern="PASS"),
+                    on_yes="smoke_test",
+                ),
+                "smoke_test": make_state(
+                    action_type="shell",
+                    action="pytest smoke_test.py",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_harness_multimodal_evaluator_blind_spot(fsm)
+        assert errors == [], f"Expected no warnings with shell state intervening, got: {errors}"
+
+    def test_does_not_fire_with_non_output_contains_evaluator(self) -> None:
+        """Does not fire when evaluator is not output_contains."""
+        fsm = self._harness_fsm(
+            states={
+                "score": make_state(
+                    action_type="prompt",
+                    action="Read the screenshot and evaluate.",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_harness_multimodal_evaluator_blind_spot(fsm)
+        assert errors == [], f"Expected no warnings for non-output_contains, got: {errors}"
+
+    def test_suppressed_by_meta_self_eval_ok(self) -> None:
+        """meta_self_eval_ok: true suppresses the warning."""
+        fsm = self._harness_fsm(meta_self_eval_ok=True)
+        errors = _validate_harness_multimodal_evaluator_blind_spot(fsm)
+        assert errors == [], f"meta_self_eval_ok should suppress warnings: {errors}"
+
+    # --- integration ---
+
+    def test_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes the multimodal evaluator warning."""
+        fsm = self._harness_fsm()
+        errors = validate_fsm(fsm)
+        blind_spot_warnings = [
+            e for e in errors if "multimodal" in e.message.lower() or "screenshot" in e.message.lower()
+        ]
+        assert len(blind_spot_warnings) == 1, (
+            f"Expected one blind-spot warning in validate_fsm output, got: {blind_spot_warnings}"
         )
