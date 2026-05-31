@@ -75,6 +75,7 @@ Per `.claude/CLAUDE.md` § Loop Authoring, any loop that mutates other harness a
 FEAT-1808 must ship before this. Implementing adaptive without the static planner under it is a leaky abstraction.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T21:34:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/922ffae8-14ce-45e5-a71a-02187250e8c9.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-30T06:48:30Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6be17ec6-da10-4c91-9b41-f2c0b3be4efb.jsonl`
@@ -85,3 +86,9 @@ FEAT-1808 must ship before this. Implementing adaptive without the static planne
 
 - **State**: open
 - **Created**: 2026-05-30
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-1808 both spec intermediate artifacts using bare `.loops/tmp/` paths (`composer-checkpoints/step-<N>.json`, `composer-plans/v<N>.json`). Per MR-3 (`ll-loop validate` WARNING), all intermediate artifacts MUST be written under `${context.run_dir}/` to prevent state corruption on concurrent runs. Update all artifact paths in the Implementation Steps to use `${context.run_dir}/` (e.g. `${context.run_dir}/checkpoints/step-<N>.json`, `${context.run_dir}/plans/v<N>.json`). The path convention should be established in FEAT-1808 first; this issue must inherit the same convention.

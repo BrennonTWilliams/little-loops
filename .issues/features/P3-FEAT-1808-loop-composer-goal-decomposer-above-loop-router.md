@@ -73,6 +73,7 @@ Add a new built-in FSM loop `loop-composer` that accepts a natural-language goal
 - **FEAT-1810 (goal-cluster orchestrator)** — different input shape (a *list* of goals, e.g. a sprint), not a single goal. Composer might dispatch goal-cluster as a child, or vice versa. Worth checking before either lands.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T21:34:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/922ffae8-14ce-45e5-a71a-02187250e8c9.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-30T06:48:30Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6be17ec6-da10-4c91-9b41-f2c0b3be4efb.jsonl`
@@ -83,3 +84,9 @@ Add a new built-in FSM loop `loop-composer` that accepts a natural-language goal
 
 - **State**: open
 - **Created**: 2026-05-30
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-1809 both spec intermediate artifacts using bare `.loops/tmp/` paths (e.g. `loop-composer-plan.json`). Per MR-3 (`ll-loop validate` WARNING), all intermediate artifacts MUST be written under `${context.run_dir}/` to prevent state corruption on concurrent runs. All artifact paths in the Implementation Steps for this issue MUST be updated to use `${context.run_dir}/` (e.g. `${context.run_dir}/composer-plan.json`) before implementation begins. Add `shared_state_ok: true` at the loop top-level ONLY if cross-run sharing is intentional and explicitly justified. This constraint is shared with FEAT-1809, which inherits the path convention established here — address it in FEAT-1808 first.

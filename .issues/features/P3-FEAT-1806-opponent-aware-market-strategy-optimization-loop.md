@@ -8,6 +8,7 @@ parent: EPIC-1811
 discovered_date: 2026-05-29
 discovered_by: capture-issue
 captured_at: "2026-05-30T04:44:25Z"
+blocked_by: [FEAT-1808]
 ---
 
 # FEAT-1806: Opponent-Aware Market Strategy Optimization Loop
@@ -245,6 +246,7 @@ recommendation_schema:
 `built-in-loop`, `strategy`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T21:34:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/922ffae8-14ce-45e5-a71a-02187250e8c9.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-30T04:44:25Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1065b200-e53c-4a55-9ff7-5c1d55a0cc90.jsonl`
