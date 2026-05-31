@@ -20,7 +20,7 @@
 
 You are about to write code against an unfamiliar API, SDK, or stdlib corner. Instead of guessing its shape from docs (which may be wrong, out of date, or silent on the edge cases you care about), run a tiny script against it, write down what it actually returned, and save that evidence to a file the next agent — or the next session of you — can read.
 
-That file is a learning test. The term comes from Michael Feathers; see [the philosophy essay](../deterministic-backpressure-learning-tests.md) for the long version.
+That file is a learning test. The term comes from Michael Feathers; see [the philosophy essay](../research/_Archive/deterministic-backpressure-learning-tests.md) for the long version.
 
 little-loops gives you three things to make this routine:
 
@@ -213,7 +213,7 @@ Phase 1 (Ingest) prompts before overwriting. Answer "reuse" to short-circuit. To
 
 ## Further Reading
 
-- [Agentic Workflow Architecture: Designing Deterministic Backpressure Systems](../deterministic-backpressure-learning-tests.md) — the philosophy: why proof-based exploration beats LLM-on-LLM critique.
+- [Agentic Workflow Architecture: Designing Deterministic Backpressure Systems](../research/_Archive/deterministic-backpressure-learning-tests.md) — the philosophy: why proof-based exploration beats LLM-on-LLM critique.
 - [ARCHITECTURE.md → Learning Test Registry](../ARCHITECTURE.md#learning-test-registry) — registry design, slug derivation, and integration with the rest of the system.
 - [CLI Reference → ll-learning-tests](../reference/CLI.md#ll-learning-tests) — terse subcommand reference.
 - [LOOPS_GUIDE.md → Progressive tool-call throttling](LOOPS_GUIDE.md#progressive-tool-call-throttling) — the `type: learning` FSM state reference and event payloads.

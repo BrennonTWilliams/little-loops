@@ -132,9 +132,41 @@ states:
     evaluate:
       type: output_contains
       pattern: "ALL_PASS"
-    on_yes: done
+    on_yes: smoke_test
     on_no: generate
     on_error: failed
+
+  smoke_test:
+    # HARNESS: Shell-level functional verification after LLM scoring.
+    # Runs Playwright to check for JS console errors and meaningful text
+    # content before accepting the artifact. Decoupling routing from the
+    # LLM prompt prevents self-certification inflation — an LLM may claim
+    # ALL_PASS without actually processing the screenshot when multimodal
+    # input is unavailable.
+    action_type: shell
+    action: |
+      NODE_PATH="$(npm root -g)" node -e "
+      const { chromium } = require('@playwright/test');
+      (async () => {
+        const browser = await chromium.launch();
+        const page = await browser.newPage();
+        const errors = [];
+        page.on('pageerror', e => errors.push(e.message));
+        await page.goto('file://' + process.cwd() + '/${context.run_dir}/index.html');
+        await page.waitForTimeout(1500);
+        const textLen = await page.evaluate(() => document.body.innerText.trim().length);
+        if (textLen < 20) { console.log('FAIL:minimal_content'); process.exit(1); }
+        if (errors.length > 0) { console.log('FAIL:js_errors:', errors.join('; ')); process.exit(1); }
+        console.log('SMOKE_PASS');
+        await browser.close();
+      })().catch(e => { console.error('SMOKE_FAIL:', e.message); process.exit(1); });
+      "
+    evaluate:
+      type: output_contains
+      pattern: "SMOKE_PASS"
+    on_yes: done
+    on_no: generate
+    on_error: generate
 
   done:
     # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.

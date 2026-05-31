@@ -1193,7 +1193,7 @@ init → segment → generate → evaluate
 
 > **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`).
 
-**Technique**: Implements the generator-evaluator architecture described in Anthropic's [harness design article](../claude-code/harness-design-long-running-apps.md). The loop runs four states in sequence: a **planner** expands the one-line description into an opinionated design brief (color palette, layout, unique angle, anti-patterns to avoid); a **generator** writes a self-contained HTML/CSS/JS file; an **evaluator** uses Playwright CLI to screenshot the rendered page via `file://` URL (no HTTP server required); and a **scorer** judges the screenshot against four weighted criteria, routing back to the generator with structured critique until all scores clear `pass_threshold`.
+**Technique**: Implements the generator-evaluator architecture described in Anthropic's [harness design article](../claude-code/harness-design-long-running-apps.md). The loop runs four states in sequence: a **planner** expands the one-line description into an opinionated design brief (color palette, layout, unique angle, anti-patterns to avoid); a **generator** writes a self-contained HTML/CSS/JS file; an **evaluator** uses Playwright CLI to screenshot the rendered page via `file://` URL (no HTTP server required); and a **scorer** judges the screenshot against four weighted criteria, routing back to the generator with structured critique until all scores clear `pass_threshold`; and a **smoke test** state runs Playwright-powered functional checks (JS console errors, content presence) to verify the artifact before accepting it.
 
 **When to use**: When you want rapid, fully-automated iterations on a single-page design without setting up a build pipeline. The `file://` approach means the loop works offline with no server lifecycle to manage. For multi-page apps or server-side rendering, adapt the `evaluate` state to use a local HTTP server instead.
 
@@ -1222,9 +1222,11 @@ ll-loop run html-website-generator "museum landing page" \
 **FSM flow:**
 
 ```
-plan → generate → evaluate
+plan → generate → capture
                      ├─ CAPTURED → score
-                     │              ├─ ALL_PASS → done
+                     │              ├─ ALL_PASS → smoke_test
+                     │              │              ├─ SMOKE_PASS → done
+                     │              │              └─ FAIL      → generate (with critique)
                      │              └─ ITERATE  → generate (with critique)
                      └─ FAILED  → generate (Playwright unavailable — LLM-only scoring)
 ```
@@ -2152,7 +2154,7 @@ ll-loop run examples-miner
 ll-loop run examples-miner \
   --context skill_name=refine-issue \
   --context examples_file=tests/refine-examples.json \
-  --context prompt_file=skills/refine-issue/SKILL.md
+  --context prompt_file=commands/refine-issue.md
 
 # Install to project for customization (hardcode oracle path for v2 sub-loop promotion)
 ll-loop install examples-miner
@@ -2354,7 +2356,7 @@ For long-horizon overnight runs, populate `.ll/program.md` once and run with no 
 Improve the refine-issue skill to produce more actionable integration maps.
 
 ## Targets
-- skills/refine-issue/SKILL.md
+- commands/refine-issue.md
 
 ## Benchmark
 task_dir: evals/refine-issue

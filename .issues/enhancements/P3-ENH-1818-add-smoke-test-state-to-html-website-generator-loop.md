@@ -1,9 +1,19 @@
 ---
-status: open
+status: done
 discovered_date: 2026-05-30
 discovered_by: capture-issue
-captured_at: "2026-05-30T22:43:51Z"
-labels: [loop-refinement, harness, captured]
+captured_at: '2026-05-30T22:43:51Z'
+completed_at: '2026-05-31T00:27:39Z'
+labels:
+- loop-refinement
+- harness
+- captured
+confidence_score: 100
+outcome_confidence: 83
+score_complexity: 22
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # P3-ENH-1818: Add smoke-test state to html-website-generator loop
@@ -64,27 +74,65 @@ smoke_test:
 
 Route `score.on_yes` to `smoke_test` instead of directly to `done`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Playwright package name**: The codebase pattern for inline Node.js Playwright scripts uses `require('@playwright/test')` (see `scripts/little_loops/loops/p5js-sketch-generator.yaml` state `evaluate` line 132, `pixi-data-viz.yaml` state `evaluate` line 188). The proposed snippet uses `require('playwright')` — align with the existing dependency to avoid requiring an additional npm package.
+- **Playwright availability**: The `capture` state (line 82-90) already uses `playwright screenshot` CLI, proving Playwright is available in the loop's execution environment. The `on_error: generate` routing on `smoke_test` means transient Playwright failures retry rather than hard-fail, consistent with the `capture` state's `on_error: failed` which bails on missing/broken Playwright.
+- **Established pattern**: `scripts/little_loops/loops/svg-textgrad.yaml` state `verify_score` (line 158) is the most direct analog — a shell verification state between LLM score and `done` terminal that exits with a compound token (`SHELL_PASS`) for unambiguous `output_contains` matching. The comment at the top of that state reads "Decoupling routing from the LLM prompt prevents self-certification inflation" — the exact same motivation as this issue.
+- **Compound token convention**: Use a compound token like `SMOKE_PASS` (not bare `PASS`) for the `output_contains` pattern. The test at `scripts/tests/test_builtin_loops.py:136` (`test_no_bare_pass_token_in_output_contains`) enforces this across all built-in loops.
+- **shell_exit fragment alternative**: `scripts/little_loops/loops/lib/common.yaml` (line 15) defines a `shell_exit` fragment that evaluates by exit code rather than `output_contains`. The proposed `output_contains` approach is preferable here because it can distinguish "smoke tests ran and passed" (exit 0 + `SMOKE_PASS` in output) from "shell succeeded silently" (exit 0 but no token), which bare `exit_code` evaluation cannot.
+
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/loops/html-website-generator.yaml` — add `smoke_test` state, re-route `score.on_yes`
 
 ### Tests
-- Existing tests in `scripts/tests/test_builtin_loops.py` should continue to pass (loop structure validation)
+- `scripts/tests/test_builtin_loops.py` — `TestHtmlWebsiteGeneratorLoop` class (line 2646) contains 10 structural tests that need updating:
+  - `test_required_states_exist` (line 2663): add `"smoke_test"` to the `required` set. Note: this test currently references `"evaluate"` but the actual state is named `"capture"` — a pre-existing naming discrepancy to fix alongside this change.
+  - `test_score_state_routes_to_done_on_pass` (line 2697): change assertion from `state.get("on_yes") == "done"` to `"smoke_test"`.
+  - New test needed: `test_smoke_test_state_is_shell` — verify `smoke_test` uses `action_type: shell` with an `output_contains` evaluator.
+- `scripts/tests/test_builtin_loops.py` — `TestBuiltinLoopFiles.test_all_validate_as_valid_fsm` (line 37): auto-validates all built-in loops; will catch structural errors automatically.
 - Manual verification: run the loop against a known-broken HTML artifact and confirm `smoke_test` catches it
 
+### Similar Patterns
+- `scripts/little_loops/loops/svg-textgrad.yaml` state `verify_score` (line 158) — shell verification state between LLM `score` and `done` terminal. The same motivation: "Decoupling routing from the LLM prompt prevents self-certification inflation."
+- `scripts/little_loops/loops/p5js-sketch-generator.yaml` state `evaluate` (line 131) — inline Node.js Playwright script via `node -e` with `require('@playwright/test')`. Uses `page.on('pageerror')`-style error capture pattern that the smoke_test state should follow.
+- `scripts/little_loops/loops/general-task.yaml` state `verify_step` (line 160) — shell verification state with `output_contains` + compound token (`VERIFY_PASS`), routes back to work on failure.
+
+### Related Issues
+- `.issues/enhancements/P3-ENH-1819-*.md` — follow-up issue to add a validation WARNING when harness loops route LLM multimodal evaluation directly to a terminal (the systematic blind spot this fix addresses at the instance level)
+
+### Existing Analysis
+- `.loops/reviews/html-website-generator-20260530-061937.md` — loop review that identified the functional defects (renderAll destroying input focus, hardcoded slugs) that passed the screenshot-based evaluator
+
 ### Documentation
-- N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — `html-website-generator` section (line 1192): FSM flow diagram at lines 1225-1229 hardcodes `ALL_PASS → done`; must update to `ALL_PASS → smoke_test → done`. Surrounding prose at line 1196 ("a scorer judges... routing back to the generator... until all scores clear...") describes current behavior without the smoke test gate — update to mention the smoke test verification step.
 
 ### Configuration
 - N/A
 
 ## Implementation Steps
 
-1. Add `smoke_test` state definition to `html-website-generator.yaml`
-2. Change `score.on_yes` from `done` to `smoke_test`
-3. Run `ll-loop validate html-website-generator` to confirm no structural errors
-4. Manual smoke test: run loop with a simple description, verify `smoke_test` state executes
+1. Add `smoke_test` state definition to `scripts/little_loops/loops/html-website-generator.yaml` (insert between `score` state ending at line 137 and `done` state starting at line 139)
+2. Change `score.on_yes` at line 135 from `done` to `smoke_test`
+3. Run `ll-loop validate html-website-generator` to confirm no structural errors (calls `load_and_validate()` → `validate_fsm()` in `scripts/little_loops/fsm/validation.py:739`)
+4. Update tests in `scripts/tests/test_builtin_loops.py`:
+   - `test_required_states_exist` (line 2663): add `"smoke_test"` to required set; also fix pre-existing naming discrepancy (`"evaluate"` → `"capture"`)
+   - `test_score_state_routes_to_done_on_pass` (line 2697): change expected value from `"done"` to `"smoke_test"`
+   - Add `test_smoke_test_state_is_shell` and `test_smoke_test_routes_to_done_on_pass` following existing test patterns in the class
+5. Run `python -m pytest scripts/tests/test_builtin_loops.py::TestHtmlWebsiteGeneratorLoop -v` to verify all structural tests pass
+6. Manual smoke test: run loop with a simple description, verify `smoke_test` state executes and routes correctly
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `docs/guides/LOOPS_GUIDE.md` — `html-website-generator` section (line 1192): update FSM flow diagram (lines 1225-1229) from `ALL_PASS → done` to `ALL_PASS → smoke_test → done`; update surrounding prose to mention the smoke test verification step
 
 ## API/Interface
 
@@ -119,8 +167,13 @@ N/A - No public API changes (loop-internal state addition only)
 `loop-refinement`, `harness`, `captured`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-05-31T00:27:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/662dff29-eba0-4da7-a26d-d3806b0f2630.jsonl`
+- `/ll:ready-issue` - 2026-05-31T00:23:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26f3ac82-3b0b-4510-bab6-71b9d6d07f0d.jsonl`
+- `/ll:wire-issue` - 2026-05-31T00:17:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1fcd27a7-fe20-47b8-9821-a80e9338e768.jsonl`
+- `/ll:refine-issue` - 2026-05-31T00:13:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e73e9f8-d1ee-47ab-8ed9-a2af90a69a5e.jsonl`
 - `/ll:format-issue` - 2026-05-30T22:46:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fabe793e-a48c-46ba-8f98-a5684209ca60.jsonl`
 - `/ll:capture-issue` - 2026-05-30T22:43:51Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a21d14e7-ea27-437a-b7be-dfdc28dd7d84.jsonl`
+- `/ll:confidence-check` - 2026-05-30T23:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfd01907-a230-402f-920c-2f7c5c0d48dc.jsonl`
 
 ---
 

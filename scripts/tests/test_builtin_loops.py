@@ -2662,7 +2662,7 @@ class TestHtmlWebsiteGeneratorLoop:
 
     def test_required_states_exist(self, data: dict) -> None:
         """All required states must be present."""
-        required = {"plan", "generate", "evaluate", "score", "done"}
+        required = {"plan", "generate", "capture", "score", "smoke_test", "done"}
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
@@ -2673,35 +2673,50 @@ class TestHtmlWebsiteGeneratorLoop:
         assert done_state.get("terminal") is True
 
     def test_evaluate_state_is_shell(self, data: dict) -> None:
-        """evaluate state must use action_type: shell for the Playwright CLI call."""
-        state = data["states"].get("evaluate", {})
+        """capture state must use action_type: shell for the Playwright CLI call."""
+        state = data["states"].get("capture", {})
         assert state.get("action_type") == "shell"
 
     def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
-        """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
-        state = data["states"].get("evaluate", {})
+        """capture state must have an output_contains evaluator with pattern CAPTURED."""
+        state = data["states"].get("capture", {})
         evaluator = state.get("evaluate", {})
         assert evaluator.get("type") == "output_contains"
         assert evaluator.get("pattern") == "CAPTURED"
 
     def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
-        """evaluate state must route to score when screenshot succeeds."""
-        state = data["states"].get("evaluate", {})
+        """capture state must route to score when screenshot succeeds."""
+        state = data["states"].get("capture", {})
         assert state.get("on_yes") == "score"
 
     def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
-        """evaluate state must route back to generate when screenshot fails."""
-        state = data["states"].get("evaluate", {})
+        """capture state must route back to generate when screenshot fails."""
+        state = data["states"].get("capture", {})
         assert state.get("on_no") == "generate"
 
     def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
-        """score state must route to done when all criteria pass."""
+        """score state must route to smoke_test when all criteria pass."""
         state = data["states"].get("score", {})
-        assert state.get("on_yes") == "done"
+        assert state.get("on_yes") == "smoke_test"
 
     def test_score_state_routes_to_generate_on_iterate(self, data: dict) -> None:
         """score state must route back to generate when criteria are not met."""
         state = data["states"].get("score", {})
+        assert state.get("on_no") == "generate"
+
+    def test_smoke_test_state_is_shell(self, data: dict) -> None:
+        """smoke_test state must use action_type: shell for Playwright functional checks."""
+        state = data["states"].get("smoke_test", {})
+        assert state.get("action_type") == "shell"
+
+    def test_smoke_test_routes_to_done_on_pass(self, data: dict) -> None:
+        """smoke_test state must route to done when functional checks pass."""
+        state = data["states"].get("smoke_test", {})
+        assert state.get("on_yes") == "done"
+
+    def test_smoke_test_routes_to_generate_on_fail(self, data: dict) -> None:
+        """smoke_test state must route back to generate when functional checks fail."""
+        state = data["states"].get("smoke_test", {})
         assert state.get("on_no") == "generate"
 
     def test_context_has_description(self, data: dict) -> None:
