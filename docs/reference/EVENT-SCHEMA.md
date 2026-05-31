@@ -845,6 +845,7 @@ docs/reference/schemas/
 ├── action_error.json
 ├── action_output.json
 ├── action_start.json
+├── cycle_detected.json
 ├── evaluate.json
 ├── handoff_detected.json
 ├── handoff_spawned.json
@@ -852,9 +853,18 @@ docs/reference/schemas/
 ├── issue_completed.json
 ├── issue_deferred.json
 ├── issue_failure_captured.json
+├── issue_skipped.json
+├── issue_started.json
+├── learning_blocked.json
+├── learning_complete.json
+├── learning_explore_invoked.json
+├── learning_target_proven.json
+├── learning_target_refuted.json
+├── learning_target_stale.json
 ├── loop_complete.json
 ├── loop_resume.json
 ├── loop_start.json
+├── max_iterations_summary.json
 ├── parallel_worker_completed.json
 ├── rate_limit_exhausted.json
 ├── rate_limit_storm.json
@@ -864,7 +874,10 @@ docs/reference/schemas/
 ├── stall_detected.json
 ├── state_enter.json
 ├── state_issue_completed.json
-└── state_issue_failed.json
+├── state_issue_failed.json
+├── throttle_hard.json
+├── throttle_stop.json
+└── throttle_warn.json
 ```
 
 ### Naming Convention
@@ -952,6 +965,16 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `handoff_detected` | FSM | `fsm/executor.py` |
 | `handoff_spawned` | FSM | `fsm/executor.py` |
 | `loop_complete` | FSM | `fsm/executor.py` |
+| `max_iterations_summary` | FSM | `fsm/executor.py` |
+| `throttle_warn` | FSM | `fsm/executor.py` |
+| `throttle_hard` | FSM | `fsm/executor.py` |
+| `throttle_stop` | FSM | `fsm/executor.py` |
+| `learning_target_proven` | FSM | `fsm/executor.py` |
+| `learning_target_stale` | FSM | `fsm/executor.py` |
+| `learning_explore_invoked` | FSM | `fsm/executor.py` |
+| `learning_target_refuted` | FSM | `fsm/executor.py` |
+| `learning_complete` | FSM | `fsm/executor.py` |
+| `learning_blocked` | FSM | `fsm/executor.py` |
 | `loop_resume` | FSM Persistence | `fsm/persistence.py` |
 | `state.issue_completed` | StateManager | `state.py` |
 | `state.issue_failed` | StateManager | `state.py` |

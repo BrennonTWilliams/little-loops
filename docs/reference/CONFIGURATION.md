@@ -476,7 +476,7 @@ To enable document tracking, set `documents.enabled: true` and define categories
     "categories": {
       "architecture": {
         "description": "System design and technical decisions",
-        "files": ["docs/ARCHITECTURE.md", "docs/API.md"]
+        "files": ["docs/ARCHITECTURE.md", "docs/reference/API.md"]
       }
     }
   }
