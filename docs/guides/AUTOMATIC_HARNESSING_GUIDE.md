@@ -730,6 +730,49 @@ states:
 
 ---
 
+## Validating Your Harness
+
+Once a harness is created, validate that it actually improves output quality over
+an unguided LLM call. Use `ll-loop run --baseline` to run a blind A/B comparison:
+
+```
+ll-loop run harness-single-shot --baseline
+```
+
+This executes the loop in two parallel arms:
+
+- **Harness arm** — runs the full loop with all evaluation gates active
+- **Baseline arm** — runs an ungated single-shot invocation of the same skill
+
+After both arms complete, a blind LLM judge evaluates each output without knowing
+which arm produced it. The de-anonymized verdicts are written to
+`ab.json` and a summary is printed at the terminal:
+
+```
+A/B Summary (n=10)
+  Harness pass-rate:  90%
+  Baseline pass-rate: 60%
+  Delta:              +30%
+
+  Median tokens:      harness=84k  baseline=42k  (+100%)
+  Median duration:    harness=3.0m  baseline=1.0m  (+200%)
+  Verdict:            harness wins on quality, costs ~100% more tokens
+
+Per-item: .loops/runs/<id>/ab.json
+```
+
+**Interpreting results:**
+- A positive delta means the harness adds value (higher pass-rate)
+- Token/duration ratios show the cost of quality improvement
+- Per-item records in `ab.json` let you audit individual comparisons
+
+**Testing without full integration:**
+While developing harnesses, test the blind evaluator in isolation by importing
+`evaluate_blind_comparator()` from `little_loops.fsm.evaluators` and feeding it
+two output strings.
+
+---
+
 ## See Also
 
 - [LOOPS_GUIDE.md](LOOPS_GUIDE.md) — Full FSM loops reference: evaluators, state fields, CLI commands

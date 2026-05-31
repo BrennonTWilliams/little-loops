@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import re
 import subprocess
 import time
@@ -84,6 +85,41 @@ DEFAULT_LLM_SCHEMA: dict[str, Any] = {
 }
 
 DEFAULT_LLM_PROMPT = "Evaluate whether this action succeeded based on its output."
+
+# Schema for blind A/B comparator: evaluates two anonymized outputs
+BLIND_COMPARATOR_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "verdict_a": {
+            "type": "string",
+            "enum": ["yes", "no"],
+            "description": "Whether Output A meets the evaluation criteria",
+        },
+        "verdict_b": {
+            "type": "string",
+            "enum": ["yes", "no"],
+            "description": "Whether Output B meets the evaluation criteria",
+        },
+        "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Confidence in these verdicts (0-1)",
+        },
+        "reason": {
+            "type": "string",
+            "description": "Brief explanation comparing the two outputs",
+        },
+    },
+    "required": ["verdict_a", "verdict_b", "confidence", "reason"],
+}
+
+DEFAULT_BLIND_COMPARATOR_PROMPT = (
+    "You are evaluating two outputs (labeled 'Output A' and 'Output B') that were "
+    "produced by independent runs of the same task. Judge whether each output meets "
+    "the evaluation criteria below. Be objective and impartial — the labels 'A' and "
+    "'B' are arbitrary and do not indicate which is better."
+)
 
 _NUMERIC_OPERATORS: dict[str, Callable[[float, float], bool]] = {
     "eq": lambda v, t: v == t,
@@ -738,6 +774,180 @@ def evaluate_llm_structured(
             "llm_raw_output": proc.stdout[:500] if proc.stdout else "",
         },
     )
+
+
+def evaluate_blind_comparator(
+    output_harness: str,
+    output_baseline: str,
+    prompt: str | None = None,
+    model: str = DEFAULT_LLM_MODEL,
+    timeout: int = 1800,
+) -> dict[str, Any]:
+    """Blindly evaluate two outputs, returning pass/fail for each arm.
+
+    Outputs are randomly labeled "Output A" / "Output B" so the LLM judge
+    cannot distinguish the harness arm from the baseline arm. The mapping is
+    de-anonymized after judgment so callers receive harness/baseline verdicts.
+
+    Args:
+        output_harness: stdout from the harness (gated) arm
+        output_baseline: stdout from the baseline (ungated) arm
+        prompt: Custom evaluation prompt (appended to default framing)
+        model: Model identifier for the judge
+        timeout: Timeout in seconds
+
+    Returns:
+        Dict with keys: harness_pass (bool), baseline_pass (bool),
+        confidence (float), reason (str), raw (dict with A/B verdicts)
+    """
+    effective_prompt = prompt or DEFAULT_BLIND_COMPARATOR_PROMPT
+
+    # Truncate outputs to avoid context limits
+    truncated_harness = output_harness[-4000:] if len(output_harness) > 4000 else output_harness
+    truncated_baseline = output_baseline[-4000:] if len(output_baseline) > 4000 else output_baseline
+
+    # Randomize order: coin flip determines whether harness→A / baseline→B
+    harness_is_a = random.choice([True, False])
+    if harness_is_a:
+        output_a, output_b = truncated_harness, truncated_baseline
+    else:
+        output_a, output_b = truncated_baseline, truncated_harness
+
+    user_prompt = (
+        f"{effective_prompt}\n\n"
+        f"<output_a>\n{output_a}\n</output_a>\n\n"
+        f"<output_b>\n{output_b}\n</output_b>"
+    )
+
+    invocation = resolve_host().build_blocking_json(prompt=user_prompt, model=model)
+    args = list(invocation.args) + [
+        "--json-schema",
+        json.dumps(BLIND_COMPARATOR_SCHEMA),
+        "--no-session-persistence",
+    ]
+
+    try:
+        proc = subprocess.run(
+            [invocation.binary, *args], capture_output=True, text=True, timeout=timeout
+        )
+    except subprocess.TimeoutExpired:
+        # On timeout, both fail — conservative default
+        return {
+            "harness_pass": False,
+            "baseline_pass": False,
+            "confidence": 0.0,
+            "reason": "LLM evaluation timed out",
+            "raw": {"verdict_a": "timeout", "verdict_b": "timeout"},
+            "error": "timeout",
+        }
+    except FileNotFoundError:
+        return {
+            "harness_pass": False,
+            "baseline_pass": False,
+            "confidence": 0.0,
+            "reason": f"{invocation.binary} CLI not found",
+            "raw": {"verdict_a": "error", "verdict_b": "error"},
+            "error": "missing_cli",
+        }
+
+    if proc.returncode != 0:
+        return {
+            "harness_pass": False,
+            "baseline_pass": False,
+            "confidence": 0.0,
+            "reason": f"Judge CLI error: {proc.stderr.strip()[:200]}",
+            "raw": {"verdict_a": "error", "verdict_b": "error"},
+            "error": "api_error",
+        }
+
+    if not proc.stdout.strip():
+        return {
+            "harness_pass": False,
+            "baseline_pass": False,
+            "confidence": 0.0,
+            "reason": "Judge returned empty output",
+            "raw": {"verdict_a": "error", "verdict_b": "error"},
+            "error": "empty_output",
+        }
+
+    try:
+        stdout = proc.stdout.strip()
+        try:
+            envelope = json.loads(stdout)
+        except json.JSONDecodeError:
+            lines = [line for line in stdout.split("\n") if line.strip()]
+            if not lines:
+                raise
+            envelope = json.loads(lines[-1])
+
+        if envelope.get("subtype") == "error_max_structured_output_retries":
+            return {
+                "harness_pass": False,
+                "baseline_pass": False,
+                "confidence": 0.0,
+                "reason": "Judge could not produce valid structured output after retries",
+                "raw": {"verdict_a": "error", "verdict_b": "error"},
+                "error": "retry_exhausted",
+            }
+
+        if envelope.get("is_error", False):
+            err_text = str(envelope.get("result", "") or "")[:200]
+            return {
+                "harness_pass": False,
+                "baseline_pass": False,
+                "confidence": 0.0,
+                "reason": f"Judge reported error: {err_text}",
+                "raw": {"verdict_a": "error", "verdict_b": "error"},
+                "error": "api_error",
+            }
+
+        if isinstance(envelope.get("structured_output"), dict):
+            result: dict[str, Any] = envelope["structured_output"]
+        else:
+            raw_result = envelope.get("result", "")
+            if isinstance(raw_result, dict):
+                result = raw_result
+            elif raw_result:
+                result = json.loads(raw_result)
+            else:
+                return {
+                    "harness_pass": False,
+                    "baseline_pass": False,
+                    "confidence": 0.0,
+                    "reason": "Empty result field in judge response",
+                    "raw": {"verdict_a": "error", "verdict_b": "error"},
+                    "error": "empty_result",
+                }
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return {
+            "harness_pass": False,
+            "baseline_pass": False,
+            "confidence": 0.0,
+            "reason": "Failed to parse judge response",
+            "raw": {"verdict_a": "error", "verdict_b": "error"},
+            "error": "parse_error",
+        }
+
+    # De-anonymize
+    verdict_a = str(result.get("verdict_a", "no"))
+    verdict_b = str(result.get("verdict_b", "no"))
+    confidence = float(result.get("confidence", 0.0))
+    reason = str(result.get("reason", ""))
+
+    if harness_is_a:
+        harness_pass = verdict_a == "yes"
+        baseline_pass = verdict_b == "yes"
+    else:
+        harness_pass = verdict_b == "yes"
+        baseline_pass = verdict_a == "yes"
+
+    return {
+        "harness_pass": harness_pass,
+        "baseline_pass": baseline_pass,
+        "confidence": confidence,
+        "reason": reason,
+        "raw": {"verdict_a": verdict_a, "verdict_b": verdict_b, "harness_is_a": harness_is_a},
+    }
 
 
 def evaluate(

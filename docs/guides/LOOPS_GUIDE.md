@@ -254,7 +254,38 @@ ll-loop run fix-tests
 
 The engine enters `evaluate`, runs `pytest tests/`, checks the exit code, and follows the transition. If tests fail, it enters `fix`, sends the fix prompt to Claude, then returns to `evaluate`. This continues until tests pass or `max_iterations` is reached.
 
-### 7. Monitor
+### 8. A/B Comparison (--baseline)
+
+Validate that a harness loop improves output quality over an unguided LLM call:
+
+```bash
+ll-loop run harness-single-shot --baseline
+```
+
+This runs the loop in two parallel arms: the **harness arm** executes the full loop
+with all evaluation gates active, while the **baseline arm** runs an ungated
+single-shot invocation. A blind LLM judge evaluates both outputs without knowing
+which arm produced which, then de-anonymizes the verdicts.
+
+After completion, `ab.json` is written to the run directory and a summary prints:
+
+```
+A/B Summary (n=10)
+  Harness pass-rate:  90%
+  Baseline pass-rate: 60%
+  Delta:              +30%
+
+  Median tokens:      harness=84k  baseline=42k  (+100%)
+  Median duration:    harness=3.0m  baseline=1.0m  (+200%)
+  Verdict:            harness wins on quality, costs ~100% more tokens
+```
+
+Use `--baseline-skill` to override the baseline arm skill, and `--items` to set
+the number of compare cycles. See
+[AUTOMATIC_HARNESSING_GUIDE.md § Validating Your Harness](AUTOMATIC_HARNESSING_GUIDE.md)
+for interpretation guidance.
+
+### 9. Monitor
 
 ```bash
 ll-loop status fix-tests     # Current state and iteration count

@@ -24,6 +24,7 @@ from typing import Any
 from little_loops.fsm.evaluators import (
     EvaluationResult,
     evaluate,
+    evaluate_blind_comparator,
     evaluate_exit_code,
     evaluate_llm_structured,
     evaluate_mcp_result,
@@ -205,6 +206,12 @@ class FSMExecutor:
         # dispatched. Prevents the cap guard from re-triggering before the
         # summary state completes.
         self._summary_state_executed: bool = False
+
+        # FEAT-1822: Per-item A/B comparison results accumulated during baseline
+        # execution. Populated by _execute_with_baseline(), written to ab.json
+        # by _finish().
+        self._ab_results: list[dict[str, Any]] = []
+        self._ab_item_index: int = 0
 
         # Per-state rate-limit retry tracking (parallel to _retry_counts).
         # _rate_limit_retries[state_name] = dict-of-record:
@@ -1386,6 +1393,45 @@ class FSMExecutor:
             },
         )
 
+        # FEAT-1822: Run blind comparison and accumulate per-item results.
+        # The blind comparator is non-fatal: if it errors, we record a
+        # degraded result but let the harness routing proceed unchanged.
+        try:
+            comparison = evaluate_blind_comparator(
+                output_harness=harness_result.output,
+                output_baseline=baseline_result.output,
+            )
+            item: dict[str, Any] = {
+                "index": self._ab_item_index,
+                "harness_pass": comparison.get("harness_pass", False),
+                "baseline_pass": comparison.get("baseline_pass", False),
+                "harness_tokens": harness_total_tokens,
+                "baseline_tokens": baseline_total_tokens,
+                "harness_duration_ms": harness_result.duration_ms,
+                "baseline_duration_ms": baseline_result.duration_ms,
+                "confidence": comparison.get("confidence", 0.0),
+                "reason": comparison.get("reason", ""),
+            }
+            self._ab_results.append(item)
+            self._ab_item_index += 1
+            self._emit("ab_comparison", {**item, "raw": comparison.get("raw", {})})
+        except Exception:
+            # Blind evaluation failure is non-fatal — record degraded result
+            item = {
+                "index": self._ab_item_index,
+                "harness_pass": False,
+                "baseline_pass": False,
+                "harness_tokens": harness_total_tokens,
+                "baseline_tokens": baseline_total_tokens,
+                "harness_duration_ms": harness_result.duration_ms,
+                "baseline_duration_ms": baseline_result.duration_ms,
+                "confidence": 0.0,
+                "reason": "Blind evaluation failed",
+                "error": "evaluation_error",
+            }
+            self._ab_results.append(item)
+            self._ab_item_index += 1
+
         return harness_result, None
 
     def _run_baseline_arm(
@@ -1695,6 +1741,27 @@ class FSMExecutor:
                 "terminated_by": terminated_by,
             },
         )
+
+        # FEAT-1822: Write ab.json if baseline comparison results exist
+        if self._ab_results:
+            try:
+                from little_loops.ab_writer import calculate_ab_summary, write_ab_json
+
+                run_dir = self.fsm.context.get("run_dir", "")
+                if run_dir:
+                    summary = calculate_ab_summary(self._ab_results)
+                    write_ab_json(summary, run_dir)
+                    self._emit(
+                        "ab_summary",
+                        {
+                            "harness_pass_rate": summary.harness_pass_rate,
+                            "baseline_pass_rate": summary.baseline_pass_rate,
+                            "delta": summary.delta,
+                            "item_count": len(summary.per_item),
+                        },
+                    )
+            except Exception:
+                pass  # Non-fatal: loop still completes
 
         return ExecutionResult(
             final_state=self.current_state,

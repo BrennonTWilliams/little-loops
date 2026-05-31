@@ -83,6 +83,7 @@ from little_loops.fsm.evaluators import (
     DEFAULT_LLM_SCHEMA,
     EvaluationResult,
     evaluate,
+    evaluate_blind_comparator,
     evaluate_convergence,
     evaluate_exit_code,
     evaluate_llm_structured,
@@ -152,6 +153,8 @@ from little_loops.fsm.signal_detector import (
 )
 from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import Evaluator
+from little_loops.ab_writer import ABResults, calculate_ab_summary, write_ab_json
+
 from little_loops.fsm.validation import (
     ValidationError,
     is_runnable_loop,
@@ -160,6 +163,7 @@ from little_loops.fsm.validation import (
 )
 
 __all__ = [
+    "ABResults",
     "ActionResult",
     "ActionRunner",
     "CircuitConfig",
@@ -214,13 +218,16 @@ __all__ = [
     "THROTTLE_WARN_EVENT",
     "ThrottleConfig",
     "ValidationError",
+    "calculate_ab_summary",
     "evaluate",
+    "evaluate_blind_comparator",
     "evaluate_convergence",
     "evaluate_exit_code",
     "evaluate_llm_structured",
     "evaluate_output_contains",
     "evaluate_output_json",
     "evaluate_output_numeric",
+    "write_ab_json",
     "get_loop_history",
     "interpolate",
     "interpolate_dict",

@@ -135,6 +135,10 @@ satisfied) but still be toothless if its verdict never varies across runs.
 Bernoulli variance `p*(1-p)` below 0.05 across ≥10 runs flags an evaluator that
 isn't measuring anything useful.
 
+Use `ll-loop run --baseline` to empirically validate that a meta-loop harness
+improves output quality over an unguided LLM call. See
+[docs/guides/AUTOMATIC_HARNESSING_GUIDE.md § Validating Your Harness](../docs/guides/AUTOMATIC_HARNESSING_GUIDE.md).
+
 ## Issue File Format
 
 Files in `.issues/` follow: `P[0-5]-[TYPE]-[NNN]-description.md`

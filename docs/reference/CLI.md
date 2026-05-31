@@ -402,6 +402,9 @@ Run a loop.
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
 | `--program-md PATH` | | Load steering directive from a Markdown file (default: `.ll/program.md` when present); parsed fields injected into context before `--context` overrides. See [program-md reference](program-md.md). |
 | `--worktree` | | Run loop in an isolated git worktree on a new branch named `TIMESTAMP-LOOP-NAME`; worktree and branch are removed on exit. **Cannot be combined with `--background`** — passing both exits with an error. |
+| `--baseline` | | Run a blind A/B comparison: executes primary skill with full evaluation gates (harness arm) and creates a matching ungated invocation (baseline arm) in parallel, then feeds both outputs into a blind LLM judge. Writes `ab.json` to the run directory and prints a terminal summary with pass-rate delta and token/duration ratios. **Cannot be combined with `--worktree`** — passing both exits with an error. |
+| `--baseline-skill` | | Override the baseline arm skill (default: extracted from the execute state action). Accepts a full slash command such as `/ll:some-skill`. |
+| `--items` | | Number of compare cycles to run (default: iterate with MIMO packing heuristics) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
 | `--no-lock` | | Run without acquiring the scope lock, bypassing the conflict check. **Caution:** this allows concurrent runs that may interfere with each other on shared resources. Use when you need parallel runs that operate on disjoint paths or when testing a loop that would otherwise be blocked by a stale lock you cannot clear. |

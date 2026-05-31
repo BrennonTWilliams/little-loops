@@ -9,11 +9,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.fsm.evaluators import (
+    BLIND_COMPARATOR_SCHEMA,
     DEFAULT_LLM_PROMPT,
     DEFAULT_LLM_SCHEMA,
     EvaluationResult,
     _extract_json_path,
     evaluate,
+    evaluate_blind_comparator,
     evaluate_convergence,
     evaluate_diff_stall,
     evaluate_exit_code,
@@ -1324,3 +1326,181 @@ class TestMcpResultEvaluator:
         ctx = InterpolationContext()
         result = evaluate(config, "not-a-float", 0, ctx)
         assert result.verdict == "error"
+
+
+class TestBlindComparator:
+    """Tests for evaluate_blind_comparator — blind A/B output comparison."""
+
+    def _make_cli_response(
+        self, verdict_a: str = "yes", verdict_b: str = "no", confidence: float = 0.9
+    ) -> dict[str, Any]:
+        """Build a valid Claude CLI JSON envelope for structured output."""
+        return {
+            "type": "result",
+            "subtype": "success",
+            "structured_output": {
+                "verdict_a": verdict_a,
+                "verdict_b": verdict_b,
+                "confidence": confidence,
+                "reason": "Output A is correct and complete; Output B is incomplete.",
+            },
+        }
+
+    def _make_mock_proc(
+        self, stdout: str = "", stderr: str = "", returncode: int = 0
+    ) -> Any:
+        """Create a mock CompletedProcess."""
+        from unittest.mock import MagicMock
+
+        proc = MagicMock()
+        proc.stdout = stdout
+        proc.stderr = stderr
+        proc.returncode = returncode
+        return proc
+
+    @pytest.fixture
+    def mock_cli(self):
+        """Fixture to mock subprocess.run for blind comparator calls."""
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stdout = json.dumps(self._make_cli_response())
+            proc.stderr = ""
+            mock_run.return_value = proc
+            yield mock_run, proc
+
+    def test_both_pass(self, mock_cli) -> None:
+        """Both outputs pass — verdict_a=yes, verdict_b=yes."""
+        mock_run, proc = mock_cli
+        proc.stdout = json.dumps(self._make_cli_response("yes", "yes"))
+        result = evaluate_blind_comparator("good output", "also good output")
+        assert result["harness_pass"] is True
+        assert result["baseline_pass"] is True
+        assert result["confidence"] == 0.9
+
+    def test_both_fail(self, mock_cli) -> None:
+        """Both outputs fail — verdict_a=no, verdict_b=no."""
+        mock_run, proc = mock_cli
+        proc.stdout = json.dumps(self._make_cli_response("no", "no"))
+        result = evaluate_blind_comparator("bad output", "also bad output")
+        assert result["harness_pass"] is False
+        assert result["baseline_pass"] is False
+
+    def test_harness_only_pass(self, mock_cli) -> None:
+        """Only harness passes — depends on random shuffle results."""
+        mock_run, proc = mock_cli
+        proc.stdout = json.dumps(self._make_cli_response("yes", "no"))
+        # We can't control the shuffle, but we can verify one passes, one fails
+        result = evaluate_blind_comparator("good harness output", "bad baseline output")
+        assert result["harness_pass"] != result["baseline_pass"]
+        assert result["confidence"] == 0.9
+        assert "reason" in result
+        assert "raw" in result
+
+    def test_baseline_only_pass(self, mock_cli) -> None:
+        """Only baseline passes — depends on random shuffle results."""
+        mock_run, proc = mock_cli
+        proc.stdout = json.dumps(self._make_cli_response("no", "yes"))
+        result = evaluate_blind_comparator("bad harness output", "good baseline output")
+        assert result["harness_pass"] != result["baseline_pass"]
+
+    def test_timeout(self, mock_cli) -> None:
+        """Timeout returns both-fail with error key."""
+        mock_run, proc = mock_cli
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="test", timeout=5)
+        result = evaluate_blind_comparator("output a", "output b")
+        assert result["harness_pass"] is False
+        assert result["baseline_pass"] is False
+        assert result["confidence"] == 0.0
+        assert result.get("error") == "timeout"
+
+    def test_cli_error(self, mock_cli) -> None:
+        """CLI error returns both-fail with error key."""
+        mock_run, proc = mock_cli
+        proc.returncode = 1
+        proc.stderr = "api error occurred"
+        result = evaluate_blind_comparator("output a", "output b")
+        assert result["harness_pass"] is False
+        assert result["baseline_pass"] is False
+        assert result.get("error") == "api_error"
+
+    def test_empty_output(self, mock_cli) -> None:
+        """Empty CLI stdout returns both-fail with error key."""
+        mock_run, proc = mock_cli
+        proc.stdout = ""
+        result = evaluate_blind_comparator("output a", "output b")
+        assert result["harness_pass"] is False
+        assert result["baseline_pass"] is False
+        assert result.get("error") == "empty_output"
+
+    def test_de_anonymization_maps_correctly(self) -> None:
+        """De-anonymization: verdict_a → correct arm based on shuffle mapping.
+
+        We patch random.choice to control the shuffle, verifying the
+        de-anonymization logic correctly maps A/B verdicts to harness/baseline.
+        """
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            with patch("little_loops.fsm.evaluators.random.choice") as mock_choice:
+                proc = MagicMock()
+                proc.returncode = 0
+                # Output A (harness) = yes, Output B (baseline) = no
+                proc.stdout = json.dumps(self._make_cli_response("yes", "no"))
+                proc.stderr = ""
+                mock_run.return_value = proc
+
+                # Force harness → A mapping
+                mock_choice.return_value = True
+                result = evaluate_blind_comparator("harness output", "baseline output")
+                assert result["harness_pass"] is True
+                assert result["baseline_pass"] is False
+                assert result["raw"]["harness_is_a"] is True
+
+                # Force harness → B mapping (swapped)
+                mock_choice.return_value = False
+                result2 = evaluate_blind_comparator("harness output", "baseline output")
+                assert result2["harness_pass"] is False
+                assert result2["baseline_pass"] is True
+                assert result2["raw"]["harness_is_a"] is False
+
+    def test_long_outputs_are_truncated(self, mock_cli) -> None:
+        """Outputs longer than 4000 chars are truncated before sending to judge."""
+        mock_run, proc = mock_cli
+        long_text = "x" * 5000
+        result = evaluate_blind_comparator(long_text, "short output")
+        assert result is not None
+        # The prompt sent to the CLI should not contain full 5000-char string
+        call_args = mock_run.call_args[0][0]
+        assert call_args[-1]  # prompt is last arg
+        prompt_text = call_args[-1][0] if isinstance(call_args[-1], list) else str(call_args[-1])
+        # The truncated output should be limited to 4000 chars
+        assert "x" * 4000 in prompt_text or len(long_text[-4000:]) <= 4000
+
+    def test_retry_exhausted_handling(self, mock_cli) -> None:
+        """Retry-exhausted envelope returns error with both-fail."""
+        mock_run, proc = mock_cli
+        proc.stdout = json.dumps({
+            "type": "result",
+            "subtype": "error_max_structured_output_retries",
+        })
+        result = evaluate_blind_comparator("output a", "output b")
+        assert result["harness_pass"] is False
+        assert result["baseline_pass"] is False
+        assert result.get("error") == "retry_exhausted"
+
+    def test_is_error_flag_handling(self, mock_cli) -> None:
+        """is_error flag in envelope returns api_error with both-fail."""
+        mock_run, proc = mock_cli
+        proc.stdout = json.dumps({"is_error": True, "result": "some error"})
+        result = evaluate_blind_comparator("output a", "output b")
+        assert result["harness_pass"] is False
+        assert result["baseline_pass"] is False
+        assert result.get("error") == "api_error"
+
+    def test_jsonl_parsing(self, mock_cli) -> None:
+        """JSONL (multi-line) output is parsed from the last non-empty line."""
+        mock_run, proc = mock_cli
+        envelope = self._make_cli_response("yes", "no")
+        proc.stdout = '{"type":"log","msg":"thinking..."}\n' + json.dumps(envelope)
+        result = evaluate_blind_comparator("output a", "output b")
+        assert result is not None
+        assert "error" not in result

@@ -1246,9 +1246,98 @@ def run_foreground(
                 f"{completion_prefix}: {state_colored} ({result.iterations} iterations, {duration_str}{suffix})"
             )
 
+            # FEAT-1822: Print A/B summary if baseline was enabled
+            run_dir = fsm.context.get("run_dir", "")
+            if run_dir:
+                ab_path = Path(run_dir) / "ab.json"
+                if ab_path.exists():
+                    try:
+                        _print_ab_summary(ab_path)
+                    except Exception:
+                        pass  # Non-fatal: display failure shouldn't block exit
+
         return EXIT_CODES.get(result.terminated_by, 1)
     finally:
         sys.stdout = _orig_stdout
         sys.stderr = _orig_stderr
         if _log_fh is not None:
             _log_fh.close()
+
+
+def _print_ab_summary(ab_path: Path) -> None:
+    """Print A/B comparison summary from ab.json.
+
+    Args:
+        ab_path: Path to ab.json file written by the executor
+    """
+    from little_loops.ab_writer import read_ab_json
+
+    results = read_ab_json(str(ab_path.parent))
+    if results is None or not results.per_item:
+        return
+
+    n = len(results.per_item)
+    harness_pct = results.harness_pass_rate * 100
+    baseline_pct = results.baseline_pass_rate * 100
+    delta_pct = results.delta * 100
+
+    tokens_ratio = (
+        results.median_tokens_harness / results.median_tokens_baseline
+        if results.median_tokens_baseline > 0
+        else 0
+    )
+    dur_ratio = (
+        results.median_duration_harness / results.median_duration_baseline
+        if results.median_duration_baseline > 0
+        else 0
+    )
+
+    def _fmt_dur(ms: float) -> str:
+        if ms < 1000:
+            return f"{ms:.0f}ms"
+        elif ms < 60000:
+            return f"{ms / 1000:.1f}s"
+        else:
+            return f"{ms / 60000:.1f}m"
+
+    tokens_dir = "+" if tokens_ratio > 1 else "-"
+    dur_dir = "+" if dur_ratio > 1 else "-"
+
+    print()
+    print(f"A/B Summary (n={n})")
+    print(f"  Harness pass-rate:  {harness_pct:.0f}%")
+    print(f"  Baseline pass-rate: {baseline_pct:.0f}%")
+    print(f"  Delta:              {delta_pct:+.0f}%")
+    print()
+    print(
+        f"  Median tokens:      harness={results.median_tokens_harness}  "
+        f"baseline={results.median_tokens_baseline}  "
+        f"({tokens_dir}{abs(tokens_ratio - 1) * 100:.0f}%)"
+    )
+    print(
+        f"  Median duration:    harness={_fmt_dur(results.median_duration_harness)}  "
+        f"baseline={_fmt_dur(results.median_duration_baseline)}  "
+        f"({dur_dir}{abs(dur_ratio - 1) * 100:.0f}%)"
+    )
+
+    # Verdict line
+    delta_sign = "+" if results.delta >= 0 else ""
+    quality_verdict = (
+        "harness wins on quality"
+        if results.delta > 0
+        else "baseline wins on quality"
+        if results.delta < 0
+        else "no quality difference"
+    )
+    cost_verdict = (
+        f"costs ~{abs(tokens_ratio - 1) * 100:.0f}% more tokens"
+        if tokens_ratio > 1
+        else (
+            f"costs ~{abs(tokens_ratio - 1) * 100:.0f}% fewer tokens"
+            if tokens_ratio < 1
+            else "same token cost"
+        )
+    )
+    print(f"  Verdict:            {quality_verdict}, {cost_verdict}")
+    print()
+    print(f"Per-item: {ab_path}")

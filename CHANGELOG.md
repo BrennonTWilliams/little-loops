@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Parallel-safe autodev for disjoint issues** — `autodev` now declares `scope: ["${context.run_dir}"]`, enabling concurrent instances with different issue sets to refine in parallel. Implementation isolation via existing `--worktree` flag. (FEAT-1789)
 - **`ll-loop diagnose-evaluators` subcommand** — Detects non-discriminating evaluator states from run history by computing per-state Bernoulli variance on verdicts. Flags states below threshold with pattern-matched recommendations for improving discriminating power. JSON output for downstream consumption. (ENH-1792)
+- **`ll-loop run --baseline` blind A/B comparison** — Runs paired harness/baseline arms in parallel, feeds both outputs into an anonymized LLM judge, aggregates results into `ab.json`, and prints a terminal summary with pass-rate deltas and token/duration ratios. Enables quantitative validation that harnesses improve output quality. (FEAT-1790, FEAT-1822)
 
 ### Planned
 

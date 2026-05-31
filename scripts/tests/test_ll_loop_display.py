@@ -4242,3 +4242,106 @@ class TestRunForegroundCapture:
             )
 
         assert sys.stdout is orig_stdout, "sys.stdout must be restored after tee teardown"
+
+
+class TestABSummaryDisplay:
+    """Tests for A/B baseline summary printed after loop completion (FEAT-1822)."""
+
+    def test_ab_summary_contains_expected_labels(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """_print_ab_summary prints expected sections: pass-rate, tokens, duration, verdict."""
+        from little_loops.ab_writer import ABResults, write_ab_json
+        from little_loops.cli.loop._helpers import _print_ab_summary
+
+        results = ABResults(
+            harness_pass_rate=0.9,
+            baseline_pass_rate=0.6,
+            delta=0.3,
+            median_tokens_harness=84000,
+            median_tokens_baseline=42000,
+            median_duration_harness=180000.0,
+            median_duration_baseline=60000.0,
+            per_item=[{"index": 0, "harness_pass": True, "baseline_pass": False}],
+        )
+        run_dir = str(tmp_path)
+        write_ab_json(results, run_dir)
+        ab_path = tmp_path / "ab.json"
+
+        _print_ab_summary(ab_path)
+        captured = capsys.readouterr()
+
+        assert "A/B Summary" in captured.out
+        assert "Harness pass-rate:" in captured.out
+        assert "Baseline pass-rate:" in captured.out
+        assert "Delta:" in captured.out
+        assert "Median tokens:" in captured.out
+        assert "Median duration:" in captured.out
+        assert "Verdict:" in captured.out
+        assert "harness wins on quality" in captured.out
+        assert "Per-item:" in captured.out
+
+    def test_ab_summary_harness_loses_quality(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """When baseline wins on quality, the verdict reflects that."""
+        from little_loops.ab_writer import ABResults, write_ab_json
+        from little_loops.cli.loop._helpers import _print_ab_summary
+
+        results = ABResults(
+            harness_pass_rate=0.4,
+            baseline_pass_rate=0.8,
+            delta=-0.4,
+            median_tokens_harness=50000,
+            median_tokens_baseline=50000,
+            median_duration_harness=60000.0,
+            median_duration_baseline=60000.0,
+            per_item=[{"index": 0, "harness_pass": False, "baseline_pass": True}],
+        )
+        run_dir = str(tmp_path)
+        write_ab_json(results, run_dir)
+        ab_path = tmp_path / "ab.json"
+
+        _print_ab_summary(ab_path)
+        captured = capsys.readouterr()
+
+        assert "baseline wins on quality" in captured.out
+        assert "Delta:" in captured.out
+        assert "-40%" in captured.out
+
+    def test_ab_summary_no_difference(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """When both arms perform equally, verdict reflects no difference."""
+        from little_loops.ab_writer import ABResults, write_ab_json
+        from little_loops.cli.loop._helpers import _print_ab_summary
+
+        results = ABResults(
+            harness_pass_rate=1.0,
+            baseline_pass_rate=1.0,
+            delta=0.0,
+            median_tokens_harness=50000,
+            median_tokens_baseline=50000,
+            median_duration_harness=60000.0,
+            median_duration_baseline=60000.0,
+            per_item=[{"index": 0, "harness_pass": True, "baseline_pass": True}],
+        )
+        run_dir = str(tmp_path)
+        write_ab_json(results, run_dir)
+        ab_path = tmp_path / "ab.json"
+
+        _print_ab_summary(ab_path)
+        captured = capsys.readouterr()
+
+        assert "no quality difference" in captured.out
+        assert "same token cost" in captured.out
+
+    def test_ab_summary_with_no_file_is_noop(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """When ab.json doesn't exist, _print_ab_summary is a no-op."""
+        from little_loops.cli.loop._helpers import _print_ab_summary
+
+        _print_ab_summary(Path("/nonexistent/ab.json"))
+        captured = capsys.readouterr()
+        assert captured.out == ""
