@@ -309,6 +309,27 @@ Emitted when the FSM stall detector (FEAT-1637) observes `window` consecutive it
 
 ---
 
+### `cycle_detected`
+
+Emitted when the same edge (`from_state->to_state`) is traversed more than `max_edge_revisits` times, indicating a tight cycle. The executor terminates the run with `terminated_by="cycle_detected"`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `event` | `str` | Event type identifier |
+| `ts` | `str` | ISO 8601 timestamp |
+| `edge` | `str` | Edge key (`from_state->to_state`) that triggered detection |
+| `from` | `str` | Source state of the cyclic edge |
+| `to` | `str` | Target state of the cyclic edge |
+| `count` | `int` | Number of times this edge was traversed |
+| `max` | `int` | Configured `max_edge_revisits` limit |
+
+**Example:**
+```json
+{"event": "cycle_detected", "ts": "...", "edge": "build->test", "from": "build", "to": "test", "count": 6, "max": 5}
+```
+
+---
+
 ### `rate_limit_exhausted`
 
 Emitted when the wall-clock rate-limit budget is spent across the short-burst and long-wait retry tiers and the executor transitions to `on_rate_limit_exhausted` (or `on_error`). See `rate_limit_max_wait_seconds` and `rate_limit_long_wait_ladder` on `StateConfig` for budget configuration.
