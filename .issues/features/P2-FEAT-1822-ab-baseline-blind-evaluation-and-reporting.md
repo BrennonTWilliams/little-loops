@@ -5,13 +5,19 @@ type: FEAT
 priority: P2
 status: done
 parent: FEAT-1790
-completed_at: 2026-05-30T23:59:00Z
+completed_at: 2026-05-30 23:59:00+00:00
 labels:
 - feature
 - loops
 - harness
 - evaluation
 - ab-testing
+confidence_score: 93
+outcome_confidence: 83
+score_complexity: 14
+score_test_coverage: 22
+score_ambiguity: 25
+score_change_surface: 22
 ---
 
 # FEAT-1822: A/B Baseline Blind Evaluation and Reporting
@@ -256,3 +262,4 @@ def calculate_ab_summary(per_item_results: list[dict]) -> ABResults:
 - `/ll:refine-issue` - 2026-05-31T04:42:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9590608-82fc-47be-be21-ce61b52c070b.jsonl`
 - `/ll:format-issue` - 2026-05-31T04:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab2f4112-ed66-4b9b-8254-f2481b5689f4.jsonl`
 - `/ll:issue-size-review` - 2026-05-30T23:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:confidence-check` - 2026-05-31T04:54:16Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/702b1067-ab29-4c28-85f5-65e4d6327c3f.jsonl`
