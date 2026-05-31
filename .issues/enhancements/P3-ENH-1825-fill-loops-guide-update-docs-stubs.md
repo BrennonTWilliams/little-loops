@@ -4,9 +4,10 @@ title: Fill update-docs stubs in LOOPS_GUIDE.md
 type: ENH
 priority: P3
 captured_at: '2026-05-31T00:00:00Z'
+completed_at: '2026-05-31T20:35:07Z'
 discovered_date: '2026-05-31'
 discovered_by: audit-docs
-status: open
+status: done
 labels:
 - enhancement
 - documentation
