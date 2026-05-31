@@ -3,7 +3,7 @@ id: ENH-1684
 title: Add timestamp suffix to deep-research run directory to prevent silent overwrite
 type: ENH
 priority: P4
-status: open
+status: done
 discovered_date: 2026-05-24
 discovered_by: capture-issue
 captured_at: '2026-05-24T18:14:01Z'
@@ -124,7 +124,15 @@ Users iterate on research topics (refine the question, re-run after new events).
 
 **Open** | Created: 2026-05-24 | Priority: P4
 
+## Resolution
+
+**Resolved via `${context.run_dir}` injection** — `deep-research.yaml` and `deep-research-arxiv.yaml` were refactored to use `${context.run_dir}` in their `init` state instead of `${context.output_dir}/$SLUG`. The runner injects `run_dir` as `.loops/runs/{loop_name}-{timestamp}/` via `_make_instance_id()` in `scripts/little_loops/cli/loop/_helpers.py`, providing per-run unique directories. Every invocation lands in a fresh isolated directory without requiring inline timestamp generation in the loop YAML. Both acceptance criteria are met.
+
+**Fix Commit**: N/A (resolved as part of `run_dir` infrastructure migration)
+**Files Changed**: `scripts/little_loops/loops/deep-research.yaml`, `scripts/little_loops/loops/deep-research-arxiv.yaml`
+
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T20:34:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52d78c58-d750-467e-9092-de587a96595e.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:confidence-check` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b05a1db1-f9bd-43eb-b427-427c3cdbc0ac.jsonl`

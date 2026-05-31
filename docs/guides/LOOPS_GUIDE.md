@@ -68,10 +68,7 @@ When a loop runs, the engine:
 
 Use `/ll:create-loop` for an interactive wizard that guides you through creating loops, or write FSM YAML directly (see the [FSM Loop System Design](../generalized-fsm-loop.md) for the schema).
 
-<!-- TODO: update-docs stub — dd260362 — drafted 2026-05-11 -->
 **Safety limits:**
-
-> **Stub**: Auto-drafted by `/ll:update-docs`. Fill in details and integrate into loop YAML reference.
 
 Three loop-level fields guard against runaway loops:
 
@@ -545,10 +542,8 @@ init             (shell: validate plan_file exists, copy to run_dir/plan.md)
 
 **Notes**: The key difference from `rn-plan` is `assess_existing` — it reads the plan and scores dimensions at their *actual* current level rather than defaulting all to LOW. This avoids wasting iterations refining dimensions that are already HIGH or VERY-HIGH. `verify_score` is a deterministic shell check that confirms `ALL_VERY_HIGH` appears in the rubric file before accepting convergence — guarding against hallucinated convergence where the LLM emits the sentinel but writes `ITERATE` to disk.
 
-- <!-- TODO: update-docs stub — write-back + apply commands — drafted 2026-05-19 -->
 - **In-place update**: On completion, the loop overwrites the **original** plan file (the path passed to `ll-loop run rn-refine`) with the refined content. No manual copy from `.loops/` is needed. The `plan.md` under the run directory is kept as a working-copy reference you can diff against or delete.
 - **Report state**: Prints `diff` commands comparing the original file against the working copy, so you can review changes before discarding the reference copy.
-  <!-- END TODO stub -->
 
 **Issue Management**
 
@@ -765,10 +760,7 @@ init → dequeue_next → [queue empty?]
 
 **Outcome failure triage** (BUG-1277, ENH-1291, ENH-1415): When `check_passed` fails (confidence thresholds not met), the loop enters `triage_outcome_failure` rather than immediately routing to size-review. This state reads `score_ambiguity` from the issue frontmatter and branches: if `score_ambiguity ≤ 10`, the issue is well-scoped but has an unresolved design decision causing low outcome confidence — the loop routes to `run_decide` (invoking `/ll:decide-issue --auto`) → `mark_decide_ran` (sets `.loops/tmp/autodev-decide-ran` so decide does not re-fire later in the same iteration) → `rerun_confidence_after_decide` (invoking `/ll:confidence-check` to refresh stale pre-decision scores, BUG-1378) → `recheck_after_decide` (threshold gate). On gate pass, the loop proceeds to `implement_current` without decomposition. On gate fail (ENH-1415), the loop routes to `snap_and_size_review` (refreshes the pre-ids baseline) → `run_size_review` rather than dropping the issue, since the only outcome dimensions that can still drag the score below threshold after decide are Complexity and Change Surface — both decomposable. The decide-ran flag means that if size-review fails to decompose and `recheck_after_size_review` re-enters `decide_current`, that state short-circuits to `implement_current` rather than firing decide a second time. On parse error, the loop falls back safely to `detect_children`. Otherwise, the loop enters `check_missing_artifacts`, which reads the `missing_artifacts` frontmatter flag (set by `/ll:confidence-check` Phase 4.7 when Outcome Risk Factors mention absent files or unwired components): if `true`, the loop routes to `run_wire` (invoking `/ll:wire-issue --auto`) → `run_refine` (invoking `/ll:refine-issue --auto`) → `rerun_confidence_after_wire` (invoking `/ll:confidence-check` to refresh stale pre-repair scores, BUG-1491) → `enqueue_or_skip`; if `false`, the loop falls through to `detect_children → size_review`. This three-branch triage prevents incorrect decomposition of issues whose low outcome confidence stems from an unresolved design decision or a wiring gap rather than excessive scope.
 
-<!-- TODO: update-docs stub — git change 4e692df0 — drafted 2026-05-16 -->
 ### `scan-and-implement` — Discover, Triage, then Implement Net-New Issues
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Expand with a state diagram and example run output if/when needed.
 
 **Technique**: Full discovery-to-implementation pipeline composed from two existing sub-loops. Before discovery, snapshots the IDs of all currently-active issues to `.loops/tmp/scan-and-implement-pre-ids.txt`. Runs `issue-discovery-triage` as a sub-loop. After discovery, snapshots the post-discovery active-issue IDs and computes `comm -13` against the pre-snapshot — yielding only issues that are **net-new and still active** (i.e., they were created during scan **and** survived triage; issues that were created and then closed by tradeoff-review move to `.issues/completed/` and so naturally drop out of the diff). Passes the resulting ID list as `input` to the `autodev` sub-loop, which then refines and implements each one.
 
@@ -1165,9 +1157,7 @@ init → identify → prune → generate → evaluate
 - The `evaluate` state's `on_no`/`on_error: score` routing means Playwright absence falls back to LLM-only `score` judgment — the loop runs end-to-end even without a browser installed.
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
 - To customize the scoring rubric, install locally (`ll-loop install hitl-compare`) and edit the `score` state's criteria and thresholds.
-- <!-- TODO: update-docs stub — base64 image embedding — drafted 2026-05-19 -->
 - **Image embedding**: When an option's `source_path` points to an image file (`.png`, `.jpg`, `.gif`, `.webp`, `.svg`), the `generate` state converts it to a base64 data URI and embeds it inline in the HTML. This avoids broken-image icons under `file://` URLs (browsers block `file://` paths in `<img src>`). The `evaluate` rubric's `inline_constraint` criterion treats external `src=` attributes as a violation. Text-only items render without images — no broken `<img>` tags are emitted.
-  <!-- END TODO stub -->
 
 ### `hitl-md` — Human-in-the-Loop Single-Document Review Harness
 
@@ -1591,10 +1581,7 @@ init → plan → generate → evaluate
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_iterations: 20`, `timeout: 7200`).
 - Prefer `p5js-sketch-generator` when the p5.js ecosystem (global mode, built-in `noise()`) is the right tool; reach for `pixi-generative-art` when GPU filters, blend modes, or `ParticleContainer` density are central to the aesthetic.
 
-<!-- TODO: update-docs stub — cli-anything-bootstrap — drafted 2026-05-30 -->
 ### `cli-anything-bootstrap` — Agent-Native CLI Bootstrapper
-
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in FSM flow diagram, context variable table, output artifact descriptions, and example run output.
 
 **Technique**: Meta-loop that bootstraps an agent-native CLI wrapper for target software (local path or repo URL) by delegating to CLI-Anything's `/cli-anything` skill, baking a per-target rubric with non-LLM evaluators (pip install exit code, `--help` coverage, pytest pass rate), caching the CLI, and emitting a project-local task loop to `.loops/generated/<target>-task.yaml`.
 
@@ -1624,9 +1611,7 @@ ll-loop run cli-anything-bootstrap --context target="https://github.com/user/rep
 
 **Meta-loop discipline (MR-1)**: Every LLM-proposed artifact is paired with a non-LLM external evaluator — the LLM score-bootstrap state judges measured numbers, not its own generated artifacts.
 
-**Per-run artifact isolation (MR-3)**: Loops must write intermediate artifacts under `${context.run_dir}/`, not bare `.loops/tmp/`. The runner injects `run_dir` as `.loops/runs/<loop>-<timestamp>/` and creates the folder before execution. Writing to shared `.loops/tmp/` causes state corruption when two instances of the same loop run concurrently. Set `shared_state_ok: true` at the loop top-level to suppress this validation warning when cross-run sharing is intentional. <!-- TODO: update-docs stub — MR-3 — drafted 2026-05-30 -->
-
-<!-- END TODO stub -->
+**Per-run artifact isolation (MR-3)**: Loops must write intermediate artifacts under `${context.run_dir}/`, not bare `.loops/tmp/`. The runner injects `run_dir` as `.loops/runs/<loop>-<timestamp>/` and creates the folder before execution. Writing to shared `.loops/tmp/` causes state corruption when two instances of the same loop run concurrently. Set `shared_state_ok: true` at the loop top-level to suppress this validation warning when cross-run sharing is intentional.
 
 ## Beyond the Basics
 
@@ -1647,9 +1632,7 @@ Evaluators interpret action output and produce a **verdict** string used for rou
 | `llm_structured` | `yes` / `no` / `blocked` / `partial` | slash commands | Natural-language judgment via LLM |
 | `mcp_result` | `success` / `tool_error` / `not_found` / `timeout` | `mcp_tool` actions | Evaluate MCP server tool call results; see [MCP Tool Actions](#mcp-tool-actions) for verdict details |
 
-<!-- TODO: update-docs stub — BUG-1815 — drafted 2026-05-30 -->
 **Exit-code short-circuit**: When an action exits with a non-zero code, evaluators that don't intrinsically handle exit codes (`output_numeric`, `output_json`, `output_contains`, `convergence`, `harbor_scorer`) immediately return `error` without running their normal logic. Exit-code-aware evaluators (`exit_code`, `mcp_result`, `harbor_scorer`, `diff_stall`, `llm_structured`) are exempt — they process the exit code through their own evaluation path.
-<!-- END TODO stub -->
 
 Override the default by adding an `evaluate:` block to a state:
 
@@ -1820,7 +1803,7 @@ These optional fields can be added to any state:
 | `backoff:` | number (seconds) | Delay before executing this state's action. Useful for rate-limited APIs or CI systems. Overridden at runtime by `--delay <SECONDS>`. |
 | `max_retries:` | integer | Maximum number of times the engine re-enters this state before triggering `on_retry_exhausted`. |
 | `on_retry_exhausted:` | state name | Target state when `max_retries` is reached. Common pattern in harness loops: `on_retry_exhausted: advance` to skip a stuck item and continue processing. |
-| `retryable_exit_codes:` | list of integers | <!-- TODO: update-docs stub — ENH-1678 — drafted 2026-05-30 --> **Stub**: Restrict retry to only these exit codes. When set, non-matching non-zero exits skip retry and route directly to `on_retry_exhausted`. Useful for distinguishing transient failures (e.g. network errors) from permanent ones (e.g. config errors). <!-- END TODO stub --> |
+| `retryable_exit_codes:` | list of integers | Restrict retry to only these exit codes. When set, non-matching non-zero exits skip retry and route directly to `on_error` immediately (no retry consumed). Useful for distinguishing transient failures (e.g. exit 1 for API socket disconnect, exit 137 for OOM) from permanent ones (e.g. config errors). Requires `on_error` to be set. |
 | `max_rate_limit_retries:` | integer | Max consecutive 429/rate-limit retries in the **short-burst tier** before advancing to the long-wait tier. Requires `on_rate_limit_exhausted`. |
 | `on_rate_limit_exhausted:` | state name | Target state routed to when the total wall-clock rate-limit budget (`rate_limit_max_wait_seconds`) is spent. Required when `max_rate_limit_retries` is set. |
 | `rate_limit_backoff_base_seconds:` | integer | Base seconds for exponential backoff in the short-burst tier; actual sleep = base * 2^(attempt-1) + uniform(0, base). Defaults to 30. |
@@ -2759,9 +2742,6 @@ Required fields for `type: learning` states: `learning.targets` (non-empty), `on
 
 #### Server-error automatic retry
 
-<!-- TODO: update-docs stub — ENH-1293 — drafted 2026-04-26 -->
-> **Stub**: Auto-drafted by `/ll:update-docs`. Fill in details.
-
 API 5xx errors (overload, 529, "server had an error") are automatically retried at the executor level — no per-loop YAML config required.
 
 - **Retry limit**: up to `max_api_error_retries` attempts (default: 2)
@@ -2769,14 +2749,11 @@ API 5xx errors (overload, 529, "server had an error") are automatically retried 
 - **Scope**: `action_type: prompt` and `action_type: slash_command` actions
 - **Fallthrough**: after retries exhausted, normal FSM routing resumes
 
-This prevents transient infrastructure events from triggering incorrect FSM branching (e.g. autodev treating a server error as a failed confidence check).
+This prevents transient infrastructure events from triggering incorrect FSM branching (e.g. autodev treating a server error as a failed confidence check and routing to decomposition instead of continuing).
 
 #### Sub-loop budget forwarding
 
-> **Stub**: Auto-drafted by `/ll:update-docs`. Fill in details.
-
-When a parent FSM spawns a child FSM via `_execute_sub_loop`, the child's `timeout` is clamped to the parent's remaining wall-clock budget. This ensures the child terminates cleanly before the parent's deadline, allowing the parent to route via `on_no`/`dequeue_next` rather than hitting a hard timeout.
-<!-- END TODO stub -->
+When a parent FSM spawns a child FSM via `_execute_sub_loop`, the child's `timeout` is clamped to the parent's remaining wall-clock budget. This ensures the child terminates cleanly before the parent's deadline, allowing the parent to route via `on_no`/`dequeue_next` rather than hitting a hard timeout with no recourse.
 
 ### Stall Detection
 

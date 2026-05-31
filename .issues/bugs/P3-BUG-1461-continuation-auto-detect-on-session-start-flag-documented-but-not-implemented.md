@@ -19,7 +19,7 @@ The `continuation.auto_detect_on_session_start` boolean is documented in `docs/g
 ## Current Behavior
 
 - `config-schema.json:552` defines the property with `type: boolean` and description "Check for continuation prompt when session starts".
-- `docs/reference/CONFIGURATION.md:116,396` shows it in example config and the settings table.
+- `docs/reference/CONFIGURATION.md:120,411` shows it in example config and the settings table.
 - `docs/guides/SESSION_HANDOFF.md:292,314,331` documents the on/off behavior and states: "When `continuation.auto_detect_on_session_start` is `true` (the default), little-loops checks for an existing `.ll/ll-continue-prompt.md` at the beginning of each session."
 - A grep across `scripts/`, `hooks/`, and `commands/` for `auto_detect_on_session_start` finds **only** the schema and doc references — no implementation reads the flag.
 
@@ -53,7 +53,7 @@ Users who read the docs and try to disable continuation auto-detection by settin
 
 ### Files to Modify (Option 2 — remove)
 - `config-schema.json` — drop the `continuation.auto_detect_on_session_start` property.
-- `docs/reference/CONFIGURATION.md` — remove references at lines 116 and 396.
+- `docs/reference/CONFIGURATION.md` — remove references at lines 120 and 411.
 - `docs/guides/SESSION_HANDOFF.md` — remove references at lines 292, 314, 331.
 - `templates/*/ll-config.json` (if any reference the flag in example configs).
 
@@ -110,6 +110,7 @@ _Added by `/ll:verify-issues` on 2026-05-30_
 - Issue still needs a decision (implement or remove) — no progress since 2026-05-14 discovery ✓
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T20:34:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52d78c58-d750-467e-9092-de587a96595e.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-23T16:51:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a9c6d1a1-0ff3-429d-82ba-98b024c1337c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-14T21:23:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75505ad4-6733-4424-b334-3143f412786b.jsonl`
