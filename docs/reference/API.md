@@ -4226,6 +4226,7 @@ class EvaluateConfig:
         "llm_structured",   # LLM with structured output
         "mcp_result",       # Parse MCP tool call response envelope
         "harbor_scorer",    # Harbor-format benchmark scorer (exit code + float stdout)
+        "comparator",       # Blind A/B comparison against stored baseline via LLM judge
     ]
     operator: str | None = None        # Comparison: eq, ne, lt, le, gt, ge
     target: int | float | str | None   # Target value
@@ -4240,6 +4241,9 @@ class EvaluateConfig:
     source: str | None = None          # Override default source
     previous: str | None = None        # Previous value reference
     direction: Literal["minimize", "maximize"] = "minimize"
+    baseline_path: str | None = None   # For comparator: path to .loops/baselines/<loop>/ dir
+    auto_promote: bool = False          # For comparator: write output to baseline on yes verdict
+    min_pairs: int = 1                  # For comparator: number of blind A/B comparison pairs
 ```
 
 #### RouteConfig

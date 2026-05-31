@@ -387,6 +387,47 @@ class TestActionStallEvaluatorValidation:
         assert any("max_repeat" in e.message for e in errors)
 
 
+class TestComparatorEvaluatorValidation:
+    """Validate comparator evaluator type registration and MR-1 behavior."""
+
+    def test_comparator_valid_config_passes(self) -> None:
+        """_validate_evaluator accepts comparator with baseline_path set."""
+        config = EvaluateConfig(type="comparator", baseline_path=".loops/baselines/test/")
+        errors = _validate_evaluator("compare", config)
+        assert errors == []
+
+    def test_comparator_requires_baseline_path(self) -> None:
+        """_validate_evaluator rejects comparator missing baseline_path."""
+        config = EvaluateConfig(type="comparator")
+        errors = _validate_evaluator("compare", config)
+        assert any("baseline_path" in e.message for e in errors)
+
+    def test_mr1_fires_for_meta_loop_with_only_comparator_evaluator(self) -> None:
+        """MR-1 fires when meta-loop has only a comparator evaluator (comparator calls the LLM)."""
+        from little_loops.fsm.schema import RouteConfig
+
+        # yaml_state_editor in the action triggers meta-loop classification (_META_LOOP_ACTION_TOKENS)
+        loop = FSMLoop(
+            name="test-meta-loop",
+            description="meta loop test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="yaml_state_editor loops/some-loop.yaml",
+                    evaluate=EvaluateConfig(
+                        type="comparator",
+                        baseline_path=".loops/baselines/test/",
+                    ),
+                    route=RouteConfig(routes={"yes": "done", "no": "check"}),
+                ),
+                "done": StateConfig(action="echo done"),
+            },
+        )
+        errors = validate_fsm(loop)
+        mr1_errors = [e for e in errors if "non-LLM evaluator" in e.message]
+        assert len(mr1_errors) >= 1, "MR-1 should fire for comparator-only meta-loop"
+
+
 class TestParameterValidation:
     """Validate the parameters: block via _validate_parameters and validate_fsm."""
 

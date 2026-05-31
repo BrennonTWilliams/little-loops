@@ -1082,6 +1082,72 @@ def evaluate_blind_comparator(
     }
 
 
+def evaluate_comparator(
+    config: EvaluateConfig,
+    output: str,
+    context: InterpolationContext,
+) -> EvaluationResult:
+    """Evaluate using blind A/B comparison against a stored baseline."""
+    from pathlib import Path
+
+    if config.baseline_path is None:
+        return EvaluationResult(
+            verdict="no_baseline",
+            details={"reason": "No baseline_path configured"},
+        )
+
+    baseline_file = Path(config.baseline_path) / "output.txt"
+    if not baseline_file.exists():
+        if config.auto_promote:
+            baseline_file.parent.mkdir(parents=True, exist_ok=True)
+            baseline_file.write_text(output)
+            return EvaluationResult(
+                verdict="yes",
+                details={"reason": "No baseline found; current output promoted as new baseline.", "bootstrapped": True},
+            )
+        return EvaluationResult(
+            verdict="no_baseline",
+            details={"reason": f"Baseline file not found: {baseline_file}"},
+        )
+
+    baseline_text = baseline_file.read_text()
+    min_pairs = max(1, config.min_pairs if config.min_pairs is not None else 1)
+    harness_wins = 0
+    baseline_wins = 0
+    last_reason = ""
+    last_raw: dict[str, Any] = {}
+
+    for _ in range(min_pairs):
+        result = evaluate_blind_comparator(output, baseline_text, prompt=config.prompt)
+        if result.get("harness_pass"):
+            harness_wins += 1
+        if result.get("baseline_pass"):
+            baseline_wins += 1
+        last_reason = result.get("reason", "")
+        last_raw = result.get("raw", {})
+
+    if harness_wins > baseline_wins:
+        verdict = "yes"
+    elif baseline_wins > harness_wins:
+        verdict = "no"
+    else:
+        verdict = "tie"
+
+    if config.auto_promote and verdict == "yes":
+        baseline_file.write_text(output)
+
+    return EvaluationResult(
+        verdict=verdict,
+        details={
+            "harness_wins": harness_wins,
+            "baseline_wins": baseline_wins,
+            "min_pairs": min_pairs,
+            "reason": last_reason,
+            "raw": last_raw,
+        },
+    )
+
+
 def evaluate(
     config: EvaluateConfig,
     output: str,
@@ -1260,6 +1326,9 @@ def evaluate(
 
     elif eval_type == "harbor_scorer":
         return evaluate_harbor_scorer(output=output, exit_code=exit_code)
+
+    elif eval_type == "comparator":
+        return evaluate_comparator(config=config, output=output, context=context)
 
     else:
         raise ValueError(f"Unknown evaluator type: {eval_type}")

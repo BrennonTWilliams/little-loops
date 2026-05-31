@@ -236,6 +236,40 @@ evaluate:
 
 The wizard asks two follow-up questions when LLM-as-judge is selected: "What should be different in the output after the skill runs successfully?" and "What would indicate the skill failed or made no progress?" The answers populate criteria 1 and 2 respectively. For custom prompts, the same two-question format applies.
 
+### Baseline Regression Guard (`check_comparator`)
+
+Uses a `comparator` evaluator to run one or more blind A/B comparisons between the current output and a stored baseline, then takes a majority vote. This prevents harness regressions: if a recent change makes outputs worse than a known-good baseline, the loop routes to retry rather than advancing.
+
+Baselines are stored under `.loops/baselines/<loop-name>/output.txt` — a sibling to `runs/` in the `.loops/` directory. The first successful run bootstraps the baseline automatically when `auto_promote: true` is set.
+
+**When to use instead of `check_semantic`**: Use `check_comparator` when you have a known-good output and want to detect regressions; use `check_semantic` when you want a general LLM quality judgment without a reference baseline.
+
+```yaml
+check_comparator:
+  action: "echo ${captured.execute.output}"
+  action_type: shell
+  evaluate:
+    type: comparator
+    baseline_path: ".loops/baselines/my-loop/"
+    auto_promote: true    # on first run (no baseline), bootstrap and route yes
+    min_pairs: 1          # increase for higher confidence (majority vote)
+  on_yes: check_invariants
+  on_no: execute
+  on_tie: execute         # tie counts as no regression — route to retry
+  on_no_baseline: check_invariants  # baseline missing without auto_promote
+```
+
+**Verdict table:**
+
+| Verdict | Meaning |
+|---------|---------|
+| `yes` | Harness output wins majority of comparisons |
+| `no` | Baseline wins majority |
+| `tie` | Equal wins across `min_pairs` comparisons |
+| `no_baseline` | No baseline file and `auto_promote` is false |
+
+**Note**: `comparator` calls the LLM (via `evaluate_blind_comparator`) and does **not** satisfy MR-1 in meta-loops. Pair it with a non-LLM evaluator (e.g., `diff_stall` or `exit_code`) when `modifies_harness: true`.
+
 ### Diff Invariants (`check_invariants`)
 
 Runs `git diff --stat HEAD | wc -l | tr -d ' '` and checks that the line count is less than 50 using an `output_numeric` evaluator. This catches runaway changes — if a skill modifies far more than expected, the loop retries rather than advancing.

@@ -464,7 +464,8 @@
             "action_stall",
             "llm_structured",
             "mcp_result",
-            "harbor_scorer"
+            "harbor_scorer",
+            "comparator"
           ]
         },
         "operator": {
@@ -553,6 +554,21 @@
           "description": "Consecutive identical iterations before stall verdict (action_stall)",
           "default": 2,
           "minimum": 1
+        },
+        "baseline_path": {
+          "type": "string",
+          "description": "Path to the baseline directory (e.g. .loops/baselines/<loop>/)"
+        },
+        "auto_promote": {
+          "type": "boolean",
+          "description": "If true, write harness output to baseline when verdict is yes",
+          "default": false
+        },
+        "min_pairs": {
+          "type": "integer",
+          "description": "Number of blind A/B comparison pairs to run (majority vote)",
+          "default": 1,
+          "minimum": 1
         }
       },
       "additionalProperties": false,
@@ -587,6 +603,15 @@
           },
           "then": {
             "required": ["target"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "comparator" } },
+            "required": ["type"]
+          },
+          "then": {
+            "required": ["baseline_path"]
           }
         }
       ]

@@ -1976,6 +1976,61 @@ class TestMcpToolSchema:
         error_messages = [str(e) for e in errors]
         assert any("params" in m and "mcp_tool" in m for m in error_messages)
 
+    def test_comparator_evaluator_type_is_valid(self) -> None:
+        """comparator is a valid EvaluateConfig type."""
+        config = EvaluateConfig(type="comparator", baseline_path=".loops/baselines/test/")
+        assert config.type == "comparator"
+        assert config.baseline_path == ".loops/baselines/test/"
+
+    def test_comparator_round_trips_through_dict(self) -> None:
+        """comparator evaluator serializes and deserializes correctly."""
+        config = EvaluateConfig(type="comparator", baseline_path=".loops/baselines/my-loop/")
+        d = config.to_dict()
+        assert d["type"] == "comparator"
+        assert d["baseline_path"] == ".loops/baselines/my-loop/"
+        restored = EvaluateConfig.from_dict(d)
+        assert restored.type == "comparator"
+        assert restored.baseline_path == ".loops/baselines/my-loop/"
+
+    def test_comparator_baseline_path_field_roundtrip(self) -> None:
+        """baseline_path serializes only when non-None."""
+        config_with = EvaluateConfig(type="comparator", baseline_path=".loops/baselines/x/")
+        d_with = config_with.to_dict()
+        assert "baseline_path" in d_with
+
+        config_without = EvaluateConfig(type="exit_code")
+        d_without = config_without.to_dict()
+        assert "baseline_path" not in d_without
+
+    def test_comparator_auto_promote_field_roundtrip(self) -> None:
+        """auto_promote serializes only when True."""
+        config_true = EvaluateConfig(
+            type="comparator", baseline_path=".loops/baselines/x/", auto_promote=True
+        )
+        d_true = config_true.to_dict()
+        assert d_true.get("auto_promote") is True
+
+        config_false = EvaluateConfig(type="comparator", baseline_path=".loops/baselines/x/")
+        d_false = config_false.to_dict()
+        assert "auto_promote" not in d_false
+
+        restored = EvaluateConfig.from_dict(d_true)
+        assert restored.auto_promote is True
+
+    def test_comparator_min_pairs_field_roundtrip(self) -> None:
+        """min_pairs serializes only when != 1 (the default)."""
+        config_default = EvaluateConfig(type="comparator", baseline_path=".loops/baselines/x/")
+        d_default = config_default.to_dict()
+        assert "min_pairs" not in d_default  # default omitted
+
+        config_three = EvaluateConfig(
+            type="comparator", baseline_path=".loops/baselines/x/", min_pairs=3
+        )
+        d_three = config_three.to_dict()
+        assert d_three["min_pairs"] == 3
+
+        restored = EvaluateConfig.from_dict(d_three)
+        assert restored.min_pairs == 3
 
 class TestSubLoopStateConfig:
     """Tests for sub-loop state configuration (FEAT-659)."""

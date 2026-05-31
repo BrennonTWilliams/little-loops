@@ -64,6 +64,7 @@ class EvaluateConfig:
         "llm_structured",
         "mcp_result",
         "harbor_scorer",
+        "comparator",
     ]
     operator: str | None = None
     target: int | float | str | None = None
@@ -82,6 +83,9 @@ class EvaluateConfig:
     max_stall: int = 1  # for diff_stall: consecutive no-change iterations before failure
     track: list[str] | None = None  # for action_stall: context keys to track (default: ["action"])
     max_repeat: int = 2  # for action_stall: consecutive identical iterations before failure
+    baseline_path: str | None = None  # for comparator: path to .loops/baselines/<loop>/ dir
+    auto_promote: bool = False         # for comparator: write output to baseline on yes verdict
+    min_pairs: int = 1                 # for comparator: number of blind A/B comparisons to run
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -122,6 +126,12 @@ class EvaluateConfig:
             result["track"] = self.track
         if self.max_repeat != 2:
             result["max_repeat"] = self.max_repeat
+        if self.baseline_path is not None:
+            result["baseline_path"] = self.baseline_path
+        if self.auto_promote:
+            result["auto_promote"] = self.auto_promote
+        if self.min_pairs != 1:
+            result["min_pairs"] = self.min_pairs
 
         return result
 
@@ -147,6 +157,9 @@ class EvaluateConfig:
             max_stall=data.get("max_stall", 1),
             track=data.get("track"),
             max_repeat=data.get("max_repeat", 2),
+            baseline_path=data.get("baseline_path"),
+            auto_promote=data.get("auto_promote", False),
+            min_pairs=data.get("min_pairs", 1),
         )
 
 

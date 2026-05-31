@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -561,6 +562,7 @@ class TestEvaluateDispatcher:
             "action_stall",
             "llm_structured",
             "harbor_scorer",
+            "comparator",
         ],
     )
     def test_dispatch_exit_code_124_short_circuits_to_error(self, eval_type: str) -> None:
@@ -606,6 +608,7 @@ class TestEvaluateDispatcher:
             "output_numeric",
             "output_json",
             "convergence",
+            "comparator",
         ],
     )
     def test_dispatch_nonzero_exit_generalized_short_circuit(self, eval_type: str) -> None:
@@ -1625,3 +1628,142 @@ class TestBlindComparator:
         result = evaluate_blind_comparator("output a", "output b")
         assert result is not None
         assert "error" not in result
+
+
+class TestComparatorEvaluator:
+    """Tests for evaluate_comparator() — blind A/B comparison with baseline file."""
+
+    @pytest.fixture
+    def baseline_dir(self, tmp_path: Path) -> Path:
+        """Fixture providing a temp baseline directory."""
+        return tmp_path / "baselines" / "test-loop"
+
+    @pytest.fixture
+    def baseline_with_file(self, baseline_dir: Path) -> Path:
+        """Fixture with an existing baseline output.txt."""
+        baseline_dir.mkdir(parents=True)
+        (baseline_dir / "output.txt").write_text("baseline output")
+        return baseline_dir
+
+    def _make_cli_response(
+        self, verdict_a: str = "yes", verdict_b: str = "no", confidence: float = 0.9
+    ) -> dict:
+        return {
+            "type": "result",
+            "subtype": "success",
+            "structured_output": {
+                "verdict_a": verdict_a,
+                "verdict_b": verdict_b,
+                "confidence": confidence,
+                "reason": "Harness output is better.",
+            },
+        }
+
+    def test_no_baseline_when_file_missing(self, baseline_dir: Path) -> None:
+        """Returns no_baseline verdict when baseline file does not exist."""
+        config = EvaluateConfig(type="comparator", baseline_path=str(baseline_dir))
+        ctx = InterpolationContext()
+        result = evaluate(config, output="new output", exit_code=0, context=ctx)
+        assert result.verdict == "no_baseline"
+
+    def test_harness_wins(self, baseline_with_file: Path) -> None:
+        """Majority harness_pass=True → yes verdict."""
+        config = EvaluateConfig(type="comparator", baseline_path=str(baseline_with_file))
+        ctx = InterpolationContext()
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            with patch("little_loops.fsm.evaluators.random.choice", return_value=True):
+                proc = MagicMock()
+                proc.returncode = 0
+                proc.stdout = json.dumps(self._make_cli_response(verdict_a="yes", verdict_b="no"))
+                proc.stderr = ""
+                mock_run.return_value = proc
+                result = evaluate(config, output="harness output", exit_code=0, context=ctx)
+        assert result.verdict == "yes"
+        assert result.details["harness_wins"] == 1
+        assert result.details["baseline_wins"] == 0
+
+    def test_baseline_wins(self, baseline_with_file: Path) -> None:
+        """Majority baseline_pass=True → no verdict."""
+        config = EvaluateConfig(type="comparator", baseline_path=str(baseline_with_file))
+        ctx = InterpolationContext()
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            with patch("little_loops.fsm.evaluators.random.choice", return_value=True):
+                proc = MagicMock()
+                proc.returncode = 0
+                proc.stdout = json.dumps(self._make_cli_response(verdict_a="no", verdict_b="yes"))
+                proc.stderr = ""
+                mock_run.return_value = proc
+                result = evaluate(config, output="harness output", exit_code=0, context=ctx)
+        assert result.verdict == "no"
+        assert result.details["harness_wins"] == 0
+        assert result.details["baseline_wins"] == 1
+
+    def test_tie(self, baseline_with_file: Path) -> None:
+        """Equal harness/baseline wins → tie verdict (min_pairs=2)."""
+        config = EvaluateConfig(
+            type="comparator", baseline_path=str(baseline_with_file), min_pairs=2
+        )
+        ctx = InterpolationContext()
+        responses = [
+            self._make_cli_response(verdict_a="yes", verdict_b="no"),  # harness wins
+            self._make_cli_response(verdict_a="no", verdict_b="yes"),  # baseline wins
+        ]
+        call_count = 0
+
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.stdout = json.dumps(responses[call_count % len(responses)])
+            proc.stderr = ""
+            call_count += 1
+            return proc
+
+        with patch("little_loops.fsm.evaluators.subprocess.run", side_effect=side_effect):
+            with patch("little_loops.fsm.evaluators.random.choice", return_value=True):
+                result = evaluate(config, output="harness output", exit_code=0, context=ctx)
+        assert result.verdict == "tie"
+
+    def test_auto_promote_writes_file(self, baseline_with_file: Path) -> None:
+        """auto_promote=True with yes verdict writes output to baseline file."""
+        config = EvaluateConfig(
+            type="comparator", baseline_path=str(baseline_with_file), auto_promote=True
+        )
+        ctx = InterpolationContext()
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            with patch("little_loops.fsm.evaluators.random.choice", return_value=True):
+                proc = MagicMock()
+                proc.returncode = 0
+                proc.stdout = json.dumps(self._make_cli_response(verdict_a="yes", verdict_b="no"))
+                proc.stderr = ""
+                mock_run.return_value = proc
+                result = evaluate(config, output="new better output", exit_code=0, context=ctx)
+        assert result.verdict == "yes"
+        assert (baseline_with_file / "output.txt").read_text() == "new better output"
+
+    def test_auto_promote_bootstrap(self, baseline_dir: Path) -> None:
+        """auto_promote=True with no baseline file bootstraps and routes yes."""
+        config = EvaluateConfig(
+            type="comparator", baseline_path=str(baseline_dir), auto_promote=True
+        )
+        ctx = InterpolationContext()
+        result = evaluate(config, output="first run output", exit_code=0, context=ctx)
+        assert result.verdict == "yes"
+        assert result.details.get("bootstrapped") is True
+        assert (baseline_dir / "output.txt").read_text() == "first run output"
+
+    def test_no_auto_promote_does_not_write_file(self, baseline_with_file: Path) -> None:
+        """auto_promote=False (default) never writes to baseline file on yes."""
+        original_content = (baseline_with_file / "output.txt").read_text()
+        config = EvaluateConfig(type="comparator", baseline_path=str(baseline_with_file))
+        ctx = InterpolationContext()
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            with patch("little_loops.fsm.evaluators.random.choice", return_value=True):
+                proc = MagicMock()
+                proc.returncode = 0
+                proc.stdout = json.dumps(self._make_cli_response(verdict_a="yes", verdict_b="no"))
+                proc.stderr = ""
+                mock_run.return_value = proc
+                result = evaluate(config, output="new output", exit_code=0, context=ctx)
+        assert result.verdict == "yes"
+        assert (baseline_with_file / "output.txt").read_text() == original_content

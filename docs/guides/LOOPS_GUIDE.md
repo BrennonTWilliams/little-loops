@@ -1632,8 +1632,9 @@ Evaluators interpret action output and produce a **verdict** string used for rou
 | `action_stall` | `yes` / `no` | — | Detect when the same action string or context values repeat for N consecutive iterations (file-backed, no git required) |
 | `llm_structured` | `yes` / `no` / `blocked` / `partial` | slash commands | Natural-language judgment via LLM |
 | `mcp_result` | `success` / `tool_error` / `not_found` / `timeout` | `mcp_tool` actions | Evaluate MCP server tool call results; see [MCP Tool Actions](#mcp-tool-actions) for verdict details |
+| `comparator` | `yes` / `no` / `tie` / `no_baseline` | — | Blind A/B comparison of current output against a stored baseline via LLM judge; requires `baseline_path` |
 
-**Exit-code short-circuit**: When an action exits with a non-zero code, evaluators that don't intrinsically handle exit codes (`output_numeric`, `output_json`, `output_contains`, `convergence`) immediately return `error` without running their normal logic. Exit-code-aware evaluators (`exit_code`, `mcp_result`, `harbor_scorer`, `diff_stall`, `action_stall`, `llm_structured`) are exempt — they process the exit code through their own evaluation path.
+**Exit-code short-circuit**: When an action exits with a non-zero code, evaluators that don't intrinsically handle exit codes (`output_numeric`, `output_json`, `output_contains`, `convergence`, `comparator`) immediately return `error` without running their normal logic. Exit-code-aware evaluators (`exit_code`, `mcp_result`, `harbor_scorer`, `diff_stall`, `action_stall`, `llm_structured`) are exempt — they process the exit code through their own evaluation path.
 
 Override the default by adding an `evaluate:` block to a state:
 

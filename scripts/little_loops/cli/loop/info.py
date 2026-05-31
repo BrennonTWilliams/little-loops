@@ -870,6 +870,7 @@ _EVALUATE_TYPE_DISPLAY: dict[str, str] = {
     "convergence": "convergence",
     "diff_stall": "diff stall",
     "action_stall": "action stall",
+    "comparator": "comparator",
 }
 
 

@@ -6,7 +6,7 @@ priority: P4
 captured_at: '2026-05-29T19:08:54Z'
 discovered_date: '2026-05-29'
 discovered_by: capture-issue
-status: open
+status: done
 depends_on:
 - ENH-1792
 labels:
@@ -15,12 +15,13 @@ labels:
 - evaluator
 - regression-detection
 parent: EPIC-1663
-confidence_score: 91
-outcome_confidence: 79
-score_complexity: 14
+confidence_score: 100
+outcome_confidence: 74
+score_complexity: 9
 score_test_coverage: 20
 score_ambiguity: 20
 score_change_surface: 25
+size: Very Large
 ---
 
 # ENH-1793: Blind Cross-Iteration Comparator
@@ -144,6 +145,49 @@ _These touchpoints were identified by wiring analysis and must be included in th
 16. Update `docs/generalized-fsm-loop.md` inline YAML comment (line 305) — add `"comparator"` to the type list
 17. Update `.claude/CLAUDE.md` `## CLI Tools` section — add `ll-loop promote-baseline` entry
 
+### Corrections & Clarifications (Refine Pass 2)
+
+_Added by `/ll:refine-issue` — corrections to findings from previous refine pass, verified against live code:_
+
+**Step 4 — `_EXIT_CODE_AWARE_EVALUATORS` (CORRECTED):** Do NOT add `"comparator"` to `_EXIT_CODE_AWARE_EVALUATORS`. The set is a function-local frozenset inside `evaluate()` at line 1121; being IN the set EXEMPTS an evaluator from the nonzero-exit short-circuit (opposite of what step 4 stated). Since comparator should produce `verdict="error"` when the action fails (no meaningful output to compare), it must remain outside the set — which is the default. Only add the `elif eval_type == "comparator": return evaluate_comparator(config, output, context)` dispatch branch; no change to `_EXIT_CODE_AWARE_EVALUATORS`.
+
+**Step 2 — `NON_LLM_EVALUATOR_TYPES` derivation (CLARIFIED):** The derivation at `validation.py:79–81` is `frozenset(EVALUATOR_REQUIRED_FIELDS.keys()) - {"llm_structured"}`. After adding `"comparator"` to `EVALUATOR_REQUIRED_FIELDS`, it will be automatically included in `NON_LLM_EVALUATOR_TYPES` — which is WRONG since `evaluate_comparator()` calls the LLM via `evaluate_blind_comparator()`. Must update the exclusion set:
+
+```python
+NON_LLM_EVALUATOR_TYPES: frozenset[str] = frozenset(EVALUATOR_REQUIRED_FIELDS.keys()) - {
+    "llm_structured",
+    "comparator",
+}
+```
+
+**Wiring step 10 — parametrize list (CORRECTED):** Add `"comparator"` to the **first** parametrize list only (`test_dispatch_exit_code_124_short_circuits_to_error` at lines 551–562 — all types receive the exit_code=124 timeout short-circuit). Do NOT add to the **second** list (`test_dispatch_nonzero_exit_does_not_affect_exit_code_aware_evaluators` at lines 621–627) — that list covers exit-code-aware evaluators exempt from nonzero-exit short-circuit, and `"comparator"` is explicitly not in that set.
+
+**`evaluate_blind_comparator()` signature (verified, FEAT-1790 landed at `evaluators.py:911`):**
+
+```python
+def evaluate_blind_comparator(
+    output_harness: str,
+    output_baseline: str,
+    prompt: str | None = None,
+    model: str = DEFAULT_LLM_MODEL,
+    timeout: int = 1800,
+) -> dict[str, Any]:
+```
+
+`evaluate_comparator()` calls this in a loop `min_pairs` times, passing `config.prompt`. Return dict keys: `harness_pass` (bool), `baseline_pass` (bool), `confidence` (float), `reason` (str), `raw` (dict). Error paths set both to `False` with `confidence=0.0`. Majority vote: count `harness_pass=True` vs `baseline_pass=True` across N calls; equal counts → `tie`.
+
+### Wiring Phase 2 (added by `/ll:wire-issue`)
+
+_Additional touchpoints identified in second wiring pass:_
+
+18. Update `scripts/little_loops/__init__.py` — add `evaluate_comparator` to the existing `from little_loops.fsm.evaluators import (...)` block and to `__all__`; the package already exports `evaluate_blind_comparator` via the same mechanism
+19. Update `scripts/little_loops/cli/loop/info.py` — add `"comparator": "blind comparator"` (or similar label) to `_EVALUATE_TYPE_DISPLAY` dict so `ll-loop show --verbose` renders a human-readable label instead of the raw string
+20. Update `scripts/little_loops/fsm/validation.py` — in `_validate_meta_loop_evaluation()` (~lines 960–965), add `comparator` to the human-readable prose enumeration in the `ValidationError` message; the `NON_LLM_EVALUATOR_TYPES` set logic is auto-correct once step 2 is done, only the hint string needs updating
+21. Confirm `scripts/little_loops/cli/loop/__init__.py` `known_subcommands` set (lines 47–75) includes `"promote-baseline"` — step 7 adds the subcommand handler but this guard also must be updated or `ll-loop promote-baseline` is treated as a loop name
+22. Update `scripts/tests/test_fsm_evaluators.py::TestEvaluateDispatcher.test_dispatch_nonzero_exit_generalized_short_circuit` parametrize list — add `"comparator"` (evaluator is exit-code-blind; non-zero action exit code → `verdict="error"`)
+23. Update `docs/reference/CLI.md` — add `comparator` to the non-LLM evaluator enumeration in the MR-1 rule section (~line 460)
+24. Investigate `scripts/tests/test_fsm_validation.py::TestHarnessMultimodalEvaluatorBlindSpot` — check whether `_validate_harness_multimodal_evaluator_blind_spot` hardcodes evaluator type checks; update if the validator pattern-matches type strings that would incorrectly trigger for `comparator`
+
 ## Integration Map
 
 ### Files to Modify
@@ -151,6 +195,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `scripts/little_loops/evaluators/__init__.py` — register new evaluator type
 - `scripts/little_loops/schema/` — extend loop YAML schema for `action_type: comparator` + `baseline_path`
 - `scripts/little_loops/ll_loop/validate.py` — validate comparator config
+
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `scripts/little_loops/__init__.py` — add `evaluate_comparator` to `from little_loops.fsm.evaluators import (...)` block and `__all__`; top-level package already exports `evaluate_blind_comparator` via same pattern [Agent 1 finding]
+- `scripts/little_loops/cli/loop/info.py` — add `"comparator"` to `_EVALUATE_TYPE_DISPLAY` dict so `ll-loop show --verbose` renders a human-readable label rather than the raw string [Agent 2 finding]
+- `scripts/little_loops/fsm/validation.py` — update MR-1 `ValidationError` prose enumeration in `_validate_meta_loop_evaluation()` (~lines 960–965) to include `comparator`; code logic is auto-correct via `NON_LLM_EVALUATOR_TYPES` but the human-readable hint string needs updating [Agent 2 finding]
+- `scripts/little_loops/cli/loop/__init__.py` — add `"promote-baseline"` to `known_subcommands` set (lines 47–75); without this guard `ll-loop promote-baseline` is misinterpreted as a loop name and prepended with `"run"` [Agent 2 finding]
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/ll_loop/runner.py` — evaluator dispatch; add `comparator` case
@@ -172,6 +222,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_evaluators.py::TestEvaluateDispatcher` — **will break on add**: parametrize list at lines 551–562 (`test_dispatch_exit_code_124_short_circuits_to_error`) and lines 621–627 (`test_dispatch_nonzero_exit_*`) must include `"comparator"` in the correct list depending on `_EXIT_CODE_AWARE_EVALUATORS` membership (issue step 4 adds `"comparator"` to that set) [Agent 2 + 3 finding]
 - `scripts/tests/test_fsm_schema_fuzz.py` — `valid_types` list at line 44 needs `"comparator"` added (won't break but gaps fuzz coverage) [Agent 3 finding]
 
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_evaluators.py::TestEvaluateDispatcher.test_dispatch_nonzero_exit_generalized_short_circuit` — **third parametrize list** not covered by wiring step 10: this BUG-1815 test covers exit-code-blind evaluators; `"comparator"` is not in `_EXIT_CODE_AWARE_EVALUATORS` so it must be added here (`non-zero action exit → verdict="error"`) [Agent 3 finding]
+- `scripts/tests/test_fsm_validation.py::TestHarnessMultimodalEvaluatorBlindSpot.test_does_not_fire_with_non_output_contains_evaluator` — **investigate before implementing**: check whether `_validate_harness_multimodal_evaluator_blind_spot` hardcodes evaluator type checks that could incorrectly match `comparator`; update if needed [Agent 3 finding]
+
 ### Documentation
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add comparator to Evaluation Phases
 - `docs/reference/API.md` — document new evaluator type
@@ -180,6 +234,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/LOOPS_GUIDE.md` — evaluator table (at `Evaluators interpret action output` section) needs a new `comparator` row with verdicts, latency tier, and action type requirements [Agent 2 finding]
 - `docs/generalized-fsm-loop.md` — inline YAML comment at line 305 (`# exit_code, output_numeric, ...`) lists all evaluator type values; add `"comparator"` [Agent 2 finding]
 - `.claude/CLAUDE.md` — `## CLI Tools` section needs a new entry for `ll-loop promote-baseline` alongside `ll-loop run` [Agent 2 finding]
+
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — `ll-loop validate` MR-1 rule section (~line 460) enumerates non-LLM evaluator types (`exit_code`, `output_numeric`, etc.); add `comparator` to this prose list [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -246,7 +303,32 @@ When `auto_promote: true` and verdict is `yes`, write current `output` to `<base
 | `.issues/features/P2-FEAT-1790-ab-baseline-mode-for-ll-loop-run.md` | Sibling A/B work — that one produces with/without baselines; this consumes prior-success baselines |
 | `.issues/enhancements/P3-ENH-1792-detect-non-discriminating-evaluators-from-history.md` | Variance diagnostics that motivate having a regression-sensitive gate |
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-31_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 74/100 → MODERATE
+
+### Outcome Risk Factors
+- **Large file footprint from wiring completeness** — wiring passes correctly identified ~6 additional touchpoints (test dispatcher parametrize lists, `info.py` display dict, `CLAUDE.md`, `CLI.md` prose enumeration), pushing site count to 20 (16+ breadth tier). Each site is small/mechanical so per-site risk is low; risk is execution overhead and chance of missing one touchpoint in a 20-file sweep. Mitigation: integration map enumerates all sites with specific line numbers.
+- **`TestHarnessMultimodalEvaluatorBlindSpot` investigation** (step 24) — one "investigate before implementing" note; must be resolved early to confirm no hardcoded type check incorrectly fires for `comparator`.
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-05-31
+- **Reason**: Issue too large for single session
+
+### Decomposed Into
+- ENH-1828: Comparator Evaluator — Core Implementation
+- ENH-1829: Comparator Evaluator — Baseline Lifecycle CLI
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/328bc3bf-da89-4021-981a-e4291a0ad2e5.jsonl`
+- `/ll:confidence-check` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b490bcf-413e-4fe3-b2ed-61f7df62034d.jsonl`
+- `/ll:wire-issue` - 2026-05-31T22:44:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72a30597-27f7-46c1-abe8-736c98410497.jsonl`
+- `/ll:refine-issue` - 2026-05-31T22:36:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8a69d39-2c55-48c5-8b59-4b25a3eea94c.jsonl`
 - `/ll:confidence-check` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3598727d-c1b2-449b-bcac-1ffd3f832915.jsonl`
 - `/ll:wire-issue` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c77f9c9d-319a-4328-aa81-b007232a7239.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`

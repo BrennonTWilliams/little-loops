@@ -72,12 +72,14 @@ EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
     "llm_structured": [],
     "mcp_result": [],
     "harbor_scorer": [],
+    "comparator": ["baseline_path"],
 }
 
 # Non-LLM evaluator types: all evaluator types except llm_structured
 # Derived from EVALUATOR_REQUIRED_FIELDS so new types are automatically included
 NON_LLM_EVALUATOR_TYPES: frozenset[str] = frozenset(EVALUATOR_REQUIRED_FIELDS.keys()) - {
-    "llm_structured"
+    "llm_structured",
+    "comparator",
 }
 
 # Meta-loop detector: action string patterns that indicate harness artifact writes
@@ -961,6 +963,7 @@ def _validate_meta_loop_evaluation(fsm: FSMLoop) -> list[ValidationError]:
                     "LLM self-grades on harness updates are unreliable (SHOR Table 1: "
                     "33-55% accuracy). Pair every check_semantic state with at least one "
                     "of: exit_code, output_numeric, convergence, diff_stall, action_stall, mcp_result. "
+                    "Note: llm_structured and comparator both use the LLM and do not satisfy MR-1. "
                     "To suppress with justification, set `meta_self_eval_ok: true` at the "
                     "loop top-level."
                 ),
