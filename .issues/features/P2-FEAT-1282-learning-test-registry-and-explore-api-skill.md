@@ -244,6 +244,7 @@ def mark_stale(target_slug: str) -> None: ...
 `enhancement`, `autonomy`, `learning-tests`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
 - `/ll:refine-issue` - 2026-05-16T21:36:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1da9d61-83f1-4718-91ec-4ed0e57454c9.jsonl`
 - `/ll:wire-issue` - 2026-04-25T18:49:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cab145e-64ca-41f6-9cfa-67c06772edcb.jsonl`
 - `/ll:refine-issue` - 2026-04-25T18:42:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3448382b-328e-4cb4-aaea-f22958449e93.jsonl`
@@ -267,3 +268,9 @@ def mark_stale(target_slug: str) -> None: ...
 ---
 
 **Decomposed** | Created: 2026-04-25 | Priority: P2
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-31): This issue's "registry" is the `.ll/learning-tests/` directory of markdown proof records for **external API and system behavior** — proof-of-behavior documents created by the `ll:explore-api` skill, queried via `ll-learning-tests`. This is entirely distinct from FEAT-917's "Extension Registry," which covers third-party installable PyPI packages (`little-loops-ext-*`) discoverable via `ll extensions`. Do not conflate the two: learning-tests records live in `.ll/learning-tests/<slug>.md` (local, project-scoped, markdown); extension manifests live in `pyproject.toml` metadata (published, PyPI-scoped, TOML). Neither registry's CLI commands, storage paths, nor data models should be shared with the other. Related: FEAT-917.

@@ -117,6 +117,7 @@ A team evaluating ll wants to see what extensions are available. They run `ll ex
 **Open** | Created: 2026-04-02 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-10T19:40:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
@@ -133,3 +134,5 @@ A team evaluating ll wants to see what extensions are available. They run `ll ex
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-10): This issue covers **Extensions only** — third-party PyPI packages following the `little-loops-ext-*` naming convention that declare `[tool.little-loops.extension]` manifests and are discoverable via `ll extensions search/list/check`. Host-integration adapters (Codex CLI via FEAT-957, Pi Coding Agent via FEAT-992) are **NOT extensions** in this sense: they have no PyPI presence, no extension manifest, and are NOT included in the `ll extensions` registry or discovery commands. Do not design the manifest schema or CLI commands to accommodate host adapters. These are orthogonal systems — use "Extensions" (PyPI ecosystem) vs "Host Adapters" or "Host Plugins" as the canonical naming split.
+
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-31): FEAT-1282 also introduces a "registry with a CLI query interface" but for a completely different domain: `.ll/learning-tests/<slug>.md` proof records of **external API behavior**, queried via `ll-learning-tests`. The two registries share no storage, CLI entry points, or data models. Do not merge their CLI namespaces (`ll extensions` vs `ll-learning-tests`) or storage directories (`.ll/learning-tests/` vs PyPI metadata). Related: FEAT-1282.

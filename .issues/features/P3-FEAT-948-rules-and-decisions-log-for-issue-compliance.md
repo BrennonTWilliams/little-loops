@@ -378,6 +378,7 @@ The existing 11-step plan stands. Affected steps:
 - `scripts/little_loops/sprint.py:142-202` dataclass + YAML pattern confirmed ✓
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
@@ -403,3 +404,5 @@ The existing 11-step plan stands. Affected steps:
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-11): `.ll/decisions.yaml` is a user-edited, human-authored YAML file and must remain as such — it is not a candidate for migration into FEAT-1112's `.ll/session.db`. The two stores serve different purposes: `decisions.yaml` holds standing rules, per-issue decisions, and exceptions authored by a developer; `session.db` holds machine-generated tool-event and session data. FEAT-1112 is a prerequisite only for the query/sync infrastructure (e.g., `ll-decisions sync` writing to `.ll/ll.local.md` may benefit from FTS5 lookups); it does not imply decisions data moves to SQLite. When implementing, treat decisions.yaml as the source of truth and SQLite as a read-only index if used at all.
 
 **Sequencing note** (added by `/ll:audit-issue-conflicts` 2026-05-14): BUG-1461 should resolve before this issue is implemented. Both touch `config-schema.json` and the session-start hook path. BUG-1461 either removes `continuation.auto_detect_on_session_start` from the schema or adds an implementation in `session_start.py`; this issue adds a `decisions` block to the same schema and extends `session-start.sh`. Resolving BUG-1461 first provides a stable schema baseline. Related: BUG-1461.
+
+**Extensibility note** (added by `/ll:audit-issue-conflicts` 2026-05-31): FEAT-1736 adds a fourth `coupling` entry type to `decisions.yaml` and depends on this issue. When implementing `add_entry()`, `list_entries()`, and `resolve_active()`, use an open/extensible dispatch pattern (e.g., a registry dict or explicit `elif` chain with a documented extension point) rather than a closed match on the three MVP types (`rule`, `decision`, `exception`). This ensures FEAT-1736 can introduce the `coupling` type without modifying core dispatch logic. Related: FEAT-1736.

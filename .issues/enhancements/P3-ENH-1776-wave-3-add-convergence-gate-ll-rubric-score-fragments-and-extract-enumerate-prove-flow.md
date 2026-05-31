@@ -7,6 +7,7 @@ captured_at: "2026-05-29T01:01:55Z"
 discovered_date: 2026-05-28
 discovered_by: capture-issue
 parent: EPIC-1773
+depends_on: ENH-1775
 ---
 
 # ENH-1776: Wave 3 — Add `convergence_gate`, `ll_rubric_score` Fragments and Extract `enumerate-prove-flow`
@@ -146,6 +147,7 @@ N/A - No public API changes
 `enhancement`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T20:39:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-29T01:15:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe72aa2c-e995-4907-94b6-587fa28e4586.jsonl`
