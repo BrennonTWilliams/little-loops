@@ -1,9 +1,10 @@
 ---
 id: BUG-1817
 captured_at: '2026-05-30T22:06:48Z'
+completed_at: '2026-05-31T00:07:20Z'
 discovered_date: 2026-05-30
 discovered_by: capture-issue
-status: open
+status: done
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 93

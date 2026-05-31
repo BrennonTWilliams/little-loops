@@ -365,8 +365,8 @@ def cmd_resume(
     logger: Logger,
 ) -> int:
     """Resume an interrupted loop."""
-    from little_loops.fsm.persistence import PersistentExecutor, RESUMABLE_STATUSES
     import os
+    from little_loops.fsm.persistence import PersistentExecutor, RESUMABLE_STATUSES
 
     running_dir = loops_dir / ".running"
     running_dir.mkdir(parents=True, exist_ok=True)
