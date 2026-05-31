@@ -12,6 +12,7 @@ Tier 1 (Deterministic - no API calls):
     output_contains: Pattern matching on stdout
     convergence: Track progress toward a target value
     diff_stall: Detect stalled iterations via git diff comparison
+    action_stall: Detect when the same action string or output repeats for N consecutive iterations
     harbor_scorer: Interpret Harbor-format benchmark scorer exit code and float stdout
 
 Tier 2 (LLM-based):
@@ -506,6 +507,137 @@ def evaluate_diff_stall(
         )
 
 
+def evaluate_action_stall(
+    track: list[str] | None = None,
+    max_repeat: int = 2,
+    context: InterpolationContext | None = None,
+) -> EvaluationResult:
+    """Detect when the same action string or output repeats for N consecutive iterations.
+
+    On first call, snapshots the hashed values of the tracked context keys and returns
+    'yes'. On subsequent calls, compares the current hash to the previous snapshot.
+    If the hash is identical for max_repeat consecutive iterations, returns 'no'
+    (stalled). If different, resets the stall counter and returns 'yes' (progress).
+
+    State is persisted in .loops/tmp using a key derived from the tracked keys,
+    so different states/loops maintain independent stall counters.
+
+    Args:
+        track: Context keys to track. Defaults to ["action"] when None.
+        max_repeat: Number of consecutive identical-hash iterations before stall verdict.
+            Defaults to 2.
+        context: Runtime interpolation context for resolving tracked keys.
+
+    Returns:
+        EvaluationResult with verdict:
+            - yes: tracked values changed since last iteration (progress made)
+            - no: tracked values identical for max_repeat iterations (stalled)
+    """
+    effective_track: list[str] = track if track is not None else ["action"]
+
+    # Resolve each tracked key from context and hash the combined values.
+    # Keys may be bare names (e.g. "action") or namespaced (e.g. "context.action").
+    # Try namespaced forms first: context.<key>, captured.<key>, then bare ${key}.
+    parts: list[str] = []
+    for key in effective_track:
+        value: str = ""
+        if context is not None:
+            # If key already contains a dot it's already namespaced; use as-is.
+            if "." in key:
+                try:
+                    value = str(interpolate(f"${{{key}}}", context))
+                except InterpolationError:
+                    value = ""
+            else:
+                # Try context.<key> first, then captured.<key>, then give up.
+                resolved = False
+                for namespace in ("context", "captured", "prev", "result"):
+                    try:
+                        value = str(interpolate(f"${{{namespace}.{key}}}", context))
+                        resolved = True
+                        break
+                    except InterpolationError:
+                        continue
+                if not resolved:
+                    value = ""
+        parts.append(f"{key}={value}")
+
+    combined = "|".join(parts)
+    current_hash = hashlib.md5(combined.encode()).hexdigest()
+
+    # Derive a stable cache key from the tracked keys
+    track_str = "|".join(sorted(effective_track))
+    cache_key = hashlib.md5(track_str.encode()).hexdigest()[:12]
+    loops_tmp = Path.cwd() / ".loops" / "tmp"
+    loops_tmp.mkdir(parents=True, exist_ok=True)
+    state_file = loops_tmp / f"ll-action-stall-{cache_key}.txt"
+    count_file = loops_tmp / f"ll-action-stall-{cache_key}.count"
+
+    # Read previous hash and stall count
+    previous_hash: str | None = None
+    stall_count = 0
+    try:
+        previous_hash = state_file.read_text().strip()
+        stall_count = int(count_file.read_text().strip())
+    except (FileNotFoundError, ValueError):
+        pass
+
+    # First iteration: save hash and report progress
+    if previous_hash is None:
+        state_file.write_text(current_hash)
+        count_file.write_text("0")
+        return EvaluationResult(
+            verdict="yes",
+            details={
+                "stall_count": 0,
+                "max_repeat": max_repeat,
+                "hash_changed": True,
+                "tracked_keys": effective_track,
+            },
+        )
+
+    hash_changed = current_hash != previous_hash
+
+    if hash_changed:
+        # Progress: update snapshot and reset counter
+        state_file.write_text(current_hash)
+        count_file.write_text("0")
+        return EvaluationResult(
+            verdict="yes",
+            details={
+                "stall_count": 0,
+                "max_repeat": max_repeat,
+                "hash_changed": True,
+                "tracked_keys": effective_track,
+            },
+        )
+    else:
+        # Same hash as last time
+        stall_count += 1
+        count_file.write_text(str(stall_count))
+        if stall_count >= max_repeat:
+            return EvaluationResult(
+                verdict="no",
+                details={
+                    "stall_count": stall_count,
+                    "max_repeat": max_repeat,
+                    "hash_changed": False,
+                    "tracked_keys": effective_track,
+                    "repeated_hash": current_hash,
+                },
+            )
+        # Not yet at max_repeat threshold — still report yes so loop continues
+        return EvaluationResult(
+            verdict="yes",
+            details={
+                "stall_count": stall_count,
+                "max_repeat": max_repeat,
+                "hash_changed": False,
+                "tracked_keys": effective_track,
+            },
+        )
+
+
 def evaluate_mcp_result(output: str, exit_code: int) -> EvaluationResult:
     """Evaluate an MCP tool call result from the mcp-call subprocess.
 
@@ -992,6 +1124,7 @@ def evaluate(
             "mcp_result",
             "harbor_scorer",
             "diff_stall",
+            "action_stall",
             "llm_structured",
         }
     )
@@ -1098,6 +1231,13 @@ def evaluate(
         return evaluate_diff_stall(
             scope=config.scope,
             max_stall=config.max_stall,
+        )
+
+    elif eval_type == "action_stall":
+        return evaluate_action_stall(
+            track=config.track,
+            max_repeat=config.max_repeat,
+            context=context,
         )
 
     elif eval_type == "llm_structured":

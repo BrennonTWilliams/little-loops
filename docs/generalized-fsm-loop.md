@@ -304,7 +304,7 @@ states:                         # State definitions
     evaluate:                   # How to evaluate the action result
       type: string              # exit_code, output_numeric, output_json,
                                 # output_contains, llm_structured, convergence,
-                                # diff_stall, mcp_result, harbor_scorer
+                                # diff_stall, action_stall, mcp_result, harbor_scorer
       # ... type-specific fields (see Evaluator Types)
     
     # --- Routing Layer ---

@@ -291,6 +291,36 @@ check_stall:
 | `no` | Stalled — no changes for `max_stall` consecutive iterations |
 | `error` | git unavailable or command failed |
 
+#### `action_stall` — Action/Output Repeat Detection
+
+Use `action_stall` when you want to detect a loop that keeps emitting the same action or captured output without git changes (e.g., a skill that repeatedly proposes the same fix). Unlike `diff_stall`, it does not require a git repository and works against any context values.
+
+```yaml
+check_stall:
+  action: "echo 'checking action stall'"
+  action_type: shell
+  evaluate:
+    type: action_stall
+    track: ["action"]      # context keys to hash (default: ["action"])
+    max_repeat: 2          # consecutive identical hashes before stall verdict
+  on_yes: check_concrete
+  on_no: advance
+```
+
+**`action_stall` field reference:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `track` | `list[str]` | `["action"]` | Context keys to hash for repeat detection |
+| `max_repeat` | `int` | `2` | Consecutive identical-hash iterations before failure verdict |
+
+**Verdicts:**
+
+| Verdict | Meaning |
+|---------|---------|
+| `yes` | Tracked values changed (progress) |
+| `no` | Stalled — identical hash for `max_repeat` consecutive iterations |
+
 ---
 
 **Full 6-phase ordering (with all phases active):**

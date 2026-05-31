@@ -457,7 +457,7 @@ Validate a loop definition file.
 
 In addition to structural checks (reachability, evaluator fields, routing consistency), validation applies **meta-loop lint rules** when a loop is classified as a meta-loop (writes harness artifacts, imports `lib/benchmark.yaml`, or references `yaml_state_editor`/`replace_action`):
 
-- **MR-1 (ERROR)**: A meta-loop must have at least one non-LLM evaluator (`exit_code`, `output_numeric`, `output_json`, `output_contains`, `convergence`, `diff_stall`, `harbor_scorer`, `mcp_result`). LLM self-grades on harness updates are unreliable (SHOR Table 1: 33–55% accuracy). Triggers a `ValueError` (exit code 1) that blocks the loop from running.
+- **MR-1 (ERROR)**: A meta-loop must have at least one non-LLM evaluator (`exit_code`, `output_numeric`, `output_json`, `output_contains`, `convergence`, `diff_stall`, `action_stall`, `harbor_scorer`, `mcp_result`). LLM self-grades on harness updates are unreliable (SHOR Table 1: 33–55% accuracy). Triggers a `ValueError` (exit code 1) that blocks the loop from running.
 - **MR-2 (WARNING)**: A meta-loop should reference a captured baseline value in a later evaluator (`evaluate.previous`, `evaluate.target`, or `evaluate.source`). This ensures a measure→propose→apply→re-measure spine is present. Does not block validation.
 
 MR-1, MR-2, and the multimodal evaluator blind-spot rule are suppressed by setting `meta_self_eval_ok: true` at the loop top-level (with a justifying comment).

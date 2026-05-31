@@ -868,6 +868,8 @@ _EVALUATE_TYPE_DISPLAY: dict[str, str] = {
     "output_contains": "contains",
     "output_json": "JSON",
     "convergence": "convergence",
+    "diff_stall": "diff stall",
+    "action_stall": "action stall",
 }
 
 

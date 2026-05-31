@@ -461,8 +461,10 @@
             "output_contains",
             "convergence",
             "diff_stall",
+            "action_stall",
             "llm_structured",
-            "mcp_result"
+            "mcp_result",
+            "harbor_scorer"
           ]
         },
         "operator": {
@@ -529,6 +531,28 @@
           "description": "Optimization direction for convergence",
           "enum": ["minimize", "maximize"],
           "default": "minimize"
+        },
+        "scope": {
+          "type": "array",
+          "description": "Paths to limit git diff to (for diff_stall evaluator)",
+          "items": { "type": "string" }
+        },
+        "max_stall": {
+          "type": "integer",
+          "description": "Consecutive no-change iterations before stall verdict (diff_stall)",
+          "default": 1,
+          "minimum": 1
+        },
+        "track": {
+          "type": "array",
+          "description": "Context keys to track for action_stall (default: [\"action\"])",
+          "items": { "type": "string" }
+        },
+        "max_repeat": {
+          "type": "integer",
+          "description": "Consecutive identical iterations before stall verdict (action_stall)",
+          "default": 2,
+          "minimum": 1
         }
       },
       "additionalProperties": false,

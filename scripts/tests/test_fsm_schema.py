@@ -1882,6 +1882,30 @@ class TestMcpToolSchema:
         restored = EvaluateConfig.from_dict(d)
         assert restored.type == "harbor_scorer"
 
+    def test_action_stall_evaluator_type_is_valid(self) -> None:
+        """EvaluateConfig accepts type='action_stall'."""
+        config = EvaluateConfig(type="action_stall")
+        assert config.type == "action_stall"
+
+    def test_action_stall_round_trips_through_dict(self) -> None:
+        """action_stall evaluator serializes and deserializes with track/max_repeat."""
+        config = EvaluateConfig(type="action_stall", track=["action", "output"], max_repeat=3)
+        d = config.to_dict()
+        assert d["type"] == "action_stall"
+        assert d["track"] == ["action", "output"]
+        assert d["max_repeat"] == 3
+        restored = EvaluateConfig.from_dict(d)
+        assert restored.type == "action_stall"
+        assert restored.track == ["action", "output"]
+        assert restored.max_repeat == 3
+
+    def test_action_stall_to_dict_omits_defaults(self) -> None:
+        """action_stall to_dict omits track when None and max_repeat when 2."""
+        config = EvaluateConfig(type="action_stall")
+        d = config.to_dict()
+        assert "track" not in d
+        assert "max_repeat" not in d
+
     def test_mcp_tool_state_validation_passes(self) -> None:
         """An mcp_tool state passes validation."""
         fsm = FSMLoop(

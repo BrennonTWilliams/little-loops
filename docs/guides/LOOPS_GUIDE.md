@@ -1629,10 +1629,11 @@ Evaluators interpret action output and produce a **verdict** string used for rou
 | `output_contains` | `yes` / `no` | — | Regex or substring match on stdout |
 | `convergence` | `target` / `progress` / `stall` | metric-tracking states | Track a metric toward a goal value |
 | `diff_stall` | `yes` / `no` / `error` | — | Detect when consecutive iterations produce no git diff changes (see [Stall Detection](#stall-detection)) |
+| `action_stall` | `yes` / `no` | — | Detect when the same action string or context values repeat for N consecutive iterations (file-backed, no git required) |
 | `llm_structured` | `yes` / `no` / `blocked` / `partial` | slash commands | Natural-language judgment via LLM |
 | `mcp_result` | `success` / `tool_error` / `not_found` / `timeout` | `mcp_tool` actions | Evaluate MCP server tool call results; see [MCP Tool Actions](#mcp-tool-actions) for verdict details |
 
-**Exit-code short-circuit**: When an action exits with a non-zero code, evaluators that don't intrinsically handle exit codes (`output_numeric`, `output_json`, `output_contains`, `convergence`, `harbor_scorer`) immediately return `error` without running their normal logic. Exit-code-aware evaluators (`exit_code`, `mcp_result`, `harbor_scorer`, `diff_stall`, `llm_structured`) are exempt — they process the exit code through their own evaluation path.
+**Exit-code short-circuit**: When an action exits with a non-zero code, evaluators that don't intrinsically handle exit codes (`output_numeric`, `output_json`, `output_contains`, `convergence`) immediately return `error` without running their normal logic. Exit-code-aware evaluators (`exit_code`, `mcp_result`, `harbor_scorer`, `diff_stall`, `action_stall`, `llm_structured`) are exempt — they process the exit code through their own evaluation path.
 
 Override the default by adding an `evaluate:` block to a state:
 

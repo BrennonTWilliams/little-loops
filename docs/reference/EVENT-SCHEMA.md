@@ -266,9 +266,26 @@ Emitted after the evaluator runs to determine the next routing decision.
 | `verdict` | `str` | Evaluator verdict (e.g. `"pass"`, `"fail"`, `"yes"`, `"no"`, `"retry"`, `"error"`) |
 | *(detail fields)* | varies | Additional evaluator-specific fields (e.g. `score`, `reason` for LLM evaluators) |
 
+**`action_stall` evaluator detail fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `stall_count` | `int` | Number of consecutive identical-hash iterations so far |
+| `max_repeat` | `int` | Configured threshold before stall verdict |
+| `hash_changed` | `bool` | Whether the hash of tracked context values changed this iteration |
+| `tracked_keys` | `list[str]` | Context keys that were hashed (default `["action"]`) |
+| `repeated_hash` | `str` | *(only on `verdict="no"`)* The MD5 hex digest that repeated |
+
 **Example (default exit-code evaluation):**
 ```json
 {"event": "evaluate", "ts": "...", "type": "default", "verdict": "pass"}
+```
+
+**Example (`action_stall` stall detected):**
+```json
+{"event": "evaluate", "ts": "...", "type": "action_stall", "verdict": "no",
+ "stall_count": 2, "max_repeat": 2, "hash_changed": false,
+ "tracked_keys": ["action"], "repeated_hash": "a1b2c3d4e5f6"}
 ```
 
 ---

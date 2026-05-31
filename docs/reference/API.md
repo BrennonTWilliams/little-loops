@@ -4222,6 +4222,7 @@ class EvaluateConfig:
         "output_contains",  # Pattern matching
         "convergence",      # Progress toward target
         "diff_stall",       # Detect stalled iterations via git diff
+        "action_stall",     # Detect repeated action/output for N consecutive iterations
         "llm_structured",   # LLM with structured output
         "mcp_result",       # Parse MCP tool call response envelope
         "harbor_scorer",    # Harbor-format benchmark scorer (exit code + float stdout)

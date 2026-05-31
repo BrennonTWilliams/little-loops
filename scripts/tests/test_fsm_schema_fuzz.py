@@ -47,6 +47,9 @@ def malformed_evaluate_config(draw: st.DrawFn) -> dict:
         "output_json",
         "output_contains",
         "convergence",
+        "diff_stall",
+        "action_stall",
+        "mcp_result",
         "llm_structured",
         "harbor_scorer",
     ]

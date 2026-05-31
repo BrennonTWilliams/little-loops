@@ -15,6 +15,7 @@ from little_loops.fsm.evaluators import (
     EvaluationResult,
     _extract_json_path,
     evaluate,
+    evaluate_action_stall,
     evaluate_blind_comparator,
     evaluate_convergence,
     evaluate_diff_stall,
@@ -557,6 +558,7 @@ class TestEvaluateDispatcher:
             "output_contains",
             "convergence",
             "diff_stall",
+            "action_stall",
             "llm_structured",
             "harbor_scorer",
         ],
@@ -624,6 +626,8 @@ class TestEvaluateDispatcher:
             "exit_code",
             "mcp_result",
             "harbor_scorer",
+            "diff_stall",
+            "action_stall",
         ],
     )
     def test_dispatch_nonzero_exit_does_not_affect_exit_code_aware_evaluators(
@@ -1234,6 +1238,123 @@ class TestDiffStallEvaluator:
 
         # Count file should now be reset to 0
         assert count_file.read_text().strip() == "0"
+
+
+class TestActionStallEvaluator:
+    """Tests for action_stall evaluator."""
+
+    @pytest.fixture(autouse=True)
+    def clean_state_files(self, tmp_path, monkeypatch):
+        """Redirect state files to a temp directory for test isolation."""
+        loops_tmp = tmp_path / ".loops" / "tmp"
+        loops_tmp.mkdir(parents=True, exist_ok=True)
+        monkeypatch.chdir(tmp_path)
+
+    def _ctx(self, action: str = "", **kwargs) -> InterpolationContext:
+        """Build a minimal context with the given action and extra context keys."""
+        ctx = InterpolationContext()
+        ctx.context["action"] = action
+        for k, v in kwargs.items():
+            ctx.context[k] = v
+        return ctx
+
+    def test_first_iteration_returns_yes(self) -> None:
+        """First call always returns yes (no previous snapshot)."""
+        ctx = self._ctx(action="echo hello")
+        result = evaluate_action_stall(context=ctx)
+        assert result.verdict == "yes"
+        assert result.details["stall_count"] == 0
+        assert result.details["hash_changed"] is True
+        assert result.details["tracked_keys"] == ["action"]
+
+    def test_different_action_returns_yes(self) -> None:
+        """A different action string returns yes and resets stall counter."""
+        ctx1 = self._ctx(action="echo hello")
+        evaluate_action_stall(context=ctx1)
+
+        ctx2 = self._ctx(action="echo world")
+        result = evaluate_action_stall(context=ctx2)
+        assert result.verdict == "yes"
+        assert result.details["hash_changed"] is True
+        assert result.details["stall_count"] == 0
+
+    def test_identical_at_threshold_returns_no(self) -> None:
+        """Identical action for max_repeat consecutive iterations returns no."""
+        ctx = self._ctx(action="echo same")
+
+        # First call (baseline)
+        evaluate_action_stall(max_repeat=2, context=ctx)
+        # Second call — stall_count becomes 1 (below threshold)
+        r1 = evaluate_action_stall(max_repeat=2, context=ctx)
+        assert r1.verdict == "yes"
+        assert r1.details["stall_count"] == 1
+        # Third call — stall_count becomes 2 (at threshold)
+        r2 = evaluate_action_stall(max_repeat=2, context=ctx)
+        assert r2.verdict == "no"
+        assert r2.details["stall_count"] == 2
+        assert r2.details["repeated_hash"] is not None
+
+    def test_identical_below_threshold_returns_yes(self) -> None:
+        """Identical action below max_repeat threshold returns yes."""
+        ctx = self._ctx(action="echo same")
+
+        evaluate_action_stall(max_repeat=3, context=ctx)
+        result = evaluate_action_stall(max_repeat=3, context=ctx)
+        assert result.verdict == "yes"
+        assert result.details["stall_count"] == 1
+        assert result.details["hash_changed"] is False
+
+    def test_stall_then_progress_resets(self) -> None:
+        """After stall, a new action resets the stall count."""
+        ctx_same = self._ctx(action="echo stalled")
+        evaluate_action_stall(max_repeat=3, context=ctx_same)
+        evaluate_action_stall(max_repeat=3, context=ctx_same)  # stall_count=1
+
+        ctx_new = self._ctx(action="echo progress")
+        result = evaluate_action_stall(max_repeat=3, context=ctx_new)
+        assert result.verdict == "yes"
+        assert result.details["stall_count"] == 0
+        assert result.details["hash_changed"] is True
+
+    def test_multiple_track_keys(self) -> None:
+        """Multiple track keys are all hashed together."""
+        ctx = InterpolationContext()
+        ctx.context["action"] = "run tests"
+        ctx.context["output"] = "0 failures"
+
+        evaluate_action_stall(track=["action", "output"], max_repeat=2, context=ctx)
+
+        # Same values → stall count increments
+        r1 = evaluate_action_stall(track=["action", "output"], max_repeat=2, context=ctx)
+        assert r1.details["stall_count"] == 1
+
+        # Change one key → resets
+        ctx.context["output"] = "1 failure"
+        r2 = evaluate_action_stall(track=["action", "output"], max_repeat=2, context=ctx)
+        assert r2.verdict == "yes"
+        assert r2.details["hash_changed"] is True
+        assert r2.details["stall_count"] == 0
+
+    def test_dispatch_action_stall(self) -> None:
+        """evaluate() dispatcher routes action_stall type correctly."""
+        ctx = InterpolationContext()
+        ctx.context["action"] = "some command"
+        config = EvaluateConfig(type="action_stall")
+        result = evaluate(config, "", 0, ctx)
+        assert result.verdict == "yes"
+        assert "stall_count" in result.details
+        assert "tracked_keys" in result.details
+
+    def test_dispatch_action_stall_with_options(self) -> None:
+        """evaluate() passes track and max_repeat to action_stall evaluator."""
+        ctx = InterpolationContext()
+        ctx.context["action"] = "cmd"
+        ctx.context["output"] = "result"
+        config = EvaluateConfig(type="action_stall", track=["action", "output"], max_repeat=3)
+        result = evaluate(config, "", 0, ctx)
+        assert result.verdict == "yes"
+        assert result.details["max_repeat"] == 3
+        assert result.details["tracked_keys"] == ["action", "output"]
 
 
 class TestMcpResultEvaluator:

@@ -359,6 +359,34 @@ class TestHarborScorerEvaluatorValidation:
         assert any("Unknown evaluator type" in e.message for e in errors)
 
 
+class TestActionStallEvaluatorValidation:
+    """Validate that action_stall evaluator config is accepted and validated."""
+
+    def test_valid_config_passes(self) -> None:
+        """_validate_evaluator accepts action_stall with no required fields."""
+        config = EvaluateConfig(type="action_stall")
+        errors = _validate_evaluator("check", config)
+        assert errors == []
+
+    def test_with_track_and_max_repeat_passes(self) -> None:
+        """_validate_evaluator accepts action_stall with track and max_repeat."""
+        config = EvaluateConfig(type="action_stall", track=["action", "output"], max_repeat=3)
+        errors = _validate_evaluator("check", config)
+        assert errors == []
+
+    def test_max_repeat_zero_rejected(self) -> None:
+        """max_repeat=0 is rejected."""
+        config = EvaluateConfig(type="action_stall", max_repeat=0)
+        errors = _validate_evaluator("check", config)
+        assert any("max_repeat" in e.message for e in errors)
+
+    def test_max_repeat_negative_rejected(self) -> None:
+        """max_repeat=-1 is rejected."""
+        config = EvaluateConfig(type="action_stall", max_repeat=-1)
+        errors = _validate_evaluator("check", config)
+        assert any("max_repeat" in e.message for e in errors)
+
+
 class TestParameterValidation:
     """Validate the parameters: block via _validate_parameters and validate_fsm."""
 

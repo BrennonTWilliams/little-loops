@@ -60,6 +60,7 @@ class EvaluateConfig:
         "output_contains",
         "convergence",
         "diff_stall",
+        "action_stall",
         "llm_structured",
         "mcp_result",
         "harbor_scorer",
@@ -79,6 +80,8 @@ class EvaluateConfig:
     direction: Literal["minimize", "maximize"] = "minimize"
     scope: list[str] | None = None  # for diff_stall: limit git diff to these paths
     max_stall: int = 1  # for diff_stall: consecutive no-change iterations before failure
+    track: list[str] | None = None  # for action_stall: context keys to track (default: ["action"])
+    max_repeat: int = 2  # for action_stall: consecutive identical iterations before failure
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -115,6 +118,10 @@ class EvaluateConfig:
             result["scope"] = self.scope
         if self.max_stall != 1:
             result["max_stall"] = self.max_stall
+        if self.track is not None:
+            result["track"] = self.track
+        if self.max_repeat != 2:
+            result["max_repeat"] = self.max_repeat
 
         return result
 
@@ -138,6 +145,8 @@ class EvaluateConfig:
             direction=data.get("direction", "minimize"),
             scope=data.get("scope"),
             max_stall=data.get("max_stall", 1),
+            track=data.get("track"),
+            max_repeat=data.get("max_repeat", 2),
         )
 
 
