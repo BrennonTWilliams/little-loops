@@ -1,0 +1,190 @@
+name: adversarial-redesign
+category: example
+input_key: concept
+description: |
+  Generator-vs-critic figure refinement demo using AutoFigure.
+  A generator agent produces an SVG diagram from a text concept; a critic
+  agent returns structured complaints; the loop regenerates addressing each
+  complaint and exits on score-improvement stall or SVG-diff convergence.
+  Every round is persisted under run_dir for demo playback as a split-screen
+  recording: critique scrolling on the left, the diagram morphing on the right.
+
+# OPTIONAL DEPENDENCY: AutoFigure (https://github.com/ResearAI/AutoFigure)
+# pip install -e ./AutoFigure && playwright install chromium
+# Set OPENROUTER_API_KEY (or AUTOFIGURE_API_KEY) in env before running.
+#
+# Usage: ll-loop run adversarial-redesign --input concept="how a transformer attends"
+
+initial: init
+max_iterations: 5
+timeout: 1800
+
+context:
+  concept: ""   # populated from loop_input via input_key: concept
+
+states:
+
+  init:
+    # Setup: create run_dir and seed baseline score file for score_gate comparisons.
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      echo "$(pwd)/$DIR"
+    capture: run_dir
+    next: seed
+
+  seed:
+    # Generator (initial): call AutoFigure wrapper with no critique, write current.svg
+    # and gen-result.json. Store seed score as the comparison baseline in prev_score.txt,
+    # and copy current.svg → prev.svg for the first SVG diff comparison.
+    action_type: shell
+    action: |
+      RUNDIR="${captured.run_dir.output}"
+      python scripts/autofigure_wrapper.py \
+        --concept "${context.concept}" \
+        --output "$RUNDIR/current.svg" \
+        --result-file "$RUNDIR/gen-result.json" 2>&1
+      python3 -c "
+      import json; d = json.load(open('$RUNDIR/gen-result.json'))
+      print(d['final_score'])
+      " > "$RUNDIR/prev_score.txt"
+      cp "$RUNDIR/current.svg" "$RUNDIR/prev.svg"
+      echo "SEEDED"
+    evaluate:
+      type: output_contains
+      pattern: "SEEDED"
+    on_yes: critic
+    on_no: failed
+    on_error: failed
+
+  critic:
+    # LLM-semantic gate: read current.svg, produce structured complaints JSON, and signal
+    # whether any complaints exist. NO_COMPLAINTS exits the loop (success); HAS_COMPLAINTS
+    # routes to regen for another generation round.
+    action_type: prompt
+    action: |
+      Read the SVG diagram at ${captured.run_dir.output}/current.svg.
+
+      Analyze the diagram for structural and communication quality issues, focusing on:
+      - Unlabeled or poorly labeled nodes
+      - Ambiguous or missing edge directions
+      - Layout overlaps that obscure relationships
+      - Missing or unclear connections between concepts
+
+      Respond with ONLY a JSON object in this exact schema — no prose, no code fences:
+      {"complaints": ["specific issue 1", "specific issue 2"], "structural_score": <int 1-10>}
+
+      If the diagram is structurally sound with no significant issues, return:
+      {"complaints": [], "structural_score": 10}
+
+      Write your JSON response to ${captured.run_dir.output}/current-critique.json.
+
+      After writing the file:
+      - If complaints is empty, output exactly on its own line: NO_COMPLAINTS
+      - Otherwise output exactly on its own line: HAS_COMPLAINTS
+    evaluate:
+      type: output_contains
+      pattern: "NO_COMPLAINTS"
+    on_yes: transcript
+    on_no: regen
+    on_error: failed
+
+  regen:
+    # Generator (refinement): call AutoFigure wrapper with current-critique.json so the
+    # generated figure addresses all logged complaints. Writes current.svg and gen-result.json.
+    action_type: shell
+    action: |
+      RUNDIR="${captured.run_dir.output}"
+      python scripts/autofigure_wrapper.py \
+        --concept "${context.concept}" \
+        --output "$RUNDIR/current.svg" \
+        --critique-file "$RUNDIR/current-critique.json" \
+        --result-file "$RUNDIR/gen-result.json" 2>&1
+      echo "REGENERATED"
+    evaluate:
+      type: output_contains
+      pattern: "REGENERATED"
+    on_yes: score_gate
+    on_no: failed
+    on_error: failed
+
+  score_gate:
+    # Non-LLM gate: compare AutoFigure's final_score for the current regen against the
+    # previous round's score stored in prev_score.txt. Routes to svg_diff on improvement;
+    # exits to transcript on stall (score did not increase).
+    action_type: shell
+    action: |
+      RUNDIR="${captured.run_dir.output}"
+      NEW_SCORE=$(python3 -c "
+      import json
+      d = json.load(open('$RUNDIR/gen-result.json'))
+      print(d['final_score'])
+      " 2>/dev/null || echo "0")
+      PREV_SCORE=$(cat "$RUNDIR/prev_score.txt" 2>/dev/null || echo "0")
+      echo "$NEW_SCORE" > "$RUNDIR/prev_score.txt"
+      python3 -c "
+      prev = float('$PREV_SCORE')
+      curr = float('$NEW_SCORE')
+      print('IMPROVED' if curr > prev else 'STALLED')
+      "
+    evaluate:
+      type: output_contains
+      pattern: "IMPROVED"
+    on_yes: svg_diff
+    on_no: transcript
+    on_error: transcript
+
+  svg_diff:
+    # Persist per-iteration artifacts and check SVG convergence. If the diff between the
+    # current and previous SVG is below the character threshold, the diagram has converged
+    # and the loop exits. Otherwise routes back to critic for another adversarial round.
+    action_type: shell
+    action: |
+      RUNDIR="${captured.run_dir.output}"
+      COUNTER_FILE="$RUNDIR/iter_count.txt"
+      ITER=$(cat "$COUNTER_FILE" 2>/dev/null || echo "0")
+      ITER=$((ITER + 1))
+      echo "$ITER" > "$COUNTER_FILE"
+      cp "$RUNDIR/current.svg" "$RUNDIR/iter-$ITER.svg" 2>/dev/null || true
+      cp "$RUNDIR/current-critique.json" "$RUNDIR/iter-$ITER-critique.json" 2>/dev/null || true
+      DIFF_SIZE=$(diff "$RUNDIR/prev.svg" "$RUNDIR/current.svg" 2>/dev/null | wc -c | tr -d ' ')
+      cp "$RUNDIR/current.svg" "$RUNDIR/prev.svg"
+      if [ "${DIFF_SIZE:-0}" -le 100 ]; then
+        echo "CONVERGED"
+      else
+        echo "DIVERGED"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "CONVERGED"
+    on_yes: transcript
+    on_no: critic
+    on_error: critic
+
+  transcript:
+    # Write transcript.md interleaving each iteration's critique with the regeneration
+    # prompt it produced, then report all output file paths.
+    action_type: prompt
+    action: |
+      The adversarial-redesign loop has completed.
+
+      Write a transcript to ${captured.run_dir.output}/transcript.md with this structure:
+
+      1. **Concept**: "${context.concept}"
+      2. For each iteration N where ${captured.run_dir.output}/iter-N.svg exists:
+         - **Iteration N** heading
+         - Complaints from ${captured.run_dir.output}/iter-N-critique.json (list each complaint)
+         - SVG file: iter-N.svg
+      3. **Summary**: how many iterations ran and why the loop exited (score stall, SVG
+         convergence, no remaining complaints, or max iterations reached).
+
+      After writing transcript.md, list all output files in ${captured.run_dir.output}/ for
+      the user to review.
+    next: done
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true

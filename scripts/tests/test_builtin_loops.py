@@ -130,6 +130,7 @@ class TestBuiltinLoopFiles:
             "proof-first-task",
             "cli-anything-bootstrap",
             "worktree-health",
+            "adversarial-redesign",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -1459,11 +1460,11 @@ class TestAutodevLoop:
         assert done_state.get("terminal") is True
 
     def test_init_references_autodev_queue(self, data: dict) -> None:
-        """init must initialize .loops/tmp/autodev-queue.txt as the unified queue."""
+        """init must initialize autodev-queue.txt under run_dir as the unified queue."""
         init = data["states"].get("init", {})
         action = init.get("action", "")
         assert "autodev-queue.txt" in action
-        assert ".loops/tmp/" in action
+        assert "${context.run_dir}" in action
 
     def test_init_does_not_reference_impl_queue(self, data: dict) -> None:
         """init must NOT reference the now-removed autodev-impl-queue.txt."""
@@ -1656,16 +1657,16 @@ class TestAutodevLoop:
         assert "Decomposed from" in detect_action
 
     def test_broke_down_flag_copied_to_autodev_namespace(self, data: dict) -> None:
-        """autodev must copy .loops/tmp/recursive-refine-broke-down to .loops/tmp/autodev-broke-down
-        after the sub-loop returns, and read the copy for its own routing."""
+        """autodev must copy refine-broke-down to autodev-broke-down after the sub-loop
+        returns, and read the copy for its own routing."""
         # Some state must cp the source file to autodev-broke-down.
         copied = any(
             "autodev-broke-down" in s.get("action", "")
-            and "recursive-refine-broke-down" in s.get("action", "")
+            and "refine-broke-down" in s.get("action", "")
             for s in data["states"].values()
         )
         assert copied, (
-            "No state copies recursive-refine-broke-down to autodev-broke-down; "
+            "No state copies refine-broke-down to autodev-broke-down; "
             "cross-loop handshake must be namespaced into autodev-*"
         )
 
@@ -2232,22 +2233,23 @@ class TestAutodevLoop:
     ) -> None:
         """skip_inflight shell action must append the issue ID to autodev-skipped.txt and
         remove autodev-inflight (ENH-1679).  Modelled on TestAutoRefineAndImplementLoop
-        shell-action tests and uses _bash() from test_loops_recursive_refine.py."""
+        shell-action tests."""
         state = data["states"].get("skip_inflight", {})
         action = state.get("action", "")
-        loops_tmp = tmp_path / ".loops" / "tmp"
-        loops_tmp.mkdir(parents=True)
-        (loops_tmp / "autodev-inflight").write_text("ENH-0001")
-        (loops_tmp / "autodev-skipped.txt").write_text("")
-        # Substitute the template variable with a concrete value before running
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "autodev-inflight").write_text("ENH-0001")
+        (run_dir / "autodev-skipped.txt").write_text("")
+        # Substitute template variables with concrete values before running
         script = action.replace("${captured.input.output}", "ENH-0001")
+        script = script.replace("${context.run_dir}", str(run_dir))
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
         )
         assert result.returncode == 0, f"skip_inflight action failed: {result.stderr}"
-        skipped = (loops_tmp / "autodev-skipped.txt").read_text()
+        skipped = (run_dir / "autodev-skipped.txt").read_text()
         assert "ENH-0001" in skipped, "skip_inflight must write the issue ID to autodev-skipped.txt"
-        assert not (loops_tmp / "autodev-inflight").exists(), (
+        assert not (run_dir / "autodev-inflight").exists(), (
             "skip_inflight must remove autodev-inflight so done does not surface a stale warning"
         )
 
@@ -2467,17 +2469,18 @@ class TestRecursiveRefineLoop:
 
     def test_check_broke_down_requires_children_file(self, data: dict) -> None:
         """BUG-1183: shortcut must require flag=1 AND non-empty new-children file,
-        not the flag alone. Action must reference recursive-refine-new-children.txt."""
+        not the flag alone. Action must reference refine-broke-down and
+        recursive-refine-new-children.txt."""
         state = data["states"].get("check_broke_down", {})
         action = state.get("action", "")
-        assert "recursive-refine-broke-down" in action
+        assert "refine-broke-down" in action
         assert "recursive-refine-new-children.txt" in action
 
     def test_broke_down_flag_cleared_in_capture_baseline(self, data: dict) -> None:
-        """capture_baseline must clear recursive-refine-broke-down so each issue iteration starts clean."""
+        """capture_baseline must clear refine-broke-down so each issue iteration starts clean."""
         state = data["states"].get("capture_baseline", {})
-        assert "recursive-refine-broke-down" in state.get("action", ""), (
-            "capture_baseline action must clear '.loops/tmp/recursive-refine-broke-down' flag"
+        assert "refine-broke-down" in state.get("action", ""), (
+            "capture_baseline action must clear 'refine-broke-down' flag"
         )
 
     def test_recheck_scores_routes_to_dequeue_next(self, data: dict) -> None:
@@ -2985,6 +2988,156 @@ class TestSvgImageGeneratorLoop:
         assert not state.get("terminal", False)
 
 
+class TestAdversarialRedesignLoop:
+    """Structural tests for the adversarial-redesign FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "adversarial-redesign.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, input_key, and states fields."""
+        assert data.get("name") == "adversarial-redesign"
+        assert data.get("initial") == "init"
+        assert data.get("input_key") == "concept"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {"init", "seed", "critic", "regen", "score_gate", "svg_diff", "transcript", "done", "failed"}
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_init_state_is_shell_with_capture(self, data: dict) -> None:
+        """init state must be a shell action that captures the run directory path."""
+        state = data["states"].get("init", {})
+        assert state.get("action_type") == "shell"
+        assert state.get("capture") == "run_dir"
+        assert state.get("next") == "seed"
+
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        """init action must echo an absolute path using $(pwd)."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert "$(pwd)" in action, f"init.action must contain $(pwd), got: {action!r}"
+
+    def test_seed_state_is_shell_with_output_contains(self, data: dict) -> None:
+        """seed state must be a shell action with an output_contains evaluator."""
+        state = data["states"].get("seed", {})
+        assert state.get("action_type") == "shell"
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "SEEDED"
+
+    def test_seed_calls_autofigure_wrapper(self, data: dict) -> None:
+        """seed action must invoke autofigure_wrapper.py."""
+        state = data["states"].get("seed", {})
+        action = state.get("action", "")
+        assert "autofigure_wrapper.py" in action
+
+    def test_critic_state_is_prompt_with_output_contains(self, data: dict) -> None:
+        """critic state must be a prompt action with an output_contains evaluator."""
+        state = data["states"].get("critic", {})
+        assert state.get("action_type") == "prompt"
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "NO_COMPLAINTS"
+
+    def test_critic_routes_to_regen_on_complaints(self, data: dict) -> None:
+        """critic state must route to regen when complaints exist."""
+        state = data["states"].get("critic", {})
+        assert state.get("on_no") == "regen"
+
+    def test_regen_state_is_shell_with_output_contains(self, data: dict) -> None:
+        """regen state must be a shell action with an output_contains evaluator."""
+        state = data["states"].get("regen", {})
+        assert state.get("action_type") == "shell"
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "REGENERATED"
+
+    def test_regen_calls_autofigure_wrapper(self, data: dict) -> None:
+        """regen action must invoke autofigure_wrapper.py."""
+        state = data["states"].get("regen", {})
+        action = state.get("action", "")
+        assert "autofigure_wrapper.py" in action
+
+    def test_regen_passes_critique_file(self, data: dict) -> None:
+        """regen action must pass --critique-file to the wrapper."""
+        state = data["states"].get("regen", {})
+        action = state.get("action", "")
+        assert "--critique-file" in action
+
+    def test_regen_routes_to_score_gate(self, data: dict) -> None:
+        """regen must route to score_gate on success."""
+        state = data["states"].get("regen", {})
+        assert state.get("on_yes") == "score_gate"
+
+    def test_score_gate_is_shell_with_output_contains(self, data: dict) -> None:
+        """score_gate must be a shell action with an output_contains evaluator."""
+        state = data["states"].get("score_gate", {})
+        assert state.get("action_type") == "shell"
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "IMPROVED"
+
+    def test_score_gate_routes_to_svg_diff_on_improvement(self, data: dict) -> None:
+        """score_gate must route to svg_diff when score improves."""
+        state = data["states"].get("score_gate", {})
+        assert state.get("on_yes") == "svg_diff"
+
+    def test_score_gate_routes_to_transcript_on_stall(self, data: dict) -> None:
+        """score_gate must exit to transcript when score stalls."""
+        state = data["states"].get("score_gate", {})
+        assert state.get("on_no") == "transcript"
+
+    def test_svg_diff_is_shell_with_output_contains(self, data: dict) -> None:
+        """svg_diff must be a shell action with an output_contains evaluator."""
+        state = data["states"].get("svg_diff", {})
+        assert state.get("action_type") == "shell"
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "CONVERGED"
+
+    def test_svg_diff_routes_to_critic_on_diverged(self, data: dict) -> None:
+        """svg_diff must route back to critic when SVG is still changing."""
+        state = data["states"].get("svg_diff", {})
+        assert state.get("on_no") == "critic"
+
+    def test_svg_diff_persists_iter_artifacts(self, data: dict) -> None:
+        """svg_diff action must copy iter-N.svg and iter-N-critique.json per iteration."""
+        state = data["states"].get("svg_diff", {})
+        action = state.get("action", "")
+        assert "iter-$ITER.svg" in action
+        assert "iter-$ITER-critique.json" in action
+
+    def test_shell_states_reference_run_dir(self, data: dict) -> None:
+        """Shell states must reference captured.run_dir.output for isolation."""
+        for name in ("seed", "regen", "score_gate", "svg_diff"):
+            state = data["states"].get(name, {})
+            action = state.get("action", "")
+            assert "run_dir" in action, f"State '{name}' action must reference run_dir"
+
+    def test_done_and_failed_are_terminal(self, data: dict) -> None:
+        """done and failed states must be terminal."""
+        assert data["states"].get("done", {}).get("terminal") is True
+        assert data["states"].get("failed", {}).get("terminal") is True
+
+    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_iterations and timeout."""
+        assert data.get("max_iterations", 0) > 0
+        assert data.get("timeout", 0) > 0
+
+    def test_context_has_concept(self, data: dict) -> None:
+        """context block must declare concept; populated from loop_input."""
+        ctx = data.get("context", {})
+        assert "concept" in ctx
+
+
 class TestSvgTextgradLoop:
     """Structural tests for the svg-textgrad FSM loop."""
 
@@ -3008,10 +3161,11 @@ class TestSvgTextgradLoop:
             "init",
             "plan",
             "generate",
-            "evaluate",
+            "screenshot",
+            "check_capture_fails",
             "score",
             "verify_score",
-            "record_scores",
+            "track_best",
             "compute_gradient",
             "route_convergence",
             "append_gradient",
@@ -3084,27 +3238,27 @@ class TestSvgTextgradLoop:
         assert data.get("max_iterations", 0) > 0
         assert data.get("timeout", 0) > 0
 
-    def test_evaluate_state_is_shell(self, data: dict) -> None:
-        """evaluate state must use action_type: shell for the Playwright CLI call."""
-        state = data["states"].get("evaluate", {})
+    def test_screenshot_state_is_shell(self, data: dict) -> None:
+        """screenshot state must use action_type: shell for the Playwright CLI call."""
+        state = data["states"].get("screenshot", {})
         assert state.get("action_type") == "shell"
 
-    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
-        """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
-        state = data["states"].get("evaluate", {})
+    def test_screenshot_state_has_output_contains_evaluator(self, data: dict) -> None:
+        """screenshot state must have an output_contains evaluator with pattern CAPTURED."""
+        state = data["states"].get("screenshot", {})
         evaluator = state.get("evaluate", {})
         assert evaluator.get("type") == "output_contains"
         assert evaluator.get("pattern") == "CAPTURED"
 
-    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
-        """evaluate state must route to score when screenshot succeeds."""
-        state = data["states"].get("evaluate", {})
+    def test_screenshot_routes_to_score_on_yes(self, data: dict) -> None:
+        """screenshot state must route to score when screenshot succeeds."""
+        state = data["states"].get("screenshot", {})
         assert state.get("on_yes") == "score"
 
-    def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
-        """evaluate state must route back to generate when screenshot fails."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("on_no") == "generate"
+    def test_screenshot_routes_to_check_capture_fails_on_no(self, data: dict) -> None:
+        """screenshot state must route to check_capture_fails when Playwright fails to capture."""
+        state = data["states"].get("screenshot", {})
+        assert state.get("on_no") == "check_capture_fails"
 
     def test_init_action_uses_absolute_path(self, data: dict) -> None:
         """init action must echo an absolute path so file:// URIs are valid."""
@@ -3114,11 +3268,11 @@ class TestSvgTextgradLoop:
             f"init.action must use $(pwd) for an absolute path, got: {action!r}"
         )
 
-    def test_evaluate_action_has_stderr_redirect(self, data: dict) -> None:
-        """evaluate action must redirect stderr to stdout so playwright errors surface."""
-        state = data["states"].get("evaluate", {})
+    def test_screenshot_action_has_stderr_redirect(self, data: dict) -> None:
+        """screenshot action must redirect stderr to stdout so playwright errors surface."""
+        state = data["states"].get("screenshot", {})
         action = state.get("action", "")
-        assert "2>&1" in action, f"evaluate.action must contain 2>&1, got: {action!r}"
+        assert "2>&1" in action, f"screenshot.action must contain 2>&1, got: {action!r}"
 
     def test_failed_state_is_terminal(self, data: dict) -> None:
         """failed state must have terminal: true."""
@@ -3135,24 +3289,24 @@ class TestSvgTextgradLoop:
         state = data["states"].get("diagnose", {})
         assert not state.get("terminal", False)
 
-    def test_evaluate_on_error_routes_to_generate(self, data: dict) -> None:
-        """evaluate state must route to generate on error so Playwright failures don't stall."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("on_error") == "generate"
+    def test_screenshot_on_error_routes_to_check_capture_fails(self, data: dict) -> None:
+        """screenshot state must route to check_capture_fails on error so Playwright failures don't stall."""
+        state = data["states"].get("screenshot", {})
+        assert state.get("on_error") == "check_capture_fails"
 
     def test_score_on_error_routes_to_failed(self, data: dict) -> None:
         """score state must route to diagnose on error to surface LLM failures explicitly."""
         state = data["states"].get("score", {})
         assert state.get("on_error") == "diagnose"
 
-    def test_record_scores_is_shell(self, data: dict) -> None:
-        """record_scores state must be a shell action."""
-        state = data["states"].get("record_scores", {})
+    def test_track_best_is_shell(self, data: dict) -> None:
+        """track_best state must be a shell action."""
+        state = data["states"].get("track_best", {})
         assert state.get("action_type") == "shell"
 
-    def test_record_scores_routes_to_compute_gradient(self, data: dict) -> None:
-        """record_scores state must route to compute_gradient."""
-        state = data["states"].get("record_scores", {})
+    def test_track_best_routes_to_compute_gradient(self, data: dict) -> None:
+        """track_best state must route to compute_gradient."""
+        state = data["states"].get("track_best", {})
         assert state.get("next") == "compute_gradient"
 
     def test_route_convergence_has_output_contains_evaluator(self, data: dict) -> None:
@@ -3220,18 +3374,18 @@ class TestSvgTextgradLoop:
         state = data["states"].get("verify_score", {})
         assert state.get("on_yes") == "done"
 
-    def test_verify_score_routes_to_record_scores_on_no(self, data: dict) -> None:
-        """verify_score must route to record_scores on SHELL_ITERATE."""
+    def test_verify_score_routes_to_track_best_on_no(self, data: dict) -> None:
+        """verify_score must route to track_best on SHELL_ITERATE."""
         state = data["states"].get("verify_score", {})
-        assert state.get("on_no") == "record_scores"
+        assert state.get("on_no") == "track_best"
 
-    def test_verify_score_routes_to_record_scores_on_error(self, data: dict) -> None:
-        """verify_score must route to record_scores on error so failures continue the loop."""
+    def test_verify_score_routes_to_track_best_on_error(self, data: dict) -> None:
+        """verify_score must route to track_best on error so failures continue the loop."""
         state = data["states"].get("verify_score", {})
-        assert state.get("on_error") == "record_scores"
+        assert state.get("on_error") == "track_best"
 
     def test_verify_score_appends_scores_md(self, data: dict) -> None:
-        """verify_score action must append to scores.md (moved from record_scores)."""
+        """verify_score action must append to scores.md (track_best no longer appends)."""
         state = data["states"].get("verify_score", {})
         action = state.get("action", "")
         assert "scores.md" in action, "verify_score.action must append to scores.md"
