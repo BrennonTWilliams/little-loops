@@ -796,6 +796,104 @@ class TestRunBackground:
         captured = capsys.readouterr()
         assert "Scope conflict" in captured.err
 
+    def test_forwards_baseline(self, tmp_path: Path) -> None:
+        """Forwards --baseline to child process when True."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            baseline=True,
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--baseline" in cmd
+
+    def test_baseline_not_forwarded_when_false(self, tmp_path: Path) -> None:
+        """Does not forward --baseline when False."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            baseline=False,
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--baseline" not in cmd
+
+    def test_forwards_baseline_skill(self, tmp_path: Path) -> None:
+        """Forwards --baseline-skill VALUE to child process."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            baseline_skill="my-optimize-skill",
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--baseline-skill" in cmd
+        assert "my-optimize-skill" in cmd
+
+    def test_forwards_items(self, tmp_path: Path) -> None:
+        """Forwards --items N to child process."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            items=5,
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--items" in cmd
+        assert "5" in cmd
+
 
 class TestCmdStopWithPid:
     """Tests for cmd_stop with PID-based process termination."""

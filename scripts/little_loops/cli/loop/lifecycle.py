@@ -440,6 +440,12 @@ def cmd_resume(
         logger.error(f"Validation error: {e}")
         return 1
 
+    if getattr(args, "baseline", False):
+        logger.error(
+            "--baseline is not supported with resume. Start a fresh run with 'll-loop run'."
+        )
+        return 1
+
     try:
         loop_path = resolve_loop_path(loop_name, loops_dir)
     except FileNotFoundError:

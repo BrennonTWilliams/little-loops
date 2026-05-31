@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from little_loops.fsm.types import ActionResult
-from little_loops.subprocess_utils import run_claude_command
+from little_loops.subprocess_utils import UsageCallback, run_claude_command
 
 
 def _now_ms() -> int:
@@ -36,6 +36,7 @@ class ActionRunner(Protocol):
         on_output_line: Callable[[str], None] | None = None,
         agent: str | None = None,
         tools: list[str] | None = None,
+        on_usage: UsageCallback | None = None,
     ) -> ActionResult:
         """Execute an action and return the result.
 
@@ -46,6 +47,7 @@ class ActionRunner(Protocol):
             on_output_line: Optional callback invoked for each output line
             agent: Optional agent name to pass as --agent to Claude CLI (prompt-mode only)
             tools: Optional list of tool names to pass as --tools CSV to Claude CLI (prompt-mode only)
+            on_usage: Optional callback invoked with (input_tokens, output_tokens) on completion
 
         Returns:
             ActionResult with output, stderr, exit_code, duration_ms
@@ -67,6 +69,7 @@ class DefaultActionRunner:
         on_output_line: Callable[[str], None] | None = None,
         agent: str | None = None,
         tools: list[str] | None = None,
+        on_usage: UsageCallback | None = None,
     ) -> ActionResult:
         """Execute action and return result, streaming output line by line.
 
@@ -77,6 +80,7 @@ class DefaultActionRunner:
             on_output_line: Optional callback invoked for each stdout line
             agent: Optional agent name to pass as --agent to Claude CLI (prompt-mode only)
             tools: Optional list of tool names to pass as --tools CSV (prompt-mode only)
+            on_usage: Optional callback invoked with (input_tokens, output_tokens) on completion
 
         Returns:
             ActionResult with execution details
@@ -107,6 +111,7 @@ class DefaultActionRunner:
                     on_process_end=_on_proc_end,
                     agent=agent,
                     tools=tools,
+                    on_usage=on_usage,
                 )
             except subprocess.TimeoutExpired:
                 return ActionResult(
@@ -196,6 +201,7 @@ class SimulationActionRunner:
         on_output_line: Callable[[str], None] | None = None,
         agent: str | None = None,
         tools: list[str] | None = None,
+        on_usage: UsageCallback | None = None,
     ) -> ActionResult:
         """Prompt user for simulated result instead of executing.
 
@@ -206,11 +212,12 @@ class SimulationActionRunner:
             on_output_line: Ignored in simulation
             agent: Ignored in simulation
             tools: Ignored in simulation
+            on_usage: Ignored in simulation
 
         Returns:
             ActionResult with simulated exit code
         """
-        del timeout, on_output_line, agent, tools  # unused in simulation
+        del timeout, on_output_line, agent, tools, on_usage  # unused in simulation
         self.calls.append(action)
         self.call_count += 1
 

@@ -709,6 +709,20 @@ class StateFeedRenderer:
                     parts.append(colorize(f"exit: {exit_code}", "38;5;208"))
                 print("  ".join(parts), flush=True)
 
+        elif event_type == "baseline_complete":
+            if not self.quiet:
+                h_ms = event.get("harness_duration_ms", 0)
+                b_ms = event.get("baseline_duration_ms", 0)
+                h_tok = event.get("harness_tokens", 0)
+                b_tok = event.get("baseline_tokens", 0)
+                print(
+                    f"{indent}       baseline: {colorize(f'{b_ms/1000:.1f}s', '2')}, "
+                    f"{colorize(str(b_tok), '2')} tokens  |  "
+                    f"harness: {colorize(f'{h_ms/1000:.1f}s', '2')}, "
+                    f"{colorize(str(h_tok), '2')} tokens",
+                    flush=True,
+                )
+
         elif event_type == "evaluate":
             if not self.quiet:
                 verdict = event.get("verdict", "")
@@ -1053,6 +1067,14 @@ def run_background(
     context_limit = getattr(args, "context_limit", None)
     if context_limit is not None:
         cmd.extend(["--context-limit", str(context_limit)])
+    if getattr(args, "baseline", False):
+        cmd.append("--baseline")
+    baseline_skill = getattr(args, "baseline_skill", None)
+    if baseline_skill is not None:
+        cmd.extend(["--baseline-skill", baseline_skill])
+    items = getattr(args, "items", None)
+    if items is not None:
+        cmd.extend(["--items", str(items)])
 
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "w") as log_fh:

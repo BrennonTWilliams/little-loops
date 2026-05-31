@@ -230,6 +230,19 @@ Examples:
     )
     add_handoff_threshold_arg(run_parser)
     add_context_limit_arg(run_parser)
+    run_parser.add_argument(
+        "--baseline", action="store_true", help="Run with ungated baseline arm for comparison"
+    )
+    run_parser.add_argument(
+        "--baseline-skill",
+        type=str,
+        default=None,
+        metavar="SKILL",
+        help="Override the auto-extracted baseline skill",
+    )
+    run_parser.add_argument(
+        "--items", type=int, default=None, metavar="N", help="Limit sample size for baseline comparison"
+    )
 
     # Validate subcommand
     validate_parser = subparsers.add_parser(

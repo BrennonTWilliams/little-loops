@@ -42,6 +42,9 @@ class TestLoopArgumentParsing:
         parser.add_argument("--llm-model", type=str)
         parser.add_argument("--context", action="append", default=[], metavar="KEY=VALUE")
         parser.add_argument("--program-md", type=Path, default=None)
+        parser.add_argument("--baseline", action="store_true")
+        parser.add_argument("--baseline-skill", type=str, default=None, metavar="SKILL")
+        parser.add_argument("--items", type=int, default=None, metavar="N")
         add_handoff_threshold_arg(parser)
         return parser
 
@@ -353,6 +356,42 @@ class TestLoopArgumentParsing:
         mock_resume.assert_called_once()
         resume_args = mock_resume.call_args[0][1]
         assert getattr(resume_args, "handoff_threshold", None) == 30
+
+    def test_baseline_flag_parsed(self) -> None:
+        """--baseline sets baseline=True."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop", "--baseline"])
+        assert args.baseline is True
+
+    def test_baseline_default_false(self) -> None:
+        """--baseline defaults to False when not specified."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop"])
+        assert args.baseline is False
+
+    def test_baseline_skill_flag(self) -> None:
+        """--baseline-skill accepts a string value."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop", "--baseline", "--baseline-skill", "my-skill"])
+        assert args.baseline_skill == "my-skill"
+
+    def test_baseline_skill_default_none(self) -> None:
+        """--baseline-skill defaults to None when not specified."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop"])
+        assert args.baseline_skill is None
+
+    def test_items_flag(self) -> None:
+        """--items accepts an integer."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop", "--baseline", "--items", "5"])
+        assert args.items == 5
+
+    def test_items_default_none(self) -> None:
+        """--items defaults to None when not specified."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop"])
+        assert args.items is None
 
 
 class TestResolveLoopPath:

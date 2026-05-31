@@ -10,6 +10,12 @@ labels:
 - loops
 - harness
 - ab-testing
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # FEAT-1821: A/B Baseline CLI Flag Wiring and Parallel Execution
@@ -25,6 +31,23 @@ Decomposed from FEAT-1790: A/B Baseline Mode for `ll-loop run`
 ## Motivation
 
 FEAT-1790 adds an A/B baseline-comparison mode to `ll-loop run`. This child establishes the CLI surface and the parallel execution infrastructure — the foundation that the blind evaluation and reporting child (FEAT-1822) builds on.
+
+## Current Behavior
+
+`ll-loop run` has no A/B baseline comparison capability. The CLI does not accept `--baseline`, `--baseline-skill`, or `--items` flags. Execution is single-arm: the FSM executor runs the gated harness path (action → eval chain → retries) with no parallel baseline arm for comparison. Per-arm timing and token counts are not tracked because there is only one execution path.
+
+## Expected Behavior
+
+`ll-loop run <loop> --baseline` spawns two parallel execution arms:
+
+- **Harness arm**: Normal gated execution with eval-chain routing and retries
+- **Baseline arm**: Single-shot skill invocation with no eval gates or retries
+
+Both arms execute concurrently via `ThreadPoolExecutor`. The harness arm drives FSM routing (determines the next state); the baseline arm runs for data collection only. Per-arm `duration_ms` and `total_tokens` are captured and emitted via `baseline_complete` events. `--baseline-skill` overrides the auto-extracted baseline skill, and `--items N` limits the sample size. Flags are forwarded through `run_background()` to child processes. `PersistentExecutor` and `StateFeedRenderer` handle `baseline_complete` events for persistence and live progress display.
+
+## Use Case
+
+A developer modifies a loop's evaluate prompt or adjusts eval thresholds and wants to measure whether the gating logic meaningfully changes output quality compared to a bare skill invocation. They run `ll-loop run optimize-loop --baseline` and the system executes both arms in parallel — the gated harness arm (with eval checks and retries) alongside an ungated baseline arm (raw skill, no eval). Per-arm timing and token data lets the developer quantify the overhead of the eval chain versus the raw skill cost. This data feeds into FEAT-1822 for blind evaluation and reporting.
 
 ## Implementation Steps
 
@@ -188,6 +211,8 @@ _Wiring pass added by `/ll:wire-issue`: adding `on_usage` to `ActionRunner.run()
 - Documentation updates (FEAT-1822)
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-31T04:04:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2c0b1b1-7043-4750-bbb0-196b75de50e7.jsonl`
 - `/ll:wire-issue` - 2026-05-31T03:59:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0a36fc6-c399-49cb-b38e-dd741555ad08.jsonl`
 - `/ll:refine-issue` - 2026-05-31T03:52:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fde387ed-4d7c-4ef0-8836-2a5a3430dc78.jsonl`
 - `/ll:issue-size-review` - 2026-05-30T23:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:confidence-check` - 2026-05-31T04:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56585d9e-8e09-4953-a428-4cf755864d91.jsonl`

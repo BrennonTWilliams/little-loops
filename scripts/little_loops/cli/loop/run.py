@@ -231,6 +231,17 @@ def cmd_run(
             )
         return 1
 
+    # Baseline mode: apply to context before background gate so flags forward correctly
+    baseline_enabled = getattr(args, "baseline", False)
+    if baseline_enabled:
+        if getattr(args, "worktree", False):
+            raise SystemExit("--baseline and --worktree cannot be combined")
+        fsm.context["_baseline"] = {
+            "enabled": True,
+            "skill": getattr(args, "baseline_skill", None),
+            "items": getattr(args, "items", None),
+        }
+
     # Background mode: spawn detached process and return
     if getattr(args, "background", False):
         if getattr(args, "worktree", False):

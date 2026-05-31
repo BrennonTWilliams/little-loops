@@ -616,8 +616,9 @@ class MockActionRunner:
         on_output_line: Any = None,
         agent: str | None = None,
         tools: list[str] | None = None,
+        on_usage: Any = None,
     ) -> ActionResult:
-        del on_output_line, agent, tools
+        del on_output_line, agent, tools, on_usage
         self.calls.append(action)
         if self._index < len(self.results):
             result = self.results[self._index]
@@ -1923,8 +1924,9 @@ class TestSignalHandlingPersistence:
                 on_output_line: Any = None,
                 agent: str | None = None,
                 tools: list[str] | None = None,
+                on_usage: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools
+                del timeout, is_slash_command, on_output_line, agent, tools, on_usage
                 self.calls.append(action)
                 call_count[0] += 1
 
@@ -1982,8 +1984,9 @@ class TestSignalHandlingPersistence:
                 on_output_line: Any = None,
                 agent: str | None = None,
                 tools: list[str] | None = None,
+                on_usage: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools
+                del timeout, is_slash_command, on_output_line, agent, tools, on_usage
                 self.calls.append(action)
                 call_count[0] += 1
 
@@ -2066,8 +2069,9 @@ class TestSignalHandlingPersistence:
                 on_output_line: Any = None,
                 agent: str | None = None,
                 tools: list[str] | None = None,
+                on_usage: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools
+                del timeout, is_slash_command, on_output_line, agent, tools, on_usage
                 self.calls.append(action)
                 call_count[0] += 1
 

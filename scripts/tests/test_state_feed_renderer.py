@@ -318,6 +318,31 @@ class TestStateFeedRendererHandleEvent:
         captured = capsys.readouterr()
         assert "  model:" not in captured.out
 
+    def test_baseline_complete_shows_per_arm_timing(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """baseline_complete event displays per-arm timing and token counts."""
+        fsm = _make_test_fsm()
+        args = _make_args()
+        renderer = StateFeedRenderer(fsm, args)
+        renderer.handle_event(
+            {
+                "event": "baseline_complete",
+                "harness_duration_ms": 3200,
+                "baseline_duration_ms": 1100,
+                "harness_tokens": 15000,
+                "baseline_tokens": 5000,
+                "depth": 0,
+            }
+        )
+        captured = capsys.readouterr()
+        assert "baseline:" in captured.out
+        assert "harness:" in captured.out
+        assert "3.2s" in captured.out
+        assert "1.1s" in captured.out
+        assert "15000" in captured.out
+        assert "5000" in captured.out
+
 
 class TestArtifactLines:
     """Tests for _artifact_lines helper."""

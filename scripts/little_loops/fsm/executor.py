@@ -48,6 +48,7 @@ from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
 from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.session_log import get_current_session_jsonl
+from little_loops.subprocess_utils import run_claude_command
 
 # Maximum number of per-state rate-limit retries before emitting rate_limit_exhausted.
 _DEFAULT_RATE_LIMIT_RETRIES: int = 3
@@ -841,7 +842,14 @@ class FSMExecutor:
         action_result = None
         if state.action:
             self._maybe_wait_for_circuit(state)
-            action_result, routed = self._run_action_or_route(state, ctx)
+            baseline_cfg = ctx.context.get("_baseline")
+            if baseline_cfg and isinstance(baseline_cfg, dict) and baseline_cfg.get("enabled"):
+                # Baseline mode: spawn parallel arms, harness drives routing
+                action_result, routed = self._execute_with_baseline(state, ctx, baseline_cfg)
+                if routed is not None:
+                    return routed
+            else:
+                action_result, routed = self._run_action_or_route(state, ctx)
             if routed is not None:
                 return routed
             throttle_next = self._check_throttle(state, self.current_state)
@@ -972,6 +980,7 @@ class FSMExecutor:
         action_template: str,
         state: StateConfig,
         ctx: InterpolationContext,
+        on_usage: "UsageCallback | None" = None,
     ) -> ActionResult:
         """Execute action and optionally capture result.
 
@@ -979,6 +988,7 @@ class FSMExecutor:
             action_template: Action string (may contain variables)
             state: State configuration
             ctx: Interpolation context
+            on_usage: Optional callback invoked with (input_tokens, output_tokens) on completion
 
         Returns:
             ActionResult with output and exit code
@@ -1010,6 +1020,7 @@ class FSMExecutor:
                 timeout=state.timeout or self.fsm.default_timeout or 3600,
                 is_slash_command=False,
                 on_output_line=_on_line,
+                on_usage=on_usage,
             )
         else:
             result = self.action_runner.run(
@@ -1019,6 +1030,7 @@ class FSMExecutor:
                 on_output_line=_on_line,
                 agent=state.agent if action_mode == "prompt" else None,
                 tools=state.tools if action_mode == "prompt" else None,
+                on_usage=on_usage,
             )
 
         preview = result.output[-2000:].strip() if result.output else None
@@ -1318,6 +1330,100 @@ class FSMExecutor:
         if state.action is not None and state.action.startswith("/"):
             return "prompt"
         return "shell"
+
+    def _execute_with_baseline(
+        self,
+        state: StateConfig,
+        ctx: InterpolationContext,
+        baseline_cfg: dict[str, Any],
+    ) -> tuple[ActionResult | None, str | None]:
+        """Execute harness arm + baseline arm in parallel.
+
+        The harness arm drives FSM routing; the baseline arm runs a single-shot
+        skill invocation with no eval gates for data collection only.
+
+        Returns (action_result, routed_target) where action_result is from the
+        harness arm and routed_target is None (routing happens in _execute_state).
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        harness_tokens: list[tuple[int, int]] = []
+        baseline_tokens: list[tuple[int, int]] = []
+
+        def _on_harness_usage(input_tokens: int, output_tokens: int) -> None:
+            harness_tokens.append((input_tokens, output_tokens))
+
+        def _on_baseline_usage(input_tokens: int, output_tokens: int) -> None:
+            baseline_tokens.append((input_tokens, output_tokens))
+
+        # Determine baseline skill: use --baseline-skill override or extract from action
+        baseline_skill_name = baseline_cfg.get("skill")
+        if baseline_skill_name is None:
+            action_text = interpolate(state.action, ctx)  # type: ignore[arg-type]
+            baseline_skill_name = _extract_skill_from_action(action_text)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            harness_future = pool.submit(
+                self._run_action, state.action, state, ctx, _on_harness_usage
+            )
+            baseline_future = pool.submit(
+                self._run_baseline_arm, baseline_skill_name, state, _on_baseline_usage
+            )
+            harness_result: ActionResult = harness_future.result()
+            baseline_result: ActionResult = baseline_future.result()
+
+        harness_total_tokens = sum(t[0] + t[1] for t in harness_tokens)
+        baseline_total_tokens = sum(t[0] + t[1] for t in baseline_tokens)
+
+        self._emit(
+            "baseline_complete",
+            {
+                "harness_duration_ms": harness_result.duration_ms,
+                "baseline_duration_ms": baseline_result.duration_ms,
+                "harness_tokens": harness_total_tokens,
+                "baseline_tokens": baseline_total_tokens,
+            },
+        )
+
+        return harness_result, None
+
+    def _run_baseline_arm(
+        self,
+        skill_command: str,
+        state: StateConfig,
+        on_usage: "UsageCallback | None" = None,
+    ) -> ActionResult:
+        """Run a single-shot baseline skill invocation with no eval gates.
+
+        Args:
+            skill_command: Slash command for the baseline skill (e.g., "/ll:some-skill")
+            state: State configuration (for timeout)
+            on_usage: Optional callback for token capture
+
+        Returns:
+            ActionResult with output, exit code, and duration
+        """
+        start = _now_ms()
+        timeout = state.timeout or self.fsm.default_timeout or 3600
+        try:
+            completed = run_claude_command(
+                command=skill_command,
+                timeout=timeout,
+                on_usage=on_usage,
+            )
+            return ActionResult(
+                output=completed.stdout,
+                stderr=completed.stderr,
+                exit_code=completed.returncode,
+                duration_ms=_now_ms() - start,
+            )
+        except subprocess.TimeoutExpired:
+            return ActionResult(
+                output="",
+                stderr="Baseline action timed out",
+                exit_code=124,
+                duration_ms=timeout * 1000,
+            )
 
     def _run_action_or_route(
         self, state: StateConfig, ctx: InterpolationContext
@@ -1639,3 +1745,16 @@ class FSMExecutor:
             handoff=True,
             continuation_prompt=signal.payload,
         )
+
+
+def _extract_skill_from_action(action: str) -> str:
+    """Extract the base skill name from an action string.
+
+    For slash commands like "/ll:some-skill --arg value", returns "/ll:some-skill".
+    For other actions, returns the action as-is.
+    """
+    stripped = action.strip()
+    if stripped.startswith("/"):
+        parts = stripped.split(maxsplit=1)
+        return parts[0]
+    return stripped
