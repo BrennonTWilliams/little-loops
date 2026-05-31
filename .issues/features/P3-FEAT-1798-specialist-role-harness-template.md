@@ -213,7 +213,14 @@ Three implementation options identified based on HITL gate handling:
 **Open** | Created: 2026-05-29 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T21:44:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:34:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/922ffae8-14ce-45e5-a71a-02187250e8c9.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:refine-issue` - 2026-05-30T04:07:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e590197b-2b0f-4699-acf6-c57e4d6cdbaf.jsonl`
 - `/ll:capture-issue` - 2026-05-29T20:37:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2a0c61b-6b34-41d4-98fb-c566ba046de6.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Variant C (the static Plan→Research→Implement→Report FSM template) and FEAT-1808's `loop-composer` serve distinct use cases and should not be conflated. Variant C is the right choice when the workflow phases are known in advance — "I want to ship this task with a planning phase, ship it now." FEAT-1808 is for when the workflow itself must be discovered at runtime from a natural-language goal. Once FEAT-1808 ships, Variant C's generated YAML should include a commented-out upgrade note pointing users toward `loop-composer` as the recommended upgrade path for goals too open-ended for a fixed template.

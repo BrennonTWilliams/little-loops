@@ -9,7 +9,7 @@ discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1713
 relates_to: [FEAT-992, FEAT-1478]
-depends_on: [FEAT-1476]
+depends_on: [FEAT-1476, FEAT-1714]
 blocked_by: [FEAT-1719]
 labels: [feat, captured, pi-adapter, hooks, host-compat, upstream-coordination]
 ---
@@ -173,7 +173,16 @@ For each ll intent, classify Pi coverage as:
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T21:44:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:34:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/922ffae8-14ce-45e5-a71a-02187250e8c9.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-26T02:06:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3eaac8be-eba9-48b8-a2d9-322df5114921.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-1714 both produce updates to `docs/reference/HOST_COMPATIBILITY.md`'s Pi column. Row ownership: FEAT-1714 owns CLI-flag capability rows; this issue (FEAT-1715) owns hook-event parity rows. Coordinate PRs to avoid merge conflicts on that file. Added `depends_on: FEAT-1714` to frontmatter to capture soft ordering (run FEAT-1714's audit first so the Pi capability baseline is established before adding hook-event rows).
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `blocked_by: [FEAT-1719]` frontmatter already captures the hard dependency on FEAT-1719. The specific reason: FEAT-1719 creates the canonical `scripts/little_loops/hooks/post_compact.py` handler module and registers it in `_dispatch_table()`. Any child issue spawned from this issue to wire `post_compact` for Pi must NOT re-create that handler — it should only add the Pi adapter shim (`hooks/adapters/pi/index.ts` registration). FEAT-1719 must land first so the shared handler file exists before the Pi shim references it.
