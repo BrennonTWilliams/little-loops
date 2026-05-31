@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Multi-profile design-tokens system** — Active profile selector with profile-scoped token sets. (ENH-1768)
 - **W3C DTCG `$value` token format** — Design-tokens resolver now supports the W3C DTCG `$value` field alongside the legacy `value` field. (ENH-1769)
 - **`ll-loop diagnose-evaluators` subcommand** — Detects non-discriminating evaluator states from run history by computing per-state Bernoulli variance; flags states below threshold with pattern-matched recommendations. (ENH-1792)
+- **`audit-issue-conflicts --cross-theme` flag** — Phase 2b fingerprint sweep catches conflicts between issues in different thematic groups; uses `ll-issues fingerprint` to identify file-overlap pairs across batch boundaries without an LLM call, then dispatches targeted single-pair agents only for matched pairs. (ENH-1801)
+- **`ll-issues fingerprint` / `ll-issues fp` subcommand** — Extracts a structured fingerprint (id, `files_to_modify`, `key_terms`) from an issue file as JSON; no LLM call. Used by `audit-issue-conflicts --cross-theme` Phase 2b. (ENH-1801)
 
 ### Fixed
 

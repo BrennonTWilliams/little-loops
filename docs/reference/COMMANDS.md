@@ -260,7 +260,7 @@ Evaluate active issues for utility vs complexity trade-offs and recommend which 
 ### `/ll:audit-issue-conflicts`
 Scan all open issues for conflicting requirements, objectives, or architectural decisions — outputs a ranked conflict report (high/medium/low severity) with recommended resolutions. Conflict types: requirement contradictions, conflicting objectives, architectural disagreements, scope overlaps.
 
-**Flags:** `--auto` (apply all recommendations without prompting), `--dry-run` (report only, no changes written)
+**Flags:** `--auto` (apply all recommendations without prompting), `--dry-run` (report only, no changes written), `--cross-theme` (add Phase 2b cross-batch fingerprint sweep to catch conflicts between issues in different thematic groups — uses `ll-issues fingerprint` to find file-overlap pairs across batch boundaries without an LLM call, then dispatches targeted single-pair agents only for overlapping pairs)
 
 **Trigger keywords:** "audit conflicts", "conflicting issues", "requirement conflicts", "check for contradictions"
 
