@@ -58,6 +58,15 @@ When this epic is done:
 - **ENH-976** — `detect_manual_patterns` recompiles regex patterns on each call
 - **ENH-839** — Split layout.py diagram rendering into focused modules
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-31_
+
+**Verdict: NEEDS_UPDATE** — Child issues with missing `status:` frontmatter:
+- ENH-972, ENH-974, ENH-975, ENH-976, ENH-839: all verified as open (bugs confirmed present in code) ✓
+- However, these issues may be missing `status:` in their frontmatter — run `/ll:normalize-issues` to fix
+- Core claims are accurate (O(n) pop, duplicated regex, double scan all confirmed by code inspection) ✓
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

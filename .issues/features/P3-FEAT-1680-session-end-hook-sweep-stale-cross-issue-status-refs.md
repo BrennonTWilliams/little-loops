@@ -152,6 +152,7 @@ Optional config knob in `ll-config.json`:
 **Open** | Created: 2026-05-24 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T05:40:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-24T17:28:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20c144e8-2658-4919-b9a3-e1bfd4e0786b.jsonl`
 

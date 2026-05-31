@@ -56,4 +56,5 @@ Currently, capturing or modifying issues requires a separate `/ll:commit` step. 
 - `hooks/hooks.json` PostToolUse hook system
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:capture-issue` - 2026-05-26T02:15:56Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

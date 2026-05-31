@@ -218,5 +218,6 @@ No changes to existing evaluator interfaces or public CLI surface.
 **Open** | Created: 2026-05-29 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:format-issue` - 2026-05-29T21:13:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04006cb6-ee11-466d-86cf-3f1e99cff482.jsonl`
 - `/ll:capture-issue` - 2026-05-29T20:37:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2a0c61b-6b34-41d4-98fb-c566ba046de6.jsonl`

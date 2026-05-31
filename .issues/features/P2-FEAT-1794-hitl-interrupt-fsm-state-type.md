@@ -151,9 +151,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Option A: Hardcoded dispatch (mcp_tool pattern)**
 Add `human_approval` as a built-in action type in the executor core, following the exact pattern `action_type: mcp_tool` used:
-- `_action_mode()` at `executor.py:1280` — add `if state.action_type == "human_approval": return "human_approval"` (before the heuristic fallthrough)
-- `_execute_state()` at `executor.py:772` — add dispatch branch before line 831 (similar to learning-state dispatch at line 797): `if state.action_type == "human_approval": return self._execute_human_approval_state(state, ctx)`
-- New method `_execute_human_approval_state()`: emit event via `self._emit()`, block with `_interruptible_sleep()`-style polling (existing pattern at `executor.py:1463`), route by verdict
+- `_action_mode()` at `executor.py:1330` — add `if state.action_type == "human_approval": return "human_approval"` (before the heuristic fallthrough)
+- `_execute_state()` at `executor.py:780` — add dispatch branch before line 831 (similar to learning-state dispatch at line 797): `if state.action_type == "human_approval": return self._execute_human_approval_state(state, ctx)`
+- New method `_execute_human_approval_state()`: emit event via `self._emit()`, block with `_interruptible_sleep()`-style polling (existing pattern at `executor.py:1647`), route by verdict
 - Pros: simpler, single-file executor change, follows existing pattern
 - Cons: couples HITL logic to executor core
 
@@ -173,8 +173,8 @@ Implement as a contributed action via the extension protocol:
 - **`ll-auto` and `ll-sprint` do NOT directly load FSM loop YAMLs** — they invoke Claude CLI slash commands. The "referenced by unattended automation" validation check would need a cross-reference mechanism that doesn't currently exist in `validate_fsm()`. Simplest v1 approach: warn whenever a `human_approval` state has no `timeout`, regardless of context.
 
 **Reusable infrastructure identified:**
-- `_interruptible_sleep()` at `executor.py:1463` — polling sleep with shutdown-signal respect, directly reusable for the HITL wait loop
-- `_emit()` at `executor.py:1339` — event emission, emit `human_approval_request` on state entry
+- `_interruptible_sleep()` at `executor.py:1647` — polling sleep with shutdown-signal respect, directly reusable for the HITL wait loop
+- `_emit()` at `executor.py:1523` — event emission, emit `human_approval_request` on state entry
 - `EventBus.register()` at `events.py:81` — subscribe to `human_response` events with glob filter
 - `UnixSocketTransport._accept_loop()` at `transport.py:177` — socket-based polling with timeout, pattern for out-of-band response channel
 - `SignalDetector` in `signal_detector.py` — detects in-band signals from action output; a `human_response` signal type could reuse this path
@@ -228,8 +228,8 @@ accept the default.
 
 ### Files to Modify
 - `scripts/little_loops/fsm/schema.py:309` — `StateConfig` dataclass: add `on_edit: str | None`, `on_timeout: str | None` fields; add `"on_edit"` and `"on_timeout"` to `_known_on_keys` set (line ~485); update `to_dict()`/`from_dict()`/`get_referenced_states()` (lines 395-575)
-- `scripts/little_loops/fsm/executor.py:772` — `_execute_state()`: add dispatch branch for `action_type == "human_approval"` (before the generic action path at line 831, following the learning-state dispatch pattern at line 797)
-- `scripts/little_loops/fsm/executor.py:1280` — `_action_mode()`: add `"human_approval"` to mode classification
+- `scripts/little_loops/fsm/executor.py:780` — `_execute_state()`: add dispatch branch for `action_type == "human_approval"` (before the generic action path at line 831, following the learning-state dispatch pattern at line 797)
+- `scripts/little_loops/fsm/executor.py:1330` — `_action_mode()`: add `"human_approval"` to mode classification
 - `scripts/little_loops/fsm/executor.py:943` — `_run_action()`: add branch for the new mode (emit `LLEvent`, block on external response, route by verdict)
 - `scripts/little_loops/fsm/validation.py:374` — `_validate_state_action()`: add human_approval validations (warn if no `timeout`, require `on_yes`/`on_no`)
 - `scripts/little_loops/fsm/validation.py:78` — Add `"human_approval"` to `NON_LLM_EVALUATOR_TYPES` awareness (it IS a non-LLM evaluator per MR-1)
@@ -246,8 +246,8 @@ accept the default.
 
 ### Similar Patterns
 - `action_type: mcp_tool` was added across 4 files (schema + executor + validator + JSON schema) — the exact pattern to follow. See `executor.py:1282` for the `_action_mode()` branch, `executor.py:967` for the `_run_action()` dispatch, `validation.py:388` for the `params`-only-with-mcp_tool check.
-- `executor.py:1463` — `_interruptible_sleep()`: existing polling-with-timeout pattern for blocking while respecting shutdown signals — directly reusable for the HITL wait loop
-- `executor.py:1339` — `_emit()`: existing event emission pattern — emit `human_approval_request` on state entry
+- `executor.py:1647` — `_interruptible_sleep()`: existing polling-with-timeout pattern for blocking while respecting shutdown signals — directly reusable for the HITL wait loop
+- `executor.py:1523` — `_emit()`: existing event emission pattern — emit `human_approval_request` on state entry
 - `events.py:70` — `EventBus` with `register()`/`emit()`/`add_transport()`: existing pub/sub infrastructure
 - `transport.py:115` — `UnixSocketTransport._accept_loop()`: socket polling with timeout — pattern for out-of-band response channel
 - `schema.py:389` — `extra_routes: dict[str, str]`: catches unrecognized `on_*` keys — `on_edit` could be handled via `extra_routes` instead of a dedicated field, simplifying the schema change
@@ -306,7 +306,22 @@ accept the default.
 
 **Open** | Created: 2026-05-29 | Priority: P2
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-31_
+
+**Verdict: NEEDS_UPDATE** — Core architecture accurate but executor.py line numbers have drifted significantly since refinement:
+- `PushNotification` confirmed absent from codebase ✓
+- `StateConfig` at `schema.py:309` ✓; `HostCapabilities` at `host_runner.py:75` (issue says 74) ~
+- `_execute_state()` at executor.py:780 (issue says 772, off by 8) ~
+- `_action_mode()` at executor.py:1330 (issue says 1280, off by 50) ~
+- `_emit()` at executor.py:1523 (issue says 1339, off by **184**) ✗
+- `_interruptible_sleep()` at executor.py:1647 (issue says 1463, off by **184**) ✗
+- Action: update executor.py anchor lines before implementation to avoid confusion
+
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T05:53:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:refine-issue` - 2026-05-30T04:16:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e2daf50-26d6-4657-859b-a4e70fd08209.jsonl`
 - `/ll:format-issue` - 2026-05-29T21:13:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b9fd7ee-19a7-49f3-85a1-70addaba91a5.jsonl`
 - `/ll:capture-issue` - 2026-05-29T20:37:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2a0c61b-6b34-41d4-98fb-c566ba046de6.jsonl`

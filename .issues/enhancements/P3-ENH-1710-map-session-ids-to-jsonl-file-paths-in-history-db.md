@@ -111,5 +111,6 @@ CREATE TABLE sessions (
 **Open** | Created: 2026-05-26 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T05:40:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:format-issue` - 2026-05-26T20:18:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f238e1de-2a0d-4c63-94af-3f5bc586be30.jsonl`
 - `/ll:capture-issue` - 2026-05-26T01:31:23Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5d0765b0-9906-45d9-a15b-8eadbab154a7.jsonl`

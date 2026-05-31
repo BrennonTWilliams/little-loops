@@ -113,6 +113,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `issues`, `refinement`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:format-issue` - 2026-05-29T02:28:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e23d1bf-3385-43d7-80c9-602fafbaf867.jsonl`
 - `/ll:capture-issue` - 2026-05-29T02:23:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b24cba6-684e-4420-9519-de98c8b4822b.jsonl`
 

@@ -90,6 +90,17 @@ Observed pain points from production loop runs:
 
 **Open** | Created: 2026-05-27 | Priority: P3
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-31_
+
+**Verdict: NEEDS_UPDATE** — Several children are done; referenced executor path note:
+- `scripts/little_loops/fsm/executor.py` exists ✓ (issue may reference `fsm_executor.py` path — actual is `fsm/executor.py`)
+- ENH-1677, ENH-1735, ENH-1701: **DONE** ✓
+- ENH-1678: **DONE** (retryable_exit_codes fully implemented — see verification notes)
+- ENH-1684 (timestamp suffix for deep-research), ENH-1797 (cost/token telemetry), FEAT-1689 (ll-harness CLI): still open
+- Action: Update child list to reflect completed items; epic nearing completion
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

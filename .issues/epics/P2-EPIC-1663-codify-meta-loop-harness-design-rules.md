@@ -127,6 +127,20 @@ passes the new check by construction.
 - validation
 - create-loop
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-31_
+
+**Verdict: NEEDS_UPDATE** — Most children are done; epic is nearly complete:
+- ENH-1664 (CLAUDE.md Loop Authoring section): **DONE** ✓ — section exists in `.claude/CLAUDE.md` with MR-1, `meta_self_eval_ok`, diagnosis-first scaffolding rules
+- ENH-1665 (validate MR-1/MR-2): **DONE** ✓
+- ENH-1666 (create-loop meta-loop wizard branch): **DONE** ✓
+- ENH-1667 (runtime telemetry): **DONE** ✓
+- ENH-1636 (zero-retry counter lint): **DONE** ✓
+- ENH-1795 (action-level loop detection): **open**
+- ENH-1793 (blind cross-iteration comparator): **open**
+- Action: Only ENH-1795 and ENH-1793 block epic completion; update progress notes
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

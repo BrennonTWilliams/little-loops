@@ -223,6 +223,7 @@ def _sandbox_args(sandbox_mode: str | None) -> list[str]: ...
 ---
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T05:40:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:ready-issue` - 2026-05-24T17:50:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0e276a3-13b8-43b1-8581-1cb2cbdbf771.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`
 - `/ll:confidence-check` - 2026-05-16T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b12ed97-216f-4ef4-a15b-b3a885a9ca71.jsonl`

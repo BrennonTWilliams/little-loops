@@ -318,6 +318,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 **Open** | Created: 2026-05-29 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T05:40:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:wire-issue` - 2026-05-30T21:49:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cef1c26e-c8c0-44a3-ad97-7b7a90baf186.jsonl`
 - `/ll:refine-issue` - 2026-05-30T21:37:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87dc942-b337-46e9-a574-9cadac23728c.jsonl`
 - `/ll:format-issue` - 2026-05-29T21:14:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf11edc6-7c38-44c6-bc14-9d68aba363ce.jsonl`

@@ -98,6 +98,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-05-25 | Priority: P2
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-31_
+
+**Verdict: VALID** — Architectural claims confirmed; child status is accurate:
+- `LearningConfig.targets` in `schema.py:292` confirmed; loaded once at parse time, cannot accept dynamic targets via `${context.*}` ✓ — architectural constraint is accurate
+- FEAT-1738 (`proof-first-task`): **DONE** ✓
+- FEAT-1739 (`learning-tests-audit`): **DONE** ✓
+- Four core loop YAMLs (FEAT-1692, 1695, 1696, 1697) remain unimplemented — no corresponding files in `loops/` ✓
+
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-25T20:53:43Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/810cf8d1-477c-42da-bb20-b577b2ee3ad9.jsonl`

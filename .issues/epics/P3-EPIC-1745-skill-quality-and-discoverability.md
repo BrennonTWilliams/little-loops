@@ -95,6 +95,15 @@ ENH-494 (companion files) and ENH-977 (lint CLI) are the size-discipline side of
 
 **Open** | Created: 2026-05-27 | Priority: P3
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-31_
+
+**Verdict: VALID** — Scope and child tracking are accurate:
+- Core work (ENH-1617, ENH-1618, ENH-494, ENH-977, ENH-1801, ENH-1802) all still open ✓
+- `skills/audit/` directory does not yet exist (gating ENH-1618 work) ✓
+- Two bug children (BUG-1799, BUG-1800) are done — prerequisite cleanup complete
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

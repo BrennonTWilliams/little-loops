@@ -71,6 +71,7 @@ options:
 - FEAT-557: Add `--format json` to `ll-workflows` (done — parity reference for output flags)
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T05:40:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:capture-issue` - 2026-05-27T21:20:05Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d76f6684-f28b-48e1-8feb-af054e035afe.jsonl`
 
 ---

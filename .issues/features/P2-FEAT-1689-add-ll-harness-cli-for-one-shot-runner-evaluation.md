@@ -278,7 +278,19 @@ _Added by `/ll:confidence-check` on 2026-05-29_
 - Test-first sequencing recommended — `test_cli_harness.py` is a co-deliverable; implement tests first so the CI gate (`ll-harness cmd "python -m pytest scripts/tests/test_cli_harness.py" --exit-code 0`) can catch regressions during implementation
 - Minor unresolved implementation choice for `--exit-code` comparator: add a new comparator vs. parameterize the existing `evaluate_exit_code()` — resolve before starting implementation
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-31_
+
+**Verdict: VALID** — Core claims confirmed against current codebase:
+- `ll-harness` CLI does not yet exist (`harness.py` absent from `cli/`) ✓
+- `call_mcp_tool()` at `mcp_call.py:117` ✓
+- `evaluate_llm_structured()` at `evaluators.py:608` (issue cites 572 — 36-line drift, function exists) ~
+- `print_json()` at `cli/output.py:146` ✓; `status_block()` at `cli/output.py:266` ✓
+- All referenced infrastructure (`host_runner.resolve_host()`, `cli/action.py` pattern, `cli/doctor.py` pattern) exists ✓
+
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:confidence-check` - 2026-05-29 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/<current-session>.jsonl`
 - `/ll:confidence-check` - 2026-05-30T00:04:37Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4163028-cdde-4009-bd1a-333f94a89225.jsonl`
 - `/ll:wire-issue` - 2026-05-29T23:59:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c48c4a24-7429-4435-9ebf-a7001106b920.jsonl`

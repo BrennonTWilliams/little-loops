@@ -161,6 +161,7 @@ Verdicts: `yes` (all pairs aligned), `no` (any pair fails), `error` (file unread
 | `scripts/little_loops/loops/harness-multi-item.yaml` | Example loop to extend with `check_coherence` demo |
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T05:40:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-29T19:28:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aea29468-dd94-4692-a4e8-f97561c7c2a7.jsonl`
 - `/ll:capture-issue` - 2026-05-29T19:08:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`

@@ -66,7 +66,16 @@ explicitly closed/deferred with rationale recorded in their own files).
 
 `epic`, `pi-adapter`, `tracking`, `captured`
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-31_
+
+**Verdict: VALID** — Accurate tracking epic:
+- All 5 children (FEAT-1475, 1476, 1478, 1479, 1480) confirmed open ✓
+- Pi adapter implementation not started: `hooks/adapters/pi/` does not exist; PiRunner.build_*() still raises `HostNotConfigured` ✓
+
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 
 - `/ll:verify-issues` - 2026-05-22 - created by verify-issues to re-parent orphaned Pi-adapter children

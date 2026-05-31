@@ -3,10 +3,10 @@ id: ENH-1678
 title: Add `retryable_exit_codes` filter to FSM state retry config
 type: ENH
 priority: P3
+status: done
 captured_at: "2026-05-24T13:15:53Z"
 discovered_date: 2026-05-24
 discovered_by: capture-issue
-status: open
 parent: EPIC-1744
 labels:
 - fsm-loops
@@ -121,7 +121,20 @@ if state.retryable_exit_codes and exit_code not in state.retryable_exit_codes:
 
 **Open** | Created: 2026-05-24 | Priority: P3
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-31_
+
+**Verdict: RESOLVED** — Feature is fully implemented in the codebase:
+- `retryable_exit_codes: list[int] | None = None` in `schema.py:379` ✓
+- `to_dict()`/`from_dict()` round-trip at `schema.py:434-525` ✓
+- Executor uses it at `executor.py:836` for retry filtering ✓
+- Confirmed in `fsm-loop-schema.json` and `validation.py` ✓
+- Action: Set `status: done` in frontmatter
+
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T05:53:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:verify-issues` - 2026-05-28T23:48:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0efd786b-4b4c-43ee-9e8e-268bad2cc8a5.jsonl`
 - `/ll:format-issue` - 2026-05-24T13:21:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/765fa3c6-1a05-4cb7-8170-c01366684b4e.jsonl`

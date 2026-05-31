@@ -13,15 +13,17 @@ relates_to: [ENH-1774, ENH-1775, ENH-1776, ENH-1777]
 
 ## Summary
 
-The project has 57 built-in FSM loops with only 5 shared lib fragments and 1 oracle sub-loop. Many loops duplicate state patterns inline rather than composing from shared building blocks. This epic covers three categories of improvement: (1) extracting sub-loops from duplicated inline patterns, (2) creating shared state fragments in `loops/lib/` for repeated task patterns, and (3) defining named flows for sequential task chains used across multiple loops.
+The project has 63 built-in FSM loops (57 at capture time; grew to 63 by 2026-05-31) with only 5 shared lib fragments and 1 oracle sub-loop. Many loops duplicate state patterns inline rather than composing from shared building blocks. This epic covers three categories of improvement: (1) extracting sub-loops from duplicated inline patterns, (2) creating shared state fragments in `loops/lib/` for repeated task patterns, and (3) defining named flows for sequential task chains used across multiple loops.
+
+**Wave 1 (ENH-1774) is done** — `ll_commit` and `playwright_screenshot` fragments are extracted. Waves 2–4 (ENH-1775, 1776, 1777) remain open.
 
 ## Motivation
 
-Reducing duplication across 57 loops directly reduces maintenance burden, makes loop behavior more consistent (one fix propagates everywhere), and lowers the barrier to creating new loops. The audit identifies ~11 discrete improvements spanning shared CLI fragments, harness evaluators, integration patterns, and queue management. Each extracted fragment or sub-loop eliminates 3-6 copies of the same logic.
+Reducing duplication across the built-in loop library directly reduces maintenance burden, makes loop behavior more consistent (one fix propagates everywhere), and lowers the barrier to creating new loops. The audit identifies ~11 discrete improvements spanning shared CLI fragments, harness evaluators, integration patterns, and queue management. Each extracted fragment or sub-loop eliminates 3-6 copies of the same logic.
 
 ## Goal
 
-Eliminate duplicated state patterns across built-in FSM loops by extracting shared fragments, sub-loops, and flows. When complete, the 57 loops should compose from a richer shared library rather than inlining repeated patterns.
+Eliminate duplicated state patterns across built-in FSM loops by extracting shared fragments, sub-loops, and flows. When complete, the loops should compose from a richer shared library rather than inlining repeated patterns.
 
 ## Scope
 
@@ -93,7 +95,20 @@ Eliminate duplicated state patterns across built-in FSM loops by extracting shar
 
 `epic`, `captured`
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-31_
+
+**Verdict: NEEDS_UPDATE** — Loop count and Wave 1 status have changed:
+- Built-in loop count is now **63** (issue says 57); Wave 1 additions account for the growth
+- 5 shared lib fragments ✓; 1 oracle sub-loop ✓ — still accurate
+- ENH-1774 (Wave 1: `ll_commit` + `playwright_screenshot` fragments): **DONE** ✓
+- ENH-1775, ENH-1776, ENH-1777 (Waves 2–4): open
+- Action: Update loop count from 57 → 63; note Wave 1 is complete
+
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T05:53:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-29T01:01:55Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17b05161-9ff0-48f9-baaf-69470f937b48.jsonl`
 

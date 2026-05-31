@@ -147,5 +147,6 @@ append_to_messages: "${captured.execute.output}"
 **Open** | Created: 2026-05-29 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:format-issue` - 2026-05-29T21:14:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a9cb5c6-15fc-4ffc-a6bb-7ab28458c9d2.jsonl`
 - `/ll:capture-issue` - 2026-05-29T20:37:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2a0c61b-6b34-41d4-98fb-c566ba046de6.jsonl`
