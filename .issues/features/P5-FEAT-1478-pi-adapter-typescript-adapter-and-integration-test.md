@@ -123,11 +123,14 @@ Template reference: `test_opencode_adapter.py:TestOpenCodeAdapterIntegration.tes
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-28): The README.md event-mapping table is a **baseline** reflecting only the 2 Pi SDK events known at implementation time (`session_start`, `session_before_compact`). A full parity matrix documenting 6+ unsupported hook intents (PreToolUse, PostToolUse, UserPromptSubmit, Stop, SessionEnd, post_compact) will be added by FEAT-1715, which layers on top of this baseline. The adapter ships knowing its own limits.
 
+**Note** (added by `/ll:audit-issue-conflicts`): `hooks/adapters/pi/README.md` (created by this issue) covers adapter-local event mapping and install instructions. `docs/reference/HOST_COMPATIBILITY.md` (updated by FEAT-1476) is the authoritative host-level parity table. The README should cross-reference HOST_COMPATIBILITY.md as the canonical source for the full parity matrix — it is NOT the authoritative doc itself. Doc file edits to HOST_COMPATIBILITY.md are FEAT-1476's scope; the README is this issue's scope.
+
 ## Status
 
 **Open** | Created: 2026-05-15 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T21:48:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`

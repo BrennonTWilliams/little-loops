@@ -7,9 +7,20 @@ captured_at: '2026-05-29T19:08:54Z'
 discovered_date: '2026-05-29'
 discovered_by: capture-issue
 status: open
-depends_on: [ENH-1792]
-labels: [enhancement, loops, evaluator, regression-detection]
+depends_on:
+- ENH-1792
+labels:
+- enhancement
+- loops
+- evaluator
+- regression-detection
 parent: EPIC-1663
+confidence_score: 91
+outcome_confidence: 79
+score_complexity: 14
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 25
 ---
 
 # ENH-1793: Blind Cross-Iteration Comparator
@@ -236,6 +247,7 @@ When `auto_promote: true` and verdict is `yes`, write current `output` to `<base
 | `.issues/enhancements/P3-ENH-1792-detect-non-discriminating-evaluators-from-history.md` | Variance diagnostics that motivate having a regression-sensitive gate |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3598727d-c1b2-449b-bcac-1ffd3f832915.jsonl`
 - `/ll:wire-issue` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c77f9c9d-319a-4328-aa81-b007232a7239.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:refine-issue` - 2026-05-31T05:35:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/959041b3-877b-4e0b-bb02-ec35d5072a0a.jsonl`

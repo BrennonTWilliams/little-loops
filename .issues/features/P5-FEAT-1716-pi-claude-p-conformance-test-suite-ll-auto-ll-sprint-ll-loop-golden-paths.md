@@ -168,6 +168,13 @@ and file follow-up issues for any ✗ entries.
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T21:48:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-26T02:06:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3eaac8be-eba9-48b8-a2d9-322df5114921.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Step 4 (Document the baseline) must cross-reference FEAT-1714's capability gap research note (`thoughts/research/pi-headless-cli.md`). Any ✗ row in the conformance baseline should cite the specific flag or capability gap identified in FEAT-1714's audit — e.g., "✗ build_streaming: Pi lacks `--output-format stream-json` equivalent (see FEAT-1714 research note § Streaming output)." This creates traceability from test evidence back to the audit that motivated the ✗, and ensures follow-up issues can be filed with precise flag references rather than folklore.

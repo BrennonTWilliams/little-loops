@@ -8,13 +8,21 @@ captured_at: '2026-05-29T20:37:23Z'
 discovered_date: 2026-05-29
 discovered_by: capture-issue
 labels:
-  - captured
-  - fsm
-  - stall-detector
-  - loops
-  - harness
-relates_to: [BUG-1767, BUG-1766]
+- captured
+- fsm
+- stall-detector
+- loops
+- harness
+relates_to:
+- BUG-1767
+- BUG-1766
 parent: EPIC-1663
+confidence_score: 80
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-1795: Action-level loop detection (complement to `diff_stall`)
@@ -158,6 +166,9 @@ No changes to existing evaluator interfaces or public CLI surface.
   to known evaluator types
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — Document stall detection
   options
+- `loops/lib/common.yaml` — Add `action_stall_gate` fragment (mirrors the
+  `diff_stall_gate` fragment that ENH-1777 adds; keeps the fragment library
+  symmetric across both stall-detection evaluator types)
 
 ### Dependent Files (Callers/Importers)
 - TBD - use grep to find references: `grep -r "diff_stall" scripts/`
@@ -213,11 +224,24 @@ No changes to existing evaluator interfaces or public CLI surface.
 
 `captured`, `fsm`, `harness`, `loops`, `stall-detector`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-05-31_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 79/100 → MODERATE
+
+### Concerns
+- **Wrong integration map throughout**: The issue specifies `scripts/little_loops/evaluators/action_stall.py` (no such directory), `scripts/little_loops/runner.py` (doesn't exist), and `scripts/little_loops/validators/loop_validator.py` (doesn't exist). All implementation lives under `scripts/little_loops/fsm/`: add to `fsm/evaluators.py`, `fsm/validation.py`, `fsm/schema.py`, `fsm/__init__.py`.
+- **Dependent Files are TBD**: Run `grep -r "diff_stall" scripts/` and `grep -r "check_stall" loops/` before implementing to confirm no additional wiring points.
+
 ## Status
 
 **Open** | Created: 2026-05-29 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T21:48:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
+- `/ll:confidence-check` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3598727d-c1b2-449b-bcac-1ffd3f832915.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:format-issue` - 2026-05-29T21:13:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04006cb6-ee11-466d-86cf-3f1e99cff482.jsonl`
 - `/ll:capture-issue` - 2026-05-29T20:37:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2a0c61b-6b34-41d4-98fb-c566ba046de6.jsonl`

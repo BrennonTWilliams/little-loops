@@ -246,10 +246,17 @@ recommendation_schema:
 `built-in-loop`, `strategy`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T21:48:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:34:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/922ffae8-14ce-45e5-a71a-02187250e8c9.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-30T04:44:25Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1065b200-e53c-4a55-9ff7-5c1d55a0cc90.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Once FEAT-1808 (`loop-composer`) ships, evaluate whether this loop is better implemented as a loop-composer plan template (a saved JSON plan that invokes the relevant analysis loops in sequence: scan → model → analyze → generate → simulate → recommend) rather than a bespoke FSM YAML. If implemented before FEAT-1808 as a standalone YAML, include a comment that it can be re-expressed as a loop-composer plan template once FEAT-1808 is available.
 
 ---
 

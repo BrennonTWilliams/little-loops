@@ -66,8 +66,15 @@ Decomposed from FEAT-992: Add Pi Coding Agent Plugin Compatibility
 **Open** | Created: 2026-05-15 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-05-31T21:48:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-24T06:05:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59179ce1-13d5-40c7-bdca-8b3c6117c43e.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): `hooks/adapters/pi/README.md` is created by FEAT-1478 and covers adapter-local event mapping and install instructions. This issue (FEAT-1476) owns `docs/reference/HOST_COMPATIBILITY.md` — the authoritative host-level parity table. These two documents are complementary: the README is a quick-start reference for adapter users; HOST_COMPATIBILITY.md is the canonical cross-host comparison matrix. The README should cross-reference HOST_COMPATIBILITY.md but not duplicate its content. FEAT-1476's doc updates are NOT in FEAT-1478's scope.
