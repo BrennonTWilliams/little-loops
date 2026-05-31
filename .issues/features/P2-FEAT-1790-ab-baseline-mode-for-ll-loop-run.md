@@ -1,5 +1,6 @@
 ---
 id: FEAT-1790
+title: A/B Baseline Mode for `ll-loop run`
 type: FEAT
 priority: P2
 captured_at: '2026-05-29T19:08:54Z'
@@ -154,6 +155,7 @@ Output:
 | `.issues/enhancements/P2-ENH-1665-ll-loop-validate-meta-loop-lint-rules.md` | Sibling rule-enforcement work under EPIC-1663 |
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-29T19:24:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5eabe11-4b00-427f-9af0-61ff507f3409.jsonl`
 - `/ll:capture-issue` - 2026-05-29T19:08:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
 

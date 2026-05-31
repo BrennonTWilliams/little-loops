@@ -1,5 +1,6 @@
 ---
 id: FEAT-1807
+title: Adversarial-Redesign Figure Loop with AutoFigure
 type: feature
 priority: P3
 status: open
@@ -250,6 +251,7 @@ states:
 | `docs/ARCHITECTURE.md` | FSM executor contract that the loop YAML compiles against. |
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 
 - `/ll:capture-issue` — 2026-05-30T05:25:35Z — `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aebb9b72-3342-4acd-a90d-d77948da77a9.jsonl`
 

@@ -1,5 +1,6 @@
 ---
 id: FEAT-1714
+title: Audit Pi CLI headless flag surface & define `PiRunner` `HostCapabilities`
 type: FEAT
 status: open
 priority: P5
@@ -151,4 +152,5 @@ fallback strategies (e.g. tool allowlist via temp config file like
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-26T02:06:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3eaac8be-eba9-48b8-a2d9-322df5114921.jsonl`

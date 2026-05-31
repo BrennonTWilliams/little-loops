@@ -1,5 +1,6 @@
 ---
 id: ENH-1114
+title: Intent Parameter for Large ll-* CLI Outputs
 type: ENH
 priority: P4
 status: open
@@ -155,6 +156,7 @@ _Added by `/ll:confidence-check` on 2026-05-18_
 - FEAT-1112 is `done` — the `ll-session` CLI and SQLiteTransport have landed. Both Step 1 and Step 2 are now unblocked.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:confidence-check` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/340fa85e-4e72-49ac-847d-86142062faa9.jsonl`
 - `/ll:wire-issue` - 2026-05-18T10:11:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/340fa85e-4e72-49ac-847d-86142062faa9.jsonl`

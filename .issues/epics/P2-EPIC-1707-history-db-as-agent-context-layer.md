@@ -1,5 +1,6 @@
 ---
 id: EPIC-1707
+title: history.db as Agent Context Layer
 type: EPIC
 priority: P2
 status: open
@@ -105,6 +106,7 @@ Without a consumer surface, the DB is dead weight: writers cost overhead, the sc
 `epic`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 
 - `/ll:capture-issue` - 2026-05-26T00:48:43Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2c695cf-9995-4a8f-9ec7-81cdca0d77e5.jsonl`
 

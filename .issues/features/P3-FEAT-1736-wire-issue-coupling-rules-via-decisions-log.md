@@ -1,4 +1,8 @@
 ---
+id: FEAT-1736
+title: Wire-Issue Coupling Rules via Decisions Log
+type: FEAT
+priority: P3
 discovered_date: 2026-05-27
 discovered_by: capture-issue
 captured_at: "2026-05-27T04:46:43Z"
@@ -213,5 +217,6 @@ ll-issues decisions list --type=coupling --archetype=add-cli-command
 **Open** | Created: 2026-05-27 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-27T04:51:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b23d6a24-9de3-4d03-ac3b-2a54631906b4.jsonl`
 - `/ll:capture-issue` - 2026-05-27T04:46:43Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b79fe46a-2b76-4bd7-97a6-bcd0936e48b5.jsonl`

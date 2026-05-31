@@ -1,4 +1,8 @@
 ---
+id: ENH-976
+title: `detect_manual_patterns` recompiles regex patterns on each call
+type: ENH
+priority: P4
 discovered_commit: 96d74cda12b892bac305b81a527c66021302df6a
 discovered_branch: main
 discovered_date: 2026-04-06T15:57:51Z
@@ -127,6 +131,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - Feature not yet implemented
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
 - `/ll:verify-issues` - 2026-04-11T23:05:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`

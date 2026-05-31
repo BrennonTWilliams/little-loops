@@ -1,6 +1,8 @@
 ---
 id: ENH-1615
+title: Add disable-model-invocation to all 28 ll-* Codex bridge skills
 type: ENH
+priority: P3
 captured_at: '2026-05-22T19:19:39Z'
 discovered_date: 2026-05-22
 discovered_by: capture-issue
@@ -94,6 +96,7 @@ for skill_dir in Path("skills").glob("ll-*/SKILL.md"):
 `enhancement`, `skills`, `context-engineering`, `budget`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-24T02:24:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d11a32bd-ee0b-4bc3-aa81-bbd2c70eaca5.jsonl`
 - `/ll:capture-issue` - 2026-05-22T19:19:39Z - conversation analysis
 

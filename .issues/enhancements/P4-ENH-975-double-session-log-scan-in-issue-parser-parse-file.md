@@ -1,4 +1,8 @@
 ---
+id: ENH-975
+title: `IssueParser.parse_file` double-scans content for session log data
+type: ENH
+priority: P4
 discovered_commit: 96d74cda12b892bac305b81a527c66021302df6a
 discovered_branch: main
 discovered_date: 2026-04-06T15:57:51Z
@@ -150,6 +154,7 @@ _Added by `/ll:go-no-go` on 2026-04-24_ — **NO-GO (REFINE)**
 The redundancy is real and the fix is conceptually sound, but the proposed `parse_session_log_full` code contained two bugs: (1) iterating all regex section matches rather than using `matches[-1]`, and (2) using `.group()` instead of `.group(1)`. The iterate-all bug is tested behavior (`test_session_log.py:212-235`) and would produce silent regressions on files with multiple session log sections. The proposed solution in this issue has been corrected; it is now safe to implement.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:verify-issues` - 2026-05-14T20:42:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`

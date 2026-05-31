@@ -1,5 +1,6 @@
 ---
 id: FEAT-1810
+title: `goal-cluster` — Multi-Goal Orchestrator for Sprint- or EPIC-Shaped Input
 type: FEAT
 priority: P3
 status: open
@@ -86,6 +87,7 @@ The actual user pain is often sprint-shaped, not single-goal-shaped. `ll-sprint`
 - **FEAT-1737 (EPIC as sprint argument)** — direct overlap on the EPIC-loader piece; coordinate or share code.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-30T06:48:30Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6be17ec6-da10-4c91-9b41-f2c0b3be4efb.jsonl`
 
 ---

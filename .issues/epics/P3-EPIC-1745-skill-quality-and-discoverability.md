@@ -1,5 +1,6 @@
 ---
 id: EPIC-1745
+title: Skill Quality & Discoverability
 type: EPIC
 priority: P3
 status: open
@@ -93,3 +94,7 @@ ENH-494 (companion files) and ENH-977 (lint CLI) are the size-discipline side of
 ---
 
 **Open** | Created: 2026-05-27 | Priority: P3
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

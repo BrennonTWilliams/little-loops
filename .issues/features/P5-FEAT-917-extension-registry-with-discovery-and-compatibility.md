@@ -1,4 +1,8 @@
 ---
+id: FEAT-917
+title: Extension Registry with Discovery and Compatibility Checking
+type: FEAT
+priority: P5
 discovered_date: 2026-04-02
 discovered_by: capture-issue
 ---
@@ -113,6 +117,7 @@ A team evaluating ll wants to see what extensions are available. They run `ll ex
 **Open** | Created: 2026-04-02 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-10T19:40:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-01T18:01:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`

@@ -49,7 +49,7 @@ This glob pattern is too loose and matches any file containing the ID as a subst
 
 - `commands/ready_issue.md:32` - File search pattern
 
-## Reproduction Steps
+## Steps to Reproduce
 
 1. Have two issue files with similar ID patterns:
    - `.issues/bugs/P1-BUG-1-foo.md`
@@ -57,7 +57,7 @@ This glob pattern is too loose and matches any file containing the ID as a subst
 2. Run `/ll:ready-issue BUG-1`
 3. Observe that BUG-10 may be matched and processed instead
 
-## Proposed Fix
+## Proposed Solution
 
 Use word-boundary or exact pattern matching:
 

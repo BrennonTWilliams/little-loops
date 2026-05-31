@@ -1,5 +1,6 @@
 ---
 id: ENH-1753
+title: Document history.db producer→consumer flow in ARCHITECTURE.md
 type: ENH
 priority: P3
 status: open
@@ -99,6 +100,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 
 - `/ll:capture-issue` - 2026-05-27T20:37:30Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b49625e3-8e47-4c6d-9fa3-75d4dde31106.jsonl`
 

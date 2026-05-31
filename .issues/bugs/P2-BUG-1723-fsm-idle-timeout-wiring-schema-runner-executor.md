@@ -156,7 +156,19 @@ _Added by `/ll:confidence-check` on 2026-05-25_
 - **Broad Protocol fanout**: The ActionRunner Protocol change fans out to 14 mock runner implementations across 5 test files. All locations are enumerated in the Integration Map, but the blast radius is genuinely broad — run `python -m mypy scripts/little_loops/` after each Protocol-conformance update to catch any missed signatures before moving to the next step.
 - **Multi-phase implementation ordering**: Schema → Protocol → Runner → Executor → Validation → Tests must proceed in the order given; each layer depends on the previous. The numbered steps reflect this correctly — follow them sequentially rather than implementing all production code before adding tests.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-30_
+
+**Verdict: VALID** — All claims confirmed against current codebase:
+- `idle_timeout` parameter exists in `subprocess_utils.py:228` ✓
+- `runners.py` has zero references to `idle_timeout` — ActionRunner Protocol does not accept it ✓
+- `executor.py` has zero references to `idle_timeout` — `_run_action()` does not forward it ✓
+- `validation.py` KNOWN_TOP_LEVEL_KEYS does not include `default_idle_timeout` ✓
+- All referenced files and line anchors verified as accurate ✓
+
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:issue-size-review` - 2026-05-25T18:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c841cd66-9a6d-4efd-9971-f4ce6e734f58.jsonl`
 - `/ll:wire-issue` - 2026-05-26T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a81eae6-fc78-4eca-a52a-8960c2ffbd7a.jsonl`
 - `/ll:refine-issue` - 2026-05-26T02:55:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010b6d0-c5ea-42f5-b7da-dacb34c4bb15.jsonl`

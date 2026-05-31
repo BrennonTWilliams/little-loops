@@ -1,5 +1,6 @@
 ---
 id: BUG-1461
+title: `continuation.auto_detect_on_session_start` flag is documented but not read by any code
 type: BUG
 priority: P3
 status: open
@@ -98,7 +99,18 @@ Discovered during `/ll:verify-issues` on 2026-05-14 while verifying the FEAT-131
 
 **Open** | Created: 2026-05-14 | Priority: P3
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-30_
+
+**Verdict: VALID** — All claims confirmed:
+- `auto_detect_on_session_start` declared in `config-schema.json:552` ✓
+- Documented in `docs/guides/SESSION_HANDOFF.md` and `docs/reference/CONFIGURATION.md` ✓
+- Zero code references to `auto_detect_on_session_start` in `scripts/` — flag is never read ✓
+- Issue still needs a decision (implement or remove) — no progress since 2026-05-14 discovery ✓
+
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-23T16:51:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a9c6d1a1-0ff3-429d-82ba-98b024c1337c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-14T21:23:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75505ad4-6733-4424-b334-3143f412786b.jsonl`
 - `/ll:verify-issues` - 2026-05-14T20:42:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`

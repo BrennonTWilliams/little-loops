@@ -1,4 +1,8 @@
 ---
+id: ENH-1775
+title: Wave 2 — Extract `generator-evaluator` Sub-loop and Add `parse_tagged_json` Fragment
+type: ENH
+priority: P3
 captured_at: '2026-05-29T01:01:55Z'
 discovered_date: 2026-05-28
 discovered_by: capture-issue
@@ -339,6 +343,7 @@ _Added by `/ll:confidence-check` on 2026-05-29_
 - Co-deliverable ordering: implement tests first so the validation chain is in place before loop refactoring — lib/harness.yaml must be created before the sub-loop can validate
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:ready-issue` - 2026-05-29T08:11:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76b633ba-2671-4457-8679-cc688d74ce8c.jsonl`
 - `/ll:refine-issue` - 2026-05-29T06:51:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b19fe53-455f-4868-8b8e-6929aa73c9c6.jsonl`
 - `/ll:confidence-check` - 2026-05-29T19:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad84c1f4-e1cb-4d1e-9db8-e1661e645a49.jsonl`

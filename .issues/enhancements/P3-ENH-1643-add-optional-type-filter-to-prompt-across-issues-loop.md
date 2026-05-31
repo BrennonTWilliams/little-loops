@@ -1,4 +1,8 @@
 ---
+id: ENH-1643
+title: Add optional type filter to prompt-across-issues loop
+type: ENH
+priority: P3
 captured_at: "2026-05-23T20:52:54Z"
 discovered_date: "2026-05-23"
 discovered_by: capture-issue
@@ -204,6 +208,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `fsm`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-23T20:56:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e841fa07-af71-463d-ab27-a39fa5403a77.jsonl`
 - `/ll:capture-issue` - 2026-05-23T20:52:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fbeefa69-751d-4d94-afeb-e4cac2a5473b.jsonl`
 

@@ -1,5 +1,6 @@
 ---
 id: FEAT-1739
+title: `learning-tests-audit` loop — stale record detection and triage report
 type: FEAT
 priority: P3
 status: open
@@ -251,6 +252,7 @@ _Added by `/ll:confidence-check` on 2026-05-29_
 - Change surface spans 6 existing files with varying modification types (set addition, table row, count bump, test class) — verification requires checking every site
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:confidence-check` - 2026-05-29T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a99f544-bd0d-4ac3-a506-f33ffd4a0bf7.jsonl`
 - `/ll:wire-issue` - 2026-05-30T03:35:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a79d03a-934b-4752-a81b-96cb9e93728e.jsonl`
 - `/ll:refine-issue` - 2026-05-30T03:27:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a1d51e1b-fa76-4e37-b9b8-b2f75b1951eb.jsonl`

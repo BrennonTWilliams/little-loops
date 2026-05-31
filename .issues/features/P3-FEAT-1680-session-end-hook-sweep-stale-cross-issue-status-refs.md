@@ -1,5 +1,6 @@
 ---
 id: FEAT-1680
+title: Session-end hook to sweep stale cross-issue status references
 type: FEAT
 priority: P3
 status: open
@@ -151,6 +152,7 @@ Optional config knob in `ll-config.json`:
 **Open** | Created: 2026-05-24 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-24T17:28:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20c144e8-2658-4919-b9a3-e1bfd4e0786b.jsonl`
 
 - `/ll:capture-issue` - 2026-05-24T17:21:20Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a638383a-aa90-4ed6-80c0-1913cf58a71c.jsonl`

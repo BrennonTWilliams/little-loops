@@ -1,5 +1,6 @@
 ---
 id: FEAT-1806
+title: Opponent-Aware Market Strategy Optimization Loop
 type: FEAT
 priority: P3
 status: open
@@ -244,6 +245,7 @@ recommendation_schema:
 `built-in-loop`, `strategy`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-30T04:44:25Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1065b200-e53c-4a55-9ff7-5c1d55a0cc90.jsonl`
 
 ---

@@ -1,5 +1,6 @@
 ---
 id: ENH-1722
+title: Research and decide per-host state directory redirection for Codex
 type: ENH
 priority: P5
 status: open
@@ -58,4 +59,5 @@ The decision is implicit — nobody wrote down whether a Codex user is better se
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-26T02:23:05Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e210ff4-bcab-4372-9c8c-a0ba98da62d5.jsonl`

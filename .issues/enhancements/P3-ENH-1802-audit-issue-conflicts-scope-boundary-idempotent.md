@@ -1,5 +1,6 @@
 ---
 id: ENH-1802
+title: audit-issue-conflicts re-appends Scope Boundary section on every run
 type: ENH
 priority: P3
 status: open
@@ -112,6 +113,7 @@ N/A — No public API changes. Internal skill logic update only.
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-29T21:12:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d42814df-045f-41ae-b065-5f4d670ef04d.jsonl`
 - `/ll:capture-issue` - 2026-05-29T20:55:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
 

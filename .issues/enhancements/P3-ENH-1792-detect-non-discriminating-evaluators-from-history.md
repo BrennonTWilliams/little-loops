@@ -1,5 +1,6 @@
 ---
 id: ENH-1792
+title: Detect Non-Discriminating Evaluators from Run History
 type: ENH
 priority: P3
 captured_at: '2026-05-29T19:08:54Z'
@@ -148,6 +149,7 @@ Two surfaces:
 | `.issues/features/P2-FEAT-1790-ab-baseline-mode-for-ll-loop-run.md` | Stronger signal source — paired with/without runs amplify the variance read |
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-29T19:36:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22fa3793-04ed-422e-a858-92ebec183578.jsonl`
 - `/ll:capture-issue` - 2026-05-29T19:08:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
 

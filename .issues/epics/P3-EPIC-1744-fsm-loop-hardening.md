@@ -1,5 +1,6 @@
 ---
 id: EPIC-1744
+title: FSM Loop Hardening
 type: EPIC
 priority: P3
 status: open
@@ -88,3 +89,7 @@ Observed pain points from production loop runs:
 ---
 
 **Open** | Created: 2026-05-27 | Priority: P3
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

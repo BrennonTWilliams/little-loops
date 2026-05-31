@@ -1,5 +1,6 @@
 ---
 id: FEAT-1808
+title: `loop-composer` — Goal Decomposer Built-in FSM Loop (One Level Above `loop-router`)
 type: FEAT
 priority: P3
 status: open
@@ -72,6 +73,7 @@ Add a new built-in FSM loop `loop-composer` that accepts a natural-language goal
 - **FEAT-1810 (goal-cluster orchestrator)** — different input shape (a *list* of goals, e.g. a sprint), not a single goal. Composer might dispatch goal-cluster as a child, or vice versa. Worth checking before either lands.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-30T06:48:30Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6be17ec6-da10-4c91-9b41-f2c0b3be4efb.jsonl`
 
 ---

@@ -1,5 +1,6 @@
 ---
 id: FEAT-1479
+title: Pi Adapter — Config Candidate, Schema, and Config Tests
 type: FEAT
 priority: P5
 status: open
@@ -225,6 +226,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Partial implementation: schema change landed, code changes (core.py + tests) remain outstanding
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:verify-issues` - 2026-05-22T16:11:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`

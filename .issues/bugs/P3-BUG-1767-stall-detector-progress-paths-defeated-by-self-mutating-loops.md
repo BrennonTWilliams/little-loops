@@ -153,7 +153,18 @@ the general-task config need to land together.
 
 `bug`, `captured`, `fsm`, `stall-detector`, `loops`
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-30_
+
+**Verdict: VALID** — All claims confirmed:
+- Referenced files exist: `stall_detector.py`, `executor.py`, `general-task.yaml` ✓
+- `progress_paths` fingerprint reset logic correctly described ✓
+- Self-mutating loop defeating stall detection is a real design concern ✓
+- Related issues BUG-1674 (done) and BUG-1766 correctly linked ✓
+
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:verify-issues` - 2026-05-28T23:48:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0efd786b-4b4c-43ee-9e8e-268bad2cc8a5.jsonl`
 - `/ll:capture-issue` - 2026-05-28T17:31:20Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d72d4842-d084-41b6-af0f-1adf964926ab.jsonl`
 

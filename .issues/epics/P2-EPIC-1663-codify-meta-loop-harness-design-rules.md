@@ -1,5 +1,6 @@
 ---
 id: EPIC-1663
+title: Codify meta-loop harness-design rules (SHOR-driven)
 type: epic
 status: open
 priority: P2
@@ -125,3 +126,7 @@ passes the new check by construction.
 - shor
 - validation
 - create-loop
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

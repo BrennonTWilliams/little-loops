@@ -1,5 +1,6 @@
 ---
 id: ENH-1684
+title: Add timestamp suffix to deep-research run directory to prevent silent overwrite
 type: ENH
 priority: P4
 status: open
@@ -124,6 +125,7 @@ Users iterate on research topics (refine the question, re-run after new events).
 **Open** | Created: 2026-05-24 | Priority: P4
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:confidence-check` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b05a1db1-f9bd-43eb-b427-427c3cdbc0ac.jsonl`
 - `/ll:format-issue` - 2026-05-24T18:21:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4325e6e5-9429-4076-81be-bf8b68495fdf.jsonl`
 - `/ll:capture-issue` - 2026-05-24T18:14:01Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63b24a19-04df-472a-86c8-b45901270f93.jsonl`

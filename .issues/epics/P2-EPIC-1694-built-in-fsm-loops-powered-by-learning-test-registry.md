@@ -1,5 +1,6 @@
 ---
 id: EPIC-1694
+title: Built-in FSM Loops Powered by the Learning-Test Registry
 type: EPIC
 priority: P2
 status: open
@@ -98,4 +99,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-05-25 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-25T20:53:43Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/810cf8d1-477c-42da-bb20-b577b2ee3ad9.jsonl`

@@ -1,4 +1,8 @@
 ---
+id: ENH-1777
+title: Wave 4 — Remaining Fragments, Sub-loops, and Flows
+type: ENH
+priority: P3
 captured_at: "2026-05-29T01:01:55Z"
 discovered_date: 2026-05-28
 discovered_by: capture-issue
@@ -122,6 +126,7 @@ N/A — No public API changes; this is a loop YAML refactoring that changes inte
 `enhancement`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-29T01:16:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5513c747-2bdb-461c-ade9-635f62428078.jsonl`
 - `/ll:capture-issue` - 2026-05-29T01:01:55Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17b05161-9ff0-48f9-baaf-69470f937b48.jsonl`
 

@@ -1,4 +1,8 @@
 ---
+id: FEAT-948
+title: Rules and Decisions Log for Issue Compliance
+type: FEAT
+priority: P3
 discovered_date: 2026-04-04
 discovered_by: capture-issue
 blocked_by: []
@@ -374,6 +378,7 @@ The existing 11-step plan stands. Affected steps:
 - `scripts/little_loops/sprint.py:142-202` dataclass + YAML pattern confirmed ✓
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-14T21:23:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75505ad4-6733-4424-b334-3143f412786b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-11T21:32:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/521f9c4d-aa09-4ad1-88fe-93826dacaa4a.jsonl`

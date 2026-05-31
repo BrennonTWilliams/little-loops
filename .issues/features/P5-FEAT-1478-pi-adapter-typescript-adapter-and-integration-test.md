@@ -1,5 +1,6 @@
 ---
 id: FEAT-1478
+title: Pi Adapter — TypeScript Adapter and Integration Test
 type: FEAT
 priority: P5
 status: open
@@ -127,5 +128,6 @@ Template reference: `test_opencode_adapter.py:TestOpenCodeAdapterIntegration.tes
 **Open** | Created: 2026-05-15 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
 - `/ll:issue-size-review` - 2026-05-15T20:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f91d7b90-f81d-4224-83bd-e6b959badcd1.jsonl`
