@@ -73,8 +73,8 @@ class TestApiReferenceWiring:
 
 class TestCliReferenceWiring:
     def test_llevent_type_count_present(self) -> None:
-        assert "25 `LLEvent` types" in CLI_REFERENCE.read_text(), (
-            "docs/reference/CLI.md must state '25 `LLEvent` types' (updated count after throttle events)"
+        assert "37 `LLEvent` types" in CLI_REFERENCE.read_text(), (
+            "docs/reference/CLI.md must state '37 `LLEvent` types' (current count)"
         )
 
 

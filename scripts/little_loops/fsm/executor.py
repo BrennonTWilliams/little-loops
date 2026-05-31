@@ -1262,6 +1262,8 @@ class FSMExecutor:
                 return self._resolve_route(state.route.default, ctx)
             if verdict == "error" and state.route.error:
                 return self._resolve_route(state.route.error, ctx)
+            if verdict == "no" and state.route.error:
+                return self._resolve_route(state.route.error, ctx)
             return None
 
         # Shorthand routing
@@ -1269,6 +1271,8 @@ class FSMExecutor:
             return self._resolve_route(state.on_yes, ctx)
         if verdict == "no" and state.on_no:
             return self._resolve_route(state.on_no, ctx)
+        if verdict == "no" and not state.on_no and state.on_error:
+            return self._resolve_route(state.on_error, ctx)
         if verdict == "error" and state.on_error:
             return self._resolve_route(state.on_error, ctx)
         if verdict == "partial" and state.on_partial:

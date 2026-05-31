@@ -3919,6 +3919,66 @@ class TestRetryableExitCodes:
         assert runner.calls.count("do_work.sh") == 2
 
 
+class TestOnErrorFallbackRouting:
+    """Tests for on_error fallback when verdict is "no" and on_no is not set."""
+
+    def test_shell_exit_code_1_routes_to_on_error_without_on_no(self) -> None:
+        """Shell action exiting code 1 routes via on_error when on_no is not configured.
+
+        The default evaluate_exit_code maps code 1 to verdict "no", but when
+        on_no is not set and on_error is, the "no" verdict should fall through
+        to on_error (the catch-all failure handler).
+        """
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="test.sh",
+                    on_yes="done",
+                    on_error="error_handler",
+                ),
+                "done": StateConfig(terminal=True),
+                "error_handler": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("test.sh", exit_code=1)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.final_state == "error_handler"
+        assert result.terminated_by == "terminal"
+
+    def test_shell_exit_code_1_routes_to_route_error_without_on_no(self) -> None:
+        """Shell action exiting code 1 routes via route.error when no "no" route or
+        default is configured."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="test.sh",
+                    route=RouteConfig(
+                        routes={"yes": "done"},
+                        error="error_state",
+                    ),
+                ),
+                "done": StateConfig(terminal=True),
+                "error_state": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("test.sh", exit_code=1)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.final_state == "error_state"
+        assert result.terminated_by == "terminal"
+
+
 class TestInterpolationErrorHandling:
     """Tests for friendly InterpolationError messages in the executor."""
 
