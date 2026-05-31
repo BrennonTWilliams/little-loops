@@ -3,7 +3,7 @@ id: FEAT-1821
 title: A/B Baseline CLI Flag Wiring and Parallel Execution
 type: FEAT
 priority: P2
-status: open
+status: done
 parent: FEAT-1790
 labels:
 - feature
