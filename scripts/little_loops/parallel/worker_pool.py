@@ -690,6 +690,44 @@ class WorkerPool:
             resume_session=resume_session,
         )
 
+    def _check_issue_already_done(
+        self, issue_id: str | None, working_dir: Path
+    ) -> bool:
+        """Check if the issue file's status indicates work is already complete.
+
+        Pre-continuation guard (BUG-1759): when the inner Claude session hits its
+        context limit but the issue was already marked done, skip the handoff and
+        return success rather than triggering an unnecessary handoff cycle.
+
+        Args:
+            issue_id: Issue identifier (e.g., "BUG-1759"), or None.
+            working_dir: Working directory (worktree) to search for issue files.
+
+        Returns:
+            True if the issue's status is 'done' or 'cancelled'.
+        """
+        if issue_id is None:
+            return False
+        issues_dir = working_dir / ".issues"
+        if not issues_dir.exists():
+            return False
+        try:
+            from little_loops.frontmatter import parse_frontmatter
+
+            # Search all category directories for the issue file
+            for cat_dir in issues_dir.iterdir():
+                if not cat_dir.is_dir():
+                    continue
+                for f in cat_dir.iterdir():
+                    if not f.is_file() or not f.suffix == ".md":
+                        continue
+                    if f"-{issue_id}-" in f.name or f.name.endswith(f"-{issue_id}.md"):
+                        fm = parse_frontmatter(f.read_text(encoding="utf-8"))
+                        return fm.get("status") in ("done", "cancelled")
+            return False
+        except Exception:
+            return False
+
     def _run_with_continuation(
         self,
         command: str,
@@ -748,27 +786,36 @@ class WorkerPool:
             if detect_context_handoff(result.stdout):
                 self.logger.info(f"{tag} Detected CONTEXT_HANDOFF signal")
 
-                prompt_content = read_continuation_prompt(working_dir)
-                if not prompt_content:
-                    self.logger.warning(
-                        f"{tag} Context handoff signaled but no continuation prompt found"
+                # Pre-continuation guard: if the issue is already done/cancelled,
+                # the work is complete — return success without signalling handoff
+                # so the outer FSM doesn't waste a handoff cycle on finished work.
+                already_done = self._check_issue_already_done(issue_id, working_dir)
+                if already_done:
+                    self.logger.info(
+                        f"{tag} Issue already done/cancelled; "
+                        "skipping handoff and returning success"
                     )
-                    all_stderr.append("Handoff detected but no continuation prompt found")
                     result = subprocess.CompletedProcess(
-                        args=result.args, returncode=1, stdout=result.stdout, stderr=result.stderr
+                        args=result.args,
+                        returncode=0,
+                        stdout=result.stdout,
+                        stderr=result.stderr,
                     )
                     break
 
-                if continuation_count >= max_continuations:
-                    self.logger.warning(
-                        f"{tag} Reached max continuations ({max_continuations}), stopping"
-                    )
-                    break
+                # Forward CONTEXT_HANDOFF signal to stdout so the outer FSM's
+                # signal_detector can detect it via the existing HANDOFF_SIGNAL pattern.
+                handoff_message = "CONTEXT_HANDOFF: Ready for fresh session"
+                print(handoff_message)
+                self.logger.info(f"{tag} Forwarded handoff signal to stdout; exiting cleanly")
 
-                continuation_count += 1
-                self.logger.info(f"{tag} Starting continuation session #{continuation_count}")
-                current_command = f"{command} --resume"
-                continue
+                result = subprocess.CompletedProcess(
+                    args=result.args,
+                    returncode=0,
+                    stdout=result.stdout + "\n" + handoff_message,
+                    stderr=result.stderr,
+                )
+                break
 
             total_tokens = _last_input[0] + _last_output[0]
             usage_ratio = total_tokens / context_limit if context_limit > 0 else 0.0

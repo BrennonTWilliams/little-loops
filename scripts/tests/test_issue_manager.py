@@ -1149,201 +1149,112 @@ class TestRunWithContinuation:
         assert result.returncode == 0
         assert "Normal output" in result.stdout
 
-    def test_performs_single_continuation(self, temp_project_dir: Path) -> None:
-        """Test that single continuation is performed when CONTEXT_HANDOFF detected."""
+    def test_exits_cleanly_when_handoff_detected(self, temp_project_dir: Path) -> None:
+        """When CONTEXT_HANDOFF detected, exits cleanly without spawning continuation."""
         from little_loops.issue_manager import run_with_continuation
 
         mock_logger = MagicMock()
 
-        # First call returns handoff signal
-        first_result = MagicMock()
-        first_result.returncode = 0
-        first_result.stdout = "CONTEXT_HANDOFF\n"
-        first_result.stderr = ""
-        first_result.args = ["claude", "-p", "first"]
-
-        # Second call (continuation) succeeds
-        second_result = MagicMock()
-        second_result.returncode = 0
-        second_result.stdout = "Continuation output"
-        second_result.stderr = ""
-        second_result.args = ["claude", "-p", "continuation"]
-
-        continuation_prompt = "# Continuation prompt content"
-
-        call_count = [0]
-
-        def mock_run(command: str, *args, **kwargs):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                return first_result
-            return second_result
-
-        # detect_context_handoff should return True first, then False
-        handoff_responses = [True, False]
-        handoff_index = [0]
-
-        def mock_handoff(stdout: str) -> bool:
-            idx = handoff_index[0]
-            handoff_index[0] += 1
-            return handoff_responses[idx] if idx < len(handoff_responses) else False
-
-        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
-            with patch(
-                "little_loops.issue_manager.detect_context_handoff", side_effect=mock_handoff
-            ):
-                with patch(
-                    "little_loops.issue_manager.read_continuation_prompt",
-                    return_value=continuation_prompt,
-                ):
-                    result = run_with_continuation("test command", mock_logger, max_continuations=3)
-
-        assert call_count[0] == 2  # Initial + 1 continuation
-        assert "---CONTINUATION---\n" in result.stdout
-
-    def test_stops_at_max_continuations(self, temp_project_dir: Path) -> None:
-        """Test that continuation stops after max_continuations reached."""
-        from little_loops.issue_manager import run_with_continuation
-
-        mock_logger = MagicMock()
-
-        # Always return handoff signal
         handoff_result = MagicMock()
         handoff_result.returncode = 0
-        handoff_result.stdout = "CONTEXT_HANDOFF\n"
+        handoff_result.stdout = "Implementation progress...\nCONTEXT_HANDOFF: Ready for fresh session"
         handoff_result.stderr = ""
+        handoff_result.args = ["claude", "-p", "manage-issue"]
 
-        with patch("little_loops.issue_manager.run_claude_command", return_value=handoff_result):
-            with patch("little_loops.issue_manager.detect_context_handoff", return_value=True):
-                with patch(
-                    "little_loops.issue_manager.read_continuation_prompt", return_value="# Prompt"
-                ):
-                    result = run_with_continuation("test", mock_logger, max_continuations=2)
+        with patch("little_loops.issue_manager.run_claude_command", return_value=handoff_result) \
+                as mock_run:
+            with patch(
+                "little_loops.issue_manager.detect_context_handoff", return_value=True
+            ):
+                result = run_with_continuation("test command", mock_logger)
 
-        # Should run initial + 2 continuations = 3 total
+        # Should only call run_claude_command once (no continuation spawned)
+        mock_run.assert_called_once()
         assert result.returncode == 0
+        assert "CONTEXT_HANDOFF:" in result.stdout
 
-    def test_breaks_when_no_continuation_prompt(self, temp_project_dir: Path) -> None:
-        """Test that continuation breaks when no prompt file found."""
+    def test_exits_cleanly_when_issue_already_done(self, temp_project_dir: Path) -> None:
+        """Pre-continuation guard: when issue is already done, returns success without handoff."""
         from little_loops.issue_manager import run_with_continuation
+
+        mock_logger = MagicMock()
+
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P2-BUG-999-test.md"
+        issue_file.write_text("---\nstatus: done\n---\n\n# BUG-999: Test")
+
+        handoff_result = MagicMock()
+        handoff_result.returncode = 0
+        handoff_result.stdout = "CONTEXT_HANDOFF: Ready for fresh session"
+        handoff_result.stderr = ""
+        handoff_result.args = ["claude", "-p", "test"]
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=handoff_result) \
+                as mock_run:
+            with patch(
+                "little_loops.issue_manager.detect_context_handoff", return_value=True
+            ):
+                result = run_with_continuation(
+                    "test command", mock_logger, issue_path=issue_file
+                )
+
+        # Should exit cleanly (issue already done, no handoff needed)
+        mock_run.assert_called_once()
+        assert result.returncode == 0
+        # The original Claude output may contain handoff text, but no EXTRA signal
+        # was appended and no continuation was spawned
+
+    def test_forwards_handoff_signal_to_stdout(self, temp_project_dir: Path) -> None:
+        """Handoff signal is forwarded to stdout for outer FSM detection."""
+        from little_loops.issue_manager import run_with_continuation
+        import io
+        import sys
 
         mock_logger = MagicMock()
 
         handoff_result = MagicMock()
         handoff_result.returncode = 0
-        handoff_result.stdout = "CONTEXT_HANDOFF\n"
+        handoff_result.stdout = "CONTEXT_HANDOFF: Ready for fresh session"
         handoff_result.stderr = ""
+        handoff_result.args = ["claude", "-p", "test"]
 
+        captured = io.StringIO()
         with patch("little_loops.issue_manager.run_claude_command", return_value=handoff_result):
             with patch("little_loops.issue_manager.detect_context_handoff", return_value=True):
-                with patch("little_loops.issue_manager.read_continuation_prompt", return_value=""):
-                    result = run_with_continuation("test", mock_logger)
+                with patch("sys.stdout", new=captured):
+                    run_with_continuation("test command", mock_logger)
 
-        # Should stop after handoff with no prompt and signal failure
-        mock_logger.warning.assert_called()
-        assert result.returncode == 1
+        assert "CONTEXT_HANDOFF:" in captured.getvalue()
 
-    def test_continuation_uses_resume_flag(self, temp_project_dir: Path) -> None:
-        """Test that continuation uses resume_command (or initial_command) with --resume appended."""
+    def test_handoff_guard_skips_when_issue_open(self, temp_project_dir: Path) -> None:
+        """When issue is still open, handoff signal IS forwarded (not suppressed)."""
         from little_loops.issue_manager import run_with_continuation
 
         mock_logger = MagicMock()
 
-        first_result = MagicMock()
-        first_result.returncode = 0
-        first_result.stdout = "CONTEXT_HANDOFF\n"
-        first_result.stderr = ""
-        first_result.args = ["claude", "-p", "first"]
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P2-BUG-998-test.md"
+        issue_file.write_text("---\nstatus: open\n---\n\n# BUG-998: Test")
 
-        second_result = MagicMock()
-        second_result.returncode = 0
-        second_result.stdout = "Done"
-        second_result.stderr = ""
-        second_result.args = ["claude", "-p", "resume"]
+        handoff_result = MagicMock()
+        handoff_result.returncode = 0
+        handoff_result.stdout = "CONTEXT_HANDOFF: Ready for fresh session"
+        handoff_result.stderr = ""
+        handoff_result.args = ["claude", "-p", "test"]
 
-        commands_received: list[str] = []
-
-        def mock_run(command: str, *args, **kwargs):
-            commands_received.append(command)
-            if len(commands_received) == 1:
-                return first_result
-            return second_result
-
-        handoff_responses = iter([True, False])
-
-        # When resume_command is provided, continuation must use it (not initial_command).
-        expanded_initial = "# Expanded skill content\n" * 50  # simulate multi-hundred-line prompt
-        slash_cmd = "/ll:manage-issue bug fix BUG-327"
-
-        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+        with patch("little_loops.issue_manager.run_claude_command", return_value=handoff_result):
             with patch(
-                "little_loops.issue_manager.detect_context_handoff",
-                side_effect=lambda _: next(handoff_responses),
+                "little_loops.issue_manager.detect_context_handoff", return_value=True
             ):
-                with patch(
-                    "little_loops.issue_manager.read_continuation_prompt",
-                    return_value="# Some prompt content",
-                ):
-                    run_with_continuation(
-                        expanded_initial,
-                        mock_logger,
-                        max_continuations=3,
-                        resume_command=slash_cmd,
-                    )
+                result = run_with_continuation(
+                    "test command", mock_logger, issue_path=issue_file
+                )
 
-        assert len(commands_received) == 2
-        assert commands_received[0] == expanded_initial
-        # Continuation must use the short resume_command, not the expanded initial_command
-        assert commands_received[1] == f"{slash_cmd} --resume"
-
-    def test_continuation_falls_back_to_initial_when_no_resume_command(
-        self, temp_project_dir: Path
-    ) -> None:
-        """Test that without resume_command, continuation appends --resume to initial_command."""
-        from little_loops.issue_manager import run_with_continuation
-
-        mock_logger = MagicMock()
-
-        first_result = MagicMock()
-        first_result.returncode = 0
-        first_result.stdout = "CONTEXT_HANDOFF\n"
-        first_result.stderr = ""
-        first_result.args = ["claude", "-p", "first"]
-
-        second_result = MagicMock()
-        second_result.returncode = 0
-        second_result.stdout = "Done"
-        second_result.stderr = ""
-        second_result.args = ["claude", "-p", "resume"]
-
-        commands_received: list[str] = []
-
-        def mock_run(command: str, *args, **kwargs):
-            commands_received.append(command)
-            if len(commands_received) == 1:
-                return first_result
-            return second_result
-
-        handoff_responses = iter([True, False])
-
-        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
-            with patch(
-                "little_loops.issue_manager.detect_context_handoff",
-                side_effect=lambda _: next(handoff_responses),
-            ):
-                with patch(
-                    "little_loops.issue_manager.read_continuation_prompt",
-                    return_value="# Some prompt content",
-                ):
-                    run_with_continuation(
-                        "/ll:manage-issue bug fix BUG-327",
-                        mock_logger,
-                        max_continuations=3,
-                    )
-
-        assert len(commands_received) == 2
-        assert commands_received[0] == "/ll:manage-issue bug fix BUG-327"
-        assert commands_received[1] == "/ll:manage-issue bug fix BUG-327 --resume"
+        assert result.returncode == 0
+        # Signal IS forwarded because issue is still open
+        assert "CONTEXT_HANDOFF:" in result.stdout
 
     def test_returns_default_result_when_loop_never_executes(self, temp_project_dir: Path) -> None:
         """Test that negative max_continuations returns default result (BUG-419)."""

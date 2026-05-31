@@ -2260,33 +2260,32 @@ class TestWorkerPoolStageTracking:
 class TestRunWithContinuation:
     """Tests for WorkerPool._run_with_continuation() (BUG-819)."""
 
-    def test_breaks_when_no_continuation_prompt(
+    def test_exits_cleanly_when_handoff_detected(
         self,
         worker_pool: WorkerPool,
         temp_repo_with_config: Path,
     ) -> None:
-        """When handoff is detected but no prompt file exists, returncode must be 1."""
+        """When handoff is detected, exits cleanly with signal forwarded to stdout."""
         handoff_result = subprocess.CompletedProcess(
             args=["claude", "-p", "test"],
             returncode=0,
-            stdout="CONTEXT_HANDOFF\n",
+            stdout="CONTEXT_HANDOFF: Ready for fresh session\n",
             stderr="",
         )
 
-        with patch.object(worker_pool, "_run_claude_command", return_value=handoff_result):
+        with patch.object(worker_pool, "_run_claude_command", return_value=handoff_result) \
+                as mock_run:
             with patch(
                 "little_loops.parallel.worker_pool.detect_context_handoff", return_value=True
             ):
-                with patch(
-                    "little_loops.parallel.worker_pool.read_continuation_prompt", return_value=""
-                ):
-                    result = worker_pool._run_with_continuation(
-                        "test", temp_repo_with_config, issue_id="BUG-819"
-                    )
+                result = worker_pool._run_with_continuation(
+                    "test", temp_repo_with_config, issue_id="BUG-819"
+                )
 
-        # Should signal failure when handoff has no prompt file
-        assert result.returncode == 1
-        assert "Handoff detected but no continuation prompt found" in result.stderr
+        # Should call run_claude_command only once (no continuation spawned)
+        mock_run.assert_called_once()
+        assert result.returncode == 0
+        assert "CONTEXT_HANDOFF:" in result.stdout
 
     def test_sentinel_triggers_explicit_handoff_instruction(
         self,

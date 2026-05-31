@@ -160,6 +160,37 @@ def run_claude_command(
     )
 
 
+def _check_issue_already_done(
+    issue_path: Path | None,
+    logger: Logger,
+) -> bool:
+    """Check if the issue file's frontmatter status indicates work is already complete.
+
+    Used as a pre-continuation guard (BUG-1759): when the inner Claude session hits
+    its context limit and emits CONTEXT_HANDOFF, but the issue was already marked
+    done before the context limit was reached, we should skip the handoff and
+    return success rather than triggering an unnecessary handoff cycle.
+
+    Args:
+        issue_path: Path to the issue file, or None if not available.
+        logger: Logger for diagnostic messages.
+
+    Returns:
+        True if the issue's status is 'done' or 'cancelled'.
+    """
+    if issue_path is None:
+        return False
+    if not issue_path.exists():
+        return False
+    try:
+        from little_loops.frontmatter import parse_frontmatter
+
+        fm = parse_frontmatter(issue_path.read_text(encoding="utf-8"))
+        return fm.get("status") in ("done", "cancelled")
+    except Exception:
+        return False
+
+
 def run_with_continuation(
     initial_command: str,
     logger: Logger,
@@ -174,6 +205,7 @@ def run_with_continuation(
     context_limit: int = 200_000,
     sentinel_threshold: float = 0.60,
     guillotine_threshold: float = 0.90,
+    issue_path: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
 
@@ -251,26 +283,37 @@ def run_with_continuation(
         if detect_context_handoff(result.stdout):
             logger.info("Detected CONTEXT_HANDOFF signal")
 
-            # Read continuation prompt
-            prompt_content = read_continuation_prompt(repo_path)
-            if not prompt_content:
-                logger.warning("Context handoff signaled but no continuation prompt found")
-                all_stderr.append("Handoff detected but no continuation prompt found")
+            # Pre-continuation guard: if the issue is already done/cancelled, the work
+            # is complete — return success without signalling handoff so the outer FSM
+            # doesn't waste a handoff cycle on finished work (BUG-1759 Incident 2).
+            already_done = _check_issue_already_done(issue_path, logger)
+            if already_done:
+                logger.info(
+                    "Issue already done/cancelled; skipping handoff and returning success"
+                )
                 result = subprocess.CompletedProcess(
-                    args=result.args, returncode=1, stdout=result.stdout, stderr=result.stderr
+                    args=result.args,
+                    returncode=0,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
                 )
                 break
 
-            if continuation_count >= max_continuations:
-                logger.warning(f"Reached max continuations ({max_continuations}), stopping")
-                break
+            # Forward CONTEXT_HANDOFF signal to ll-auto's stdout so the outer FSM's
+            # signal_detector can detect it via the existing HANDOFF_SIGNAL pattern.
+            # The signal was already streamed to stdout via stream_callback; this
+            # explicit write ensures it lands even when stream_output is False.
+            handoff_message = "CONTEXT_HANDOFF: Ready for fresh session"
+            print(handoff_message)
+            logger.info(f"Forwarded handoff signal to stdout; exiting cleanly")
 
-            continuation_count += 1
-            logger.info(f"Starting continuation session #{continuation_count}")
-
-            _base = resume_command if resume_command is not None else initial_command
-            current_command = f"{_base} --resume"
-            continue
+            result = subprocess.CompletedProcess(
+                args=result.args,
+                returncode=0,
+                stdout=result.stdout + "\n" + handoff_message,
+                stderr=result.stderr,
+            )
+            break
 
         total_tokens = _last_input[0] + _last_output[0]
         usage_ratio = total_tokens / context_limit if context_limit > 0 else 0.0
@@ -778,6 +821,7 @@ def process_issue_inplace(
                 resume_command=_slash_cmd,
                 on_usage=_on_usage_writer,
                 preview_full=preview_full,
+                issue_path=info.path,
             )
         else:
             logger.info(f"Would run: /ll:manage-issue {info.issue_type} {action} {info.issue_id}")
