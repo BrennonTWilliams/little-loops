@@ -80,3 +80,13 @@ class TestAuditIssueConflictsSkillExists:
         assert SKILL_FILE.exists(), "Skill file not found"
         content = SKILL_FILE.read_text()
         assert "ll-issues fingerprint" in content
+
+    def test_phase4b_idempotency_guard_present(self) -> None:
+        """Phase 4b must document idempotency rule for Scope Boundary/Addition/Resolution (ENH-1802)."""
+        content = SKILL_FILE.read_text()
+        phase4b_start = content.index("## Phase 4b")
+        phase5_start = content.index("## Phase 5")
+        phase4b_text = content[phase4b_start:phase5_start]
+        assert "idempotent" in phase4b_text.lower(), (
+            "Phase 4b must document idempotency pre-check for audit-authored section appends"
+        )

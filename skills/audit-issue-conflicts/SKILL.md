@@ -324,7 +324,7 @@ For each approved recommendation:
 ### merge / deprecate
 
 1. Identify the issue to be **kept** and the one to be **closed/superseded**
-2. If merging scope: append a `## Scope Addition` note to the kept issue file:
+2. If merging scope: before appending, read the kept issue file and check whether `## Scope Addition` already contains a reference to `[CLOSED-ID]`. If found, skip the append and log `[idempotent: Scope Addition for CLOSED-ID already present]`. Otherwise, append a `## Scope Addition` note to the kept issue file:
 
 ```markdown
 
@@ -337,7 +337,7 @@ For each approved recommendation:
 [Relevant scope absorbed from CLOSED-ID]
 ```
 
-3. Add a resolution section to the closed issue file:
+3. Add a resolution section to the closed issue file: before appending, check whether `## Resolution` is already present in the closed issue file. If found, skip and log `[idempotent: Resolution already present]`. Otherwise, append:
 
 ```markdown
 
@@ -387,7 +387,7 @@ ll-issues append-log "[issue-path]" /ll:audit-issue-conflicts
 
 ### split / update_scope
 
-Append a scope boundary note to each affected issue file:
+Before appending to each affected issue, check whether `## Scope Boundary` is already present in that file and already references `[OTHER-ID]`. If found, skip the append and log `[idempotent: Scope Boundary for OTHER-ID already present]`. Otherwise, append a scope boundary note:
 
 ```markdown
 
@@ -430,12 +430,16 @@ AUDIT ISSUE CONFLICTS — COMPLETE
 - Issues scanned: [N]
 - Conflicts found: [C]
 - Recommendations applied: [A]
+- Skipped (idempotent): [I]
 - Skipped (user declined or no-op): [S]
 - Could not evaluate: [W]
 
 ## APPLIED CHANGES
 - [ISSUE-A] vs [ISSUE-B]: [action taken, e.g., "FEAT-200 closed, scope merged into FEAT-100"]
 - [ISSUE-A]: [action taken, e.g., "blocked_by: FEAT-300 added to frontmatter"]
+
+## SKIPPED (IDEMPOTENT)
+- [ISSUE-A] vs [ISSUE-B]: Scope Boundary for OTHER-ID already present — no duplicate appended
 
 ## UNCHANGED
 - [ISSUE-A] vs [ISSUE-B]: user declined recommendation

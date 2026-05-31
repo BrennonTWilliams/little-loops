@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Nested loop name crashes in background runs** — Nested loop names no longer cause background run crashes. (BUG-1788)
 - **`audit-issue-conflicts` scans terminal issues** — The command no longer includes `done`/`deferred` issues alongside active ones. (BUG-1799)
 - **`audit-issue-conflicts` unstaged files** — `git add .issues/` no longer stages unrelated untracked files. (BUG-1800)
+- **`audit-issue-conflicts` duplicate Scope Boundary / Scope Addition sections** — Phase 4b now checks for existing audit-authored sections before appending; repeated runs on an unchanged backlog no longer accumulate duplicate sections. (ENH-1802)
 - **`hitl-md` generate state missing `on_error` routing** — Missing `on_error` in the generate state no longer causes fatal loop termination. (BUG-1803)
 
 ### Changed
