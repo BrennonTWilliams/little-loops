@@ -7,16 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **Parallel-safe autodev for disjoint issues** — `autodev` now declares `scope: ["${context.run_dir}"]`, enabling concurrent instances with different issue sets to refine in parallel. Implementation isolation via existing `--worktree` flag. (FEAT-1789)
-- **`ll-loop diagnose-evaluators` subcommand** — Detects non-discriminating evaluator states from run history by computing per-state Bernoulli variance on verdicts. Flags states below threshold with pattern-matched recommendations for improving discriminating power. JSON output for downstream consumption. (ENH-1792)
-- **`ll-loop run --baseline` blind A/B comparison** — Runs paired harness/baseline arms in parallel, feeds both outputs into an anonymized LLM judge, aggregates results into `ab.json`, and prints a terminal summary with pass-rate deltas and token/duration ratios. Enables quantitative validation that harnesses improve output quality. (FEAT-1790, FEAT-1822)
-
 ### Planned
 
 - Windows compatibility testing
 - Performance benchmarks for large repositories
+
+## [1.113.0] - 2026-05-31
+
+### Added
+
+- **`proof-first-task` loop** — Opt-in wrapper that gates any implementation loop on an assumption-firewall check before code changes begin. (FEAT-1738)
+- **`learning-tests-audit` loop** — FSM loop for stale record detection and triage reporting in the Learning-Test Registry. (FEAT-1739)
+- **Learning-tests opt-in feature flag** — `/ll:init` and `config-schema.json` now wire learning-tests as an opt-in feature flag. (FEAT-1743)
+- **`ll-loop monitor` subcommand** — Live state polling and log tail for running loops. (FEAT-1764)
+- **Parallel-safe autodev for disjoint issues** — `autodev` now declares `scope: ["${context.run_dir}"]`, enabling concurrent instances with different issue sets to refine in parallel. (FEAT-1789)
+- **`ll-loop run --baseline` blind A/B comparison** — Runs paired harness/baseline arms in parallel, feeds both outputs into an anonymized LLM judge, and aggregates results into `ab.json` with pass-rate deltas and token/duration ratios. (FEAT-1790, FEAT-1822)
+- **`assumption-firewall` `--assume` flag** — Records untestable claims directly via CLI without interactive prompts. (ENH-1740)
+- **`history_reader` module** — Typed read-only query API for `history.db`. (ENH-1752)
+- **Multi-profile design-tokens system** — Active profile selector with profile-scoped token sets. (ENH-1768)
+- **W3C DTCG `$value` token format** — Design-tokens resolver now supports the W3C DTCG `$value` field alongside the legacy `value` field. (ENH-1769)
+- **`ll-loop diagnose-evaluators` subcommand** — Detects non-discriminating evaluator states from run history by computing per-state Bernoulli variance; flags states below threshold with pattern-matched recommendations. (ENH-1792)
+
+### Fixed
+
+- **ll-auto CONTEXT_HANDOFF signal forwarding** — `ll-auto` now correctly forwards `CONTEXT_HANDOFF` signals to the outer FSM loop. (BUG-1759)
+- **Background loop scope conflict silent failure** — Scope lock conflicts in background loops now surface a clear error message instead of failing silently. (BUG-1771)
+- **`ll-loop list --json` missing description field** — The `description` field is no longer omitted from JSON output. (BUG-1779)
+- **Nested loop name crashes in background runs** — Nested loop names no longer cause background run crashes. (BUG-1788)
+- **`audit-issue-conflicts` scans terminal issues** — The command no longer includes `done`/`deferred` issues alongside active ones. (BUG-1799)
+- **`audit-issue-conflicts` unstaged files** — `git add .issues/` no longer stages unrelated untracked files. (BUG-1800)
+- **`hitl-md` generate state missing `on_error` routing** — Missing `on_error` in the generate state no longer causes fatal loop termination. (BUG-1803)
+
+### Changed
+
+- **`general-task` retry hardening** — Applies existing `max_retries` field uniformly across `general-task.yaml` loop states. (ENH-1677)
+- **FSM scope context template variables** — FSM `scope` field now supports `${context.*}` template variables for per-file locking. (ENH-1787)
+- **`--no-lock` flag for `ll-loop run`** — Bypasses scope lock conflict detection when explicitly requested. (ENH-1778)
+- **`hitl-md` prompt extracted to shared fragment** — 16 KB generate prompt moved to a shared file fragment for reuse. (ENH-1804)
+- **LLM model shown in `ll-loop run` and `ll-loop monitor` headers** — Active model name now visible in run headers. (ENH-1805)
 
 ## [1.112.0] - 2026-05-28
 
@@ -365,7 +393,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.112.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.113.0...HEAD
+[1.113.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.112.0...v1.113.0
 [1.112.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.111.0...v1.112.0
 [1.111.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.110.0...v1.111.0
 [1.110.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.109.0...v1.110.0
