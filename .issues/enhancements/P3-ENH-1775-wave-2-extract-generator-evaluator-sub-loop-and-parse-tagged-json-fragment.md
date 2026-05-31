@@ -14,7 +14,7 @@ score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
 implementation_order_risk: true
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-1775: Wave 2 — Extract `generator-evaluator` Sub-loop and Add `parse_tagged_json` Fragment
@@ -165,6 +165,29 @@ The `incremental-refactor.yaml:34-37` outlier uses `action_type: slash_command` 
 
 **Test compatibility constraint** (see Tests section for details): `test_all_fragments_are_shell_type:879` and `test_all_fragments_have_exit_code_evaluate:886` in `test_fsm_fragments.py` assert ALL cli.yaml fragments have `action_type: shell` and `evaluate.type: exit_code`. The proposed `action_type: prompt` for `ll_commit` would violate both. Options: (a) use `action_type: shell` invoking `ll-commit` CLI, (b) add an allowlist exemption to the iteration tests, or (c) place `ll_commit` in a separate fragment library.
 
+> **Selected:** Option (c) — separate fragment library (`lib/prompt-fragments.yaml`) — `ll-commit` binary doesn't exist and would need creating from scratch; allowlist exemptions have zero precedent in `test_fsm_fragments.py`; `score-plan-quality.yaml` and `benchmark.yaml` are direct precedents for separate lib files with non-standard contracts.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-05-31.
+
+**Selected**: Option (c) — place `ll_commit` in a new `loops/lib/prompt-fragments.yaml` library
+
+**Reasoning**: Option (a) is blocked by a missing prerequisite — `ll-commit` does not exist as a registered CLI binary in `pyproject.toml`, so it cannot be called from a `action_type: shell` fragment without creating a new entrypoint first, which is out of scope. Option (b) introduces an allowlist exemption with zero existing precedent in `test_fsm_fragments.py`, weakening the `cli.yaml` invariant that all its fragments are shell-type CLI wrappers. Option (c) follows the established codebase pattern: `score-plan-quality.yaml` (prompt-type) and `benchmark.yaml` (non-exit_code evaluate) both live in separate lib files and have dedicated test classes — `ll_commit` should do the same.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| (a) shell+binary | 1/3 | 0/3 | 3/3 | 1/3 | 5/12 |
+| (b) allowlist | 0/3 | 2/3 | 1/3 | 2/3 | 5/12 |
+| (c) separate lib | 3/3 | 2/3 | 3/3 | 3/3 | 11/12 |
+
+**Key evidence**:
+- Option (a): `ll-commit` not in `pyproject.toml [project.scripts]`; no `main_commit` in `scripts/little_loops/cli/`; binary would need to be created as prerequisite scope
+- Option (b): `test_all_fragments_are_shell_type:879` and `test_all_fragments_have_exit_code_evaluate:886` iterate all `cli.yaml` fragments with no exemption mechanism; zero allowlist precedent across the entire `test_fsm_fragments.py` file
+- Option (c): `score-plan-quality.yaml` (action_type: prompt) and `benchmark.yaml` (evaluate.type: harbor_scorer) are direct structural precedents; `TestScorePlanQualityFragment:1199` is a reusable template for the new test class; `lib/harness.yaml` is also being created new in this same issue, so adding a second new lib file is consistent
+
 ## Integration Map
 
 ### Files to Modify
@@ -178,7 +201,7 @@ The `incremental-refactor.yaml:34-37` outlier uses `action_type: slash_command` 
 - `loops/adopt-third-party-api.yaml` — convert parse_enumeration state
 - `loops/integrate-sdk.yaml` — convert parse_enumeration state
 - `loops/assumption-firewall.yaml` — convert extract_assumptions state
-- `loops/lib/cli.yaml` — add `ll_commit` fragment (absorbed from ENH-1774)
+- `loops/lib/prompt-fragments.yaml` — new library; add `ll_commit` fragment here (absorbed from ENH-1774; **not** in cli.yaml — see Decision Rationale)
 - `loops/lib/harness.yaml` — add `playwright_screenshot` fragment (absorbed from ENH-1774; new file, does not exist yet)
 - `loops/dead-code-cleanup.yaml` — convert `commit` state to use `ll_commit` fragment (absorbed from ENH-1774)
 - `loops/test-coverage-improvement.yaml` — convert `commit` state to use `ll_commit` fragment (absorbed from ENH-1774)
@@ -219,8 +242,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue` — tests that will need updating:_
 
 - `scripts/tests/test_fsm_fragments.py:TestCommonYamlNewFragments:523` — needs `parse_tagged_json` presence test added
-- `scripts/tests/test_fsm_fragments.py:TestCliYamlFragments:824` — needs `ll_commit` fragment test added; `test_all_fragments_are_shell_type:879` and `test_all_fragments_have_exit_code_evaluate:886` iterate ALL fragments and will assert on new `ll_commit`
-- `scripts/tests/test_fsm_fragments.py:TestCliYamlFragments:824` — **DESIGN CONSTRAINT**: `test_all_fragments_are_shell_type:879` asserts `action_type == "shell"` for ALL cli.yaml fragments; `test_all_fragments_have_exit_code_evaluate:886` asserts `evaluate.type == "exit_code"` for ALL fragments. The `ll_commit` fragment proposed in this issue uses `action_type: prompt` — this would violate both tests. Options: (a) make `ll_commit` use `action_type: shell` invoking the `ll-commit` CLI binary instead of `/ll:commit` slash command, (b) modify the two iteration tests to exempt `ll_commit` (add an allowlist), or (c) place `ll_commit` in a different fragment library (e.g., a new `lib/prompt-fragments.yaml`). No existing cli.yaml fragment uses `action_type: prompt`.
+- `scripts/tests/test_fsm_fragments.py` — **new test class needed** for `ll_commit` fragment in `lib/prompt-fragments.yaml`; follow `TestScorePlanQualityFragment:1199` pattern (4-test shape: `_load_yaml`, `test_ll_commit_defined`, `test_ll_commit_has_prompt_action_type`, `test_ll_commit_has_description`, `test_ll_commit_resolves_in_loop`). `lib/cli.yaml` is NOT modified — `test_all_fragments_are_shell_type:879` and `test_all_fragments_have_exit_code_evaluate:886` remain unaffected (see Decision Rationale: `ll_commit` goes in `lib/prompt-fragments.yaml`).
 - `scripts/tests/test_fsm_fragments.py:TestDescriptionStrippedFromFragments:978` — `test_all_common_yaml_fragments_have_description:1068` and `test_all_cli_yaml_fragments_have_description:1082` require `description:` on every new fragment
 - `scripts/tests/test_fsm_fragments.py` — **new test class needed** for `playwright_screenshot` fragment in the new `lib/harness.yaml` library (follow `TestCommonYamlNewFragments:523` pattern)
 - `scripts/tests/test_builtin_loops.py` — **new test class needed** `TestGeneratorEvaluatorOracle` for `oracles/generator-evaluator.yaml` (follow `TestReadyToImplementGateLoop:3779` pattern for sub-loop structure, or `TestRefineToReadyIssueSubLoop:605` for parameter+context assertions)
@@ -269,13 +291,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 8. **Create `playwright_screenshot` fragment** in `scripts/little_loops/loops/lib/harness.yaml` — New fragment library file (does not exist yet). Fragment provides `action_type: shell` with the Playwright screenshot command extracted from the 5 harness loops. The `generator-evaluator` sub-loop's `evaluate` state composes from this fragment. Callers supply the file URL path via context. Follow the fragment definition pattern in `lib/common.yaml` (description + action_type + action + evaluator). The `_BUILTIN_LOOPS_DIR` constant at `fragments.py:38` resolves to `scripts/little_loops/loops/`, so `import: lib/harness.yaml` in a loop YAML resolves to `scripts/little_loops/loops/lib/harness.yaml` via the fallback at `fragments.py:96-98`.
 
-9. **Create `ll_commit` fragment** in `scripts/little_loops/loops/lib/cli.yaml` — Add under the existing `fragments:` block alongside `ll_auto`, `ll_check_links`, `ll_issues_list`, etc. Fragment provides `action_type: prompt` with a parameterized `/ll:commit` call. Note: `incremental-refactor.yaml` differs structurally from the other 5 targets — uses `slash_command` action_type and state named `commit_step` not `commit`. The fragment must handle both, or `incremental-refactor.yaml` overrides action_type at the state level via deep-merge (fragment provides base, state fields override). The fragment MUST have a `description:` field (enforced by `TestDescriptionStrippedFromFragments.test_all_cli_yaml_fragments_have_description:1082` in `test_fsm_fragments.py`). The `test_all_fragments_are_shell_type:879` and `test_all_fragments_have_exit_code_evaluate:886` tests iterate ALL cli.yaml fragments — verify `ll_commit` passes both.
+9. **Create `ll_commit` fragment** in `scripts/little_loops/loops/lib/prompt-fragments.yaml` — New fragment library file (does not exist yet). **Not** in `cli.yaml` — placing it there would violate `test_all_fragments_are_shell_type:879` and `test_all_fragments_have_exit_code_evaluate:886` since `ll-commit` binary doesn't exist and `action_type: prompt` is required; see Decision Rationale. Fragment provides `action_type: prompt` with a parameterized `/ll:commit` call using `${context.commit_message}`. Note: `incremental-refactor.yaml` differs structurally from the other 5 targets — uses `slash_command` action_type and state named `commit_step` not `commit`. The fragment must handle both, or `incremental-refactor.yaml` overrides action_type at the state level via deep-merge (fragment provides base, state fields override). The fragment MUST have a `description:` field. Follow the `lib/score-plan-quality.yaml` structure as the template.
 
 10. **Convert 6 loops to use `ll_commit` fragment** — Replace inline commit states with `fragment: ll_commit` in: `dead-code-cleanup.yaml:94-99`, `test-coverage-improvement.yaml:198-204`, `backlog-flow-optimizer.yaml:126-131`, `issue-staleness-review.yaml:67-72`, `docs-sync.yaml:57-62`, `incremental-refactor.yaml:34-37`. The first 5 use `action_type: prompt` with prose wrapping; `incremental-refactor.yaml` uses `action_type: slash_command` with literal `"/ll:commit"` — handle the structural variance at the state override level.
 
 11. **Update `test_builtin_loops.py` harness loop tests** — `TestHtmlWebsiteGeneratorLoop:2640`, `TestSvgImageGeneratorLoop:2718`, `TestHtmlAnythingLoop:3130`, `TestHitlCompareLoop:3302`, `TestHitlMdLoop:3467` all assert on `generate`, `evaluate`, `score` state existence, action content, evaluator types, and routing. These tests will break when those states are replaced by `loop:` delegation. Restructure each test class to assert: (a) pre-generate states retained, (b) correct `loop:` target (`oracles/generator-evaluator`), (c) correct `with:` bindings for rubric/threshold/run_dir, (d) correct routing from the delegating state (on_yes → done/finalize, on_no → retry/failed). Follow the delegation-testing pattern from `TestAssumptionFirewallLoop:3840` (`test_run_gate_delegates_to_ready_to_implement_gate`).
 
-12. **Add new test classes** — (a) `TestGeneratorEvaluatorOracle` in `test_builtin_loops.py` following `TestReadyToImplementGateLoop:3779` (compact structural: states, evaluators, terminals, routing); (b) `parse_tagged_json` fragment test in `test_fsm_fragments.py` following `TestCommonYamlNewFragments:523` pattern; (c) `playwright_screenshot` fragment test class in `test_fsm_fragments.py` for the new `lib/harness.yaml` library (verify fragment exists, correct action_type, resolves from file); (d) minimal structural test classes for the 6 ll_commit target loops (currently only generic coverage from `TestBuiltinLoopFiles`).
+12. **Add new test classes** — (a) `TestGeneratorEvaluatorOracle` in `test_builtin_loops.py` following `TestReadyToImplementGateLoop:3779` (compact structural: states, evaluators, terminals, routing); (b) `parse_tagged_json` fragment test in `test_fsm_fragments.py` following `TestCommonYamlNewFragments:523` pattern; (c) `playwright_screenshot` fragment test class in `test_fsm_fragments.py` for the new `lib/harness.yaml` library (verify fragment exists, correct action_type, resolves from file); (d) `ll_commit` fragment test class in `test_fsm_fragments.py` for the new `lib/prompt-fragments.yaml` library following `TestScorePlanQualityFragment:1199` pattern; (e) minimal structural test classes for the 6 ll_commit target loops (currently only generic coverage from `TestBuiltinLoopFiles`).
 
 13. **Update documentation** — (a) `docs/guides/LOOPS_GUIDE.md` — add `parse_tagged_json`, `ll_commit`, and `playwright_screenshot` to fragment tables; add `generator-evaluator` to oracle sub-loop listing; (b) `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:743-744` — update references from inline harness loops to the new thin-wrapper + sub-loop architecture; (c) `skills/create-loop/reference.md` — add new fragments to fragment catalog; (d) `docs/reference/loops.md` — update fragment and sub-loop tables; (e) `docs/generalized-fsm-loop.md:1658` — verify the evaluate routing rule still applies after sub-loop extraction.
 
@@ -343,6 +365,7 @@ _Added by `/ll:confidence-check` on 2026-05-29_
 - Co-deliverable ordering: implement tests first so the validation chain is in place before loop refactoring — lib/harness.yaml must be created before the sub-loop can validate
 
 ## Session Log
+- `/ll:decide-issue` - 2026-05-31T21:45:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dce117cd-42e5-4d9f-a853-2edf8f80ce22.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:ready-issue` - 2026-05-29T08:11:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76b633ba-2671-4457-8679-cc688d74ce8c.jsonl`
