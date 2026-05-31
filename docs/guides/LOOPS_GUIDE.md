@@ -1411,6 +1411,8 @@ ll-loop run cli-anything-bootstrap --context target="https://github.com/user/rep
 
 **Meta-loop discipline (MR-1)**: Every LLM-proposed artifact is paired with a non-LLM external evaluator — the LLM score-bootstrap state judges measured numbers, not its own generated artifacts.
 
+**Per-run artifact isolation (MR-3)**: Loops must write intermediate artifacts under `${context.run_dir}/`, not bare `.loops/tmp/`. The runner injects `run_dir` as `.loops/runs/<loop>-<timestamp>/` and creates the folder before execution. Writing to shared `.loops/tmp/` causes state corruption when two instances of the same loop run concurrently. Set `shared_state_ok: true` at the loop top-level to suppress this validation warning when cross-run sharing is intentional. <!-- TODO: update-docs stub — MR-3 — drafted 2026-05-30 -->
+
 <!-- END TODO stub -->
 
 ## Beyond the Basics
@@ -1431,6 +1433,10 @@ Evaluators interpret action output and produce a **verdict** string used for rou
 | `diff_stall` | `yes` / `no` / `error` | — | Detect when consecutive iterations produce no git diff changes (see [Stall Detection](#stall-detection)) |
 | `llm_structured` | `yes` / `no` / `blocked` / `partial` | slash commands | Natural-language judgment via LLM |
 | `mcp_result` | `success` / `tool_error` / `not_found` / `timeout` | `mcp_tool` actions | Evaluate MCP server tool call results; see [MCP Tool Actions](#mcp-tool-actions) for verdict details |
+
+<!-- TODO: update-docs stub — BUG-1815 — drafted 2026-05-30 -->
+**Exit-code short-circuit**: When an action exits with a non-zero code, evaluators that don't intrinsically handle exit codes (`output_numeric`, `output_json`, `output_contains`, `convergence`, `harbor_scorer`) immediately return `error` without running their normal logic. Exit-code-aware evaluators (`exit_code`, `mcp_result`, `harbor_scorer`, `diff_stall`, `llm_structured`) are exempt — they process the exit code through their own evaluation path.
+<!-- END TODO stub -->
 
 Override the default by adding an `evaluate:` block to a state:
 
@@ -1599,6 +1605,7 @@ These optional fields can be added to any state:
 | `backoff:` | number (seconds) | Delay before executing this state's action. Useful for rate-limited APIs or CI systems. Overridden at runtime by `--delay <SECONDS>`. |
 | `max_retries:` | integer | Maximum number of times the engine re-enters this state before triggering `on_retry_exhausted`. |
 | `on_retry_exhausted:` | state name | Target state when `max_retries` is reached. Common pattern in harness loops: `on_retry_exhausted: advance` to skip a stuck item and continue processing. |
+| `retryable_exit_codes:` | list of integers | <!-- TODO: update-docs stub — ENH-1678 — drafted 2026-05-30 --> **Stub**: Restrict retry to only these exit codes. When set, non-matching non-zero exits skip retry and route directly to `on_retry_exhausted`. Useful for distinguishing transient failures (e.g. network errors) from permanent ones (e.g. config errors). <!-- END TODO stub --> |
 | `max_rate_limit_retries:` | integer | Max consecutive 429/rate-limit retries in the **short-burst tier** before advancing to the long-wait tier. Requires `on_rate_limit_exhausted`. |
 | `on_rate_limit_exhausted:` | state name | Target state routed to when the total wall-clock rate-limit budget (`rate_limit_max_wait_seconds`) is spent. Required when `max_rate_limit_retries` is set. |
 | `rate_limit_backoff_base_seconds:` | integer | Base seconds for exponential backoff in the short-burst tier; actual sleep = base * 2^(attempt-1) + uniform(0, base). Defaults to 30. |
