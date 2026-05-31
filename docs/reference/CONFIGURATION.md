@@ -61,6 +61,7 @@ For interactive editing, use `/ll:configure`.
     "command_prefix": "/ll:",
     "ready_command": "ready-issue {{issue_id}}",
     "manage_command": "manage-issue {{issue_type}} {{action}} {{issue_id}}",
+    "decide_command": "decide-issue {{issue_id}}",
     "worktree_copy_files": [".claude/settings.local.json", ".env"],
     "require_code_changes": true,
     "use_feature_branches": false,
@@ -78,6 +79,9 @@ For interactive editing, use `/ll:configure`.
     },
     "tdd_mode": false,
     "max_refine_count": 5,
+    "recursive_refine": {
+      "max_depth": 3
+    },
     "rate_limits": {
       "max_wait_seconds": 21600,
       "long_wait_ladder": [300, 900, 1800, 3600],
@@ -221,7 +225,8 @@ For interactive editing, use `/ll:configure`.
       "type": {
         "BUG": "38;5;208",
         "FEAT": "32",
-        "ENH": "34"
+        "ENH": "34",
+        "EPIC": "35"
       },
       "fsm_active_state": "32",
       "fsm_edge_labels": {}
@@ -265,8 +270,8 @@ Issue management settings:
 | `priorities` | `[P0-P5]` | Valid priority prefixes |
 | `templates_dir` | `null` | Directory for issue templates |
 | `capture_template` | `"full"` | Default template style for captured issues (`"full"` or `"minimal"`) |
-| `duplicate_detection.exact_threshold` | `0.8` | Jaccard similarity threshold for exact duplicates (0.5-1.0) |
-| `duplicate_detection.similar_threshold` | `0.5` | Jaccard similarity threshold for similar issues (0.1-0.9) |
+| `duplicate_detection.exact_threshold` | `0.8` | Jaccard similarity threshold for exact duplicates (0.0-1.0) |
+| `duplicate_detection.similar_threshold` | `0.5` | Jaccard similarity threshold for similar issues (0.0-1.0) |
 | `next_issue.strategy` | `"confidence_first"` | Selection order for `ll-issues next-issue` / `next-issues`. Named preset: `confidence_first` or `priority_first`. See [`issues.next_issue`](#issuesnext_issue). |
 | `next_issue.sort_keys` | `null` | Optional list of `{key, direction}` entries that overrides `strategy` with a custom sort order. |
 
@@ -292,11 +297,12 @@ Sequential automation settings (ll-auto):
 | Key | Default | Description |
 |-----|---------|-------------|
 | `timeout_seconds` | `3600` | Per-issue timeout |
-| `idle_timeout_seconds` | `0` | Kill worker if no output for N seconds (0 to disable) |
+| `idle_timeout_seconds` | `0` | Seconds of idle inactivity before automation considers the session idle (0 to disable) |
 | `state_file` | `.auto-manage-state.json` | State persistence |
 | `worktree_base` | `.worktrees` | Git worktree directory |
 | `max_workers` | `2` | Parallel workers |
 | `stream_output` | `true` | Stream subprocess output |
+| `max_continuations` | `3` | Maximum continuation prompts before automation stops (minimum 1) |
 
 ### `parallel`
 
@@ -498,7 +504,8 @@ Design tokens are organized into **profiles** under `path/profiles/`. Each profi
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `active_profile` | `str` | `"default"` | Name of the active profile; must match a subdirectory in `path/profiles/`. |
+| `active` | `str` | `"default"` | Name of the active profile; must match a subdirectory in `path/profiles/`. |
+| `profiles_dir` | `str` | `"profiles"` | Subdirectory under `path` containing profile directories. |
 
 Built-in profiles:
 - `default` — WCAG AA accessible palette
@@ -542,7 +549,7 @@ When no `profiles/` directory is present, the resolver falls back to the flat la
   "design_tokens": {
     "enabled": true,
     "path": ".ll/design-tokens",
-    "active_profile": "default"
+    "active": "default"
   }
 }
 ```
@@ -570,21 +577,26 @@ The design token loader supports the [W3C Design Tokens Community Group](https:/
 
 <!-- END TODO stub -->
 
-<!-- TODO: update-docs stub — FEAT-1743 — drafted 2026-05-29 -->
 ### `learning_tests`
 
-> **Stub**: This section was auto-drafted by `/ll:update-docs`. Fill in details about the registry path, record format, and how `enabled` gates downstream skills/loops.
-
-Master switch for the learning test registry feature. When enabled, skills and loops can query `.ll/learning-tests/` via `ll-learning-tests` to check whether a target API or pattern is already proven before re-doing the work.
+Master switch for the learning test registry feature. When enabled, skills and loops can query `.ll/learning-tests/` via `ll-learning-tests` to check whether a target API or pattern is already proven before re-doing the work. Records are stored as YAML-frontmatter markdown files under `.ll/learning-tests/<slug>.md`.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | `bool` | `false` | Enable the learning test registry and `ll-learning-tests` CLI. When disabled, `ll-learning-tests` exits with a message and skills skip proof checks. |
+| `stale_after_days` | `int` | `30` | Days after which a record is considered stale and should be re-validated. |
+| `discoverability.mode` | `str` | `"warn"` | How learning-test gaps are surfaced: `"off"`, `"warn"`, or `"block"`. |
+| `discoverability.skip_packages` | `list[str]` | `["std", "typing", "os", "sys"]` | Packages whose imports are not flagged as learning-test gaps. |
 
 ```json
 {
   "learning_tests": {
-    "enabled": false
+    "enabled": false,
+    "stale_after_days": 30,
+    "discoverability": {
+      "mode": "warn",
+      "skip_packages": ["std", "typing", "os", "sys"]
+    }
   }
 }
 ```
@@ -592,7 +604,6 @@ Master switch for the learning test registry feature. When enabled, skills and l
 Run `/ll:configure learning-tests` to enable and set up the registry directory.
 
 See [LEARNING_TESTS_GUIDE.md](../guides/LEARNING_TESTS_GUIDE.md) for the full workflow.
-<!-- END TODO stub -->
 
 ### `loops`
 
@@ -608,6 +619,7 @@ FSM loop settings:
 | `glyphs.sub_loop` | `↳⟳` | Badge glyph for `sub_loop` action states |
 | `glyphs.route` | `⑃` | Badge glyph for `route` action states |
 | `glyphs.parallel` | `∥` | Badge glyph for `parallel` action states |
+| `queue_wait_timeout_seconds` | `86400` | Seconds to wait for a conflicting scope lock to release when `--queue` is used |
 
 #### `throttle` (per-state progressive throttling)
 
@@ -630,24 +642,6 @@ Override individual glyphs to customize how FSM box diagrams render state type b
       "prompt": "?",
       "shell": "$"
     }
-  }
-}
-```
-
-### `learning_tests`
-
-Learning test registry settings. Records are stored as YAML-frontmatter markdown files under `.ll/learning-tests/<slug>.md`.
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `stale_after_days` | `30` | Days after which a record is considered stale and should be re-validated. Used as a pre-filter by `ll-loop run learning-tests-audit` to skip recently-created records that can't be stale yet. |
-
-Example:
-
-```json
-{
-  "learning_tests": {
-    "stale_after_days": 14
   }
 }
 ```
@@ -820,6 +814,7 @@ Override the default ANSI color codes used for FSM diagram edge labels and conne
 | `retry_exhausted` | `38;5;208` | Orange | `on_retry_exhausted` transitions |
 | `rate_limit_exhausted` | `38;5;214` | Amber | `on_rate_limit_exhausted` transitions |
 | `next` | `2` | Dim | Default/unconditional transitions |
+| `default` | `2` | Dim | Unlabeled / catch-all transitions (`_`) |
 
 **Example** — use cyan for success edges and magenta for error edges:
 
@@ -837,6 +832,22 @@ Override the default ANSI color codes used for FSM diagram edge labels and conne
 ```
 
 Set `NO_COLOR=1` to disable all colorization regardless of config.
+
+### `orchestration`
+
+Settings for the host CLI used by orchestration scripts (`ll-auto`, `ll-parallel`, `ll-sprint`).
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `host_cli` | (auto-detected) | Override the host CLI: `"claude-code"`, `"codex"`, `"opencode"`, or `"pi"`. Mirrors the `LL_HOST_CLI` environment variable; env var takes precedence if both are set. |
+
+### `hooks`
+
+Settings for hook adapter selection.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `host` | (auto-detected) | Host agent identifier for hook adapters: `"claude-code"`, `"opencode"`, or `"codex"`. Adapters translate between the host's native hook protocol and `LLHookEvent`/`LLHookResult`. |
 
 ### `extensions`
 

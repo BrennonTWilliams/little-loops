@@ -263,7 +263,7 @@ Emitted after the evaluator runs to determine the next routing decision.
 | Field | Type | Description |
 |-------|------|-------------|
 | `type` | `str` | Evaluation type: `"default"` (exit-code based) or the custom type declared in the state's `evaluate` config (e.g. `"llm"`) |
-| `verdict` | `str` | `"pass"` or `"fail"` |
+| `verdict` | `str` | Evaluator verdict (e.g. `"pass"`, `"fail"`, `"yes"`, `"no"`, `"retry"`, `"error"`) |
 | *(detail fields)* | varies | Additional evaluator-specific fields (e.g. `score`, `reason` for LLM evaluators) |
 
 **Example (default exit-code evaluation):**
@@ -315,8 +315,6 @@ Emitted when the same edge (`from_state->to_state`) is traversed more than `max_
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `event` | `str` | Event type identifier |
-| `ts` | `str` | ISO 8601 timestamp |
 | `edge` | `str` | Edge key (`from_state->to_state`) that triggered detection |
 | `from` | `str` | Source state of the cyclic edge |
 | `to` | `str` | Target state of the cyclic edge |
@@ -556,7 +554,7 @@ Emitted once when the executor finishes, regardless of how it terminated.
 |-------|------|-------------|
 | `final_state` | `str` | Name of the state at termination. Usually the last state entered; when `terminated_by="timeout"` this may be a state that was routed to but never entered. **Exception (BUG-1226):** when that pending state is a shell action, the executor flushes it — emitting `state_enter` with `flushed: true` and running its action — before honoring the timeout, so `state_enter` for `final_state` is always emitted before `loop_complete`. Slash commands and sub-loops are not flushed. |
 | `iterations` | `int` | Total number of iterations completed |
-| `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), `"stall_detected"` (FEAT-1637 circuit fired with `on_repeated_failure: "abort"`), or the terminal state name |
+| `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), `"stall_detected"` (FEAT-1637 circuit fired with `on_repeated_failure: "abort"`), `"cycle_detected"` (same edge traversed more than `max_edge_revisits` times), `"max_iterations"` (iteration cap reached), or the terminal state name |
 
 **Example:**
 ```json
@@ -1017,8 +1015,8 @@ When `OTelTransport` is active (`events.transports: ["otel"]`), the following ev
 
 | Event | OTel action | Field used |
 |-------|-------------|------------|
-| `loop_start` | Opens root span (trace) | `loop_name` → span name |
-| `loop_resume` | Closes all open spans; opens new root span | `loop_name` → span name |
+| `loop_start` | Opens root span (trace) | `loop` → span name |
+| `loop_resume` | Closes all open spans; opens new root span | `loop` → span name |
 | `state_enter` | Opens child span of loop span | `state` → span name |
 | `action_start` | Opens grandchild span of state span | `action` → span name |
 

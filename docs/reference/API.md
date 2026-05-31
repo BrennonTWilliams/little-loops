@@ -112,6 +112,11 @@ BRConfig(project_root: Path)
 | `refine_status` | `RefineStatusConfig` | refine-status display settings |
 | `cli` | `CliConfig` | CLI output settings (color toggle and color overrides) |
 | `design_tokens` | `DesignTokensConfig` | Design system token settings |
+| `orchestration` | `OrchestrationConfig` | Orchestration settings (host CLI selection) |
+| `events` | `EventsConfig` | Event transport/emission settings |
+| `learning_tests` | `LearningTestsConfig` | Learning test registry settings |
+| `extensions` | `list[str]` | Extension module paths to load |
+| `repo_path` | `Path` | Resolved repository root path |
 | `issue_categories` | `list[str]` | List of category names |
 | `issue_priorities` | `list[str]` | List of priority prefixes |
 
@@ -603,7 +608,8 @@ class IssueInfo:
     implementation_order_risk: bool | None = None  # Set to true by /ll:confidence-check (Phase 4.9) when ordering advice detected (e.g., "implement tests first"); not a wiring gap
     session_commands: list[str] = []       # Distinct /ll:* commands in ## Session Log
     session_command_counts: dict[str, int] = {}  # Per-command occurrence counts
-    labels: list[str] = []                 # Labels from ## Labels section
+    labels: list[str] = []                 # Labels from `labels:` frontmatter field
+    milestone: str | None = None           # Sprint or milestone name; None if unassigned
     status: str = "open"                   # Lifecycle status from frontmatter: open | in_progress | blocked | deferred | done | cancelled
 ```
 
@@ -2506,6 +2512,7 @@ def extract_user_messages(
     limit: int | None = None,
     since: datetime | None = None,
     include_agent_sessions: bool = True,
+    include_response_context: bool = False,
 ) -> list[UserMessage]
 ```
 
@@ -2516,6 +2523,7 @@ Extract user messages from all JSONL session files in a project folder.
 - `limit` - Maximum number of messages to return
 - `since` - Only include messages after this datetime
 - `include_agent_sessions` - Whether to include agent-*.jsonl files
+- `include_response_context` - Whether to include the assistant response immediately following each user message
 
 **Returns:** Messages sorted by timestamp, most recent first.
 
@@ -3937,6 +3945,8 @@ FSM (Finite State Machine) loop system for automation workflows. This subpackage
 | `little_loops.fsm.concurrency` | Scope-based lock management for concurrent loops |
 | `little_loops.fsm.rate_limit_circuit` | Shared circuit-breaker state file for cross-worktree 429 coordination |
 | `little_loops.fsm.signal_detector` | Pattern-based signal detection in action output |
+| `little_loops.fsm.stall_detector` | `StallDetector` and `Stall` dataclass for circuit-breaker stall detection |
+| `little_loops.fsm.fragments` | Fragment composition: `resolve_fragments()`, `resolve_inheritance()`, `resolve_flow()` |
 
 ### Quick Import
 
@@ -6714,7 +6724,7 @@ Reads the Markdown source for *name*, strips frontmatter, substitutes `{{config.
 from little_loops.config import BRConfig
 from little_loops.skill_expander import expand_skill
 
-config = BRConfig.load()
+config = BRConfig(Path.cwd())
 prompt = expand_skill("ready-issue", ["FEAT-123"], config)
 if prompt is None:
     prompt = "/ll:ready-issue FEAT-123"  # fallback
