@@ -169,11 +169,24 @@ done_empty (terminal)
 - `scripts/tests/test_learning_tests.py` — existing `mark_stale` tests (line 167); no new tests needed for the registry module
 - `scripts/tests/test_cli_learning_tests.py` — existing CLI tests for `check`, `list`, `mark-stale` (line 128); no new CLI tests needed
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py::test_all_validate_as_valid_fsm` — automatically exercises the new loop once the YAML file exists; validates FSM structure, state reachability, and evaluator field requirements
+- `scripts/tests/test_builtin_loops.py::test_all_parse_as_yaml` — validates the new loop parses as valid YAML
+- `scripts/tests/test_builtin_loops.py::test_all_have_description_field` — validates the loop has a `description:` field (ENH-1331 regression guard)
+- No changes needed to `test_learning_tests.py`, `test_cli_learning_tests.py`, `test_learning_state.py`, `test_config.py`, `test_config_schema.py`, `test_feat1287_doc_wiring.py`, `test_feat1743_configure_wiring.py`, `test_feat1756_init_wiring.py`, `test_feat1743_init_wiring.py`, `test_extension.py`, `test_fsm_schema.py`, `test_fsm_executor.py`, `test_ll_loop_execution.py`, `test_cli.py`, or `test_ll_loop_integration.py` — the loop uses shell states calling the existing `ll-learning-tests` CLI, which none of these tests modify
+
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md` — add `learning-tests-audit` row under "API Adoption" section
 - `docs/guides/LEARNING_TESTS_GUIDE.md` — add troubleshooting note pointing to this loop for bulk staleness management
 - `scripts/little_loops/loops/README.md` — add `learning-tests-audit` row under "API Adoption" section
 - `docs/reference/CLI.md` — no changes expected (loop invoked via `ll-loop run`, no new CLI surface)
+
+### Downstream Consumers (no changes needed)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/verify_learning_citations.sh` — reads `status:` from record YAML frontmatter (line 65); after the loop marks records stale, this script will correctly reject them (exit 1) — desired behavior, no change needed
+- `scripts/little_loops/loops/ready-to-implement-gate.yaml` — calls `ll-learning-tests check` from shell states; if the audit loop marks records stale, the gate will trigger re-exploration — intended cascading behavior
+- `skills/explore-api/SKILL.md` — Phase 1 treats `status: stale` records as needing re-exploration; bulk-marking from the audit loop increases re-exploration frequency — intended behavior, no change needed
 
 ## Implementation Steps
 
@@ -199,6 +212,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 13. Update `scripts/little_loops/loops/README.md` — add a `learning-tests-audit` row under the "API Adoption" table (between `integrate-sdk` and `proof-first-task`), following the same `| \`loop-name\` | Description |` format.
 
+### Verification Phase (added by `/ll:wire-issue`)
+
+_These integration checks were identified by wiring analysis and should be verified after implementation:_
+
+14. Verify `verify_learning_citations.sh` correctly rejects records the loop marks stale — run the loop against a test record with a known-older version, then run `bash scripts/verify_learning_citations.sh` and confirm exit 1 for the stale record.
+15. Verify the per-loop validation sweep (`test_all_validate_as_valid_fsm`, `test_all_parse_as_yaml`, `test_all_have_description_field`) passes with the new loop YAML in place — these tests automatically pick up new `.yaml` files in the built-in loops directory.
+16. Verify `test_expected_loops_exist` passes after adding `"learning-tests-audit"` to the expected set — strict set equality, no other loop names should be present or missing.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -211,6 +232,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Step 9 (tests):** Follow `TestEvaluationQualityLoop` class structure at `test_builtin_loops.py:398-498`: `LOOP_FILE` class attribute, `data` fixture with `yaml.safe_load()`, and assertions for required states, terminal flag, capture names, routing edges (`on_yes`/`on_no`/`on_error`), evaluator types/operators/targets, fragment usage, and action string contents.
 - **Loop metadata conventions:** Set `category: "api-adoption"` (consistent with `adopt-third-party-api.yaml` and `integrate-sdk.yaml`). Include `max_iterations`, `timeout`, and `on_handoff: spawn` as standard top-level fields. Set `description` — required for built-in loops per ENH-1331 regression guard (tested in `test_all_have_description_field()`).
 - **Validation pitfalls:** `ll-loop validate` enforces evaluator field requirements — `output_json` needs `path`, `operator`, `target`. Prompt states need `on_error` and `on_blocked` routing. Shell actions must escape bare `${VAR}` as `$${VAR}` (BUG-1675 regression guard tested in `test_no_bare_bash_variable_in_shell_actions()`).
+- **Fragment library (`lib/common.yaml`):** `list_records` and `enumerate_installed` can use `fragment: shell_exit` from `lib/common.yaml:14-21` to simplify YAML — the fragment provides `action_type: shell` + `evaluate: {type: exit_code}`. State only needs to supply `action`, `on_yes`, `on_no`, and optionally `on_error`/`timeout`. Import with `import: [lib/common.yaml]` at the loop top level. Other useful fragments: `retry_counter` (exponential backoff), `llm_gate` (LLM-structured yes/no), `numeric_gate` (output_numeric comparison), `with_throttle` (tool-call rate limiting).
+- **`mark_stale` CLI slugify behavior:** `cmd_mark_stale()` at `cli/learning_tests.py:32-41` calls `mark_stale(slugify(args.target))` — slugification is applied internally by the CLI. The `mark_stale_candidates` shell state must pass the **raw target string** (from `classify_packages` output) directly to `subprocess.run(["ll-learning-tests", "mark-stale", target])`, NOT a pre-slugified value. Double-slugifying would produce incorrect paths.
+- **`subprocess.run` conventions:** Use `check=False` to prevent `CalledProcessError` on non-zero exit codes (the CLI returns exit 1 when target not found). Use `capture_output=True, text=True` for stdout/stderr capture. Always emit valid JSON to stdout even on error paths — never let a Python traceback reach the FSM evaluator.
+- **`output_json` path conventions:** Object key paths use `.` prefix (`.count`, `.verdict`, `.stale_count`). `output_length` is a built-in special field without dot prefix (used in `assumption-firewall.yaml:183` as `path: output_length` to check array length). Confirmed across 11 evaluator configurations in built-in loops.
 
 ## Acceptance Criteria
 
@@ -241,7 +266,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-05-29_
+_Added by `/ll:confidence-check` on 2026-05-30_
 
 **Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 71/100 → MODERATE
@@ -254,6 +279,9 @@ _Added by `/ll:confidence-check` on 2026-05-29_
 ## Session Log
 - `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:confidence-check` - 2026-05-29T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a99f544-bd0d-4ac3-a506-f33ffd4a0bf7.jsonl`
+- `/ll:confidence-check` - 2026-05-30T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2210570a-56ab-4d7f-83a7-9929d3d9d025.jsonl`
 - `/ll:wire-issue` - 2026-05-30T03:35:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a79d03a-934b-4752-a81b-96cb9e93728e.jsonl`
 - `/ll:refine-issue` - 2026-05-30T03:27:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a1d51e1b-fa76-4e37-b9b8-b2f75b1951eb.jsonl`
 - `/ll:capture-issue` - 2026-05-27T18:08:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55979bca-15d7-443c-b4d3-a76d29148106.jsonl`
+- `/ll:refine-issue` - 2026-05-31T02:50:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9109a4b-4e94-4dd5-bb69-010258918170.jsonl`
+- `/ll:wire-issue` - 2026-05-30T04:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9109a4b-4e94-4dd5-bb69-010258918170.jsonl`

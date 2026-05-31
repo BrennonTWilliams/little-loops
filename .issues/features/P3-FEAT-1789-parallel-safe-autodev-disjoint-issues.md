@@ -2,9 +2,10 @@
 id: FEAT-1789
 title: parallel-safe autodev for disjoint issues
 type: FEAT
-status: open
+status: done
 priority: P3
 captured_at: '2026-05-29T18:45:00Z'
+completed_at: '2026-05-31T03:16:06Z'
 labels:
 - autodev
 - ll-loop
@@ -14,11 +15,11 @@ depends_on: ENH-1787
 decision_needed: false
 relates_to:
 - BUG-1760
-confidence_score: 85
-outcome_confidence: 71
+confidence_score: 100
+outcome_confidence: 86
 score_complexity: 18
 score_test_coverage: 18
-score_ambiguity: 10
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -316,20 +317,22 @@ _Added by `/ll:refine-issue` — based on codebase analysis._
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-05-30_
+_Added by `/ll:confidence-check` on 2026-05-30 | Updated 2026-05-31_
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 71/100 → MODERATE
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
 
-### Concerns
-- Lock upgrade approach unresolved: 3 options presented in implementation step 2 (--worktree, lock_upgrade action_type, CLI coordination), none selected
-- Ambiguity score 10/25 — the unresolved approach choice is the main drag on outcome confidence
+### Changes Since Prior Check
+- ENH-1787 (`resolve_scope()`) is now **done** — template-variable scope resolution is available
+- Lock-upgrade decision resolved by `/ll:decide-issue` — Option A (`--worktree`) selected
+- Ambiguity eliminated (25/25, up from 10/25): all design decisions are now made
+- Dependencies fully satisfied: ENH-1787, ENH-1726, ENH-1354 all done
 
-### Outcome Risk Factors
-- **Unresolved lock upgrade decision**: The 3 competing approaches for implementation-phase coordination create an either/or decision point. Option (a) --worktree requires zero code changes and works today; options (b) and (c) require new FSM framework infrastructure. Resolve before implementing.
-- **Doc/test fanout**: Once the approach is chosen, the mechanical doc updates across 5+ files and test additions in 3+ files are low-risk but represent follow-through work to track.
+No concerns, gaps, or risk factors — clean bill of health.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-05-31T03:12:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3429f501-3e51-46b9-9aec-02bd2b00cdfe.jsonl`
+- `/ll:confidence-check` - 2026-05-31T03:15:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b7df17f-a880-43b3-bdde-974af6dce947.jsonl`
 - `/ll:decide-issue` - 2026-05-31T03:07:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8386755f-dd94-4045-b533-371ffc0ec47d.jsonl`
 - `/ll:confidence-check` - 2026-05-30T06:07:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/787ce0c0-e1a8-4c2d-8ef4-89cc995661e7.jsonl`
 - `/ll:refine-issue` - 2026-05-31T02:49:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93ce2bb2-a420-4b9e-add7-55f34fb013b6.jsonl`

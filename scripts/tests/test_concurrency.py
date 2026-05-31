@@ -579,6 +579,82 @@ class TestMultiInstanceSameName:
             f"Both non-overlapping instances should acquire; got: {results}"
         )
 
+    def test_autodev_with_run_dir_scopes_both_acquire_concurrently(
+        self, tmp_loops: Path, tmp_path: Path
+    ) -> None:
+        """Two autodev instances with different run_dir scopes acquire concurrently (FEAT-1789)."""
+        run1 = tmp_path / ".loops" / "runs" / "autodev-20240115T103000"
+        run2 = tmp_path / ".loops" / "runs" / "autodev-20240115T103001"
+        run1.mkdir(parents=True)
+        run2.mkdir(parents=True)
+
+        manager = LockManager(tmp_loops)
+        results: list[bool] = []
+        barrier = threading.Barrier(2)
+
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+
+            def try_acquire(instance_id: str, scope: list[str]) -> None:
+                barrier.wait()
+                result = manager.acquire("autodev", scope, instance_id=instance_id)
+                results.append(result)
+
+            id1 = "autodev-20240115T103000"
+            id2 = "autodev-20240115T103001"
+            t1 = threading.Thread(
+                target=try_acquire, args=(id1, [str(run1.relative_to(tmp_path))])
+            )
+            t2 = threading.Thread(
+                target=try_acquire, args=(id2, [str(run2.relative_to(tmp_path))])
+            )
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+        finally:
+            os.chdir(original_cwd)
+
+        assert results.count(True) == 2, (
+            f"Both instances with different run_dir scopes should acquire; got: {results}"
+        )
+
+    def test_autodev_with_dot_scope_still_conflicts(
+        self, tmp_loops: Path, tmp_path: Path
+    ) -> None:
+        """Two autodev instances with ["."] scope still conflict (FEAT-1789 regression guard)."""
+        manager = LockManager(tmp_loops)
+        results: list[bool] = []
+        barrier = threading.Barrier(2)
+
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+
+            def try_acquire(instance_id: str, scope: list[str]) -> None:
+                barrier.wait()
+                result = manager.acquire("autodev", scope, instance_id=instance_id)
+                results.append(result)
+
+            id1 = "autodev-20240115T103000"
+            id2 = "autodev-20240115T103001"
+            t1 = threading.Thread(target=try_acquire, args=(id1, ["."]))
+            t2 = threading.Thread(target=try_acquire, args=(id2, ["."]))
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+        finally:
+            os.chdir(original_cwd)
+
+        assert results.count(True) == 1, (
+            f"Both instances with dot scope should conflict; exactly one should acquire, got: {results}"
+        )
+        assert results.count(False) == 1, (
+            f"Both instances with dot scope should conflict; exactly one should fail, got: {results}"
+        )
+
 
 class TestResolveScope:
     """Tests for resolve_scope() template variable resolution."""

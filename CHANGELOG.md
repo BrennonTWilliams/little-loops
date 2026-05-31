@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Parallel-safe autodev for disjoint issues** — `autodev` now declares `scope: ["${context.run_dir}"]`, enabling concurrent instances with different issue sets to refine in parallel. Implementation isolation via existing `--worktree` flag. (FEAT-1789)
+
 ### Planned
 
 - Windows compatibility testing

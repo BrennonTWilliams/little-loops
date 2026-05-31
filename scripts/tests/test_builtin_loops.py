@@ -2128,6 +2128,18 @@ class TestAutodevLoop:
             "skip_inflight must remove autodev-inflight so done does not surface a stale warning"
         )
 
+    def test_scope_field_uses_run_dir_template(self, data: dict) -> None:
+        """autodev must declare scope: ["${context.run_dir}"] for per-instance lock isolation
+        (FEAT-1789). This enables concurrent autodev instances with different run_dir values."""
+        scope = data.get("scope")
+        assert scope is not None, (
+            "autodev.yaml must declare a 'scope' field for per-instance lock isolation"
+        )
+        assert isinstance(scope, list), f"scope must be a list, got {type(scope).__name__}"
+        assert "${context.run_dir}" in scope, (
+            f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
+        )
+
 
 class TestRecursiveRefineLoop:
     """Structural tests for the recursive-refine FSM loop."""
