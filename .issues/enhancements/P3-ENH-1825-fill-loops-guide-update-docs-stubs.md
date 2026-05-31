@@ -103,3 +103,16 @@ Work through each stub in document order:
 - **Effort**: Medium — 9 stubs, most requiring reading source material; no code changes
 - **Risk**: Low — documentation only
 - **Breaking Change**: No
+
+## Verification Notes
+
+**Verdict**: VALID — verified 2026-05-31
+
+- `grep -c 'TODO: update-docs stub' docs/guides/LOOPS_GUIDE.md` returns `9`.
+- All 9 stubs confirmed at lines 71, 548, 768, 1165, 1416, 1449, 1472, 1645, 2584 — exact match to the issue table.
+- Line 1449 stub is inline within an otherwise complete MR-3 paragraph (confirming the "inline within partially written paragraph" note).
+- Line 1645 stub has the `<!-- END TODO stub -->` delimiter described in the issue.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-05-31T06:12:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f18e015-8096-4bee-9b5a-4f1fdb6cf02c.jsonl`

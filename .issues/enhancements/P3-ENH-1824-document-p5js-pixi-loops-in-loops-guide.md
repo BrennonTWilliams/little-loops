@@ -96,3 +96,17 @@ Key differentiators to call out in each section:
 - **Effort**: Small-Medium — content exists in YAML files; writing follows a clear template
 - **Risk**: Low — documentation only; no code changes
 - **Breaking Change**: No
+
+## Verification Notes
+
+**Verdict**: VALID — verified 2026-05-31
+
+- `scripts/little_loops/loops/p5js-sketch-generator.yaml`, `pixi-data-viz.yaml`, `pixi-generative-art.yaml` all exist.
+- `grep` for all three loop names in `docs/guides/LOOPS_GUIDE.md` returns no matches.
+- Harness Examples table rows (lines 1029–1030) list only `svg-image-generator` and `svg-textgrad`.
+- `### svg-image-generator` at line 1282, `### svg-textgrad` at line 1338; both cited as format templates are intact.
+- Line number estimates in the issue (~1031 for table insert, ~1415 for section insert) are accurate.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-05-31T06:12:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f18e015-8096-4bee-9b5a-4f1fdb6cf02c.jsonl`
