@@ -40,6 +40,7 @@ def resolve_scope(scope: list[str], context: dict[str, Any]) -> list[str]:
     """
     resolved: list[str] = []
     for path in scope:
+
         def _replace(m: re.Match[str]) -> str:
             var = m.group(1)
             return str(context[var]) if var in context else m.group(0)

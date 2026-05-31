@@ -21,9 +21,15 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--concept", required=True, help="Natural-language description of the figure")
     p.add_argument("--output", required=True, help="Path for the generated SVG file")
-    p.add_argument("--critique-file", help="JSON file with complaints from the previous critic round")
-    p.add_argument("--result-file", help="Also write result JSON to this path (stdout is always written)")
-    p.add_argument("--iteration", type=int, default=1, help="Iteration number embedded in result JSON")
+    p.add_argument(
+        "--critique-file", help="JSON file with complaints from the previous critic round"
+    )
+    p.add_argument(
+        "--result-file", help="Also write result JSON to this path (stdout is always written)"
+    )
+    p.add_argument(
+        "--iteration", type=int, default=1, help="Iteration number embedded in result JSON"
+    )
     return p.parse_args()
 
 

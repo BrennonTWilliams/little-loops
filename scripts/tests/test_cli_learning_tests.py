@@ -93,9 +93,7 @@ class TestMainLearningTestsCheck:
         assert "assertions" in data
         assert isinstance(data["assertions"], list)
 
-    def test_check_shows_untested_assertions(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_check_shows_untested_assertions(self, capsys: pytest.CaptureFixture[str]) -> None:
         """CLI check output must include assertions with result: untested."""
         record = LearnTestRecord(
             target="Stripe rate limits",

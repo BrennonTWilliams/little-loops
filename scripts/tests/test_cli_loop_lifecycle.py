@@ -686,7 +686,10 @@ class TestCmdResumeBackground:
 
         assert result == 0
         mock_rb.assert_called_once_with(
-            "test-loop", args, tmp_path, subcommand="resume",
+            "test-loop",
+            args,
+            tmp_path,
+            subcommand="resume",
             instance_id="test-loop-20260530T120000",
         )
 
@@ -861,7 +864,10 @@ class TestCmdResumeBackground:
 
         assert result == 0
         mock_rb.assert_called_once_with(
-            "test-loop", args, tmp_path, subcommand="resume",
+            "test-loop",
+            args,
+            tmp_path,
+            subcommand="resume",
             instance_id="test-loop-20260530T130000",
         )
 
@@ -903,7 +909,10 @@ class TestCmdResumeBackground:
 
         assert result == 0
         mock_rb.assert_called_once_with(
-            "test-loop", args, tmp_path, subcommand="resume",
+            "test-loop",
+            args,
+            tmp_path,
+            subcommand="resume",
             instance_id="test-loop-20260530T120000",
         )
 

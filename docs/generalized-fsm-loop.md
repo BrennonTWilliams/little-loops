@@ -512,6 +512,8 @@ states:
 
 `on_blocked` is resolved alongside `on_yes`/`on_no`/`on_error` in the shorthand lookup. It is equivalent to adding `blocked: "escalate"` to a full `route` table and is the recommended way to handle blocked states without switching to a full route table. If a `blocked` verdict is returned and no `on_blocked` target is defined, the loop terminates with a fatal routing error — define `on_blocked` on any state whose action can return a `blocked` verdict.
 
+> **`on_no` → `on_error` fallthrough**: When a `no` verdict is returned and the state defines `on_error` but not `on_no`, the executor routes to `on_error`. This applies to both shorthand (`on_no`/`on_error` keys) and full `route` tables (`no:`/`error:` keys). Use this to share a single error-recovery branch for both evaluator failures and hard-`no` verdicts when they require the same remediation.
+
 This is equivalent to:
 
 ```yaml

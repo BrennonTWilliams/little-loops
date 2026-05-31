@@ -187,13 +187,16 @@ class TestMainSession:
             with pytest.raises(SystemExit):
                 _parse_args()
 
-    def test_search_with_kind_filter(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_search_with_kind_filter(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         db = tmp_path / "session.db"
         transport = SQLiteTransport(db)
         transport.send({"event": "state_enter", "loop_name": "deploy", "state": "wait"})
         transport.close()
         with patch(
-            "sys.argv", ["ll-session", "--db", str(db), "search", "--fts", "deploy", "--kind", "loop"]
+            "sys.argv",
+            ["ll-session", "--db", str(db), "search", "--fts", "deploy", "--kind", "loop"],
         ):
             assert main_session() == 0
         assert "deploy" in capsys.readouterr().out
@@ -207,7 +210,17 @@ class TestMainSession:
         transport.close()
         with patch(
             "sys.argv",
-            ["ll-session", "--db", str(db), "search", "--fts", "deploy", "--kind", "loop", "--json"],
+            [
+                "ll-session",
+                "--db",
+                str(db),
+                "search",
+                "--fts",
+                "deploy",
+                "--kind",
+                "loop",
+                "--json",
+            ],
         ):
             assert main_session() == 0
         data = json.loads(capsys.readouterr().out)
@@ -222,7 +235,9 @@ class TestMainSession:
         assert args.command == "related"
         assert args.issue_id == "BUG-123"
 
-    def test_related_outputs_events(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_related_outputs_events(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         db = tmp_path / "session.db"
         transport = SQLiteTransport(db)
         transport.send({"event": "issue.completed", "issue_id": "BUG-456"})
@@ -244,9 +259,7 @@ class TestMainSession:
         transport = SQLiteTransport(db)
         transport.send({"event": "issue.completed", "issue_id": "BUG-789"})
         transport.close()
-        with patch(
-            "sys.argv", ["ll-session", "--db", str(db), "related", "BUG-789", "--json"]
-        ):
+        with patch("sys.argv", ["ll-session", "--db", str(db), "related", "BUG-789", "--json"]):
             assert main_session() == 0
         data = json.loads(capsys.readouterr().out)
         assert isinstance(data, list)

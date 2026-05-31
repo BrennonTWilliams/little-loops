@@ -690,9 +690,7 @@ class WorkerPool:
             resume_session=resume_session,
         )
 
-    def _check_issue_already_done(
-        self, issue_id: str | None, working_dir: Path
-    ) -> bool:
+    def _check_issue_already_done(self, issue_id: str | None, working_dir: Path) -> bool:
         """Check if the issue file's status indicates work is already complete.
 
         Pre-continuation guard (BUG-1759): when the inner Claude session hits its

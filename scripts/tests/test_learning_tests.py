@@ -191,9 +191,7 @@ class TestReadRecord:
         assert restored.assertions[0].claim == "streaming events are dicts with a `type` key"
         assert restored.assertions[0].result == "pass"
 
-    def test_read_record_preserves_untested_assertions(
-        self, learning_tests_dir: Path
-    ) -> None:
+    def test_read_record_preserves_untested_assertions(self, learning_tests_dir: Path) -> None:
         """Records with untested assertions survive write/read round-trip."""
         record = LearnTestRecord(
             target="Stripe rate limits",

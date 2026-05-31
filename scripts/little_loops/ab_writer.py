@@ -36,7 +36,10 @@ _AB_SCHEMA: dict[str, Any] = {
                 "median_duration_baseline",
             ],
             "properties": {
-                "harness_pass_rate": {"type": "number", "description": "Harness arm pass rate (0-1)"},
+                "harness_pass_rate": {
+                    "type": "number",
+                    "description": "Harness arm pass rate (0-1)",
+                },
                 "baseline_pass_rate": {
                     "type": "number",
                     "description": "Baseline arm pass rate (0-1)",

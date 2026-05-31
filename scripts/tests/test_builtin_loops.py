@@ -129,7 +129,6 @@ class TestBuiltinLoopFiles:
             "integrate-sdk",
             "proof-first-task",
             "cli-anything-bootstrap",
-            "worktree-health",
             "adversarial-redesign",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
@@ -3007,7 +3006,17 @@ class TestAdversarialRedesignLoop:
 
     def test_required_states_exist(self, data: dict) -> None:
         """All required states must be present."""
-        required = {"init", "seed", "critic", "regen", "score_gate", "svg_diff", "transcript", "done", "failed"}
+        required = {
+            "init",
+            "seed",
+            "critic",
+            "regen",
+            "score_gate",
+            "svg_diff",
+            "transcript",
+            "done",
+            "failed",
+        }
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
@@ -3958,9 +3967,7 @@ class TestHitlMdLoop:
             "segment.action must reference the 'channels' field for multi-channel saliency"
         )
         for channel in ("importance", "anomaly", "claim_type", "confidence"):
-            assert channel in action, (
-                f"segment.action must describe the '{channel}' channel"
-            )
+            assert channel in action, f"segment.action must describe the '{channel}' channel"
 
     def test_segment_action_emits_length_normalized(self, data: dict) -> None:
         """segment state must instruct the LLM to emit a length_normalized flag
@@ -3986,9 +3993,7 @@ class TestHitlMdLoop:
         assert 'type="range"' in generate_spec or "type='range'" in generate_spec, (
             "generate spec must reference a range input for the density slider"
         )
-        assert "density" in generate_spec.lower(), (
-            "generate spec must describe the density control"
-        )
+        assert "density" in generate_spec.lower(), "generate spec must describe the density control"
 
     def test_generate_action_has_multi_channel_saliency(self, generate_spec: str) -> None:
         """generate spec must instruct LLM to render multi-channel saliency
@@ -3999,9 +4004,7 @@ class TestHitlMdLoop:
             "data-channel-confidence",
             "data-claim-type",
         ):
-            assert attr in generate_spec, (
-                f"generate spec must reference the {attr} attribute"
-            )
+            assert attr in generate_spec, f"generate spec must reference the {attr} attribute"
 
     def test_generate_action_has_schema_switching(self, generate_spec: str) -> None:
         """generate spec must instruct LLM to render a schema-switching toolbar
@@ -4028,15 +4031,16 @@ class TestHitlMdLoop:
         confidence badges before content, click-to-reveal for low-confidence
         high-saliency claims, length-normalized credibility marker (Kim et al. 2026,
         Steyvers et al. 2024)."""
-        assert "trust calibration" in generate_spec.lower() or "calibrated friction" in generate_spec.lower(), (
-            "generate spec must describe the trust calibration / calibrated friction toggle"
-        )
-        assert "click-to-reveal" in generate_spec.lower() or "click to reveal" in generate_spec.lower(), (
-            "generate spec must describe the click-to-reveal gate"
-        )
-        assert "length_normalized" in generate_spec or "length-normalized" in generate_spec.lower(), (
-            "generate spec must reference length-normalized confidence display"
-        )
+        assert (
+            "trust calibration" in generate_spec.lower()
+            or "calibrated friction" in generate_spec.lower()
+        ), "generate spec must describe the trust calibration / calibrated friction toggle"
+        assert (
+            "click-to-reveal" in generate_spec.lower() or "click to reveal" in generate_spec.lower()
+        ), "generate spec must describe the click-to-reveal gate"
+        assert (
+            "length_normalized" in generate_spec or "length-normalized" in generate_spec.lower()
+        ), "generate spec must reference length-normalized confidence display"
 
     def test_generate_action_references_design_tokens(self, generate_spec: str) -> None:
         """generate spec must instruct LLM to source colors/spacing/motion from
@@ -4064,9 +4068,7 @@ class TestHitlMdLoop:
             "design_token_consistency",
         )
         for criterion in new_criteria:
-            assert criterion in action, (
-                f"score.action must include the '{criterion}' criterion"
-            )
+            assert criterion in action, f"score.action must include the '{criterion}' criterion"
 
     def test_score_state_preserves_original_criteria(self, data: dict) -> None:
         """score state must retain all 6 original criteria so the existing

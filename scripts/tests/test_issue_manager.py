@@ -1157,15 +1157,16 @@ class TestRunWithContinuation:
 
         handoff_result = MagicMock()
         handoff_result.returncode = 0
-        handoff_result.stdout = "Implementation progress...\nCONTEXT_HANDOFF: Ready for fresh session"
+        handoff_result.stdout = (
+            "Implementation progress...\nCONTEXT_HANDOFF: Ready for fresh session"
+        )
         handoff_result.stderr = ""
         handoff_result.args = ["claude", "-p", "manage-issue"]
 
-        with patch("little_loops.issue_manager.run_claude_command", return_value=handoff_result) \
-                as mock_run:
-            with patch(
-                "little_loops.issue_manager.detect_context_handoff", return_value=True
-            ):
+        with patch(
+            "little_loops.issue_manager.run_claude_command", return_value=handoff_result
+        ) as mock_run:
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=True):
                 result = run_with_continuation("test command", mock_logger)
 
         # Should only call run_claude_command once (no continuation spawned)
@@ -1190,14 +1191,11 @@ class TestRunWithContinuation:
         handoff_result.stderr = ""
         handoff_result.args = ["claude", "-p", "test"]
 
-        with patch("little_loops.issue_manager.run_claude_command", return_value=handoff_result) \
-                as mock_run:
-            with patch(
-                "little_loops.issue_manager.detect_context_handoff", return_value=True
-            ):
-                result = run_with_continuation(
-                    "test command", mock_logger, issue_path=issue_file
-                )
+        with patch(
+            "little_loops.issue_manager.run_claude_command", return_value=handoff_result
+        ) as mock_run:
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=True):
+                result = run_with_continuation("test command", mock_logger, issue_path=issue_file)
 
         # Should exit cleanly (issue already done, no handoff needed)
         mock_run.assert_called_once()
@@ -1207,9 +1205,9 @@ class TestRunWithContinuation:
 
     def test_forwards_handoff_signal_to_stdout(self, temp_project_dir: Path) -> None:
         """Handoff signal is forwarded to stdout for outer FSM detection."""
-        from little_loops.issue_manager import run_with_continuation
         import io
-        import sys
+
+        from little_loops.issue_manager import run_with_continuation
 
         mock_logger = MagicMock()
 
@@ -1245,12 +1243,8 @@ class TestRunWithContinuation:
         handoff_result.args = ["claude", "-p", "test"]
 
         with patch("little_loops.issue_manager.run_claude_command", return_value=handoff_result):
-            with patch(
-                "little_loops.issue_manager.detect_context_handoff", return_value=True
-            ):
-                result = run_with_continuation(
-                    "test command", mock_logger, issue_path=issue_file
-                )
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=True):
+                result = run_with_continuation("test command", mock_logger, issue_path=issue_file)
 
         assert result.returncode == 0
         # Signal IS forwarded because issue is still open

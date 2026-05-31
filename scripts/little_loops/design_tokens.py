@@ -235,9 +235,7 @@ def render_as_prompt_context(tokens: DesignTokens) -> str:
         isinstance(tokens.semantic, dict)
         and "color" in tokens.semantic
         and isinstance(tokens.semantic["color"], dict)
-        and any(
-            k in tokens.semantic["color"] for k in ("surface", "text", "border", "action")
-        )
+        and any(k in tokens.semantic["color"] for k in ("surface", "text", "border", "action"))
     )
 
     if not has_semantic_colors:
@@ -265,8 +263,12 @@ def render_as_prompt_context(tokens: DesignTokens) -> str:
     }
     # Raw primitives to exclude (only semantic color tokens are shown).
     _PRIMITIVE_COLOR_PREFIXES = (
-        "color.neutral.", "color.brand.", "color.accent.",
-        "color.success.", "color.warning.", "color.danger.",
+        "color.neutral.",
+        "color.brand.",
+        "color.accent.",
+        "color.success.",
+        "color.warning.",
+        "color.danger.",
     )
 
     for name, value in sorted(tokens.resolved.items()):

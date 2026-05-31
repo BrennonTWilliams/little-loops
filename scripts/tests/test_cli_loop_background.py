@@ -678,9 +678,7 @@ class TestRunBackground:
         cmd = mock_popen.call_args[0][0]
         assert "--no-lock" in cmd
 
-    def test_scope_resolution_disjoint_contexts_no_conflict(
-        self, tmp_path: Path
-    ) -> None:
+    def test_scope_resolution_disjoint_contexts_no_conflict(self, tmp_path: Path) -> None:
         """Two run_background() calls with different context values for the same
         template var produce disjoint scopes and do not conflict."""
         import argparse
@@ -735,9 +733,7 @@ class TestRunBackground:
         assert result == 0
         mock_popen.assert_called_once()
 
-    def test_scope_resolution_same_context_conflicts(
-        self, tmp_path: Path, capsys
-    ) -> None:
+    def test_scope_resolution_same_context_conflicts(self, tmp_path: Path, capsys) -> None:
         """Two run_background() calls with the same context value for a template var
         produce overlapping scopes and correctly conflict."""
         import argparse

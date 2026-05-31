@@ -969,9 +969,7 @@ class TestArtifactIsolation:
 
     def test_mr3_fires_once_per_occurrence(self) -> None:
         """An action with multiple shared-tmp paths emits one warning per path."""
-        fsm = self._simple_fsm(
-            "cat .loops/tmp/a.txt > .loops/tmp/b.txt && rm .loops/tmp/c.txt"
-        )
+        fsm = self._simple_fsm("cat .loops/tmp/a.txt > .loops/tmp/b.txt && rm .loops/tmp/c.txt")
         errors = _validate_artifact_isolation(fsm)
         assert len(errors) == 3
         matched = sorted(e.message.split("'")[1] for e in errors)
@@ -979,9 +977,7 @@ class TestArtifactIsolation:
 
     def test_mr3_suppressed_by_shared_state_ok(self) -> None:
         """shared_state_ok: true suppresses MR-3 entirely."""
-        fsm = self._simple_fsm(
-            "echo hi > .loops/tmp/queue.txt", shared_state_ok=True
-        )
+        fsm = self._simple_fsm("echo hi > .loops/tmp/queue.txt", shared_state_ok=True)
         errors = _validate_artifact_isolation(fsm)
         assert errors == []
 
@@ -992,8 +988,7 @@ class TestArtifactIsolation:
         mr3 = [
             e
             for e in errors
-            if e.severity == ValidationSeverity.WARNING
-            and ".loops/tmp/queue.txt" in e.message
+            if e.severity == ValidationSeverity.WARNING and ".loops/tmp/queue.txt" in e.message
         ]
         assert len(mr3) == 1
 
@@ -1394,7 +1389,9 @@ class TestHarnessMultimodalEvaluatorBlindSpot:
         fsm = self._harness_fsm()
         errors = validate_fsm(fsm)
         blind_spot_warnings = [
-            e for e in errors if "multimodal" in e.message.lower() or "screenshot" in e.message.lower()
+            e
+            for e in errors
+            if "multimodal" in e.message.lower() or "screenshot" in e.message.lower()
         ]
         assert len(blind_spot_warnings) == 1, (
             f"Expected one blind-spot warning in validate_fsm output, got: {blind_spot_warnings}"

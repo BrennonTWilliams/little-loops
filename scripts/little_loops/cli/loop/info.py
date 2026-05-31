@@ -743,11 +743,7 @@ def cmd_diagnose_evaluators(loop_name: str, args: argparse.Namespace, loops_dir:
         if not report.states:
             print("  No evaluator states found in run history.")
         for state in report.states:
-            disc_label = (
-                "✓ discriminating"
-                if state.variance >= threshold
-                else "⚠ low variance"
-            )
+            disc_label = "✓ discriminating" if state.variance >= threshold else "⚠ low variance"
             print(
                 f"  {state.state:20s} pass_rate={state.pass_rate:.2f}  "
                 f"variance={state.variance:.2f}   {disc_label}"

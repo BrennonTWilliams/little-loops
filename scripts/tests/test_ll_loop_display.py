@@ -4336,9 +4336,7 @@ class TestABSummaryDisplay:
         assert "no quality difference" in captured.out
         assert "same token cost" in captured.out
 
-    def test_ab_summary_with_no_file_is_noop(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_ab_summary_with_no_file_is_noop(self, capsys: pytest.CaptureFixture[str]) -> None:
         """When ab.json doesn't exist, _print_ab_summary is a no-op."""
         from little_loops.cli.loop._helpers import _print_ab_summary
 

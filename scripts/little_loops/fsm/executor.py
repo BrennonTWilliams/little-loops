@@ -987,7 +987,7 @@ class FSMExecutor:
         action_template: str,
         state: StateConfig,
         ctx: InterpolationContext,
-        on_usage: "UsageCallback | None" = None,
+        on_usage: UsageCallback | None = None,
     ) -> ActionResult:
         """Execute action and optionally capture result.
 
@@ -1442,7 +1442,7 @@ class FSMExecutor:
         self,
         skill_command: str,
         state: StateConfig,
-        on_usage: "UsageCallback | None" = None,
+        on_usage: UsageCallback | None = None,
     ) -> ActionResult:
         """Run a single-shot baseline skill invocation with no eval gates.
 

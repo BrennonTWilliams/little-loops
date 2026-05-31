@@ -366,7 +366,8 @@ def cmd_resume(
 ) -> int:
     """Resume an interrupted loop."""
     import os
-    from little_loops.fsm.persistence import PersistentExecutor, RESUMABLE_STATUSES
+
+    from little_loops.fsm.persistence import RESUMABLE_STATUSES, PersistentExecutor
 
     running_dir = loops_dir / ".running"
     running_dir.mkdir(parents=True, exist_ok=True)
@@ -607,7 +608,9 @@ def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
         _restore_sigwinch_handler,
     )
 
-    renderer = StateFeedRenderer(fsm, args, loops_dir=loops_dir, loop_path=loop_path, model=fsm.llm.model)
+    renderer = StateFeedRenderer(
+        fsm, args, loops_dir=loops_dir, loop_path=loop_path, model=fsm.llm.model
+    )
 
     events_file = running_dir / f"{stem}.events.jsonl"
 

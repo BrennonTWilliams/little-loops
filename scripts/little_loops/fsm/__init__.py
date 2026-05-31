@@ -73,6 +73,7 @@ Public exports:
     RateLimitCircuit: Shared circuit-breaker state for cross-worktree 429 coordination
 """
 
+from little_loops.ab_writer import ABResults, calculate_ab_summary, write_ab_json
 from little_loops.fsm.concurrency import (
     LockManager,
     ScopeLock,
@@ -153,8 +154,6 @@ from little_loops.fsm.signal_detector import (
 )
 from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import Evaluator
-from little_loops.ab_writer import ABResults, calculate_ab_summary, write_ab_json
-
 from little_loops.fsm.validation import (
     ValidationError,
     is_runnable_loop,

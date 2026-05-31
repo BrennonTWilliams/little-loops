@@ -716,9 +716,9 @@ class StateFeedRenderer:
                 h_tok = event.get("harness_tokens", 0)
                 b_tok = event.get("baseline_tokens", 0)
                 print(
-                    f"{indent}       baseline: {colorize(f'{b_ms/1000:.1f}s', '2')}, "
+                    f"{indent}       baseline: {colorize(f'{b_ms / 1000:.1f}s', '2')}, "
                     f"{colorize(str(b_tok), '2')} tokens  |  "
-                    f"harness: {colorize(f'{h_ms/1000:.1f}s', '2')}, "
+                    f"harness: {colorize(f'{h_ms / 1000:.1f}s', '2')}, "
                     f"{colorize(str(h_tok), '2')} tokens",
                     flush=True,
                 )
@@ -1321,7 +1321,6 @@ def _print_ab_summary(ab_path: Path) -> None:
     )
 
     # Verdict line
-    delta_sign = "+" if results.delta >= 0 else ""
     quality_verdict = (
         "harness wins on quality"
         if results.delta > 0

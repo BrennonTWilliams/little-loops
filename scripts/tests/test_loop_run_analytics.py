@@ -152,9 +152,7 @@ class TestGenerateRecommendation:
 
     def test_no_recommendation_for_high_variance(self) -> None:
         """Variance > 0.05 returns None."""
-        result = _generate_recommendation(
-            "check", "llm_structured", pass_rate=0.5, variance=0.25
-        )
+        result = _generate_recommendation("check", "llm_structured", pass_rate=0.5, variance=0.25)
         assert result is None
 
     def test_llm_structured_high_pass(self) -> None:
@@ -173,9 +171,7 @@ class TestGenerateRecommendation:
 
     def test_llm_structured_no_prompt(self) -> None:
         """llm_structured without prompt still gets recommendation."""
-        result = _generate_recommendation(
-            "check", "llm_structured", pass_rate=0.96, variance=0.04
-        )
+        result = _generate_recommendation("check", "llm_structured", pass_rate=0.96, variance=0.04)
         assert result is not None
         assert "may be too broad" in result
 
@@ -194,17 +190,13 @@ class TestGenerateRecommendation:
 
     def test_exit_code_99_percent_pass(self) -> None:
         """99% pass + exit_code generates command-not-exercising recommendation."""
-        result = _generate_recommendation(
-            "check", "exit_code", pass_rate=0.99, variance=0.0099
-        )
+        result = _generate_recommendation("check", "exit_code", pass_rate=0.99, variance=0.0099)
         assert result is not None
         assert "Command may not exercise the feature" in result
 
     def test_exit_code_perfect_pass(self) -> None:
         """Perfect pass + exit_code flagged."""
-        result = _generate_recommendation(
-            "check", "exit_code", pass_rate=1.0, variance=0.0
-        )
+        result = _generate_recommendation("check", "exit_code", pass_rate=1.0, variance=0.0)
         assert result is not None
         assert "Command may not exercise the feature" in result
 

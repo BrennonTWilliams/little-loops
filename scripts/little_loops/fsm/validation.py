@@ -101,10 +101,10 @@ _SHARED_TMP_PATH_RE = re.compile(r"\.loops/tmp/[\w./-]+")
 
 # ENH-1819: Regex patterns for detecting multimodal evaluation in prompt actions
 _MULTIMODAL_EVAL_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r'Read the screenshot', re.IGNORECASE),
-    re.compile(r'view the (generated )?(website|page|image)', re.IGNORECASE),
-    re.compile(r'screenshot\.(png|jpg|jpeg|webp)'),
-    re.compile(r'\.(png|jpg|jpeg|webp)\b.*\b(read|view|evaluate|score|judge)', re.IGNORECASE),
+    re.compile(r"Read the screenshot", re.IGNORECASE),
+    re.compile(r"view the (generated )?(website|page|image)", re.IGNORECASE),
+    re.compile(r"screenshot\.(png|jpg|jpeg|webp)"),
+    re.compile(r"\.(png|jpg|jpeg|webp)\b.*\b(read|view|evaluate|score|judge)", re.IGNORECASE),
 )
 
 # Valid comparison operators

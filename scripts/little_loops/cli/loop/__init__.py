@@ -241,7 +241,11 @@ Examples:
         help="Override the auto-extracted baseline skill",
     )
     run_parser.add_argument(
-        "--items", type=int, default=None, metavar="N", help="Limit sample size for baseline comparison"
+        "--items",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Limit sample size for baseline comparison",
     )
 
     # Validate subcommand
@@ -302,7 +306,10 @@ Examples:
         help=argparse.SUPPRESS,
     )
     resume_parser.add_argument(
-        "--instance-id", type=str, default=None, help="Instance ID to resume (auto-detected if omitted)"
+        "--instance-id",
+        type=str,
+        default=None,
+        help="Instance ID to resume (auto-detected if omitted)",
     )
     resume_parser.add_argument(
         "--context",
@@ -633,9 +640,7 @@ Examples:
         default=10,
         help="Minimum runs required for meaningful variance (default: 10)",
     )
-    diagnose_eval_parser.add_argument(
-        "-j", "--json", action="store_true", help="Output as JSON"
-    )
+    diagnose_eval_parser.add_argument("-j", "--json", action="store_true", help="Output as JSON")
 
     args = parser.parse_args(argv)
 

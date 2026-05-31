@@ -288,9 +288,7 @@ def run_with_continuation(
             # doesn't waste a handoff cycle on finished work (BUG-1759 Incident 2).
             already_done = _check_issue_already_done(issue_path, logger)
             if already_done:
-                logger.info(
-                    "Issue already done/cancelled; skipping handoff and returning success"
-                )
+                logger.info("Issue already done/cancelled; skipping handoff and returning success")
                 result = subprocess.CompletedProcess(
                     args=result.args,
                     returncode=0,
@@ -305,7 +303,7 @@ def run_with_continuation(
             # explicit write ensures it lands even when stream_output is False.
             handoff_message = "CONTEXT_HANDOFF: Ready for fresh session"
             print(handoff_message)
-            logger.info(f"Forwarded handoff signal to stdout; exiting cleanly")
+            logger.info("Forwarded handoff signal to stdout; exiting cleanly")
 
             result = subprocess.CompletedProcess(
                 args=result.args,

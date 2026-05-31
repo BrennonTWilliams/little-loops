@@ -603,12 +603,8 @@ class TestMultiInstanceSameName:
 
             id1 = "autodev-20240115T103000"
             id2 = "autodev-20240115T103001"
-            t1 = threading.Thread(
-                target=try_acquire, args=(id1, [str(run1.relative_to(tmp_path))])
-            )
-            t2 = threading.Thread(
-                target=try_acquire, args=(id2, [str(run2.relative_to(tmp_path))])
-            )
+            t1 = threading.Thread(target=try_acquire, args=(id1, [str(run1.relative_to(tmp_path))]))
+            t2 = threading.Thread(target=try_acquire, args=(id2, [str(run2.relative_to(tmp_path))]))
             t1.start()
             t2.start()
             t1.join()
@@ -620,9 +616,7 @@ class TestMultiInstanceSameName:
             f"Both instances with different run_dir scopes should acquire; got: {results}"
         )
 
-    def test_autodev_with_dot_scope_still_conflicts(
-        self, tmp_loops: Path, tmp_path: Path
-    ) -> None:
+    def test_autodev_with_dot_scope_still_conflicts(self, tmp_loops: Path, tmp_path: Path) -> None:
         """Two autodev instances with ["."] scope still conflict (FEAT-1789 regression guard)."""
         manager = LockManager(tmp_loops)
         results: list[bool] = []

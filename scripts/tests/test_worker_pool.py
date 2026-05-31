@@ -2273,8 +2273,9 @@ class TestRunWithContinuation:
             stderr="",
         )
 
-        with patch.object(worker_pool, "_run_claude_command", return_value=handoff_result) \
-                as mock_run:
+        with patch.object(
+            worker_pool, "_run_claude_command", return_value=handoff_result
+        ) as mock_run:
             with patch(
                 "little_loops.parallel.worker_pool.detect_context_handoff", return_value=True
             ):

@@ -986,13 +986,15 @@ def evaluate(
     # evaluator types that don't intrinsically check exit codes. Exit-code-aware
     # evaluators (exit_code, mcp_result, harbor_scorer, diff_stall, llm_structured)
     # are exempt because they handle exit codes via their own logic.
-    _EXIT_CODE_AWARE_EVALUATORS: frozenset[str] = frozenset({
-        "exit_code",
-        "mcp_result",
-        "harbor_scorer",
-        "diff_stall",
-        "llm_structured",
-    })
+    _EXIT_CODE_AWARE_EVALUATORS: frozenset[str] = frozenset(
+        {
+            "exit_code",
+            "mcp_result",
+            "harbor_scorer",
+            "diff_stall",
+            "llm_structured",
+        }
+    )
     if exit_code != 0 and eval_type not in _EXIT_CODE_AWARE_EVALUATORS:
         return EvaluationResult(
             verdict="error",

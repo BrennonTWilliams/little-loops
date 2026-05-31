@@ -91,9 +91,7 @@ def _correlate_verdicts(
             current_state = event.get("state")
         elif event.get("event") == "evaluate" and current_state:
             verdict_str = event.get("verdict", "")
-            state_verdicts.setdefault(current_state, []).append(
-                _verdict_is_yes(verdict_str)
-            )
+            state_verdicts.setdefault(current_state, []).append(_verdict_is_yes(verdict_str))
 
     return state_verdicts
 
@@ -131,7 +129,7 @@ def _generate_recommendation(
         prompt_preview = ""
         if prompt:
             truncated = prompt[:100] + "..." if len(prompt) > 100 else prompt
-            prompt_preview = f"\n  ↳ judge prompt: \"{truncated}\""
+            prompt_preview = f'\n  ↳ judge prompt: "{truncated}"'
         return (
             f"Judge prompt may be too broad — most inputs pass trivially.{prompt_preview}\n"
             f"  Recommendation: tighten to require specific evidence "
@@ -222,12 +220,12 @@ def compute_evaluator_variance(
         from little_loops.logger import Logger
 
         fsm = load_loop(loop_name, loops_dir, Logger(verbose=False))
-        for name, state in fsm.states.items():
-            if state.evaluate is not None:
+        for name, state_cfg in fsm.states.items():
+            if state_cfg.evaluate is not None:
                 evaluator_configs[name] = {
-                    "type": state.evaluate.type,
-                    "prompt": state.evaluate.prompt,
-                    "target": state.evaluate.target,
+                    "type": state_cfg.evaluate.type,
+                    "prompt": state_cfg.evaluate.prompt,
+                    "target": state_cfg.evaluate.target,
                 }
     except (FileNotFoundError, ValueError):
         pass

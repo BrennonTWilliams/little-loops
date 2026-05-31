@@ -148,11 +148,7 @@ class TestLoadDesignTokensDtcgFormat:
                     }
                 }
             },
-            semantic={
-                "typography": {
-                    "heading": {"fontFamily": "{typography.fontFamily.heading}"}
-                }
-            },
+            semantic={"typography": {"heading": {"fontFamily": "{typography.fontFamily.heading}"}}},
         )
         config = _make_config(tmp_path)
         result = load_design_tokens(config)

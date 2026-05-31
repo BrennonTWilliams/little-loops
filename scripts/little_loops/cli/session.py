@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any
 
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
 from little_loops.cli_args import add_json_arg
@@ -77,9 +78,7 @@ Examples:
     )
 
     related_parser = subparsers.add_parser("related", help="Issue events for an issue ID")
-    related_parser.add_argument(
-        "issue_id", metavar="ISSUE_ID", help="Issue ID (e.g., BUG-1759)"
-    )
+    related_parser.add_argument("issue_id", metavar="ISSUE_ID", help="Issue ID (e.g., BUG-1759)")
     related_parser.add_argument(
         "--limit", type=int, default=20, metavar="N", help="Maximum results (default: 20)"
     )
@@ -112,6 +111,7 @@ def main_session() -> int:
         return 1
 
     if args.command == "search":
+        results: list[Any]
         if args.kind:
             results = history_search(args.fts, kind=args.kind, limit=args.limit, db=args.db)
         else:
@@ -121,7 +121,11 @@ def main_session() -> int:
                 logger.error(str(exc))
                 return 1
         if args.json:
-            if isinstance(results, list) and results and hasattr(results[0], "__dataclass_fields__"):
+            if (
+                isinstance(results, list)
+                and results
+                and hasattr(results[0], "__dataclass_fields__")
+            ):
                 from dataclasses import asdict
 
                 results = [asdict(r) for r in results]
@@ -143,6 +147,7 @@ def main_session() -> int:
         events = related_issue_events(args.issue_id, limit=args.limit, db=args.db)
         if args.json:
             from dataclasses import asdict
+
             print_json([asdict(e) for e in events])
             return 0
         if not events:

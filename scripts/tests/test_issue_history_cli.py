@@ -85,8 +85,9 @@ class TestMainHistoryIntegration:
         completed_dir = tmp_path / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
 
-        with patch.object(sys, "argv", ["ll-history", "summary", "-d", str(tmp_path / ".issues")]), patch(
-            "little_loops.issue_history.scan_completed_issues_from_db", return_value=[]
+        with (
+            patch.object(sys, "argv", ["ll-history", "summary", "-d", str(tmp_path / ".issues")]),
+            patch("little_loops.issue_history.scan_completed_issues_from_db", return_value=[]),
         ):
             from little_loops.cli import main_history
 
@@ -102,10 +103,11 @@ class TestMainHistoryIntegration:
         completed_dir.mkdir(parents=True)
         (completed_dir / "P1-BUG-001-test.md").write_text("# BUG-001\n")
 
-        with patch.object(
-            sys, "argv", ["ll-history", "summary", "--json", "-d", str(tmp_path / ".issues")]
-        ), patch(
-            "little_loops.issue_history.scan_completed_issues_from_db", return_value=[]
+        with (
+            patch.object(
+                sys, "argv", ["ll-history", "summary", "--json", "-d", str(tmp_path / ".issues")]
+            ),
+            patch("little_loops.issue_history.scan_completed_issues_from_db", return_value=[]),
         ):
             from little_loops.cli import main_history
 
@@ -127,8 +129,9 @@ class TestMainHistoryIntegration:
         (completed_dir / "P1-BUG-001-test.md").write_text("# BUG-001\n")
         (completed_dir / "P2-ENH-002-test.md").write_text("# ENH-002\n")
 
-        with patch.object(sys, "argv", ["ll-history", "summary", "-d", str(tmp_path / ".issues")]), patch(
-            "little_loops.issue_history.scan_completed_issues_from_db", return_value=[]
+        with (
+            patch.object(sys, "argv", ["ll-history", "summary", "-d", str(tmp_path / ".issues")]),
+            patch("little_loops.issue_history.scan_completed_issues_from_db", return_value=[]),
         ):
             from little_loops.cli import main_history
 

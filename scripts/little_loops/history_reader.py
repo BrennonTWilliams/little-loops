@@ -102,7 +102,7 @@ def _connect_readonly(db_path: Path) -> sqlite3.Connection | None:
     return conn
 
 
-def _row_to_dataclass(row: sqlite3.Row, dc: type) -> Any:
+def _row_to_dataclass(row: sqlite3.Row, dc: type[Any]) -> Any:
     """Map a sqlite3.Row to a dataclass instance, catching extra/unknown keys."""
     field_names = {f.name for f in dc.__dataclass_fields__.values()}
     kwargs = {k: row[k] for k in field_names if k in row.keys()}

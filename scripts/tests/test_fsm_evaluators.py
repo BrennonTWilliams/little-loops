@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 import subprocess
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from little_loops.fsm.evaluators import (
-    BLIND_COMPARATOR_SCHEMA,
     DEFAULT_LLM_PROMPT,
     DEFAULT_LLM_SCHEMA,
     EvaluationResult,
@@ -1346,9 +1346,7 @@ class TestBlindComparator:
             },
         }
 
-    def _make_mock_proc(
-        self, stdout: str = "", stderr: str = "", returncode: int = 0
-    ) -> Any:
+    def _make_mock_proc(self, stdout: str = "", stderr: str = "", returncode: int = 0) -> Any:
         """Create a mock CompletedProcess."""
         from unittest.mock import MagicMock
 
@@ -1478,10 +1476,12 @@ class TestBlindComparator:
     def test_retry_exhausted_handling(self, mock_cli) -> None:
         """Retry-exhausted envelope returns error with both-fail."""
         mock_run, proc = mock_cli
-        proc.stdout = json.dumps({
-            "type": "result",
-            "subtype": "error_max_structured_output_retries",
-        })
+        proc.stdout = json.dumps(
+            {
+                "type": "result",
+                "subtype": "error_max_structured_output_retries",
+            }
+        )
         result = evaluate_blind_comparator("output a", "output b")
         assert result["harness_pass"] is False
         assert result["baseline_pass"] is False

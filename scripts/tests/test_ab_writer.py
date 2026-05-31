@@ -7,10 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from little_loops.ab_writer import (
-    ABResults,
     ab_results_to_dict,
     calculate_ab_summary,
     get_ab_schema,
