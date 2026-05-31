@@ -286,7 +286,9 @@ Examples:
         action="store_true",
         help=argparse.SUPPRESS,
     )
-    resume_parser.add_argument("--instance-id", type=str, default=None, help=argparse.SUPPRESS)
+    resume_parser.add_argument(
+        "--instance-id", type=str, default=None, help="Instance ID to resume (auto-detected if omitted)"
+    )
     resume_parser.add_argument(
         "--context",
         action="append",

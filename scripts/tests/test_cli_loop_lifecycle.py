@@ -671,12 +671,24 @@ class TestCmdResumeBackground:
         logger = MagicMock()
         args = argparse.Namespace(background=True)
 
-        with patch("little_loops.cli.loop.lifecycle.run_background") as mock_rb:
+        resumable_state = MagicMock()
+        resumable_state.status = "interrupted"
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances",
+                return_value=[("test-loop-20260530T120000", resumable_state)],
+            ),
+            patch("little_loops.cli.loop.lifecycle.run_background") as mock_rb,
+        ):
             mock_rb.return_value = 0
             result = cmd_resume("test-loop", args, tmp_path, logger)
 
         assert result == 0
-        mock_rb.assert_called_once_with("test-loop", args, tmp_path, subcommand="resume")
+        mock_rb.assert_called_once_with(
+            "test-loop", args, tmp_path, subcommand="resume",
+            instance_id="test-loop-20260530T120000",
+        )
 
     def test_background_skips_foreground_execution(self, tmp_path: Path) -> None:
         """--background flag returns before calling executor.resume()."""
@@ -824,6 +836,76 @@ class TestCmdResumeBackground:
             cmd_resume("test-loop", args, tmp_path, logger)
 
         assert pid_file.read_text() == "12345", "Parent-written PID should not be overwritten"
+
+    def test_background_auto_selects_latest_resumable(self, tmp_path: Path) -> None:
+        """Background resume auto-selects the most recent resumable instance (BUG-1817)."""
+        logger = MagicMock()
+        args = argparse.Namespace(background=True)
+
+        state_older = MagicMock()
+        state_older.status = "interrupted"
+        state_newer = MagicMock()
+        state_newer.status = "awaiting_continuation"
+
+        instances = [
+            ("test-loop-20260530T120000", state_older),
+            ("test-loop-20260530T130000", state_newer),
+        ]
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=instances),
+            patch("little_loops.cli.loop.lifecycle.run_background") as mock_rb,
+        ):
+            mock_rb.return_value = 0
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        mock_rb.assert_called_once_with(
+            "test-loop", args, tmp_path, subcommand="resume",
+            instance_id="test-loop-20260530T130000",
+        )
+
+    def test_background_errors_on_zero_resumable(self, tmp_path: Path) -> None:
+        """Background resume exits 1 when no resumable instances exist (BUG-1817)."""
+        logger = MagicMock()
+        args = argparse.Namespace(background=True)
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=[]),
+            patch("little_loops.cli.loop.lifecycle.run_background") as mock_rb,
+        ):
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 1
+        mock_rb.assert_not_called()
+
+    def test_background_explicit_instance_id_takes_priority(self, tmp_path: Path) -> None:
+        """Explicit --instance-id overrides auto-selection in background mode (BUG-1817)."""
+        logger = MagicMock()
+        args = argparse.Namespace(background=True, instance_id="test-loop-20260530T120000")
+
+        state_older = MagicMock()
+        state_older.status = "interrupted"
+        state_newer = MagicMock()
+        state_newer.status = "awaiting_continuation"
+
+        instances = [
+            ("test-loop-20260530T120000", state_older),
+            ("test-loop-20260530T130000", state_newer),
+        ]
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._find_instances", return_value=instances),
+            patch("little_loops.cli.loop.lifecycle.run_background") as mock_rb,
+        ):
+            mock_rb.return_value = 0
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        mock_rb.assert_called_once_with(
+            "test-loop", args, tmp_path, subcommand="resume",
+            instance_id="test-loop-20260530T120000",
+        )
 
 
 class TestCmdResumeExitCodes:
@@ -1931,10 +2013,16 @@ class TestCmdStopMultiInstance:
 class TestCmdResumeMultiInstance:
     """Multi-instance resume error — ENH-1356."""
 
-    def test_resume_errors_when_multiple_resumable(self, tmp_path) -> None:
-        """cmd_resume exits non-zero and lists instance IDs when 2+ are resumable."""
+    def test_resume_auto_selects_latest_when_multiple_resumable(self, tmp_path) -> None:
+        """cmd_resume auto-selects the latest resumable instance (BUG-1817)."""
         logger = MagicMock()
         args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 2
+        mock_result.duration_ms = 3000
+        mock_result.terminated_by = "terminal"
 
         state1 = MagicMock()
         state1.status = "awaiting_continuation"
@@ -1949,13 +2037,15 @@ class TestCmdResumeMultiInstance:
         with (
             patch("little_loops.cli.loop.lifecycle._find_instances", return_value=instances),
             patch("builtins.print") as mock_print,
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
         ):
+            mock_exec_cls.return_value.resume.return_value = mock_result
             result = cmd_resume("autodev", args, tmp_path, logger)
 
-        assert result == 1
+        assert result == 0
         output = "\n".join(str(c) for c in mock_print.call_args_list)
-        assert "autodev-20260503T122306" in output
-        assert "autodev-20260503T122340" in output
+        assert "Auto-selected latest instance: autodev-20260503T122340" in output
 
     def test_resume_succeeds_with_single_resumable(self, tmp_path) -> None:
         """cmd_resume proceeds normally when exactly one resumable instance found."""

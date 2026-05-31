@@ -500,11 +500,11 @@ Also handles loops in `interrupted` state that hold an orphaned lock-file PID: i
 
 #### `ll-loop resume <loop>` / `ll-loop res <loop>`
 
-Resume a loop. Resumable statuses are `"running"`, `"awaiting_continuation"`, and `"interrupted"` — loops stopped via `ll-loop stop` or Ctrl-C are fully resumable. Exits with an error listing instance IDs when two or more resumable instances exist — use `--instance-id` to select one.
+Resume a loop. Resumable statuses are `"running"`, `"awaiting_continuation"`, and `"interrupted"` — loops stopped via `ll-loop stop` or Ctrl-C are fully resumable. When no `--instance-id` is given, the most recent resumable instance is auto-selected. Use `--instance-id` to disambiguate when you need a specific instance.
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--instance-id <id>` | | Select a specific instance to resume (required when 2+ resumable instances match) |
+| `--instance-id <id>` | | Select a specific instance to resume (auto-detected if omitted) |
 | `--background` | `-b` | Resume as a detached background process |
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
 | `--show-diagrams[=MODE]` | | Display FSM diagram after each step. `MODE` is a topology (`layered`\|`neighborhood`\|`inline`) or preset (`detailed`\|`summary`\|`clean`\|`local`\|`slim`\|`oneline`). Bare flag selects `summary` (layered, main-path scope). Override individual facets with `--diagram-edge-labels=on\|off`, `--diagram-state-detail=title\|full`, `--diagram-scope=main\|full`. **Breaking (ENH-1672):** `main`→`summary`, `full`→`detailed`, `mini`→`clean`; old values error with migration hints. Viewport auto-degrades `layered→neighborhood→inline` for preset/default sources; explicit topology values disable degradation. |

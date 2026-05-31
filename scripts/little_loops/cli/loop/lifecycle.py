@@ -365,15 +365,7 @@ def cmd_resume(
     logger: Logger,
 ) -> int:
     """Resume an interrupted loop."""
-    from little_loops.fsm.persistence import PersistentExecutor
-
-    # Background mode: spawn detached process and return
-    if getattr(args, "background", False):
-        return run_background(loop_name, args, loops_dir, subcommand="resume")
-
-    # Register PID file for all foreground runs so cmd_stop can send SIGTERM (BUG-639).
-    # Background-spawned processes (foreground_internal=True) have their PID written by the
-    # parent in run_background(); plain foreground runs must write their own PID here.
+    from little_loops.fsm.persistence import PersistentExecutor, RESUMABLE_STATUSES
     import os
 
     running_dir = loops_dir / ".running"
@@ -381,8 +373,6 @@ def cmd_resume(
 
     # Discover all instances and resolve to a single resumable one.
     instances = _find_instances(loop_name, running_dir)
-    from little_loops.fsm.persistence import RESUMABLE_STATUSES
-
     resumable = [(iid, s) for iid, s in instances if s.status in RESUMABLE_STATUSES]
 
     explicit_instance_id = getattr(args, "instance_id", None)
@@ -400,21 +390,34 @@ def cmd_resume(
                     print(f"  {iid or loop_name}")
             return 1
         resumable = filtered
-
-    if len(resumable) > 1:
-        print(f"Multiple instances of '{loop_name}' are resumable:")
-        for iid, _ in resumable:
-            print(f"  {iid or loop_name}")
-        print("Use --instance-id to select one.")
-        return 1
+    elif len(resumable) > 1:
+        # Auto-select the most recent instance by sorted filename (matches cmd_monitor()).
+        selected_id = resumable[-1][0]
+        print(f"Auto-selected latest instance: {selected_id}")
+        resumable = [resumable[-1]]
 
     # Use discovered instance_id (or fall back to args / None for no-state case)
     if resumable:
         instance_id: str | None = resumable[0][0]
         state_for_display = resumable[0][1]
     else:
-        instance_id = getattr(args, "instance_id", None)
+        instance_id = None
         state_for_display = None
+
+    # Background mode: spawn detached process and return
+    if getattr(args, "background", False):
+        if instance_id is None:
+            print(f"No resumable instances of '{loop_name}'.")
+            return 1
+        return run_background(
+            loop_name, args, loops_dir, subcommand="resume", instance_id=instance_id
+        )
+
+    # Register PID file for all foreground runs so cmd_stop can send SIGTERM (BUG-639).
+    # Background-spawned processes (foreground_internal=True) have their PID written by the
+    # parent in run_background(); plain foreground runs must write their own PID here.
+    if instance_id is None:
+        instance_id = getattr(args, "instance_id", None)
 
     pid_file = running_dir / f"{instance_id or loop_name}.pid"
     foreground_pid_file: Path | None = pid_file

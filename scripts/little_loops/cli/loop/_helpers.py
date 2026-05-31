@@ -939,7 +939,11 @@ def _make_instance_id(loop_name: str) -> str:
 
 
 def run_background(
-    loop_name: str, args: argparse.Namespace, loops_dir: Path, subcommand: str = "run"
+    loop_name: str,
+    args: argparse.Namespace,
+    loops_dir: Path,
+    subcommand: str = "run",
+    instance_id: str | None = None,
 ) -> int:
     """Launch loop as a detached background process.
 
@@ -949,6 +953,9 @@ def run_background(
 
     Args:
         subcommand: The ll-loop subcommand to spawn ("run" or "resume").
+        instance_id: Pre-resolved instance ID. When provided, skips
+            _make_instance_id() allocation. Used by cmd_resume() to pass
+            an already-discovered resumable instance.
 
     Returns:
         Exit code (0 = launched successfully).
@@ -981,7 +988,8 @@ def run_background(
         print("  Use --queue to wait for it to finish", file=sys.stderr)
         return 1
 
-    instance_id = _make_instance_id(loop_name)
+    if instance_id is None:
+        instance_id = _make_instance_id(loop_name)
     pid_file = running_dir / f"{instance_id}.pid"
     log_file = running_dir / f"{instance_id}.log"
 
