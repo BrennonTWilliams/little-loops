@@ -2,9 +2,10 @@
 id: ENH-1864
 type: ENH
 priority: P3
-status: open
+status: done
 parent: ENH-1858
 captured_at: '2026-06-01T00:00:00Z'
+completed_at: '2026-06-01T19:06:02Z'
 discovered_date: '2026-06-01'
 discovered_by: issue-size-review
 size: Large

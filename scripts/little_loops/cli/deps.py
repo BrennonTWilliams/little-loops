@@ -77,6 +77,7 @@ def main_deps() -> int:
         from little_loops.dependency_mapper import (
             analyze_dependencies,
             fix_dependencies,
+            format_epic_tree,
             format_report,
             format_text_graph,
             gather_all_issue_ids,
@@ -103,6 +104,8 @@ Examples:
   %(prog)s apply --sprint my-sprint   # Sprint-scoped apply
   %(prog)s apply FEAT-001 blocks FEAT-002     # Manual explicit pair
   %(prog)s apply FEAT-001 blocked-by FEAT-002 # Manual explicit pair (inverse)
+  %(prog)s tree --epic EPIC-1773              # Render EPIC child hierarchy
+  %(prog)s tree --epic EPIC-1773 -f json      # JSON output with nodes and edges
 """,
         )
 
@@ -215,6 +218,25 @@ Examples:
             help="Restrict to issues in named sprint",
         )
 
+        # tree subcommand
+        tree_parser = subparsers.add_parser(
+            "tree",
+            help="Render EPIC child hierarchy with dependency edges",
+        )
+        tree_parser.add_argument(
+            "--epic",
+            required=True,
+            metavar="EPIC-NNN",
+            help="EPIC issue ID to render (e.g. EPIC-1773)",
+        )
+        tree_parser.add_argument(
+            "-f",
+            "--format",
+            choices=["text", "json"],
+            default="text",
+            help="Output format (default: text)",
+        )
+
         args = parser.parse_args()
 
         configure_output()
@@ -228,6 +250,69 @@ Examples:
         if not issues_dir.exists():
             logger.error(f"Issues directory not found: {issues_dir}")
             return 1
+
+        if args.command == "tree":
+            from little_loops.config import BRConfig as _BRConfig
+            from little_loops.dependency_graph import DependencyGraph as _DG
+            from little_loops.issue_parser import find_issues as _find_issues
+
+            project_root = issues_dir.resolve().parent
+            if issues_dir.name != ".issues":
+                project_root = issues_dir.parent
+            tree_cfg = _BRConfig(project_root)
+            epic_id = args.epic.upper()
+
+            all_statuses = {"open", "in_progress", "blocked", "deferred", "done", "cancelled"}
+            all_issues = _find_issues(tree_cfg, status_filter=all_statuses)
+
+            epic_matches = [i for i in all_issues if i.issue_id == epic_id]
+            if not epic_matches:
+                logger.error(f"EPIC {epic_id!r} not found")
+                return 1
+            epic_info = epic_matches[0]
+
+            forward_ids: set[str] = set(epic_info.relates_to)
+            backward_ids: set[str] = {i.issue_id for i in all_issues if i.parent == epic_id}
+            all_child_ids = forward_ids | backward_ids
+
+            if not all_child_ids:
+                print(f"{epic_id}: (no children)")
+                return 0
+
+            child_issues = [i for i in all_issues if i.issue_id in all_child_ids]
+            done_ids = {i.issue_id for i in child_issues if i.status in {"done", "deferred"}}
+            graph = _DG.from_issues(
+                child_issues, completed_ids=done_ids, all_known_ids=all_child_ids
+            )
+            child_map = {i.issue_id: i for i in child_issues}
+
+            if args.format == "json":
+                data = {
+                    "root": epic_id,
+                    "nodes": [
+                        {
+                            "id": i.issue_id,
+                            "title": i.title,
+                            "status": i.status,
+                            "parent": i.parent,
+                        }
+                        for i in child_issues
+                    ],
+                    "edges": [
+                        {"from": src, "to": tgt, "kind": "blocks"}
+                        for src, targets in graph.blocks.items()
+                        for tgt in sorted(targets)
+                    ],
+                }
+                print_json(data)
+            else:
+                print(
+                    format_epic_tree(
+                        epic_id, epic_info, child_map, graph, use_color=use_color_enabled()
+                    )
+                )
+
+            return 0
 
         # Sprint-scoped filtering
         only_ids: set[str] | None = None
