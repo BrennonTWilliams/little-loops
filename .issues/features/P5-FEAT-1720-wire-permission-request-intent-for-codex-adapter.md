@@ -67,7 +67,14 @@ A `PermissionRequest` entry exists in `hooks/adapters/codex/hooks.json`. A no-op
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-29T20:48:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
 - `/ll:capture-issue` - 2026-05-26T02:23:05Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e210ff4-bcab-4372-9c8c-a0ba98da62d5.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-1719 both modify the same three shared files: `scripts/little_loops/hooks/__init__.py` (`_dispatch_table()` and `_USAGE`), `hooks/adapters/codex/hooks.json`, and `scripts/tests/test_codex_adapter.py`. This issue's PR **must be rebased on FEAT-1719's merged commit** before opening, so the `_dispatch_table()` and `hooks.json` edits from each issue are reviewed in sequence and do not produce conflicting hunks. Alternatively, batch both handler registrations into a single PR.

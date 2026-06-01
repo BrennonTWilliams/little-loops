@@ -10,6 +10,7 @@ relates_to:
   - FEAT-1262
   - EPIC-1707
   - ENH-1830
+depends_on: [ENH-1832]
 labels:
   - enhancement
   - captured
@@ -102,5 +103,6 @@ the skill dispatch signal specifically.
 **Open** | Created: 2026-06-01 | Priority: P4
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:format-issue` - 2026-06-01T01:20:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c78d4399-dc58-4488-ac5a-557b6cd5e073.jsonl`
 - `/ll:capture-issue` - 2026-06-01T01:10:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

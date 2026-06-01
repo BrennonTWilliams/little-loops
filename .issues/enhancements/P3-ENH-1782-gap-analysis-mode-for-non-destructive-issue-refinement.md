@@ -113,6 +113,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `issues`, `refinement`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:format-issue` - 2026-05-29T02:28:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e23d1bf-3385-43d7-80c9-602fafbaf867.jsonl`
 - `/ll:capture-issue` - 2026-05-29T02:23:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b24cba6-684e-4420-9519-de98c8b4822b.jsonl`
@@ -120,3 +121,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 **Open** | Created: 2026-05-29 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): After ENH-1775 (Wave 2) restructures the 5 harness loops into thin wrappers (moving rubric scoring states to `loops/oracles/generator-evaluator.yaml`), this issue's Integration Map staleness check may generate false-positive stale-reference reports for issues that reference the pre-Wave-2 file layout (inline rubric states in the 5 parent loops). The gap-analysis staleness detector should distinguish between "file does not exist" (true gap) and "file exists but the referenced state/section was restructured" (post-refactor drift). As a practical mitigation, gap-analysis reports should be re-run after each epic wave completes to clear wave-induced drift rather than treating restructuring events as persistent gaps.

@@ -7,7 +7,7 @@ discovered_date: 2026-05-27
 discovered_by: capture-issue
 captured_at: "2026-05-27T04:46:43Z"
 blocked_by: [ENH-494]
-depends_on: FEAT-948
+depends_on: [FEAT-948, FEAT-1712]
 parent: EPIC-1707
 ---
 
@@ -217,6 +217,7 @@ ll-issues decisions list --type=coupling --archetype=add-cli-command
 **Open** | Created: 2026-05-27 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-27T04:51:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b23d6a24-9de3-4d03-ac3b-2a54631906b4.jsonl`

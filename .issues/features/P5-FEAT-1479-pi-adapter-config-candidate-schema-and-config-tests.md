@@ -227,6 +227,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Partial implementation: schema change landed, code changes (core.py + tests) remain outstanding
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:48:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
@@ -246,3 +247,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): All documentation file edits for the Pi adapter (HOST_COMPATIBILITY.md, ARCHITECTURE.md, TROUBLESHOOTING.md, API.md, CONFIGURATION.md) are exclusively owned by FEAT-1476. Do NOT include doc-file edits in this issue's PR. The `depends_on: [FEAT-1476]` frontmatter encodes this handoff as a formal dependency.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `depends_on: [FEAT-1476]` entry in this issue's frontmatter reflects an incorrect ordering — this issue's code changes (`config/core.py`, `config-schema.json`, tests) can be delivered independently and do not require FEAT-1476's documentation to land first. The dependency arrow should flow FEAT-1476 → FEAT-1479 (docs wait for code, not the reverse). Remove `depends_on: [FEAT-1476]` from the frontmatter when implementing; the doc delegations in the Integration Map section (wiring pass) already correctly point to FEAT-1476 and no frontmatter dependency is needed to enforce that split.

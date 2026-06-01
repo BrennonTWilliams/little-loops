@@ -320,8 +320,15 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - Action: update executor.py anchor lines before implementation to avoid confusion
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:53:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:refine-issue` - 2026-05-30T04:16:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e2daf50-26d6-4657-859b-a4e70fd08209.jsonl`
 - `/ll:format-issue` - 2026-05-29T21:13:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b9fd7ee-19a7-49f3-85a1-70addaba91a5.jsonl`
 - `/ll:capture-issue` - 2026-05-29T20:37:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2a0c61b-6b34-41d4-98fb-c566ba046de6.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The Stop hook infrastructure introduced by FEAT-1680 (session-end sweep of stale cross-issue status refs) is an independent path from the HITL event bus path in this issue. FEAT-1680 registers a Stop hook in `hooks/hooks.json` for sweeping stale prose references; this issue adds a blocking `human_approval` FSM state that emits `LLEvent` messages via the existing event bus. The two hooks.json registrations target different events (Stop vs. in-loop FSM execution) and touch entirely different data. No coordination between FEAT-1680 and FEAT-1794 is required at implementation time.

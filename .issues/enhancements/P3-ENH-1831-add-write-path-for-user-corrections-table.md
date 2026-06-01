@@ -10,6 +10,7 @@ relates_to:
   - ENH-1708
   - EPIC-1707
   - FEAT-1112
+depends_on: [ENH-1830]
 labels:
   - enhancement
   - captured
@@ -132,5 +133,6 @@ class SessionStore:
 **Open** | Created: 2026-06-01 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:format-issue` - 2026-06-01T01:16:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eee9dd1e-f437-4c64-b581-24724e938107.jsonl`
 - `/ll:capture-issue` - 2026-06-01T01:10:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

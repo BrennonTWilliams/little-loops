@@ -127,6 +127,7 @@ N/A — No public API changes; this is a loop YAML refactoring that changes inte
 `enhancement`, `captured`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:48:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
@@ -139,6 +140,12 @@ N/A — No public API changes; this is a loop YAML refactoring that changes inte
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue adds a `diff_stall_gate` fragment to `loops/lib/common.yaml` to standardize the existing `diff_stall` evaluator. ENH-1795 adds a new `action_stall` evaluator as a complement to `diff_stall`. After ENH-1795 ships, `common.yaml` should also include an `action_stall_gate` fragment for symmetry — but that is NOT in this issue's scope (Wave 4 is bounded to the 4 listed items). Either ENH-1795 should add `loops/lib/common.yaml` to its integration map (to add the `action_stall_gate` fragment there), or a Wave 5 follow-up should be filed. This issue does not depend on ENH-1795, but the combined result is incomplete without the symmetric fragment.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue modifies `loops/incremental-refactor.yaml` (for the `diff_stall_gate` fragment) and `loops/lib/common.yaml` (for `queue_pop`, `queue_track`, and `diff_stall_gate` fragments). Both of these files are also modified by ENH-1775 (Wave 2) and ENH-1776 (Wave 3). This issue's `depends_on: [ENH-1775, ENH-1776]` serializes the wave sequence correctly — enforce this in sprint planning to prevent concurrent edits to `incremental-refactor.yaml` and `common.yaml`. ENH-1776's `common.yaml` additions (`convergence_gate`, `ll_rubric_score`) must be merged before this issue adds `queue_pop`, `queue_track`, and `diff_stall_gate` to the same file.
 
 ## Status
 

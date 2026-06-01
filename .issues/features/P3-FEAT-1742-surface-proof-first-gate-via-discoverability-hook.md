@@ -149,6 +149,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-05-27 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-27T18:18:58Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5d67c925-b04f-4086-8575-fc25fa08257e.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue's Shape A PreToolUse hook handler (`learning_tests_gate.py`) must remain **warn-only and non-blocking** — it emits a one-line suggestion and optionally prompts, but does not pause FSM execution. This is distinct from the blocking `action_type: human_approval` FSM state introduced by FEAT-1794, which fully pauses loop execution awaiting a yes/no/edit verdict. These two surfaces are complementary: FEAT-1742 nudges at the tool-call layer; FEAT-1794 gates at the FSM state layer. If Shape A is chosen, the PreToolUse handler must not replicate the blocking semantics of FEAT-1794. Once FEAT-1794 ships, proof-first-task loops could replace the Shape A hook with a `human_approval` state — that refactor is out of scope here.
