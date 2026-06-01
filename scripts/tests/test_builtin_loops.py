@@ -1183,6 +1183,12 @@ class TestPromptAcrossIssuesLoop:
         state = data["states"].get("init", {})
         assert state.get("on_error") == "diagnose_error"
 
+    def test_init_supports_type_filter(self, data: dict) -> None:
+        """context.type must default to '' and init action must reference it."""
+        assert data.get("context", {}).get("type") == ""
+        init_action = data["states"].get("init", {}).get("action", "")
+        assert "${context.type}" in init_action or "TYPE_ARG" in init_action
+
 
 class TestAutoRefineAndImplementLoop:
     """Structural tests for the auto-refine-and-implement FSM loop."""

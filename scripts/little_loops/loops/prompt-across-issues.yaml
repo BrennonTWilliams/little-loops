@@ -6,15 +6,23 @@ description: |
   to inject each issue's ID. Issues are processed in priority order using a
   temp-file pending list to avoid infinite loops. No quality gates — use
   harness-multi-item if you need evaluation phases.
+  Optionally constrain the sweep to a single issue type with --context type=<TYPE>
+  (one of BUG, FEAT, ENH, EPIC). When omitted, all open issues are processed.
 
   Usage:
     ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}"
     ll-loop run prompt-across-issues "/ll:normalize-issues {issue_id} --quick"
+    ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}" --context type=BUG
 initial: init
 max_iterations: 500
 timeout: 28800
 import:
   - lib/common.yaml
+
+context:
+  type: ""  # Optional: BUG, FEAT, ENH, or EPIC. When set, restricts the sweep
+            # to open issues of that type. Empty (default) = all open issues.
+shared_state_ok: true  # pending-list file intentionally uses a fixed path; not designed for concurrent runs
 
 states:
 
@@ -29,7 +37,11 @@ states:
         exit 1
       fi
       mkdir -p .loops/tmp
-      ll-issues list --json | python3 -c "
+      TYPE_ARG=""
+      if [ -n "${context.type}" ]; then
+        TYPE_ARG="--type ${context.type}"
+      fi
+      ll-issues list $TYPE_ARG --json | python3 -c "
       import json, sys
       issues = json.load(sys.stdin)
       for i in issues:

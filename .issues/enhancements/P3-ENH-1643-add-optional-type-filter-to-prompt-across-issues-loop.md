@@ -3,11 +3,18 @@ id: ENH-1643
 title: Add optional type filter to prompt-across-issues loop
 type: ENH
 priority: P3
-captured_at: "2026-05-23T20:52:54Z"
-discovered_date: "2026-05-23"
+captured_at: '2026-05-23T20:52:54Z'
+completed_at: '2026-06-01T18:06:40Z'
+discovered_date: '2026-05-23'
 discovered_by: capture-issue
-status: open
+status: done
 parent: EPIC-1773
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1643: Add optional type filter to prompt-across-issues loop
@@ -118,11 +125,18 @@ description: |
 - `scripts/little_loops/loops/lib/common.yaml:14-21` — the `shell_exit` fragment that the `init` state already uses for routing on exit code.
 
 ### Tests
-- No new unit tests required. Existing FSM/interpolation tests in `scripts/tests/test_fsm_executor.py` cover the context-declaration mechanism: `test_context_variable_substitution` (~line 140), `test_missing_context_variable` (~line 160), `test_context_variable_in_prompt` (~line 180). Verification is by `ll-loop validate` plus end-to-end dry-runs (see Verification section).
+- No new unit tests required. Existing FSM/interpolation tests in `scripts/tests/test_fsm_executor.py` cover the context-declaration mechanism: `test_context_interpolation` (line 572) verifies `${context.*}` substitution in shell actions; `test_missing_context_variable_produces_friendly_message` (line 3990) verifies that undeclared vars produce a friendly error. The `context.type: ""` empty-string default is handled by the existing interpolation machinery (declared var with `None`-coerced value → `""`). Verification is by `ll-loop validate` plus end-to-end dry-runs (see Verification section).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` — `TestPromptAcrossIssuesLoop` (lines 1092–1185) has 12 structural tests for this loop but none verify the `context.type` declaration or `--type` conditional. Add a `test_init_supports_type_filter` method asserting: (1) `data.get("context", {}).get("type") == ""`, and (2) `"${context.type}"` or `"TYPE_ARG"` appears in the `init` state's action string.
 
 ### Documentation
 - The loop's own `description:` block (updated as part of this change).
 - No external `docs/` updates required — `prompt-across-issues` is documented inline.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — line 560, Issue Management table row describes the loop without mentioning the new `--context type=` option; update the description cell to add: `Optionally constrain to a single issue type via \`--context type=BUG\`` (or similar).
+- `scripts/little_loops/loops/README.md` — line 27, same Issue Management table row; update in parallel with the LOOPS_GUIDE entry.
 
 ### Configuration
 - N/A — no changes to `.ll/ll-config.json` schema or templates.
@@ -134,6 +148,16 @@ description: |
 3. Update the loop's top-level `description:` to document the new flag and add a usage example.
 4. Run `ll-loop validate prompt-across-issues` to confirm the loop still parses.
 5. Dry-run with and without `--context type=BUG` and confirm the rendered `ll-issues list` invocation matches expectations.
+
+> **Note (MR-3):** The existing loop writes the pending file to `.loops/tmp/prompt-across-issues-pending.txt`, which violates the per-run artifact isolation rule (MR-3, WARNING severity). This ENH preserves that pre-existing path to stay in scope. To suppress the `ll-loop validate` MR-3 warning, add `shared_state_ok: true` at the loop top-level alongside the new `context:` block, or change the path to `${context.run_dir}/prompt-across-issues-pending.txt` in a follow-up.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Add `test_init_supports_type_filter` to `TestPromptAcrossIssuesLoop` in `scripts/tests/test_builtin_loops.py` — assert `context.type` default is `""` and the init action references `context.type` (or `TYPE_ARG`).
+7. Update `docs/guides/LOOPS_GUIDE.md` line 560 — extend the `prompt-across-issues` description cell to mention `--context type=<TYPE>` optional filtering.
+8. Update `scripts/little_loops/loops/README.md` line 27 — same table-row description update.
 
 ## API/Interface
 
@@ -220,6 +244,11 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 - Issue is well-scoped and technically sound; code changes simply haven't been made yet
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T18:04:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4b04c26-de79-4c51-8480-2b070bef719c.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab8eb483-1b80-42ae-b578-c12e6d3db958.jsonl`
+- `/ll:refine-issue` - 2026-06-01T17:55:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9edafde9-9b06-4fc7-9741-fc0d7da26f73.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/028ea300-f57a-416f-89b3-3b59a694635d.jsonl`
+- `/ll:wire-issue` - 2026-06-01T17:44:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dfa382d0-dd02-477b-b6ac-1ce77830448d.jsonl`
 - `/ll:refine-issue` - 2026-06-01T17:28:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c054d093-fcc6-44b0-8a5c-7e000f877dba.jsonl`
 - `/ll:verify-issues` - 2026-06-01T14:29:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
