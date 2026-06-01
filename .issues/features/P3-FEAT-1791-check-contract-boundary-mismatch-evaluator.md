@@ -1,6 +1,6 @@
 ---
 id: FEAT-1791
-title: `check_coherence` Boundary-Mismatch Evaluator
+title: `check_contract` Boundary-Mismatch Evaluator
 type: FEAT
 priority: P3
 captured_at: '2026-05-29T19:08:54Z'
@@ -10,11 +10,11 @@ status: open
 labels: [feature, loops, evaluator, qa, integration]
 ---
 
-# FEAT-1791: `check_coherence` Boundary-Mismatch Evaluator
+# FEAT-1791: `check_contract` Boundary-Mismatch Evaluator
 
 ## Summary
 
-Add a new evaluator kind (`check_coherence` / `evaluate.type: coherence`) that reads two related artifacts simultaneously and asserts contract alignment between them — API response shape ↔ consumer hook type, file path ↔ link `href`, state-transition map ↔ actual `.update({status})` calls. Designed as a stronger replacement for `check_semantic` in build-feature harnesses where "did this PR break the contract between producer and consumer?" is the actual quality bar.
+Add a new evaluator kind (`check_contract` / `evaluate.type: contract`) that reads two related artifacts simultaneously and asserts contract alignment between them — API response shape ↔ consumer hook type, file path ↔ link `href`, state-transition map ↔ actual `.update({status})` calls. Designed as a stronger replacement for `check_semantic` in build-feature harnesses where "did this PR break the contract between producer and consumer?" is the actual quality bar.
 
 ## Current Behavior
 
@@ -27,7 +27,7 @@ None of these evaluators read *both sides of an interface simultaneously*. When 
 
 ## Expected Behavior
 
-A new `coherence` evaluator type (`evaluate.type: coherence`) is available. Harness authors declare one or more `(producer, consumer)` pairs with optional regex extraction patterns and a contract rule. The evaluator:
+A new `contract` evaluator type (`evaluate.type: contract`) is available. Harness authors declare one or more `(producer, consumer)` pairs with optional regex extraction patterns and a contract rule. The evaluator:
 
 1. Reads both files in each pair
 2. Applies optional regex to extract the relevant slices
@@ -53,8 +53,8 @@ This issue formalizes the pattern as a distinct evaluator kind so harness author
 A user has a harness that implements a new API endpoint and its corresponding front-end hook. They want to gate progression on shape alignment. They write:
 
 ```yaml
-check_coherence:
-  action_type: coherence
+check_contract:
+  action_type: contract
   pairs:
     - producer: "src/app/api/projects/route.ts"
       producer_pattern: "NextResponse\\.json\\((.+?)\\)"
@@ -62,7 +62,7 @@ check_coherence:
       consumer_pattern: "fetchJson<(.+?)>"
       contract: "shape and field names must align (camelCase on both sides, no wrapping mismatch)"
   evaluate:
-    type: coherence
+    type: contract
   on_yes: check_invariants
   on_no: execute
 ```
@@ -75,22 +75,22 @@ New evaluator kind:
 
 ```yaml
 evaluate:
-  type: coherence
+  type: contract
 ```
 
 State-level config (under the state, not under `evaluate`):
 
 ```yaml
-check_coherence:
-  action_type: coherence  # new action_type — runs the coherence read+compare, no shell needed
-  pairs:                  # one or more producer/consumer pairs
+check_contract:
+  action_type: contract  # new action_type — runs the contract read+compare, no shell needed
+  pairs:                 # one or more producer/consumer pairs
     - producer: <path>
       producer_pattern: <regex>   # optional — extract just the relevant slice
       consumer: <path>
       consumer_pattern: <regex>
       contract: <string>          # the alignment rule the judge enforces
   evaluate:
-    type: coherence
+    type: contract
     severity: error               # any pair-level failure routes on_no
   on_yes: <state>
   on_no: <state>
@@ -100,17 +100,17 @@ Verdicts: `yes` (all pairs aligned), `no` (any pair fails), `error` (file unread
 
 ## Implementation Steps
 
-1. **Schema** — extend `ll-loop validate` to accept `action_type: coherence` and `evaluate.type: coherence`; validate `pairs` structure (list of dicts with required `producer`, `consumer`, `contract`).
-2. **Runner** — new evaluator in `scripts/little_loops/evaluators/`: reads each pair, applies optional regex extraction, composes a judge prompt with both slices side-by-side, calls the host runner via `resolve_host().build_blocking_json(...)`.
+1. **Schema** — extend `ll-loop validate` to accept `action_type: contract` and `evaluate.type: contract`; validate `pairs` structure (list of dicts with required `producer`, `consumer`, `contract`).
+2. **Runner** — new evaluator in `scripts/little_loops/evaluators/contract.py`: reads each pair, applies optional regex extraction, composes a judge prompt with both slices side-by-side, calls the host runner via `resolve_host().build_blocking_json(...)`.
 3. **Verdict normalization** — return `{verdict: yes|no|error, pair_results: [...]}` so `audit-loop-run` can render which pair failed.
 4. **Tests** — pytest cases: aligned pair (yes), mismatched field names (no), camelCase/snake_case mismatch (no), missing file (error), regex no-match (error). Mock host runner.
-5. **Docs** — add `check_coherence` section to `AUTOMATIC_HARNESSING_GUIDE.md` under "Evaluation Phases Explained", placed between `check_mcp` and `check_skill` (it's deterministic-input + LLM-judged, cheaper than `check_skill`'s full agentic session).
-6. **Example loop** — add a `loops/examples/coherence-demo.yaml` or extend `harness-multi-item.yaml` with a commented `check_coherence` block.
+5. **Docs** — add `check_contract` section to `AUTOMATIC_HARNESSING_GUIDE.md` under "Evaluation Phases Explained", placed between `check_mcp` and `check_skill` (it's deterministic-input + LLM-judged, cheaper than `check_skill`'s full agentic session).
+6. **Example loop** — add a `loops/examples/contract-demo.yaml` or extend `harness-multi-item.yaml` with a commented `check_contract` block.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/evaluators/coherence.py` (new)
+- `scripts/little_loops/evaluators/contract.py` (new)
 - `scripts/little_loops/loops/schema.py` (extend evaluator type enum)
 - `scripts/little_loops/loops/runner.py` (wire new evaluator)
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`
@@ -124,10 +124,10 @@ Verdicts: `yes` (all pairs aligned), `no` (any pair fails), `error` (file unread
 - `check_semantic` evaluator for LLM judge call patterns
 
 ### Tests
-- `scripts/tests/test_coherence_evaluator.py` (new) — aligned, mismatched, file-missing, regex-no-match cases
+- `scripts/tests/test_contract_evaluator.py` (new) — aligned, mismatched, file-missing, regex-no-match cases
 
 ### Documentation
-- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add `check_coherence` section between `check_mcp` and `check_skill`
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add `check_contract` section between `check_mcp` and `check_skill`
 
 ### Configuration
 - N/A
@@ -135,7 +135,7 @@ Verdicts: `yes` (all pairs aligned), `no` (any pair fails), `error` (file unread
 ## Acceptance Criteria
 
 - [ ] `ll-loop validate` accepts the new schema and rejects malformed `pairs:` blocks with clear errors
-- [ ] Evaluator runs without spawning a shell action (action_type: coherence is self-contained)
+- [ ] Evaluator runs without spawning a shell action (action_type: contract is self-contained)
 - [ ] Multi-pair states report which specific pair failed
 - [ ] Documentation added to AUTOMATIC_HARNESSING_GUIDE.md with placement guidance
 - [ ] Tests cover aligned, mismatched, file-missing, regex-no-match cases
@@ -144,7 +144,7 @@ Verdicts: `yes` (all pairs aligned), `no` (any pair fails), `error` (file unread
 
 - **Priority**: P3 — Important for harness quality but not blocking existing workflows; `check_semantic` is an available workaround
 - **Effort**: Medium — New evaluator module (~100-150 lines), schema extension, tests, and docs; no changes to existing evaluators
-- **Risk**: Low — Net-new code path behind `action_type: coherence`; existing loops and evaluators unaffected
+- **Risk**: Low — Net-new code path behind `action_type: contract`; existing loops and evaluators unaffected
 - **Breaking Change**: No
 
 ## Out of Scope
@@ -158,7 +158,7 @@ Verdicts: `yes` (all pairs aligned), `no` (any pair fails), `error` (file unread
 |------|--------------|
 | `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` | New evaluator slots into the existing chain documentation |
 | `scripts/little_loops/evaluators/` | Where the implementation lands |
-| `scripts/little_loops/loops/harness-multi-item.yaml` | Example loop to extend with `check_coherence` demo |
+| `scripts/little_loops/loops/harness-multi-item.yaml` | Example loop to extend with `check_contract` demo |
 
 ## Session Log
 - `/ll:verify-issues` - 2026-05-31T05:40:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
