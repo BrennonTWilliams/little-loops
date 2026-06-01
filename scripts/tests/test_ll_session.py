@@ -37,6 +37,12 @@ class TestArgumentParsing:
             args = _parse_args()
         assert args.command == "backfill"
 
+    def test_path_subcommand(self) -> None:
+        with patch("sys.argv", ["ll-session", "path", "abc123"]):
+            args = _parse_args()
+        assert args.command == "path"
+        assert args.session_id == "abc123"
+
     def test_recent_rejects_invalid_kind(self) -> None:
         with patch("sys.argv", ["ll-session", "recent", "--kind", "bogus"]):
             with pytest.raises(SystemExit):
@@ -141,6 +147,7 @@ class TestMainSession:
                     "loops": 0,
                     "tools": 0,
                     "messages": 0,
+                    "sessions": 0,
                 }
                 assert main_session() == 0
         assert "Backfilled" in capsys.readouterr().out
@@ -148,7 +155,7 @@ class TestMainSession:
     def test_backfill_reports_messages_count(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """backfill success line includes the messages= count (ENH-1621)."""
+        """backfill success line includes messages= and sessions= counts (ENH-1621, ENH-1710)."""
         db = tmp_path / "session.db"
         with patch("sys.argv", ["ll-session", "--db", str(db), "backfill"]):
             with patch("little_loops.cli.session.backfill") as mock_backfill:
@@ -157,11 +164,13 @@ class TestMainSession:
                     "loops": 0,
                     "tools": 3,
                     "messages": 5,
+                    "sessions": 2,
                 }
                 assert main_session() == 0
         out = capsys.readouterr().out
         assert "messages=5" in out
-        assert "Backfilled 10" in out
+        assert "sessions=2" in out
+        assert "Backfilled 12" in out
 
     def test_recent_message_kind(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """The recent CLI accepts --kind message after ENH-1621."""
@@ -265,3 +274,30 @@ class TestMainSession:
         assert isinstance(data, list)
         assert len(data) > 0
         assert data[0]["issue_id"] == "BUG-789"
+
+    # --- path (ENH-1710) ---
+
+    def test_path_found(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        db = tmp_path / "session.db"
+        from little_loops.session_store import connect as ss_connect
+
+        ensure_db(db)
+        conn = ss_connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                ("sid-xyz", "/path/to/sid-xyz.jsonl"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        with patch("sys.argv", ["ll-session", "--db", str(db), "path", "sid-xyz"]):
+            assert main_session() == 0
+        assert "/path/to/sid-xyz.jsonl" in capsys.readouterr().out
+
+    def test_path_not_found(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "path", "NOPE"]):
+            assert main_session() == 1
+        assert "not found" in capsys.readouterr().out.lower()

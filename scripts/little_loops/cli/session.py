@@ -22,7 +22,7 @@ from little_loops.cli_args import add_json_arg
 from little_loops.history_reader import related_issue_events
 from little_loops.history_reader import search as history_search
 from little_loops.logger import Logger
-from little_loops.session_store import DEFAULT_DB_PATH, backfill, recent, search
+from little_loops.session_store import DEFAULT_DB_PATH, backfill, connect, recent, search
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -49,6 +49,9 @@ Examples:
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    path_parser = subparsers.add_parser("path", help="Resolve JSONL file path for a session ID")
+    path_parser.add_argument("session_id", metavar="SESSION_ID", help="Session ID to look up")
 
     search_parser = subparsers.add_parser("search", help="FTS5 full-text search")
     search_parser.add_argument("--fts", required=True, metavar="QUERY", help="FTS5 match query")
@@ -109,6 +112,20 @@ def main_session() -> int:
     if not args.command:
         parser.print_help()
         return 1
+
+    if args.command == "path":
+        conn = connect(args.db)
+        try:
+            row = conn.execute(
+                "SELECT jsonl_path FROM sessions WHERE session_id = ?", (args.session_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            print(f"Session {args.session_id} not found.")
+            return 1
+        print(row["jsonl_path"])
+        return 0
 
     if args.command == "search":
         results: list[Any]
@@ -181,7 +198,8 @@ def main_session() -> int:
         logger.success(
             f"Backfilled {total} rows "
             f"(issues={counts['issues']}, loops={counts['loops']}, "
-            f"tools={counts['tools']}, messages={counts.get('messages', 0)})"
+            f"tools={counts['tools']}, messages={counts.get('messages', 0)}, "
+            f"sessions={counts.get('sessions', 0)})"
         )
         return 0
 

@@ -203,7 +203,7 @@ little-loops/
         │   ├── create_extension.py  # ll-create-extension scaffold CLI
         │   ├── parallel.py
         │   ├── messages.py
-        │   ├── session.py           # ll-session: search/recent/backfill the unified session store
+        │   ├── session.py           # ll-session: search/recent/backfill/path the unified session store
         │   ├── sync.py
         │   ├── docs.py
         │   ├── history.py

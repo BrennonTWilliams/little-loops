@@ -260,7 +260,36 @@ class TestBackfill:
     def test_backfill_missing_sources_is_noop(self, tmp_path: Path) -> None:
         db = tmp_path / "session.db"
         counts = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no")
-        assert counts == {"issues": 0, "loops": 0, "tools": 0, "messages": 0}
+        assert counts == {"issues": 0, "loops": 0, "tools": 0, "messages": 0, "sessions": 0}
+
+    def test_backfill_jsonl_populates_sessions(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": "sess-abc",
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {"content": "hello"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+        )
+        assert counts["sessions"] == 1
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT jsonl_path FROM sessions WHERE session_id = 'sess-abc'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row["jsonl_path"] == str(jsonl)
 
     def test_backfilled_issue_is_searchable(self, tmp_path: Path) -> None:
         issues = tmp_path / ".issues"
@@ -694,6 +723,90 @@ class TestSchemaV3:
         conn.close()
         assert int(version) == SCHEMA_VERSION
         assert "idx_issue_events_dedup" in indexes
+
+
+class TestSchemaV4:
+    """v4 migration: sessions table maps session_id to JSONL path (ENH-1710)."""
+
+    def test_sessions_table_exists_after_ensure_db(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        conn.close()
+        assert "sessions" in names
+
+    def test_v3_db_upgrades_to_v4(self, tmp_path: Path) -> None:
+        """A v3 database gains the sessions table on next ensure_db()."""
+        db = tmp_path / "session.db"
+        conn = sqlite3.connect(str(db))
+        conn.executescript(
+            """
+            CREATE TABLE tool_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, tool_name TEXT, args_hash TEXT,
+                result_size INTEGER, bytes_in INTEGER, bytes_out INTEGER, cache_hit INTEGER
+            );
+            CREATE TABLE file_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, path TEXT, op TEXT, issue_id TEXT, git_sha TEXT
+            );
+            CREATE TABLE issue_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                issue_id TEXT, transition TEXT, discovered_by TEXT,
+                issue_type TEXT, priority TEXT, completed_date TEXT,
+                captured_at TEXT, completed_at TEXT
+            );
+            CREATE TABLE loop_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                loop_name TEXT, state TEXT, transition TEXT, retries INTEGER
+            );
+            CREATE TABLE user_corrections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, content TEXT, source TEXT
+            );
+            CREATE TABLE message_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, content TEXT
+            );
+            CREATE VIRTUAL TABLE search_index USING fts5(
+                content, kind UNINDEXED, ref UNINDEXED, anchor UNINDEXED, ts UNINDEXED
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_events_dedup
+                ON issue_events(issue_id, transition);
+            CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO meta(key, value) VALUES('schema_version', '3');
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        conn.close()
+        assert int(version) == SCHEMA_VERSION
+        assert "sessions" in tables
+
+    def test_sessions_insert_or_ignore_is_idempotent(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                ("abc123", "/path/to/abc123.jsonl"),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                ("abc123", "/path/to/abc123.jsonl"),
+            )
+            conn.commit()
+            count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 1
 
 
 class TestBackfillDedup:

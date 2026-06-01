@@ -3457,6 +3457,8 @@ Entry point for `ll-session` command. Query the unified session store (SQLite + 
 - `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--limit N` (default 20)
 - `recent` — Most recent rows for an event kind; requires `--kind {tool,file,issue,loop,correction}`, optional `--limit N` (default 20)
 - `backfill` — Seed the database from existing on-disk sources
+- `related` — Issue events for a given issue ID; requires `ISSUE_ID` positional arg, optional `--limit N` and `--json`
+- `path` — Resolve and print the JSONL file path for a session ID; exits non-zero if unknown
 
 ---
 

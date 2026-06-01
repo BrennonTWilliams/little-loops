@@ -41,7 +41,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/history.db")
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message"})
 _KIND_TABLE = {
@@ -151,6 +151,16 @@ _MIGRATIONS: list[str] = [
     """
     CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_events_dedup
         ON issue_events(issue_id, transition);
+    """,
+    # v4 (ENH-1710): sessions table maps session_id to its JSONL file path,
+    # closing the broken link between event rows and their source log.
+    """
+    CREATE TABLE sessions (
+        session_id TEXT PRIMARY KEY,
+        jsonl_path TEXT NOT NULL,
+        started_at TEXT,
+        project_path TEXT
+    );
     """,
 ]
 
@@ -665,6 +675,39 @@ def _backfill_messages(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int
     return count
 
 
+def _backfill_sessions(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int:
+    """Seed ``sessions`` table by mapping each JSONL file to its session_id.
+
+    Reads just enough of each file to extract the first ``sessionId`` value,
+    then inserts one row per unique session. ``INSERT OR IGNORE`` + PRIMARY KEY
+    makes repeated calls idempotent (ENH-1710).
+    """
+    count = 0
+    for jsonl_file in jsonl_files:
+        try:
+            handle = jsonl_file.open(encoding="utf-8")
+        except OSError:
+            continue
+        with handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                session_id = record.get("sessionId")
+                if session_id:
+                    cur = conn.execute(
+                        "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                        (str(session_id), str(jsonl_file)),
+                    )
+                    count += cur.rowcount
+                    break  # one session_id per file is sufficient
+    return count
+
+
 def backfill(
     db: Path | str = DEFAULT_DB_PATH,
     *,
@@ -681,7 +724,7 @@ def backfill(
     issues_dir = issues_dir if issues_dir is not None else Path(".issues")
     loops_dir = loops_dir if loops_dir is not None else Path(".loops")
     conn = connect(db)
-    counts: dict[str, int] = {"issues": 0, "loops": 0, "tools": 0, "messages": 0}
+    counts: dict[str, int] = {"issues": 0, "loops": 0, "tools": 0, "messages": 0, "sessions": 0}
     try:
         if issues_dir.is_dir():
             counts["issues"] = _backfill_issues(conn, issues_dir)
@@ -690,6 +733,7 @@ def backfill(
         if jsonl_files:
             counts["tools"] = _backfill_tool_events(conn, jsonl_files)
             counts["messages"] = _backfill_messages(conn, jsonl_files)
+            counts["sessions"] = _backfill_sessions(conn, jsonl_files)
         conn.commit()
     finally:
         conn.close()

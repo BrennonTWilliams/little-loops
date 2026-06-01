@@ -1488,6 +1488,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | `recent` | Most recent rows for an event kind |
 | `backfill` | Seed the database from existing on-disk sources |
 | `related` | Issue events for a given issue ID |
+| `path` | Resolve the JSONL file path for a session ID |
 
 **`search` flags:**
 
@@ -1510,6 +1511,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 ll-session search --fts "rate limit"   # Full-text search, BM25-ranked
 ll-session recent --kind loop          # Recent loop events
 ll-session backfill                    # Seed the database from on-disk sources
+ll-session path <session_id>           # Resolve JSONL file path for a session ID
 ```
 
 ---
