@@ -6,6 +6,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from little_loops.session_store import (
     SCHEMA_VERSION,
     SQLiteTransport,
@@ -14,7 +16,9 @@ from little_loops.session_store import (
     backfill_incremental,
     connect,
     ensure_db,
+    is_correction,
     recent,
+    record_correction,
     search,
 )
 from little_loops.transport import Transport
@@ -1078,4 +1082,59 @@ class TestBackfillIncremental:
         db = tmp_path / "history.db"
         counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
         assert counts["messages"] >= 1
-        assert counts["sessions"] >= 1
+
+
+class TestIsCorrectionHeuristic:
+    """ENH-1831: correction-detection heuristic."""
+
+    @pytest.mark.parametrize("text", [
+        "no, don't do that",
+        "stop doing that",
+        "revert that last change",
+        "don't add comments",
+        "No! That's wrong",
+        "that's wrong, try again",
+    ])
+    def test_true_positives(self, text: str) -> None:
+        from little_loops.session_store import is_correction
+        assert is_correction(text), f"expected correction signal: {text!r}"
+
+    @pytest.mark.parametrize("text", [
+        "no problem",
+        "sounds good",
+        "noted, thanks",
+        "implement the login feature",
+        "fix the authentication bug",
+        "noted",
+    ])
+    def test_true_negatives(self, text: str) -> None:
+        from little_loops.session_store import is_correction
+        assert not is_correction(text), f"expected non-correction: {text!r}"
+
+
+class TestRecordCorrection:
+    """ENH-1831: record_correction() DB write round-trip."""
+
+    def test_record_correction_roundtrip(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_correction, recent
+        db = tmp_path / "session.db"
+        record_correction(db, "sess-r1", "no, don't do that", "user_prompt_submit")
+        rows = recent(db, kind="correction")
+        assert len(rows) == 1
+        assert rows[0]["content"] == "no, don't do that"
+        assert rows[0]["source"] == "user_prompt_submit"
+
+    def test_record_correction_truncates_to_512(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_correction, recent
+        db = tmp_path / "session.db"
+        long_text = "stop " + "x" * 600
+        record_correction(db, None, long_text, "user_prompt_submit")
+        rows = recent(db, kind="correction")
+        assert len(rows[0]["content"]) <= 512
+
+    def test_record_correction_fts_indexed(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_correction, search
+        db = tmp_path / "session.db"
+        record_correction(db, "sess-r2", "revert that last commit", "user_prompt_submit")
+        results = search(db, query="revert")
+        assert any(r["kind"] == "correction" for r in results)

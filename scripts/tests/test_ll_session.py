@@ -382,6 +382,24 @@ class TestMainSession:
         assert len(data) == 1
         assert data[0]["session_id"] == "sess-43"
 
+    def test_recent_correction_kind(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """ENH-1831: recent --kind correction returns captured rows."""
+        from little_loops.session_store import record_correction
+
+        db = tmp_path / "session.db"
+        record_correction(db, "sess-corr1", "no, don't do that", "user_prompt_submit")
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "correction"]):
+            assert main_session() == 0
+        assert "don't do that" in capsys.readouterr().out
+
+    def test_recent_correction_empty(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """ENH-1831: recent --kind correction with no rows emits 'No correction events'."""
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "correction"]):
+            assert main_session() == 0
+        assert "No correction events" in capsys.readouterr().out
+
 
 class TestBackfillSinceFlag:
     """--since flag for ll-session backfill (ENH-1830)."""

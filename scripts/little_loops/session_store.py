@@ -25,10 +25,13 @@ Public API:
     backfill_incremental(db,...): incremental JSONL-only backfill filtered by mtime
     search(db,...):              FTS5 full-text query with BM25 ranking
     recent(db,...):              recent rows for a given event kind
+    is_correction(text):         return True if text matches a user-correction signal
+    record_correction(db,...):   write one row to ``user_corrections`` + search_index
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -67,6 +70,17 @@ _LOOP_EVENT_TYPES = frozenset(
         "max_iterations_summary",
     }
 )
+
+
+_CORRECTION_RE = re.compile(
+    r"^\s*(no[,!]|don'?t\s|stop\s|revert|that'?s\s+wrong|not\s+like\s+that)",
+    re.IGNORECASE,
+)
+
+
+def is_correction(text: str) -> bool:
+    """Return True if *text* matches a known user-correction signal."""
+    return bool(_CORRECTION_RE.match(text[:512]))
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +324,27 @@ def write_file_event(
             (ts, session_id, path, op, issue_id, None),
         )
         _index(conn, content=path, kind="file", ref=path, anchor=op, ts=ts)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_correction(
+    db_path: Path | str,
+    session_id: str | None,
+    content: str,
+    source: str,
+) -> None:
+    """Write one row to ``user_corrections`` and index it in ``search_index``."""
+    content = content[:512]
+    conn = connect(db_path)
+    ts = _now()
+    try:
+        conn.execute(
+            "INSERT INTO user_corrections(ts, session_id, content, source) VALUES(?, ?, ?, ?)",
+            (ts, session_id, content, source),
+        )
+        _index(conn, content=content, kind="correction", ref=session_id or "", anchor=source, ts=ts)
         conn.commit()
     finally:
         conn.close()

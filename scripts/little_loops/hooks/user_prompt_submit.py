@@ -17,12 +17,15 @@ which probes ``.codex/ll-config.json`` first when ``LL_HOOK_HOST=codex``.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
 
 from little_loops.config.core import resolve_config_path
+from little_loops.config.features import feature_enabled
 from little_loops.hooks.types import LLHookEvent, LLHookResult
+from little_loops.session_store import is_correction, record_correction
 
 _NO_CONFIG_MSG = (
     "[little-loops] No config found. Run /ll:init to set up little-loops for this project."
@@ -62,6 +65,12 @@ def handle(event: LLHookEvent) -> LLHookResult:
 
     cwd = Path.cwd()
     config = _load_config(cwd)
+
+    if config is not None and feature_enabled(config, "analytics.enabled"):
+        if is_correction(user_prompt):
+            session_id = event.payload.get("session_id") or event.session_id
+            with contextlib.suppress(Exception):
+                record_correction(cwd / ".ll" / "history.db", session_id, user_prompt, "user_prompt_submit")
 
     if config is None:
         return LLHookResult(exit_code=0, stdout=_NO_CONFIG_MSG + "\n")
