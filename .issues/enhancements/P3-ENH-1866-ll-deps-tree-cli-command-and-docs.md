@@ -39,11 +39,18 @@ Dispatch: `if args.command == "tree": return _cmd_tree(args, config, logger)`.
 
 ### Step 2 — Implement `_cmd_tree()` handler
 
-Child resolution (do NOT use `SprintManager.load_or_resolve()` — it filters to active statuses only, but the tree needs all children including done/deferred for the `8/12 done` summary line):
+Child resolution (do NOT use `SprintManager.load_or_resolve()` — it filters to active statuses only, but the tree needs all children including done/deferred for the `8/12 done` summary line. Do NOT call the internal `_load_issues()` helper in `deps.py` (lines 15–32) — it wraps `find_issues()` with the same active-only default):
 
 1. Parse EPIC file via `IssueParser(config).parse_file(epic_path)` → `epic_info.relates_to` (forward refs).
-2. `all_issues = find_issues(config)` → filter `issue.parent == epic_id` (backward refs).
-3. Union both sets. Separate into `done_ids` (status in `{"done", "deferred"}`) and the full child set.
+2. Call `find_issues` with an explicit `status_filter` — the default excludes `done` and `deferred`, which must appear in the tree for the `8/12 done` count:
+   ```python
+   all_issues = find_issues(
+       config,
+       status_filter={"open", "in_progress", "blocked", "deferred", "done"},
+   )
+   ```
+   Filter `issue.parent == epic_id` (backward refs). Union with forward-ref set.
+3. Separate into `done_ids` (status in `{"done", "deferred"}`) and the full child set.
 
 Build filtered graph: `graph = DependencyGraph.from_issues(child_issues, completed_ids=done_ids, all_known_ids=all_child_ids)`.
 
