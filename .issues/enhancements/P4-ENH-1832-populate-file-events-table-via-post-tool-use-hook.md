@@ -12,6 +12,7 @@ relates_to:
 labels:
   - enhancement
   - captured
+parent: EPIC-1707
 ---
 
 # ENH-1832: Populate `file_events` table via post_tool_use hook

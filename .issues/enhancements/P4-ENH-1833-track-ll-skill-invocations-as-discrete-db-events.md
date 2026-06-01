@@ -14,6 +14,7 @@ depends_on: [ENH-1832]
 labels:
   - enhancement
   - captured
+parent: EPIC-1707
 ---
 
 # ENH-1833: Track `/ll:` skill invocations as discrete DB events

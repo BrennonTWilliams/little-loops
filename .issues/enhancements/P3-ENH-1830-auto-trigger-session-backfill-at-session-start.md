@@ -12,6 +12,7 @@ relates_to:
 labels:
   - enhancement
   - captured
+parent: EPIC-1707
 ---
 
 # ENH-1830: Auto-trigger `session_store.backfill()` at session start

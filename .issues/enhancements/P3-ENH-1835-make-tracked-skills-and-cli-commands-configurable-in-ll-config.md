@@ -13,6 +13,7 @@ relates_to:
 labels:
   - enhancement
   - captured
+parent: EPIC-1707
 ---
 
 # ENH-1835: Make tracked skills and CLI commands configurable in ll-config.json

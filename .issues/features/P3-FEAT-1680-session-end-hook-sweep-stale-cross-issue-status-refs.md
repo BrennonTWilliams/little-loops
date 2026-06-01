@@ -11,6 +11,7 @@ labels:
   - hooks
   - automation
   - issue-management
+parent: EPIC-1707
 ---
 
 # FEAT-1680: Session-end hook to sweep stale cross-issue status references

@@ -12,6 +12,7 @@ relates_to:
 labels:
   - enhancement
   - captured
+parent: EPIC-1707
 ---
 
 # ENH-1834: Record `ll-` CLI command invocations in history.db
