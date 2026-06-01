@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.114.0] - 2026-06-01
+
+### Added
+
+- **`ll-history-context` CLI** — New CLI tool that renders a `## Historical Context` block for an issue from `.ll/history.db`, surfacing recent user corrections and FTS5 matches (capped at 5 rows, stale-filtered at 30 days). Graceful degradation: empty output when DB is absent or no matches. (ENH-1846)
+- **Historical context in `refine-issue`** — New Step 2.5 queries `ll-history-context` and injects a `## Historical Context` block into the gap-filling prompt context when prior corrections exist. (ENH-1847)
+- **Historical context in `ready-issue`** — Step 2 validation now queries `ll-history-context` and surfaces matched corrections as `Historical Concerns` sub-bullets with `warning` severity. (ENH-1847)
+- **Historical context in `confidence-check`** — Phase 1 context-gathering queries `ll-history-context`; each matched correction applies a −0.1 signal to the Outcome Confidence Score. (ENH-1847)
+
 ## [1.113.0] - 2026-05-31
 
 ### Added

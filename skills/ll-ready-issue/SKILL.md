@@ -2,6 +2,13 @@
 name: ll-ready-issue
 description: Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid
 args: "ISSUE_ID"
+allowed-tools:
+  - Read
+  - Glob
+  - Edit
+  - Task
+  - Bash(git:*)
+  - Bash(ll-history-context:*)
 metadata:
   short-description: Analyze and validate an issue file for accuracy, utility, and completeness, then
 ---

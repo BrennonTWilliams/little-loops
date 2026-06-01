@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-CLEAN_ISSUE = """\
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+COMMAND_FILE = PROJECT_ROOT / "commands" / "ready-issue.md"
+
+CLEAN_ISSUE ="""\
 ---
 title: Clean issue
 ---
@@ -84,3 +89,31 @@ class TestReadyIssueLintRule:
 
         matches = [m for m in _FILE_LINE.finditer(content) if not _in_fence(m.start(), m.end())]
         assert matches == []
+
+
+class TestReadyIssueHistoryContextInjection:
+    """commands/ready-issue.md must document historical context query in Step 2 (ENH-1847)."""
+
+    def _phase_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("### 2. Validate Issue Content")
+        next_heading = content.find("\n### 3.", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_ll_history_context_command_present(self) -> None:
+        assert "ll-history-context" in self._phase_text(), (
+            "Step 2 must include the ll-history-context command invocation"
+        )
+
+    def test_historical_concerns_mentioned(self) -> None:
+        text = self._phase_text()
+        assert "Historical Concerns" in text or "historical" in text.lower(), (
+            "Step 2 must mention Historical Concerns sub-bullet for matched corrections"
+        )
+
+    def test_graceful_degradation_mentioned(self) -> None:
+        text = self._phase_text()
+        assert "missing" in text.lower() or "absent" in text.lower() or "DB" in text, (
+            "Step 2 must mention graceful degradation when DB is missing or no matches"
+        )

@@ -10,6 +10,7 @@ allowed-tools:
   - Edit
   - Bash(find:*)
   - Bash(git:*)
+  - Bash(ll-history-context:*)
 metadata:
   short-description: Use when asked for a pre-implementation confidence check or whether an issue is 
 ---
@@ -172,6 +173,14 @@ If invoked standalone (not within manage-issue):
 1. Read the issue file
 2. Use Glob/Grep to find related files mentioned in the issue
 3. Check for existing implementations
+
+After loading the issue file, run:
+
+```bash
+HIST=$(ll-history-context {{issue_id}} 2>/dev/null || true)
+```
+
+Each matched correction is a −0.1 signal on the Outcome Confidence Score. Cap: at most 5 corrections included; if 0 matches, Outcome Confidence Score is unaffected.
 
 If invoked within manage-issue: use the research findings already gathered in Phase 1.5.
 

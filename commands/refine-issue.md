@@ -7,6 +7,7 @@ allowed-tools:
   - Edit
   - Task
   - Bash(git:*, ll-issues:*)
+  - Bash(ll-history-context:*)
 arguments:
   - name: issue_id
     description: Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
@@ -106,6 +107,16 @@ fi
    - Error messages or behavioral descriptions
    - Feature/component names
    - Configuration keys or CLI flags
+
+### 2.5 — Query Historical Context
+
+Run:
+
+```bash
+HIST=$(ll-history-context {{issue_id}} 2>/dev/null || true)
+```
+
+If `$HIST` is non-empty, include the output as a `## Historical Context` section in the prompt context for Step 5a gap-filling. Cap: already enforced by the CLI (5 rows max). If DB is missing or no matches, proceed without the section.
 
 ### 3. Research Codebase
 

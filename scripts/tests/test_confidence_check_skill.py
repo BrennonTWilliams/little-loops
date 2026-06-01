@@ -349,3 +349,30 @@ class TestPhase48LargeFileSurfaceSuppression:
     def test_signal_phrases_documented(self) -> None:
         text = self._phase_text()
         assert "large file surface" in text or "Signal phrases" in text
+
+
+class TestConfidenceCheckHistoryContextInjection:
+    """Phase 1 must document historical context query with correction signal (ENH-1847)."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("### Phase 1: Gather Context")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_ll_history_context_command_present(self) -> None:
+        assert "ll-history-context" in self._phase_text(), (
+            "Phase 1 must include the ll-history-context command invocation"
+        )
+
+    def test_correction_signal_documented(self) -> None:
+        text = self._phase_text()
+        assert "−0.1" in text or "-0.1" in text, (
+            "Phase 1 must document the -0.1 correction signal on Outcome Confidence Score"
+        )
+
+    def test_hist_variable_present(self) -> None:
+        assert "HIST" in self._phase_text(), (
+            "Phase 1 must assign ll-history-context output to HIST variable"
+        )

@@ -2,6 +2,13 @@
 name: ll-refine-issue
 description: Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation
 args: "ISSUE_ID [--auto] [--dry-run] [--gap-analysis] [--full-rewrite]"
+allowed-tools:
+  - Read
+  - Glob
+  - Edit
+  - Task
+  - Bash(git:*, ll-issues:*)
+  - Bash(ll-history-context:*)
 metadata:
   short-description: Refine issue files with codebase-driven research to fill knowledge gaps needed f
 ---

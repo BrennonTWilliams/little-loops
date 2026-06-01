@@ -7,6 +7,7 @@ allowed-tools:
   - Edit
   - Task
   - Bash(git:*)
+  - Bash(ll-history-context:*)
 arguments:
   - name: issue_id
     description: Issue ID to validate (e.g., BUG-004, FEAT-001)
@@ -124,6 +125,14 @@ If deep validation reveals significant discrepancies:
 ### 2. Validate Issue Content
 
 Check for completeness:
+
+Before running validation checks, query for prior corrections:
+
+```bash
+HIST=$(ll-history-context {{issue_id}} 2>/dev/null || true)
+```
+
+If matches exist, add each correction as a `Historical Concerns` sub-bullet in the validation checklist with severity `warning`. Graceful degradation: if DB missing, skip section silently.
 
 #### Required Sections
 

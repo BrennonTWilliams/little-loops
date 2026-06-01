@@ -183,3 +183,36 @@ class TestGapAnalysisMode:
         assert "--full-rewrite" in examples_text, (
             "Examples section must include a --full-rewrite example"
         )
+
+
+class TestRefineIssueHistoryContextInjection:
+    """commands/refine-issue.md must document Step 2.5 historical context query (ENH-1847)."""
+
+    def _phase_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("### 2.5 — Query Historical Context")
+        next_heading = content.find("\n### 3.", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_step_2_5_heading_exists(self) -> None:
+        content = COMMAND_FILE.read_text()
+        assert "### 2.5 — Query Historical Context" in content, (
+            "commands/refine-issue.md must contain a '### 2.5 — Query Historical Context' section"
+        )
+
+    def test_ll_history_context_command_present(self) -> None:
+        assert "ll-history-context" in self._phase_text(), (
+            "Step 2.5 must include the ll-history-context command invocation"
+        )
+
+    def test_hist_variable_in_step_2_5(self) -> None:
+        assert "HIST" in self._phase_text(), (
+            "Step 2.5 must assign ll-history-context output to HIST variable"
+        )
+
+    def test_graceful_degradation_mentioned(self) -> None:
+        text = self._phase_text()
+        assert "missing" in text.lower() or "absent" in text.lower() or "DB" in text, (
+            "Step 2.5 must mention graceful degradation when DB is missing or no matches"
+        )
