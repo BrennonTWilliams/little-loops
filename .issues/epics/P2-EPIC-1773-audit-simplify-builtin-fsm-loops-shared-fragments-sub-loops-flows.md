@@ -6,7 +6,7 @@ priority: P2
 captured_at: "2026-05-29T01:01:55Z"
 discovered_date: 2026-05-28
 discovered_by: capture-issue
-relates_to: [ENH-1774, ENH-1775, ENH-1776, ENH-1777]
+relates_to: [ENH-1774, ENH-1775, ENH-1776, ENH-1777, ENH-1643, ENH-1796]
 ---
 
 # EPIC-1773: Audit & Simplify Built-in FSM Loops with Shared Fragments, Sub-loops, and Flows
@@ -47,6 +47,8 @@ Eliminate duplicated state patterns across built-in FSM loops by extracting shar
 - **ENH-1775** — Wave 2: Extract `generator-evaluator` sub-loop and add `parse_tagged_json` fragment
 - **ENH-1776** — Wave 3: Add `convergence_gate`, `ll_rubric_score` fragments and extract `enumerate-prove-flow`
 - **ENH-1777** — Wave 4: Remaining fragments, sub-loops, and flows
+- **ENH-1643** — Add optional type filter to prompt-across-issues loop
+- **ENH-1796** — Shared message log alongside captured.* for cross-state context
 
 ## Integration Map
 

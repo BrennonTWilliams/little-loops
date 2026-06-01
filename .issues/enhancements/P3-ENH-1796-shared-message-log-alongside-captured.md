@@ -14,6 +14,7 @@ labels:
   - loops
   - state-management
 relates_to: []
+parent: EPIC-1773
 ---
 
 # ENH-1796: Shared message log alongside `captured.*` for cross-state context

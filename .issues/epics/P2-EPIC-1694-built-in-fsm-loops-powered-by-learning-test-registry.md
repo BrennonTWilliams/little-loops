@@ -7,7 +7,7 @@ status: open
 captured_at: '2026-05-25T20:53:43Z'
 discovered_date: '2026-05-25'
 discovered_by: capture-issue
-relates_to: [FEAT-1692, FEAT-1695, FEAT-1696, FEAT-1697, FEAT-1287, FEAT-1283, FEAT-1285, FEAT-1286, EPIC-1663, FEAT-1738, FEAT-1739, ENH-1740, ENH-1741, FEAT-1742, FEAT-1743, FEAT-1798, ENH-1284, FEAT-1813, ENH-1814]
+relates_to: [FEAT-1692, FEAT-1695, FEAT-1696, FEAT-1697, FEAT-1287, FEAT-1283, FEAT-1285, FEAT-1286, EPIC-1663, FEAT-1738, FEAT-1739, ENH-1740, ENH-1741, FEAT-1742, FEAT-1743, FEAT-1798, ENH-1284, FEAT-1813, ENH-1814, FEAT-1826]
 ---
 
 # EPIC-1694: Built-in FSM Loops Powered by the Learning-Test Registry
@@ -51,6 +51,7 @@ This constraint is why FEAT-1695 (`ready-to-implement-gate`) is shell-driven rat
 - **ENH-1284** — Learning-Test Gate in Issue Lifecycle: `/ll:ready-issue`/`/ll:go-no-go` block on missing or stale proofs declared in issue frontmatter (un-deferred 2026-05-30)
 - **FEAT-1813** — `migrate-sdk-version`: bulk re-prove stale records and classify (still-valid / needs-upgrade / refuted); counterpart to FEAT-1739
 - **ENH-1814** — Docs pass for `LEARNING_TESTS_GUIDE.md` and `LOOPS_GUIDE.md` covering the EPIC-1694 surface
+- **FEAT-1826** — sft-corpus FSM loop for SLM fine-tuning from session logs
 
 ## Scope
 

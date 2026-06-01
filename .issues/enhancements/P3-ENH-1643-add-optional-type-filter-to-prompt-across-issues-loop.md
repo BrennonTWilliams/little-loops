@@ -7,6 +7,7 @@ captured_at: "2026-05-23T20:52:54Z"
 discovered_date: "2026-05-23"
 discovered_by: capture-issue
 status: open
+parent: EPIC-1773
 ---
 
 # ENH-1643: Add optional type filter to prompt-across-issues loop

@@ -7,6 +7,7 @@ status: open
 captured_at: "2026-05-31T22:00:59Z"
 discovered_date: "2026-05-31"
 discovered_by: capture-issue
+parent: EPIC-1694
 ---
 
 # FEAT-1826: sft-corpus FSM loop for SLM fine-tuning from session logs

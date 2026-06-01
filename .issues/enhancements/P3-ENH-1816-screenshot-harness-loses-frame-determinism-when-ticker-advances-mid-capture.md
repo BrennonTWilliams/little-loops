@@ -7,6 +7,7 @@ captured_at: "2026-05-30T22:06:48Z"
 discovered_date: 2026-05-30
 discovered_by: capture-issue
 status: open
+parent: EPIC-1744
 ---
 
 # ENH-1816: Screenshot harness loses frame determinism when ticker advances mid-capture
