@@ -15,6 +15,14 @@ parent: ENH-1858
 
 Wire `ll-deps tree --epic EPIC-NNN` as a new subcommand in `scripts/little_loops/cli/deps.py`, consuming `format_epic_tree()` from ENH-1863. Add a `TestDepsTree` class in a new `scripts/tests/test_deps_cli.py`, update `docs/reference/CLI.md` and `docs/reference/API.md`, and add the `ll-deps tree` row to `skills/map-dependencies/SKILL.md`.
 
+## Current Behavior
+
+The `ll-deps` CLI provides `analyze`, `validate`, `fix`, and `apply` subcommands but has no `tree` subcommand. There is no way to render an EPIC's child issue hierarchy with dependency edges from the CLI.
+
+## Expected Behavior
+
+Running `ll-deps tree --epic EPIC-NNN` renders the EPIC's child hierarchy as a tree with `├──`/`└──` connectors and a `X/Y done` summary line. Supports `--format json` for structured output (`root`, `nodes`, `edges`). Exits 0 on success; exits non-zero if the EPIC is not found.
+
 ## Parent Issue
 
 Decomposed from ENH-1858: `ll-deps tree --epic EPIC-NNN` — render EPIC child hierarchy with dependency edges
@@ -156,5 +164,21 @@ Parent steps covered by this child:
 - `ll-deps tree` appears in `ll-deps --help`
 - `docs/reference/CLI.md`, `docs/reference/API.md`, and `skills/map-dependencies/SKILL.md` are updated
 
+## Scope Boundaries
+
+- Only adds the `tree` subcommand; does not modify `analyze`, `validate`, `fix`, or `apply` behavior
+- Read-only command — no mutation of issue files or dependency data
+- Does not change `DependencyGraph`, `format_epic_tree()`, or other core dependency logic (ENH-1863's scope)
+- Does not support depth limits, status filtering flags, or non-EPIC roots in this iteration
+
+## Labels
+
+`cli`, `enhancement`, `deps`
+
+## Status
+
+**Open** | Created: 2026-06-01 | Priority: P3
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-01T18:50:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c41ca909-db8c-449b-9875-0d6bc9aa84fa.jsonl`
 - `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcaa931c-330d-44e9-b237-2540a93e4fcb.jsonl`

@@ -1,6 +1,7 @@
 ---
 id: ENH-1862
-title: "Wave 2a Part 2 — Create `ll_commit` Fragment, Convert 6 Commit Loops, and Wire Docs"
+title: "Wave 2a Part 2 \u2014 Create `ll_commit` Fragment, Convert 6 Commit Loops,\
+  \ and Wire Docs"
 type: ENH
 priority: P3
 captured_at: '2026-06-01T00:00:00Z'
@@ -12,6 +13,12 @@ relates_to:
 - EPIC-1773
 status: open
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1862: Wave 2a Part 2 — Create `ll_commit` Fragment, Convert 6 Commit Loops, and Wire Docs
@@ -181,8 +188,9 @@ Each converted loop must have `context.commit_message` resolvable at runtime. Th
 - `loops/incremental-refactor.yaml` — convert `commit_step` state (lines 34-37; structural outlier); add `commit_message:` to existing `context:` (line 8); add new `import:` block
 - `docs/guides/AUDIT_REPORT.md` — add `prompt-fragments.yaml` at line 90
 - `docs/reference/CLI.md` — add `lib/prompt-fragments.yaml` to example blocks at lines 644-648 and 755-757
-- `docs/guides/LOOPS_GUIDE.md` — add `lib/prompt-fragments.yaml` section with `ll_commit` row to "Built-in Libraries" section (lines 3148-3248)
+- `docs/guides/LOOPS_GUIDE.md` — add `lib/prompt-fragments.yaml` section with `ll_commit` row to "Built-in Libraries" section (lines 3148-3248); update "Four libraries" count to "Five libraries"
 - `skills/create-loop/reference.md` — add `ll_commit` row under new `lib/prompt-fragments.yaml` entry in "Fragment Catalog" section (lines 1109-1128)
+- `scripts/little_loops/loops/README.md` — add `lib/prompt-fragments.yaml` row to "Fragment Libraries" table (line 165); add `ll-loop fragments lib/prompt-fragments.yaml` example command (line 191) [wiring pass]
 
 ### Tests
 
@@ -193,6 +201,11 @@ Each converted loop must have `context.commit_message` resolvable at runtime. Th
 
 - `docs/guides/LOOPS_GUIDE.md` — add `ll_commit` to fragment tables
 - `skills/create-loop/reference.md` — add `ll_commit` to fragment catalog
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/README.md` — enumerates all fragment library files by name in "Fragment Libraries" table (lines 162-165) and in `ll-loop fragments` example commands (lines 190-191); needs `lib/prompt-fragments.yaml` row added [Agent 1 + Agent 2 finding]
 
 ## Implementation Steps
 
@@ -208,7 +221,7 @@ Each converted loop must have `context.commit_message` resolvable at runtime. Th
 
 6. **Run regression suite** — `python -m pytest scripts/tests/test_fsm_fragments.py scripts/tests/test_builtin_loops.py -v --tb=short`. Verify `test_all_fragments_are_shell_type` (line 922) and `test_all_fragments_have_exit_code_evaluate` (line 929) still pass (ll_commit is NOT in cli.yaml).
 
-7. **Update wiring docs** — Update `docs/guides/AUDIT_REPORT.md:90` to add `prompt-fragments.yaml`. Update `docs/reference/CLI.md:644` and `:755` to add `lib/prompt-fragments.yaml` to both example blocks.
+7. **Update wiring docs** — Update `docs/guides/AUDIT_REPORT.md:90` to add `prompt-fragments.yaml`. Update `docs/reference/CLI.md:644` and `:755` to add `lib/prompt-fragments.yaml` to both example blocks. Update `scripts/little_loops/loops/README.md:165` to add `lib/prompt-fragments.yaml` row to "Fragment Libraries" table and add `ll-loop fragments lib/prompt-fragments.yaml` example command at line 191.
 
 8. **Update documentation** — Add `ll_commit` to fragment tables in `docs/guides/LOOPS_GUIDE.md:3148` (new `lib/prompt-fragments.yaml` section in "Built-in Libraries") and `skills/create-loop/reference.md:1109` (new row in "Fragment Catalog" section).
 
@@ -229,5 +242,7 @@ Each converted loop must have `context.commit_message` resolvable at runtime. Th
 - **Risk**: Low — `prompt-fragments.yaml` is a new file (no existing callers); commit state conversions are isolated per-loop; test assertions on `action_type` in cli.yaml unaffected
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-01T18:50:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cd19c9f-6780-4c0b-8ecb-81ed7d5d8630.jsonl`
 - `/ll:refine-issue` - 2026-06-01T18:44:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2378c0a-2bf5-4f29-84da-cb4e09635135.jsonl`
 - `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cacc3f7-f908-4e86-8ef8-b96c1b43a157.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7130e47-1d39-4176-b6ac-edaabbcc8f05.jsonl`

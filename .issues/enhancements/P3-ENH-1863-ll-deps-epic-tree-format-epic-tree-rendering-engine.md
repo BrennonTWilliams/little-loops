@@ -8,6 +8,12 @@ discovered_date: '2026-06-01'
 discovered_by: issue-size-review
 parent: ENH-1858
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-1863: `format_epic_tree()` rendering engine for EPIC child hierarchy
@@ -15,6 +21,28 @@ decision_needed: false
 ## Summary
 
 Add `format_epic_tree()` to `scripts/little_loops/dependency_mapper/formatting.py` — a pure rendering function that takes a root EPIC, a child-info map, and a `DependencyGraph` scoped to the EPIC's children, and produces a Unicode box-drawing tree string (or passes structured data to the JSON path). Export it from `dependency_mapper/__init__.py` and cover it with unit tests in `test_dependency_mapper.py`.
+
+## Current Behavior
+
+No `format_epic_tree()` function exists in `scripts/little_loops/dependency_mapper/formatting.py`. The `ll-deps` CLI cannot render EPIC child hierarchies as a visual tree; there is no way to display the EPIC → child issue structure with dependency edges or status badges.
+
+## Expected Behavior
+
+`format_epic_tree(root_id, root_info, child_map, graph, use_color=True)` in `scripts/little_loops/dependency_mapper/formatting.py` renders an EPIC's child hierarchy as a Unicode box-drawing tree string with:
+- Status badges (`[done]`, `[blocked]`) shown inline per child; `[open]` suppressed for brevity
+- Blocking edge annotations (`⮡ blocks ISSUE-NNN`) under each blocker line
+- Children ordered by `graph.topological_sort()`
+- A summary header using the `N/M done` pattern
+- Empty-children sentinel returning `root_id: (no children)`
+
+`format_epic_tree` is importable from `little_loops.dependency_mapper` and covered by `TestFormatEpicTree` unit tests.
+
+## Motivation
+
+This enhancement provides the rendering foundation for `ll-deps tree --epic EPIC-NNN` (ENH-1866), enabling users to visualize EPIC child hierarchy with progress and dependency edges at a glance:
+- Users currently have no way to see child issue status in one view without cross-referencing each issue manually
+- Pure function with no side effects — low risk, high reuse potential as a display primitive
+- Follows the established `format_text_graph()` pattern in the same module, keeping the codebase consistent
 
 ## Parent Issue
 
@@ -97,6 +125,18 @@ Add `TestFormatEpicTree` class in `scripts/tests/test_dependency_mapper.py` foll
 - `scripts/tests/test_dependency_mapper.py:TestFormatTextGraph` (lines 944–990) — unit-test pattern to follow; uses `make_issue()` factory (line 33) and `assert "..." in text` substring checks
 - `scripts/tests/test_dependency_mapper.py:make_issue()` (line 33) — factory helper; currently lacks `status` and `parent` params (must extend or use `IssueInfo(...)` directly for badge/blocking tests)
 
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_dependency_graph.py` — existing `DependencyGraph` unit tests (`TestDependencyGraphConstruction`, lines 41–212); reference for `DependencyGraph.from_issues()` construction patterns when building test graphs; the `make_issue()` factory here accepts `parent` (unlike the one in `test_dependency_mapper.py`) [Agent 3 finding]
+- `scripts/tests/test_dependency_mapper.py` top-level import block (lines 12–29) — add `format_epic_tree` to the explicit named imports alongside `format_report` and `format_text_graph`; `TestFormatEpicTree` will fail at import time without this [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — add `#### format_epic_tree` entry in the `## little_loops.dependency_mapper` section after `#### format_text_graph` (line 1300); existing `format_report` and `format_text_graph` entries are the template [Agent 2 finding]
+- `docs/reference/OUTPUT_STYLING.md` — add `format_epic_tree` description in the `## Dependency Map: scripts/little_loops/dependency_mapper/formatting.py` section; this section enumerates all functions in `formatting.py` by name [Agent 2 finding]
+
 ## Implementation Steps
 
 1. Add new imports to `scripts/little_loops/dependency_mapper/formatting.py` top section: `colorize`, `BOX_ML`, `BOX_BL`, `BOX_V` from `little_loops.cli.output`; `EDGE_COLOR` from `little_loops.cli.issues.clusters`
@@ -105,6 +145,15 @@ Add `TestFormatEpicTree` class in `scripts/tests/test_dependency_mapper.py` foll
 4. Optionally extend `make_issue()` at `scripts/tests/test_dependency_mapper.py:33` with `status: str = "open"` and `parent: str | None = None` params to support badge/blocking test cases
 5. Add `TestFormatEpicTree` class after `TestFormatTextGraph` (line 944) in `test_dependency_mapper.py`; build `DependencyGraph` via `DependencyGraph.from_issues(list(child_map.values()))`; call with `use_color=False`; assert four cases
 6. Run `python -m pytest scripts/tests/test_dependency_mapper.py::TestFormatEpicTree -v`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `scripts/little_loops/dependency_mapper/__init__.py` module docstring (lines 1–39): add `format_epic_tree` to the `# Formatting` export list comment block alongside `format_report` and `format_text_graph`
+8. Add `format_epic_tree` to the top-level named import block in `scripts/tests/test_dependency_mapper.py` (lines 12–29) so `TestFormatEpicTree` can reference it without a local import
+9. Update `docs/reference/API.md`: add `#### format_epic_tree` entry in the `## little_loops.dependency_mapper` section after `#### format_text_graph` (line 1300)
+10. Update `docs/reference/OUTPUT_STYLING.md`: add `format_epic_tree` description in the `## Dependency Map: scripts/little_loops/dependency_mapper/formatting.py` section
 
 ## Covers (from ENH-1858)
 
@@ -126,6 +175,35 @@ Parent steps covered by this child:
 - All four `TestFormatEpicTree` test cases pass
 - Output matches the box-drawing tree format from the parent issue's "Expected Behavior" section
 
+## Scope Boundaries
+
+- **In scope**: `format_epic_tree()` pure rendering function in `formatting.py`; export from `dependency_mapper/__init__.py`; `TestFormatEpicTree` unit tests; optional extension of `make_issue()` factory with `status` and `parent` params
+- **Out of scope**: CLI wiring for `ll-deps tree --epic` (handled by ENH-1866); changes to `DependencyGraph` or `IssueInfo` dataclasses; JSON output path (separate rendering concern)
+
+## API/Interface
+
+```python
+def format_epic_tree(
+    root_id: str,
+    root_info: IssueInfo,
+    child_map: dict[str, IssueInfo],
+    graph: DependencyGraph,
+    use_color: bool = True,
+) -> str:
+    """Render an EPIC's child hierarchy as a Unicode box-drawing tree string."""
+```
+
+## Labels
+
+`enhancement`, `dependency-mapper`, `rendering`
+
+## Status
+
+**Open** | Created: 2026-06-01 | Priority: P3
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-01T18:51:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7130e47-1d39-4176-b6ac-edaabbcc8f05.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df6f28cb-1291-4dfe-a9e1-7f772da7e3a8.jsonl`
+- `/ll:wire-issue` - 2026-06-01T18:47:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712fbfea-e021-4d7b-8c77-911778494da6.jsonl`
 - `/ll:refine-issue` - 2026-06-01T18:43:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8eeca893-3738-4d07-9997-b5b15ecc0bae.jsonl`
 - `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcaa931c-330d-44e9-b237-2540a93e4fcb.jsonl`
