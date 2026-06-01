@@ -10,7 +10,7 @@ relates_to:
   - FEAT-1262
   - EPIC-1707
   - ENH-1830
-depends_on: [ENH-1832]
+depends_on: [ENH-1832, ENH-1830, ENH-1831]
 labels:
   - enhancement
   - captured
@@ -104,6 +104,13 @@ the skill dispatch signal specifically.
 **Open** | Created: 2026-06-01 | Priority: P4
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-01T04:19:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f60c9218-3661-4445-8adb-23f9182491a5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-01T02:53:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:format-issue` - 2026-06-01T01:20:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c78d4399-dc58-4488-ac5a-557b6cd5e073.jsonl`
 - `/ll:capture-issue` - 2026-06-01T01:10:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Per-skill filtering via `analytics.capture.skills` is out of scope for this issue and owned by ENH-1835. Ship `record_skill_event()` without a config gate; ENH-1835 will add the `analytics.capture.skills` glob check. Design `record_skill_event()` to accept an optional config parameter so ENH-1835 can inject the gate without a method signature change. Related: ENH-1833 vs ENH-1835 (MEDIUM requirement conflict resolved by /ll:audit-issue-conflicts).

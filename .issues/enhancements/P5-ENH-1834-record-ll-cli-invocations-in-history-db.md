@@ -124,8 +124,15 @@ CREATE TABLE cli_events (
 - **Breaking Change**: No
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-01T04:19:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f60c9218-3661-4445-8adb-23f9182491a5.jsonl`
 - `/ll:format-issue` - 2026-06-01T01:23:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ccce6dd-ca36-49fd-8bf7-a050f93f3840.jsonl`
 - `/ll:capture-issue` - 2026-06-01T01:10:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `analytics.capture.cli_commands` config gate is out of scope for this issue and owned by ENH-1835. This issue ships the `cli_event_context()` context manager as unconditional. Design `cli_event_context()` to accept an optional config argument so ENH-1835 can wire the gate without a method signature change. Related: ENH-1834 vs ENH-1835 (MEDIUM requirement conflict resolved by /ll:audit-issue-conflicts).
 
 ---
 

@@ -9,6 +9,7 @@ discovered_date: 2026-05-26
 captured_at: "2026-05-26T00:48:43Z"
 discovered_by: capture-issue
 depends_on: [ENH-1782, ENH-1717]
+blocked_by: [ENH-1831]
 labels:
   - enhancement
   - captured
@@ -110,6 +111,7 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - Action: Implementation is unblocked; remove any informal "blocked on ENH-1752" notes and proceed
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-01T04:19:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f60c9218-3661-4445-8adb-23f9182491a5.jsonl`
 - `/ll:verify-issues` - 2026-06-01T03:08:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`

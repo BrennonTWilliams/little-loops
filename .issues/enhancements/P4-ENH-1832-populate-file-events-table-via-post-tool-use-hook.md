@@ -112,5 +112,12 @@ issue, giving them richer context about where work is actually happening.
 **Open** | Created: 2026-06-01 | Priority: P4
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-01T04:19:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f60c9218-3661-4445-8adb-23f9182491a5.jsonl`
 - `/ll:format-issue` - 2026-06-01T01:20:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c78d4399-dc58-4488-ac5a-557b6cd5e073.jsonl`
 - `/ll:capture-issue` - 2026-06-01T01:10:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `analytics.capture.file_events` gate is out of scope for this issue and owned by ENH-1835. Ship this issue with the existing `analytics.enabled` gate (consistent with `tool_events`). ENH-1835 will upgrade all write paths to the finer-grained `analytics.capture` sub-block. Design `write_file_event()` to accept an optional config argument so ENH-1835 can wire the gate without a method signature change. Related: ENH-1832 vs ENH-1835 (HIGH requirement conflict resolved by /ll:audit-issue-conflicts).
