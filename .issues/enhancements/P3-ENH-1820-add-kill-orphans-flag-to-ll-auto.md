@@ -2,7 +2,7 @@
 id: ENH-1820
 title: Kill orphaned Claude processes by default on ll-auto startup with --no-kill-orphans opt-out
 type: ENH
-status: open
+status: cancelled
 priority: P3
 captured_at: '2026-05-31T02:45:00Z'
 discovered_date: '2026-05-31'
@@ -202,4 +202,8 @@ The codebase has zero `psutil` usage. Process scanning is done via `os.kill(pid,
 
 ## Status
 
-**Open** | Created: 2026-05-31 | Priority: P3
+**Cancelled** | Created: 2026-05-31 | Priority: P3
+
+## Cancellation Note
+
+`ll-auto` is not the right place to kill running loops. Orphan cleanup belongs at the loop orchestration layer (`ll-loop`), not the issue automation layer. Closing without implementation.

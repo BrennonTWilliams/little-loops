@@ -6,6 +6,7 @@ priority: P2
 captured_at: "2026-05-29T01:01:55Z"
 discovered_date: 2026-05-28
 discovered_by: capture-issue
+status: open
 relates_to: [ENH-1774, ENH-1775, ENH-1776, ENH-1777, ENH-1643, ENH-1796]
 ---
 
