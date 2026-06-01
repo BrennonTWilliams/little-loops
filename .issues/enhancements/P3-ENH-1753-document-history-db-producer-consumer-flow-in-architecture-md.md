@@ -100,7 +100,18 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `captured`
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-05-31_
+
+**Verdict: NEEDS_UPDATE** — Prerequisite (ENH-1752) is done; documentation section still absent.
+- `history_reader.py` now EXISTS (249 lines) — ENH-1752 is **DONE** ✓
+- `docs/ARCHITECTURE.md` has NO "History DB: Producer→Consumer Flow" section ✓ (still needs writing)
+- `docs/reference/API.md` lists `history_reader` as a one-liner only; no detailed module documentation ✓
+- Action: ENH-1752 dependency is satisfied; update `depends_on` field and proceed with documentation
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-01T03:08:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

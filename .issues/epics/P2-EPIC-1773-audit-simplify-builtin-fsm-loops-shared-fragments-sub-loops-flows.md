@@ -103,13 +103,14 @@ Eliminate duplicated state patterns across built-in FSM loops by extracting shar
 _Added by `/ll:verify-issues` on 2026-05-31_
 
 **Verdict: NEEDS_UPDATE** — Loop count and Wave 1 status have changed:
-- Built-in loop count is now **63** (issue says 57); Wave 1 additions account for the growth
+- Built-in loop count is now **70** (issue says 57 at capture, interim note said 63); Wave 1 additions account for growth
 - 5 shared lib fragments ✓; 1 oracle sub-loop ✓ — still accurate
 - ENH-1774 (Wave 1: `ll_commit` + `playwright_screenshot` fragments): **DONE** ✓
 - ENH-1775, ENH-1776, ENH-1777 (Waves 2–4): open
-- Action: Update loop count from 57 → 63; note Wave 1 is complete
+- Action: Update loop count from 57 → 70; note Wave 1 is complete
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-01T03:08:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:53:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

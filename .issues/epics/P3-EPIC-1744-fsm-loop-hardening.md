@@ -67,7 +67,7 @@ Observed pain points from production loop runs:
 ### Primary Files
 
 - `scripts/little_loops/loops/general-task.yaml` — ENH-1677, ENH-1735
-- `scripts/little_loops/fsm/schema.py` + `scripts/little_loops/fsm_executor.py` — ENH-1678
+- `scripts/little_loops/fsm/schema.py` + `scripts/little_loops/fsm/executor.py` — ENH-1678
 - `scripts/little_loops/loops/deep-research.yaml` — ENH-1684
 - `scripts/little_loops/cli/loop/__init__.py` (or `_helpers.py`) — ENH-1701
 
@@ -103,5 +103,6 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - Action: Update child list to reflect completed items; epic nearing completion
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-01T03:08:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
