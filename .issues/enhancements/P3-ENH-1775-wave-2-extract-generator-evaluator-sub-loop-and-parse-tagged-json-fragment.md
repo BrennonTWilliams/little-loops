@@ -1,12 +1,15 @@
 ---
 id: ENH-1775
-title: Wave 2 — Extract `generator-evaluator` Sub-loop and Add `parse_tagged_json` Fragment
+title: "Wave 2b — Extract `generator-evaluator` Sub-loop and `playwright_screenshot`\
+  \ Fragment"
 type: ENH
 priority: P3
 captured_at: '2026-05-29T01:01:55Z'
 discovered_date: 2026-05-28
 discovered_by: capture-issue
 parent: EPIC-1773
+relates_to:
+  - ENH-1854
 confidence_score: 100
 outcome_confidence: 70
 score_complexity: 9
@@ -17,11 +20,15 @@ implementation_order_risk: true
 decision_needed: false
 ---
 
-# ENH-1775: Wave 2 — Extract `generator-evaluator` Sub-loop and Add `parse_tagged_json` Fragment
+# ENH-1775: Wave 2b — Extract `generator-evaluator` Sub-loop and `playwright_screenshot` Fragment
+
+## Scope Note
+
+**Split on 2026-06-01**: `parse_tagged_json` fragment (3 integration loops) and `ll_commit` fragment (6 commit loops) were moved to ENH-1854 as low-risk mechanical work that can land independently. ENH-1775 now covers only the complex sub-loop extraction and `playwright_screenshot` fragment.
 
 ## Summary
 
-Extract the most-duplicated multi-state pattern in the codebase — the `generate → evaluate (Playwright) → score (LLM rubric) → iterate` cycle used by 5 harness loops — into a standalone `generator-evaluator` sub-loop. Also add a `parse_tagged_json` fragment to unify the tagged-JSON-line parsing pattern shared by 3 integration loops.
+Extract the most-duplicated multi-state pattern in the codebase — the `generate → evaluate (Playwright) → score (LLM rubric) → iterate` cycle used by 5 harness loops — into a standalone `generator-evaluator` sub-loop at `loops/oracles/generator-evaluator.yaml`. Also create a `playwright_screenshot` fragment in a new `loops/lib/harness.yaml` library that the sub-loop composes from.
 
 ## Current Behavior
 
@@ -35,51 +42,28 @@ Extract the most-duplicated multi-state pattern in the codebase — the `generat
 
 Each duplicates: Playwright screenshot invocation, CAPTURED/ALL_PASS output_contains routing, critique.md writeback, and the multi-criterion weighted rubric scoring pattern with structured output.
 
-**Tagged JSON parsing** — 3 integration loops each contain a near-identical python3 heredoc that parses a tagged JSON line from LLM output:
-
-- `adopt-third-party-api.yaml` — parses `ENUMERATE_JSON:` tag
-- `integrate-sdk.yaml` — parses `ENUMERATE_JSON:` tag
-- `assumption-firewall.yaml` — parses `ASSUMPTIONS_JSON:` tag
-
-Each duplicates the python3 invocation, line-splitting, tag-matching, and JSON extraction.
-
 ## Expected Behavior
 
 **`generator-evaluator` sub-loop** at `loops/oracles/generator-evaluator.yaml`:
 
 Accepts parameters: generate prompt, rubric criteria, pass_threshold, design_tokens_context, run_dir. The 5 parent loops become thin wrappers that supply these inputs and delegate to the sub-loop.
 
-**`parse_tagged_json` fragment** in `loops/lib/common.yaml`:
+**`playwright_screenshot` fragment** in `loops/lib/harness.yaml` (new file):
 
-```yaml
-parse_tagged_json:
-  action_type: shell
-  action: |
-    python3 -c "
-    import sys, json
-    text = sys.stdin.read()
-    for line in text.splitlines():
-        if '${context.json_tag}:' in line:
-            print(line.split('${context.json_tag}:', 1)[1].strip())
-            break
-    "
-```
-
-Callers set `context.json_tag` (e.g., `ENUMERATE_JSON`, `ASSUMPTIONS_JSON`).
+Provides `action_type: shell` with the Playwright screenshot command. The `generator-evaluator` sub-loop's `evaluate` state composes from this fragment. Callers supply the file URL path via context.
 
 ## Motivation
 
-The generator-evaluator cycle is the most-repeated multi-state pattern in the entire codebase. A bug in the Playwright invocation or rubric scoring currently requires fixing 5 separate files. The tagged-JSON parsing pattern is identical across 3 loops but differed only in the tag string — a clear case for parameterization.
+The generator-evaluator cycle is the most-repeated multi-state pattern in the entire codebase. A bug in the Playwright invocation or rubric scoring currently requires fixing 5 separate files. The `playwright_screenshot` fragment further isolates the screenshot command so it can be independently updated.
 
 ## Proposed Solution
 
 1. Design `generator-evaluator` sub-loop with parameterized inputs
-2. Extract the sub-loop to `loops/oracles/generator-evaluator.yaml`
-3. Convert all 5 harness loops to delegate to the sub-loop
-4. Add `parse_tagged_json` fragment to `loops/lib/common.yaml`
-5. Convert all 3 integration loops to use the fragment
-6. Run `ll-loop validate` on all modified loops and the new sub-loop
-7. Run `python -m pytest scripts/tests/ -v --tb=short`
+2. Create `playwright_screenshot` fragment in new `loops/lib/harness.yaml`
+3. Extract the sub-loop to `loops/oracles/generator-evaluator.yaml` (composes from `playwright_screenshot`)
+4. Convert all 5 harness loops to delegate to the sub-loop
+5. Run `ll-loop validate` on all modified loops and the new sub-loop
+6. Run `python -m pytest scripts/tests/ -v --tb=short`
 
 ### Codebase Research Findings
 
@@ -192,23 +176,14 @@ Decided by `/ll:decide-issue` on 2026-05-31.
 
 ### Files to Modify
 - `loops/oracles/generator-evaluator.yaml` — new sub-loop
+- `loops/lib/harness.yaml` — new file; add `playwright_screenshot` fragment
 - `loops/html-website-generator.yaml` — convert to thin wrapper
 - `loops/svg-image-generator.yaml` — convert to thin wrapper
 - `loops/html-anything.yaml` — convert to thin wrapper
 - `loops/hitl-md.yaml` — convert to thin wrapper
 - `loops/hitl-compare.yaml` — convert to thin wrapper
-- `loops/lib/common.yaml` — add `parse_tagged_json` fragment
-- `loops/adopt-third-party-api.yaml` — convert parse_enumeration state
-- `loops/integrate-sdk.yaml` — convert parse_enumeration state
-- `loops/assumption-firewall.yaml` — convert extract_assumptions state
-- `loops/lib/prompt-fragments.yaml` — new library; add `ll_commit` fragment here (absorbed from ENH-1774; **not** in cli.yaml — see Decision Rationale)
-- `loops/lib/harness.yaml` — add `playwright_screenshot` fragment (absorbed from ENH-1774; new file, does not exist yet)
-- `loops/dead-code-cleanup.yaml` — convert `commit` state to use `ll_commit` fragment (absorbed from ENH-1774)
-- `loops/test-coverage-improvement.yaml` — convert `commit` state to use `ll_commit` fragment (absorbed from ENH-1774)
-- `loops/backlog-flow-optimizer.yaml` — convert `commit` state to use `ll_commit` fragment (absorbed from ENH-1774)
-- `loops/issue-staleness-review.yaml` — convert `commit` state to use `ll_commit` fragment (absorbed from ENH-1774)
-- `loops/docs-sync.yaml` — convert `commit` state to use `ll_commit` fragment (absorbed from ENH-1774)
-- `loops/incremental-refactor.yaml` — convert `commit_step` state to use `ll_commit` fragment (absorbed from ENH-1774; differs structurally: uses `slash_command` not `prompt`, state named `commit_step` not `commit`)
+
+_Moved to ENH-1854_: `loops/lib/common.yaml` (`parse_tagged_json`), `loops/lib/prompt-fragments.yaml` (`ll_commit`), and the 3 integration + 6 commit loop conversions.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop_cmd.py` — `ll-loop validate` must resolve oracle sub-loops and new fragment
@@ -233,7 +208,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `loops/lib/apo-base.yaml` — template inheritance via `from:` + `states:` deep-merge (not applicable here, but shows the composition spectrum)
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py` — per-loop structural test classes: `TestHtmlWebsiteGeneratorLoop:2640`, `TestSvgImageGeneratorLoop:2718`, `TestHtmlAnythingLoop:3130`, `TestHitlCompareLoop:3302`, `TestHitlMdLoop:3467`, `TestAssumptionFirewallLoop:3826`, `TestAdoptThirdPartyApiLoop:3878`, `TestIntegrateSdkLoop:3923`
+- `scripts/tests/test_builtin_loops.py` — harness loop test classes: `TestHtmlWebsiteGeneratorLoop:2783`, `TestSvgImageGeneratorLoop:2718`, `TestHtmlAnythingLoop:3130`, `TestHitlCompareLoop:3302`, `TestHitlMdLoop:3467`
 - `scripts/tests/test_fsm_fragments.py` — fragment resolution tests; class `TestResolveFragmentsImport` validates import order and override semantics
 - `scripts/tests/test_fsm_executor.py` — executor tests including sub-loop execution
 - `scripts/tests/test_fsm_validation.py` — validation tests including sub-loop parameter cross-validation
@@ -241,16 +216,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue` — tests that will need updating:_
 
-- `scripts/tests/test_fsm_fragments.py:TestCommonYamlNewFragments:523` — needs `parse_tagged_json` presence test added
-- `scripts/tests/test_fsm_fragments.py` — **new test class needed** for `ll_commit` fragment in `lib/prompt-fragments.yaml`; follow `TestScorePlanQualityFragment:1199` pattern (4-test shape: `_load_yaml`, `test_ll_commit_defined`, `test_ll_commit_has_prompt_action_type`, `test_ll_commit_has_description`, `test_ll_commit_resolves_in_loop`). `lib/cli.yaml` is NOT modified — `test_all_fragments_are_shell_type:879` and `test_all_fragments_have_exit_code_evaluate:886` remain unaffected (see Decision Rationale: `ll_commit` goes in `lib/prompt-fragments.yaml`).
-- `scripts/tests/test_fsm_fragments.py:TestDescriptionStrippedFromFragments:978` — `test_all_common_yaml_fragments_have_description:1068` and `test_all_cli_yaml_fragments_have_description:1082` require `description:` on every new fragment
 - `scripts/tests/test_fsm_fragments.py` — **new test class needed** for `playwright_screenshot` fragment in the new `lib/harness.yaml` library (follow `TestCommonYamlNewFragments:523` pattern)
-- `scripts/tests/test_builtin_loops.py` — **new test class needed** `TestGeneratorEvaluatorOracle` for `oracles/generator-evaluator.yaml` (follow `TestReadyToImplementGateLoop:3779` pattern for sub-loop structure, or `TestRefineToReadyIssueSubLoop:605` for parameter+context assertions)
-- `scripts/tests/test_builtin_loops.py` — **5 harness loop test classes will need significant restructuring** when `generate`/`evaluate`/`score` states are deleted and replaced with `loop:` delegation: `TestHtmlWebsiteGeneratorLoop:2640`, `TestSvgImageGeneratorLoop:2718`, `TestHtmlAnythingLoop:3130`, `TestHitlCompareLoop:3302`, `TestHitlMdLoop:3467`
-- `scripts/tests/test_builtin_loops.py` — **6 ll_commit target loops have no dedicated test classes** (only generic coverage from `TestBuiltinLoopFiles`); minimal structural tests should be added: `dead-code-cleanup.yaml`, `test-coverage-improvement.yaml`, `backlog-flow-optimizer.yaml`, `issue-staleness-review.yaml`, `docs-sync.yaml`, `incremental-refactor.yaml`
-- `scripts/tests/test_builtin_loops.py` — 3 integration loop test classes (`TestAssumptionFirewallLoop:3826`, `TestAdoptThirdPartyApiLoop:3878`, `TestIntegrateSdkLoop:3923`) do NOT assert on action content of parse states → likely will NOT break from fragment conversion, but verify
+- `scripts/tests/test_builtin_loops.py` — **new test class needed** `TestGeneratorEvaluatorOracle` for `oracles/generator-evaluator.yaml` (follow `TestReadyToImplementGateLoop:4552` pattern for sub-loop structure, or `TestRefineToReadyIssueSubLoop:734` for parameter+context assertions)
+- `scripts/tests/test_builtin_loops.py` — **5 harness loop test classes will need significant restructuring** when `generate`/`evaluate`/`score` states are deleted and replaced with `loop:` delegation: `TestHtmlWebsiteGeneratorLoop:2783`, `TestSvgImageGeneratorLoop:2718`, `TestHtmlAnythingLoop:3130`, `TestHitlCompareLoop:3302`, `TestHitlMdLoop:3467`
 - `scripts/tests/test_ll_loop_commands.py` — subdirectory loop listing tests (lines 400-485) must include new `oracles/generator-evaluator.yaml`
 - `scripts/tests/test_doc_counts.py` — `test_oracle_capture_issue_is_runnable:122` shows the pattern; may need a corresponding `test_generator_evaluator_is_runnable` assertion
+
+_Moved to ENH-1854_: `parse_tagged_json` fragment test, `ll_commit` fragment test class, 6 ll_commit loop structural tests.
 
 ### Documentation
 - `skills/create-loop/reference.md` — sub-loop documentation with `context_passthrough` and verdict aliases
@@ -295,19 +267,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 10. **Convert 6 loops to use `ll_commit` fragment** — Replace inline commit states with `fragment: ll_commit` in: `dead-code-cleanup.yaml:94-99`, `test-coverage-improvement.yaml:198-204`, `backlog-flow-optimizer.yaml:126-131`, `issue-staleness-review.yaml:67-72`, `docs-sync.yaml:57-62`, `incremental-refactor.yaml:34-37`. The first 5 use `action_type: prompt` with prose wrapping; `incremental-refactor.yaml` uses `action_type: slash_command` with literal `"/ll:commit"` — handle the structural variance at the state override level.
 
-11. **Update `test_builtin_loops.py` harness loop tests** — `TestHtmlWebsiteGeneratorLoop:2640`, `TestSvgImageGeneratorLoop:2718`, `TestHtmlAnythingLoop:3130`, `TestHitlCompareLoop:3302`, `TestHitlMdLoop:3467` all assert on `generate`, `evaluate`, `score` state existence, action content, evaluator types, and routing. These tests will break when those states are replaced by `loop:` delegation. Restructure each test class to assert: (a) pre-generate states retained, (b) correct `loop:` target (`oracles/generator-evaluator`), (c) correct `with:` bindings for rubric/threshold/run_dir, (d) correct routing from the delegating state (on_yes → done/finalize, on_no → retry/failed). Follow the delegation-testing pattern from `TestAssumptionFirewallLoop:3840` (`test_run_gate_delegates_to_ready_to_implement_gate`).
+11. **Update `test_builtin_loops.py` harness loop tests** — `TestHtmlWebsiteGeneratorLoop:2783`, `TestSvgImageGeneratorLoop:2718`, `TestHtmlAnythingLoop:3130`, `TestHitlCompareLoop:3302`, `TestHitlMdLoop:3467` all assert on `generate`, `evaluate`, `score` state existence, action content, evaluator types, and routing. These tests will break when those states are replaced by `loop:` delegation. Restructure each test class to assert: (a) pre-generate states retained, (b) correct `loop:` target (`oracles/generator-evaluator`), (c) correct `with:` bindings for rubric/threshold/run_dir, (d) correct routing from the delegating state (on_yes → done/finalize, on_no → retry/failed). Follow the delegation-testing pattern from `TestAssumptionFirewallLoop:3826` (`test_run_gate_delegates_to_ready_to_implement_gate`).
 
-12. **Add new test classes** — (a) `TestGeneratorEvaluatorOracle` in `test_builtin_loops.py` following `TestReadyToImplementGateLoop:3779` (compact structural: states, evaluators, terminals, routing); (b) `parse_tagged_json` fragment test in `test_fsm_fragments.py` following `TestCommonYamlNewFragments:523` pattern; (c) `playwright_screenshot` fragment test class in `test_fsm_fragments.py` for the new `lib/harness.yaml` library (verify fragment exists, correct action_type, resolves from file); (d) `ll_commit` fragment test class in `test_fsm_fragments.py` for the new `lib/prompt-fragments.yaml` library following `TestScorePlanQualityFragment:1199` pattern; (e) minimal structural test classes for the 6 ll_commit target loops (currently only generic coverage from `TestBuiltinLoopFiles`).
+12. **Add new test classes** — (a) `TestGeneratorEvaluatorOracle` in `test_builtin_loops.py` following `TestReadyToImplementGateLoop:4552` (compact structural: states, evaluators, terminals, routing); (b) `playwright_screenshot` fragment test class in `test_fsm_fragments.py` for the new `lib/harness.yaml` library (verify fragment exists, correct action_type, resolves from file).
 
-13. **Update documentation** — (a) `docs/guides/LOOPS_GUIDE.md` — add `parse_tagged_json`, `ll_commit`, and `playwright_screenshot` to fragment tables; add `generator-evaluator` to oracle sub-loop listing; (b) `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:743-744` — update references from inline harness loops to the new thin-wrapper + sub-loop architecture; (c) `skills/create-loop/reference.md` — add new fragments to fragment catalog; (d) `docs/reference/loops.md` — update fragment and sub-loop tables; (e) `docs/generalized-fsm-loop.md:1658` — verify the evaluate routing rule still applies after sub-loop extraction.
+13. **Update documentation** — (a) `docs/guides/LOOPS_GUIDE.md` — add `playwright_screenshot` to fragment tables; add `generator-evaluator` to oracle sub-loop listing; (b) `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:743-744` — update references from inline harness loops to the new thin-wrapper + sub-loop architecture; (c) `skills/create-loop/reference.md` — add `playwright_screenshot` fragment to catalog; (d) `docs/reference/loops.md` — update fragment and sub-loop tables; (e) `docs/generalized-fsm-loop.md:1658` — verify the evaluate routing rule still applies after sub-loop extraction.
 
-14. **Extended validation** — `ll-loop validate` on all 6 ll_commit target loops after conversion. Verify `ll-loop fragments cli` and `ll-loop fragments common` list the new fragments. Verify `ll-loop show oracles/generator-evaluator --resolved` displays the internal states. Verify sub-loop resolution: `resolve_loop_path("oracles/generator-evaluator", ...)` resolves to `scripts/little_loops/loops/oracles/generator-evaluator.yaml`.
+14. **Extended validation** — Verify `ll-loop fragments` lists `playwright_screenshot`. Verify `ll-loop show oracles/generator-evaluator --resolved` displays the internal states. Verify sub-loop resolution: `resolve_loop_path("oracles/generator-evaluator", ...)` resolves to `scripts/little_loops/loops/oracles/generator-evaluator.yaml`.
 
-15. **Full regression** — `python -m pytest scripts/tests/ -v --tb=short` — verify no regressions across all test files (not just the subset in step 7). Pay special attention to: `test_fsm_fragments.py` (fragment iteration tests may break), `test_ll_loop_commands.py:400-485` (subdirectory listing must include new oracle), `test_doc_counts.py` (runnable loop count may need updating).
+15. **Full regression** — `python -m pytest scripts/tests/ -v --tb=short` — pay special attention to `test_ll_loop_commands.py:400-485` (subdirectory listing must include new oracle) and `test_doc_counts.py` (runnable loop count may need updating).
 
 ## Note on Scope Absorption from ENH-1774
 
-The `ll_commit` fragment (6 loops) and `playwright_screenshot` fragment (5 harness loops → 1 sub-loop) were absorbed from ENH-1774 (Wave 1) during `/ll:audit-issue-conflicts` conflict resolution. Implementation steps 8-10, 12c-12d, and the 8 files added to Files to Modify cover this absorbed scope. The 6 loops that inline `/ll:commit` but are explicitly NOT converted in this wave: `issue-discovery-triage.yaml`, `eval-driven-development.yaml`, `greenfield-builder.yaml`, `sprint-build-and-validate.yaml`, `issue-refinement.yaml` — these are candidate targets for future waves (ENH-1777 or later).
+The `playwright_screenshot` fragment was absorbed from ENH-1774 (Wave 1) during `/ll:audit-issue-conflicts` conflict resolution. The `ll_commit` fragment (also from ENH-1774) was subsequently split to ENH-1854 on 2026-06-01 as lower-risk mechanical work. The 6 loops that inline `/ll:commit` but are NOT converted here: `issue-discovery-triage.yaml`, `eval-driven-development.yaml`, `greenfield-builder.yaml`, `sprint-build-and-validate.yaml`, `issue-refinement.yaml` — candidate targets for future waves (ENH-1777 or later).
 
 ## Scope Boundary with ENH-1776 (Wave 3)
 
@@ -320,16 +292,15 @@ N/A — Internal loop composition interfaces only. Sub-loop parameters and fragm
 ## Success Metrics
 
 - `generator-evaluator` sub-loop eliminates 5 duplicate generate→evaluate→score→iterate cycles
-- `parse_tagged_json` fragment eliminates 3 duplicate python3 heredoc parsing states
 - `playwright_screenshot` fragment eliminates 5 duplicate Playwright screenshot implementations
-- `ll_commit` fragment eliminates 6 duplicate commit-state implementations
 - New sub-loop passes `ll-loop validate` independently
-- All 14 modified loops pass `ll-loop validate` (5 harness + 3 integration + 6 ll_commit targets)
+- All 5 harness loops pass `ll-loop validate` after conversion
 - Test suite passes with no regressions (including new fragment tests and restructured harness loop tests)
 
 ## Scope Boundaries
 
-- Sub-loop extraction and fragment addition only — no behavioral changes to the generate/evaluate/score cycle
+- Sub-loop extraction and `playwright_screenshot` fragment only — no behavioral changes to the generate/evaluate/score cycle
+- `parse_tagged_json` and `ll_commit` fragments are ENH-1854, not this issue
 - The sub-loop is an oracle (called by parent loops), not a standalone runnable loop
 - Only the listed loops; `svg-textgrad.yaml` conversion is out of scope for this wave
 
@@ -359,10 +330,9 @@ _Added by `/ll:confidence-check` on 2026-05-29_
 **Outcome Confidence**: 70/100 → MODERATE
 
 ### Outcome Risk Factors
-- Wide enumeration: 18+ files touched across loops, tests, docs, and lib — high chance of missing a conversion site or introducing a reference error
+- Wide file surface: 7 files (2 new + 5 harness loop rewires) plus test restructuring across 5 test classes — high chance of a missed state or broken `with:` binding
 - Interface design risk: the generator-evaluator sub-loop must abstract over 5 callers with non-trivial variations in pass_threshold semantics (global vs. per-criterion), run_dir sourcing (context vs. captured), and error routing (different on_error targets). Design errors cascade to all 5 wrappers
-- Test gap: 6 ll_commit target loops have no dedicated test classes — regressions in these loops may go undetected. New test classes must be added for generator-evaluator, playwright_screenshot fragment, and the 6 ll_commit targets
-- Co-deliverable ordering: implement tests first so the validation chain is in place before loop refactoring — lib/harness.yaml must be created before the sub-loop can validate
+- Co-deliverable ordering: implement tests first so the validation chain is in place before loop refactoring — `lib/harness.yaml` must be created before the sub-loop can validate
 
 ## Verification Notes
 
@@ -370,12 +340,14 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 
 **Verdict: NEEDS_UPDATE** — Highly refined issue; implementation not yet started:
 - `loops/oracles/generator-evaluator.yaml` does NOT exist (only `oracle-capture-issue.yaml` found)
-- `parse_tagged_json` fragment is NOT in `lib/common.yaml` (grep: 0 matches)
-- `lib/harness.yaml` and `lib/prompt-fragments.yaml` do NOT exist yet
+- `lib/harness.yaml` does NOT exist yet
 - 5 harness loops (html-website-generator, svg-image-generator, html-anything, hitl-md, hitl-compare) not yet converted to thin wrappers
 - Decision rationale and ENH-1774 absorption fully documented; confidence check shows 100/100
+- _Note (2026-06-01)_: `parse_tagged_json` and `lib/prompt-fragments.yaml` (`ll_commit`) split to ENH-1854
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-01T18:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2127b7f3-9b8d-4674-be8d-f44f8353a20c.jsonl`
+- `/ll:ready-issue` - 2026-06-01T17:07:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9bed3ff4-fec6-43d8-9a80-5017525d3250.jsonl`
 - `/ll:verify-issues` - 2026-06-01T14:29:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
 - `/ll:decide-issue` - 2026-05-31T21:45:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dce117cd-42e5-4d9f-a853-2edf8f80ce22.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`

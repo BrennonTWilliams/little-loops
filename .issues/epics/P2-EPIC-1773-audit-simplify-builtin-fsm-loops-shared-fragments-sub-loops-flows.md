@@ -14,9 +14,9 @@ relates_to: [ENH-1774, ENH-1775, ENH-1776, ENH-1777, ENH-1643, ENH-1796, FEAT-17
 
 ## Summary
 
-The project has 63 built-in FSM loops (57 at capture time; grew to 63 by 2026-05-31) with only 5 shared lib fragments and 1 oracle sub-loop. Many loops duplicate state patterns inline rather than composing from shared building blocks. This epic covers three categories of improvement: (1) extracting sub-loops from duplicated inline patterns, (2) creating shared state fragments in `loops/lib/` for repeated task patterns, and (3) defining named flows for sequential task chains used across multiple loops.
+The project has 64 built-in FSM loops (57 at capture time; grew to 64 as of 2026-06-01) with 5 shared lib fragments and 1 oracle sub-loop. Many loops duplicate state patterns inline rather than composing from shared building blocks. This epic covers three categories of improvement: (1) extracting sub-loops from duplicated inline patterns, (2) creating shared state fragments in `loops/lib/` for repeated task patterns, and (3) defining named flows for sequential task chains used across multiple loops.
 
-**Wave 1 (ENH-1774) is done** — `ll_commit` and `playwright_screenshot` fragments are extracted. Waves 2–4 (ENH-1775, 1776, 1777) remain open.
+**Wave 1 (ENH-1774) was superseded** — its `ll_commit` and `playwright_screenshot` scope was absorbed into ENH-1775 (Wave 2) via `/ll:audit-issue-conflicts`; no fragments were shipped. `ll_commit` will go in `loops/lib/prompt-fragments.yaml` (not `cli.yaml`). Waves 2–4 (ENH-1775, 1776, 1777) remain open.
 
 ## Motivation
 
@@ -102,16 +102,17 @@ Eliminate duplicated state patterns across built-in FSM loops by extracting shar
 
 ## Verification Notes
 
-_Added by `/ll:verify-issues` on 2026-05-31_
+_Updated by `/ll:ready-issue` on 2026-06-01_
 
-**Verdict: NEEDS_UPDATE** — Loop count and Wave 1 status have changed:
-- Built-in loop count is now **70** (issue says 57 at capture, interim note said 63); Wave 1 additions account for growth
-- 5 shared lib fragments ✓; 1 oracle sub-loop ✓ — still accurate
-- ENH-1774 (Wave 1: `ll_commit` + `playwright_screenshot` fragments): **DONE** ✓
-- ENH-1775, ENH-1776, ENH-1777 (Waves 2–4): open
-- Action: Update loop count from 57 → 70; note Wave 1 is complete
+**Verdict: CORRECTED** — Loop count updated; Wave 1 status corrected:
+- Built-in loop count updated to **64** (70 total yaml files − 5 lib fragments − 1 oracle sub-loop)
+- 5 shared lib fragments ✓ (`cli.yaml`, `common.yaml`, `apo-base.yaml`, `benchmark.yaml`, `score-plan-quality.yaml`); 1 oracle sub-loop ✓
+- ENH-1774 (Wave 1): **cancelled/superseded** — scope absorbed into ENH-1775 via `/ll:audit-issue-conflicts`; no fragments were shipped. ENH-1774 `status` corrected from `done` → `cancelled`. `ll_commit` will land in `loops/lib/prompt-fragments.yaml`; `playwright_screenshot` in `loops/lib/harness.yaml` — both as part of ENH-1775
+- ENH-1775, ENH-1776, ENH-1777 (Waves 2–4): open; Wave 2 is the correct next pickup
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T16:33:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92bcd8b4-38a6-46b1-9488-9de681167c3e.jsonl`
+- `/ll:ready-issue` - 2026-06-01T16:31:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a1e93de-8612-478d-aeff-494b4c425433.jsonl`
 - `/ll:verify-issues` - 2026-06-01T03:08:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:53:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

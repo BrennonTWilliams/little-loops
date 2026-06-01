@@ -34,7 +34,7 @@ When `type` is supplied, the sweep is narrowed:
 ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}" --context type=BUG
 ```
 
-Internally, this passes `--type BUG` through to `ll-issues list`. Invalid type values are rejected by `ll-issues list`'s argparse `choices=["BUG", "FEAT", "ENH", "EPIC"]` validation (`scripts/little_loops/cli/issues/__init__.py:116-118`), causing `init` to exit non-zero and the loop to route via `on_error` instead of advancing to `discover`.
+Internally, this passes `--type BUG` through to `ll-issues list`. Invalid type values are rejected by `ll-issues list`'s argparse `choices=["BUG", "FEAT", "ENH", "EPIC"]` validation (`scripts/little_loops/cli/issues/__init__.py:128-130`), causing `init` to exit non-zero and the loop to route via `on_error` instead of advancing to `discover`.
 
 ## Motivation
 
@@ -84,8 +84,9 @@ action: |
 Notes:
 
 - `TYPE_ARG=""` followed by unquoted `$TYPE_ARG` is intentional — an empty var expands to nothing, so `ll-issues list --json` runs verbatim when `type` is unset (preserving current behavior bit-for-bit).
-- Invalid type values are caught by argparse in `scripts/little_loops/cli/issues/__init__.py:116-118` (`choices=["BUG", "FEAT", "ENH", "EPIC"]`). An invalid value causes `ll-issues list` to exit non-zero, which the `shell_exit` fragment (`scripts/little_loops/loops/lib/common.yaml:14-21`) treats the same way it already treats an empty `context.input`: by routing on exit code. No new validation logic is needed — we deliberately rely on `ll-issues list`'s own error message.
+- Invalid type values are caught by argparse in `scripts/little_loops/cli/issues/__init__.py:128-130` (short alias `-T`; `choices=["BUG", "FEAT", "ENH", "EPIC"]`). An invalid value causes `ll-issues list` to exit non-zero, which the `shell_exit` fragment (`scripts/little_loops/loops/lib/common.yaml:14-21`) treats the same way it already treats an empty `context.input`: by routing on exit code. No new validation logic is needed — we deliberately rely on `ll-issues list`'s own error message.
 - The `init` state's existing fragment (`shell_exit`), captures, and transitions (`on_yes: discover`, `on_error: diagnose_error`) stay as-is.
+- The existing `$${COUNT}` double-dollar escape in `init` must be preserved — the FSM interpolation layer uses `$$` to emit a literal `$` after substitution.
 
 ### Header docstring update
 
@@ -112,11 +113,12 @@ description: |
 - N/A — no Python code imports or references the loop YAML other than `ll-loop run` (`scripts/little_loops/cli/loop/lifecycle.py`), which is FSM-agnostic and reads context vars generically.
 
 ### Similar Patterns
-- `scripts/little_loops/loops/test-coverage-improvement.yaml:20-22` — established pattern for declaring optional context vars with empty-string defaults.
+- `scripts/little_loops/loops/test-coverage-improvement.yaml:18-21` — canonical pattern for optional context vars with empty-string defaults (`focus_dirs: ""`, `test_cmd: ""`, `coverage_cmd: ""`). The `FOCUS_ARG=""` / `if [ -n "${context.focus_dirs}" ]` construct in its `init` state (~line 60) is the direct template for the `TYPE_ARG` conditional proposed here.
+- `scripts/little_loops/loops/harness-optimize.yaml` — second instance of the `context: key: ""` optional-default pattern (`target: ""`, `baseline: ""`).
 - `scripts/little_loops/loops/lib/common.yaml:14-21` — the `shell_exit` fragment that the `init` state already uses for routing on exit code.
 
 ### Tests
-- No new unit tests required. Existing FSM/interpolation tests in `scripts/tests/` cover the context-declaration mechanism. Verification is by `ll-loop validate` plus end-to-end dry-runs (see Verification section).
+- No new unit tests required. Existing FSM/interpolation tests in `scripts/tests/test_fsm_executor.py` cover the context-declaration mechanism: `test_context_variable_substitution` (~line 140), `test_missing_context_variable` (~line 160), `test_context_variable_in_prompt` (~line 180). Verification is by `ll-loop validate` plus end-to-end dry-runs (see Verification section).
 
 ### Documentation
 - The loop's own `description:` block (updated as part of this change).
@@ -218,6 +220,7 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 - Issue is well-scoped and technically sound; code changes simply haven't been made yet
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-01T17:28:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c054d093-fcc6-44b0-8a5c-7e000f877dba.jsonl`
 - `/ll:verify-issues` - 2026-06-01T14:29:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
