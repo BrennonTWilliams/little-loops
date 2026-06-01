@@ -18,6 +18,14 @@ parent: EPIC-1707
 
 Fix `issue_lifecycle.py` event payloads and `SQLiteTransport.send()` to populate `captured_at` in live-emitted `issue_events` rows, which are currently always NULL. This eliminates ENH-1711's backfill dependency: the `issue_sessions` VIEW will work immediately after an issue is created, without requiring a manual `backfill` pass first.
 
+## Current Behavior
+
+Live-emitted `issue_events` rows always have `captured_at = NULL`. `issue_lifecycle.py`'s six emit sites (`create_issue_from_failure`, `close_issue`, `complete_issue_lifecycle`, `defer_issue`, `undefer_issue`, `skip_issue`) do not include `captured_at` in the event dict passed to `emit_issue_event()`. `SQLiteTransport.send()` also discards the field even if present. As a result, the `issue_sessions` VIEW filters `WHERE ie.captured_at IS NOT NULL` and silently excludes all live-emitted rows, giving users zero results in `ll-history sessions <ID>` until they run `ll-session backfill`.
+
+## Expected Behavior
+
+After live issue transitions, `captured_at` is populated immediately in `issue_events` from the issue's frontmatter value — no manual `ll-session backfill` pass required. `ll-history sessions <ID>` returns session rows immediately after working on an issue in a live session.
+
 ## Motivation
 
 ENH-1711 (Option A) creates an `issue_sessions` VIEW that joins `issue_events` to `message_events` via overlapping timestamps. The VIEW filters `WHERE ie.captured_at IS NOT NULL`, meaning it only returns results for issues whose `captured_at` was set by `_backfill_issues()`. Live-emitted rows (from `create_issue_from_failure`, `close_issue`, etc.) never include `captured_at` in their event payloads, so they are silently excluded. Users who work on an issue in a session immediately see zero rows in `ll-history sessions <ID>` until they run backfill.
@@ -40,5 +48,29 @@ No public API changes. `captured_at` is an existing column in `issue_events`; th
 - `ll-history sessions <ID>` (from ENH-1711) returns session rows immediately after working on the issue, without a prior backfill pass.
 - Existing backfill tests in `scripts/tests/test_session_store.py` continue to pass unchanged.
 
+## Scope Boundaries
+
+- No schema changes — `captured_at` column already exists in `issue_events` (added in schema v2)
+- `_backfill_issues()` is unchanged; it writes `captured_at` directly from the frontmatter dict and does not go through `emit_issue_event()`
+- No changes to the `issue_sessions` VIEW definition or ENH-1711's query logic
+- Does not address other potentially NULL fields in `issue_events`
+- Does not change the public Python API for `emit_issue_event()` or `SQLiteTransport.send()`
+
+## Impact
+
+- **Priority**: P3 — Quality-of-life fix; new users see confusing empty `ll-history sessions` output until they discover the backfill command
+- **Effort**: Small — Two targeted changes in two files (6 emit sites in `issue_lifecycle.py` + one INSERT tuple in `session_store.py`); no new patterns required
+- **Risk**: Low — Populates an existing NULL column; no schema migration; backfill path is unaffected; well-tested insertion path
+- **Breaking Change**: No
+
+## Labels
+
+`session-store`, `issue-lifecycle`, `history-db`, `enhancement`
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-01T03:54:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2276f3e0-d626-41d7-ba0a-b79943225ed9.jsonl`
 - `/ll:capture-issue` - 2026-06-01T03:52:30Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43c6ff18-cbc3-4adc-b83d-de514a9863c0.jsonl`
+
+## Status
+
+**Open** | Created: 2026-06-01 | Priority: P3

@@ -41,7 +41,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/history.db")
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message"})
 _KIND_TABLE = {
@@ -161,6 +161,26 @@ _MIGRATIONS: list[str] = [
         started_at TEXT,
         project_path TEXT
     );
+    """,
+    # v5 (ENH-1711): issue_sessions VIEW joins issue_events to message_events via
+    # overlapping timestamps, making the implicit session→issue link explicit and
+    # queryable. Requires captured_at IS NOT NULL (populated by _backfill_issues());
+    # live-emitted issue_events rows have captured_at=NULL and are excluded until
+    # a backfill pass runs.
+    """
+    CREATE VIEW issue_sessions AS
+    SELECT ie.issue_id,
+           me.session_id,
+           s.jsonl_path,
+           MIN(me.ts) AS first_message_ts,
+           MAX(me.ts) AS last_message_ts
+    FROM issue_events ie
+    JOIN message_events me
+      ON me.ts >= ie.captured_at
+     AND (ie.completed_at IS NULL OR me.ts <= ie.completed_at)
+    LEFT JOIN sessions s ON s.session_id = me.session_id
+    WHERE ie.captured_at IS NOT NULL
+    GROUP BY ie.issue_id, me.session_id;
     """,
 ]
 
