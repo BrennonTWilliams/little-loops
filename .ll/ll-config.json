@@ -44,6 +44,10 @@
   "sprints": {
     "default_max_workers": 2
   },
+  "design_tokens": {
+    "active": "warm-paper",
+    "active_theme": "dark"
+  },
   "documents": {
     "enabled": true,
     "categories": {
