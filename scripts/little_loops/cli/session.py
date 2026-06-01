@@ -22,7 +22,14 @@ from little_loops.cli_args import add_json_arg
 from little_loops.history_reader import related_issue_events, sessions_for_issue
 from little_loops.history_reader import search as history_search
 from little_loops.logger import Logger
-from little_loops.session_store import DEFAULT_DB_PATH, backfill, backfill_incremental, connect, recent, search
+from little_loops.session_store import (
+    DEFAULT_DB_PATH,
+    backfill,
+    backfill_incremental,
+    connect,
+    recent,
+    search,
+)
 from little_loops.user_messages import get_project_folder
 
 
@@ -58,7 +65,7 @@ Examples:
     search_parser.add_argument("--fts", required=True, metavar="QUERY", help="FTS5 match query")
     search_parser.add_argument(
         "--kind",
-        choices=["tool", "file", "issue", "loop", "correction", "message"],
+        choices=["tool", "file", "issue", "loop", "correction", "message", "skill"],
         default=None,
         help="Filter results by event kind",
     )
@@ -70,7 +77,7 @@ Examples:
     recent_parser = subparsers.add_parser("recent", help="Recent events by kind")
     recent_parser.add_argument(
         "--kind",
-        choices=["tool", "file", "issue", "loop", "correction", "message"],
+        choices=["tool", "file", "issue", "loop", "correction", "message", "skill"],
         default=None,
         help="Event kind to list (required unless --issue is given)",
     )

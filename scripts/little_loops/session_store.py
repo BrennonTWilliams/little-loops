@@ -31,7 +31,6 @@ Public API:
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import json
 import logging
@@ -45,9 +44,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/history.db")
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
-_VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message"})
+_VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message", "skill"})
 _KIND_TABLE = {
     "tool": "tool_events",
     "file": "file_events",
@@ -55,6 +54,7 @@ _KIND_TABLE = {
     "loop": "loop_events",
     "correction": "user_corrections",
     "message": "message_events",
+    "skill": "skill_events",
 }
 
 # FSM event types the SQLiteTransport records as loop_events rows.
@@ -203,6 +203,17 @@ _MIGRATIONS: list[str] = [
     # a real ISO 8601 timestamp string.
     """
     INSERT OR IGNORE INTO meta(key, value) VALUES('last_backfill_ts', NULL);
+    """,
+    # v7 (ENH-1833): skill_events table records /ll: skill invocations at dispatch
+    # time via the user_prompt_submit hook so ll-session recent --kind skill works.
+    """
+    CREATE TABLE IF NOT EXISTS skill_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        skill_name TEXT,
+        args TEXT
+    );
     """,
 ]
 
@@ -363,6 +374,32 @@ def record_correction(
             (ts, session_id, content, source),
         )
         _index(conn, content=content, kind="correction", ref=session_id or "", anchor=source, ts=ts)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_skill_event(
+    db_path: Path | str,
+    session_id: str | None,
+    skill_name: str,
+    args: str,
+    config: dict | None = None,
+) -> None:
+    """Write one row to ``skill_events`` and index it in ``search_index``.
+
+    The ``config`` parameter is a forward-compatibility stub for ENH-1835, which
+    will inject a per-skill analytics gate without changing this signature.
+    """
+    args = args[:200]
+    conn = connect(db_path)
+    ts = _now()
+    try:
+        conn.execute(
+            "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
+            (ts, session_id, skill_name, args),
+        )
+        _index(conn, content=skill_name, kind="skill", ref=session_id or "", anchor=skill_name, ts=ts)
         conn.commit()
     finally:
         conn.close()

@@ -55,6 +55,16 @@ class TestArgumentParsing:
         assert args.issue == "ENH-1710"
         assert args.kind is None
 
+    def test_recent_subcommand_skill_accepted(self) -> None:
+        """ENH-1833: --kind skill must be a valid choice for both recent and search."""
+        with patch("sys.argv", ["ll-session", "recent", "--kind", "skill"]):
+            args = _parse_args()
+        assert args.kind == "skill"
+
+        with patch("sys.argv", ["ll-session", "search", "--fts", "refine", "--kind", "skill"]):
+            args = _parse_args()
+        assert args.kind == "skill"
+
 
 class TestMainSession:
     """Integration tests for main_session()."""
@@ -399,6 +409,24 @@ class TestMainSession:
         with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "correction"]):
             assert main_session() == 0
         assert "No correction events" in capsys.readouterr().out
+
+    def test_recent_skill_kind(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """ENH-1833: recent --kind skill returns captured skill rows."""
+        from little_loops.session_store import record_skill_event
+
+        db = tmp_path / "session.db"
+        record_skill_event(db, "sess-sk1", "refine-issue", "ENH-1833")
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "skill"]):
+            assert main_session() == 0
+        assert "refine-issue" in capsys.readouterr().out
+
+    def test_recent_skill_empty(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """ENH-1833: recent --kind skill with no rows emits 'No skill events'."""
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "skill"]):
+            assert main_session() == 0
+        assert "No skill events" in capsys.readouterr().out
 
 
 class TestBackfillSinceFlag:

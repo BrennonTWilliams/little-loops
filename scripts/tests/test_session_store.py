@@ -61,6 +61,7 @@ class TestEnsureDb:
             "issue_events",
             "loop_events",
             "user_corrections",
+            "skill_events",
         ):
             assert table in names
 
@@ -974,7 +975,7 @@ class TestSchemaV6:
             conn.close()
         assert row is not None, "last_backfill_ts key must exist in meta after v6 migration"
 
-    def test_schema_version_is_six(self, tmp_path: Path) -> None:
+    def test_schema_version_is_seven(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         ensure_db(db)
         conn = sqlite3.connect(str(db))
@@ -983,7 +984,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 6
+        assert SCHEMA_VERSION == 7
 
 
 class TestBackfillIncremental:
@@ -1096,7 +1097,6 @@ class TestIsCorrectionHeuristic:
         "that's wrong, try again",
     ])
     def test_true_positives(self, text: str) -> None:
-        from little_loops.session_store import is_correction
         assert is_correction(text), f"expected correction signal: {text!r}"
 
     @pytest.mark.parametrize("text", [
@@ -1108,7 +1108,6 @@ class TestIsCorrectionHeuristic:
         "noted",
     ])
     def test_true_negatives(self, text: str) -> None:
-        from little_loops.session_store import is_correction
         assert not is_correction(text), f"expected non-correction: {text!r}"
 
 
@@ -1116,7 +1115,7 @@ class TestRecordCorrection:
     """ENH-1831: record_correction() DB write round-trip."""
 
     def test_record_correction_roundtrip(self, tmp_path: Path) -> None:
-        from little_loops.session_store import record_correction, recent
+        from little_loops.session_store import recent
         db = tmp_path / "session.db"
         record_correction(db, "sess-r1", "no, don't do that", "user_prompt_submit")
         rows = recent(db, kind="correction")
@@ -1125,7 +1124,7 @@ class TestRecordCorrection:
         assert rows[0]["source"] == "user_prompt_submit"
 
     def test_record_correction_truncates_to_512(self, tmp_path: Path) -> None:
-        from little_loops.session_store import record_correction, recent
+        from little_loops.session_store import recent
         db = tmp_path / "session.db"
         long_text = "stop " + "x" * 600
         record_correction(db, None, long_text, "user_prompt_submit")
@@ -1133,7 +1132,7 @@ class TestRecordCorrection:
         assert len(rows[0]["content"]) <= 512
 
     def test_record_correction_fts_indexed(self, tmp_path: Path) -> None:
-        from little_loops.session_store import record_correction, search
+        from little_loops.session_store import search
         db = tmp_path / "session.db"
         record_correction(db, "sess-r2", "revert that last commit", "user_prompt_submit")
         results = search(db, query="revert")
@@ -1141,7 +1140,7 @@ class TestRecordCorrection:
 
     def test_record_correction_gate_disabled(self, tmp_path: Path) -> None:
         """capture.corrections: false suppresses write regardless of call site."""
-        from little_loops.session_store import record_correction, recent
+        from little_loops.session_store import recent
         db = tmp_path / "session.db"
         record_correction(
             db, "sess-g1", "no, stop", "user_prompt_submit",
@@ -1152,7 +1151,7 @@ class TestRecordCorrection:
 
     def test_write_file_event_gate_disabled(self, tmp_path: Path) -> None:
         """capture.file_events: false suppresses write regardless of call site."""
-        from little_loops.session_store import write_file_event, recent
+        from little_loops.session_store import recent, write_file_event
         db = tmp_path / "session.db"
         write_file_event(
             db, "sess-g2", "scripts/foo.py", "Read",
@@ -1160,3 +1159,41 @@ class TestRecordCorrection:
         )
         rows = recent(db, kind="file")
         assert len(rows) == 0, "write_file_event must be a no-op when capture.file_events is false"
+
+
+class TestRecordSkillEvent:
+    """ENH-1833: record_skill_event() DB write round-trip."""
+
+    def test_record_skill_event_roundtrip(self, tmp_path: Path) -> None:
+        from little_loops.session_store import recent, record_skill_event
+        db = tmp_path / "session.db"
+        record_skill_event(db, "sess-s1", "refine-issue", "ENH-1833")
+        rows = recent(db, kind="skill")
+        assert len(rows) == 1
+        assert rows[0]["skill_name"] == "refine-issue"
+        assert rows[0]["args"] == "ENH-1833"
+        assert rows[0]["session_id"] == "sess-s1"
+
+    def test_record_skill_event_truncates_args_to_200(self, tmp_path: Path) -> None:
+        from little_loops.session_store import recent, record_skill_event
+        db = tmp_path / "session.db"
+        long_args = "x" * 300
+        record_skill_event(db, None, "capture-issue", long_args)
+        rows = recent(db, kind="skill")
+        assert len(rows[0]["args"]) <= 200
+
+    def test_record_skill_event_fts_indexed(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_skill_event, search
+        db = tmp_path / "session.db"
+        record_skill_event(db, "sess-s2", "ready-issue", "")
+        # FTS5 tokenises hyphens, so query on individual word "ready"
+        results = search(db, query="ready")
+        assert any(r["kind"] == "skill" for r in results)
+
+    def test_record_skill_event_config_stub_accepted(self, tmp_path: Path) -> None:
+        """config= param is accepted (forward-compat stub for ENH-1835); no gate applied."""
+        from little_loops.session_store import recent, record_skill_event
+        db = tmp_path / "session.db"
+        record_skill_event(db, "sess-s3", "check-code", "", config={"analytics": {}})
+        rows = recent(db, kind="skill")
+        assert len(rows) == 1, "config stub must not suppress the write"

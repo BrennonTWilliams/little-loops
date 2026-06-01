@@ -543,6 +543,7 @@ The transport layer fans events out additively: every event emitted on the `Even
 | v4 | `sessions` | One row per Claude Code session; indexed by `session_id` for `ll-session path` resolution (ENH-1710) |
 | v5 | `issue_sessions` VIEW | Joins `issue_events` to `message_events` via overlapping timestamps; enables `ll-history sessions <ID>` and `ll-session recent --issue <ID>` (ENH-1711) |
 | v6 | `last_backfill_ts` meta key | Enables incremental JSONL backfill at session start; `session_start` hook records the last-run timestamp so only newly-modified JSONL files are processed on subsequent starts (ENH-1830) |
+| v7 | `skill_events` | Records `/ll:` skill invocations at dispatch time via the `user_prompt_submit` hook; enables `ll-session recent --kind skill` and FTS search with `kind='skill'` (ENH-1833) |
 
 Schema migration runs automatically; no manual `ll-session backfill` is needed for new tables. The `issue_sessions` VIEW requires `captured_at` populated on `issue_events` rows, which `ll-session backfill` seeds from on-disk sources for pre-v4 databases. As of ENH-1830, `session_start` automatically triggers an incremental backfill in a background thread, so new interactive session data is indexed without manual intervention.
 

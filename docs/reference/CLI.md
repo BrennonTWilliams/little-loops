@@ -1523,7 +1523,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | Flag | Description |
 |------|-------------|
 | `--fts QUERY` | FTS5 match query (required) |
-| `--kind {tool,file,issue,loop,correction,message}` | Filter results by event kind (optional) |
+| `--kind {tool,file,issue,loop,correction,message,skill}` | Filter results by event kind (optional) |
 | `--limit N` | Maximum results (default: 20) |
 | `--json` / `-j` | Output results as a JSON array |
 
@@ -1531,7 +1531,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 
 | Flag | Description |
 |------|-------------|
-| `--kind {tool,file,issue,loop,correction,message}` | Event kind to list (required unless `--issue` is given) |
+| `--kind {tool,file,issue,loop,correction,message,skill}` | Event kind to list (required unless `--issue` is given) |
 | `--issue ID` | Filter to sessions that co-occurred with this issue (e.g. `ENH-1710`). Without `--kind`, lists sessions directly from the `issue_sessions` view. Requires a prior `backfill` pass or automatic session-start backfill (ENH-1830). |
 | `--limit N` | Maximum rows (default: 20) |
 | `--json` | Output as a JSON array |

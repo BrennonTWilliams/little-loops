@@ -19,13 +19,14 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from little_loops.config.core import resolve_config_path
 from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled
 from little_loops.hooks.types import LLHookEvent, LLHookResult
-from little_loops.session_store import is_correction, record_correction
+from little_loops.session_store import is_correction, record_correction, record_skill_event
 
 _NO_CONFIG_MSG = (
     "[little-loops] No config found. Run /ll:init to set up little-loops for this project."
@@ -74,6 +75,12 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 with contextlib.suppress(Exception):
                     record_correction(cwd / ".ll" / "history.db", session_id, user_prompt, "user_prompt_submit")
         # TODO(ENH-1835): wire analytics.capture.cli_commands gate when ENH-1834 lands
+        m = re.match(r"^/ll:([a-z][a-z0-9-]*)(.*)", user_prompt.strip(), re.DOTALL)
+        if m:
+            session_id = event.payload.get("session_id") or event.session_id
+            with contextlib.suppress(Exception):
+                record_skill_event(cwd / ".ll" / "history.db", session_id,
+                                   m.group(1), m.group(2).strip()[:200])
 
     if config is None:
         return LLHookResult(exit_code=0, stdout=_NO_CONFIG_MSG + "\n")

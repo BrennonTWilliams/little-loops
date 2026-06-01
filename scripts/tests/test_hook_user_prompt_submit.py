@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from little_loops.hooks.user_prompt_submit import handle
 from little_loops.hooks.types import LLHookEvent
+from little_loops.hooks.user_prompt_submit import handle
 
 
 def _event(payload: dict | None = None, *, cwd: str | None = None) -> LLHookEvent:
@@ -93,6 +93,7 @@ class TestUserPromptSubmitWithSessionStore:
 
     def test_graceful_when_store_unwritable(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import sqlite3 as _sqlite3
+
         from little_loops import session_store
 
         _write_config(tmp_path, analytics_enabled=True)
@@ -140,3 +141,74 @@ class TestUserPromptSubmitWithSessionStore:
         finally:
             conn.close()
         assert row is not None, "record_correction must write when capture.corrections is explicitly true"
+
+
+class TestUserPromptSubmitSkillWrite:
+    """ENH-1833: skill invocation write path (gated on analytics.enabled)."""
+
+    def test_skill_prompt_writes_skill_event(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A /ll: prompt with analytics enabled writes one skill_events row."""
+        import sqlite3 as _sqlite3
+
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+
+        result = handle(_event({"prompt": "/ll:refine-issue ENH-1833", "session_id": "sess-sk1"}, cwd=str(tmp_path)))
+        assert result.exit_code == 0
+
+        db_path = tmp_path / ".ll" / "history.db"
+        assert db_path.is_file(), "handler must create history.db on skill write"
+        conn = _sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute("SELECT skill_name, args, session_id FROM skill_events").fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "expected one skill_events row"
+        skill_name, args, session_id = row
+        assert skill_name == "refine-issue"
+        assert "ENH-1833" in args
+        assert session_id == "sess-sk1"
+
+    def test_non_skill_prompt_writes_no_skill_event(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A regular prompt must not write to skill_events."""
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"prompt": "implement the login feature", "session_id": "sess-sk2"}, cwd=str(tmp_path)))
+
+        db_path = tmp_path / ".ll" / "history.db"
+        if db_path.exists():
+            import sqlite3 as _sqlite3
+            conn = _sqlite3.connect(str(db_path))
+            try:
+                count = conn.execute("SELECT COUNT(*) FROM skill_events").fetchone()[0]
+            finally:
+                conn.close()
+            assert count == 0
+
+    def test_skill_write_skipped_when_analytics_disabled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """analytics disabled → no DB created for skill invocations."""
+        _write_config(tmp_path, analytics_enabled=False)
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"prompt": "/ll:capture-issue add auth"}, cwd=str(tmp_path)))
+
+        assert not (tmp_path / ".ll" / "history.db").exists(), (
+            "analytics disabled — DB must not be created for skill writes"
+        )
+
+    def test_skill_write_graceful_on_store_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A DB error during skill write must not raise; hook must return exit_code=0."""
+        import sqlite3 as _sqlite3
+
+        from little_loops import session_store
+
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+
+        def boom(*_a, **_kw):
+            raise _sqlite3.OperationalError("disk full")
+
+        monkeypatch.setattr(session_store, "connect", boom)
+        result = handle(_event({"prompt": "/ll:ready-issue ENH-1833"}, cwd=str(tmp_path)))
+        assert result.exit_code == 0
