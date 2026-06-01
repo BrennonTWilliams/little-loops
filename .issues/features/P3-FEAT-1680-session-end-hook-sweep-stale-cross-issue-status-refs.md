@@ -5,14 +5,20 @@ type: FEAT
 priority: P3
 status: open
 discovered_date: 2026-05-24
-captured_at: "2026-05-24T17:21:20Z"
+captured_at: '2026-05-24T17:21:20Z'
 discovered_by: capture-issue
 labels:
-  - hooks
-  - automation
-  - issue-management
+- hooks
+- automation
+- issue-management
 parent: EPIC-1707
 decision_needed: false
+confidence_score: 98
+outcome_confidence: 91
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 23
+score_change_surface: 25
 ---
 
 # FEAT-1680: Session-end hook to sweep stale cross-issue status references
@@ -124,6 +130,21 @@ The correct implementation architecture follows the **Python dispatch pattern** 
 
 7. **Verification**: `python -m pytest scripts/tests/test_sweep_stale_refs.py -v`
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `scripts/little_loops/hooks/__init__.py` module docstring — the docstring bullet list enumerates each built-in intent by name; add a `session_end` bullet alongside the existing five
+9. Update `scripts/tests/test_hook_intents.py` — in `test_dispatch_table_merges_hook_intent_registry`, add `assert "session_end" in table`; also add `test_dispatch_session_end_happy_path` subprocess test (follow `test_dispatch_pre_tool_use_happy_path`: assert `returncode == 0`, no stdout/stderr)
+10. Update `scripts/tests/test_hooks_integration.py` — add integration test class (e.g. `TestSessionEndSweep`) following `TestSessionStartValidation` pattern: write a shell fixture pointing at `hooks/adapters/claude-code/session-end.sh`, run via `subprocess.run(input="{}", ...)`, assert `returncode == 0`
+11. Update `scripts/tests/test_config_schema.py` — add `test_stale_ref_fix_in_schema` following `test_analytics_in_schema` pattern; assert `stale_ref_fix` present in `hooks["properties"]` with `type == "string"` and `enum == ["report", "auto"]`
+12. Update `docs/reference/API.md` — add `session_end` to the built-in intent list in `### LLHookIntentExtension`; add `session-end.sh` to the adapter file list in `### main_hooks`
+13. Update `docs/reference/HOST_COMPATIBILITY.md` — reconcile `stop` row in the hook intent parity matrix to reflect `session_end` as the Python dispatch intent name
+14. Update `docs/reference/EVENT-SCHEMA.md` — add `session_end` entry to `#### Per-intent payload notes`
+15. Update `docs/ARCHITECTURE.md` — add `session-end.sh` to the `hooks/adapters/claude-code/` directory tree block
+16. Update `docs/development/TROUBLESHOOTING.md` — add `chmod +x hooks/adapters/claude-code/session-end.sh` to the "Hook not executing" chmod block
+17. Update `docs/claude-code/write-a-hook.md` — add `session-end.sh` to the adapter file list in the "Adapter flow" section
+
 ## Integration Map
 
 ### Files to Modify
@@ -156,8 +177,20 @@ The correct implementation architecture follows the **Python dispatch pattern** 
 - `scripts/tests/test_hook_session_start.py` — reference for `_event()` factory + `in_tmp` fixture pattern
 - `scripts/tests/test_hook_post_tool_use.py` — reference for config-gated feature test class structure
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_hook_intents.py` — update `test_dispatch_table_merges_hook_intent_registry` to add `assert "session_end" in table`; add `test_dispatch_session_end_happy_path` subprocess test following the `test_dispatch_pre_tool_use_happy_path` pattern (`returncode == 0`, no stdout/stderr)
+- `scripts/tests/test_hooks_integration.py` — add new integration test class for `session-end.sh` adapter following the `TestSessionStartValidation` / `TestContextHandoffSentinel` pattern (subprocess invocation of the adapter, assert `returncode == 0`)
+- `scripts/tests/test_config_schema.py` — add `test_stale_ref_fix_in_schema` following the `test_analytics_in_schema` pattern; assert `stale_ref_fix` key exists in `hooks.properties` with `type == "string"` and `enum == ["report", "auto"]`; also confirms `additionalProperties: false` is preserved on the `hooks` block
+
 ### Documentation
-- N/A — hook is self-documenting via `hooks/hooks.json` and the `--help` flag
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — `### LLHookIntentExtension` behavior bullets explicitly enumerate built-in intents (`pre_compact`, `session_start`, `user_prompt_submit`, `post_tool_use`, `pre_tool_use`); add `session_end`; also update `### main_hooks` adapter integration bullet that lists `precompact.sh`, `session-start.sh` — add `session-end.sh`
+- `docs/reference/HOST_COMPATIBILITY.md` — `## Hook intents` parity matrix has a `stop` row; clarify/update this row to reflect that `session_end` is the Python dispatch intent name for the Claude Code `Stop` event
+- `docs/reference/EVENT-SCHEMA.md` — `#### Per-intent payload notes` section has bullets for `pre_compact` and `session_start` only; add `session_end` bullet describing handler reads (done IDs from `find_issues`, `hooks.stale_ref_fix` from `BRConfig`) and outputs (findings in `result.feedback`, always exits 0)
+- `docs/ARCHITECTURE.md` — `## Directory Structure` tree explicitly lists `hooks/adapters/claude-code/precompact.sh` and `session-start.sh`; add `session-end.sh` entry
+- `docs/development/TROUBLESHOOTING.md` — `chmod +x` block in "Hook not executing" section lists each adapter script; add `chmod +x hooks/adapters/claude-code/session-end.sh`
+- `docs/claude-code/write-a-hook.md` — "Adapter flow" bullet names `precompact.sh`, `session-start.sh`; add `session-end.sh`
 
 ### Configuration
 - `ll-config.json` — optional `hooks.stale_ref_fix: "report" | "auto"` knob (must also be added to `config-schema.json`)
@@ -255,6 +288,9 @@ The Stop hook wire format payload received by the adapter (Claude Code injects):
 **Open** | Created: 2026-05-24 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T14:00:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97825a43-1502-449e-a519-9fff2717e285.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e6c6100d-8d0a-4a4d-8316-2fe6eef235c0.jsonl`
+- `/ll:wire-issue` - 2026-06-01T13:55:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78af0d26-ea86-4156-b799-4668c991ef85.jsonl`
 - `/ll:refine-issue` - 2026-06-01T13:49:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/424ba3b0-46e9-434c-b57f-a44b4cda057b.jsonl`
 - `/ll:refine-issue` - 2026-06-01T00:00:00 - ``
 - `/ll:verify-issues` - 2026-05-31T05:40:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
