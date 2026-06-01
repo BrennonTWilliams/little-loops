@@ -545,6 +545,7 @@ The transport layer fans events out additively: every event emitted on the `Even
 | v5 | `issue_sessions` VIEW | Joins `issue_events` to `message_events` via overlapping timestamps; enables `ll-history sessions <ID>` and `ll-session recent --issue <ID>` (ENH-1711) |
 | v6 | `last_backfill_ts` meta key | Enables incremental JSONL backfill at session start; `session_start` hook records the last-run timestamp so only newly-modified JSONL files are processed on subsequent starts (ENH-1830) |
 | v7 | `skill_events` | Records `/ll:` skill invocations at dispatch time via the `user_prompt_submit` hook; enables `ll-session recent --kind skill` and FTS search with `kind='skill'` (ENH-1833) |
+| v8 | `cli_events` | Records `ll-` CLI invocations via `cli_event_context()` in `session_store.py`; enables `ll-session recent --kind cli` (ENH-1848) |
 
 Schema migration runs automatically; no manual `ll-session backfill` is needed for new tables. The `issue_sessions` VIEW requires `captured_at` populated on `issue_events` rows, which `ll-session backfill` seeds from on-disk sources for pre-v4 databases. As of ENH-1830, `session_start` automatically triggers an incremental backfill in a background thread, so new interactive session data is indexed without manual intervention.
 
@@ -589,7 +590,7 @@ sequenceDiagram
     participant ST as SQLiteTransport
     participant DB as history.db
 
-    SS->>DB: ensure_db() — bootstrap schema (v1–v7)
+    SS->>DB: ensure_db() — bootstrap schema (v1–v8)
     SS-->>DB: backfill_incremental() in background thread
     PTU->>DB: tool_events / file_events (direct write, analytics.enabled)
     UPS->>DB: user_corrections / skill_events via record_correction() / record_skill_event()
@@ -613,7 +614,7 @@ flowchart TB
 
 | Component | File | Role |
 |-----------|------|------|
-| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v7 migrations) at session start |
+| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v8 migrations) at session start |
 | `backfill_incremental()` | `session_store.py` | Background JSONL → DB seed thread |
 | `SQLiteTransport.send()` | `session_store.py` | Routes `issue.*` / `loop.*` events to DB |
 | `EventBus.emit()` | `events.py` | Dispatches events to registered transports |

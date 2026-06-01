@@ -14,6 +14,7 @@ from little_loops.session_store import (
     _derive_transition,
     backfill,
     backfill_incremental,
+    cli_event_context,
     connect,
     ensure_db,
     is_correction,
@@ -62,6 +63,7 @@ class TestEnsureDb:
             "loop_events",
             "user_corrections",
             "skill_events",
+            "cli_events",
         ):
             assert table in names
 
@@ -1038,7 +1040,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 7
+        assert SCHEMA_VERSION == 8
 
 
 class TestBackfillIncremental:
@@ -1251,3 +1253,49 @@ class TestRecordSkillEvent:
         record_skill_event(db, "sess-s3", "check-code", "", config={"analytics": {}})
         rows = recent(db, kind="skill")
         assert len(rows) == 1, "config stub must not suppress the write"
+
+
+class TestCliEventContext:
+    """ENH-1848: cli_event_context() DB write round-trip and mechanics."""
+
+    def test_cli_event_roundtrip(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        with cli_event_context(db, binary="ll-refine-issue", args=["ENH-1848"]):
+            pass
+        rows = recent(db, kind="cli")
+        assert len(rows) == 1
+        assert rows[0]["binary"] == "ll-refine-issue"
+        assert json.loads(rows[0]["args"]) == ["ENH-1848"]
+        assert rows[0]["exit_code"] == 0
+        assert rows[0]["duration_ms"] is not None
+
+    def test_cli_event_exception_exit(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        with pytest.raises(ValueError):
+            with cli_event_context(db, binary="ll-check-code", args=[]):
+                raise ValueError("simulated failure")
+        rows = recent(db, kind="cli")
+        assert len(rows) == 1
+        assert rows[0]["exit_code"] == 1
+
+    def test_cli_event_duration_accuracy(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        with cli_event_context(db, binary="ll-session", args=["recent"]):
+            pass
+        rows = recent(db, kind="cli")
+        assert rows[0]["duration_ms"] is not None
+        assert isinstance(rows[0]["duration_ms"], int)
+        assert rows[0]["duration_ms"] >= 0
+
+    def test_schema_v8_cli_events_table_exists(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        finally:
+            conn.close()
+        assert "cli_events" in names
+        assert SCHEMA_VERSION == 8
+        assert int(row[0]) == 8

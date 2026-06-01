@@ -27,6 +27,8 @@ Public API:
     recent(db,...):              recent rows for a given event kind
     is_correction(text):         return True if text matches a user-correction signal
     record_correction(db,...):   write one row to ``user_corrections`` + search_index
+    record_skill_event(db,...):  write one row to ``skill_events`` + search_index
+    cli_event_context(db,...):   context manager: INSERT on enter, UPDATE exit_code+duration on exit
 """
 
 from __future__ import annotations
@@ -37,16 +39,35 @@ import logging
 import re
 import sqlite3
 import threading
+import time
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+__all__ = [
+    "DEFAULT_DB_PATH",
+    "SCHEMA_VERSION",
+    "ensure_db",
+    "connect",
+    "SQLiteTransport",
+    "backfill",
+    "backfill_incremental",
+    "search",
+    "recent",
+    "is_correction",
+    "record_correction",
+    "record_skill_event",
+    "cli_event_context",
+]
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/history.db")
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
-_VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message", "skill"})
+_VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message", "skill", "cli"})
 _KIND_TABLE = {
     "tool": "tool_events",
     "file": "file_events",
@@ -55,6 +76,7 @@ _KIND_TABLE = {
     "correction": "user_corrections",
     "message": "message_events",
     "skill": "skill_events",
+    "cli": "cli_events",
 }
 
 # FSM event types the SQLiteTransport records as loop_events rows.
@@ -213,6 +235,17 @@ _MIGRATIONS: list[str] = [
         session_id TEXT,
         skill_name TEXT,
         args TEXT
+    );
+    """,
+    # v8 (ENH-1848): cli_events table records ll- CLI invocations via cli_event_context()
+    """
+    CREATE TABLE IF NOT EXISTS cli_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        binary TEXT NOT NULL,
+        args TEXT NOT NULL,
+        exit_code INTEGER,
+        duration_ms INTEGER
     );
     """,
 ]
@@ -405,6 +438,45 @@ def record_skill_event(
         conn.close()
 
 
+@contextmanager
+def cli_event_context(
+    db_path: Path | str = DEFAULT_DB_PATH,
+    binary: str = "",
+    args: list[str] | None = None,
+    config: dict | None = None,
+) -> Generator[None, None, None]:
+    """Insert a ``cli_events`` row on enter; update exit_code and duration_ms on exit.
+
+    The ``config`` parameter is a forward-compatibility stub for ENH-1835 gating;
+    it is accepted but not yet used.
+    """
+    if args is None:
+        args = []
+    conn = connect(db_path)
+    start = time.time()
+    ts = _now()
+    cursor = conn.execute(
+        "INSERT INTO cli_events(ts, binary, args) VALUES(?, ?, ?)",
+        (ts, binary, json.dumps(args[:50])),
+    )
+    row_id = cursor.lastrowid
+    conn.commit()
+    exit_code = 0
+    try:
+        yield
+    except BaseException:
+        exit_code = 1
+        raise
+    finally:
+        duration_ms = int((time.time() - start) * 1000)
+        conn.execute(
+            "UPDATE cli_events SET exit_code=?, duration_ms=? WHERE id=?",
+            (exit_code, duration_ms, row_id),
+        )
+        conn.commit()
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Query API
 # ---------------------------------------------------------------------------
@@ -443,7 +515,7 @@ def recent(
     kind: str,
     limit: int = 20,
 ) -> list[dict[str, Any]]:
-    """Return the most recent rows for *kind* (tool, file, issue, loop, correction)."""
+    """Return the most recent rows for *kind* (tool, file, issue, loop, correction, message, skill, cli)."""
     if kind not in _VALID_KINDS:
         raise ValueError(f"unknown kind {kind!r}; expected one of {sorted(_VALID_KINDS)}")
     table = _KIND_TABLE[kind]
