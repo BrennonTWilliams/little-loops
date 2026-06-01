@@ -1277,6 +1277,35 @@
           "type": "boolean",
           "default": false,
           "description": "Enable per-tool byte tracking and file-event recording in post_tool_use hook. Default off; opt-in until the ctx-stats CLI ships."
+        },
+        "capture": {
+          "type": "object",
+          "description": "Controls which tool invocations and event types are captured into .ll/history.db (ENH-1840).",
+          "properties": {
+            "skills": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": ["*"],
+              "description": "Glob patterns for skill names to capture. Default ['*'] captures all skills."
+            },
+            "cli_commands": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": ["*"],
+              "description": "Glob patterns for CLI command names to capture. Default ['*'] captures all commands."
+            },
+            "corrections": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether to capture user correction events."
+            },
+            "file_events": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether to capture file-operation events."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

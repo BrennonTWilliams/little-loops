@@ -21,6 +21,7 @@ from little_loops.config.automation import (
 )
 from little_loops.config.cli import CliConfig, RefineStatusConfig
 from little_loops.config.features import (
+    AnalyticsCaptureConfig,
     DesignTokensConfig,
     EventsConfig,
     IssuesConfig,
@@ -217,6 +218,9 @@ class BRConfig:
         self._design_tokens = DesignTokensConfig.from_dict(
             self._raw_config.get("design_tokens", {})
         )
+        self._analytics_capture = AnalyticsCaptureConfig.from_dict(
+            self._raw_config.get("analytics", {}).get("capture", {})
+        )
 
     @property
     def project(self) -> ProjectConfig:
@@ -297,6 +301,11 @@ class BRConfig:
     def design_tokens(self) -> DesignTokensConfig:
         """Get design tokens configuration."""
         return self._design_tokens
+
+    @property
+    def analytics_capture(self) -> AnalyticsCaptureConfig:
+        """Get analytics capture configuration."""
+        return self._analytics_capture
 
     @property
     def extensions(self) -> list[str]:
@@ -583,6 +592,15 @@ class BRConfig:
                 "active_theme": self._design_tokens.active_theme,
                 "active": self._design_tokens.active,
                 "profiles_dir": self._design_tokens.profiles_dir,
+            },
+            "analytics": {
+                "enabled": self._raw_config.get("analytics", {}).get("enabled", False),
+                "capture": {
+                    "skills": list(self._analytics_capture.skills),
+                    "cli_commands": list(self._analytics_capture.cli_commands),
+                    "corrections": self._analytics_capture.corrections,
+                    "file_events": self._analytics_capture.file_events,
+                },
             },
             "events": {
                 "transports": list(self._events.transports),

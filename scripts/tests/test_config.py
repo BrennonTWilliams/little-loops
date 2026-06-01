@@ -1104,6 +1104,104 @@ class TestFeatureEnabledHelper:
         assert not feature_enabled({"a": {"b": None}}, "a.b")
 
 
+class TestFeatureEnabledForHelper:
+    """Tests for feature_enabled_for (ENH-1840 — glob-matching variant of feature_enabled)."""
+
+    def test_wildcard_matches_any_subject(self) -> None:
+        from little_loops.config.features import feature_enabled_for
+
+        cfg = {"analytics": {"capture": {"skills": ["*"]}}}
+        assert feature_enabled_for(cfg, "analytics.capture.skills", "my-skill")
+        assert feature_enabled_for(cfg, "analytics.capture.skills", "other-skill")
+
+    def test_exact_pattern_matches_only_exact_subject(self) -> None:
+        from little_loops.config.features import feature_enabled_for
+
+        cfg = {"analytics": {"capture": {"skills": ["Read"]}}}
+        assert feature_enabled_for(cfg, "analytics.capture.skills", "Read")
+        assert not feature_enabled_for(cfg, "analytics.capture.skills", "Write")
+
+    def test_list_of_patterns_matches_any(self) -> None:
+        from little_loops.config.features import feature_enabled_for
+
+        cfg = {"analytics": {"capture": {"skills": ["Read", "Write"]}}}
+        assert feature_enabled_for(cfg, "analytics.capture.skills", "Read")
+        assert feature_enabled_for(cfg, "analytics.capture.skills", "Write")
+        assert not feature_enabled_for(cfg, "analytics.capture.skills", "Edit")
+
+    def test_empty_list_returns_default(self) -> None:
+        from little_loops.config.features import feature_enabled_for
+
+        cfg = {"analytics": {"capture": {"skills": []}}}
+        assert feature_enabled_for(cfg, "analytics.capture.skills", "any") is True
+        assert feature_enabled_for(cfg, "analytics.capture.skills", "any", default=False) is False
+
+    def test_absent_key_returns_default(self) -> None:
+        from little_loops.config.features import feature_enabled_for
+
+        assert feature_enabled_for({}, "analytics.capture.skills", "any") is True
+        assert feature_enabled_for({}, "analytics.capture.skills", "any", default=False) is False
+
+    def test_none_value_treated_as_match_all(self) -> None:
+        from little_loops.config.features import feature_enabled_for
+
+        cfg = {"analytics": {"capture": {"skills": None}}}
+        assert feature_enabled_for(cfg, "analytics.capture.skills", "anything")
+
+    def test_bare_string_value_normalised_to_list(self) -> None:
+        from little_loops.config.features import feature_enabled_for
+
+        cfg = {"analytics": {"capture": {"skills": "Read"}}}
+        assert feature_enabled_for(cfg, "analytics.capture.skills", "Read")
+        assert not feature_enabled_for(cfg, "analytics.capture.skills", "Write")
+
+    def test_glob_pattern_matching(self) -> None:
+        from little_loops.config.features import feature_enabled_for
+
+        cfg = {"analytics": {"capture": {"skills": ["ll:*"]}}}
+        assert feature_enabled_for(cfg, "analytics.capture.skills", "ll:commit")
+        assert not feature_enabled_for(cfg, "analytics.capture.skills", "commit")
+
+
+class TestAnalyticsCaptureConfig:
+    """Tests for AnalyticsCaptureConfig dataclass (ENH-1840)."""
+
+    def test_defaults_when_empty_dict(self) -> None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        cfg = AnalyticsCaptureConfig.from_dict({})
+        assert cfg.skills == ["*"]
+        assert cfg.cli_commands == ["*"]
+        assert cfg.corrections is True
+        assert cfg.file_events is True
+
+    def test_skills_override(self) -> None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        cfg = AnalyticsCaptureConfig.from_dict({"skills": ["ll:commit", "ll:open-pr"]})
+        assert cfg.skills == ["ll:commit", "ll:open-pr"]
+        assert cfg.cli_commands == ["*"]
+
+    def test_cli_commands_override(self) -> None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        cfg = AnalyticsCaptureConfig.from_dict({"cli_commands": ["ll-auto"]})
+        assert cfg.cli_commands == ["ll-auto"]
+        assert cfg.skills == ["*"]
+
+    def test_corrections_false(self) -> None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        cfg = AnalyticsCaptureConfig.from_dict({"corrections": False})
+        assert cfg.corrections is False
+
+    def test_file_events_false(self) -> None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        cfg = AnalyticsCaptureConfig.from_dict({"file_events": False})
+        assert cfg.file_events is False
+
+
 class TestBRConfigAliases:
     """Tests for backwards compatibility aliases."""
 
@@ -2358,3 +2456,72 @@ class TestBRConfigOrchestration:
 
         config = BRConfig(temp_project_dir)
         assert config.orchestration.host_cli is None
+
+
+class TestBRConfigAnalyticsCaptureIntegration:
+    """Tests for BRConfig.analytics_capture property (ENH-1840)."""
+
+    def test_analytics_capture_property_exists(self, temp_project_dir: Path) -> None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        config = BRConfig(temp_project_dir)
+        assert hasattr(config, "analytics_capture")
+        assert isinstance(config.analytics_capture, AnalyticsCaptureConfig)
+
+    def test_analytics_capture_defaults_when_absent(self, temp_project_dir: Path) -> None:
+        """analytics_capture returns safe defaults when key is absent."""
+        config = BRConfig(temp_project_dir)
+        assert config.analytics_capture.skills == ["*"]
+        assert config.analytics_capture.cli_commands == ["*"]
+        assert config.analytics_capture.corrections is True
+        assert config.analytics_capture.file_events is True
+
+    def test_analytics_capture_loads_from_config(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """analytics.capture values are read from ll-config.json."""
+        sample_config["analytics"] = {
+            "enabled": True,
+            "capture": {
+                "skills": ["ll:commit"],
+                "cli_commands": ["ll-auto"],
+                "corrections": False,
+                "file_events": False,
+            },
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.analytics_capture.skills == ["ll:commit"]
+        assert config.analytics_capture.cli_commands == ["ll-auto"]
+        assert config.analytics_capture.corrections is False
+        assert config.analytics_capture.file_events is False
+
+    def test_analytics_capture_in_to_dict(self, temp_project_dir: Path) -> None:
+        """analytics.capture appears in BRConfig.to_dict() output."""
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert "analytics" in result
+        assert "capture" in result["analytics"]
+        assert result["analytics"]["capture"]["skills"] == ["*"]
+        assert result["analytics"]["capture"]["corrections"] is True
+
+    def test_analytics_capture_round_trips_through_to_dict(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """analytics.capture round-trips through BRConfig.to_dict()."""
+        sample_config["analytics"] = {
+            "capture": {"skills": ["ll:commit", "ll:open-pr"], "corrections": False}
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["analytics"]["capture"]["skills"] == ["ll:commit", "ll:open-pr"]
+        assert result["analytics"]["capture"]["corrections"] is False
+        assert result["analytics"]["capture"]["cli_commands"] == ["*"]
+        assert result["analytics"]["capture"]["file_events"] is True

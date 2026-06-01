@@ -6,6 +6,7 @@ and sync configuration.
 
 from __future__ import annotations
 
+import fnmatch
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -32,6 +33,46 @@ def feature_enabled(config_data: dict[str, Any], dot_path: str) -> bool:
             return False
         value = value[part]
     return bool(value)
+
+
+def feature_enabled_for(
+    config_data: dict[str, Any], dot_path: str, subject: str, default: bool = True
+) -> bool:
+    """Return whether *subject* matches the glob-pattern list at *dot_path* in *config_data*.
+
+    Operates on a raw config dict (same as ``feature_enabled``). Resolves the value at
+    *dot_path*; if absent or the intermediate path doesn't exist, returns *default*.
+    The resolved value is normalised to a ``list[str]`` (bare string wrapped in a list,
+    ``None`` treated as ``["*"]`` — match all) then tested with ``fnmatch.fnmatch``.
+
+    Examples:
+        >>> feature_enabled_for({"analytics": {"capture": {"skills": ["*"]}}},
+        ...                     "analytics.capture.skills", "my-skill")
+        True
+        >>> feature_enabled_for({"analytics": {"capture": {"skills": ["Read"]}}},
+        ...                     "analytics.capture.skills", "Write")
+        False
+        >>> feature_enabled_for({}, "analytics.capture.skills", "any")
+        True
+    """
+    value: Any = config_data
+    for part in dot_path.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return default
+        value = value[part]
+
+    # Normalise to list[str]: None → match-all, str → [str], list used as-is
+    if value is None:
+        patterns: list[str] = ["*"]
+    elif isinstance(value, str):
+        patterns = [value]
+    else:
+        patterns = list(value)
+
+    if not patterns:
+        return default
+
+    return any(fnmatch.fnmatch(subject, p) for p in patterns)
 
 
 # Required categories that must always exist (cannot be removed by user config)
@@ -356,6 +397,31 @@ class LearningTestsConfig:
             enabled=data.get("enabled", False),
             stale_after_days=data.get("stale_after_days", 30),
             discoverability=DiscoverabilityConfig.from_dict(data.get("discoverability", {})),
+        )
+
+
+@dataclass
+class AnalyticsCaptureConfig:
+    """Configuration for analytics capture gating (ENH-1840).
+
+    Controls which skills, CLI commands, and event types are captured into the
+    unified session store. Used by ENH-1841 write-path gating via
+    ``feature_enabled_for()``.
+    """
+
+    skills: list[str] = field(default_factory=lambda: ["*"])
+    cli_commands: list[str] = field(default_factory=lambda: ["*"])
+    corrections: bool = True
+    file_events: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AnalyticsCaptureConfig:
+        """Create AnalyticsCaptureConfig from dictionary."""
+        return cls(
+            skills=data.get("skills", ["*"]),
+            cli_commands=data.get("cli_commands", ["*"]),
+            corrections=data.get("corrections", True),
+            file_events=data.get("file_events", True),
         )
 
 

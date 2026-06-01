@@ -38,6 +38,7 @@ from little_loops.config.core import BRConfig, CLConfig, ProjectConfig
 from little_loops.config.features import (
     DEFAULT_CATEGORIES,
     REQUIRED_CATEGORIES,
+    AnalyticsCaptureConfig,
     CategoryConfig,
     DesignTokensConfig,
     DuplicateDetectionConfig,
@@ -62,6 +63,7 @@ __all__ = [
     "BRConfig",
     "CLConfig",
     "OrchestrationConfig",
+    "AnalyticsCaptureConfig",
     "CategoryConfig",
     "ProjectConfig",
     "IssuesConfig",

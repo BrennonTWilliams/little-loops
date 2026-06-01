@@ -202,6 +202,39 @@ class TestConfigSchema:
         assert enabled["type"] == "boolean"
         assert enabled["default"] is False
 
+    def test_analytics_capture_in_schema(self) -> None:
+        """analytics.capture sub-object must be declared so additionalProperties: false
+        doesn't silently reject it (ENH-1840)."""
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        analytics = data["properties"]["analytics"]
+        assert analytics.get("additionalProperties") is False
+
+        assert "capture" in analytics["properties"], (
+            "analytics.capture is not declared; configs using it will be "
+            "rejected by additionalProperties: false on the analytics block"
+        )
+        capture = analytics["properties"]["capture"]
+        assert capture["type"] == "object"
+        assert capture.get("additionalProperties") is False
+
+        capture_props = capture["properties"]
+        assert "skills" in capture_props
+        assert capture_props["skills"]["type"] == "array"
+        assert capture_props["skills"]["items"]["type"] == "string"
+        assert capture_props["skills"]["default"] == ["*"]
+
+        assert "cli_commands" in capture_props
+        assert capture_props["cli_commands"]["type"] == "array"
+        assert capture_props["cli_commands"]["default"] == ["*"]
+
+        assert "corrections" in capture_props
+        assert capture_props["corrections"]["type"] == "boolean"
+        assert capture_props["corrections"]["default"] is True
+
+        assert "file_events" in capture_props
+        assert capture_props["file_events"]["type"] == "boolean"
+        assert capture_props["file_events"]["default"] is True
+
     def test_hooks_in_schema(self) -> None:
         """hooks block must be declared in config-schema.json with a host enum.
 
