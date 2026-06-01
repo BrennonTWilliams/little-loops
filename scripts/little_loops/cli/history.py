@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from little_loops.cli.output import configure_output, use_color_enabled
-from little_loops.cli_args import add_config_arg
+from little_loops.cli.output import configure_output, print_json, use_color_enabled
+from little_loops.cli_args import add_config_arg, add_json_arg
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
 
@@ -184,6 +184,21 @@ Examples:
         help="Relevance scoring method: intersection (default), bm25, or hybrid",
     )
 
+    # sessions subcommand (ENH-1711)
+    sessions_parser = subparsers.add_parser(
+        "sessions",
+        help="List sessions that touched an issue",
+    )
+    sessions_parser.add_argument(
+        "issue_id",
+        metavar="ISSUE_ID",
+        help="Issue ID (e.g., ENH-1710)",
+    )
+    sessions_parser.add_argument(
+        "--limit", type=int, default=20, metavar="N", help="Maximum results (default: 20)"
+    )
+    add_json_arg(sessions_parser)
+
     add_config_arg(parser)
 
     args = parser.parse_args()
@@ -197,7 +212,7 @@ Examples:
     config = BRConfig(project_root)
     configure_output(config.cli)
     logger = Logger(use_color=use_color_enabled())
-    issues_dir = args.directory or config.project_root / config.issues.base_dir
+    issues_dir = getattr(args, "directory", None) or config.project_root / config.issues.base_dir
 
     if args.command == "summary":
         # Prefer the unified session DB when populated; fall back to the
@@ -249,6 +264,24 @@ Examples:
         else:
             print(format_analysis_text(analysis))
 
+        return 0
+
+    if args.command == "sessions":
+        from little_loops.history_reader import sessions_for_issue
+        from little_loops.session_store import DEFAULT_DB_PATH as _SS_DB
+
+        db_path = project_root / _SS_DB
+        refs = sessions_for_issue(args.issue_id, limit=args.limit, db=db_path)
+        if args.json:
+            from dataclasses import asdict
+
+            print_json([asdict(r) for r in refs])
+        elif not refs:
+            print(f"No sessions found for {args.issue_id}.")
+        else:
+            for r in refs:
+                path = r.jsonl_path or "(no path)"
+                print(f"{r.session_id}  {path}")
         return 0
 
     if args.command == "export":

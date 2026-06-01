@@ -10,10 +10,12 @@ Public API:
     FileEvent:        dataclass for file event rows
     SearchResult:     dataclass for FTS5 search results
     IssueEvent:       dataclass for issue event rows
+    SessionRef:       dataclass for issue_sessions view rows (ENH-1711)
     find_user_corrections(topic, ...) -> list[UserCorrection]
     recent_file_events(path, ...) -> list[FileEvent]
     search(query, ...) -> list[SearchResult]
     related_issue_events(issue_id, ...) -> list[IssueEvent]
+    sessions_for_issue(issue_id, ...) -> list[SessionRef]
 """
 
 from __future__ import annotations
@@ -73,6 +75,17 @@ class IssueEvent:
     discovered_by: str | None
     issue_type: str | None
     priority: str | None
+
+
+@dataclass
+class SessionRef:
+    """A session that co-occurred with an issue's active period (ENH-1711)."""
+
+    issue_id: str | None
+    session_id: str | None
+    jsonl_path: str | None
+    first_message_ts: str | None
+    last_message_ts: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -247,3 +260,38 @@ def related_issue_events(
     finally:
         conn.close()
     return [_row_to_dataclass(row, IssueEvent) for row in rows]
+
+
+def sessions_for_issue(
+    issue_id: str,
+    *,
+    limit: int = 20,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[SessionRef]:
+    """Return sessions that co-occurred with *issue_id*'s active period.
+
+    Queries the ``issue_sessions`` VIEW (v5 migration, ENH-1711), which joins
+    ``issue_events`` to ``message_events`` via overlapping timestamps.  Requires
+    a prior ``backfill`` pass to populate ``captured_at`` on ``issue_events``
+    rows — live-emitted rows have ``captured_at=NULL`` and are excluded.
+
+    Returns an empty list when the view is absent (pre-v5 schema), the issue
+    has no recorded sessions, or the database is unavailable.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        rows = conn.execute(
+            "SELECT issue_id, session_id, jsonl_path, first_message_ts, last_message_ts "
+            "FROM issue_sessions WHERE issue_id = ? "
+            "ORDER BY first_message_ts DESC LIMIT ?",
+            (issue_id, limit),
+        ).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: sessions_for_issue query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, SessionRef) for row in rows]

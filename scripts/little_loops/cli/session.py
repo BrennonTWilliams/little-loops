@@ -19,7 +19,7 @@ from typing import Any
 
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
 from little_loops.cli_args import add_json_arg
-from little_loops.history_reader import related_issue_events
+from little_loops.history_reader import related_issue_events, sessions_for_issue
 from little_loops.history_reader import search as history_search
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, backfill, connect, recent, search
@@ -69,9 +69,15 @@ Examples:
     recent_parser = subparsers.add_parser("recent", help="Recent events by kind")
     recent_parser.add_argument(
         "--kind",
-        required=True,
         choices=["tool", "file", "issue", "loop", "correction", "message"],
-        help="Event kind to list",
+        default=None,
+        help="Event kind to list (required unless --issue is given)",
+    )
+    recent_parser.add_argument(
+        "--issue",
+        default=None,
+        metavar="ID",
+        help="Filter to sessions that touched this issue ID (e.g. ENH-1710)",
     )
     recent_parser.add_argument(
         "--limit", type=int, default=20, metavar="N", help="Maximum rows (default: 20)"
@@ -180,7 +186,32 @@ def main_session() -> int:
         return 0
 
     if args.command == "recent":
+        issue_filter = getattr(args, "issue", None)
+
+        # --issue only: show sessions that co-occurred with the issue
+        if issue_filter and not args.kind:
+            refs = sessions_for_issue(issue_filter, limit=args.limit, db=args.db)
+            if args.json:
+                from dataclasses import asdict
+
+                print_json([asdict(r) for r in refs])
+                return 0
+            if not refs:
+                print(f"No sessions found for {issue_filter}.")
+                return 0
+            for r in refs:
+                path = r.jsonl_path or "(no path)"
+                print(f"{r.session_id}  {path}")
+            return 0
+
+        if not args.kind:
+            logger.error("recent: --kind is required unless --issue is given")
+            return 1
+
         rows = recent(args.db, kind=args.kind, limit=args.limit)
+        if issue_filter:
+            session_ids = {r.session_id for r in sessions_for_issue(issue_filter, db=args.db)}
+            rows = [r for r in rows if r.get("session_id") in session_ids]
         if args.json:
             print_json(list(rows))
             return 0

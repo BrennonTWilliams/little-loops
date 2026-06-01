@@ -1258,6 +1258,23 @@ Export topic-filtered excerpts from completed issue history.
 
 **Examples:**
 ```bash
+#### `ll-history sessions <ISSUE_ID>`
+
+List sessions that co-occurred with the given issue's active period. Queries the `issue_sessions` VIEW (v5 schema, ENH-1711) which joins `issue_events` to `message_events` via overlapping timestamps. Requires a prior `ll-session backfill` pass to populate `captured_at` on `issue_events` rows.
+
+| Flag | Description |
+|------|-------------|
+| `--limit N` | Maximum results (default: 20) |
+| `--json` / `-j` | Output as JSON array |
+
+**Examples:**
+```bash
+ll-history sessions ENH-1710              # Sessions that touched ENH-1710
+ll-history sessions ENH-1710 --json       # JSON output
+```
+
+**Examples (all subcommands):**
+```bash
 ll-history summary                         # Summary statistics
 ll-history summary --json                  # JSON output
 ll-history analyze                         # Full analysis report
@@ -1265,6 +1282,8 @@ ll-history analyze --format markdown       # Markdown report
 ll-history analyze --compare 30            # Compare last 30 days to previous
 ll-history export "session log"            # Export excerpts for topic
 ll-history export "sprint CLI" --output docs/arch/sprint.md
+ll-history sessions ENH-1710              # Sessions that touched ENH-1710
+ll-history sessions ENH-1710 --json       # JSON output
 ```
 
 ---
@@ -1485,7 +1504,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | Subcommand | Description |
 |------------|-------------|
 | `search` | FTS5 full-text query with BM25-ranked results |
-| `recent` | Most recent rows for an event kind |
+| `recent` | Most recent rows for an event kind; optionally filtered by issue |
 | `backfill` | Seed the database from existing on-disk sources |
 | `related` | Issue events for a given issue ID |
 | `path` | Resolve the JSONL file path for a session ID |
@@ -1503,15 +1522,19 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 
 | Flag | Description |
 |------|-------------|
-| `--kind {tool,file,issue,loop,correction,message}` | Event kind to list (required) |
+| `--kind {tool,file,issue,loop,correction,message}` | Event kind to list (required unless `--issue` is given) |
+| `--issue ID` | Filter to sessions that co-occurred with this issue (e.g. `ENH-1710`). Without `--kind`, lists sessions directly from the `issue_sessions` view. Requires a prior `backfill` pass. |
 | `--limit N` | Maximum rows (default: 20) |
+| `--json` | Output as a JSON array |
 
 **Examples:**
 ```bash
-ll-session search --fts "rate limit"   # Full-text search, BM25-ranked
-ll-session recent --kind loop          # Recent loop events
-ll-session backfill                    # Seed the database from on-disk sources
-ll-session path <session_id>           # Resolve JSONL file path for a session ID
+ll-session search --fts "rate limit"            # Full-text search, BM25-ranked
+ll-session recent --kind loop                   # Recent loop events
+ll-session recent --issue ENH-1710              # Sessions that touched ENH-1710
+ll-session recent --kind message --issue ENH-1710  # Messages from those sessions
+ll-session backfill                             # Seed the database from on-disk sources
+ll-session path <session_id>                    # Resolve JSONL file path for a session ID
 ```
 
 ---

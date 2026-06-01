@@ -164,8 +164,8 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-workflows` - Identify multi-step workflow patterns from user message history
 - `ll-logs` - Discover, extract, and tail Claude Code session logs (`discover` / `extract` / `tail` subcommands; writes `logs/index.md`)
 - `ll-messages` - Extract user messages from Claude Code logs
-- `ll-session` - Query the unified SQLite session store (`search --fts` / `recent --kind` / `backfill` / `path <session_id>` subcommands; default DB `.ll/history.db`)
-- `ll-history` - View completed issue statistics, analysis, and export topic-filtered excerpts from history
+- `ll-session` - Query the unified SQLite session store (`search --fts` / `recent --kind` / `recent --issue <ID>` / `backfill` / `path <session_id>` subcommands; default DB `.ll/history.db`)
+- `ll-history` - View completed issue statistics, analysis, export topic-filtered excerpts from history, and list sessions per issue (`sessions <ID>`)
 - `ll-deps` - Cross-issue dependency analysis and validation
 - `ll-sync` - Sync local issues with GitHub Issues
 - `ll-verify-docs` - Verify documented counts match actual file counts

@@ -921,3 +921,91 @@ class TestExportTypeScoring:
 
         assert result == 0
         assert mock_synth.call_args.kwargs["scoring"] == "hybrid"
+
+
+class TestSessionsSubcommand:
+    """ll-history sessions <ID> — lists sessions that touched an issue (ENH-1711)."""
+
+    def _setup_db(self, db_path: Path, issue_id: str, session_id: str, jsonl: str) -> None:
+        from little_loops.session_store import connect as ss_connect, ensure_db
+
+        ensure_db(db_path)
+        conn = ss_connect(db_path)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at) "
+                "VALUES(?, ?, ?, ?)",
+                ("2026-01-10T00:00:00Z", issue_id, "open", "2026-01-10T00:00:00Z"),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-10T10:00:00Z", session_id, "work"),
+            )
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (session_id, jsonl),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_sessions_subcommand_lists_sessions(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(parents=True)
+        db_path = ll_dir / "history.db"
+        self._setup_db(db_path, "ENH-1710", "sess-77", "/path/sess-77.jsonl")
+
+        with patch.object(
+            sys, "argv", ["ll-history", "--config", str(tmp_path), "sessions", "ENH-1710"]
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "sess-77" in out
+        assert "/path/sess-77.jsonl" in out
+
+    def test_sessions_subcommand_json_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(parents=True)
+        db_path = ll_dir / "history.db"
+        self._setup_db(db_path, "ENH-88", "sess-88", "/path/sess-88.jsonl")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "--config", str(tmp_path), "sessions", "ENH-88", "--json"],
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert len(data) == 1
+        assert data[0]["session_id"] == "sess-88"
+        assert data[0]["jsonl_path"] == "/path/sess-88.jsonl"
+
+    def test_sessions_subcommand_no_match(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(parents=True)
+        (ll_dir / "history.db")  # ensure_db happens inside main_history
+
+        with patch.object(
+            sys, "argv", ["ll-history", "--config", str(tmp_path), "sessions", "NOPE-000"]
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        assert "No sessions found for NOPE-000" in capsys.readouterr().out

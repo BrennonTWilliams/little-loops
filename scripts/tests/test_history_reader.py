@@ -9,11 +9,13 @@ from little_loops.history_reader import (
     FileEvent,
     IssueEvent,
     SearchResult,
+    SessionRef,
     UserCorrection,
     find_user_corrections,
     recent_file_events,
     related_issue_events,
     search,
+    sessions_for_issue,
 )
 from little_loops.session_store import SQLiteTransport, connect, ensure_db
 
@@ -39,6 +41,11 @@ class TestMissingDatabase:
     def test_related_issue_events_missing_db(self, tmp_path: Path) -> None:
         db = tmp_path / "nonexistent.db"
         result = related_issue_events("BUG-9999", db=db)
+        assert result == []
+
+    def test_sessions_for_issue_missing_db(self, tmp_path: Path) -> None:
+        db = tmp_path / "nonexistent.db"
+        result = sessions_for_issue("ENH-9999", db=db)
         assert result == []
 
 
@@ -67,6 +74,12 @@ class TestEmptyTables:
         db = tmp_path / "test.db"
         ensure_db(db)
         result = related_issue_events("BUG-9999", db=db)
+        assert result == []
+
+    def test_sessions_for_issue_empty(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        ensure_db(db)
+        result = sessions_for_issue("ENH-9999", db=db)
         assert result == []
 
 
@@ -295,4 +308,87 @@ class TestRelatedIssueEvents:
         finally:
             conn.close()
         result = related_issue_events("BUG-1", limit=3, db=db)
+        assert len(result) == 3
+
+
+class TestSessionsForIssue:
+    """sessions_for_issue() queries the issue_sessions view (ENH-1711)."""
+
+    def _setup_issue_session(self, db: Path, issue_id: str, session_id: str, jsonl: str) -> None:
+        """Insert minimal rows so the issue_sessions view returns a match."""
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at, completed_at) "
+                "VALUES(?, ?, ?, ?, ?)",
+                ("2026-01-10T12:00:00Z", issue_id, "open", "2026-01-10T00:00:00Z", None),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-10T13:00:00Z", session_id, "working on it"),
+            )
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (session_id, jsonl),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_returns_matching_session(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        ensure_db(db)
+        self._setup_issue_session(db, "ENH-1710", "sess-001", "/path/sess-001.jsonl")
+        result = sessions_for_issue("ENH-1710", db=db)
+        assert len(result) == 1
+        assert isinstance(result[0], SessionRef)
+        assert result[0].session_id == "sess-001"
+        assert result[0].jsonl_path == "/path/sess-001.jsonl"
+        assert result[0].issue_id == "ENH-1710"
+
+    def test_no_match_returns_empty(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        ensure_db(db)
+        result = sessions_for_issue("NOPE-000", db=db)
+        assert result == []
+
+    def test_excludes_sessions_outside_issue_window(self, tmp_path: Path) -> None:
+        """A message before captured_at should not appear in the view."""
+        db = tmp_path / "test.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at, completed_at) "
+                "VALUES(?, ?, ?, ?, ?)",
+                ("2026-01-10T12:00:00Z", "ENH-9", "open", "2026-01-10T10:00:00Z", None),
+            )
+            # message BEFORE captured_at — must not match
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-09T00:00:00Z", "sess-early", "too early"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        result = sessions_for_issue("ENH-9", db=db)
+        assert result == []
+
+    def test_limit_respected(self, tmp_path: Path) -> None:
+        db = tmp_path / "test.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at) "
+                "VALUES(?, ?, ?, ?)",
+                ("2026-01-10T00:00:00Z", "ENH-2", "open", "2026-01-10T00:00:00Z"),
+            )
+            for i in range(5):
+                conn.execute(
+                    "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                    (f"2026-01-10T{10 + i}:00:00Z", f"sess-{i}", "msg"),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        result = sessions_for_issue("ENH-2", limit=3, db=db)
         assert len(result) == 3

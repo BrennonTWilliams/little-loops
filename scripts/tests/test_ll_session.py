@@ -48,6 +48,13 @@ class TestArgumentParsing:
             with pytest.raises(SystemExit):
                 _parse_args()
 
+    def test_recent_issue_arg_accepted(self) -> None:
+        with patch("sys.argv", ["ll-session", "recent", "--issue", "ENH-1710"]):
+            args = _parse_args()
+        assert args.command == "recent"
+        assert args.issue == "ENH-1710"
+        assert args.kind is None
+
 
 class TestMainSession:
     """Integration tests for main_session()."""
@@ -301,3 +308,76 @@ class TestMainSession:
         with patch("sys.argv", ["ll-session", "--db", str(db), "path", "NOPE"]):
             assert main_session() == 1
         assert "not found" in capsys.readouterr().out.lower()
+
+    # --- recent --issue (ENH-1711) ---
+
+    def test_recent_no_kind_no_issue_returns_1(self) -> None:
+        with patch("sys.argv", ["ll-session", "recent"]):
+            assert main_session() == 1
+
+    def test_recent_filtered_by_issue(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import connect as ss_connect
+
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        conn = ss_connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at) "
+                "VALUES(?, ?, ?, ?)",
+                ("2026-01-10T00:00:00Z", "ENH-42", "open", "2026-01-10T00:00:00Z"),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-10T10:00:00Z", "sess-42", "hello"),
+            )
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                ("sess-42", "/path/sess-42.jsonl"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--issue", "ENH-42"]):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "sess-42" in out
+
+    def test_recent_filtered_by_issue_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import json as json_mod
+
+        from little_loops.session_store import connect as ss_connect
+
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        conn = ss_connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at) "
+                "VALUES(?, ?, ?, ?)",
+                ("2026-01-10T00:00:00Z", "ENH-43", "open", "2026-01-10T00:00:00Z"),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-10T10:00:00Z", "sess-43", "work"),
+            )
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                ("sess-43", "/path/sess-43.jsonl"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        with patch(
+            "sys.argv",
+            ["ll-session", "--db", str(db), "recent", "--issue", "ENH-43", "--json"],
+        ):
+            assert main_session() == 0
+        data = json_mod.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert len(data) == 1
+        assert data[0]["session_id"] == "sess-43"

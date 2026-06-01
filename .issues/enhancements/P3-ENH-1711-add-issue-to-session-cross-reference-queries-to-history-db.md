@@ -3,8 +3,9 @@ id: ENH-1711
 title: Add issue-to-session cross-reference queries to history.db
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-26T01:31:23Z'
+completed_at: '2026-06-01T04:05:04Z'
 discovered_date: '2026-05-26'
 discovered_by: capture-issue
 relates_to:
@@ -20,8 +21,8 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
 labels:
-  - enhancement
-  - history-db
+- enhancement
+- history-db
 ---
 
 # ENH-1711: Add issue-to-session cross-reference queries to history.db
@@ -221,7 +222,14 @@ _Added by `/ll:confidence-check` on 2026-05-31_
 - **Open decision on core schema approach** — Option A (VIEW) vs Option B (session_id column) significantly changes implementation scope: Option B requires modifying 6 emit sites in `issue_lifecycle.py` and importing `get_current_session_jsonl` across all of them, while Option A is purely additive but backfill-dependent. This open decision should be resolved before starting.
 - **Option A accuracy gap** — the VIEW approach only works after a `backfill` pass (captured_at is NULL for live-emitted rows); this limits real-time usefulness and may disappoint users who expect sessions to appear immediately after working on an issue.
 
+## Resolution
+
+**Approach**: Option A (VIEW-based join). Added `issue_sessions` VIEW as v5 migration in `session_store.py`. Added `SessionRef` dataclass and `sessions_for_issue()` to `history_reader.py`. Added `ll-session recent --issue <ID>` and `ll-history sessions <ID>` CLI commands. Full test coverage across 4 test files. Docs updated in `CLI.md`, `API.md`, and `CLAUDE.md`.
+
+**Changes**: `session_store.py` (v5 migration + SCHEMA_VERSION=5), `history_reader.py` (SessionRef + sessions_for_issue), `cli/session.py` (recent --issue), `cli/history.py` (sessions subcommand), 4 test files, 3 doc files.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-01T04:05:04Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:ready-issue` - 2026-06-01T03:54:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c64760f-9ce2-4b5d-953e-dc65031d6230.jsonl`
 - `/ll:confidence-check` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43c6ff18-cbc3-4adc-b83d-de514a9863c0.jsonl`
 - `/ll:decide-issue` - 2026-06-01T03:49:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/766dd291-5212-4d63-9ba0-6d82517a09bb.jsonl`

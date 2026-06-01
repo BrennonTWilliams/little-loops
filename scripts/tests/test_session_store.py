@@ -809,6 +809,134 @@ class TestSchemaV4:
         assert count == 1
 
 
+class TestSchemaV5:
+    """v5 migration: issue_sessions VIEW joins issue_events to message_events (ENH-1711)."""
+
+    def test_issue_sessions_view_exists_after_ensure_db(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='view'")}
+        conn.close()
+        assert "issue_sessions" in names
+
+    def test_issue_sessions_view_returns_match(self, tmp_path: Path) -> None:
+        """A backfilled issue with a session that sent messages during its active period appears."""
+        db = tmp_path / "session.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at, completed_at) "
+                "VALUES(?, ?, ?, ?, ?)",
+                ("2026-01-10T12:00:00Z", "ENH-99", "open", "2026-01-10T00:00:00Z", None),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-10T13:00:00Z", "sess-abc", "hello"),
+            )
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                ("sess-abc", "/path/to/sess-abc.jsonl"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        conn = connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT issue_id, session_id, jsonl_path FROM issue_sessions WHERE issue_id = ?",
+                ("ENH-99",),
+            ).fetchall()
+        finally:
+            conn.close()
+        assert len(rows) == 1
+        assert rows[0]["session_id"] == "sess-abc"
+        assert rows[0]["jsonl_path"] == "/path/to/sess-abc.jsonl"
+
+    def test_issue_sessions_excludes_null_captured_at(self, tmp_path: Path) -> None:
+        """Live-emitted rows (captured_at=NULL) are excluded from the view."""
+        db = tmp_path / "session.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at) VALUES(?,?,?,?)",
+                ("2026-01-10T12:00:00Z", "ENH-100", "open", None),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-10T13:00:00Z", "sess-xyz", "hello"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        conn = connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT * FROM issue_sessions WHERE issue_id = ?", ("ENH-100",)
+            ).fetchall()
+        finally:
+            conn.close()
+        assert rows == []
+
+    def test_v4_db_upgrades_to_v5(self, tmp_path: Path) -> None:
+        """A v4 database gains the issue_sessions view on next ensure_db()."""
+        db = tmp_path / "session.db"
+        conn = sqlite3.connect(str(db))
+        conn.executescript(
+            """
+            CREATE TABLE tool_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, tool_name TEXT, args_hash TEXT,
+                result_size INTEGER, bytes_in INTEGER, bytes_out INTEGER, cache_hit INTEGER
+            );
+            CREATE TABLE file_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, path TEXT, op TEXT, issue_id TEXT, git_sha TEXT
+            );
+            CREATE TABLE issue_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                issue_id TEXT, transition TEXT, discovered_by TEXT,
+                issue_type TEXT, priority TEXT, completed_date TEXT,
+                captured_at TEXT, completed_at TEXT
+            );
+            CREATE TABLE loop_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                loop_name TEXT, state TEXT, transition TEXT, retries INTEGER
+            );
+            CREATE TABLE user_corrections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, content TEXT, source TEXT
+            );
+            CREATE TABLE message_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                session_id TEXT, content TEXT
+            );
+            CREATE TABLE sessions (
+                session_id TEXT PRIMARY KEY, jsonl_path TEXT NOT NULL,
+                started_at TEXT, project_path TEXT
+            );
+            CREATE VIRTUAL TABLE search_index USING fts5(
+                content, kind UNINDEXED, ref UNINDEXED, anchor UNINDEXED, ts UNINDEXED
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_events_dedup
+                ON issue_events(issue_id, transition);
+            CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO meta(key, value) VALUES('schema_version', '4');
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]
+        views = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='view'")}
+        conn.close()
+        assert int(version) == SCHEMA_VERSION
+        assert "issue_sessions" in views
+
+
 class TestBackfillDedup:
     """_backfill_issues() is idempotent via INSERT OR IGNORE + unique index (ENH-1690)."""
 
