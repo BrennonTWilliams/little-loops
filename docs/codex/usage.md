@@ -4,7 +4,7 @@
 
 ## Running orchestration CLIs
 
-All orchestration tools (`ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`, `ll-sprint`) support Codex as the backing host CLI. Set `LL_HOST_CLI=codex` to select it explicitly:
+All orchestration tools (`ll-auto`, `ll-parallel`, `ll-action`, `ll-harness`, `ll-loop`, `ll-sprint`) support Codex as the backing host CLI. Set `LL_HOST_CLI=codex` to select it explicitly:
 
 ```bash
 LL_HOST_CLI=codex ll-auto

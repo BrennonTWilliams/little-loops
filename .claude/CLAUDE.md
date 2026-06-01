@@ -160,6 +160,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-parallel` - Process issues concurrently using isolated git worktrees
 - `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering
 - `ll-action` - Invoke any ll skill as a one-shot command with JSON-structured output
+- `ll-harness` - One-shot runner evaluation (skill, cmd, mcp, prompt) with exit-code and semantic criteria
 - `ll-loop` - Execute FSM-based automation loops (`promote-baseline` promotes latest run output as comparator baseline)
 - `ll-workflows` - Identify multi-step workflow patterns from user message history
 - `ll-logs` - Discover, extract, and tail Claude Code session logs (`discover` / `extract` / `tail` subcommands; writes `logs/index.md`)

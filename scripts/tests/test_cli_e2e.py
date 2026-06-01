@@ -506,3 +506,22 @@ class TestLoopExecutionWorkflow(E2ETestFixture):
         finally:
             os.chdir(original_cwd)
             sys.argv = original_argv
+
+
+class TestLlHarnessE2E(E2ETestFixture):
+    """FEAT-1689: ll-harness cmd runner end-to-end smoke test."""
+
+    @pytest.mark.integration
+    def test_cmd_echo_hello_passes(self, e2e_project_dir: Path) -> None:
+        """ll-harness cmd "echo hello" --exit-code 0 should exit 0."""
+        result = subprocess.run(
+            ["ll-harness", "cmd", "echo hello", "--exit-code", "0"],
+            cwd=e2e_project_dir,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, (
+            f"ll-harness cmd 'echo hello' --exit-code 0 should exit 0; "
+            f"got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )

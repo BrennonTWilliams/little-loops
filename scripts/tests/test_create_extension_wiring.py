@@ -54,8 +54,8 @@ class TestConfigureAreasWiring:
 
     def test_count_updated_to_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 27" in content, (
-            "skills/configure/areas.md must show 'Authorize all 27' ll- CLI tools"
+        assert "Authorize all 28" in content, (
+            "skills/configure/areas.md must show 'Authorize all 28' ll- CLI tools"
         )
 
     def test_ll_create_extension_in_enumeration(self) -> None:
@@ -193,8 +193,8 @@ class TestFeat1229LlActionWiring:
 
     def test_configure_areas_count_is_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 27" in content, (
-            "skills/configure/areas.md must show 'Authorize all 27' ll- CLI tools"
+        assert "Authorize all 28" in content, (
+            "skills/configure/areas.md must show 'Authorize all 28' ll- CLI tools"
         )
 
     def test_configure_areas_lists_ll_action(self) -> None:
@@ -349,5 +349,47 @@ class TestFeat1526LlAdaptAgentsWiring:
         count = content.count("ll-adapt-agents-for-codex")
         assert count >= 3, (
             f"skills/init/SKILL.md must mention ll-adapt-agents-for-codex at least 3 times "
+            f"(permissions + 2 CLAUDE.md boilerplate blocks); found {count}"
+        )
+
+
+class TestFeat1689LlHarnessWiring:
+    """FEAT-1689: ll-harness must be wired into all documentation and manifest files."""
+
+    def test_help_md_lists_ll_harness(self) -> None:
+        content = HELP_MD.read_text()
+        assert "ll-harness" in content, "commands/help.md must list ll-harness in the CLI TOOLS block"
+
+    def test_cli_reference_has_ll_harness_section(self) -> None:
+        content = CLI_REFERENCE.read_text()
+        assert "ll-harness" in content, "docs/reference/CLI.md must have an ll-harness section"
+
+    def test_claude_md_lists_ll_harness(self) -> None:
+        content = CLAUDE_MD.read_text()
+        assert "ll-harness" in content, ".claude/CLAUDE.md CLI Tools list must include ll-harness"
+
+    def test_configure_areas_count_updated_to_28(self) -> None:
+        content = CONFIGURE_AREAS.read_text()
+        assert "Authorize all 28" in content, (
+            "skills/configure/areas.md must show 'Authorize all 28' ll- CLI tools"
+        )
+
+    def test_configure_areas_lists_ll_harness(self) -> None:
+        content = CONFIGURE_AREAS.read_text()
+        assert "ll-harness" in content, (
+            "skills/configure/areas.md must enumerate ll-harness in the tool list"
+        )
+
+    def test_init_skill_has_ll_harness_bash_permission(self) -> None:
+        content = INIT_SKILL.read_text()
+        assert '"Bash(ll-harness:*)"' in content, (
+            'skills/init/SKILL.md must include "Bash(ll-harness:*)" in the permissions block'
+        )
+
+    def test_init_skill_boilerplate_has_ll_harness(self) -> None:
+        content = INIT_SKILL.read_text()
+        count = content.count("ll-harness")
+        assert count >= 3, (
+            f"skills/init/SKILL.md must mention ll-harness at least 3 times "
             f"(permissions + 2 CLAUDE.md boilerplate blocks); found {count}"
         )

@@ -186,6 +186,7 @@ little-loops/
         ├── cli/                 # CLI entry points
         │   ├── __init__.py
         │   ├── action.py        # ll-action one-shot skill invocation CLI
+        │   ├── harness.py       # ll-harness one-shot runner evaluation CLI
         │   ├── generate_skill_descriptions.py  # ll-generate-skill-descriptions release utility
         │   ├── auto.py
         │   ├── create_extension.py  # ll-create-extension scaffold CLI

@@ -25,7 +25,7 @@ Hook intents reach the same host-agnostic Python dispatcher (`scripts/little_loo
 
 ### Orchestration CLIs
 
-`ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`, and `ll-sprint` all route through the host runner abstraction and work with Codex. Set `LL_HOST_CLI=codex` or let the runner auto-detect the `codex` binary on `PATH`. See [Usage → Running orchestration CLIs](usage.md#running-orchestration-clis).
+`ll-auto`, `ll-parallel`, `ll-action`, `ll-harness`, `ll-loop`, and `ll-sprint` all route through the host runner abstraction and work with Codex. Set `LL_HOST_CLI=codex` or let the runner auto-detect the `codex` binary on `PATH`. See [Usage → Running orchestration CLIs](usage.md#running-orchestration-clis).
 
 ### Skill and command discovery
 

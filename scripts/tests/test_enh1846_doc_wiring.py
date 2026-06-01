@@ -43,8 +43,8 @@ class TestEnh1846LlHistoryContextWiring:
 
     def test_configure_areas_count_updated_to_27(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 27" in content, (
-            "skills/configure/areas.md must show 'Authorize all 27' ll- CLI tools"
+        assert "Authorize all 28" in content, (
+            "skills/configure/areas.md must show 'Authorize all 28' ll- CLI tools"
         )
 
     def test_init_skill_has_bash_permission(self) -> None:

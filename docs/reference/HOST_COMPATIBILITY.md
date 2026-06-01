@@ -141,9 +141,10 @@ call sites.
 | `ll-parallel`                 | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
 | `ll-action`                   | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
 | `ll-loop`                     | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
+| `ll-harness`                  | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
 | FSM evaluators / handoff      | ✓           | stub[^orch]   | ✓            | stub[^orch]  |
 
-[^orch]: All six call sites now route through
+[^orch]: All seven call sites now route through
     `scripts/little_loops/host_runner.py` (`HostRunner` Protocol +
     `ClaudeCodeRunner` + `CodexRunner` + `OpenCodeRunner` + `PiRunner`).
     Wiring a non-Claude host means registering a new `HostRunner`

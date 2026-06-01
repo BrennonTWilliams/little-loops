@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`ll-harness` CLI** — New one-shot runner evaluation CLI that invokes a skill (`skill`), shell command (`cmd`), MCP tool (`mcp`), or raw Claude prompt (`prompt`), captures output, and evaluates against optional exit-code and semantic criteria. Exits `0` (PASS), `1` (FAIL), or `2` (error/timeout). Registered as `ll-harness` in `pyproject.toml`. (FEAT-1689)
 - **`ll-history-context` CLI** — New CLI tool that renders a `## Historical Context` block for an issue from `.ll/history.db`, surfacing recent user corrections and FTS5 matches (capped at 5 rows, stale-filtered at 30 days). Graceful degradation: empty output when DB is absent or no matches. (ENH-1846)
 - **Historical context in `refine-issue`** — New Step 2.5 queries `ll-history-context` and injects a `## Historical Context` block into the gap-filling prompt context when prior corrections exist. (ENH-1847)
 - **Historical context in `ready-issue`** — Step 2 validation now queries `ll-history-context` and surfaces matched corrections as `Historical Concerns` sub-bullets with `warning` severity. (ENH-1847)

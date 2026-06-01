@@ -108,6 +108,43 @@ ll-action capabilities
 ll-action list
 ```
 
+### ll-harness
+
+One-shot runner evaluation CLI that invokes a skill, shell command, MCP tool, or raw Claude prompt, captures its output, and exits `0` (PASS) / `1` (FAIL) / `2` (error/timeout) based on optional criteria.
+
+**Runners:**
+
+| Runner | Description |
+|--------|-------------|
+| `skill` | Invoke a little-loops skill via the active host CLI |
+| `cmd` | Run a shell command and capture its output |
+| `mcp` | Call an MCP tool via JSON-RPC |
+| `prompt` | Send a raw prompt to Claude via the active host CLI |
+
+**Shared evaluator flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--exit-code INT` | Expected exit code (FAIL if mismatch) |
+| `--semantic TEXT` | Natural-language criterion evaluated against captured output via LLM |
+| `--timeout SECONDS` | Runner timeout (default: 120) |
+| `--output FORMAT` | `text` (default) or `json` |
+| `--verbose` | Show full captured output even on PASS |
+
+**mcp-specific flag:**
+`--args JSON` — JSON arguments forwarded to the MCP tool (default: `{}`).
+
+**Exit codes:** `0` = PASS, `1` = FAIL, `2` = internal error / timeout
+
+**Examples:**
+```bash
+ll-harness skill check-code
+ll-harness cmd "echo hello" --exit-code 0
+ll-harness mcp my-server:my-tool --args '{"key": "val"}' --semantic "tool returned results"
+ll-harness prompt "What is 2+2?" --semantic "response contains a number"
+ll-harness skill refine-issue P2-ENH-1229 --semantic "has implementation plan" --output json
+```
+
 ---
 
 ## Diagnostics

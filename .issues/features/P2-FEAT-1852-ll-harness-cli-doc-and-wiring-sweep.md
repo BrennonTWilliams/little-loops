@@ -3,7 +3,7 @@ id: FEAT-1852
 type: FEAT
 title: ll-harness CLI — doc, wiring, and count correction sweep
 priority: P2
-status: open
+status: done
 parent: FEAT-1689
 ---
 

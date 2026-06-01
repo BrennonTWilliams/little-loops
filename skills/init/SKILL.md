@@ -549,6 +549,7 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
      "Bash(ll-ctx-stats:*)",
      "Bash(ll-adapt-skills-for-codex:*)",
      "Bash(ll-adapt-agents-for-codex:*)",
+     "Bash(ll-harness:*)",
      "Write(.ll/ll-continue-prompt.md)"
      ```
    - **If `LEARNING_TESTS_ENABLED=true`**, also append `"Skill(ll:explore-api)"` to the allow list after the canonical entries, before `"Write(.ll/ll-continue-prompt.md)"`:
@@ -599,6 +600,7 @@ If user opted in:
    ## little-loops CLI Commands
 
    - `ll-action` - Invoke ll skills as one-shot commands with JSON-structured output
+   - `ll-harness` - One-shot runner evaluation (skill, cmd, mcp, prompt) with exit-code and semantic criteria
    - `ll-auto` - Process all backlog issues sequentially in priority order
    - `ll-parallel` - Process issues concurrently using isolated git worktrees
    - `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering
@@ -633,6 +635,7 @@ If user opted in:
    ## little-loops CLI Commands
 
    - `ll-action` - Invoke ll skills as one-shot commands with JSON-structured output
+   - `ll-harness` - One-shot runner evaluation (skill, cmd, mcp, prompt) with exit-code and semantic criteria
    - `ll-auto` - Process all backlog issues sequentially in priority order
    - `ll-parallel` - Process issues concurrently using isolated git worktrees
    - `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering

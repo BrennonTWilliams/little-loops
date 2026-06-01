@@ -200,6 +200,7 @@ little-loops/
         ├── __init__.py
         ├── cli/                 # CLI entrypoints (package)
         │   ├── __init__.py
+        │   ├── harness.py           # ll-harness one-shot runner evaluation CLI
         │   ├── auto.py
         │   ├── create_extension.py  # ll-create-extension scaffold CLI
         │   ├── parallel.py
