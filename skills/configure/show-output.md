@@ -109,7 +109,6 @@ Edit: /ll:configure documents
 Continuation Configuration
 --------------------------
   enabled:                     {{config.continuation.enabled}}                      (default: true)
-  auto_detect_on_session_start: {{config.continuation.auto_detect_on_session_start}} (default: true)
   include_todos:               {{config.continuation.include_todos}}                (default: true)
   include_git_status:          {{config.continuation.include_git_status}}           (default: true)
   include_recent_files:        {{config.continuation.include_recent_files}}         (default: true)

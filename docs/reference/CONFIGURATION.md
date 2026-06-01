@@ -119,7 +119,6 @@ For interactive editing, use `/ll:configure`.
 
   "continuation": {
     "enabled": true,
-    "auto_detect_on_session_start": true,
     "include_todos": true,
     "include_git_status": true,
     "include_recent_files": true,
@@ -412,7 +411,6 @@ Session continuation and handoff settings (`/ll:handoff`, `/ll:resume`):
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `true` | Enable continuation prompt features |
-| `auto_detect_on_session_start` | `true` | Check for continuation prompt when session starts |
 | `include_todos` | `true` | Include todo list state in continuation prompt |
 | `include_git_status` | `true` | Include git status in continuation prompt |
 | `include_recent_files` | `true` | Include recently modified files in continuation prompt |

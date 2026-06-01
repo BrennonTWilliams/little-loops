@@ -559,11 +559,6 @@
           "description": "Enable continuation prompt features",
           "default": true
         },
-        "auto_detect_on_session_start": {
-          "type": "boolean",
-          "description": "Check for continuation prompt when session starts",
-          "default": true
-        },
         "include_todos": {
           "type": "boolean",
           "description": "Include todo list state in continuation prompt",

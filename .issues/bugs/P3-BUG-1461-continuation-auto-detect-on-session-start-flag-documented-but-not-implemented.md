@@ -3,10 +3,11 @@ id: BUG-1461
 title: `continuation.auto_detect_on_session_start` flag is documented but not read by any code
 type: BUG
 priority: P3
-status: open
+status: done
 testable: false
 discovered_date: 2026-05-14
 discovered_by: verify-issues
+completed_at: 2026-06-01T19:57:35Z
 relates_to: [FEAT-948]
 decision_needed: false
 ---
@@ -19,8 +20,8 @@ The `continuation.auto_detect_on_session_start` boolean is documented in `docs/g
 
 ## Current Behavior
 
-- `config-schema.json:552` defines the property with `type: boolean` and description "Check for continuation prompt when session starts".
-- `docs/reference/CONFIGURATION.md:120,411` shows it in example config and the settings table.
+- `config-schema.json:562` defines the property with `type: boolean` and description "Check for continuation prompt when session starts".
+- `docs/reference/CONFIGURATION.md:122,415` shows it in example config and the settings table.
 - `docs/guides/SESSION_HANDOFF.md:292,314,331` documents the on/off behavior and states: "When `continuation.auto_detect_on_session_start` is `true` (the default), little-loops checks for an existing `.ll/ll-continue-prompt.md` at the beginning of each session."
 - A grep across `scripts/`, `hooks/`, and `commands/` for `auto_detect_on_session_start` finds **only** the schema and doc references — no implementation reads the flag.
 
@@ -166,6 +167,7 @@ _Added by `/ll:verify-issues` on 2026-05-30_
 - Issue still needs a decision (implement or remove) — no progress since 2026-05-14 discovery ✓
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T19:48:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34f84fcf-43f5-4359-b8a7-255b2b1e5f21.jsonl`
 - `/ll:decide-issue` - 2026-06-01T19:47:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a55d1f6-d02f-419b-9e9c-78a18b1ba60c.jsonl`
 - `/ll:refine-issue` - 2026-06-01T19:41:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34f84fcf-43f5-4359-b8a7-255b2b1e5f21.jsonl`
 - `/ll:verify-issues` - 2026-05-31T20:34:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52d78c58-d750-467e-9092-de587a96595e.jsonl`

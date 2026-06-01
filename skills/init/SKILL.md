@@ -206,7 +206,6 @@ Configuration Summary:
   learning_tests.stale_after_days: [days]
 
   [CONTINUATION]                          # Only show if configured (non-defaults)
-  continuation.auto_detect_on_session_start: [true/false]
   continuation.prompt_expiry_hours: [hours]
 
   [PROMPT OPTIMIZATION]                   # Only show if configured (non-defaults)

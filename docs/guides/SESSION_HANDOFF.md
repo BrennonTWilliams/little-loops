@@ -289,7 +289,6 @@ Run /ll:handoff to generate one, or specify a custom path:
   },
   "continuation": {
     "enabled": true,
-    "auto_detect_on_session_start": true,
     "include_todos": true,
     "include_git_status": true,
     "include_recent_files": true,
@@ -311,7 +310,6 @@ Run /ll:handoff to generate one, or specify a custom path:
 | `context_monitor.estimate_weights.bash_output_per_char` | `0.3` | Token cost per character for Bash output |
 | `context_monitor.use_transcript_baseline` | `true` | Use JSONL transcript token counts as an API-exact baseline (one-turn lag). Improves accuracy from ±30–50% to ±5–15%. Falls back to pure heuristics when unavailable. |
 | `continuation.enabled` | `true` | Enable session continuation features |
-| `continuation.auto_detect_on_session_start` | `true` | Automatically detect and offer to resume an existing continuation prompt when a new session starts |
 | `continuation.include_todos` | `true` | Include current todo list state in deep mode handoff output |
 | `continuation.include_git_status` | `true` | Include git status in deep mode handoff output |
 | `continuation.include_recent_files` | `true` | Include recently modified files in deep mode handoff output |
@@ -325,10 +323,6 @@ ll-auto --handoff-threshold 90      # Trigger handoff at 90% for this run
 ll-parallel --handoff-threshold 70  # Earlier warnings for parallel runs
 ll-sprint run my-sprint --handoff-threshold 85
 ```
-
-### Auto-Detect on Session Start
-
-When `continuation.auto_detect_on_session_start` is `true` (the default), little-loops checks for an existing `.ll/ll-continue-prompt.md` at the beginning of each session. If a prompt file is found that is not yet expired, a notice is printed prompting you to run `/ll:resume`. Set this to `false` to suppress automatic detection and only resume manually.
 
 ### Transcript Baseline Mode (Default)
 

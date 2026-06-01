@@ -663,19 +663,10 @@ Use the actual `test_cmd` and `lint_cmd` values selected in Round 1 for these co
 
 Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Continuation Behavior
 
-Use a SINGLE AskUserQuestion call with 3 questions:
+Use a SINGLE AskUserQuestion call with 2 questions:
 
 ```yaml
 questions:
-  - header: "Auto-detect"
-    question: "Enable automatic session continuation detection?"
-    options:
-      - label: "Yes (Recommended)"
-        description: "Auto-detect continuation prompts on session start"
-      - label: "No"
-        description: "Manual /ll:resume required"
-    multiSelect: false
-
   - header: "Include"
     question: "What should continuation prompts include?"
     options:
@@ -702,8 +693,6 @@ questions:
 **Configuration:** Only include `continuation` section if any value differs from schema defaults.
 
 **Mapping:**
-- "Yes (Recommended)" for auto-detect -> `auto_detect_on_session_start: true` (default, can omit)
-- "No" for auto-detect -> `auto_detect_on_session_start: false`
 - "24 hours" -> `prompt_expiry_hours: 24` (default, can omit)
 - "48 hours" -> `prompt_expiry_hours: 48`
 - "No expiry" -> `prompt_expiry_hours: 168`
