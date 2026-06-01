@@ -24,7 +24,10 @@ def main_issues() -> int:
         from little_loops.cli.issues.check_readiness import cmd_check_readiness
         from little_loops.cli.issues.clusters import cmd_clusters
         from little_loops.cli.issues.count_cmd import cmd_count
-        from little_loops.cli.issues.epic_progress import add_epic_progress_parser, cmd_epic_progress
+        from little_loops.cli.issues.epic_progress import (
+            add_epic_progress_parser,
+            cmd_epic_progress,
+        )
         from little_loops.cli.issues.fingerprint import cmd_fingerprint
         from little_loops.cli.issues.impact_effort import cmd_impact_effort
         from little_loops.cli.issues.list_cmd import cmd_list
@@ -591,6 +594,20 @@ Examples:
             "status",
             choices=["open", "in_progress", "blocked", "deferred", "done", "cancelled"],
             help="New status value",
+        )
+        sst.add_argument(
+            "--cascade",
+            action="store_true",
+            default=False,
+            dest="cascade",
+            help="Propagate status to active children (EPIC closure only)",
+        )
+        sst.add_argument(
+            "--cascade-to",
+            choices=["open", "in_progress", "blocked", "deferred", "done", "cancelled"],
+            default="deferred",
+            dest="cascade_to",
+            help="Status to apply to cascaded children (default: deferred)",
         )
         add_config_arg(sst)
 

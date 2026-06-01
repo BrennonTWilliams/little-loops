@@ -454,6 +454,12 @@ Set `status: done` using `ll-issues set-status`:
 ll-issues set-status ISSUE_ID done
 ```
 
+For EPIC closure, use `--cascade` to propagate the status to active children:
+
+```bash
+ll-issues set-status EPIC_ID done --cascade
+```
+
 This atomically updates the `status:` field in frontmatter without touching any other fields. Do NOT use `git mv` or the `Edit` tool to flip the status field directly — `set-status` is the canonical path and handles field preservation correctly. Do NOT move the file to a `completed/` directory — status is tracked via frontmatter.
 
 ### 3. Commit All Changes

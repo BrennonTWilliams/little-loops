@@ -2,12 +2,20 @@
 id: ENH-1860
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-06-01T17:35:32Z'
+completed_at: '2026-06-01T22:12:00Z'
 discovered_date: '2026-06-01'
 discovered_by: capture-issue
-relates_to: [FEAT-1737]
+relates_to:
+- FEAT-1737
 parent: EPIC-1864
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1860: EPIC cascade lifecycle — propagate close/cancel to children
@@ -170,6 +178,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `epics`, `cli`, `lifecycle`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-01T22:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fcc85388-f6d6-4871-bab2-af3aba61606c.jsonl`
 - `/ll:wire-issue` - 2026-06-01T21:57:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7792ec77-ca5f-4918-82dc-00025e2d1ee3.jsonl`
 - `/ll:refine-issue` - 2026-06-01T21:50:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9e18a4f-1421-454e-946b-7d7f53cf8dc6.jsonl`
 - `/ll:format-issue` - 2026-06-01T17:45:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac3a8d0e-1e74-47b1-9d58-b8dbb8f453b4.jsonl`

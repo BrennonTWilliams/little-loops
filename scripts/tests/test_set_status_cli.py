@@ -155,3 +155,369 @@ class TestIssuesCLISetStatus:
                 main_issues()
 
         assert exc_info.value.code == 2
+
+    # ── Cascade tests ──────────────────────────────────────────────
+
+    def test_cascade_no_children_noop(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--cascade with an EPIC that has no children is a no-op (exit 0)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        epics_dir = issues_dir / "epics"
+        (epics_dir / "P2-EPIC-001-solo-epic.md").write_text(
+            "---\nid: EPIC-001\nstatus: open\n---\n# EPIC-001: Solo EPIC\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "EPIC-001",
+                "cancelled",
+                "--cascade",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "open" in captured.out
+        assert "cancelled" in captured.out
+        assert "Cascading to 0" in captured.out
+
+    def test_cascade_active_children_get_deferred_by_default(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--cascade defaults to --cascade-to deferred for active children."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        epics_dir = issues_dir / "epics"
+        (epics_dir / "P2-EPIC-001-test-epic.md").write_text(
+            "---\nid: EPIC-001\nstatus: open\n---\n# EPIC-001: Test EPIC\n"
+        )
+
+        enhancements_dir = issues_dir / "enhancements"
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
+        (enhancements_dir / "P3-ENH-001-child-a.md").write_text(
+            "---\nid: ENH-001\nstatus: open\nparent: EPIC-001\n---\n# ENH-001: Child A\n"
+        )
+        (enhancements_dir / "P3-ENH-002-child-b.md").write_text(
+            "---\nid: ENH-002\nstatus: in_progress\nparent: EPIC-001\n---\n# ENH-002: Child B\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "EPIC-001",
+                "cancelled",
+                "--cascade",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "EPIC-001" in captured.out
+        assert "Cascading to 2" in captured.out
+        assert "deferred" in captured.out
+
+        # Verify children got deferred
+        assert "status: deferred" in (enhancements_dir / "P3-ENH-001-child-a.md").read_text()
+        assert "status: deferred" in (enhancements_dir / "P3-ENH-002-child-b.md").read_text()
+
+    def test_cascade_to_done_closes_all_open_children(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """--cascade --cascade-to done closes all open children."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        epics_dir = issues_dir / "epics"
+        (epics_dir / "P2-EPIC-001-test-epic.md").write_text(
+            "---\nid: EPIC-001\nstatus: open\n---\n# EPIC-001: Test EPIC\n"
+        )
+
+        enhancements_dir = issues_dir / "enhancements"
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
+        (enhancements_dir / "P3-ENH-001-child-a.md").write_text(
+            "---\nid: ENH-001\nstatus: open\nparent: EPIC-001\n---\n# ENH-001: Child A\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "EPIC-001",
+                "done",
+                "--cascade",
+                "--cascade-to",
+                "done",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        assert "status: done" in (enhancements_dir / "P3-ENH-001-child-a.md").read_text()
+
+    def test_cascade_mixed_active_and_terminal_children(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Only active children change; already terminal children are skipped."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        epics_dir = issues_dir / "epics"
+        (epics_dir / "P2-EPIC-001-test-epic.md").write_text(
+            "---\nid: EPIC-001\nstatus: open\n---\n# EPIC-001: Test EPIC\n"
+        )
+
+        enhancements_dir = issues_dir / "enhancements"
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
+        (enhancements_dir / "P3-ENH-001-active.md").write_text(
+            "---\nid: ENH-001\nstatus: open\nparent: EPIC-001\n---\n# ENH-001: Active child\n"
+        )
+        (enhancements_dir / "P3-ENH-002-already-done.md").write_text(
+            "---\nid: ENH-002\nstatus: done\nparent: EPIC-001\n---\n# ENH-002: Already done\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "EPIC-001",
+                "cancelled",
+                "--cascade",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Cascading to 1" in captured.out
+        assert "1" in captured.out  # one skipped (already terminal)
+        # Active child changed
+        assert "status: deferred" in (enhancements_dir / "P3-ENH-001-active.md").read_text()
+        # Already-done child unchanged
+        assert "status: done" in (enhancements_dir / "P3-ENH-002-already-done.md").read_text()
+
+    def test_cascade_rejected_for_non_closing_status(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--cascade is rejected when target status is not done/cancelled."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        epics_dir = issues_dir / "epics"
+        (epics_dir / "P2-EPIC-001-test-epic.md").write_text(
+            "---\nid: EPIC-001\nstatus: open\n---\n# EPIC-001: Test EPIC\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "EPIC-001",
+                "in_progress",
+                "--cascade",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "only valid" in captured.err.lower() or "cascade" in captured.err.lower()
+
+    def test_cascade_resolves_via_relates_to_forward(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """Children linked via relates_to: in the EPIC frontmatter are cascaded."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        epics_dir = issues_dir / "epics"
+        (epics_dir / "P2-EPIC-001-test-epic.md").write_text(
+            "---\n"
+            "id: EPIC-001\n"
+            "status: open\n"
+            "relates_to:\n"
+            "  - ENH-001\n"
+            "---\n"
+            "# EPIC-001: Test EPIC\n"
+        )
+
+        enhancements_dir = issues_dir / "enhancements"
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
+        (enhancements_dir / "P3-ENH-001-forward-child.md").write_text(
+            "---\nid: ENH-001\nstatus: open\n---\n# ENH-001: Forward child\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "EPIC-001",
+                "done",
+                "--cascade",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        assert "status: deferred" in (enhancements_dir / "P3-ENH-001-forward-child.md").read_text()
+
+    def test_cascade_continues_on_individual_failure(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """If one child update fails, the rest continue; exit code is 1."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        epics_dir = issues_dir / "epics"
+        (epics_dir / "P2-EPIC-001-test-epic.md").write_text(
+            "---\nid: EPIC-001\nstatus: open\n---\n# EPIC-001: Test EPIC\n"
+        )
+
+        enhancements_dir = issues_dir / "enhancements"
+        enhancements_dir.mkdir(parents=True, exist_ok=True)
+        (enhancements_dir / "P3-ENH-001-good.md").write_text(
+            "---\nid: ENH-001\nstatus: open\nparent: EPIC-001\n---\n# ENH-001: Good child\n"
+        )
+        bad_path = enhancements_dir / "P3-ENH-002-bad.md"
+        bad_path.write_text(
+            "---\nid: ENH-002\nstatus: open\nparent: EPIC-001\n---\n# ENH-002: Bad child\n"
+        )
+
+        # Patch update_frontmatter at its source module so the local import
+        # inside cmd_set_status picks up the patched version.
+        import little_loops.frontmatter as _fm
+
+        _orig_update = _fm.update_frontmatter
+
+        def _failing_update(content: str, updates: dict) -> str:
+            if "ENH-002" in content and updates.get("status") == "deferred":
+                raise OSError("simulated disk error")
+            return _orig_update(content, updates)
+
+        with patch.object(_fm, "update_frontmatter", _failing_update):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-issues",
+                    "set-status",
+                    "EPIC-001",
+                    "cancelled",
+                    "--cascade",
+                    "--config",
+                    str(temp_project_dir),
+                ],
+            ):
+                from little_loops.cli import main_issues
+
+                result = main_issues()
+
+        assert result == 1  # exit 1 because one child failed
+        captured = capsys.readouterr()
+        assert "ENH-002" in captured.err or "ENH-002" in captured.out
+        # Good child should still have been updated
+        assert "status: deferred" in (enhancements_dir / "P3-ENH-001-good.md").read_text()
+
+    def test_cascade_non_epic_noop(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--cascade on a non-EPIC finds no children and is effectively a no-op."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        # BUG-001 already exists from issues_dir fixture
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "BUG-001",
+                "done",
+                "--cascade",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Cascading to 0" in captured.out

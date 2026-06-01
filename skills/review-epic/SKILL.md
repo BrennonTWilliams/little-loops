@@ -209,7 +209,7 @@ EPIC HEALTH REPORT: EPIC_ID — EPIC title
 [For each stalled child]:
 - CHILD_ID — CHILD_TITLE
   Status: child_status · Last activity: DATE (days_since_activity days ago)
-  Recommendation: `ll-issues set-status CHILD_ID deferred` to park, or `/ll:manage-issue ... CHILD_ID` to resume
+  Recommendation: `ll-issues set-status CHILD_ID deferred` to park, or `/ll:manage-issue ... CHILD_ID` to resume. For bulk deferral of all stalled children, prefer `ll-issues set-status EPIC_ID done --cascade` to close everything at once.
 
 [If none]: No stalled children detected.
 
@@ -231,7 +231,7 @@ EPIC HEALTH REPORT: EPIC_ID — EPIC title
 
 ### Closure recommendation
 
-[If ready]: All children done or cancelled — recommend: `ll-issues set-status EPIC_ID done`
+[If ready]: All children done or cancelled — recommend: `ll-issues set-status EPIC_ID done`. Use `--cascade` to close any remaining open children in the same call.
 [If not ready]: Not ready (active_count active children)
 
 ================================================================================
@@ -246,7 +246,7 @@ implied by the findings above, formatted as a numbered checklist:
 [N findings — or "No action needed." if all sections are clean]
 
 1. (if stalled children exist) Defer or resume stalled children:
-   `ll-issues set-status CHILD_ID deferred`  — park ENH-NNN (stalled N days)
+   `ll-issues set-status CHILD_ID deferred`  — park ENH-NNN (stalled N days). Bulk option: `ll-issues set-status EPIC_ID cancelled --cascade`
 
 2. (if scope drift) Reparent or detach drifted children:
    Review CHILD_ID frontmatter to update or remove `parent:` field
@@ -255,7 +255,7 @@ implied by the findings above, formatted as a numbered checklist:
    `/ll:capture-issue` — describe the missing sub-area and set `parent: EPIC_ID`
 
 4. (if closure-ready) Mark EPIC done:
-   `ll-issues set-status EPIC_ID done`
+   `ll-issues set-status EPIC_ID done --cascade`
 ```
 
 ---

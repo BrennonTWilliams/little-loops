@@ -1208,12 +1208,16 @@ Transition an issue to a new status value. Validates the target status against t
 |----------|-------------|
 | `issue_id` | Issue ID (e.g., `518`, `ENH-518`, `P3-ENH-518`) |
 | `status` | New status value: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled` |
+| `--cascade` | Propagate status to active children (EPIC closure only; only valid with `done`/`cancelled`) |
+| `--cascade-to <status>` | Status to apply to cascaded children (default: `deferred`) |
 
 **Examples:**
 ```bash
 ll-issues set-status ENH-1725 in_progress   # ENH-1725: open → in_progress
 ll-issues sst BUG-042 done                  # BUG-042: in_progress → done
 ll-issues set-status FEAT-100 blocked
+ll-issues set-status EPIC-042 cancelled --cascade              # Close EPIC + defer children
+ll-issues set-status EPIC-042 done --cascade --cascade-to done # Close EPIC + all children
 ```
 
 ---
