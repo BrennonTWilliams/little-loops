@@ -12,6 +12,7 @@ labels:
   - automation
   - issue-management
 parent: EPIC-1707
+decision_needed: false
 ---
 
 # FEAT-1680: Session-end hook to sweep stale cross-issue status references
@@ -61,74 +62,173 @@ session starts.
 
 ## Implementation Steps
 
-1. **Detect done issues**: Read all `.issues/**/*.md` frontmatter; collect IDs
-   with `status: done`.
-2. **Find stale prose**: For each done ID, grep open issue files for patterns
-   like `"<ID> is (still |now )?(open|in_progress|active)"` or
-   `"blocked by .*<ID>"` (where the blocker is done).
-3. **Report findings**: Print a concise summary to stdout — file path, line
-   number, matched phrase. Exit cleanly if nothing found.
-4. **Optional auto-fix**: If `hooks.stale_ref_fix: auto` is set in
-   `ll-config.json`, pass each hit file through a targeted LLM rewrite
-   (or a deterministic sed pattern for the simple `is open/in_progress` case).
-5. **Wire into hooks**: Register as a `Stop` event handler in `hooks/hooks.json`.
-   Keep the script fast — if grep finds no matches it should complete in < 1s.
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+The correct implementation architecture follows the **Python dispatch pattern** already used by `session_start` and `pre_compact` hooks. All Python-backed hooks use a 2-line bash adapter that pipes to `python -m little_loops.hooks <intent>`; a direct `python script.py` invocation is non-standard in this codebase.
+
+1. **Add dispatch entry** in `scripts/little_loops/hooks/__init__.py:_dispatch_table()`:
+   ```python
+   from . import sweep_stale_refs
+   built_ins["session_end"] = sweep_stale_refs.handle
+   ```
+   Model after how `"session_start": session_start.handle` is registered in the same function.
+
+2. **Create adapter script** `hooks/adapters/claude-code/session-end.sh` (2-liner pattern from `hooks/adapters/claude-code/session-start.sh`):
+   ```bash
+   #!/usr/bin/env bash
+   INPUT=$(cat)
+   echo "$INPUT" | python -m little_loops.hooks session_end
+   exit $?
+   ```
+
+3. **Create handler module** `scripts/little_loops/hooks/sweep_stale_refs.py` with `handle(event: LLHookEvent) -> LLHookResult`:
+   - Wrap entire body in `try/except Exception: return LLHookResult(exit_code=0)` (graceful degradation pattern from `pre_compact.handle()`)
+   - Collect done IDs: `done_issues = find_issues(config, status_filter={"done"})` → `done_ids = {i.issue_id for i in done_issues}` (from `issue_parser.py:find_issues()`)
+   - Collect open files: `open_issues = find_issues(config)` — default call skips done/cancelled/deferred automatically
+   - For each open file, apply compiled regex excluding code-fence regions (model after `anchor_sweep.py:_sweep_file()` which uses `_CODE_FENCE` from `text_utils.py` via `_in_fence()`)
+   - Stale ref regex: `re.compile(r'\b(ENH|BUG|FEAT|EPIC)-(\d+)\b')` to find ID mentions, then check surrounding context against stale-phrase patterns
+   - Read `hooks.stale_ref_fix` from `BRConfig` (from `config/core.py:BRConfig`); when `"auto"`, call `atomic_write(path, new_content)` from `file_utils.py`
+   - Return `LLHookResult(exit_code=0)` always; report findings via `result.feedback` (written to stderr, visible in Claude Code session output)
+
+4. **Update `config-schema.json`** — add `stale_ref_fix` to the `hooks` properties object (currently `additionalProperties: false` at line 1139, so the new key MUST be added here or validation will reject it):
+   ```json
+   "stale_ref_fix": {
+     "type": "string",
+     "enum": ["report", "auto"],
+     "default": "report",
+     "description": "..."
+   }
+   ```
+
+5. **Wire in `hooks/hooks.json`** Stop section — append a new entry to the `"Stop"` array. No `matcher` field (Stop events don't support matchers — confirmed by inspecting existing Stop entries):
+   ```json
+   {
+     "hooks": [
+       {
+         "type": "command",
+         "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/session-end.sh",
+         "timeout": 15,
+         "statusMessage": "Sweeping stale cross-issue status references..."
+       }
+     ]
+   }
+   ```
+
+6. **Add unit tests** to `scripts/tests/test_sweep_stale_refs.py`. Model after `test_hook_session_start.py` and `test_hook_post_tool_use.py`:
+   - `_event()` factory helper returning `LLHookEvent(host="claude-code", intent="session_end", payload={})`
+   - `_write_config(tmp_path, stale_ref_fix="report"|"auto")` helper
+   - `in_tmp` fixture using `monkeypatch.chdir(tmp_path)`
+   - Test classes: `TestSweepStaleRefsBaseline` (no issues dir), `TestSweepStaleRefsDetection` (single + multi-file), `TestSweepStaleRefsAutoFix`, `TestSweepStaleRefsGracefulDegradation`
+
+7. **Verification**: `python -m pytest scripts/tests/test_sweep_stale_refs.py -v`
 
 ## Integration Map
 
 ### Files to Modify
-- `hooks/hooks.json` — add `Stop` event handler entry
+- `hooks/hooks.json` — append entry to `"Stop"` array (no `matcher` field; use `bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/session-end.sh`, `timeout: 15`)
+- `scripts/little_loops/hooks/__init__.py` — add `"session_end": sweep_stale_refs.handle` to `_dispatch_table()` built-ins dict; update `_USAGE` string
+- `config-schema.json` — add `stale_ref_fix: {type: string, enum: ["report","auto"]}` to `hooks.properties`; required because `hooks` has `additionalProperties: false` (line 1139)
 
 ### New Files
-- `scripts/little_loops/hooks/sweep_stale_refs.py` — new hook script
+- `scripts/little_loops/hooks/sweep_stale_refs.py` — new hook handler; public API is `handle(event: LLHookEvent) -> LLHookResult`
+- `hooks/adapters/claude-code/session-end.sh` — 2-line adapter (pipes stdin to `python -m little_loops.hooks session_end`); model after `hooks/adapters/claude-code/session-start.sh`
 - `scripts/tests/test_sweep_stale_refs.py` — unit tests
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/hooks/main_hooks.py` — invokes hook scripts; verify `Stop` event routing
+- `scripts/little_loops/hooks/__init__.py:_dispatch_table()` — invokes `sweep_stale_refs.handle`; add import and entry
+- `scripts/little_loops/issue_parser.py:find_issues()` — used to collect done IDs (`status_filter={"done"}`) and open file list (default call)
+- `scripts/little_loops/frontmatter.py:parse_frontmatter()` — reads `status:` with `STATUS_SYNONYMS` coercion already applied
+- `scripts/little_loops/text_utils.py:_CODE_FENCE` — regex for code-fence span detection; import to exclude fence regions from grep
+- `scripts/little_loops/file_utils.py:atomic_write()` — safe file write for auto-fix mode
+- `scripts/little_loops/config/core.py:BRConfig` — read `hooks.stale_ref_fix` setting
 
 ### Similar Patterns
-- `scripts/little_loops/hooks/session_start.py` — reference for hook script structure and exit conventions
-- Other `Stop`/`PostToolUse` handlers in `hooks/hooks.json` for timeout and error conventions
+- `scripts/little_loops/hooks/session_start.py:handle()` — canonical hook handler structure (LLHookEvent → LLHookResult, config loading, feedback pattern)
+- `scripts/little_loops/hooks/pre_compact.py:handle()` — canonical graceful-degradation pattern (`try/except Exception: return LLHookResult(exit_code=0)`)
+- `scripts/little_loops/issues/anchor_sweep.py:_sweep_file()` — file scanning with code-fence exclusion (`_in_fence()` + `atomic_write()` for safe rewrite)
+- `hooks/adapters/claude-code/session-start.sh` — 2-line adapter template
+- `scripts/little_loops/hooks/post_tool_use.py:handle()` — config-gated feature pattern (`feature_enabled(config, "analytics.enabled")`)
 
 ### Tests
-- `scripts/tests/test_sweep_stale_refs.py` (new) — unit tests covering: no-match fast path, single stale ref detection, multiple files, auto-fix mode
+- `scripts/tests/test_sweep_stale_refs.py` (new) — unit tests covering: no-match fast path, single stale ref detection, multiple files, auto-fix mode, graceful degradation on missing issues dir or broken config
+- `scripts/tests/test_hook_session_start.py` — reference for `_event()` factory + `in_tmp` fixture pattern
+- `scripts/tests/test_hook_post_tool_use.py` — reference for config-gated feature test class structure
 
 ### Documentation
 - N/A — hook is self-documenting via `hooks/hooks.json` and the `--help` flag
 
 ### Configuration
-- `ll-config.json` — optional `hooks.stale_ref_fix: "report" | "auto"` knob
+- `ll-config.json` — optional `hooks.stale_ref_fix: "report" | "auto"` knob (must also be added to `config-schema.json`)
 
 ## API / Interface
 
 ```json
-// hooks/hooks.json addition
+// hooks/hooks.json — append to "Stop" array
+// Note: Stop entries have NO "matcher" field (confirmed: both existing Stop entries omit it)
 {
-  "event": "Stop",
-  "command": "python scripts/little_loops/hooks/sweep_stale_refs.py",
-  "timeout": 30
+  "hooks": [
+    {
+      "type": "command",
+      "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/session-end.sh",
+      "timeout": 15,
+      "statusMessage": "Sweeping stale cross-issue status references..."
+    }
+  ]
 }
+```
+
+```bash
+# hooks/adapters/claude-code/session-end.sh (2-line adapter pattern)
+#!/usr/bin/env bash
+INPUT=$(cat)
+echo "$INPUT" | python -m little_loops.hooks session_end
+exit $?
 ```
 
 ```python
 # scripts/little_loops/hooks/sweep_stale_refs.py
+# Public interface: handle(event: LLHookEvent) -> LLHookResult
 # Exits 0 always (findings are advisory, not blocking)
+# Feedback string (stderr) lists stale refs; empty string = no findings
 ```
 
-Optional config knob in `ll-config.json`:
+```python
+# scripts/little_loops/hooks/__init__.py — _dispatch_table() addition
+from . import sweep_stale_refs
+built_ins["session_end"] = sweep_stale_refs.handle
+```
+
+Optional config knob in `ll-config.json` (requires `config-schema.json` update):
 ```json
 "hooks": {
   "stale_ref_fix": "report"   // "report" | "auto"
 }
 ```
 
+The Stop hook wire format payload received by the adapter (Claude Code injects):
+```json
+{
+  "session_id": "...",
+  "transcript_path": "...",
+  "cwd": "...",
+  "permission_mode": "...",
+  "hook_event_name": "Stop",
+  "stop_hook_active": true
+}
+```
+
 ## Acceptance Criteria
 
-- [ ] Hook script exists at `scripts/little_loops/hooks/sweep_stale_refs.py`
-- [ ] Registered in `hooks/hooks.json` under `Stop` event
-- [ ] Given a done issue ID, correctly identifies files with stale `is open` /
-      `in_progress` prose referencing that ID
-- [ ] Outputs file path + line number + matched text per finding
+- [ ] Hook handler exists at `scripts/little_loops/hooks/sweep_stale_refs.py` with `handle(event: LLHookEvent) -> LLHookResult`
+- [ ] Adapter script exists at `hooks/adapters/claude-code/session-end.sh`
+- [ ] `"session_end"` intent registered in `_dispatch_table()` in `scripts/little_loops/hooks/__init__.py`
+- [ ] Registered in `hooks/hooks.json` under `Stop` event (no `matcher` field)
+- [ ] `config-schema.json` updated to add `stale_ref_fix` to `hooks.properties` (required: `additionalProperties: false` blocks unknown keys)
+- [ ] Given a done issue ID, correctly identifies files with stale `is open` / `in_progress` prose referencing that ID
+- [ ] Grep skips code-fence regions (avoid false positives on code examples referencing issue IDs)
+- [ ] Outputs file path + line number + matched text per finding (via `result.feedback`)
 - [ ] Exits 0 in all cases (never blocks session end)
 - [ ] Completes in < 2s on a repo with ~400 issue files when no matches found
 - [ ] Unit tests in `scripts/tests/test_sweep_stale_refs.py`
@@ -136,7 +236,7 @@ Optional config knob in `ll-config.json`:
 ## Impact
 
 - **Priority**: P3 — improves issue hygiene and prevents context confusion in future sessions; non-blocking quality improvement
-- **Effort**: Small — ~100-line Python script, `hooks/hooks.json` registration, unit tests; reuses existing frontmatter parsing utilities (`ll-issues`, `scripts/little_loops/`)
+- **Effort**: Small — ~100-line Python handler, 2-line adapter script, `hooks/hooks.json` + `config-schema.json` + dispatch-table registration, unit tests; reuses `find_issues()`, `parse_frontmatter()`, `_CODE_FENCE`, `atomic_write()`
 - **Risk**: Low — hook exits 0 always; auto-fix mode requires explicit opt-in via config; grep-only path is purely advisory
 - **Breaking Change**: No
 
@@ -147,12 +247,16 @@ Optional config knob in `ll-config.json`:
 - Real-time (PostToolUse) triggering — deferred due to interleaving complexity
 - Structured reference markers (Approach B from brainstorm) — separate ENH if
   convention is adopted later
+- Wiring for non-Claude-Code hosts (opencode, codex) — adapter script is Claude-Code-specific;
+  other host adapters can be added independently
 
 ---
 
 **Open** | Created: 2026-05-24 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-01T13:49:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/424ba3b0-46e9-434c-b57f-a44b4cda057b.jsonl`
+- `/ll:refine-issue` - 2026-06-01T00:00:00 - ``
 - `/ll:verify-issues` - 2026-05-31T05:40:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-24T17:28:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20c144e8-2658-4919-b9a3-e1bfd4e0786b.jsonl`
