@@ -2,8 +2,9 @@
 id: ENH-1863
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-01T00:00:00Z'
+completed_at: '2026-06-01T19:01:39Z'
 discovered_date: '2026-06-01'
 discovered_by: issue-size-review
 parent: ENH-1858
@@ -104,7 +105,7 @@ Add `TestFormatEpicTree` class in `scripts/tests/test_dependency_mapper.py` foll
 - Extend `make_issue()` with `status: str = "open"` and `parent: str | None = None` params, or
 - Construct `IssueInfo(...)` directly in the test (same pattern used in `test_issue_lifecycle.py:53`)
 
-**`DependencyGraph` construction in tests**: build via `DependencyGraph.from_issues(list(child_map.values()))` — this is the classmethod at `dependency_graph.py:54` that processes `blocked_by`, `blocks`, and `depends_on` edges from a list of `IssueInfo` objects.
+**`DependencyGraph` construction in tests**: build via `DependencyGraph.from_issues(list(child_map.values()))` — this is the classmethod at `dependency_graph.py:55` that processes `blocked_by`, `blocks`, and `depends_on` edges from a list of `IssueInfo` objects.
 
 ## Integration Map
 
@@ -114,7 +115,7 @@ Add `TestFormatEpicTree` class in `scripts/tests/test_dependency_mapper.py` foll
 - `scripts/tests/test_dependency_mapper.py` — add `TestFormatEpicTree` class
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/dependency_graph.py` — `DependencyGraph` dataclass (line 32); `from_issues()` classmethod (line 54), `topological_sort()` Kahn's algorithm (line 272), `blocks` dict field; consumed by `format_epic_tree`
+- `scripts/little_loops/dependency_graph.py` — `DependencyGraph` dataclass (line 32); `from_issues()` classmethod (line 55), `topological_sort()` Kahn's algorithm (line 272), `blocks` dict field; consumed by `format_epic_tree`
 - `scripts/little_loops/cli/output.py` — `colorize(text, code)` (line 139), `BOX_ML`/`BOX_BL`/`BOX_V` constants (lines 54–61), `TYPE_COLOR`/`PRIORITY_COLOR` dicts (lines 72–85)
 - `scripts/little_loops/cli/issues/clusters.py` — `EDGE_COLOR` dict (lines 16–23): `{"blocks": "31", "blocked_by": "33", "depends_on": "35", ...}`
 - `scripts/little_loops/issue_parser.py` — `IssueInfo` dataclass (line 211); fields used: `issue_id`, `title`, `priority`, `status`, `blocked_by`, `blocks`, `depends_on`, `parent`, `priority_int` (property, line 278)
@@ -202,6 +203,7 @@ def format_epic_tree(
 **Open** | Created: 2026-06-01 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T18:55:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb6e93ea-e494-4ca8-8920-3a041bd01f0c.jsonl`
 - `/ll:format-issue` - 2026-06-01T18:51:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7130e47-1d39-4176-b6ac-edaabbcc8f05.jsonl`
 - `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df6f28cb-1291-4dfe-a9e1-7f772da7e3a8.jsonl`
 - `/ll:wire-issue` - 2026-06-01T18:47:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712fbfea-e021-4d7b-8c77-911778494da6.jsonl`

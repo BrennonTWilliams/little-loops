@@ -287,6 +287,8 @@ REVIEW -- 2 potential dependency(ies) to review
 | `-->` | Soft `depends_on` prerequisite |
 | `-.→` | Proposed dependency |
 
+`format_epic_tree(root_id, root_info, child_map, graph, use_color)` renders an EPIC child hierarchy as a Unicode box-drawing tree. Children appear with `├──`/`└──` connectors, status badges (`[done]`, `[blocked]`), and `⮡ blocks ISSUE-NNN` annotations under each blocker. Ordered via `DependencyGraph.topological_sort()`.
+
 ---
 
 ## Issue History: `scripts/little_loops/issue_history/formatting.py`

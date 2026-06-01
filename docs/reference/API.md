@@ -1316,6 +1316,31 @@ Shows existing dependencies as solid arrows (`──→`) and proposed dependenc
 
 **Returns:** Text graph string readable in the terminal
 
+#### format_epic_tree
+
+```python
+def format_epic_tree(
+    root_id: str,
+    root_info: IssueInfo,
+    child_map: dict[str, IssueInfo],
+    graph: DependencyGraph,
+    use_color: bool = True,
+) -> str
+```
+
+Render an EPIC's child hierarchy as a Unicode box-drawing tree string.
+
+Children are ordered via topological sort. Status badges (`[done]`, `[blocked]`) appear inline; `[open]` is suppressed. Blocking edges are annotated as `⮡ blocks ISSUE-NNN` under the blocker's tree line.
+
+**Parameters:**
+- `root_id` - The EPIC issue ID (e.g. `"EPIC-001"`)
+- `root_info` - IssueInfo for the root EPIC
+- `child_map` - Mapping from child issue ID to IssueInfo
+- `graph` - DependencyGraph scoped to the EPIC's children
+- `use_color` - Whether to emit ANSI color codes (default `True`)
+
+**Returns:** Unicode box-drawing tree string, or `"EPIC-001: (no children)"` when `child_map` is empty
+
 #### apply_proposals
 
 ```python

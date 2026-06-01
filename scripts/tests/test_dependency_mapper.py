@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from little_loops.cli.deps import main_deps as main
+from little_loops.dependency_graph import DependencyGraph
 from little_loops.dependency_mapper import (
     DependencyProposal,
     DependencyReport,
@@ -21,6 +22,7 @@ from little_loops.dependency_mapper import (
     extract_file_paths,
     find_file_overlaps,
     fix_dependencies,
+    format_epic_tree,
     format_report,
     format_text_graph,
     gather_all_issue_ids,
@@ -40,6 +42,8 @@ def make_issue(
     relates_to: list[str] | None = None,
     duplicate_of: str | None = None,
     path: Path | None = None,
+    status: str = "open",
+    parent: str | None = None,
 ) -> IssueInfo:
     """Helper to create test IssueInfo objects."""
     return IssueInfo(
@@ -53,6 +57,8 @@ def make_issue(
         depends_on=depends_on or [],
         relates_to=relates_to or [],
         duplicate_of=duplicate_of,
+        status=status,
+        parent=parent,
     )
 
 
@@ -988,6 +994,62 @@ class TestFormatTextGraph:
         assert "──→" not in text
         assert "-.→" not in text
         assert "-->" not in text
+
+
+# =============================================================================
+# format_epic_tree tests
+# =============================================================================
+
+
+class TestFormatEpicTree:
+    """Tests for format_epic_tree() rendering function."""
+
+    def test_linear_chain_connectors(self) -> None:
+        """Linear chain renders ├── and └── connectors correctly."""
+        root = make_issue("EPIC-001", title="My Epic")
+        child1 = make_issue("FEAT-001", title="First feature")
+        child2 = make_issue("FEAT-002", title="Second feature", blocked_by=["FEAT-001"])
+        child_map = {"FEAT-001": child1, "FEAT-002": child2}
+        graph = DependencyGraph.from_issues(list(child_map.values()))
+        text = format_epic_tree("EPIC-001", root, child_map, graph, use_color=False)
+        assert "FEAT-001" in text
+        assert "FEAT-002" in text
+        assert "├── " in text
+        assert "└── " in text
+
+    def test_no_children_sentinel(self) -> None:
+        """EPIC with no children returns sentinel string."""
+        root = make_issue("EPIC-001", title="Empty Epic")
+        graph = DependencyGraph.from_issues([])
+        text = format_epic_tree("EPIC-001", root, {}, graph, use_color=False)
+        assert text == "EPIC-001: (no children)"
+
+    def test_done_blocked_badges(self) -> None:
+        """Done and blocked statuses render as inline badges; open is suppressed."""
+        root = make_issue("EPIC-001", title="Epic")
+        child_done = make_issue("FEAT-001", title="Done feature", status="done")
+        child_blocked = make_issue("FEAT-002", title="Blocked feature", status="blocked")
+        child_open = make_issue("FEAT-003", title="Open feature", status="open")
+        child_map = {
+            "FEAT-001": child_done,
+            "FEAT-002": child_blocked,
+            "FEAT-003": child_open,
+        }
+        graph = DependencyGraph.from_issues(list(child_map.values()))
+        text = format_epic_tree("EPIC-001", root, child_map, graph, use_color=False)
+        assert "[done]" in text
+        assert "[blocked]" in text
+        assert "[open]" not in text
+
+    def test_blocking_edge_annotation(self) -> None:
+        """Blocking edges render as annotation under the blocker's tree line."""
+        root = make_issue("EPIC-001", title="Epic")
+        child1 = make_issue("FEAT-001", title="Blocker")
+        child2 = make_issue("FEAT-002", title="Blocked by first", blocked_by=["FEAT-001"])
+        child_map = {"FEAT-001": child1, "FEAT-002": child2}
+        graph = DependencyGraph.from_issues(list(child_map.values()))
+        text = format_epic_tree("EPIC-001", root, child_map, graph, use_color=False)
+        assert "⮡ blocks FEAT-002" in text
 
 
 # =============================================================================

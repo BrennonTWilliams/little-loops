@@ -8,10 +8,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from little_loops.cli.issues.clusters import EDGE_COLOR
+from little_loops.cli.output import BOX_BL, BOX_ML, BOX_V, colorize
 from little_loops.dependency_mapper.models import DependencyProposal, DependencyReport
 
 if TYPE_CHECKING:
     from little_loops.config import DependencyMappingConfig
+    from little_loops.dependency_graph import DependencyGraph
     from little_loops.issue_parser import IssueInfo
 
 
@@ -242,5 +245,52 @@ def format_text_graph(
         if has_proposed:
             legend_parts.append("-.→ proposed")
         lines.append(f"Legend: {', '.join(legend_parts)}")
+
+    return "\n".join(lines)
+
+
+def format_epic_tree(
+    root_id: str,
+    root_info: IssueInfo,
+    child_map: dict[str, IssueInfo],
+    graph: DependencyGraph,
+    use_color: bool = True,
+) -> str:
+    """Render an EPIC's child hierarchy as a Unicode box-drawing tree string."""
+    if not child_map:
+        return f"{root_id}: (no children)"
+
+    done_count = sum(1 for info in child_map.values() if info.status in {"done", "deferred"})
+    total_count = len(child_map)
+    lines: list[str] = [f"{root_id}: {root_info.title}  {done_count}/{total_count} done"]
+
+    ordered = [issue for issue in graph.topological_sort() if issue.issue_id in child_map]
+    seen = {issue.issue_id for issue in ordered}
+    for cid, cinfo in child_map.items():
+        if cid not in seen:
+            ordered.append(cinfo)
+
+    def _c(text: str, code: str) -> str:
+        return colorize(text, code) if use_color else text
+
+    for idx, child in enumerate(ordered):
+        is_last = idx == len(ordered) - 1
+        connector = BOX_BL + "── " if is_last else BOX_ML + "── "
+        extension = "    " if is_last else BOX_V + "   "
+        child_id = child.issue_id
+
+        badge = ""
+        if child.status == "done":
+            badge = " [done]"
+        elif child.status == "blocked":
+            badge = " [blocked]"
+
+        lines.append(f"{connector}{child_id}{badge}")
+
+        blocked_ids = sorted(graph.blocks.get(child_id, set()))
+        for blocked_id in blocked_ids:
+            if blocked_id in child_map:
+                annotation = "⮡ blocks " + blocked_id
+                lines.append(f"{extension}  {_c(annotation, EDGE_COLOR['blocks'])}")
 
     return "\n".join(lines)

@@ -25,6 +25,7 @@ Public exports:
     # Formatting
     format_report: Format a dependency report as markdown
     format_text_graph: Generate an ASCII dependency graph
+    format_epic_tree: Render an EPIC's child hierarchy as a Unicode box-drawing tree
 
     # Operations
     apply_proposals: Write approved proposals to issue files
@@ -46,6 +47,7 @@ from little_loops.dependency_mapper.analysis import (
     validate_frontmatter_fields,
 )
 from little_loops.dependency_mapper.formatting import (
+    format_epic_tree,
     format_report,
     format_text_graph,
 )
@@ -78,6 +80,7 @@ __all__ = [
     "validate_frontmatter_fields",
     "analyze_dependencies",
     # Formatting
+    "format_epic_tree",
     "format_report",
     "format_text_graph",
     # Operations
