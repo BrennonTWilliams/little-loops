@@ -204,6 +204,7 @@ little-loops/
         │   ├── parallel.py
         │   ├── messages.py
         │   ├── session.py           # ll-session: search/recent/backfill/path the unified session store
+│   ├── history_context.py   # ll-history-context: render Historical Context block for an issue
         │   ├── sync.py
         │   ├── docs.py
         │   ├── history.py

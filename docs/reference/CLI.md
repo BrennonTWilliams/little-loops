@@ -1549,6 +1549,29 @@ ll-session path <session_id>                    # Resolve JSONL file path for a 
 
 ---
 
+### ll-history-context
+
+Query `.ll/history.db` for user corrections and FTS5 matches related to an issue ID and print a ready-to-inject `## Historical Context` markdown block. Returns empty output (exit 0) when the DB is missing, has no matches, or all rows are stale (>30 days old).
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `ISSUE_ID` | Issue ID to query (required, e.g. `ENH-1708`) |
+| `--file PATH` | Also include recent file events for this path |
+| `--db PATH` | Path to the session database (default: `.ll/history.db`) |
+
+**Output cap:** At most 5 rows are rendered even when more matches exist.
+
+**Examples:**
+```bash
+ll-history-context ENH-1708                        # Corrections matching the issue ID
+ll-history-context ENH-1708 --file src/foo.py      # Also include recent file events
+ll-history-context ENH-9999                        # Returns empty output when no matches
+```
+
+---
+
 ### ll-gitignore
 
 Suggest and apply `.gitignore` patterns based on untracked files.

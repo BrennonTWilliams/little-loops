@@ -535,6 +535,7 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
      "Bash(ll-workflows:*)",
      "Bash(ll-messages:*)",
      "Bash(ll-history:*)",
+     "Bash(ll-history-context:*)",
      "Bash(ll-deps:*)",
      "Bash(ll-sync:*)",
      "Bash(ll-verify-docs:*)",
@@ -605,6 +606,7 @@ If user opted in:
    - `ll-workflows` - Identify multi-step workflow patterns from user message history
    - `ll-messages` - Extract user messages from Claude Code logs
    - `ll-history` - View completed issue statistics, analysis, and export topic-filtered excerpts from history
+   - `ll-history-context` - Render a `## Historical Context` block for an issue from `.ll/history.db`
    - `ll-deps` - Cross-issue dependency analysis and validation
    - `ll-sync` - Sync local issues with GitHub Issues
    - `ll-verify-docs` - Verify documented counts match actual file counts
@@ -638,6 +640,7 @@ If user opted in:
    - `ll-workflows` - Identify multi-step workflow patterns from user message history
    - `ll-messages` - Extract user messages from Claude Code logs
    - `ll-history` - View completed issue statistics, analysis, and export topic-filtered excerpts from history
+   - `ll-history-context` - Render a `## Historical Context` block for an issue from `.ll/history.db`
    - `ll-deps` - Cross-issue dependency analysis and validation
    - `ll-sync` - Sync local issues with GitHub Issues
    - `ll-verify-docs` - Verify documented counts match actual file counts

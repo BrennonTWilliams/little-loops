@@ -13,6 +13,7 @@ Provides command-line interfaces for automated issue management:
 - ll-history: Completed issue statistics and analysis
 - ll-logs: Discover and extract ll-relevant JSONL entries from ~/.claude/projects/
 - ll-session: Query the unified session store (SQLite + FTS5)
+- ll-history-context: render a ## Historical Context block for an issue from .ll/history.db
 - ll-deps: Cross-issue dependency discovery and validation
 - ll-sync: GitHub Issues sync
 - ll-verify-docs: Documentation count verification
@@ -43,6 +44,7 @@ from little_loops.cli.doctor import main_doctor
 from little_loops.cli.generate_skill_descriptions import main_generate_skill_descriptions
 from little_loops.cli.gitignore import main_gitignore
 from little_loops.cli.history import main_history
+from little_loops.cli.history_context import main_history_context
 from little_loops.cli.issues import main_issues
 from little_loops.cli.learning_tests import main_learning_tests
 from little_loops.cli.logs import main_logs
@@ -77,6 +79,7 @@ __all__ = [
     "main_generate_skill_descriptions",
     "main_gitignore",
     "main_history",
+    "main_history_context",
     "main_migrate",
     "main_migrate_labels",
     "main_migrate_relationships",

@@ -3462,6 +3462,30 @@ Entry point for `ll-session` command. Query the unified session store (SQLite + 
 
 ---
 
+### main_history_context
+
+```python
+def main_history_context() -> int
+```
+
+Entry point for `ll-history-context` command. Query `.ll/history.db` for user corrections and FTS5 matches related to an issue ID and render a `## Historical Context` markdown block.
+
+**Returns:** 0 on success (including empty output when no matches or DB absent), 1 on argument error
+
+**Flags:**
+- `ISSUE_ID` — Issue ID to query (required positional argument)
+- `--file PATH` — Also include recent file events for this path (optional)
+- `--db PATH` — Path to the session database (default: `.ll/history.db`)
+
+**Behavior:**
+- Calls `find_user_corrections(topic=issue_id)` and `search(query=issue_id, kind="correction")` with deduplication
+- Post-filters `search()` results by staleness (no built-in stale filter in `search()`)
+- Optionally calls `recent_file_events(path=file)` when `--file` is given
+- Caps output at 5 rows
+- Returns empty output when DB is missing, no matches, or all rows stale
+
+---
+
 ### main_learning_tests
 
 ```python

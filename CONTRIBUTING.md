@@ -198,6 +198,7 @@ little-loops/
         │   ├── messages.py
         │   ├── parallel.py
         │   ├── session.py       # ll-session unified session store query CLI
+        │   ├── history_context.py  # ll-history-context historical context query CLI
         │   ├── sync.py
         │   ├── output.py        # Shared CLI output utilities (colors, terminal width)
         │   ├── loop/            # ll-loop subcommands

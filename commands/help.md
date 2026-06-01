@@ -270,6 +270,7 @@ ll-learning-tests Query and manage the learning test registry (check/list/mark-s
 ll-logs           Discover and extract ll-relevant log entries from Claude project logs
 ll-session        Query the unified SQLite session store (search/recent/backfill/path)
 ll-ctx-stats      Show context-window analytics for the current project (per-tool byte vs. context savings)
+ll-history-context Render a ## Historical Context block for an issue from .ll/history.db
 
 ================================================================================
 Usage: /ll:<command> [arguments] [flags]
