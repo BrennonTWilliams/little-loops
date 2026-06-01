@@ -1276,7 +1276,7 @@
         "enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Enable per-tool byte tracking in post_tool_use hook. Default off; opt-in until the ctx-stats CLI ships."
+          "description": "Enable per-tool byte tracking and file-event recording in post_tool_use hook. Default off; opt-in until the ctx-stats CLI ships."
         }
       },
       "additionalProperties": false

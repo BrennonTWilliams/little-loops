@@ -436,7 +436,7 @@ the ctx-stats CLI ships.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `enabled` | `false` | Enable per-tool byte tracking in the `post_tool_use` hook. When false, the handler is a no-op and writes nothing to SQLite. |
+| `enabled` | `false` | Enable per-tool byte tracking and file-event recording in the `post_tool_use` hook. When false, the handler is a no-op and writes nothing to SQLite (`tool_events` or `file_events`). |
 
 ### `sprints`
 

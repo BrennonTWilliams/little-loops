@@ -7,9 +7,10 @@
 # ``little_loops.hooks.post_tool_use.handle``. Per FEAT-1623 the handler
 # persists per-tool byte metrics (``bytes_in`` / ``bytes_out`` /
 # ``cache_hit``) into ``.ll/history.db`` so ``/ll:ctx-stats`` (FEAT-1160)
-# can surface which tools consumed the most context-window bytes. Writes
-# are gated on the ``analytics.enabled`` config flag — when off, the
-# handler returns exit 0 without touching SQLite.
+# can surface which tools consumed the most context-window bytes; per
+# ENH-1832 it also writes one ``file_events`` row per file-touching call.
+# Both writes are gated on the ``analytics.enabled`` config flag — when
+# off, the handler returns exit 0 without touching SQLite.
 #
 # Latency: the matching ``hooks.json`` entry uses a short (≤5s) timeout.
 # A single-row INSERT keeps p95 well below the timeout when analytics is

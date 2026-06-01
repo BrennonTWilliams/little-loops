@@ -287,6 +287,34 @@ def _index(
     )
 
 
+def write_file_event(
+    db_path: Path | str,
+    session_id: str | None,
+    path: str,
+    op: str,
+    issue_id: str | None = None,
+    config: dict | None = None,
+) -> None:
+    """Write one row to ``file_events`` and index it in ``search_index``.
+
+    ``config`` is accepted for forward-compatibility with ENH-1835's finer-grained
+    gate; it is not used here — the write is controlled by the ``analytics.enabled``
+    gate applied by the caller.
+    """
+    conn = connect(db_path)
+    ts = _now()
+    try:
+        conn.execute(
+            "INSERT INTO file_events(ts, session_id, path, op, issue_id, git_sha) "
+            "VALUES(?, ?, ?, ?, ?, ?)",
+            (ts, session_id, path, op, issue_id, None),
+        )
+        _index(conn, content=path, kind="file", ref=path, anchor=op, ts=ts)
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Query API
 # ---------------------------------------------------------------------------

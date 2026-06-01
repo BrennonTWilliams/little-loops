@@ -232,6 +232,150 @@ class TestPostToolUseWithSessionStore:
         assert bytes_out == 2
 
 
+class TestFileEventsWrite:
+    """ENH-1832: file_events write path via post_tool_use hook."""
+
+    @pytest.mark.parametrize(
+        "payload, expected_path",
+        [
+            (
+                {"tool_name": "Read", "tool_input": {"file_path": "scripts/foo.py"}, "session_id": "s1"},
+                "scripts/foo.py",
+            ),
+            (
+                {"tool_name": "Write", "tool_input": {"file_path": "out/bar.txt"}, "session_id": "s1"},
+                "out/bar.txt",
+            ),
+            (
+                {"tool_name": "Edit", "tool_input": {"file_path": "src/main.py"}, "session_id": "s1"},
+                "src/main.py",
+            ),
+            (
+                {"tool_name": "Glob", "tool_input": {"pattern": "**/*.py"}, "session_id": "s1"},
+                "**/*.py",
+            ),
+            (
+                {"tool_name": "Glob", "tool_input": {"path": "scripts/"}, "session_id": "s1"},
+                "scripts/",
+            ),
+            (
+                {"tool_name": "Grep", "tool_input": {"path": "scripts/"}, "session_id": "s1"},
+                "scripts/",
+            ),
+            (
+                {"tool_name": "Bash", "tool_input": {"command": "cat scripts/foo.py"}, "session_id": "s1"},
+                "scripts/foo.py",
+            ),
+        ],
+    )
+    def test_per_tool_path_extraction(self, tmp_path, monkeypatch, payload, expected_path) -> None:
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event(payload, cwd=str(tmp_path)))
+
+        db_path = tmp_path / ".ll" / "history.db"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute("SELECT path, op FROM file_events").fetchone()
+        finally:
+            conn.close()
+        assert row is not None, f"expected file_events row for tool_name={payload['tool_name']!r}"
+        assert row[0] == expected_path
+        assert row[1] == payload["tool_name"]
+
+    def test_bash_without_file_path_writes_no_file_event(self, tmp_path, monkeypatch) -> None:
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"tool_name": "Bash", "tool_input": {"command": "ls -la"}, "session_id": "s1"}, cwd=str(tmp_path)))
+
+        db_path = tmp_path / ".ll" / "history.db"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            rows = conn.execute("SELECT path FROM file_events").fetchall()
+        finally:
+            conn.close()
+        assert rows == [], "ls -la has no detectable file path — expected zero file_events rows"
+
+    def test_issue_id_extracted_from_issues_path(self, tmp_path, monkeypatch) -> None:
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+        payload = {
+            "tool_name": "Edit",
+            "tool_input": {"file_path": ".issues/enhancements/P4-ENH-1832-foo.md"},
+            "session_id": "s1",
+        }
+
+        handle(_event(payload, cwd=str(tmp_path)))
+
+        db_path = tmp_path / ".ll" / "history.db"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute("SELECT issue_id FROM file_events").fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row[0] == "ENH-1832"
+
+    def test_issue_id_null_for_plain_path(self, tmp_path, monkeypatch) -> None:
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+        payload = {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "scripts/little_loops/hooks/post_tool_use.py"},
+            "session_id": "s1",
+        }
+
+        handle(_event(payload, cwd=str(tmp_path)))
+
+        db_path = tmp_path / ".ll" / "history.db"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute("SELECT issue_id FROM file_events").fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row[0] is None
+
+    def test_fts5_search_index_updated(self, tmp_path, monkeypatch) -> None:
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+        payload = {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "scripts/little_loops/session_store.py"},
+            "session_id": "s1",
+        }
+
+        handle(_event(payload, cwd=str(tmp_path)))
+
+        db_path = tmp_path / ".ll" / "history.db"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute(
+                "SELECT kind FROM search_index WHERE content LIKE ?",
+                ("%session_store%",),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "expected a search_index row for the file path"
+        assert row[0] == "file"
+
+    def test_no_file_event_when_analytics_disabled(self, tmp_path, monkeypatch) -> None:
+        _write_config(tmp_path, analytics_enabled=False)
+        monkeypatch.chdir(tmp_path)
+        payload = {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "scripts/foo.py"},
+            "session_id": "s1",
+        }
+
+        result = handle(_event(payload, cwd=str(tmp_path)))
+
+        assert result.exit_code == 0
+        assert not (tmp_path / ".ll" / "history.db").exists()
+
+
 class TestPreToolUseBaseline:
     """Pre-tool-use handler is registered for opt-in dispatch (FEAT-1489)."""
 
