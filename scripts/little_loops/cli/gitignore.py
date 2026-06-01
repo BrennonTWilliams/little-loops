@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from little_loops.cli.output import print_json
@@ -13,6 +14,7 @@ from little_loops.git_operations import (
     suggest_gitignore_patterns,
 )
 from little_loops.logger import Logger
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 
 def main_gitignore() -> int:
@@ -23,75 +25,76 @@ def main_gitignore() -> int:
     Returns:
         Exit code (0 = success, 1 = error)
     """
-    parser = argparse.ArgumentParser(
-        prog="ll-gitignore",
-        description="Suggest and apply .gitignore patterns based on untracked files",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+    with cli_event_context(DEFAULT_DB_PATH, "ll-gitignore", sys.argv[1:]):
+        parser = argparse.ArgumentParser(
+            prog="ll-gitignore",
+            description="Suggest and apply .gitignore patterns based on untracked files",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="""
 Examples:
   %(prog)s                    # Show suggestions and apply approved patterns
   %(prog)s --dry-run          # Preview suggestions without modifying .gitignore
   %(prog)s --quiet            # Suppress non-essential output
 """,
-    )
-
-    add_dry_run_arg(parser)
-    add_quiet_arg(parser)
-    add_config_arg(parser)
-    add_json_arg(parser)
-
-    args = parser.parse_args()
-
-    repo_root = args.config or Path.cwd()
-    logger = Logger(verbose=not args.quiet)
-    dry_run: bool = args.dry_run
-
-    if dry_run:
-        logger.info("[DRY RUN] Showing suggestions without modifying .gitignore")
-
-    suggestion = suggest_gitignore_patterns(repo_root=repo_root, logger=logger)
-
-    if args.json:
-        print_json(
-            {
-                "has_suggestions": suggestion.has_suggestions,
-                "summary": suggestion.summary,
-                "suggestions": [
-                    {
-                        "pattern": p.pattern,
-                        "category": p.category,
-                        "description": p.description,
-                        "files_matched": p.files_matched,
-                        "priority": p.priority,
-                    }
-                    for p in suggestion.patterns
-                ],
-            }
         )
-        return 0
 
-    if not suggestion.has_suggestions:
-        logger.info("No .gitignore suggestions — your repo looks clean.")
-        return 0
+        add_dry_run_arg(parser)
+        add_quiet_arg(parser)
+        add_config_arg(parser)
+        add_json_arg(parser)
 
-    logger.info(suggestion.summary)
+        args = parser.parse_args()
 
-    # Display categorized suggestions
-    categories: dict[str, list[GitignorePattern]] = {}
-    for pattern in suggestion.patterns:
-        categories.setdefault(pattern.category, []).append(pattern)
+        repo_root = args.config or Path.cwd()
+        logger = Logger(verbose=not args.quiet)
+        dry_run: bool = args.dry_run
 
-    for category, patterns in sorted(categories.items()):
-        logger.info(f"\n  [{category}]")
-        for p in patterns:
-            file_count = len(p.files_matched)
-            files_label = f"{file_count} file{'s' if file_count != 1 else ''}"
-            logger.info(f"    {p.pattern:<30} {p.description} ({files_label})")
+        if dry_run:
+            logger.info("[DRY RUN] Showing suggestions without modifying .gitignore")
 
-    if dry_run:
-        return 0
+        suggestion = suggest_gitignore_patterns(repo_root=repo_root, logger=logger)
 
-    pattern_strings = [p.pattern for p in suggestion.patterns]
-    success = add_patterns_to_gitignore(pattern_strings, repo_root=repo_root, logger=logger)
+        if args.json:
+            print_json(
+                {
+                    "has_suggestions": suggestion.has_suggestions,
+                    "summary": suggestion.summary,
+                    "suggestions": [
+                        {
+                            "pattern": p.pattern,
+                            "category": p.category,
+                            "description": p.description,
+                            "files_matched": p.files_matched,
+                            "priority": p.priority,
+                        }
+                        for p in suggestion.patterns
+                    ],
+                }
+            )
+            return 0
 
-    return 0 if success else 1
+        if not suggestion.has_suggestions:
+            logger.info("No .gitignore suggestions — your repo looks clean.")
+            return 0
+
+        logger.info(suggestion.summary)
+
+        # Display categorized suggestions
+        categories: dict[str, list[GitignorePattern]] = {}
+        for pattern in suggestion.patterns:
+            categories.setdefault(pattern.category, []).append(pattern)
+
+        for category, patterns in sorted(categories.items()):
+            logger.info(f"\n  [{category}]")
+            for p in patterns:
+                file_count = len(p.files_matched)
+                files_label = f"{file_count} file{'s' if file_count != 1 else ''}"
+                logger.info(f"    {p.pattern:<30} {p.description} ({files_label})")
+
+        if dry_run:
+            return 0
+
+        pattern_strings = [p.pattern for p in suggestion.patterns]
+        success = add_patterns_to_gitignore(pattern_strings, repo_root=repo_root, logger=logger)
+
+        return 0 if success else 1

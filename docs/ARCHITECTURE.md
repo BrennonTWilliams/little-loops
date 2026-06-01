@@ -620,6 +620,7 @@ flowchart TB
 | `EventBus.emit()` | `events.py` | Dispatches events to registered transports |
 | `post_tool_use` hook | `hooks/post_tool_use.py` | Writes `tool_events` / `file_events` per call |
 | `user_prompt_submit` hook | `hooks/user_prompt_submit.py` | Writes `user_corrections` / `skill_events` |
+| `cli_event_context()` | `session_store.py` | Context manager that records `ll-` CLI entry-point invocations to `cli_events` (ENH-1849) |
 | `history_reader.py` | `history_reader.py` | Public read API: 5 query functions, 5 dataclasses |
 | `ll-history-context` CLI | `cli/history_context.py` | Primary consumer: renders `## Historical Context` block |
 | `ll-session` CLI | `cli/session.py` | Secondary consumer: search, issue events, sessions |
@@ -632,7 +633,7 @@ flowchart TB
 - All hook writers wrap DB calls in `contextlib.suppress(Exception)` so a write failure never aborts a tool call
 - `SQLiteTransport.send()` is a no-op when `self._conn is None`
 
-> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v7) and CLI transport-wiring table.
+> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v8) and CLI transport-wiring table.
 
 ---
 

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from little_loops.cli.output import print_json
 from little_loops.cli_args import add_config_arg, add_dry_run_arg, add_json_arg, add_quiet_arg
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 from little_loops.sync import GitHubSyncManager, SyncResult, SyncStatus
 
 
@@ -20,11 +22,12 @@ def main_sync() -> int:
     Returns:
         Exit code (0 = success)
     """
-    parser = argparse.ArgumentParser(
-        prog="ll-sync",
-        description="Sync local .issues/ files with GitHub Issues",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+    with cli_event_context(DEFAULT_DB_PATH, "ll-sync", sys.argv[1:]):
+        parser = argparse.ArgumentParser(
+            prog="ll-sync",
+            description="Sync local .issues/ files with GitHub Issues",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="""
 Examples:
   %(prog)s status             # Show sync status
   %(prog)s push               # Push all local issues to GitHub
@@ -37,153 +40,153 @@ Examples:
   %(prog)s reopen BUG-042     # Reopen GitHub issue for BUG-042
   %(prog)s reopen --all-reopened  # Reopen all issues moved back to active locally
 """,
-    )
+        )
 
-    subparsers = parser.add_subparsers(dest="action", help="Sync action")
+        subparsers = parser.add_subparsers(dest="action", help="Sync action")
 
-    # Status subcommand
-    status_parser = subparsers.add_parser("status", help="Show sync status")
-    add_json_arg(status_parser)
+        # Status subcommand
+        status_parser = subparsers.add_parser("status", help="Show sync status")
+        add_json_arg(status_parser)
 
-    # Push subcommand
-    push_parser = subparsers.add_parser("push", help="Push local issues to GitHub")
-    push_parser.add_argument(
-        "issue_ids",
-        nargs="*",
-        help="Specific issue IDs to push (e.g., BUG-123)",
-    )
+        # Push subcommand
+        push_parser = subparsers.add_parser("push", help="Push local issues to GitHub")
+        push_parser.add_argument(
+            "issue_ids",
+            nargs="*",
+            help="Specific issue IDs to push (e.g., BUG-123)",
+        )
 
-    # Pull subcommand
-    pull_parser = subparsers.add_parser("pull", help="Pull GitHub Issues to local")
-    pull_parser.add_argument(
-        "--labels",
-        "-l",
-        type=str,
-        help="Filter by labels (comma-separated)",
-    )
+        # Pull subcommand
+        pull_parser = subparsers.add_parser("pull", help="Pull GitHub Issues to local")
+        pull_parser.add_argument(
+            "--labels",
+            "-l",
+            type=str,
+            help="Filter by labels (comma-separated)",
+        )
 
-    # Diff subcommand
-    diff_parser = subparsers.add_parser(
-        "diff", help="Show differences between local and GitHub issues"
-    )
-    diff_parser.add_argument(
-        "issue_id",
-        nargs="?",
-        help="Specific issue ID to diff (e.g., BUG-123). Omit for summary of all.",
-    )
-    add_json_arg(diff_parser)
+        # Diff subcommand
+        diff_parser = subparsers.add_parser(
+            "diff", help="Show differences between local and GitHub issues"
+        )
+        diff_parser.add_argument(
+            "issue_id",
+            nargs="?",
+            help="Specific issue ID to diff (e.g., BUG-123). Omit for summary of all.",
+        )
+        add_json_arg(diff_parser)
 
-    # Close subcommand
-    close_parser = subparsers.add_parser(
-        "close", help="Close GitHub issues for completed local issues"
-    )
-    close_parser.add_argument(
-        "issue_ids",
-        nargs="*",
-        help="Specific issue IDs to close (e.g., ENH-123)",
-    )
-    close_parser.add_argument(
-        "--all-completed",
-        action="store_true",
-        help="Close all GitHub issues whose local counterparts have status: done or status: cancelled",
-    )
+        # Close subcommand
+        close_parser = subparsers.add_parser(
+            "close", help="Close GitHub issues for completed local issues"
+        )
+        close_parser.add_argument(
+            "issue_ids",
+            nargs="*",
+            help="Specific issue IDs to close (e.g., ENH-123)",
+        )
+        close_parser.add_argument(
+            "--all-completed",
+            action="store_true",
+            help="Close all GitHub issues whose local counterparts have status: done or status: cancelled",
+        )
 
-    # Reopen subcommand
-    reopen_parser = subparsers.add_parser(
-        "reopen", help="Reopen GitHub issues for locally-active issues"
-    )
-    reopen_parser.add_argument(
-        "issue_ids",
-        nargs="*",
-        help="Specific issue IDs to reopen (e.g., BUG-042)",
-    )
-    reopen_parser.add_argument(
-        "--all-reopened",
-        action="store_true",
-        help="Reopen all GitHub issues whose local counterparts have moved back to active",
-    )
+        # Reopen subcommand
+        reopen_parser = subparsers.add_parser(
+            "reopen", help="Reopen GitHub issues for locally-active issues"
+        )
+        reopen_parser.add_argument(
+            "issue_ids",
+            nargs="*",
+            help="Specific issue IDs to reopen (e.g., BUG-042)",
+        )
+        reopen_parser.add_argument(
+            "--all-reopened",
+            action="store_true",
+            help="Reopen all GitHub issues whose local counterparts have moved back to active",
+        )
 
-    # Common args
-    add_config_arg(parser)
-    add_quiet_arg(parser)
-    add_dry_run_arg(parser)
+        # Common args
+        add_config_arg(parser)
+        add_quiet_arg(parser)
+        add_dry_run_arg(parser)
 
-    args = parser.parse_args()
+        args = parser.parse_args()
 
-    if not args.action:
-        parser.print_help()
-        return 1
+        if not args.action:
+            parser.print_help()
+            return 1
 
-    project_root = args.config or Path.cwd()
-    config = BRConfig(project_root)
-    logger = Logger(verbose=not getattr(args, "quiet", False))
+        project_root = args.config or Path.cwd()
+        config = BRConfig(project_root)
+        logger = Logger(verbose=not getattr(args, "quiet", False))
 
-    # Check sync is enabled
-    if not config.sync.enabled:
-        logger.error("Sync is not enabled. Add to .ll/ll-config.json:")
-        logger.error('  "sync": { "enabled": true }')
-        return 1
+        # Check sync is enabled
+        if not config.sync.enabled:
+            logger.error("Sync is not enabled. Add to .ll/ll-config.json:")
+            logger.error('  "sync": { "enabled": true }')
+            return 1
 
-    dry_run = getattr(args, "dry_run", False)
-    manager = GitHubSyncManager(config, logger, dry_run=dry_run)
+        dry_run = getattr(args, "dry_run", False)
+        manager = GitHubSyncManager(config, logger, dry_run=dry_run)
 
-    if args.action == "status":
-        status = manager.get_status()
-        if getattr(args, "json", False):
-            print_json(status.to_dict())
-        else:
-            _print_sync_status(status, logger)
-        return 0
+        if args.action == "status":
+            status = manager.get_status()
+            if getattr(args, "json", False):
+                print_json(status.to_dict())
+            else:
+                _print_sync_status(status, logger)
+            return 0
 
-    elif args.action == "push":
-        if dry_run:
-            logger.info("[DRY RUN] Showing what would be pushed (no changes will be made)")
-        issue_ids = args.issue_ids if args.issue_ids else None
-        result = manager.push_issues(issue_ids)
-        _print_sync_result(result, logger)
-        return 0 if result.success else 1
-
-    elif args.action == "pull":
-        if dry_run:
-            logger.info("[DRY RUN] Showing what would be pulled (no changes will be made)")
-        labels = args.labels.split(",") if args.labels else None
-        result = manager.pull_issues(labels)
-        _print_sync_result(result, logger)
-        return 0 if result.success else 1
-
-    elif args.action == "diff":
-        issue_id = getattr(args, "issue_id", None)
-        if issue_id:
-            result = manager.diff_issue(issue_id)
-        else:
-            result = manager.diff_all()
-        if getattr(args, "json", False):
-            print_json(result.to_dict())
-        elif issue_id:
-            _print_diff_result(result, logger)
-        else:
+        elif args.action == "push":
+            if dry_run:
+                logger.info("[DRY RUN] Showing what would be pushed (no changes will be made)")
+            issue_ids = args.issue_ids if args.issue_ids else None
+            result = manager.push_issues(issue_ids)
             _print_sync_result(result, logger)
-        return 0 if result.success else 1
+            return 0 if result.success else 1
 
-    elif args.action == "close":
-        if dry_run:
-            logger.info("[DRY RUN] Showing what would be closed (no changes will be made)")
-        issue_ids = args.issue_ids if args.issue_ids else None
-        all_completed = getattr(args, "all_completed", False)
-        result = manager.close_issues(issue_ids, all_completed=all_completed)
-        _print_sync_result(result, logger)
-        return 0 if result.success else 1
+        elif args.action == "pull":
+            if dry_run:
+                logger.info("[DRY RUN] Showing what would be pulled (no changes will be made)")
+            labels = args.labels.split(",") if args.labels else None
+            result = manager.pull_issues(labels)
+            _print_sync_result(result, logger)
+            return 0 if result.success else 1
 
-    elif args.action == "reopen":
-        if dry_run:
-            logger.info("[DRY RUN] Showing what would be reopened (no changes will be made)")
-        issue_ids = args.issue_ids if args.issue_ids else None
-        all_reopened = getattr(args, "all_reopened", False)
-        result = manager.reopen_issues(issue_ids, all_reopened=all_reopened)
-        _print_sync_result(result, logger)
-        return 0 if result.success else 1
+        elif args.action == "diff":
+            issue_id = getattr(args, "issue_id", None)
+            if issue_id:
+                result = manager.diff_issue(issue_id)
+            else:
+                result = manager.diff_all()
+            if getattr(args, "json", False):
+                print_json(result.to_dict())
+            elif issue_id:
+                _print_diff_result(result, logger)
+            else:
+                _print_sync_result(result, logger)
+            return 0 if result.success else 1
 
-    return 1
+        elif args.action == "close":
+            if dry_run:
+                logger.info("[DRY RUN] Showing what would be closed (no changes will be made)")
+            issue_ids = args.issue_ids if args.issue_ids else None
+            all_completed = getattr(args, "all_completed", False)
+            result = manager.close_issues(issue_ids, all_completed=all_completed)
+            _print_sync_result(result, logger)
+            return 0 if result.success else 1
+
+        elif args.action == "reopen":
+            if dry_run:
+                logger.info("[DRY RUN] Showing what would be reopened (no changes will be made)")
+            issue_ids = args.issue_ids if args.issue_ids else None
+            all_reopened = getattr(args, "all_reopened", False)
+            result = manager.reopen_issues(issue_ids, all_reopened=all_reopened)
+            _print_sync_result(result, logger)
+            return 0 if result.success else 1
+
+        return 1
 
 
 def _print_sync_status(status: SyncStatus, logger: Logger) -> None:

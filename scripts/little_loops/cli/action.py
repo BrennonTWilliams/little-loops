@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 
 from little_loops.host_runner import resolve_host
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 __all__ = ["main_action"]
 
@@ -186,11 +188,12 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 def main_action() -> int:
     """Entry point for ll-action CLI."""
-    parser = argparse.ArgumentParser(
-        prog="ll-action",
-        description="Invoke ll skills as one-shot commands with JSON-structured output",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+    with cli_event_context(DEFAULT_DB_PATH, "ll-action", sys.argv[1:]):
+        parser = argparse.ArgumentParser(
+            prog="ll-action",
+            description="Invoke ll skills as one-shot commands with JSON-structured output",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="""
 Examples:
   ll-action invoke refine-issue --args P2-ENH-1229
   ll-action invoke confidence-check --args FEAT-042 --timeout 120
@@ -198,75 +201,75 @@ Examples:
   ll-action capabilities
   ll-action list
 """,
-    )
+        )
 
-    subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
-    subparsers.required = True
+        subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
+        subparsers.required = True
 
-    # invoke subcommand
-    invoke_parser = subparsers.add_parser(
-        "invoke",
-        help="Invoke a skill and stream output as NDJSON events",
-        description="Invoke a skill and stream output as NDJSON events (default) or collect and print as JSON",
-    )
-    invoke_parser.add_argument("skill", help="Skill name (e.g. refine-issue, confidence-check)")
-    invoke_parser.add_argument(
-        "--args",
-        nargs="+",
-        metavar="ARG",
-        help="Arguments to pass to the skill",
-    )
-    invoke_parser.add_argument(
-        "--timeout",
-        type=int,
-        default=300,
-        metavar="SECONDS",
-        help="Timeout in seconds (default: 300)",
-    )
-    invoke_parser.add_argument(
-        "--output",
-        choices=["stream-json", "json"],
-        default="stream-json",
-        dest="output",
-        help="Output format: stream-json (default, streaming NDJSON) or json (collect then print)",
-    )
+        # invoke subcommand
+        invoke_parser = subparsers.add_parser(
+            "invoke",
+            help="Invoke a skill and stream output as NDJSON events",
+            description="Invoke a skill and stream output as NDJSON events (default) or collect and print as JSON",
+        )
+        invoke_parser.add_argument("skill", help="Skill name (e.g. refine-issue, confidence-check)")
+        invoke_parser.add_argument(
+            "--args",
+            nargs="+",
+            metavar="ARG",
+            help="Arguments to pass to the skill",
+        )
+        invoke_parser.add_argument(
+            "--timeout",
+            type=int,
+            default=300,
+            metavar="SECONDS",
+            help="Timeout in seconds (default: 300)",
+        )
+        invoke_parser.add_argument(
+            "--output",
+            choices=["stream-json", "json"],
+            default="stream-json",
+            dest="output",
+            help="Output format: stream-json (default, streaming NDJSON) or json (collect then print)",
+        )
 
-    # capabilities subcommand
-    cap_parser = subparsers.add_parser(
-        "capabilities",
-        help="Emit full CapabilityReport as JSON (host, binary, version, capabilities, hooks)",
-        description="Call describe_capabilities() and serialize the full CapabilityReport to JSON",
-    )
-    cap_parser.add_argument(
-        "--output",
-        choices=["json"],
-        default="json",
-        dest="output",
-        help="Output format (json only)",
-    )
+        # capabilities subcommand
+        cap_parser = subparsers.add_parser(
+            "capabilities",
+            help="Emit full CapabilityReport as JSON (host, binary, version, capabilities, hooks)",
+            description="Call describe_capabilities() and serialize the full CapabilityReport to JSON",
+        )
+        cap_parser.add_argument(
+            "--output",
+            choices=["json"],
+            default="json",
+            dest="output",
+            help="Output format (json only)",
+        )
 
-    # list subcommand
-    list_parser = subparsers.add_parser(
-        "list",
-        help="List all available skills with descriptions",
-        description="List all available skills with names and descriptions from plugin manifest",
-    )
-    list_parser.add_argument(
-        "--output",
-        choices=["json"],
-        default="json",
-        dest="output",
-        help="Output format (json only)",
-    )
+        # list subcommand
+        list_parser = subparsers.add_parser(
+            "list",
+            help="List all available skills with descriptions",
+            description="List all available skills with names and descriptions from plugin manifest",
+        )
+        list_parser.add_argument(
+            "--output",
+            choices=["json"],
+            default="json",
+            dest="output",
+            help="Output format (json only)",
+        )
 
-    parsed = parser.parse_args()
+        parsed = parser.parse_args()
 
-    if parsed.command == "invoke":
-        return cmd_invoke(parsed)
-    elif parsed.command == "capabilities":
-        return cmd_capabilities(parsed)
-    elif parsed.command == "list":
-        return cmd_list(parsed)
-    else:
-        parser.print_help()
-        return 1
+        if parsed.command == "invoke":
+            return cmd_invoke(parsed)
+        elif parsed.command == "capabilities":
+            return cmd_capabilities(parsed)
+        elif parsed.command == "list":
+            return cmd_list(parsed)
+        else:
+            parser.print_help()
+            return 1

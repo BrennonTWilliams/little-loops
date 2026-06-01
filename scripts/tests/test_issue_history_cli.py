@@ -927,7 +927,8 @@ class TestSessionsSubcommand:
     """ll-history sessions <ID> — lists sessions that touched an issue (ENH-1711)."""
 
     def _setup_db(self, db_path: Path, issue_id: str, session_id: str, jsonl: str) -> None:
-        from little_loops.session_store import connect as ss_connect, ensure_db
+        from little_loops.session_store import connect as ss_connect
+        from little_loops.session_store import ensure_db
 
         ensure_db(db_path)
         conn = ss_connect(db_path)

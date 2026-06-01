@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
 
 from little_loops.cli_args import add_config_arg, add_dry_run_arg
 from little_loops.frontmatter import parse_frontmatter
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 _FM_FIELD_RE = re.compile(r"^---\s*$", re.MULTILINE)
 _LABELS_SECTION_RE = re.compile(r"^## Labels\s*\n(.*?)(?=\n## |\Z)", re.MULTILINE | re.DOTALL)
@@ -87,66 +89,67 @@ def main_migrate_labels() -> int:
     Returns:
         Exit code (0 = success, 1 = error)
     """
-    parser = argparse.ArgumentParser(
-        prog="ll-migrate-labels",
-        description=(
-            "Migrate freeform ## Labels body sections → labels: frontmatter "
-            "in all issue files. One-time migration for ENH-1392."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+    with cli_event_context(DEFAULT_DB_PATH, "ll-migrate-labels", sys.argv[1:]):
+        parser = argparse.ArgumentParser(
+            prog="ll-migrate-labels",
+            description=(
+                "Migrate freeform ## Labels body sections → labels: frontmatter "
+                "in all issue files. One-time migration for ENH-1392."
+            ),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="""
 Examples:
   %(prog)s --dry-run     # Preview all planned migrations (strongly advised first)
   %(prog)s               # Execute migration
 """,
-    )
-    add_dry_run_arg(parser)
-    add_config_arg(parser)
-    args = parser.parse_args()
+        )
+        add_dry_run_arg(parser)
+        add_config_arg(parser)
+        args = parser.parse_args()
 
-    dry_run: bool = args.dry_run
-    repo_root: Path = args.config or Path.cwd()
+        dry_run: bool = args.dry_run
+        repo_root: Path = args.config or Path.cwd()
 
-    issues_dir = repo_root / ".issues"
-    if not issues_dir.exists():
-        print(f"No .issues/ directory found at {repo_root}")
-        return 1
+        issues_dir = repo_root / ".issues"
+        if not issues_dir.exists():
+            print(f"No .issues/ directory found at {repo_root}")
+            return 1
 
-    if dry_run:
-        print("[DRY RUN] No files will be modified.")
+        if dry_run:
+            print("[DRY RUN] No files will be modified.")
 
-    migrated = 0
-    errors: list[str] = []
+        migrated = 0
+        errors: list[str] = []
 
-    for file_path in sorted(issues_dir.rglob("*.md")):
-        try:
-            content = file_path.read_text(encoding="utf-8")
-        except OSError as exc:
-            errors.append(str(file_path))
-            print(f"  [ERROR] {file_path}: {exc}")
-            continue
-
-        updated, labels = _migrate_content(content)
-        if labels is None:
-            continue
-
-        prefix = "[DRY RUN] " if dry_run else ""
-        rel = file_path.relative_to(repo_root)
-        print(f"  {prefix}MIGRATE {rel}: ## Labels → labels: {labels}")
-
-        if not dry_run:
+        for file_path in sorted(issues_dir.rglob("*.md")):
             try:
-                file_path.write_text(updated, encoding="utf-8")
-                migrated += 1
+                content = file_path.read_text(encoding="utf-8")
             except OSError as exc:
                 errors.append(str(file_path))
                 print(f"  [ERROR] {file_path}: {exc}")
-        else:
-            migrated += 1
+                continue
 
-    print()
-    print(f"Results: {migrated} files {'would be ' if dry_run else ''}updated.")
-    if errors:
-        print(f"  Errors: {len(errors)}")
-        return 1
-    return 0
+            updated, labels = _migrate_content(content)
+            if labels is None:
+                continue
+
+            prefix = "[DRY RUN] " if dry_run else ""
+            rel = file_path.relative_to(repo_root)
+            print(f"  {prefix}MIGRATE {rel}: ## Labels → labels: {labels}")
+
+            if not dry_run:
+                try:
+                    file_path.write_text(updated, encoding="utf-8")
+                    migrated += 1
+                except OSError as exc:
+                    errors.append(str(file_path))
+                    print(f"  [ERROR] {file_path}: {exc}")
+            else:
+                migrated += 1
+
+        print()
+        print(f"Results: {migrated} files {'would be ' if dry_run else ''}updated.")
+        if errors:
+            print(f"  Errors: {len(errors)}")
+            return 1
+        return 0

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -26,7 +27,7 @@ from little_loops.history_reader import (
     search,
 )
 from little_loops.logger import Logger
-from little_loops.session_store import DEFAULT_DB_PATH
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 _MAX_ROWS = 5
 
@@ -70,59 +71,60 @@ def main_history_context() -> int:
     Returns:
         0 on success (including empty output when no matches or DB absent), 1 on argument error.
     """
-    configure_output()
-    logger = Logger(use_color=use_color_enabled())  # noqa: F841
+    with cli_event_context(DEFAULT_DB_PATH, "ll-history-context", sys.argv[1:]):
+        configure_output()
+        logger = Logger(use_color=use_color_enabled())  # noqa: F841
 
-    parser = _build_parser()
-    args = parser.parse_args()
+        parser = _build_parser()
+        args = parser.parse_args()
 
-    cutoff = (datetime.now(UTC) - timedelta(days=STALE_DAYS_DEFAULT)).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+        cutoff = (datetime.now(UTC) - timedelta(days=STALE_DAYS_DEFAULT)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
 
-    corrections: list[UserCorrection] = find_user_corrections(
-        topic=args.issue_id, limit=20, db=args.db
-    )
+        corrections: list[UserCorrection] = find_user_corrections(
+            topic=args.issue_id, limit=20, db=args.db
+        )
 
-    search_results: list[SearchResult] = search(
-        query=args.issue_id, kind="correction", limit=20, db=args.db
-    )
-    fresh_search = [r for r in search_results if r.ts >= cutoff]
+        search_results: list[SearchResult] = search(
+            query=args.issue_id, kind="correction", limit=20, db=args.db
+        )
+        fresh_search = [r for r in search_results if r.ts >= cutoff]
 
-    file_contents: list[str] = []
-    if args.file:
-        for fe in recent_file_events(path=args.file, limit=5, db=args.db):
-            file_contents.append(f"file:{fe.path}:{fe.op}")
+        file_contents: list[str] = []
+        if args.file:
+            for fe in recent_file_events(path=args.file, limit=5, db=args.db):
+                file_contents.append(f"file:{fe.path}:{fe.op}")
 
-    seen: set[str] = set()
-    rows: list[str] = []
+        seen: set[str] = set()
+        rows: list[str] = []
 
-    for uc in corrections:
-        h = _content_hash(uc.content)
-        if h not in seen:
-            seen.add(h)
-            rows.append(uc.content)
+        for uc in corrections:
+            h = _content_hash(uc.content)
+            if h not in seen:
+                seen.add(h)
+                rows.append(uc.content)
 
-    for sr in fresh_search:
-        h = _content_hash(sr.content)
-        if h not in seen:
-            seen.add(h)
-            rows.append(sr.content)
+        for sr in fresh_search:
+            h = _content_hash(sr.content)
+            if h not in seen:
+                seen.add(h)
+                rows.append(sr.content)
 
-    for fc in file_contents:
-        h = _content_hash(fc)
-        if h not in seen:
-            seen.add(h)
-            rows.append(fc)
+        for fc in file_contents:
+            h = _content_hash(fc)
+            if h not in seen:
+                seen.add(h)
+                rows.append(fc)
 
-    rows = rows[:_MAX_ROWS]
+        rows = rows[:_MAX_ROWS]
 
-    if not rows:
+        if not rows:
+            return 0
+
+        print("## Historical Context")
+        print()
+        for row in rows:
+            print(f"- {row}")
+
         return 0
-
-    print("## Historical Context")
-    print()
-    for row in rows:
-        print(f"- {row}")
-
-    return 0

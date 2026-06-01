@@ -14,6 +14,8 @@ import re
 import sys
 from pathlib import Path
 
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
+
 __all__ = ["main_generate_skill_descriptions"]
 
 _MAX_DESC_LEN = 100
@@ -154,49 +156,50 @@ def _process_skills(skills_dir: Path, apply: bool, quiet: bool) -> tuple[int, in
 
 def main_generate_skill_descriptions() -> int:
     """Entry point for ll-generate-skill-descriptions CLI."""
-    parser = argparse.ArgumentParser(
-        prog="ll-generate-skill-descriptions",
-        description=(
-            "Auto-generate ≤100-char skill descriptions via Claude CLI. "
-            "Dry-run by default; use --apply to write back to SKILL.md frontmatter."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+    with cli_event_context(DEFAULT_DB_PATH, "ll-generate-skill-descriptions", sys.argv[1:]):
+        parser = argparse.ArgumentParser(
+            prog="ll-generate-skill-descriptions",
+            description=(
+                "Auto-generate ≤100-char skill descriptions via Claude CLI. "
+                "Dry-run by default; use --apply to write back to SKILL.md frontmatter."
+            ),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="""
 Examples:
   ll-generate-skill-descriptions               # Dry-run: preview generated descriptions
   ll-generate-skill-descriptions --apply       # Write descriptions back to SKILL.md files
   ll-generate-skill-descriptions --quiet       # Suppress per-skill output
 """,
-    )
-    parser.add_argument(
-        "--apply",
-        action="store_true",
-        default=False,
-        help="Write generated descriptions back to SKILL.md frontmatter (default: dry-run only)",
-    )
-    parser.add_argument(
-        "--quiet",
-        action="store_true",
-        default=False,
-        help="Suppress per-skill output; only print final summary",
-    )
+        )
+        parser.add_argument(
+            "--apply",
+            action="store_true",
+            default=False,
+            help="Write generated descriptions back to SKILL.md frontmatter (default: dry-run only)",
+        )
+        parser.add_argument(
+            "--quiet",
+            action="store_true",
+            default=False,
+            help="Suppress per-skill output; only print final summary",
+        )
 
-    args = parser.parse_args()
+        args = parser.parse_args()
 
-    plugin_root = _find_plugin_root()
-    skills_dir = plugin_root / "skills"
+        plugin_root = _find_plugin_root()
+        skills_dir = plugin_root / "skills"
 
-    if not skills_dir.exists():
-        print(f"ERROR: skills directory not found: {skills_dir}", file=sys.stderr)
-        return 1
+        if not skills_dir.exists():
+            print(f"ERROR: skills directory not found: {skills_dir}", file=sys.stderr)
+            return 1
 
-    mode = "APPLY" if args.apply else "DRY-RUN"
-    if not args.quiet:
-        print(f"ll-generate-skill-descriptions [{mode}]")
-        print(f"Skills dir: {skills_dir}")
-        print()
+        mode = "APPLY" if args.apply else "DRY-RUN"
+        if not args.quiet:
+            print(f"ll-generate-skill-descriptions [{mode}]")
+            print(f"Skills dir: {skills_dir}")
+            print()
 
-    processed, skipped, errors = _process_skills(skills_dir, args.apply, args.quiet)
+        processed, skipped, errors = _process_skills(skills_dir, args.apply, args.quiet)
 
-    print(f"\nDone: {processed} generated, {skipped} skipped, {errors} errors")
-    return 0 if errors == 0 else 1
+        print(f"\nDone: {processed} generated, {skipped} skipped, {errors} errors")
+        return 0 if errors == 0 else 1

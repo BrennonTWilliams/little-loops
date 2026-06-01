@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ from little_loops.cli.output import (
     use_color_enabled,
 )
 from little_loops.logger import Logger
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 DEFAULT_DB_RELPATH = Path(".ll") / "history.db"
 DEFAULT_STATE_RELPATH = Path(".ll") / "ll-context-state.json"
@@ -264,40 +266,41 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
     a context-window savings summary. Falls back to
     ``.ll/ll-context-state.json`` when the SQLite store is absent.
     """
-    args = _parse_args(argv)
-    configure_output()
-    logger = Logger(use_color=use_color_enabled())
+    with cli_event_context(DEFAULT_DB_PATH, "ll-ctx-stats", sys.argv[1:]):
+        args = _parse_args(argv)
+        configure_output()
+        logger = Logger(use_color=use_color_enabled())
 
-    cwd = Path.cwd()
-    db_path = args.db if args.db is not None else cwd / DEFAULT_DB_RELPATH
-    state_path = cwd / DEFAULT_STATE_RELPATH
+        cwd = Path.cwd()
+        db_path = args.db if args.db is not None else cwd / DEFAULT_DB_RELPATH
+        state_path = cwd / DEFAULT_STATE_RELPATH
 
-    summary = _aggregate_tool_events(db_path)
-    fallback = _load_fallback_state(state_path) if summary is None else None
+        summary = _aggregate_tool_events(db_path)
+        fallback = _load_fallback_state(state_path) if summary is None else None
 
-    if args.json_mode:
-        _print_json(summary, fallback)
-        return 0 if (summary is not None or fallback is not None) else 1
+        if args.json_mode:
+            _print_json(summary, fallback)
+            return 0 if (summary is not None or fallback is not None) else 1
 
-    if summary is not None:
-        total_rows = int(summary["total_in"]) + int(summary["total_out"])
-        if total_rows == 0:
-            logger.warning(
-                "No analytic rows in .ll/history.db — enable analytics (analytics.enabled: true) "
-                "and ensure analytics.capture.file_events is not disabled, then run a few tool calls."
-            )
-            if fallback is None:
-                fallback = _load_fallback_state(state_path)
-        else:
-            _render(summary, logger)
+        if summary is not None:
+            total_rows = int(summary["total_in"]) + int(summary["total_out"])
+            if total_rows == 0:
+                logger.warning(
+                    "No analytic rows in .ll/history.db — enable analytics (analytics.enabled: true) "
+                    "and ensure analytics.capture.file_events is not disabled, then run a few tool calls."
+                )
+                if fallback is None:
+                    fallback = _load_fallback_state(state_path)
+            else:
+                _render(summary, logger)
+                return 0
+
+        if fallback is not None:
+            _render_fallback(fallback, logger)
             return 0
 
-    if fallback is not None:
-        _render_fallback(fallback, logger)
-        return 0
-
-    logger.error(
-        "No context analytics found: neither .ll/history.db nor "
-        ".ll/ll-context-state.json contained data for this project."
-    )
-    return 1
+        logger.error(
+            "No context analytics found: neither .ll/history.db nor "
+            ".ll/ll-context-state.json contained data for this project."
+        )
+        return 1

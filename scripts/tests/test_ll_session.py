@@ -65,6 +65,16 @@ class TestArgumentParsing:
             args = _parse_args()
         assert args.kind == "skill"
 
+    def test_recent_subcommand_cli_accepted(self) -> None:
+        """ENH-1849: --kind cli must be a valid choice for both recent and search."""
+        with patch("sys.argv", ["ll-session", "recent", "--kind", "cli"]):
+            args = _parse_args()
+        assert args.kind == "cli"
+
+        with patch("sys.argv", ["ll-session", "search", "--fts", "my-cmd", "--kind", "cli"]):
+            args = _parse_args()
+        assert args.kind == "cli"
+
 
 class TestMainSession:
     """Integration tests for main_session()."""
@@ -427,6 +437,27 @@ class TestMainSession:
         with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "skill"]):
             assert main_session() == 0
         assert "No skill events" in capsys.readouterr().out
+
+    def test_recent_cli_kind(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """ENH-1849: recent --kind cli returns captured CLI event rows."""
+        from little_loops.session_store import cli_event_context
+
+        db = tmp_path / "session.db"
+        with cli_event_context(db, "ll-test", ["--dry-run"]):
+            pass
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "cli"]):
+            assert main_session() == 0
+        assert "ll-test" in capsys.readouterr().out
+
+    def test_recent_cli_empty(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """ENH-1849: recent --kind cli with no rows emits 'No cli events'."""
+        from little_loops.session_store import ensure_db
+
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "cli"]):
+            assert main_session() == 0
+        assert "No cli events" in capsys.readouterr().out
 
 
 class TestBackfillSinceFlag:

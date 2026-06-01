@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 from little_loops.cli.output import configure_output, use_color_enabled
@@ -28,6 +29,7 @@ from little_loops.cli_args import (
 )
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 
 def main_parallel() -> int:
@@ -38,10 +40,11 @@ def main_parallel() -> int:
     Returns:
         Exit code (0 = success)
     """
-    parser = argparse.ArgumentParser(
-        description="Process issues concurrently using isolated git worktrees",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+    with cli_event_context(DEFAULT_DB_PATH, "ll-parallel", sys.argv[1:]):
+        parser = argparse.ArgumentParser(
+            description="Process issues concurrently using isolated git worktrees",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="""
 Examples:
   %(prog)s                    # Process with default workers
   %(prog)s --workers 3        # Use 3 parallel workers
@@ -54,191 +57,191 @@ Examples:
   %(prog)s --type BUG          # Process only bugs
   %(prog)s --type BUG,ENH      # Process bugs and enhancements
 """,
-    )
+        )
 
-    # Parallel-specific arguments (--workers, not --max-workers)
-    parser.add_argument(
-        "--workers",
-        "-w",
-        type=int,
-        default=None,
-        help="Number of parallel workers (default: from config or 2)",
-    )
-    parser.add_argument(
-        "--priority",
-        "-p",
-        type=str,
-        default=None,
-        help="Comma-separated priorities to process (default: all)",
-    )
-    parser.add_argument(
-        "--worktree-base",
-        type=Path,
-        default=None,
-        help="Base directory for git worktrees",
-    )
-    parser.add_argument(
-        "--cleanup",
-        "-c",
-        action="store_true",
-        help="Clean up all worktrees and exit",
-    )
-    parser.add_argument(
-        "--merge-pending",
-        action="store_true",
-        help="Attempt to merge pending work from previous interrupted runs",
-    )
-    parser.add_argument(
-        "--clean-start",
-        action="store_true",
-        help="Remove all worktrees and start fresh (skip pending work check)",
-    )
-    parser.add_argument(
-        "--ignore-pending",
-        action="store_true",
-        help="Report pending work but continue without merging",
-    )
-    parser.add_argument(
-        "--stream-output",
-        action="store_true",
-        help="Stream Claude CLI subprocess output to console",
-    )
-    parser.add_argument(
-        "--show-model",
-        action="store_true",
-        help="Make API call to verify and display model on worktree setup",
-    )
-    parser.add_argument(
-        "--overlap-detection",
-        action="store_true",
-        help="Enable pre-flight overlap detection to reduce merge conflicts (ENH-143)",
-    )
-    parser.add_argument(
-        "--warn-only",
-        action="store_true",
-        help="With --overlap-detection, warn about overlaps instead of serializing",
-    )
+        # Parallel-specific arguments (--workers, not --max-workers)
+        parser.add_argument(
+            "--workers",
+            "-w",
+            type=int,
+            default=None,
+            help="Number of parallel workers (default: from config or 2)",
+        )
+        parser.add_argument(
+            "--priority",
+            "-p",
+            type=str,
+            default=None,
+            help="Comma-separated priorities to process (default: all)",
+        )
+        parser.add_argument(
+            "--worktree-base",
+            type=Path,
+            default=None,
+            help="Base directory for git worktrees",
+        )
+        parser.add_argument(
+            "--cleanup",
+            "-c",
+            action="store_true",
+            help="Clean up all worktrees and exit",
+        )
+        parser.add_argument(
+            "--merge-pending",
+            action="store_true",
+            help="Attempt to merge pending work from previous interrupted runs",
+        )
+        parser.add_argument(
+            "--clean-start",
+            action="store_true",
+            help="Remove all worktrees and start fresh (skip pending work check)",
+        )
+        parser.add_argument(
+            "--ignore-pending",
+            action="store_true",
+            help="Report pending work but continue without merging",
+        )
+        parser.add_argument(
+            "--stream-output",
+            action="store_true",
+            help="Stream Claude CLI subprocess output to console",
+        )
+        parser.add_argument(
+            "--show-model",
+            action="store_true",
+            help="Make API call to verify and display model on worktree setup",
+        )
+        parser.add_argument(
+            "--overlap-detection",
+            action="store_true",
+            help="Enable pre-flight overlap detection to reduce merge conflicts (ENH-143)",
+        )
+        parser.add_argument(
+            "--warn-only",
+            action="store_true",
+            help="With --overlap-detection, warn about overlaps instead of serializing",
+        )
 
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Enable verbose output (default when --quiet is not set)",
-    )
+        parser.add_argument(
+            "--verbose",
+            "-v",
+            action="store_true",
+            help="Enable verbose output (default when --quiet is not set)",
+        )
 
-    # Add common arguments from shared module
-    add_dry_run_arg(parser)
-    add_resume_arg(parser)
-    add_timeout_arg(parser)
-    add_idle_timeout_arg(parser)
-    add_handoff_threshold_arg(parser)
-    add_context_limit_arg(parser)
-    add_quiet_arg(parser)
-    add_only_arg(parser)
-    add_skip_arg(parser)
-    add_type_arg(parser)
-    add_label_arg(parser)
+        # Add common arguments from shared module
+        add_dry_run_arg(parser)
+        add_resume_arg(parser)
+        add_timeout_arg(parser)
+        add_idle_timeout_arg(parser)
+        add_handoff_threshold_arg(parser)
+        add_context_limit_arg(parser)
+        add_quiet_arg(parser)
+        add_only_arg(parser)
+        add_skip_arg(parser)
+        add_type_arg(parser)
+        add_label_arg(parser)
 
-    # Add max-issues and config individually (different help text needed)
-    add_max_issues_arg(parser)
-    parser.add_argument(
-        "--config",
-        "-C",
-        type=Path,
-        default=None,
-        help="Path to project root",
-    )
+        # Add max-issues and config individually (different help text needed)
+        add_max_issues_arg(parser)
+        parser.add_argument(
+            "--config",
+            "-C",
+            type=Path,
+            default=None,
+            help="Path to project root",
+        )
 
-    args = parser.parse_args()
+        args = parser.parse_args()
 
-    project_root = args.config or Path.cwd()
-    config = BRConfig(project_root)
-    configure_output(config.cli)
+        project_root = args.config or Path.cwd()
+        config = BRConfig(project_root)
+        configure_output(config.cli)
 
-    logger = Logger(verbose=args.verbose or not args.quiet, use_color=use_color_enabled())
+        logger = Logger(verbose=args.verbose or not args.quiet, use_color=use_color_enabled())
 
-    # Handle cleanup mode
-    if args.cleanup:
-        from little_loops.parallel import WorkerPool
+        # Handle cleanup mode
+        if args.cleanup:
+            from little_loops.parallel import WorkerPool
 
-        parallel_config = config.create_parallel_config()
-        pool = WorkerPool(parallel_config, config, logger, project_root)
-        pool.cleanup_all_worktrees()
-        logger.success("Cleanup complete")
-        return 0
+            parallel_config = config.create_parallel_config()
+            pool = WorkerPool(parallel_config, config, logger, project_root)
+            pool.cleanup_all_worktrees()
+            logger.success("Cleanup complete")
+            return 0
 
-    # Build priority filter (validates against VALID_PRIORITIES)
-    priority_filter = parse_priorities(args.priority)
+        # Build priority filter (validates against VALID_PRIORITIES)
+        priority_filter = parse_priorities(args.priority)
 
-    if args.handoff_threshold is not None:
-        if not (1 <= args.handoff_threshold <= 100):
-            parser.error("--handoff-threshold must be between 1 and 100")
-        os.environ["LL_HANDOFF_THRESHOLD"] = str(args.handoff_threshold)
+        if args.handoff_threshold is not None:
+            if not (1 <= args.handoff_threshold <= 100):
+                parser.error("--handoff-threshold must be between 1 and 100")
+            os.environ["LL_HANDOFF_THRESHOLD"] = str(args.handoff_threshold)
 
-    if args.context_limit is not None:
-        if args.context_limit < 50000:
-            parser.error("--context-limit must be at least 50000")
-        os.environ["LL_CONTEXT_LIMIT"] = str(args.context_limit)
+        if args.context_limit is not None:
+            if args.context_limit < 50000:
+                parser.error("--context-limit must be at least 50000")
+            os.environ["LL_CONTEXT_LIMIT"] = str(args.context_limit)
 
-    # Parse issue ID filters
-    only_ids = parse_issue_ids(args.only)
-    skip_ids = parse_issue_ids(args.skip)
-    type_prefixes = parse_issue_types(args.type)
-    label_filter = parse_labels(args.label)
+        # Parse issue ID filters
+        only_ids = parse_issue_ids(args.only)
+        skip_ids = parse_issue_ids(args.skip)
+        type_prefixes = parse_issue_types(args.type)
+        label_filter = parse_labels(args.label)
 
-    # Detect current branch for rebase/merge operations (BUG-439)
-    _branch_result = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        capture_output=True,
-        text=True,
-        cwd=project_root,
-    )
-    _base_branch = _branch_result.stdout.strip() if _branch_result.returncode == 0 else "main"
+        # Detect current branch for rebase/merge operations (BUG-439)
+        _branch_result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=project_root,
+        )
+        _base_branch = _branch_result.stdout.strip() if _branch_result.returncode == 0 else "main"
 
-    # Create parallel config with CLI overrides
-    parallel_config = config.create_parallel_config(
-        max_workers=args.workers,
-        priority_filter=sorted(priority_filter) if priority_filter is not None else None,
-        label_filter=label_filter,
-        max_issues=args.max_issues,
-        dry_run=args.dry_run,
-        timeout_seconds=args.timeout,
-        idle_timeout_per_issue=args.idle_timeout,
-        stream_output=args.stream_output if args.stream_output else None,
-        show_model=args.show_model if args.show_model else None,
-        only_ids=only_ids,
-        skip_ids=skip_ids,
-        type_prefixes=type_prefixes,
-        merge_pending=args.merge_pending,
-        clean_start=args.clean_start,
-        ignore_pending=args.ignore_pending,
-        overlap_detection=args.overlap_detection,
-        serialize_overlapping=not args.warn_only,
-        base_branch=_base_branch,
-    )
+        # Create parallel config with CLI overrides
+        parallel_config = config.create_parallel_config(
+            max_workers=args.workers,
+            priority_filter=sorted(priority_filter) if priority_filter is not None else None,
+            label_filter=label_filter,
+            max_issues=args.max_issues,
+            dry_run=args.dry_run,
+            timeout_seconds=args.timeout,
+            idle_timeout_per_issue=args.idle_timeout,
+            stream_output=args.stream_output if args.stream_output else None,
+            show_model=args.show_model if args.show_model else None,
+            only_ids=only_ids,
+            skip_ids=skip_ids,
+            type_prefixes=type_prefixes,
+            merge_pending=args.merge_pending,
+            clean_start=args.clean_start,
+            ignore_pending=args.ignore_pending,
+            overlap_detection=args.overlap_detection,
+            serialize_overlapping=not args.warn_only,
+            base_branch=_base_branch,
+        )
 
-    # Delete state file if not resuming
-    if not args.resume:
-        state_file = config.get_parallel_state_file()
-        if state_file.exists():
-            state_file.unlink()
+        # Delete state file if not resuming
+        if not args.resume:
+            state_file = config.get_parallel_state_file()
+            if state_file.exists():
+                state_file.unlink()
 
-    # Create and run orchestrator
-    from little_loops.events import EventBus
-    from little_loops.parallel import ParallelOrchestrator
+        # Create and run orchestrator
+        from little_loops.events import EventBus
+        from little_loops.parallel import ParallelOrchestrator
 
-    event_bus = EventBus()
-    from little_loops.extension import wire_extensions
-    from little_loops.transport import wire_transports
+        event_bus = EventBus()
+        from little_loops.extension import wire_extensions
+        from little_loops.transport import wire_transports
 
-    wire_extensions(event_bus, config.extensions)
-    wire_transports(event_bus, config.events)
-    orchestrator = ParallelOrchestrator(
-        parallel_config=parallel_config,
-        br_config=config,
-        repo_path=project_root,
-        verbose=args.verbose or not args.quiet,
-        event_bus=event_bus,
-    )
+        wire_extensions(event_bus, config.extensions)
+        wire_transports(event_bus, config.events)
+        orchestrator = ParallelOrchestrator(
+            parallel_config=parallel_config,
+            br_config=config,
+            repo_path=project_root,
+            verbose=args.verbose or not args.quiet,
+            event_bus=event_bus,
+        )
 
-    return orchestrator.run()
+        return orchestrator.run()

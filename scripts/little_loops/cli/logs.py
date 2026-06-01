@@ -17,6 +17,7 @@ from little_loops.cli.output import configure_output, print_json, use_color_enab
 from little_loops.cli_args import add_json_arg
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 from little_loops.user_messages import get_project_folder
 
 _COMMAND_NAME_RE = re.compile(r"<command-name>/ll:")
@@ -360,31 +361,32 @@ def main_logs() -> int:
     Returns:
         0 on success, 1 when no subcommand given or on error.
     """
-    configure_output()
-    logger = Logger(use_color=use_color_enabled())
+    with cli_event_context(DEFAULT_DB_PATH, "ll-logs", sys.argv[1:]):
+        configure_output()
+        logger = Logger(use_color=use_color_enabled())
 
-    parser = _build_parser()
-    args = parser.parse_args()
+        parser = _build_parser()
+        args = parser.parse_args()
 
-    if not args.command:
-        parser.print_help()
+        if not args.command:
+            parser.print_help()
+            return 1
+
+        if args.command == "discover":
+            projects = discover_all_projects(logger)
+            if args.json:
+                print_json({"paths": [str(p) for p in projects]})
+            else:
+                for path in projects:
+                    print(path)
+            return 0
+
+        if args.command == "tail":
+            config = BRConfig(Path.cwd())
+            loops_dir = Path(config.loops.loops_dir)
+            return _cmd_tail(args, loops_dir)
+
+        if args.command == "extract":
+            return _cmd_extract(args, logger)
+
         return 1
-
-    if args.command == "discover":
-        projects = discover_all_projects(logger)
-        if args.json:
-            print_json({"paths": [str(p) for p in projects]})
-        else:
-            for path in projects:
-                print(path)
-        return 0
-
-    if args.command == "tail":
-        config = BRConfig(Path.cwd())
-        loops_dir = Path(config.loops.loops_dir)
-        return _cmd_tail(args, loops_dir)
-
-    if args.command == "extract":
-        return _cmd_extract(args, logger)
-
-    return 1

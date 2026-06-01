@@ -6,7 +6,7 @@ scattered JSON/markdown sources the analyze-* skills read.
 
 Subcommands:
     search   FTS5 full-text query with BM25-ranked results and optional --kind filter
-    recent   most recent rows for an event kind (tool, file, issue, loop, correction)
+    recent   most recent rows for an event kind (tool, file, issue, loop, correction, message, skill, cli)
     backfill seed the database from existing on-disk sources
     related  issue events for a given issue ID
 """
@@ -14,6 +14,7 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ from little_loops.session_store import (
     DEFAULT_DB_PATH,
     backfill,
     backfill_incremental,
+    cli_event_context,
     connect,
     recent,
     search,
@@ -65,7 +67,7 @@ Examples:
     search_parser.add_argument("--fts", required=True, metavar="QUERY", help="FTS5 match query")
     search_parser.add_argument(
         "--kind",
-        choices=["tool", "file", "issue", "loop", "correction", "message", "skill"],
+        choices=["tool", "file", "issue", "loop", "correction", "message", "skill", "cli"],
         default=None,
         help="Filter results by event kind",
     )
@@ -77,7 +79,7 @@ Examples:
     recent_parser = subparsers.add_parser("recent", help="Recent events by kind")
     recent_parser.add_argument(
         "--kind",
-        choices=["tool", "file", "issue", "loop", "correction", "message", "skill"],
+        choices=["tool", "file", "issue", "loop", "correction", "message", "skill", "cli"],
         default=None,
         help="Event kind to list (required unless --issue is given)",
     )
@@ -125,155 +127,160 @@ def main_session() -> int:
     Returns:
         0 on success, 1 when no subcommand is given or on error.
     """
-    configure_output()
-    logger = Logger(use_color=use_color_enabled())
+    with cli_event_context(DEFAULT_DB_PATH, "ll-session", sys.argv[1:]):
+        configure_output()
+        logger = Logger(use_color=use_color_enabled())
 
-    parser = _build_parser()
-    args = parser.parse_args()
+        parser = _build_parser()
+        args = parser.parse_args()
 
-    if not args.command:
-        parser.print_help()
-        return 1
-
-    if args.command == "path":
-        conn = connect(args.db)
-        try:
-            row = conn.execute(
-                "SELECT jsonl_path FROM sessions WHERE session_id = ?", (args.session_id,)
-            ).fetchone()
-        finally:
-            conn.close()
-        if row is None:
-            print(f"Session {args.session_id} not found.")
+        if not args.command:
+            parser.print_help()
             return 1
-        print(row["jsonl_path"])
-        return 0
 
-    if args.command == "search":
-        results: list[Any]
-        if args.kind:
-            results = history_search(args.fts, kind=args.kind, limit=args.limit, db=args.db)
-        else:
+        if args.command == "path":
+            conn = connect(args.db)
             try:
-                results = search(args.db, query=args.fts, limit=args.limit)
-            except ValueError as exc:
-                logger.error(str(exc))
+                row = conn.execute(
+                    "SELECT jsonl_path FROM sessions WHERE session_id = ?", (args.session_id,)
+                ).fetchone()
+            finally:
+                conn.close()
+            if row is None:
+                print(f"Session {args.session_id} not found.")
                 return 1
-        if args.json:
-            if (
-                isinstance(results, list)
-                and results
-                and hasattr(results[0], "__dataclass_fields__")
-            ):
-                from dataclasses import asdict
+            print(row["jsonl_path"])
+            return 0
 
-                results = [asdict(r) for r in results]
-            print_json(list(results))
-            return 0
-        if not results:
-            print("No matches.")
-            return 0
-        for row in results:
-            if hasattr(row, "__dataclass_fields__"):
-                anchor = f"  ({row.anchor})" if row.anchor else ""
-                print(f"[{row.kind}] {row.content}{anchor}")
+        if args.command == "search":
+            results: list[Any]
+            if args.kind:
+                results = history_search(args.fts, kind=args.kind, limit=args.limit, db=args.db)
             else:
-                anchor = f"  ({row['anchor']})" if row.get("anchor") else ""
-                print(f"[{row['kind']}] {row['content']}{anchor}")
-        return 0
+                try:
+                    results = search(args.db, query=args.fts, limit=args.limit)
+                except ValueError as exc:
+                    logger.error(str(exc))
+                    return 1
+            if args.json:
+                if (
+                    isinstance(results, list)
+                    and results
+                    and hasattr(results[0], "__dataclass_fields__")
+                ):
+                    from dataclasses import asdict
 
-    if args.command == "related":
-        events = related_issue_events(args.issue_id, limit=args.limit, db=args.db)
-        if args.json:
-            from dataclasses import asdict
-
-            print_json([asdict(e) for e in events])
+                    results = [asdict(r) for r in results]
+                print_json(list(results))
+                return 0
+            if not results:
+                print("No matches.")
+                return 0
+            for row in results:
+                if hasattr(row, "__dataclass_fields__"):
+                    anchor = f"  ({row.anchor})" if row.anchor else ""
+                    print(f"[{row.kind}] {row.content}{anchor}")
+                else:
+                    anchor = f"  ({row['anchor']})" if row.get("anchor") else ""
+                    print(f"[{row['kind']}] {row['content']}{anchor}")
             return 0
-        if not events:
-            print(f"No events for {args.issue_id}.")
-            return 0
-        for e in events:
-            fields = ", ".join(
-                f"{k}={getattr(e, k)}"
-                for k in ("ts", "transition", "issue_type", "priority")
-                if getattr(e, k)
-            )
-            print(fields)
-        return 0
 
-    if args.command == "recent":
-        issue_filter = getattr(args, "issue", None)
-
-        # --issue only: show sessions that co-occurred with the issue
-        if issue_filter and not args.kind:
-            refs = sessions_for_issue(issue_filter, limit=args.limit, db=args.db)
+        if args.command == "related":
+            events = related_issue_events(args.issue_id, limit=args.limit, db=args.db)
             if args.json:
                 from dataclasses import asdict
 
-                print_json([asdict(r) for r in refs])
+                print_json([asdict(e) for e in events])
                 return 0
-            if not refs:
-                print(f"No sessions found for {issue_filter}.")
+            if not events:
+                print(f"No events for {args.issue_id}.")
                 return 0
-            for r in refs:
-                path = r.jsonl_path or "(no path)"
-                print(f"{r.session_id}  {path}")
+            for e in events:
+                fields = ", ".join(
+                    f"{k}={getattr(e, k)}"
+                    for k in ("ts", "transition", "issue_type", "priority")
+                    if getattr(e, k)
+                )
+                print(fields)
             return 0
 
-        if not args.kind:
-            logger.error("recent: --kind is required unless --issue is given")
-            return 1
+        if args.command == "recent":
+            issue_filter = getattr(args, "issue", None)
 
-        rows = recent(args.db, kind=args.kind, limit=args.limit)
-        if issue_filter:
-            session_ids = {r.session_id for r in sessions_for_issue(issue_filter, db=args.db)}
-            rows = [r for r in rows if r.get("session_id") in session_ids]
-        if args.json:
-            print_json(list(rows))
+            # --issue only: show sessions that co-occurred with the issue
+            if issue_filter and not args.kind:
+                refs = sessions_for_issue(issue_filter, limit=args.limit, db=args.db)
+                if args.json:
+                    from dataclasses import asdict
+
+                    print_json([asdict(r) for r in refs])
+                    return 0
+                if not refs:
+                    print(f"No sessions found for {issue_filter}.")
+                    return 0
+                for r in refs:
+                    path = r.jsonl_path or "(no path)"
+                    print(f"{r.session_id}  {path}")
+                return 0
+
+            if not args.kind:
+                logger.error("recent: --kind is required unless --issue is given")
+                return 1
+
+            rows = recent(args.db, kind=args.kind, limit=args.limit)
+            if issue_filter:
+                session_ids = {r.session_id for r in sessions_for_issue(issue_filter, db=args.db)}
+                rows = [r for r in rows if r.get("session_id") in session_ids]
+            if args.json:
+                print_json(list(rows))
+                return 0
+            if not rows:
+                print(f"No {args.kind} events.")
+                return 0
+            for row in rows:
+                fields = ", ".join(
+                    f"{k}={v}" for k, v in row.items() if k != "id" and v is not None
+                )
+                print(fields)
             return 0
-        if not rows:
-            print(f"No {args.kind} events.")
-            return 0
-        for row in rows:
-            fields = ", ".join(f"{k}={v}" for k, v in row.items() if k != "id" and v is not None)
-            print(fields)
-        return 0
 
-    if args.command == "backfill":
-        since_flag = getattr(args, "since", None)
-        if since_flag is not None:
-            from datetime import datetime
+        if args.command == "backfill":
+            since_flag = getattr(args, "since", None)
+            if since_flag is not None:
+                from datetime import datetime
 
-            try:
                 try:
-                    dt = datetime.fromisoformat(since_flag.replace("Z", "+00:00"))
+                    try:
+                        dt = datetime.fromisoformat(since_flag.replace("Z", "+00:00"))
+                    except ValueError:
+                        dt = datetime.strptime(since_flag, "%Y-%m-%d")
+                    since_ts = dt.timestamp()
                 except ValueError:
-                    dt = datetime.strptime(since_flag, "%Y-%m-%d")
-                since_ts = dt.timestamp()
-            except ValueError:
-                logger.error(f"Invalid date: {since_flag!r}. Use YYYY-MM-DD or ISO 8601.")
-                return 1
-            project_folder = get_project_folder()
-            if project_folder is None:
-                logger.error("No Claude project folder found; cannot discover JSONL files.")
-                return 1
-            jsonl_files = list(project_folder.glob("*.jsonl"))
-            inc_counts = backfill_incremental(args.db, jsonl_files=jsonl_files, since_ts=since_ts)
-            inc_total = sum(inc_counts.values())
+                    logger.error(f"Invalid date: {since_flag!r}. Use YYYY-MM-DD or ISO 8601.")
+                    return 1
+                project_folder = get_project_folder()
+                if project_folder is None:
+                    logger.error("No Claude project folder found; cannot discover JSONL files.")
+                    return 1
+                jsonl_files = list(project_folder.glob("*.jsonl"))
+                inc_counts = backfill_incremental(
+                    args.db, jsonl_files=jsonl_files, since_ts=since_ts
+                )
+                inc_total = sum(inc_counts.values())
+                logger.success(
+                    f"Backfilled {inc_total} rows (incremental, since {since_flag}; "
+                    f"tools={inc_counts['tools']}, messages={inc_counts['messages']}, "
+                    f"sessions={inc_counts['sessions']})"
+                )
+                return 0
+            counts = backfill(args.db)
+            total = sum(counts.values())
             logger.success(
-                f"Backfilled {inc_total} rows (incremental, since {since_flag}; "
-                f"tools={inc_counts['tools']}, messages={inc_counts['messages']}, "
-                f"sessions={inc_counts['sessions']})"
+                f"Backfilled {total} rows "
+                f"(issues={counts['issues']}, loops={counts['loops']}, "
+                f"tools={counts['tools']}, messages={counts.get('messages', 0)}, "
+                f"sessions={counts.get('sessions', 0)})"
             )
             return 0
-        counts = backfill(args.db)
-        total = sum(counts.values())
-        logger.success(
-            f"Backfilled {total} rows "
-            f"(issues={counts['issues']}, loops={counts['loops']}, "
-            f"tools={counts['tools']}, messages={counts.get('messages', 0)}, "
-            f"sessions={counts.get('sessions', 0)})"
-        )
-        return 0
 
-    return 1
+        return 1

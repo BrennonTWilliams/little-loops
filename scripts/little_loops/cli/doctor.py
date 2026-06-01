@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from little_loops.cli.output import configure_output, use_color_enabled
 from little_loops.logger import Logger
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 _STATUS_SYMBOLS: dict[str, str] = {
     "full": "✓",
@@ -101,14 +103,15 @@ def main_doctor(argv: list[str] | None = None) -> int:
     Returns:
         Exit code (0 = all capabilities present, 1 = critical capability missing)
     """
-    from little_loops.config import BRConfig
-    from little_loops.host_runner import apply_host_cli_from_config, resolve_host
+    with cli_event_context(DEFAULT_DB_PATH, "ll-doctor", sys.argv[1:]):
+        from little_loops.config import BRConfig
+        from little_loops.host_runner import apply_host_cli_from_config, resolve_host
 
-    parser = argparse.ArgumentParser(
-        prog="ll-doctor",
-        description="Check host CLI capability support for little-loops features",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        parser = argparse.ArgumentParser(
+            prog="ll-doctor",
+            description="Check host CLI capability support for little-loops features",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="""
 Examples:
   %(prog)s           # Print capability table
   %(prog)s --json    # Output as JSON
@@ -117,27 +120,27 @@ Exit codes:
   0 - All capabilities present
   1 - One or more capabilities unsupported
 """,
-    )
-    parser.add_argument(
-        "-j",
-        "--json",
-        action="store_true",
-        help="Output as JSON",
-    )
+        )
+        parser.add_argument(
+            "-j",
+            "--json",
+            action="store_true",
+            help="Output as JSON",
+        )
 
-    args = parser.parse_args(argv)
-    configure_output()
-    Logger(use_color=use_color_enabled())
+        args = parser.parse_args(argv)
+        configure_output()
+        Logger(use_color=use_color_enabled())
 
-    cfg = BRConfig(Path.cwd())
-    apply_host_cli_from_config(cfg)
-    runner = resolve_host()
-    report = runner.describe_capabilities()
+        cfg = BRConfig(Path.cwd())
+        apply_host_cli_from_config(cfg)
+        runner = resolve_host()
+        report = runner.describe_capabilities()
 
-    _print_report(report, json_mode=args.json)
+        _print_report(report, json_mode=args.json)
 
-    if not args.json:
-        _print_capture_section(cfg.analytics_capture)
-        _print_issues_section(cfg.issues)
+        if not args.json:
+            _print_capture_section(cfg.analytics_capture)
+            _print_issues_section(cfg.issues)
 
-    return 0 if not any(c.status == "unsupported" for c in report.capabilities) else 1
+        return 0 if not any(c.status == "unsupported" for c in report.capabilities) else 1
