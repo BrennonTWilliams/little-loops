@@ -363,6 +363,24 @@ class TestHooksMainModule:
         assert result.stdout == ""
         assert result.stderr == ""
 
+    def test_dispatch_session_end_happy_path(self, tmp_path) -> None:
+        """``session_end`` intent runs the handler and exits 0 (no config in tmp dir).
+
+        With no config in tmp_path the handler short-circuits before producing
+        any output, so both stdout and stderr must be empty strings.
+        """
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "session_end"],
+            input=json.dumps({}),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
+        assert result.stdout == ""
+        assert result.stderr == ""
+
     def test_dispatch_unknown_intent(self) -> None:
         """Unknown intent name exits non-zero with an error message on stderr."""
         result = subprocess.run(
@@ -500,6 +518,7 @@ class TestHooksMainModule:
         assert "my_intent" in table
         assert table["my_intent"] is custom_handler
         assert "pre_compact" in table
+        assert "session_end" in table
         assert "session_start" in table
         # Built-in shadows extension on collision.
         assert table["session_start"] is not shadow_handler

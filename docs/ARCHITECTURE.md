@@ -86,6 +86,7 @@ little-loops/
 │   ├── adapters/            # Host-specific adapters → little_loops.hooks dispatcher
 │   │   ├── claude-code/
 │   │   │   ├── precompact.sh
+│   │   │   ├── session-end.sh
 │   │   │   └── session-start.sh
 │   │   ├── opencode/        # OpenCode TS plugin adapter (Bun runtime)
 │   │   │   ├── index.ts     # Plugin: session.created → session_start, session.compacted → pre_compact

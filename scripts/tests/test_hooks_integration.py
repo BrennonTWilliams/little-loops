@@ -2524,3 +2524,28 @@ class TestIssueAutoCommitHook:
         assert "chore(issues): update ENH-1844 test" in git_log.stdout, (
             f"Expected 'update' verb for Edit, got: {git_log.stdout!r}"
         )
+
+
+class TestSessionEndSweep:
+    """Test session-end.sh adapter exits cleanly with no project config (FEAT-1680)."""
+
+    @pytest.fixture
+    def hook_script(self) -> Path:
+        """Path to the Claude Code session-end adapter."""
+        return Path(__file__).parent.parent.parent / "hooks/adapters/claude-code/session-end.sh"
+
+    def test_adapter_exits_zero(self, hook_script: Path, tmp_path: Path) -> None:
+        """session-end.sh exits 0 when run with minimal input and no project config."""
+        result = subprocess.run(
+            [str(hook_script)],
+            input="{}",
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+
+        assert result.returncode == 0, (
+            f"session-end.sh exited {result.returncode}. "
+            f"stderr: {result.stderr!r}"
+        )

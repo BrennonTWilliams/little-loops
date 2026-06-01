@@ -25,7 +25,7 @@ into `LLHookEvent` payloads.
 | `user_prompt_submit` | ✓           | (deferred)    | ✓             |
 | `pre_tool_use`       | ✓           | (opt-in)[^hot]   | (opt-in)[^hot]   |
 | `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] |
-| `stop`               | ✓           | (deferred)    | (deferred)    |
+| `stop` → `session_end` | ✓ (dispatched as `session_end`) | (deferred)    | (deferred)    |
 | `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] |
 | `permission_request` | N/A         | N/A           | (deferred)    |
 

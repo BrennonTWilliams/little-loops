@@ -177,7 +177,7 @@ flowchart LR
 
 The three concrete adapters:
 
-- **Claude Code** (`hooks/adapters/claude-code/*.sh`) — a one-line bash shim that reads stdin and pipes it through the Python dispatcher. Registered in `hooks/hooks.json` as `bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/<intent>.sh`. Does not set `LL_HOOK_HOST`, so the dispatcher defaults `LLHookEvent.host` to `"claude-code"`.
+- **Claude Code** (`hooks/adapters/claude-code/*.sh`) — a one-line bash shim that reads stdin and pipes it through the Python dispatcher. Registered in `hooks/hooks.json` as `bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/<intent>.sh`. Does not set `LL_HOOK_HOST`, so the dispatcher defaults `LLHookEvent.host` to `"claude-code"`. Adapter files: `precompact.sh`, `session-end.sh`, `session-start.sh`.
 
   ```bash
   INPUT=$(cat)

@@ -3,9 +3,10 @@ id: FEAT-1680
 title: Session-end hook to sweep stale cross-issue status references
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-05-24
 captured_at: '2026-05-24T17:21:20Z'
+completed_at: '2026-06-01T14:13:54Z'
 discovered_by: capture-issue
 labels:
 - hooks

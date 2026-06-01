@@ -275,6 +275,22 @@ class TestConfigSchema:
         assert host["type"] == "string"
         assert host["enum"] == ["claude-code", "opencode", "codex"]
 
+    def test_stale_ref_fix_in_schema(self) -> None:
+        """hooks.stale_ref_fix must be declared in config-schema.json (FEAT-1680).
+
+        The hooks block has additionalProperties: false, so a config containing
+        hooks.stale_ref_fix will be rejected unless the property is declared here.
+        The value must be a string enum restricted to "report" or "auto".
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        assert "stale_ref_fix" in data["properties"]["hooks"]["properties"], (
+            "hooks.stale_ref_fix is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false on the hooks block"
+        )
+        assert data["properties"]["hooks"]["properties"]["stale_ref_fix"]["type"] == "string"
+        assert data["properties"]["hooks"]["properties"]["stale_ref_fix"]["enum"] == ["report", "auto"]
+        assert data["properties"]["hooks"].get("additionalProperties") is False
+
     def test_events_in_schema(self) -> None:
         """events block must be declared in config-schema.json with a transports array.
 

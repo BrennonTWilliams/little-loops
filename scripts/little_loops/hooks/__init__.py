@@ -22,6 +22,8 @@ exits with the handler's exit code. Today it routes:
 
 - ``pre_tool_use`` → :mod:`little_loops.hooks.pre_tool_use` (opt-in only)
 
+- ``session_end`` -> :mod:`little_loops.hooks.sweep_stale_refs`
+
 Future intent handlers will be wired by adding entries to the dispatch table
 in :func:`main_hooks`.
 
@@ -46,7 +48,7 @@ __all__ = ["LLHookEvent", "LLHookResult", "main_hooks"]
 _USAGE = (
     "Usage: python -m little_loops.hooks <intent>\n\n"
     "Available intents: pre_compact, session_start, user_prompt_submit,"
-    " post_tool_use, pre_tool_use"
+    " post_tool_use, pre_tool_use, session_end"
 )
 
 _HOOK_INTENT_REGISTRY: dict[str, Callable[[LLHookEvent], LLHookResult]] = {}
@@ -73,12 +75,14 @@ def _dispatch_table() -> dict[str, Callable[[LLHookEvent], LLHookResult]]:
         pre_compact,
         pre_tool_use,
         session_start,
+        sweep_stale_refs,
         user_prompt_submit,
     )
 
     built_ins: dict[str, Callable[[LLHookEvent], LLHookResult]] = {
         "pre_compact": pre_compact.handle,
         "session_start": session_start.handle,
+        "session_end": sweep_stale_refs.handle,
         "user_prompt_submit": user_prompt_submit.handle,
         "post_tool_use": post_tool_use.handle,
         "pre_tool_use": pre_tool_use.handle,

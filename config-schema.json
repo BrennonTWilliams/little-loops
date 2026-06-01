@@ -1134,6 +1134,12 @@
           "type": "string",
           "enum": ["claude-code", "opencode", "codex"],
           "description": "Host agent identifier. Used by adapters to translate between the host's native hook protocol and the LLHookEvent/LLHookResult wire format."
+        },
+        "stale_ref_fix": {
+          "type": "string",
+          "enum": ["report", "auto"],
+          "default": "report",
+          "description": "Session-end stale-ref sweep mode (FEAT-1680). report prints findings to stderr; auto also rewrites them in-place."
         }
       },
       "additionalProperties": false

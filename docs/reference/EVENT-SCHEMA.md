@@ -79,6 +79,7 @@ Round-trip note: `to_dict()` emits the timestamp under the key `ts`; `from_dict(
 
 - **`pre_compact`** — reads exactly one payload key, `transcript_path` (falls back to `""`). Writes `.ll/ll-precompact-state.json`. Returns `LLHookResult(exit_code=2, feedback=<line-budget-message>)` to surface a context-budget warning to the model.
 - **`session_start`** — reads no payload keys; operates via `Path.cwd()`. Returns `LLHookResult(exit_code=0, feedback=<stderr-lines>, stdout=<merged-config-json-or-None>)`.
+- **`session_end`** — reads no payload keys; operates via `Path.cwd()`. Handler reads done issue IDs via `find_issues(status_filter={"done"})` and the `hooks.stale_ref_fix` key from the raw config; outputs sweep findings in `result.feedback`. Always exits `0`.
 
 ---
 
