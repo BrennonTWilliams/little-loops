@@ -14,16 +14,17 @@ transports, and the backfill routine seeds the database from on-disk sources
 that the analyze-* skills already read.
 
 Public API:
-    DEFAULT_DB_PATH:  default database location (``.ll/history.db``)
-    SCHEMA_VERSION:   current schema version integer
-    ensure_db(path):  create the database and apply pending migrations
-    connect(path):    open a connection (ensures schema first)
-    SQLiteTransport:  EventBus Transport sink writing FSM events to
-                      ``loop_events`` and issue lifecycle events to
-                      ``issue_events`` (ENH-1690)
-    backfill(db,...): populate the database from existing on-disk sources
-    search(db,...):   FTS5 full-text query with BM25 ranking
-    recent(db,...):   recent rows for a given event kind
+    DEFAULT_DB_PATH:             default database location (``.ll/history.db``)
+    SCHEMA_VERSION:              current schema version integer
+    ensure_db(path):             create the database and apply pending migrations
+    connect(path):               open a connection (ensures schema first)
+    SQLiteTransport:             EventBus Transport sink writing FSM events to
+                                 ``loop_events`` and issue lifecycle events to
+                                 ``issue_events`` (ENH-1690)
+    backfill(db,...):            populate the database from existing on-disk sources
+    backfill_incremental(db,...): incremental JSONL-only backfill filtered by mtime
+    search(db,...):              FTS5 full-text query with BM25 ranking
+    recent(db,...):              recent rows for a given event kind
 """
 
 from __future__ import annotations
@@ -41,7 +42,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/history.db")
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 _VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message"})
 _KIND_TABLE = {
@@ -181,6 +182,13 @@ _MIGRATIONS: list[str] = [
     LEFT JOIN sessions s ON s.session_id = me.session_id
     WHERE ie.captured_at IS NOT NULL
     GROUP BY ie.issue_id, me.session_id;
+    """,
+    # v6 (ENH-1830): last_backfill_ts meta key for incremental JSONL backfill at
+    # session start. The meta table already holds arbitrary key/value pairs; this
+    # initialises the sentinel so reads can distinguish "no prior run" (NULL) from
+    # a real ISO 8601 timestamp string.
+    """
+    INSERT OR IGNORE INTO meta(key, value) VALUES('last_backfill_ts', NULL);
     """,
 ]
 
@@ -728,6 +736,14 @@ def _backfill_sessions(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int
     return count
 
 
+def _mtime(path: Path) -> float:
+    """Return file modification time as a Unix float, or 0.0 if inaccessible."""
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def backfill(
     db: Path | str = DEFAULT_DB_PATH,
     *,
@@ -754,6 +770,57 @@ def backfill(
             counts["tools"] = _backfill_tool_events(conn, jsonl_files)
             counts["messages"] = _backfill_messages(conn, jsonl_files)
             counts["sessions"] = _backfill_sessions(conn, jsonl_files)
+        conn.commit()
+    finally:
+        conn.close()
+    return counts
+
+
+def backfill_incremental(
+    db: Path | str = DEFAULT_DB_PATH,
+    *,
+    jsonl_files: list[Path],
+    since_ts: float | None = None,
+) -> dict[str, int]:
+    """Backfill only JSONL files modified after *since_ts*.
+
+    If *since_ts* is ``None``, reads ``last_backfill_ts`` from the ``meta``
+    table (defaults to 0.0 — all files — when the key is absent or NULL).
+    On success, writes the current UTC time as the new ``last_backfill_ts``
+    so the next call automatically skips already-processed files.
+
+    Issues and loop-state JSON are NOT backfilled here; this variant is
+    JSONL-only and designed for low-latency background use in session hooks.
+    Errors are not suppressed — the caller (session hook) wraps the thread
+    function in ``contextlib.suppress(Exception)``.
+    """
+    conn = connect(db)
+    counts: dict[str, int] = {"tools": 0, "messages": 0, "sessions": 0}
+    try:
+        if since_ts is None:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key = 'last_backfill_ts'"
+            ).fetchone()
+            raw = row[0] if (row and row[0]) else None
+            if raw:
+                try:
+                    since_ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
+                except ValueError:
+                    since_ts = 0.0
+            else:
+                since_ts = 0.0
+
+        filtered = [f for f in jsonl_files if _mtime(f) >= since_ts]
+        if filtered:
+            counts["tools"] = _backfill_tool_events(conn, filtered)
+            counts["messages"] = _backfill_messages(conn, filtered)
+            counts["sessions"] = _backfill_sessions(conn, filtered)
+
+        conn.execute(
+            "INSERT INTO meta(key, value) VALUES('last_backfill_ts', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (_now(),),
+        )
         conn.commit()
     finally:
         conn.close()

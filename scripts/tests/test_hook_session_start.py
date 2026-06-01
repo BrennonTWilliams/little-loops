@@ -236,3 +236,72 @@ class TestSessionStartLargeConfigWarning:
 
         assert result.feedback is not None
         assert "Large config" not in result.feedback
+
+
+class TestSessionStartBackfillThread:
+    """ENH-1830: session_start spawns a daemon backfill thread when config is present."""
+
+    def test_spawns_daemon_thread_when_config_present(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
+
+        started: list[bool] = []
+
+        class _MockThread:
+            def __init__(self, target, daemon=False, **kw):
+                started.append(daemon)
+
+            def start(self):
+                pass
+
+        monkeypatch.setattr("little_loops.hooks.session_start.threading.Thread", _MockThread)
+        handle(_event())
+        assert len(started) == 1, "exactly one thread should be spawned"
+        assert started[0] is True, "thread must be a daemon thread"
+
+    def test_no_thread_when_no_config(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        started: list[bool] = []
+
+        class _MockThread:
+            def __init__(self, target, daemon=False, **kw):
+                started.append(daemon)
+
+            def start(self):
+                pass
+
+        monkeypatch.setattr("little_loops.hooks.session_start.threading.Thread", _MockThread)
+        handle(_event())
+        assert started == [], "no thread should be spawned when project has no config"
+
+    def test_backfill_error_does_not_propagate(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The thread target is wrapped in contextlib.suppress — errors must not surface."""
+        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
+
+        executed: list[bool] = []
+
+        def _inline_thread(target, daemon=False, **kw):
+            class _T:
+                def start(self_inner):
+                    executed.append(True)
+                    target()  # run synchronously; must not raise
+
+            return _T()
+
+        def _raise(*a, **kw):
+            raise RuntimeError("simulated backfill failure")
+
+        monkeypatch.setattr("little_loops.hooks.session_start.threading.Thread", _inline_thread)
+        # Patch backfill_incremental inside the module that imports it at call time
+        import little_loops.session_store as ss
+
+        monkeypatch.setattr(ss, "backfill_incremental", _raise)
+        result = handle(_event())
+        assert result.exit_code == 0
+        assert executed == [True], "thread target should have been called"

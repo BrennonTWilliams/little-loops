@@ -381,3 +381,55 @@ class TestMainSession:
         assert isinstance(data, list)
         assert len(data) == 1
         assert data[0]["session_id"] == "sess-43"
+
+
+class TestBackfillSinceFlag:
+    """--since flag for ll-session backfill (ENH-1830)."""
+
+    def test_since_flag_parsed_from_argv(self) -> None:
+        with patch("sys.argv", ["ll-session", "backfill", "--since", "2026-01-01"]):
+            args = _parse_args()
+        assert args.command == "backfill"
+        assert args.since == "2026-01-01"
+
+    def test_backfill_without_since_has_none_default(self) -> None:
+        with patch("sys.argv", ["ll-session", "backfill"]):
+            args = _parse_args()
+        assert getattr(args, "since", None) is None
+
+    def test_since_calls_backfill_incremental(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "session.db"
+        with patch("sys.argv", ["ll-session", "--db", str(db), "backfill", "--since", "2026-01-01"]):
+            with patch("little_loops.cli.session.backfill_incremental") as mock_inc:
+                with patch("little_loops.cli.session.get_project_folder") as mock_folder:
+                    mock_folder.return_value = tmp_path
+                    mock_inc.return_value = {"tools": 2, "messages": 3, "sessions": 1}
+                    result = main_session()
+        assert result == 0
+        assert mock_inc.called
+        out = capsys.readouterr().out
+        assert "incremental" in out
+        assert "2026-01-01" in out
+
+    def test_since_invalid_date_returns_1(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "session.db"
+        with patch("sys.argv", ["ll-session", "--db", str(db), "backfill", "--since", "not-a-date"]):
+            result = main_session()
+        assert result == 1
+
+    def test_backfill_without_since_still_calls_full_backfill(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "session.db"
+        with patch("sys.argv", ["ll-session", "--db", str(db), "backfill"]):
+            with patch("little_loops.cli.session.backfill") as mock_backfill:
+                mock_backfill.return_value = {
+                    "issues": 0, "loops": 0, "tools": 0, "messages": 0, "sessions": 0,
+                }
+                result = main_session()
+        assert result == 0
+        assert mock_backfill.called

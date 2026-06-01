@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -112,6 +113,23 @@ def handle(event: LLHookEvent) -> LLHookResult:
             from little_loops.session_store import ensure_db
 
             ensure_db(cwd / ".ll" / "history.db")
+
+        # ENH-1830: trigger incremental JSONL backfill in a background daemon thread
+        # so historical session data reaches history.db without manual intervention.
+        # All errors are suppressed so backfill failures never block session startup.
+        _db_path = cwd / ".ll" / "history.db"
+
+        def _run_backfill() -> None:
+            with contextlib.suppress(Exception):
+                from little_loops.session_store import backfill_incremental
+                from little_loops.user_messages import get_project_folder
+
+                project_folder = get_project_folder(cwd)
+                if project_folder is not None:
+                    jsonl_files = list(project_folder.glob("*.jsonl"))
+                    backfill_incremental(_db_path, jsonl_files=jsonl_files)
+
+        threading.Thread(target=_run_backfill, daemon=True).start()
 
     # 4. Compose the rendered stdout payload.
     if config_path is not None and not overrides_applied:

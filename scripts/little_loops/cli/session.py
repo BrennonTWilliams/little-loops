@@ -22,7 +22,8 @@ from little_loops.cli_args import add_json_arg
 from little_loops.history_reader import related_issue_events, sessions_for_issue
 from little_loops.history_reader import search as history_search
 from little_loops.logger import Logger
-from little_loops.session_store import DEFAULT_DB_PATH, backfill, connect, recent, search
+from little_loops.session_store import DEFAULT_DB_PATH, backfill, backfill_incremental, connect, recent, search
+from little_loops.user_messages import get_project_folder
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -93,7 +94,15 @@ Examples:
     )
     add_json_arg(related_parser)
 
-    subparsers.add_parser("backfill", help="Seed the database from existing on-disk sources")
+    backfill_parser = subparsers.add_parser(
+        "backfill", help="Seed the database from existing on-disk sources"
+    )
+    backfill_parser.add_argument(
+        "--since",
+        metavar="DATE",
+        default=None,
+        help="Only process JSONL files modified after DATE (ISO 8601 or YYYY-MM-DD); uses incremental mode",
+    )
 
     return parser
 
@@ -224,6 +233,32 @@ def main_session() -> int:
         return 0
 
     if args.command == "backfill":
+        since_flag = getattr(args, "since", None)
+        if since_flag is not None:
+            from datetime import datetime
+
+            try:
+                try:
+                    dt = datetime.fromisoformat(since_flag.replace("Z", "+00:00"))
+                except ValueError:
+                    dt = datetime.strptime(since_flag, "%Y-%m-%d")
+                since_ts = dt.timestamp()
+            except ValueError:
+                logger.error(f"Invalid date: {since_flag!r}. Use YYYY-MM-DD or ISO 8601.")
+                return 1
+            project_folder = get_project_folder()
+            if project_folder is None:
+                logger.error("No Claude project folder found; cannot discover JSONL files.")
+                return 1
+            jsonl_files = list(project_folder.glob("*.jsonl"))
+            inc_counts = backfill_incremental(args.db, jsonl_files=jsonl_files, since_ts=since_ts)
+            inc_total = sum(inc_counts.values())
+            logger.success(
+                f"Backfilled {inc_total} rows (incremental, since {since_flag}; "
+                f"tools={inc_counts['tools']}, messages={inc_counts['messages']}, "
+                f"sessions={inc_counts['sessions']})"
+            )
+            return 0
         counts = backfill(args.db)
         total = sum(counts.values())
         logger.success(

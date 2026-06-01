@@ -1260,7 +1260,7 @@ Export topic-filtered excerpts from completed issue history.
 ```bash
 #### `ll-history sessions <ISSUE_ID>`
 
-List sessions that co-occurred with the given issue's active period. Queries the `issue_sessions` VIEW (v5 schema, ENH-1711) which joins `issue_events` to `message_events` via overlapping timestamps. Requires a prior `ll-session backfill` pass to populate `captured_at` on `issue_events` rows.
+List sessions that co-occurred with the given issue's active period. Queries the `issue_sessions` VIEW (v5 schema, ENH-1711) which joins `issue_events` to `message_events` via overlapping timestamps. Requires a prior `ll-session backfill` pass or automatic session-start backfill (ENH-1830) to populate `captured_at` on `issue_events` rows.
 
 | Flag | Description |
 |------|-------------|
@@ -1505,7 +1505,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 |------------|-------------|
 | `search` | FTS5 full-text query with BM25-ranked results |
 | `recent` | Most recent rows for an event kind; optionally filtered by issue |
-| `backfill` | Seed the database from existing on-disk sources |
+| `backfill` | Seed the database from existing on-disk sources; `--since DATE` uses incremental JSONL-only mode (ENH-1830) |
 | `related` | Issue events for a given issue ID |
 | `path` | Resolve the JSONL file path for a session ID |
 
@@ -1523,7 +1523,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | Flag | Description |
 |------|-------------|
 | `--kind {tool,file,issue,loop,correction,message}` | Event kind to list (required unless `--issue` is given) |
-| `--issue ID` | Filter to sessions that co-occurred with this issue (e.g. `ENH-1710`). Without `--kind`, lists sessions directly from the `issue_sessions` view. Requires a prior `backfill` pass. |
+| `--issue ID` | Filter to sessions that co-occurred with this issue (e.g. `ENH-1710`). Without `--kind`, lists sessions directly from the `issue_sessions` view. Requires a prior `backfill` pass or automatic session-start backfill (ENH-1830). |
 | `--limit N` | Maximum rows (default: 20) |
 | `--json` | Output as a JSON array |
 
@@ -1534,6 +1534,7 @@ ll-session recent --kind loop                   # Recent loop events
 ll-session recent --issue ENH-1710              # Sessions that touched ENH-1710
 ll-session recent --kind message --issue ENH-1710  # Messages from those sessions
 ll-session backfill                             # Seed the database from on-disk sources
+ll-session backfill --since 2026-01-01          # Incremental JSONL backfill since date
 ll-session path <session_id>                    # Resolve JSONL file path for a session ID
 ```
 

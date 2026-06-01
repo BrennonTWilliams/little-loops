@@ -11,6 +11,7 @@ from little_loops.session_store import (
     SQLiteTransport,
     _derive_transition,
     backfill,
+    backfill_incremental,
     connect,
     ensure_db,
     recent,
@@ -952,3 +953,129 @@ class TestBackfillDedup:
         rows = recent(db, kind="issue")
         assert len(rows) == 1
         assert rows[0]["issue_id"] == "BUG-10"
+
+
+class TestSchemaV6:
+    """v6 migration: last_backfill_ts meta key for incremental JSONL backfill (ENH-1830)."""
+
+    def test_last_backfill_ts_key_in_meta_after_ensure_db(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key = 'last_backfill_ts'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "last_backfill_ts key must exist in meta after v6 migration"
+
+    def test_schema_version_is_six(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+        finally:
+            conn.close()
+        assert int(row[0]) == SCHEMA_VERSION
+        assert SCHEMA_VERSION == 6
+
+
+class TestBackfillIncremental:
+    """backfill_incremental() filters JSONL by mtime and tracks last_backfill_ts (ENH-1830)."""
+
+    def _make_tool_jsonl(self, directory: Path, session_id: str) -> Path:
+        jsonl = directory / f"{session_id}.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "sessionId": session_id,
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {
+                        "content": [
+                            {"type": "tool_use", "name": "Read", "input": {"file_path": "x"}}
+                        ]
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return jsonl
+
+    def _make_msg_jsonl(self, directory: Path, session_id: str) -> Path:
+        jsonl = directory / f"{session_id}.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": session_id,
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {"content": "hello from " + session_id},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return jsonl
+
+    def test_processes_all_files_when_since_ts_zero(self, tmp_path: Path) -> None:
+        jsonl = self._make_tool_jsonl(tmp_path, "s1")
+        db = tmp_path / "history.db"
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        assert counts["tools"] >= 1
+
+    def test_filters_files_with_future_since_ts(self, tmp_path: Path) -> None:
+        """Files with mtime before a far-future since_ts are excluded."""
+        jsonl = self._make_tool_jsonl(tmp_path, "s2")
+        db = tmp_path / "history.db"
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=9_999_999_999.0)
+        assert counts["tools"] == 0
+        assert counts["messages"] == 0
+
+    def test_writes_last_backfill_ts_after_run(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        backfill_incremental(db, jsonl_files=[], since_ts=0.0)
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key = 'last_backfill_ts'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row["value"] is not None
+
+    def test_reads_last_backfill_ts_from_meta_when_since_none(self, tmp_path: Path) -> None:
+        """When since_ts=None, meta value controls the mtime filter."""
+        jsonl = self._make_tool_jsonl(tmp_path, "s3")
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO meta(key, value) VALUES('last_backfill_ts', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                ("9999-12-31T23:59:59Z",),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        counts = backfill_incremental(db, jsonl_files=[jsonl])
+        assert counts["tools"] == 0
+
+    def test_missing_file_is_skipped_silently(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        counts = backfill_incremental(
+            db, jsonl_files=[tmp_path / "nonexistent.jsonl"], since_ts=0.0
+        )
+        assert counts["tools"] == 0
+
+    def test_messages_and_sessions_backfilled(self, tmp_path: Path) -> None:
+        jsonl = self._make_msg_jsonl(tmp_path, "s4")
+        db = tmp_path / "history.db"
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        assert counts["messages"] >= 1
+        assert counts["sessions"] >= 1
