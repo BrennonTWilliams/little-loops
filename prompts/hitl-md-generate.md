@@ -104,7 +104,9 @@ highlights and overlays only.
 **Copy AI prompt (sticky top button):**
 - Label: "Copy AI prompt (N flagged)" — N updates live as flags toggle. Initially
   N=0 and the button is greyed out / disabled.
-- When clicked, copy this snippet to the clipboard:
+- When clicked, copy this snippet to the clipboard. The clipboard payload MUST
+  include the segment IDs in brackets and the framing instruction — do not concatenate
+  raw segment text only. The format below is mandatory:
   ```
   Please revise the following sections of the document. Each section is marked with its
   segment ID for reference:
@@ -174,6 +176,12 @@ feature CSS.
 - On `input`, recompute which `.seg` elements receive the highlight tint:
   those with `data-channel-importance >= threshold` get the tint class;
   others have their tint suppressed (text remains fully readable).
+- **IMPORTANT — never hide segments:** The density filter MUST NOT use `display:none`,
+  `visibility:hidden`, or any other mechanism that removes segments from the document
+  flow. Every segment remains visible in the document at all times. Only the
+  `background-color` tint is toggled — remove or add a CSS class that sets
+  `background-color: transparent`. An implementation that hides any `.seg` element
+  from view is a correctness bug, not a style issue.
 - Slider track, thumb, focus ring, toolbar surface, label typography, and
   spacing all use semantic tokens — `var(--color-surface-primary)`,
   `var(--color-border-subtle)`, `var(--color-action-primary)`,
@@ -257,6 +265,10 @@ Steyvers et al. 2024):**
   `var(--space-1)` / `var(--space-2)`, `var(--radius-sm)`,
   `var(--border-width-strong)`. This is the highest-stakes wiring —
   friction interventions that look ad-hoc undermine the calibration signal.
+- **Init sequence (required):** The JavaScript `init()` function called on
+  `DOMContentLoaded` MUST invoke these functions in order: `render()`, `setupStaged()`,
+  `applyDensityFilter()`, `applyTrustCal()`, `updateSelectionUI()`, `updateFlagUI()`.
+  Omitting `applyTrustCal()` means trust calibration is never applied on page load.
 
 **Cross-feature requirements:**
 - All six features live in the same single self-contained HTML; each is a

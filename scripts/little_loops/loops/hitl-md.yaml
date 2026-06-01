@@ -72,6 +72,11 @@ states:
       For prose paragraphs, split at sentence boundaries; for long sentences, at major clause
       boundaries (before "which", "that", "because", "however", "therefore", etc.).
 
+      Special case — YAML frontmatter: if the document begins with a block delimited by
+      `---` on its own line (Obsidian/Jekyll-style frontmatter), treat the entire block
+      (from the opening `---` to the closing `---`) as a single segment of type "separator",
+      saliency_score 0.1, color "#e5e7eb". Do NOT classify frontmatter as type "code".
+
       For each segment, assign:
       - type: one of "heading", "bullet", "code", "blockquote", "prose", "separator"
       - saliency_score: a float 0.0–1.0 reflecting importance/novelty for review
@@ -250,6 +255,12 @@ states:
       density_control: N/10 — [explanation: is there a visible <input type="range"> density
         slider in the toolbar that filters highlighted segments by saliency threshold? It
         must default to a sparse position (Top 10–25%) so the first impression is uncluttered.
+        CRITICAL CHECK: inspect the JS density-filter function. If it uses display:none,
+        visibility:hidden, or any other mechanism that removes .seg elements from the document
+        flow for segments below the threshold, score maximum 4/10 regardless of visual
+        appearance — this is a document-correctness violation that breaks the reading
+        experience. The slider must only suppress highlight tints (background-color), never
+        hide content.
         Slider styles (track, thumb, focus ring, labels) must source from semantic tokens —
         any raw hex/px in the slider region is a deduction.]
       multi_channel_saliency: N/10 — [explanation: does each .seg carry
@@ -277,7 +288,10 @@ states:
         (data-saliency >= 0.7 AND data-channel-confidence < 0.5)? Do segments with
         data-length-normalized="true" display a subtle length-normalized credibility marker
         (e.g., a ruler icon)? Badge colors must map to status tokens (success / warning /
-        danger), not hardcoded greens / yellows / reds.]
+        danger), not hardcoded greens / yellows / reds. Also verify that the trust-calibration
+        apply function (applyTrustCal or equivalent) is called inside the DOMContentLoaded
+        init handler — if absent from init, the feature is non-functional on first load,
+        deduct 3.]
       design_token_consistency: N/10 — [explanation: scan the rendered <style> block and
         inline style attributes for raw hex colors (e.g., #[0-9a-f]{3,8}), raw px/rem values
         outside :root declarations, and inline style="color:…" literals. Confirm each new
@@ -302,7 +316,7 @@ states:
       - inline_constraint: 8
       - markdown_reconstruction: 7
       - staged_highlighting: 7
-      - density_control: 7
+      - density_control: 8
       - multi_channel_saliency: 7
       - schema_switching: 7
       - minimap_state_rail: 7
