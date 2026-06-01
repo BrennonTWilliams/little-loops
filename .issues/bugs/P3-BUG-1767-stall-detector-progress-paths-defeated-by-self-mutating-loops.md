@@ -15,6 +15,7 @@ labels:
 - stall-detector
 - loops
 relates_to: [BUG-1674, BUG-1766]
+parent: EPIC-1773
 ---
 
 # BUG-1767: StallDetector `progress_paths` fingerprint is defeated by loops that mutate their own progress-path files

@@ -16,6 +16,7 @@ labels:
 relates_to: [FEAT-1545, FEAT-1613]
 decision_needed: false
 decision: Option A — hardcoded dispatch following the mcp_tool pattern. Simpler single-file executor change, follows existing conventions. Extension-based path (Option B) deferred as future refactor.
+parent: EPIC-1773
 ---
 
 # FEAT-1794: HITL interrupt FSM state type (`action_type: human_approval`)
