@@ -5822,6 +5822,202 @@ bus.register(my_callback)
 
 ---
 
+## little_loops.history_reader
+
+Typed read-only query module for `.ll/history.db` (ENH-1752). Provides the common queries that ll skills and agents need to consume the session database without importing ad-hoc SQL into every caller. All functions degrade gracefully: missing/empty/corrupt databases return empty lists, never raise.
+
+> **Session store:** For the write-side schema, `SQLiteTransport`, and backfill functions, see [`little_loops.session_store`](#little_loopssession_store).
+
+```python
+from little_loops.history_reader import (
+    find_user_corrections,
+    recent_file_events,
+    search,
+    related_issue_events,
+    sessions_for_issue,
+)
+```
+
+### UserCorrection
+
+Dataclass for user correction rows from the `user_corrections` table.
+
+```python
+@dataclass
+class UserCorrection:
+    ts: str
+    session_id: str | None
+    content: str
+    source: str | None
+```
+
+### FileEvent
+
+Dataclass for file event rows from the `file_events` table.
+
+```python
+@dataclass
+class FileEvent:
+    ts: str
+    session_id: str | None
+    path: str | None
+    op: str | None
+    issue_id: str | None
+    git_sha: str | None
+```
+
+### SearchResult
+
+Dataclass for FTS5 search results from the `search_index` virtual table.
+
+```python
+@dataclass
+class SearchResult:
+    content: str
+    kind: str
+    ref: str
+    anchor: str
+    ts: str
+    score: float
+```
+
+### IssueEvent
+
+Dataclass for issue event rows from the `issue_events` table.
+
+```python
+@dataclass
+class IssueEvent:
+    ts: str
+    issue_id: str | None
+    transition: str | None
+    discovered_by: str | None
+    issue_type: str | None
+    priority: str | None
+```
+
+### SessionRef
+
+Dataclass for `issue_sessions` view rows (ENH-1711). A session that co-occurred with an issue's active period.
+
+```python
+@dataclass
+class SessionRef:
+    issue_id: str | None
+    session_id: str | None
+    jsonl_path: str | None
+    first_message_ts: str | None
+    last_message_ts: str | None
+```
+
+### find_user_corrections
+
+```python
+def find_user_corrections(
+    topic: str,
+    *,
+    limit: int = 10,
+    include_stale: bool = False,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[UserCorrection]
+```
+
+Return user corrections whose content matches *topic* (LIKE search).
+
+**Parameters:**
+- `topic` — substring to match against the `content` column (LIKE `%topic%`)
+- `limit` — maximum number of rows to return (default: 10)
+- `include_stale` — if `False` (default), excludes rows older than 30 days
+- `db` — path to the SQLite database (default: `.ll/history.db`)
+
+**Returns:** List of `UserCorrection` instances ordered by `ts DESC`. Returns `[]` if the database is unavailable.
+
+### recent_file_events
+
+```python
+def recent_file_events(
+    path: str,
+    *,
+    limit: int = 10,
+    include_stale: bool = False,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[FileEvent]
+```
+
+Return recent file events for *path* (LIKE pattern match).
+
+**Parameters:**
+- `path` — substring to match against the `path` column (LIKE `%path%`)
+- `limit` — maximum number of rows to return (default: 10)
+- `include_stale` — if `False` (default), excludes rows older than 30 days
+- `db` — path to the SQLite database (default: `.ll/history.db`)
+
+**Returns:** List of `FileEvent` instances ordered by `ts DESC`. Returns `[]` if the database is unavailable.
+
+### search
+
+```python
+def search(
+    query: str,
+    *,
+    kind: str | None = None,
+    limit: int = 10,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[SearchResult]
+```
+
+FTS5 full-text search with optional *kind* filter.
+
+**Parameters:**
+- `query` — FTS5 query string (BM25-ranked results)
+- `kind` — optional filter: `tool`, `file`, `issue`, `loop`, `correction`, `message`
+- `limit` — maximum number of rows to return (default: 10)
+- `db` — path to the SQLite database (default: `.ll/history.db`)
+
+**Returns:** List of `SearchResult` instances ordered by BM25 score. Returns `[]` if the database is unavailable or the FTS5 query syntax is invalid.
+
+### related_issue_events
+
+```python
+def related_issue_events(
+    issue_id: str,
+    *,
+    limit: int = 20,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[IssueEvent]
+```
+
+Return issue events for *issue_id*, ordered by most recent first.
+
+**Parameters:**
+- `issue_id` — the issue identifier (e.g., `"ENH-1752"`)
+- `limit` — maximum number of rows to return (default: 20)
+- `db` — path to the SQLite database (default: `.ll/history.db`)
+
+**Returns:** List of `IssueEvent` instances ordered by `ts DESC`. Returns `[]` if the database is unavailable.
+
+### sessions_for_issue
+
+```python
+def sessions_for_issue(
+    issue_id: str,
+    *,
+    limit: int = 20,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[SessionRef]
+```
+
+Return sessions that co-occurred with *issue_id*'s active period.
+
+**Parameters:**
+- `issue_id` — the issue identifier (e.g., `"ENH-1752"`)
+- `limit` — maximum number of rows to return (default: 20)
+- `db` — path to the SQLite database (default: `.ll/history.db`)
+
+**Returns:** List of `SessionRef` instances ordered by `first_message_ts DESC`. Queries the `issue_sessions` VIEW (v5 schema migration, ENH-1711). Returns `[]` when the view is absent (pre-v5 schema), the issue has no recorded sessions, or the database is unavailable.
+
+---
+
 ## little_loops.hooks
 
 Host-agnostic hook intent dispatcher. Adapters under `hooks/adapters/<host>/` translate each host's native hook payload into an `LLHookEvent`, pipe it to `python -m little_loops.hooks <intent>`, and translate the returned `LLHookResult` back to the host's response contract.

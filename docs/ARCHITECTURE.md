@@ -574,6 +574,67 @@ See [API Reference — Extension API](reference/API.md#extension-api) for full p
 
 ---
 
+## History DB: Producer→Consumer Flow
+
+`.ll/history.db` is the per-project event history store — a SQLite database populated by hook writers and queryable in milliseconds without re-parsing JSONL or markdown. It provides agent context (user corrections, related file edits, prior issue work) to skills like `refine-issue`, `ready-issue`, and `confidence-check` without the overhead of full-log scanning.
+
+### Write Path
+
+```mermaid
+sequenceDiagram
+    participant SS as session_start
+    participant PTU as post_tool_use
+    participant UPS as user_prompt_submit
+    participant EB as EventBus
+    participant ST as SQLiteTransport
+    participant DB as history.db
+
+    SS->>DB: ensure_db() — bootstrap schema (v1–v7)
+    SS-->>DB: backfill_incremental() in background thread
+    PTU->>DB: tool_events / file_events (direct write, analytics.enabled)
+    UPS->>DB: user_corrections / skill_events via record_correction() / record_skill_event()
+    EB->>ST: emit(IssueEvent | LoopEvent)
+    ST->>DB: INSERT INTO issue_events / loop_events
+```
+
+### Read Path
+
+```mermaid
+flowchart TB
+    DB[history.db]
+    HR[history_reader.py]
+    DB --> HR
+    HR --> HC["ll-history-context CLI<br/>find_user_corrections + recent_file_events<br/>→ ## Historical Context block"]
+    HR --> LS["ll-session CLI<br/>search + related_issue_events<br/>+ sessions_for_issue"]
+    HR --> SK["Skills<br/>refine-issue / ready-issue<br/>/ confidence-check"]
+```
+
+### Components
+
+| Component | File | Role |
+|-----------|------|------|
+| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v7 migrations) at session start |
+| `backfill_incremental()` | `session_store.py` | Background JSONL → DB seed thread |
+| `SQLiteTransport.send()` | `session_store.py` | Routes `issue.*` / `loop.*` events to DB |
+| `EventBus.emit()` | `events.py` | Dispatches events to registered transports |
+| `post_tool_use` hook | `hooks/post_tool_use.py` | Writes `tool_events` / `file_events` per call |
+| `user_prompt_submit` hook | `hooks/user_prompt_submit.py` | Writes `user_corrections` / `skill_events` |
+| `history_reader.py` | `history_reader.py` | Public read API: 5 query functions, 5 dataclasses |
+| `ll-history-context` CLI | `cli/history_context.py` | Primary consumer: renders `## Historical Context` block |
+| `ll-session` CLI | `cli/session.py` | Secondary consumer: search, issue events, sessions |
+| Skills | `commands/refine-issue.md` etc. | Call `ll-history-context` for agent context injection |
+
+### Graceful-Degradation Contract
+
+- `_connect_readonly()` returns `None` on schema-version mismatch, file-not-found, or any open failure
+- All query functions (`find_user_corrections`, `recent_file_events`, `search`, `related_issue_events`, `sessions_for_issue`) return `[]` when the connection is `None`
+- All hook writers wrap DB calls in `contextlib.suppress(Exception)` so a write failure never aborts a tool call
+- `SQLiteTransport.send()` is a no-op when `self._conn is None`
+
+> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v7) and CLI transport-wiring table.
+
+---
+
 ## Host Runner Layer
 
 Sitting alongside the hook-intent layer is the `host_runner` abstraction
