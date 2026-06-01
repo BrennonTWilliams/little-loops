@@ -26,6 +26,20 @@ ENH-1708 (open, P3) wires `user_corrections` reads into `refine-issue` /
 `ready-issue` / `confidence-check`, but will silently return empty results until
 this write path is implemented.
 
+## Current Behavior
+
+The `user_corrections` table exists in `history.db` since schema v1, but has no
+active write path. Nothing ever inserts rows into it, so
+`history_reader.find_user_corrections()` always returns `[]`.
+
+## Expected Behavior
+
+User correction signals detected from hook payloads (`post_tool_use` or
+`user_prompt_submit`) are inserted into `user_corrections` with `content`,
+`session_id`, and `source`. `ll-session recent --kind correction` returns captured
+rows, and `history_reader.find_user_corrections()` returns non-empty results when
+corrections exist.
+
 ## Motivation
 
 User corrections are high-signal training data: they record exactly where the AI
@@ -47,6 +61,11 @@ returns `[]`, making ENH-1708's integration a no-op.
 - `history_reader.find_user_corrections()` returns non-empty results when corrections
   exist
 
+## Scope Boundaries
+
+- **In scope**: Keyword/regex-based correction-detection heuristic; `record_correction()` DB write method; `user_prompt_submit` hook integration; FTS5 index inclusion for `kind='correction'`; unit tests for detection heuristic and DB write path
+- **Out of scope**: ML-based correction classification; retroactive detection from existing session logs; UI or reporting for browsing corrections; read-side ENH-1708 integration (handled separately in that issue)
+
 ## Implementation Steps
 
 1. Define a correction-detection heuristic in `session_store.py` or a new
@@ -59,16 +78,58 @@ returns `[]`, making ENH-1708's integration a no-op.
 5. Add tests for the detection heuristic (true positives, true negatives) and the
    DB insert path
 
-## Files to Modify
+## Integration Map
 
-- `scripts/little_loops/session_store.py` — `record_correction()` method
-- `scripts/little_loops/hooks/` — new or updated intent handler for user prompt events
-- `hooks/hooks.json` — register hook if needed
-- `scripts/tests/test_session_store.py` — correction write/read round-trip tests
+### Files to Modify
+- `scripts/little_loops/session_store.py` — add `record_correction()` method and FTS5 index insert
+- `scripts/little_loops/hooks/` — new or updated intent handler for `user_prompt_submit` events
+- `hooks/hooks.json` — register hook if `user_prompt_submit` event needs wiring
+- `scripts/tests/test_session_store.py` — correction write/read round-trip tests and heuristic tests
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/history_reader.py` — `find_user_corrections()` will return non-empty results once write path exists
+- ENH-1708 consumers (`refine-issue`, `ready-issue`, `confidence-check`) — receive actual correction data once writes land
+
+### Similar Patterns
+- Existing `SessionStore` write methods in `session_store.py` — follow same insert + FTS5 index pattern
+
+### Tests
+- `scripts/tests/test_session_store.py` — true-positive and true-negative heuristic cases; DB round-trip test for `record_correction()`
+
+### Documentation
+- N/A
+
+### Configuration
+- `hooks/hooks.json` — hook registration for `user_prompt_submit` event (if not already registered)
+
+## API/Interface
+
+```python
+class SessionStore:
+    def record_correction(
+        self,
+        content: str,        # truncated to 512 chars before insert
+        session_id: str,
+        source: str,         # "post_tool_use" or "user_prompt_submit"
+    ) -> None:
+        """Insert a detected user correction into the user_corrections table."""
+```
+
+## Impact
+
+- **Priority**: P3 — ENH-1708's correction-based refinement silently returns `[]` until this lands; no user-visible breakage today
+- **Effort**: Small-Medium — New `record_correction()` method and detection heuristic follow existing `SessionStore` write patterns; hook wiring is incremental
+- **Risk**: Low — Purely additive write path; no changes to existing read behavior or schema
+- **Breaking Change**: No
 
 ## Depends On
 
 - ENH-1708 is the primary consumer of this write path
 
+## Status
+
+**Open** | Created: 2026-06-01 | Priority: P3
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-01T01:16:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eee9dd1e-f437-4c64-b581-24724e938107.jsonl`
 - `/ll:capture-issue` - 2026-06-01T01:10:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

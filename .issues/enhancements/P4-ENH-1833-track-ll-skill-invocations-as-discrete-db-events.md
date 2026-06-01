@@ -25,6 +25,21 @@ run manually against session JSONL files. There is no DB table or write path for
 skill dispatch events. This makes it impossible to query "which skills were invoked
 recently" or "how often was `/ll:ready-issue` used last week" from the DB alone.
 
+## Current Behavior
+
+Skill invocations are not recorded in `history.db` at dispatch time. The only way
+historical skill usage appears in the DB is via `ll-session backfill`, which parses
+session JSONL files post-hoc. There is no `skill_events` table and no real-time
+write path. `ll-session recent --kind skill` returns nothing; FTS5 search has no
+`kind='skill'` rows.
+
+## Expected Behavior
+
+Each `/ll:` skill invocation is written to a `skill_events` table in `history.db`
+at dispatch time via the `user_prompt_submit` hook, recording `ts`, `session_id`,
+`skill_name`, and `args` (truncated). `ll-session recent --kind skill` returns
+these rows and FTS5 search includes them with `kind='skill'`.
+
 ## Motivation
 
 Skill invocation history would enable:
@@ -67,5 +82,25 @@ the skill dispatch signal specifically.
 
 - ENH-1830 is complementary (auto-backfill fills historical gaps; this fills forward)
 
+## Scope Boundaries
+
+- Detection is best-effort `/ll:` prefix regex match only; no deep arg parsing or validation
+- Does not backfill historical skill events from existing JSONL files (ENH-1830 covers that)
+- Does not capture non-`/ll:` slash commands (built-in `/clear`, `/help`, etc.)
+- No analytics dashboard or aggregation UI; raw event capture only
+- No deduplication of repeated invocations within a session
+
+## Impact
+
+- **Priority**: P4 — Useful observability improvement; not blocking any current workflow
+- **Effort**: Small — Additive: new DB table, `record_skill_event()` helper, hook wiring; no existing behavior changed
+- **Risk**: Low — Purely additive; no existing tables modified; hook write failure does not affect skill execution
+- **Breaking Change**: No
+
+## Status
+
+**Open** | Created: 2026-06-01 | Priority: P4
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-01T01:20:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c78d4399-dc58-4488-ac5a-557b6cd5e073.jsonl`
 - `/ll:capture-issue` - 2026-06-01T01:10:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
