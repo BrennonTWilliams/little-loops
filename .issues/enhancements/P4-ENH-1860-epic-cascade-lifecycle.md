@@ -7,6 +7,7 @@ captured_at: '2026-06-01T17:35:32Z'
 discovered_date: '2026-06-01'
 discovered_by: capture-issue
 relates_to: [FEAT-1737]
+parent: EPIC-1864
 ---
 
 # ENH-1860: EPIC cascade lifecycle — propagate close/cancel to children
