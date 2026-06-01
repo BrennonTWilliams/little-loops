@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ll-loop diagnose-evaluators` subcommand** — Detects non-discriminating evaluator states from run history by computing per-state Bernoulli variance; flags states below threshold with pattern-matched recommendations. (ENH-1792)
 - **`audit-issue-conflicts --cross-theme` flag** — Phase 2b fingerprint sweep catches conflicts between issues in different thematic groups; uses `ll-issues fingerprint` to identify file-overlap pairs across batch boundaries without an LLM call, then dispatches targeted single-pair agents only for matched pairs. (ENH-1801)
 - **`ll-issues fingerprint` / `ll-issues fp` subcommand** — Extracts a structured fingerprint (id, `files_to_modify`, `key_terms`) from an issue file as JSON; no LLM call. Used by `audit-issue-conflicts --cross-theme` Phase 2b. (ENH-1801)
+- **`action_stall` FSM evaluator** — Detects repeated-action loops by hashing configurable context keys (`track`) across consecutive iterations; routes `no` after `max_repeat` identical-hash rounds. File-backed; no git repository required. Exit-code-aware (exempt from the non-zero short-circuit). (ENH-1827)
+- **`comparator` FSM evaluator** — Blind A/B comparison of the current run output against a stored baseline via LLM judge; supports majority-vote across `min_pairs` pairs. Baselines live under `.loops/baselines/<loop>/output.txt`; auto-promoted on first success when `auto_promote: true`. (FEAT-1790)
+- **`ll-loop promote-baseline` subcommand** — Manually promotes the latest run's action output as the new comparator baseline; reads `action_output` events from `.loops/.history/` and writes to `.loops/baselines/<loop>/output.txt`. Alternative to `auto_promote: true`.
+- **`sessions` table + `ll-session path` subcommand** — `history.db` schema v4 adds a `sessions` table indexed by session ID. `ll-session path <session_id>` resolves and prints the JSONL transcript path for a given session. (ENH-1710)
+- **`issue_sessions` VIEW + `ll-history sessions` subcommand** — `history.db` schema v5 adds the `issue_sessions` VIEW joining `issue_events` to `message_events` via overlapping timestamps. `ll-history sessions <ISSUE_ID>` lists sessions that co-occurred with an issue's active period; supports `--limit N` and `--json`. Requires a prior `ll-session backfill` pass. (ENH-1711)
 
 ### Fixed
 
@@ -40,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`audit-issue-conflicts` unstaged files** — `git add .issues/` no longer stages unrelated untracked files. (BUG-1800)
 - **`audit-issue-conflicts` duplicate Scope Boundary / Scope Addition sections** — Phase 4b now checks for existing audit-authored sections before appending; repeated runs on an unchanged backlog no longer accumulate duplicate sections. (ENH-1802)
 - **`hitl-md` generate state missing `on_error` routing** — Missing `on_error` in the generate state no longer causes fatal loop termination. (BUG-1803)
+- **`hitl-md` density filter hiding segments** — The density filter in `hitl-md` no longer incorrectly suppresses segments that pass the rubric; additional rubric gaps (blank-line handling, trailing whitespace) also addressed.
 
 ### Changed
 

@@ -533,6 +533,18 @@ The transport layer fans events out additively: every event emitted on the `Even
 
 **Webhook batching:** `WebhookTransport.send()` enqueues non-blocking; a daemon thread POSTs accumulated events as a JSON array on each `batch_ms` tick. Failed POSTs retry with exponential backoff (up to 3 times, 0.5s–8s); after exhaustion the batch is dropped with a warning. `close()` does one final flush before joining the thread. New transports plug in through the same `Transport` protocol without changes to `EventBus` or the CLI wiring.
 
+**`history.db` schema versions:** `SQLiteTransport` applies incremental `PRAGMA user_version` migrations on open. Each version adds tables or views without dropping prior ones.
+
+| Version | Object | Purpose |
+|---------|--------|---------|
+| v1 | `tool_events`, `file_events`, `issue_events`, `correction_events` | Core event tables — tool calls, file reads/writes, issue lifecycle, user corrections |
+| v2 | `message_events` | User and assistant message text for FTS search |
+| v3 | FTS5 index on `message_events` | BM25 full-text search (`ll-session search --fts`) |
+| v4 | `sessions` | One row per Claude Code session; indexed by `session_id` for `ll-session path` resolution (ENH-1710) |
+| v5 | `issue_sessions` VIEW | Joins `issue_events` to `message_events` via overlapping timestamps; enables `ll-history sessions <ID>` and `ll-session recent --issue <ID>` (ENH-1711) |
+
+Schema migration runs automatically; no manual `ll-session backfill` is needed for new tables. The `issue_sessions` VIEW requires `captured_at` populated on `issue_events` rows, which `ll-session backfill` seeds from on-disk sources for pre-v4 databases.
+
 ### Extension Loading
 
 Extensions are loaded via two mechanisms:
