@@ -9,6 +9,8 @@ Identifies multi-step workflows and cross-session patterns using:
 Usage as CLI:
     ll-workflows analyze --input messages.jsonl --patterns step1.yaml
     ll-workflows analyze -i messages.jsonl -p patterns.yaml -o output.yaml
+    ll-workflows propose --patterns step1.yaml --workflows step2.yaml
+    ll-workflows propose -p step1.yaml -w step2.yaml -o out.yaml --format json
 
 Usage as library:
     from little_loops.workflow_sequence import analyze_workflows
@@ -22,7 +24,10 @@ Usage as library:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+import yaml
 
 from little_loops.cli.output import configure_output, use_color_enabled
 from little_loops.logger import Logger
@@ -78,10 +83,14 @@ Examples:
   %(prog)s analyze -i messages.jsonl -p patterns.yaml -o output.yaml
   %(prog)s analyze --input .ll/user-messages.jsonl \\
                    --patterns .ll/workflow-analysis/step1-patterns.yaml
+  %(prog)s propose --patterns .ll/workflow-analysis/step1-patterns.yaml \\
+                   --workflows .ll/workflow-analysis/step2-workflows.yaml
 
 Pipeline (--input defaults to .ll/workflow-analysis/step1-patterns.jsonl):
   ll-messages --output .ll/workflow-analysis/step1-patterns.jsonl
   %(prog)s analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
+  %(prog)s propose --patterns .ll/workflow-analysis/step1-patterns.yaml \\
+                   --workflows .ll/workflow-analysis/step2-workflows.yaml
 """,
     )
 
@@ -142,6 +151,43 @@ Pipeline (--input defaults to .ll/workflow-analysis/step1-patterns.jsonl):
         default=0.6,
         metavar="FLOAT",
         help="Minimum boundary score to split workflow segments (default: 0.6)",
+    )
+
+    # propose subcommand
+    propose_parser = subparsers.add_parser(
+        "propose",
+        help="Run Step 3 automation proposals from workflow analysis output",
+    )
+    propose_parser.add_argument(
+        "-p",
+        "--patterns",
+        type=Path,
+        required=True,
+        metavar="PATH",
+        help="Step 1 patterns YAML (from ll-messages or workflow-pattern-analyzer)",
+    )
+    propose_parser.add_argument(
+        "-w",
+        "--workflows",
+        type=Path,
+        required=True,
+        metavar="PATH",
+        help="Step 2 workflows YAML (from ll-workflows analyze)",
+    )
+    propose_parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Output path (default: .ll/workflow-analysis/step3-proposals.yaml or .json)",
+    )
+    propose_parser.add_argument(
+        "-f",
+        "--format",
+        choices=["yaml", "json"],
+        default="yaml",
+        help="Output format (default: yaml)",
     )
 
     args = parser.parse_args()
@@ -212,6 +258,45 @@ Pipeline (--input defaults to .ll/workflow-analysis/step1-patterns.jsonl):
         except Exception as e:
             logger.error(str(e))
             return 1
+
+    if args.command == "propose":
+        if not args.patterns.exists():
+            logger.error(f"Patterns file not found: {args.patterns}")
+            return 1
+
+        if not args.workflows.exists():
+            logger.error(f"Workflows file not found: {args.workflows}")
+            return 1
+
+        output_path = args.output
+        if output_path is None:
+            ext = "json" if args.format == "json" else "yaml"
+            output_path = Path(f".ll/workflow-analysis/step3-proposals.{ext}")
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        from little_loops.subprocess_utils import run_claude_command
+
+        skill_cmd = f"/ll:workflow-automation-proposer {args.patterns} {args.workflows}"
+        result = run_claude_command(command=skill_cmd, timeout=300)
+        if result.returncode != 0:
+            logger.error("Proposal generation failed")
+            return 1
+
+        try:
+            proposals_data = yaml.safe_load(result.stdout) or {}
+        except yaml.YAMLError as e:
+            logger.error(f"Failed to parse proposal output: {e}")
+            return 1
+
+        if args.format == "json":
+            output_path.write_text(json.dumps(proposals_data, indent=2))
+        else:
+            with open(output_path, "w") as f:
+                yaml.dump(proposals_data, f, default_flow_style=False, allow_unicode=True)
+
+        logger.success(f"Output written to: {output_path}")
+        return 0
 
     return 1
 

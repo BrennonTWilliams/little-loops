@@ -2,9 +2,10 @@
 id: FEAT-1755
 title: ll-workflows propose subcommand as CLI fallback for Step 3 automation proposals
 type: FEAT
-status: open
+status: done
 priority: P3
 captured_at: '2026-05-27T21:20:05Z'
+completed_at: '2026-06-01T20:29:44Z'
 discovered_date: '2026-05-27'
 discovered_by: capture-issue
 relates_to:
@@ -211,6 +212,7 @@ Decided by `/ll:decide-issue` on 2026-06-01.
 - FEAT-557: Add `--format json` to `ll-workflows` (done — parity reference for output flags)
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T20:23:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/77ea0545-6144-4266-a5c4-0bfff8650779.jsonl`
 - `/ll:confidence-check` - 2026-06-01T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/813e2a5f-d24c-438e-a426-e4970231e347.jsonl`
 - `/ll:decide-issue` - 2026-06-01T20:19:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e874e443-0b3b-43eb-88ed-57be305c96d0.jsonl`
 - `/ll:wire-issue` - 2026-06-01T20:10:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21fc4d51-9f05-467d-9e9a-9dfbe2765d14.jsonl`

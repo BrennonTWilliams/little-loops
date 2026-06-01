@@ -1415,7 +1415,7 @@ ll-history sessions ENH-1710 --json       # JSON output
 
 ### ll-workflows
 
-Identify multi-step workflow patterns from user message history. Step 2 of the `/ll:analyze-workflows` pipeline.
+Identify multi-step workflow patterns from user message history. Steps 2 and 3 of the `/ll:analyze-workflows` pipeline.
 
 **Subcommands:**
 
@@ -1442,6 +1442,34 @@ ll-workflows analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
 ll-workflows analyze -i messages.jsonl -p patterns.yaml -o output.yaml
 ll-workflows analyze --input .ll/user-messages.jsonl \
                      --patterns .ll/workflow-analysis/step1-patterns.yaml
+```
+
+#### `ll-workflows propose`
+
+Run Step 3 automation proposals from workflow analysis output. Invokes the `workflow-automation-proposer` skill and writes the proposals to a file. Use this as a CLI-native fallback when the interactive skill invocation is unavailable (e.g., `disable-model-invocation` breakage).
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--patterns` | `-p` | **Required.** Step 1 patterns YAML (from `ll-messages` or `workflow-pattern-analyzer`) |
+| `--workflows` | `-w` | **Required.** Step 2 workflows YAML (from `ll-workflows analyze`) |
+| `--output` | `-o` | Output path (default: `.ll/workflow-analysis/step3-proposals.yaml` or `.json`) |
+| `--format` | `-f` | Output format: `yaml` (default) or `json` |
+
+**Examples:**
+```bash
+# Full pipeline — Steps 1, 2, 3 non-interactively
+ll-messages --output .ll/workflow-analysis/step1-patterns.jsonl
+ll-workflows analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
+ll-workflows propose \
+  --patterns .ll/workflow-analysis/step1-patterns.yaml \
+  --workflows .ll/workflow-analysis/step2-workflows.yaml
+
+# JSON output at a custom path
+ll-workflows propose \
+  --patterns step1.yaml \
+  --workflows step2.yaml \
+  --output out.json \
+  --format json
 ```
 
 ---

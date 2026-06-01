@@ -219,6 +219,10 @@ Partial outputs preserved in: .ll/workflow-analysis/
 To debug:
 1. Verify step1-patterns.yaml and step2-workflows.yaml exist
 2. Manually invoke: /ll:workflow-automation-proposer {paths}
+3. CLI fallback (if skill invocation is unavailable):
+   ll-workflows propose \
+     --patterns .ll/workflow-analysis/step1-patterns.yaml \
+     --workflows .ll/workflow-analysis/step2-workflows.yaml
 ```
 
 Mark "Run Step 3: Automation Proposals (skill)" as completed after success.

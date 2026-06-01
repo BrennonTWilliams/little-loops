@@ -222,6 +222,25 @@ This skill reads Step 1 and Step 2 outputs and writes `step3-proposals.yaml`. Ru
 /ll:workflow-automation-proposer .ll/workflow-analysis/step1-patterns.yaml .ll/workflow-analysis/step2-workflows.yaml
 ```
 
+### CLI alternative: `ll-workflows propose`
+
+If the skill invocation is unavailable (e.g., `disable-model-invocation` config issue), use the CLI fallback to run Step 3 non-interactively:
+
+```bash
+ll-workflows propose \
+  --patterns .ll/workflow-analysis/step1-patterns.yaml \
+  --workflows .ll/workflow-analysis/step2-workflows.yaml
+# Writes: .ll/workflow-analysis/step3-proposals.yaml
+
+# JSON output
+ll-workflows propose \
+  --patterns .ll/workflow-analysis/step1-patterns.yaml \
+  --workflows .ll/workflow-analysis/step2-workflows.yaml \
+  --format json -o step3.json
+```
+
+This makes the complete three-step pipeline scriptable end-to-end without an interactive session.
+
 ### What It Looks For
 
 The skill targets high-value automation candidates:

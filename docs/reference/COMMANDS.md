@@ -852,6 +852,8 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 **Arguments:**
 - `step1_file step2_file` (optional): Paths to step 1 and step 2 YAML files (auto-detected if omitted)
 
+> **CLI fallback:** `ll-workflows propose --patterns step1.yaml --workflows step2.yaml` runs the same Step 3 logic directly from the command line, making the full pipeline scriptable end-to-end without an interactive Claude Code session. See [CLI reference](CLI.md#ll-workflows) for flags.
+
 ---
 
 ## Quick Reference

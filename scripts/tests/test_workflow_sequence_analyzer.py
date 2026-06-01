@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import tempfile
 from datetime import datetime
@@ -2169,3 +2170,250 @@ class TestMainDefaultInput:
                 pytest.fail(
                     f"argparse raised SystemExit({exc.code}) — --input is still required=True"
                 )
+
+
+class TestMainProposeSubcommand:
+    """Tests for main() propose subcommand (FEAT-1755)."""
+
+    def _make_completed(
+        self, returncode: int = 0, stdout: str = "", stderr: str = ""
+    ) -> subprocess.CompletedProcess:
+        return subprocess.CompletedProcess(
+            args=[], returncode=returncode, stdout=stdout, stderr=stderr
+        )
+
+    _PROPOSAL_YAML = (
+        "analysis_metadata:\n  version: '1.0'\n"
+        "summary:\n  total_proposals: 0\n"
+        "proposals: []\n"
+        "existing_command_suggestions: []\n"
+        "implementation_roadmap:\n  immediate: []\n"
+    )
+
+    def test_missing_patterns_exits_1(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Missing --patterns file exits with code 1 and clear error."""
+        monkeypatch.chdir(tmp_path)
+        workflows_file = tmp_path / "workflows.yaml"
+        workflows_file.write_text("")
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-workflows",
+                "propose",
+                "--patterns",
+                "nonexistent.yaml",
+                "--workflows",
+                str(workflows_file),
+            ],
+        ):
+            result = main()
+        assert result == 1
+        assert "nonexistent.yaml" in capsys.readouterr().err
+
+    def test_missing_workflows_exits_1(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Missing --workflows file exits with code 1 and clear error."""
+        monkeypatch.chdir(tmp_path)
+        patterns_file = tmp_path / "patterns.yaml"
+        patterns_file.write_text("")
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-workflows",
+                "propose",
+                "--patterns",
+                str(patterns_file),
+                "--workflows",
+                "nonexistent.yaml",
+            ],
+        ):
+            result = main()
+        assert result == 1
+        assert "nonexistent.yaml" in capsys.readouterr().err
+
+    def test_bare_propose_no_args_exits_nonzero(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Bare 'propose' with no arguments exits non-zero (argparse required-arg error)."""
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-workflows", "propose"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        assert exc_info.value.code != 0
+
+    def test_success_writes_yaml(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Successful propose writes YAML with expected top-level keys."""
+        monkeypatch.chdir(tmp_path)
+        patterns_file = tmp_path / "patterns.yaml"
+        patterns_file.write_text("category_distribution: []")
+        workflows_file = tmp_path / "workflows.yaml"
+        workflows_file.write_text("workflows: []")
+        output_file = tmp_path / "proposals.yaml"
+
+        mock_result = self._make_completed(stdout=self._PROPOSAL_YAML)
+
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=mock_result
+        ):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-workflows",
+                    "propose",
+                    "--patterns",
+                    str(patterns_file),
+                    "--workflows",
+                    str(workflows_file),
+                    "--output",
+                    str(output_file),
+                ],
+            ):
+                result = main()
+
+        assert result == 0
+        assert output_file.exists()
+
+        with open(output_file) as f:
+            data = yaml.safe_load(f)
+
+        assert "analysis_metadata" in data
+        assert "summary" in data
+        assert "proposals" in data
+        assert "existing_command_suggestions" in data
+        assert "implementation_roadmap" in data
+
+    def test_format_json_writes_valid_json(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--format json writes valid JSON with expected top-level keys."""
+        monkeypatch.chdir(tmp_path)
+        patterns_file = tmp_path / "patterns.yaml"
+        patterns_file.write_text("category_distribution: []")
+        workflows_file = tmp_path / "workflows.yaml"
+        workflows_file.write_text("workflows: []")
+        output_file = tmp_path / "proposals.json"
+
+        mock_result = self._make_completed(stdout=self._PROPOSAL_YAML)
+
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=mock_result
+        ):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-workflows",
+                    "propose",
+                    "--patterns",
+                    str(patterns_file),
+                    "--workflows",
+                    str(workflows_file),
+                    "--output",
+                    str(output_file),
+                    "--format",
+                    "json",
+                ],
+            ):
+                result = main()
+
+        assert result == 0
+        assert output_file.exists()
+
+        with open(output_file) as f:
+            data = json.loads(f.read())
+
+        assert "analysis_metadata" in data
+        assert "summary" in data
+        assert "proposals" in data
+        assert "existing_command_suggestions" in data
+        assert "implementation_roadmap" in data
+
+    def test_skill_failure_exits_1(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Non-zero return from run_claude_command exits with code 1."""
+        monkeypatch.chdir(tmp_path)
+        patterns_file = tmp_path / "patterns.yaml"
+        patterns_file.write_text("category_distribution: []")
+        workflows_file = tmp_path / "workflows.yaml"
+        workflows_file.write_text("workflows: []")
+
+        mock_result = self._make_completed(returncode=1, stderr="skill error")
+
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=mock_result
+        ):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-workflows",
+                    "propose",
+                    "--patterns",
+                    str(patterns_file),
+                    "--workflows",
+                    str(workflows_file),
+                ],
+            ):
+                result = main()
+
+        assert result == 1
+        assert "failed" in capsys.readouterr().err.lower()
+
+    def test_default_output_path_yaml(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Default output path is .ll/workflow-analysis/step3-proposals.yaml."""
+        monkeypatch.chdir(tmp_path)
+        patterns_file = tmp_path / "patterns.yaml"
+        patterns_file.write_text("category_distribution: []")
+        workflows_file = tmp_path / "workflows.yaml"
+        workflows_file.write_text("workflows: []")
+
+        mock_result = self._make_completed(stdout=self._PROPOSAL_YAML)
+
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=mock_result
+        ):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-workflows",
+                    "propose",
+                    "--patterns",
+                    str(patterns_file),
+                    "--workflows",
+                    str(workflows_file),
+                ],
+            ):
+                result = main()
+
+        assert result == 0
+        default_output = tmp_path / ".ll" / "workflow-analysis" / "step3-proposals.yaml"
+        assert default_output.exists()
