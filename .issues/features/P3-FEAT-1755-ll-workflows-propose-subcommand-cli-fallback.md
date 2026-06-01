@@ -9,8 +9,8 @@ discovered_date: '2026-05-27'
 discovered_by: capture-issue
 relates_to:
 - BUG-1754
-decision_needed: true
-confidence_score: 95
+decision_needed: false
+confidence_score: 100
 outcome_confidence: 75
 score_complexity: 14
 score_test_coverage: 18
@@ -128,6 +128,8 @@ if args.command == "propose":
 
 **Option A — Invoke the skill via `run_claude_command()`**
 
+> **Selected:** Option A — Invoke the skill via `run_claude_command()` — highest codebase consistency (3/3); matches `cmd_invoke()` canonical pattern; BUG-1754 is separately fixable.
+
 ```python
 from little_loops.subprocess_utils import run_claude_command
 
@@ -173,6 +175,25 @@ Parse `result.stdout` as YAML (the skill writes YAML by default), then re-serial
 
 The codebase does **not** use the `anthropic` Python SDK anywhere. Use `run_claude_command()` from `scripts/little_loops/subprocess_utils.py` for all LLM invocations.
 
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-01.
+
+**Selected**: Option A — Invoke the skill via `run_claude_command()`
+
+**Reasoning**: Option A matches the canonical `cmd_invoke()` pattern used across the codebase — 7 production modules and 95 total call sites — with a reuse score of 3/3. The slash-command string construction (`f"/ll:workflow-automation-proposer {args.patterns} {args.workflows}"`) and `run_claude_command()` call are identical to established patterns in `action.py`, `issue_manager.py`, and the FSM executor. Option B requires authoring a new `build_proposal_prompt()` function by distilling `skills/workflow-automation-proposer/SKILL.md` (no Python equivalent exists), adding maintenance overhead. While Option A inherits BUG-1754-type failures in theory, BUG-1754 is a separately fixable config bug; Option A still achieves the feature's core goal of making Step 3 fully scriptable end-to-end.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (selected) | 3/3 | 3/3 | 3/3 | 1/3 | 10/12 |
+| Option B | 2/3 | 1/3 | 2/3 | 3/3 | 8/12 |
+
+**Key evidence**:
+- **Option A**: `cmd_invoke()` in `scripts/little_loops/cli/action.py` is the exact template; test pattern `patch("little_loops.subprocess_utils.run_claude_command", ...)` is established in `scripts/tests/test_action.py`
+- **Option B**: One direct precedent in `scripts/little_loops/cli/generate_skill_descriptions.py:119`; requires new `build_proposal_prompt()` from `skills/workflow-automation-proposer/SKILL.md`; achieves full skill-independence (risk 3/3) but at simplicity cost (1/3)
+
 ## Acceptance Criteria
 
 - `ll-workflows propose --patterns p.yaml --workflows w.yaml` succeeds and writes `.ll/workflow-analysis/step3-proposals.yaml`
@@ -190,6 +211,8 @@ The codebase does **not** use the `anthropic` Python SDK anywhere. Use `run_clau
 - FEAT-557: Add `--format json` to `ll-workflows` (done — parity reference for output flags)
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-01T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/813e2a5f-d24c-438e-a426-e4970231e347.jsonl`
+- `/ll:decide-issue` - 2026-06-01T20:19:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e874e443-0b3b-43eb-88ed-57be305c96d0.jsonl`
 - `/ll:wire-issue` - 2026-06-01T20:10:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21fc4d51-9f05-467d-9e9a-9dfbe2765d14.jsonl`
 - `/ll:refine-issue` - 2026-06-01T20:05:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4b5da24-54cf-4b03-8f0f-1659be02c409.jsonl`
 - `/ll:refine-issue` - 2026-06-01T00:00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`

@@ -2,8 +2,9 @@
 id: ENH-1859
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-01T17:35:32Z'
+completed_at: '2026-06-01T20:22:38Z'
 discovered_date: '2026-06-01'
 discovered_by: capture-issue
 relates_to:
@@ -189,6 +190,7 @@ No new flags. Behavior change only:
 - `/ll:refine-issue` - 2026-06-01T00:00:00 - `unknown`
 - `/ll:format-issue` - 2026-06-01T17:45:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac3a8d0e-1e74-47b1-9d58-b8dbb8f453b4.jsonl`
 - `/ll:capture-issue` - 2026-06-01T17:35:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/277dd3c5-ffef-46cb-bcc6-124409ce1225.jsonl`
+- `/ll:manage-issue` - 2026-06-01T20:22:38Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 
 ---
 

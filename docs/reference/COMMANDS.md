@@ -388,7 +388,7 @@ AI-guided sprint health check that analyzes a sprint's current state and suggest
 
 **Trigger keywords:** "review sprint", "sprint health", "sprint review", "check sprint", "sprint suggestions", "optimize sprint"
 
-**Output:** Recommendations for removing stale issues, adding related backlog issues, and resolving dependency or contention problems.
+**Output:** Recommendations for removing stale issues, adding related backlog issues, and resolving dependency or contention problems. When any sprint member has a `parent:` referencing an EPIC, the output also includes an **EPIC Context** section that flags critical-path blocker gaps — EPIC children not in the sprint whose absence would stall a sprint member — with a concrete `ll-sprint edit --add` fix command for each gap.
 
 ---
 

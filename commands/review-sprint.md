@@ -8,6 +8,8 @@ allowed-tools:
   - Read
   - Glob
   - Bash(ll-sprint:*)
+  - Bash(ll-issues:*)
+  - Bash(ll-deps:*)
 arguments:
   - name: sprint_name
     description: Sprint name to review (e.g., "my-sprint"). If omitted, lists available sprints.
@@ -122,6 +124,33 @@ Analyze the sprint against its goal and the current backlog state:
 - Note any single-issue waves that could be parallelized with additions
 - Note file contention warnings that could be resolved by reordering
 
+#### 3f: EPIC Context
+
+For each sprint member, read its frontmatter `parent:` field (via `ll-issues show $ID --json` or direct frontmatter read) and collect IDs matching `EPIC-\d+`. Group sprint members by EPIC. If no EPIC parents are detected, skip this sub-phase silently.
+
+For each touched EPIC:
+1. **Resolve full child set**:
+   ```bash
+   ll-sprint show EPIC-NNN
+   ```
+   This delegates to `SprintManager.load_or_resolve()` and returns dependency-ordered active children.
+
+2. **Get structured edge data for blocker detection**:
+   ```bash
+   ll-deps tree EPIC-NNN --json
+   ```
+   Returns `{root, nodes[], edges[]}` with blocking relationships. Compute `delta = epic_children_set - sprint_members_set`.
+
+3. **Identify blocker gaps** — for each delta member, check if any sprint member lists it in `blocked_by:` frontmatter (from the `ll-deps tree` edges or direct issue read). A match means the sprint includes a blocked child but skips its blocker.
+
+4. **Get stall age for gap members**:
+   ```bash
+   ll-issues epic-progress EPIC-NNN
+   ```
+   Surfaces days-stalled and blocked-by info for each delta member.
+
+Store per-EPIC findings (touched members, delta members, blocker gaps) for use in Phase 4 Category 4 and Phase 5d.
+
 ### Phase 4: Recommendations
 
 Generate categorized recommendations:
@@ -142,6 +171,25 @@ Generate categorized recommendations:
 - File contention between sprint issues
 - Stale completed dependency references
 - Missing dependency backlinks
+
+#### Category 4: EPIC Context (if any EPICs detected in Phase 3f)
+
+Render one block per touched EPIC:
+
+```
+### EPIC Context (N EPICs touched)
+
+#### EPIC-NNN (Title)
+- Sprint includes: ID-1, ID-2
+- Blocker not in sprint: ID-3 (Xd stalled, blocks ID-2)
+  → Run: ll-sprint edit $SPRINT_NAME --add ID-3
+
+#### EPIC-MMM (Title)
+- Sprint includes: ID-4
+- All EPIC critical-path children included or done ✓
+```
+
+If no blocker gaps are found for any touched EPIC, emit a single clean line per EPIC. Omit this section entirely if no sprint member has a `parent:` referencing an EPIC.
 
 ### Phase 5: Interactive Approval
 
@@ -193,9 +241,25 @@ questions:
         description: "Don't add to sprint"
 ```
 
+#### 5d: EPIC Blocker Gaps (if any blocker gaps found in Phase 3f)
+
+For each blocker gap identified, offer to add the missing blocker to the sprint before presenting the summary confirmation:
+
+```yaml
+questions:
+  - question: "Add [BLOCKER-ID] '[Title]' to the sprint? It blocks [BLOCKED-ID] which is already in the sprint."
+    header: "[BLOCKER-ID]"
+    multiSelect: false
+    options:
+      - label: "Yes, add (Recommended)"
+        description: "Add via ll-sprint edit $SPRINT_NAME --add [BLOCKER-ID]"
+      - label: "No, skip"
+        description: "Keep sprint as-is; [BLOCKED-ID] may stall mid-sprint without its blocker resolved"
+```
+
 #### 5c: Summary Confirmation
 
-After all individual decisions, present a summary of pending changes before applying:
+After all individual decisions (including any 5d EPIC blocker gap decisions), present a summary of pending changes before applying:
 
 ```yaml
 questions:
@@ -262,6 +326,12 @@ SPRINT REVIEW: [sprint-name]
 
 ### Warnings
 - [Warning description]
+
+### EPIC Context (N EPICs touched)  ← omitted when no EPIC parents found
+#### EPIC-NNN (Title)
+- Sprint includes: ID-1, ID-2
+- Blocker not in sprint: ID-3 (Xd stalled, blocks ID-2)
+  → Run: ll-sprint edit [sprint-name] --add ID-3
 
 ## CHANGES APPLIED
 - Pruned: [IDs]

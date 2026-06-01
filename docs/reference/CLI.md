@@ -361,13 +361,13 @@ List all sprints.
 | `--verbose` | `-v` | Show detailed information |
 | `--json` | `-j` | Output as JSON array |
 
-#### `ll-sprint show <sprint>` / `ll-sprint s <sprint>`
+#### `ll-sprint show <sprint|EPIC-NNN>` / `ll-sprint s <sprint|EPIC-NNN>`
 
-Show sprint details, dependency graph, and health summary.
+Show sprint details, dependency graph, and health summary. Accepts either a sprint name or an EPIC ID — when passed an EPIC ID, `SprintManager.load_or_resolve()` resolves the EPIC's active children into a virtual sprint and renders them in dependency wave order.
 
 | Argument/Flag | Short | Description |
 |---------------|-------|-------------|
-| `sprint` | | Sprint name |
+| `sprint` | | Sprint name or EPIC ID (e.g., `EPIC-1773`) |
 | `--json` | `-j` | Output as JSON (includes all fields) |
 | `--config` | | Path to project root |
 | `--skip-analysis` | | Skip dependency analysis |
