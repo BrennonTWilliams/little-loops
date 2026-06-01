@@ -438,7 +438,7 @@
         },
         "max_refine_count": {
           "type": "integer",
-          "description": "Maximum total lifetime /ll:refine-issue calls allowed per issue. Enforced by the refine-to-ready-issue loop and directly by check_attempt_budget in recursive-refine before each sub-loop entry.",
+          "description": "Maximum total lifetime /ll:refine-issue full-rewrite calls allowed per issue. Gap-analysis runs (--gap-analysis flag) are exempt from this cap. Enforced by the refine-to-ready-issue loop and directly by check_attempt_budget in recursive-refine before each sub-loop entry.",
           "default": 5,
           "minimum": 1,
           "maximum": 20

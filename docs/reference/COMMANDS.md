@@ -13,6 +13,8 @@ Commands and skills support optional `--flag` modifiers passed after arguments. 
 | `--focus [area]` | Narrow scope to a specific area | `scan-codebase` |
 | `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release`, `audit-issue-conflicts` |
 | `--auto` | Non-interactive mode (no prompts) | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts`, `link-epics` |
+| `--gap-analysis` | Additive-only enrichment: fill gaps, never remove content; exempt from `max_refine_count` | `refine-issue` |
+| `--full-rewrite` | Full-rewrite mode (legacy): overwrites sections with research findings | `refine-issue` |
 | `--verbose` | Include detailed output | `align-issues` |
 | `--all` | Process all items instead of a single item | `align-issues`, `format-issue`, `confidence-check` |
 | `--sprint <name>` | Scope to issues in a named sprint definition | `map-dependencies`, `confidence-check`, `issue-size-review` |
@@ -213,7 +215,7 @@ Refine issue files with codebase-driven research to fill knowledge gaps needed f
 
 **Arguments:**
 - `issue_id` (required): Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
-- `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview)
+- `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview), `--gap-analysis` (additive-only gap fill, does not count toward `max_refine_count`), `--full-rewrite` (legacy full-rewrite mode)
 
 **Frontmatter write-back**: After detecting 2+ implementation options deposited into `Proposed Solution` in `--auto` mode, the command sets `decision_needed: true` in the issue's YAML frontmatter. If fewer than 2 options are deposited, the flag is cleared to `false` (or left absent if never set). This is skipped in `--dry-run` mode. Note: `/ll:confidence-check` can also set `decision_needed: true` independently when it detects an unresolved decision in Outcome Risk Factors.
 

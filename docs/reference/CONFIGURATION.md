@@ -358,7 +358,7 @@ Command customization for `/ll:manage-issue`:
 | `confidence_gate.readiness_threshold` | `85` | Minimum readiness score (1-100) required to proceed |
 | `confidence_gate.outcome_threshold` | `70` | Minimum outcome confidence score (1-100) required to proceed |
 | `tdd_mode` | `false` | Enable TDD mode: write failing tests before implementation |
-| `max_refine_count` | `5` | Maximum lifetime `/ll:refine-issue` calls per issue (1–20); enforced by `refine-to-ready-issue` and directly by `check_attempt_budget` in `recursive-refine` before each sub-loop entry |
+| `max_refine_count` | `5` | Maximum lifetime `/ll:refine-issue` full-rewrite calls per issue (1–20). Gap-analysis runs (`--gap-analysis`) are exempt. Enforced by `refine-to-ready-issue` and directly by `check_attempt_budget` in `recursive-refine` before each sub-loop entry |
 | `recursive_refine.max_depth` | `3` | Maximum decomposition depth per subtree for the `recursive-refine` loop (1–∞, integer); issues at or beyond this depth are skipped with reason `depth-cap` and recorded in `.loops/tmp/recursive-refine-skipped-depth.txt` instead of being passed to size-review |
 | `rate_limits.max_wait_seconds` | `21600` | Total wall-clock budget (seconds) spent retrying 429s before routing to `on_rate_limit_exhausted` (default 6h) |
 | `rate_limits.long_wait_ladder` | `[300, 900, 1800, 3600]` | Long-wait tier backoff ladder (seconds): 5 min → 15 min → 30 min → 1 h. Each 429 after the short-burst tier advances the index, capped at the last entry |

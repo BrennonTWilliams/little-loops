@@ -118,3 +118,68 @@ class TestDecisionNeededDocWiring:
             "docs/reference/COMMANDS.md /ll:refine-issue entry must include a "
             "'Frontmatter write-back' note (follow issue-size-review pattern at line 249)"
         )
+
+
+class TestGapAnalysisMode:
+    """commands/refine-issue.md must document the --gap-analysis and --full-rewrite flags."""
+
+    def _section_5c_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("### 5c. Gap-Analysis Mode")
+        next_heading = content.find("\n### 6.", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_gap_analysis_flag_in_step_0(self) -> None:
+        content = COMMAND_FILE.read_text()
+        step_0_start = content.index("### 0. Parse Flags")
+        step_1_start = content.index("### 1. Locate Issue File")
+        step_0_text = content[step_0_start:step_1_start]
+        assert "--gap-analysis" in step_0_text, (
+            "Step 0 Parse Flags must detect the --gap-analysis flag"
+        )
+
+    def test_full_rewrite_flag_in_step_0(self) -> None:
+        content = COMMAND_FILE.read_text()
+        step_0_start = content.index("### 0. Parse Flags")
+        step_1_start = content.index("### 1. Locate Issue File")
+        step_0_text = content[step_0_start:step_1_start]
+        assert "--full-rewrite" in step_0_text, (
+            "Step 0 Parse Flags must detect the --full-rewrite flag"
+        )
+
+    def test_section_5c_exists_after_5b(self) -> None:
+        content = COMMAND_FILE.read_text()
+        pos_5b = content.index("### 5b. Interactive Refinement")
+        pos_5c = content.index("### 5c. Gap-Analysis Mode")
+        assert pos_5c > pos_5b, (
+            "### 5c. Gap-Analysis Mode must appear after ### 5b. Interactive Refinement"
+        )
+
+    def test_additive_only_contract_documented(self) -> None:
+        text = self._section_5c_text()
+        assert "never removes" in text.lower() or "additive" in text.lower(), (
+            "Section 5c must document the additive-only contract (never removes existing content)"
+        )
+
+    def test_max_refine_count_exemption_documented(self) -> None:
+        text = self._section_5c_text()
+        assert "max_refine_count" in text, (
+            "Section 5c must document that gap-analysis runs are exempt from max_refine_count"
+        )
+
+    def test_gap_analysis_in_examples(self) -> None:
+        content = COMMAND_FILE.read_text()
+        examples_start = content.index("## Examples")
+        examples_text = content[examples_start:]
+        assert "--gap-analysis" in examples_text, (
+            "Examples section must include a --gap-analysis example"
+        )
+
+    def test_full_rewrite_in_examples(self) -> None:
+        content = COMMAND_FILE.read_text()
+        examples_start = content.index("## Examples")
+        examples_text = content[examples_start:]
+        assert "--full-rewrite" in examples_text, (
+            "Examples section must include a --full-rewrite example"
+        )

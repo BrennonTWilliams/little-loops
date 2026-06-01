@@ -1,7 +1,7 @@
 ---
 name: ll-refine-issue
 description: Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation
-args: "ISSUE_ID [--auto] [--dry-run]"
+args: "ISSUE_ID [--auto] [--dry-run] [--gap-analysis] [--full-rewrite]"
 metadata:
   short-description: Refine issue files with codebase-driven research to fill knowledge gaps needed f
 ---

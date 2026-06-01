@@ -271,7 +271,7 @@ states:
     # Run /ll:refine-issue to fill in missing codebase context when wiring alone
     # is insufficient. on_error falls through to rerun_confidence_after_wire safely.
     fragment: with_rate_limit_handling
-    action: "/ll:refine-issue ${captured.input.output} --auto"
+    action: "/ll:refine-issue ${captured.input.output} --auto --full-rewrite"
     action_type: slash_command
     next: rerun_confidence_after_wire
     on_error: rerun_confidence_after_wire

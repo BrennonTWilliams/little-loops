@@ -77,7 +77,7 @@ states:
     on_error: diagnose
 
   refine_issue:
-    action: "/ll:refine-issue ${captured.issue_id.output} --auto"
+    action: "/ll:refine-issue ${captured.issue_id.output} --auto --full-rewrite"
     action_type: slash_command
     next: check_wire_done
     on_error: diagnose

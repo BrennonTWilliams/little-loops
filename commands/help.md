@@ -65,7 +65,7 @@ ISSUE REFINEMENT
 
 /ll:refine-issue <issue_id> [flags]
     Refine issue with codebase-driven research to fill knowledge gaps
-    Flags: --auto (non-interactive), --dry-run (preview)
+    Flags: --auto (non-interactive), --dry-run (preview), --gap-analysis (additive-only fill), --full-rewrite (legacy full-rewrite mode)
 
 /ll:wire-issue <issue_id> [flags]
     Trace full codebase wiring for a refined issue — finds missing callers,

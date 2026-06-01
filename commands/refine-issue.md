@@ -38,6 +38,8 @@ $ARGUMENTS
 - **flags** (optional): Command behavior flags
   - `--auto` - Non-interactive mode: fill gaps with research findings without prompting
   - `--dry-run` - Preview what research would produce without modifying the issue file
+  - `--gap-analysis` - Additive-only mode: inventory existing coverage, detect stale references and missing sections, apply only additive changes — never removes content (default for new runs)
+  - `--full-rewrite` - Full-rewrite mode (legacy behavior): rewrites sections with research findings; use when you want a complete enrichment pass
 
 ## Process
 
@@ -48,6 +50,8 @@ ISSUE_ID="${issue_id:-}"
 FLAGS="${flags:-}"
 AUTO_MODE=false
 DRY_RUN=false
+GAP_ANALYSIS=false
+FULL_REWRITE=false
 
 # Auto-enable auto mode in automation contexts
 if [[ "$FLAGS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then
@@ -56,6 +60,8 @@ fi
 
 if [[ "$FLAGS" == *"--auto"* ]]; then AUTO_MODE=true; fi
 if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
+if [[ "$FLAGS" == *"--gap-analysis"* ]]; then GAP_ANALYSIS=true; fi
+if [[ "$FLAGS" == *"--full-rewrite"* ]]; then FULL_REWRITE=true; fi
 
 if [[ -z "$ISSUE_ID" ]]; then
     echo "Error: issue_id is required"
@@ -374,6 +380,107 @@ For **UNKNOWN** gaps (research didn't find enough), ask open-ended questions:
 
 After gathering answers, update the issue file with both research findings and user-provided context.
 
+### 5c. Gap-Analysis Mode (Skip Unless `--gap-analysis`)
+
+**Skip this entire section if `GAP_ANALYSIS` is false.**
+
+Gap-analysis mode performs additive-only enrichment — it never removes existing content. The core contract: "Gap-analysis never removes existing content — it only adds or enhances."
+
+#### 1. Parse Existing Issue into Section Map
+
+Extract all H2 sections from the issue file and catalog their content:
+- Sections present: list of H2 headings found
+- Sections with meaningful content (>2 lines, not placeholder text like "TBD" or "N/A")
+- Sections that are empty or contain only boilerplate
+
+Use the H2 extraction pattern from `scripts/little_loops/issue_history/doc_synthesis.py:_extract_section()`:
+```python
+# re.search(r"^##\s+heading", content, re.MULTILINE) then slice to next ##
+```
+
+#### 2. Check Each Section Against Codebase Reality
+
+For each section type, verify against current codebase state:
+
+**Integration Map checks:**
+- Referenced files: do they exist on disk? Missing = high-priority gap.
+- Stale anchor references: use `scripts/little_loops/issues/anchor_sweep.py:_sweep_file()` → `skipped_refs` to detect `file:N`-style anchors that no longer resolve.
+- Missing callers: are there known callers of modified code not listed?
+
+**Proposed Solution / Implementation Steps:**
+- Anchor references still valid? (`_sweep_file()` → `skipped_refs`)
+- Do Implementation Steps reference all files in the Integration Map?
+
+**Acceptance Criteria:**
+- Are there code paths identified during research that have no corresponding criterion?
+
+#### 3. Score Gaps by Impact
+
+Adopt the `"critical"/"high"/"medium"/"low"` priority model from `scripts/little_loops/issue_history/models.py:TestGap`:
+
+| Gap Type | Priority |
+|----------|----------|
+| Referenced file doesn't exist on disk | high |
+| Stale anchor reference (function/class gone) | medium |
+| Implementation Step references file not in Integration Map | medium |
+| Missing edge case in Acceptance Criteria | low |
+| Required section empty or placeholder-only | medium |
+
+#### 4. Present Gap Report
+
+Display a prioritized gap table:
+
+```
+## Gap Analysis Report — [ISSUE-ID]
+
+| Section | Gap | Priority | Suggestion |
+|---------|-----|----------|------------|
+| Integration Map | `path/to/file.py` does not exist | high | Remove or update path |
+| Proposed Solution | `old_function()` not found | medium | Update anchor reference |
+| Acceptance Criteria | Edge case X not covered | low | Add criterion for X |
+```
+
+If no gaps found, output:
+```
+✓ No gaps detected. Issue coverage is current.
+```
+
+If `AUTO_MODE` is true, proceed directly to application without prompting. Otherwise, present the gap report and confirm before applying.
+
+#### 5. Apply Additive Changes Only
+
+For each approved gap, use the Edit tool with append-only changes:
+
+1. **Append** missing information to the relevant section using the `### Codebase Research Findings` subsection marker (same as Step 5a)
+2. **Stale anchor repair**: when `_sweep_file()` returns a stale reference, append a warning note under the section containing it:
+   ```
+   > ⚠ Anchor `old_function:N` no longer resolves — verify against current codebase.
+   ```
+3. **Do NOT** replace any existing text block with more than 2 meaningful lines
+4. **Do NOT** remove any existing content under any circumstance
+
+**Gap-analysis and max_refine_count**: Gap-analysis runs (`--gap-analysis`) do NOT count against `max_refine_count` — they are additive-only, non-destructive, and designed for repeated iterative use. Only full-rewrite passes (`--full-rewrite` or the default non-flag mode) consume the refinement budget.
+
+#### 6. Gap-Analysis Output
+
+```
+================================================================================
+GAP ANALYSIS COMPLETE: [ISSUE-ID]
+================================================================================
+
+| Gap | Priority | Applied |
+|-----|----------|---------|
+| [gap 1] | [priority] | ✓ Appended to [Section] |
+| [gap 2] | [priority] | ✓ Stale-anchor note added |
+
+Sections preserved verbatim: [N]
+Content added: [N] additions
+Content removed: 0 (gap-analysis never removes)
+
+Run /ll:ready-issue [ISSUE-ID] to validate.
+================================================================================
+```
+
 ### 6. Update Issue File
 
 **Skip file modifications if `DRY_RUN` is true.**
@@ -467,6 +574,12 @@ ISSUE REFINED: [ISSUE-ID]
 
 # Dry-run to preview what research would produce
 /ll:refine-issue ENH-015 --auto --dry-run
+
+# Gap-analysis mode: additive-only, never removes content
+/ll:refine-issue ENH-100 --gap-analysis
+
+# Full-rewrite mode (legacy behavior, now explicit)
+/ll:refine-issue ENH-100 --full-rewrite --auto
 ```
 
 ---
