@@ -61,11 +61,21 @@ Decomposed from FEAT-992: Add Pi Coding Agent Plugin Compatibility
 - **Effort**: Small
 - **Risk**: Very low — documentation only
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-01_
+
+**Verdict: OUTDATED** — Documentation updates not yet made:
+- `docs/reference/HOST_COMPATIBILITY.md` has no Pi rows — only claude-code, opencode, and codex hosts are present
+- No Pi sections added to ARCHITECTURE.md, TROUBLESHOOTING.md, API.md, or CONFIGURATION.md
+- Issue is blocked on FEAT-1478 (Pi adapter itself) which is also unstarted
+
 ## Status
 
 **Open** | Created: 2026-05-15 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-01T14:29:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:48:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

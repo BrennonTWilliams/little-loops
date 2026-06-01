@@ -207,6 +207,15 @@ def _sandbox_args(sandbox_mode: str | None) -> list[str]: ...
 
 `codex`, `host-runner`, `sandbox`
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-01_
+
+**Verdict: OUTDATED** — Proposed Solution section uses incorrect Codex sandbox enum values:
+- Issue's Proposed Solution lists `'write-to-cwd'` and `'network'` — these do NOT match the actual Codex CLI enum
+- Actual values (confirmed in Codebase Research section lines 130–134): `'read-only'`, `'workspace-write'`, `'danger-full-access'`
+- Action: Update the Proposed Solution and API sections to use the correct enum values before implementation
+
 ## Status
 
 - [ ] Implementation
@@ -223,6 +232,7 @@ def _sandbox_args(sandbox_mode: str | None) -> list[str]: ...
 ---
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-01T14:29:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:ready-issue` - 2026-05-24T17:50:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0e276a3-13b8-43b1-8581-1cb2cbdbf771.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`

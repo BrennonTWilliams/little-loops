@@ -147,11 +147,21 @@ fallback strategies (e.g. tool allowlist via temp config file like
 
 `feat`, `pi-adapter`, `host-compat`, `research`, `captured`
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-01_
+
+**Verdict: OUTDATED** — Research not yet performed:
+- `thoughts/research/pi-headless-cli.md` does NOT exist (only 4 Codex research notes present in `thoughts/research/`)
+- No Pi capability audit has been performed
+- No `PiRunner` `HostCapabilities` defined
+
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-01T14:29:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:44:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

@@ -168,11 +168,22 @@ For each ll intent, classify Pi coverage as:
 
 `feat`, `pi-adapter`, `hooks`, `host-compat`, `upstream-coordination`, `captured`
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-01_
+
+**Verdict: OUTDATED** — Research not yet performed:
+- `thoughts/research/pi-hook-event-parity.md` does NOT exist
+- `hooks/adapters/pi/README.md` does not exist (depends on FEAT-1478, unstarted)
+- `hooks/adapters/pi/` directory does not exist
+- Blocked by FEAT-1719 (PostCompact wiring, also unstarted)
+
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-01T14:29:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:44:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:34:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/922ffae8-14ce-45e5-a71a-02187250e8c9.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`

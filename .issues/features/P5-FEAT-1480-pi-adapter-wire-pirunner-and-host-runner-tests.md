@@ -80,6 +80,15 @@ In `scripts/little_loops/host_runner.py` at `PiRunner` class (lines ~478–532):
 - **Effort**: Small–Medium
 - **Risk**: Low — additive; no changes to existing host logic. Pi auto-activates on PATH detection once wired.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-01_
+
+**Verdict: OUTDATED** — Implementation not started:
+- All 4 `PiRunner.build_*` methods still raise `HostNotConfigured` at `host_runner.py:671–707`
+- `HostCapabilities` for Pi not defined
+- Depends on FEAT-1714 (also unstarted)
+
 ## Status
 
 **Open** | Created: 2026-05-15 | Priority: P5
@@ -95,6 +104,7 @@ In `scripts/little_loops/host_runner.py` at `PiRunner` class (lines ~478–532):
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `test_ll_hook_host_env_var_propagates_pi` test in `test_hook_intents.py` tests the **Python-side host routing** — that the intent dispatcher reads `LL_HOOK_HOST=pi` and routes correctly. FEAT-1478's sentinel-file test in `test_pi_adapter.py` verifies the **TypeScript adapter** sets `LL_HOOK_HOST=pi` before spawning Python. Both tests are needed, but their assertions must be non-overlapping to avoid redundancy: this issue asserts Python routing behavior; FEAT-1478 asserts env-var propagation from the TypeScript layer.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-01T14:29:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

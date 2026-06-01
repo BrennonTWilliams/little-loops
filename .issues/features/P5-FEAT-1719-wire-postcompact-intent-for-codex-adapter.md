@@ -63,11 +63,21 @@ A `PostCompact` entry exists in `hooks/adapters/codex/hooks.json` pointing to a 
 | `docs/reference/HOST_COMPATIBILITY.md` | `post_compact` row to flip |
 | `scripts/little_loops/hooks/post_tool_use.py` | Template for no-op handler module |
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-01_
+
+**Verdict: OUTDATED** — Implementation not started:
+- `scripts/little_loops/hooks/post_compact.py` does NOT exist
+- `_dispatch_table()` has no `post_compact` entry (6 handlers present; post_compact not among them)
+- No `PostCompact` entry in `hooks/adapters/codex/hooks.json`
+
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-01T14:29:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-01T02:53:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

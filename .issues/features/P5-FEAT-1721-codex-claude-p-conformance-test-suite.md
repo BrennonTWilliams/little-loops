@@ -62,11 +62,21 @@ No test exercises `ll-auto`, `ll-sprint`, `ll-loop`, or `ll-action` end-to-end a
 | `scripts/tests/conformance/test_pi_claude_p_parity.py` | Parallel suite to model after (FEAT-1716) |
 | `scripts/little_loops/host_runner.py` | Call surface to exercise |
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-01_
+
+**Verdict: OUTDATED** — Implementation not started; upstream dependencies unmet:
+- `scripts/tests/conformance/test_codex_claude_p_parity.py` does NOT exist
+- `docs/development/CONFORMANCE.md` does NOT exist
+- Blocked by FEAT-1720 (permission_request wiring, unstarted); ENH-1718 still open
+
 ## Status
 
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-01T14:29:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:34:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/922ffae8-14ce-45e5-a71a-02187250e8c9.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

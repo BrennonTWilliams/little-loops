@@ -364,7 +364,19 @@ _Added by `/ll:confidence-check` on 2026-05-29_
 - Test gap: 6 ll_commit target loops have no dedicated test classes — regressions in these loops may go undetected. New test classes must be added for generator-evaluator, playwright_screenshot fragment, and the 6 ll_commit targets
 - Co-deliverable ordering: implement tests first so the validation chain is in place before loop refactoring — lib/harness.yaml must be created before the sub-loop can validate
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-01_
+
+**Verdict: NEEDS_UPDATE** — Highly refined issue; implementation not yet started:
+- `loops/oracles/generator-evaluator.yaml` does NOT exist (only `oracle-capture-issue.yaml` found)
+- `parse_tagged_json` fragment is NOT in `lib/common.yaml` (grep: 0 matches)
+- `lib/harness.yaml` and `lib/prompt-fragments.yaml` do NOT exist yet
+- 5 harness loops (html-website-generator, svg-image-generator, html-anything, hitl-md, hitl-compare) not yet converted to thin wrappers
+- Decision rationale and ENH-1774 absorption fully documented; confidence check shows 100/100
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-01T14:29:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
 - `/ll:decide-issue` - 2026-05-31T21:45:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dce117cd-42e5-4d9f-a853-2edf8f80ce22.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
