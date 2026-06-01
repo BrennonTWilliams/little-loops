@@ -4408,3 +4408,225 @@ class TestIssuesCLIAnchorSweep:
         assert result == 0
         captured = capsys.readouterr()
         assert "EPIC-001" in captured.out or "No file:line references" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# epic-progress subcommand fixtures and tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def issues_dir_with_epic_progress(issues_dir_with_epic: Path) -> Path:
+    """Extend issues_dir_with_epic with children at various statuses for progress tests."""
+    bugs_dir = issues_dir_with_epic / "bugs"
+    bugs_dir.mkdir(parents=True, exist_ok=True)
+    (bugs_dir / "P1-BUG-010-epic-child-done.md").write_text(
+        "---\nstatus: done\nparent: EPIC-001\n---\n# BUG-010: Done child\n"
+    )
+    (bugs_dir / "P2-BUG-011-epic-child-open.md").write_text(
+        "---\nstatus: open\nparent: EPIC-001\ncaptured_at: '2026-01-01T00:00:00Z'\n---\n# BUG-011: Open child\n"
+    )
+    enhancements_dir = issues_dir_with_epic / "enhancements"
+    enhancements_dir.mkdir(parents=True, exist_ok=True)
+    (enhancements_dir / "P3-ENH-012-epic-child-blocked.md").write_text(
+        "---\nstatus: blocked\nparent: EPIC-001\nblocked_by:\n  - BUG-099\n---\n# ENH-012: Blocked child\n"
+    )
+    return issues_dir_with_epic
+
+
+class TestIssuesCLIEpicProgress:
+    """Tests for ll-issues epic-progress sub-command."""
+
+    def test_epic_progress_text_output(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_epic_progress: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """epic-progress renders text report with progress bar and status breakdown."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-progress", "EPIC-001", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "EPIC-001" in captured.out
+        assert "Progress" in captured.out
+        assert "Status" in captured.out
+
+    def test_epic_progress_json_output(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_epic_progress: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """epic-progress --format json emits structured JSON with required keys."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "epic-progress",
+                "EPIC-001",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["epic_id"] == "EPIC-001"
+        assert "total" in data
+        assert "by_status" in data
+        assert "percent_done" in data
+        assert "percent_blocked" in data
+        assert "oldest_open" in data
+
+    def test_epic_progress_markdown_output(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_epic_progress: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """epic-progress --format markdown emits markdown-formatted output."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "epic-progress",
+                "EPIC-001",
+                "--format",
+                "markdown",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "## EPIC-001" in captured.out
+        assert "**Progress**" in captured.out
+
+    def test_epic_progress_not_found_exits_nonzero(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_epic_progress: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """epic-progress exits 1 with clear message when EPIC is not found."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-progress", "EPIC-999", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "not found" in captured.out.lower() or "not found" in captured.err.lower()
+
+    def test_epic_progress_invalid_id_exits_nonzero(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_epic: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """epic-progress exits 1 when the ID is not an EPIC prefix."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-progress", "BUG-001", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+
+    def test_epic_progress_no_children(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_epic: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """epic-progress renders 'no children' message and exits 0 for childless EPIC."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-progress", "EPIC-001", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "no children" in captured.out
+
+    def test_list_group_by_epic_badge(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_epic_progress: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --group-by epic headers include (N/M done · K blocked) badge."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--group-by", "epic", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Progress badge should appear in the EPIC-001 header
+        assert "done" in captured.out
+        # The EPIC header should appear
+        assert "EPIC-001" in captured.out

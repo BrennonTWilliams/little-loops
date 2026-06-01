@@ -8,6 +8,7 @@ testable: false
 discovered_date: 2026-05-14
 discovered_by: verify-issues
 relates_to: [FEAT-948]
+decision_needed: false
 ---
 
 # BUG-1461: `continuation.auto_detect_on_session_start` flag is documented but not read by any code
@@ -67,9 +68,27 @@ Users who read the docs and try to disable continuation auto-detection by settin
 ### Similar Patterns
 - Other `continuation.*` settings under `config-schema.json:552` — check whether they are wired up before assuming this is an isolated oversight.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/config/features.py:feature_enabled()` — the standard utility for boolean flag gates used by all other hooks (`post_tool_use.py`, `user_prompt_submit.py`). Not yet imported in `session_start.py`. Usage: `feature_enabled(merged_config, "continuation.auto_detect_on_session_start")` (returns `False` when key is absent, so pass `True` as the sentinel default if needed via raw dict access).
+- `scripts/little_loops/hooks/session_start.py:_validate_features()` — existing pattern in this exact file: reads nested config keys via `config.get("sync", {})` and emits warning lines into `feedback_lines`. This is the correct channel and pattern for Option 1 to follow.
+- `scripts/little_loops/hooks/post_tool_use.py:_maybe_auto_commit()` — canonical early-return guard: `if not feature_enabled(config, "issues.auto_commit"): return`.
+- **All 7 `continuation.*` schema keys are unwired** (lines 553–596 of `config-schema.json`): `enabled`, `auto_detect_on_session_start`, `include_todos`, `include_git_status`, `include_recent_files`, `max_continuations`, `prompt_expiry_hours`. If choosing Option 2, consider removing the entire `continuation` block or auditing all 7. Note: `continuation.max_continuations` in schema is a dead duplicate of `automation.max_continuations` which IS wired via `AutomationConfig.from_dict()` in `scripts/little_loops/config/automation.py`.
+- No `ContinuationConfig` dataclass exists in `scripts/little_loops/config/` — raw dict access is the pattern: `merged_config.get("continuation", {}).get("auto_detect_on_session_start", True)`.
+
 ### Tests
 - Option 1: add a test in `scripts/tests/hooks/` asserting the SessionStart handler suppresses the continuation-detection notice when the flag is `false`.
 - Option 2: no tests needed (text-only change); `ll-verify-docs` should pass afterward.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Exact file**: `scripts/tests/test_hook_session_start.py` — add to `TestSessionStartFeatureValidation` class. The helper `_run_with(root, cfg)` already handles writing a config and calling `handle()`. Pattern: call `_run_with(in_tmp, {"continuation": {"auto_detect_on_session_start": False}})` and assert the continuation notice is absent from `result.feedback`.
+- **Integration test**: `scripts/tests/test_hooks_integration.py:TestSessionStartValidation` — adapter-level tests follow the same shape via subprocess.
+- **Config write fixture pattern** (from `test_hook_post_tool_use.py:_write_config()`): write `{"continuation": {"auto_detect_on_session_start": false}}` to `(tmp_path / ".ll" / "ll-config.json")`.
 
 ### Documentation
 - `docs/reference/CONFIGURATION.md`, `docs/guides/SESSION_HANDOFF.md` (see above).
@@ -80,6 +99,43 @@ Users who read the docs and try to disable continuation auto-detection by settin
 ## Source
 
 Discovered during `/ll:verify-issues` on 2026-05-14 while verifying the FEAT-1315/1316/1317 session-start-inject series. The hook-verification agent surfaced it as a separate doc-accuracy concern from the architecture supersession.
+
+## Implementation Steps
+
+### Option 1 — Implement the flag
+
+1. **`scripts/little_loops/hooks/session_start.py`**: Add `from little_loops.config.features import feature_enabled` to imports (mirrors `post_tool_use.py`). In `handle()`, after the DB bootstrap block (~line 132), gate any continuation-detection logic on `merged_config.get("continuation", {}).get("auto_detect_on_session_start", True)`. There is no `ContinuationConfig` dataclass — use raw dict access.
+2. **`scripts/tests/test_hook_session_start.py`**: Add test(s) to `TestSessionStartFeatureValidation`. Use existing `_run_with(in_tmp, cfg)` helper. Test `{"continuation": {"auto_detect_on_session_start": False}}` → notice absent; default (no key) → notice present.
+
+### Option 2 — Remove the undocumented stub (recommended while FEAT-1315 is deferred)
+
+> **Selected:** Option 2 — Remove the undocumented stub — text-only change across 6 files; FEAT-1315 is firmly deferred by architecture supersession with no live code reading any of the 7 `continuation.*` keys
+
+1. **`config-schema.json`**: Remove `continuation.auto_detect_on_session_start` property (lines 562–566). Audit all 7 `continuation.*` keys in the same block (lines 553–596) — all are unwired; consider removing the entire `continuation` object rather than just this one key.
+2. **`docs/reference/CONFIGURATION.md`**: Remove entry at line 120 (example config block) and line 411 (settings table row).
+3. **`docs/guides/SESSION_HANDOFF.md`**: Remove flag references at lines 292, 314, and 331.
+4. **Templates**: Confirmed no `templates/` files reference `continuation` — no template changes needed.
+5. **Verify**: Run `python -m pytest scripts/tests/ -v` and `ll-verify-docs` — both should pass with no `continuation.auto_detect_on_session_start` references remaining.
+6. **Also remove from skill files** (not listed in original Option 2 steps — discovered by `/ll:decide-issue`): `skills/init/SKILL.md:209`, `skills/init/interactive.md:705-706`, `skills/configure/areas.md:491,506`, `skills/configure/show-output.md:112`.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-01.
+
+**Selected**: Option 2 — Remove the undocumented stub
+
+**Reasoning**: All 7 `continuation.*` schema keys are confirmed unwired — zero code reads any of them in `scripts/` or `hooks/`. FEAT-1315 is deferred by architecture supersession (verified 2026-05-14) and would require a full rewrite before the flag could ever be used. Option 1 would add a guard for continuation-detection logic that does not exist, producing no observable behavioral change — it would be another dead stub. Option 2 is text-only, zero-risk, and keeps schema/docs honest.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option 1 — Implement flag | 2/3 | 1/3 | 2/3 | 2/3 | 7/12 |
+| Option 2 — Remove stub | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+
+**Key evidence**:
+- **Option 1**: Import/guard pattern exists in 2 sibling hooks; `TestSessionStartFeatureValidation._run_with()` ready to use; blocked by `feature_enabled()` having a `False` default (raw dict access required) and the continuation-detection notice not yet existing — implementing the guard alone leaves no observable difference.
+- **Option 2**: 6 source files to touch (3 skill files not in original issue steps); FEAT-1315 `status: deferred` with architecture-supersession note; `additionalProperties: false` on `continuation` object makes removal schema-migration-safe; `.ll/ll-config.json` has no `continuation` key.
 
 ## Acceptance Criteria
 
@@ -110,6 +166,8 @@ _Added by `/ll:verify-issues` on 2026-05-30_
 - Issue still needs a decision (implement or remove) — no progress since 2026-05-14 discovery ✓
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-01T19:47:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a55d1f6-d02f-419b-9e9c-78a18b1ba60c.jsonl`
+- `/ll:refine-issue` - 2026-06-01T19:41:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34f84fcf-43f5-4359-b8a7-255b2b1e5f21.jsonl`
 - `/ll:verify-issues` - 2026-05-31T20:34:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52d78c58-d750-467e-9092-de587a96595e.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-23T16:51:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a9c6d1a1-0ff3-429d-82ba-98b024c1337c.jsonl`

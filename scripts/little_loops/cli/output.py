@@ -292,6 +292,17 @@ def progress(current: int, total: int, width: int = 20) -> str:
     return "|" + "#" * filled + " " * (inner - filled) + "|"
 
 
+def sparkline(current: int, total: int, width: int = 16) -> str:
+    """Return a Unicode block-character progress bar of *width* characters."""
+    if width < 1:
+        width = 1
+    if total <= 0:
+        filled = 0
+    else:
+        filled = max(0, min(width, round(width * current / total)))
+    return "█" * filled + "░" * (width - filled)
+
+
 # ---------------------------------------------------------------------------
 # Output mode toggling
 # ---------------------------------------------------------------------------

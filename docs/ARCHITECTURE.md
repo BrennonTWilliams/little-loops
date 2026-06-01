@@ -232,7 +232,8 @@ little-loops/
         │   │   ├── refine_status.py # refine-status subcommand
         │   │   ├── append_log.py    # append-log subcommand
         │   │   ├── anchor_sweep.py  # anchor-sweep subcommand (CLI wrapper)
-        │   │   └── fingerprint.py   # fingerprint subcommand (CLI wrapper)
+        │   │   ├── fingerprint.py   # fingerprint subcommand (CLI wrapper)
+        │   │   └── epic_progress.py # epic-progress subcommand
         │   ├── loop/
         │   │   ├── __init__.py      # Entry point (main_loop) + argparse
         │   │   ├── _helpers.py      # Shared utilities
@@ -259,6 +260,7 @@ little-loops/
         │   ├── extraction.py    # Git history analysis and regression detection
         │   └── search.py        # Issue file search and discovery functions
         ├── issue_lifecycle.py   # Issue lifecycle operations
+        ├── issue_progress.py    # Epic progress aggregation
         ├── issue_history/       # Issue history and statistics (package)
         ├── git_operations.py    # Git utilities
         ├── work_verification.py # Verification helpers

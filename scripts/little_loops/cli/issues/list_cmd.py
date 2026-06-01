@@ -152,6 +152,23 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
         named_keys = sorted(k for k in parent_buckets if k is not None)
         ordered_keys = named_keys + ([None] if None in parent_buckets else [])
 
+        # Pre-compute progress badges for named EPIC buckets
+        epic_progress_cache: dict[str, tuple[int, int, int]] = {}
+        if named_keys:
+            from little_loops.issue_parser import find_issues as _find_issues_all
+            from little_loops.issue_progress import compute_epic_progress
+
+            _all_statuses = frozenset(
+                {"open", "in_progress", "blocked", "done", "cancelled", "deferred"}
+            )
+            all_issues_for_progress = _find_issues_all(config, status_filter=_all_statuses)
+            for epic_key in named_keys:
+                prog = compute_epic_progress(epic_key, all_issues_for_progress)
+                if prog is not None:
+                    done = prog.by_status.get("done", 0) + prog.by_status.get("cancelled", 0)
+                    blocked = prog.by_status.get("blocked", 0)
+                    epic_progress_cache[epic_key] = (done, len(prog.children), blocked)
+
         lines: list[str] = []
         for key in ordered_keys:
             group = parent_buckets[key]
@@ -159,7 +176,15 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                 header = colorize(f"Unparented ({len(group)})", "1")
             else:
                 title = parent_titles.get(key, "")
-                label = f"{key}: {title} ({len(group)})" if title else f"{key} ({len(group)})"
+                badge = ""
+                if key in epic_progress_cache:
+                    done, total, blocked = epic_progress_cache[key]
+                    badge = f" ({done}/{total} done"
+                    if blocked > 0:
+                        badge += f" · {blocked} blocked"
+                    badge += ")"
+                base_label = f"{key}: {title}" if title else key
+                label = f"{base_label} ({len(group)}){badge}"
                 parent_prefix = key.split("-", 1)[0]
                 header = colorize(label, f"{TYPE_COLOR.get(parent_prefix, '0')};1")
             lines.append(header)

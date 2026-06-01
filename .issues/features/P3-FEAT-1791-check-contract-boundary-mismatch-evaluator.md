@@ -1,6 +1,6 @@
 ---
 id: FEAT-1791
-title: `check_contract` Boundary-Mismatch Evaluator
+title: '`check_contract` Boundary-Mismatch Evaluator'
 type: FEAT
 priority: P3
 captured_at: '2026-05-29T19:08:54Z'
@@ -9,6 +9,12 @@ discovered_by: capture-issue
 status: open
 labels: [feature, loops, evaluator, qa, integration]
 parent: EPIC-1663
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1791: `check_contract` Boundary-Mismatch Evaluator
@@ -101,34 +107,72 @@ Verdicts: `yes` (all pairs aligned), `no` (any pair fails), `error` (file unread
 
 ## Implementation Steps
 
-1. **Schema** — extend `ll-loop validate` to accept `action_type: contract` and `evaluate.type: contract`; validate `pairs` structure (list of dicts with required `producer`, `consumer`, `contract`).
-2. **Runner** — new evaluator in `scripts/little_loops/evaluators/contract.py`: reads each pair, applies optional regex extraction, composes a judge prompt with both slices side-by-side, calls the host runner via `resolve_host().build_blocking_json(...)`.
-3. **Verdict normalization** — return `{verdict: yes|no|error, pair_results: [...]}` so `audit-loop-run` can render which pair failed.
-4. **Tests** — pytest cases: aligned pair (yes), mismatched field names (no), camelCase/snake_case mismatch (no), missing file (error), regex no-match (error). Mock host runner.
-5. **Docs** — add `check_contract` section to `AUTOMATIC_HARNESSING_GUIDE.md` under "Evaluation Phases Explained", placed between `check_mcp` and `check_skill` (it's deterministic-input + LLM-judged, cheaper than `check_skill`'s full agentic session).
-6. **Example loop** — add a `loops/examples/contract-demo.yaml` or extend `harness-multi-item.yaml` with a commented `check_contract` block.
+1. **Schema** — add `"contract"` to the `Literal[...]` union in `EvaluateConfig.type` in `scripts/little_loops/fsm/schema.py:EvaluateConfig`; add a `pairs: list[dict] | None = None` field; update both `to_dict()` and `from_dict()` to handle the new field.
+
+2. **Validation** — add `"contract": ["pairs"]` to `EVALUATOR_REQUIRED_FIELDS` in `scripts/little_loops/fsm/validation.py:64`; since `contract` uses an LLM judge, it must be explicitly excluded from `NON_LLM_EVALUATOR_TYPES` (line 80) so meta-loop MR-1 lint correctly flags states that use it without a paired non-LLM evaluator.
+
+3. **Executor action mode** — add `if state.action_type == "contract": return "contract"` to `_action_mode()` in `scripts/little_loops/fsm/executor.py:1357`; handle the `"contract"` mode in `_execute_state()` to skip shell/prompt action execution entirely (action output = `""`, exit_code = `0`) and proceed directly to `_evaluate()`.
+
+4. **Evaluator function** — add `evaluate_contract(config, context)` to `scripts/little_loops/fsm/evaluators.py`; it reads each pair's producer/consumer files, applies optional regex extraction, composes a focused LLM judge prompt with both slices, calls `resolve_host().build_blocking_json(...)` using the identical pattern from `evaluate_llm_structured()` (lines ~1070–1140); add an `elif eval_type == "contract":` branch in the `evaluate()` dispatcher; add `"contract"` to `_EXIT_CODE_AWARE_EVALUATORS` frozenset at line 1187 (the evaluator reads files itself, not action output).
+
+5. **Verdict normalization** — `evaluate_contract()` returns `EvaluationResult(verdict="yes"|"no"|"error", details={"pair_results": [...]})` so `audit-loop-run` can render which specific pair failed.
+
+6. **Tests** — add `TestContractEvaluator` class to `scripts/tests/test_fsm_evaluators.py` following the `TestLLMStructuredEvaluator` mock pattern (`patch("little_loops.fsm.evaluators.subprocess.run")`); cover: aligned pair (`yes`), mismatched field names (`no`), camelCase/snake_case mismatch (`no`), missing file (`error`), regex no-match (`error`); add dispatcher test in `TestEvaluateDispatcher`; update the `_EXIT_CODE_AWARE_EVALUATORS` parametrize lists.
+
+7. **Docs** — add `check_contract` section to `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` between the `check_mcp` section (line 107) and the `check_skill` section (line 162); it is deterministic-input + LLM-judged, cheaper than `check_skill`'s full agentic session.
+
+8. **Example** — add a commented `check_contract` block to `scripts/little_loops/loops/harness-multi-item.yaml` (or create `scripts/little_loops/loops/examples/contract-demo.yaml` after creating the subdirectory).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+9. Export `evaluate_contract` from `scripts/little_loops/fsm/__init__.py` — add to the import line alongside `evaluate_blind_comparator` and add to `__all__` (lines 82–95)
+10. Update `scripts/tests/test_fsm_schema_fuzz.py` — add `"contract"` to `valid_types` list (line 44)
+11. Update `scripts/tests/test_fsm_evaluators.py` — add `"contract"` to `test_dispatch_nonzero_exit_does_not_affect_exit_code_aware_evaluators` parametrize (line 626)
+12. Add `TestContractEvaluatorValidation` class to `scripts/tests/test_fsm_validation.py` (follow `TestComparatorEvaluatorValidation` at line 391)
+13. Add contract round-trip tests to `scripts/tests/test_fsm_schema.py` (follow `TestMcpToolSchema` at line 1819)
+14. Add `test_action_type_contract_skips_runner` to `scripts/tests/test_fsm_executor.py:TestActionType` (follow `TestActionTypeMcpTool` at line 403)
+15. Update `docs/guides/LOOPS_GUIDE.md` — add `contract` row to evaluator catalog table; add to exit-code-aware prose paragraph
+16. Add commented `check_contract` block to `scripts/little_loops/loops/harness-single-shot.yaml` between `check_mcp` and `check_skill` gates
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/evaluators/contract.py` (new)
-- `scripts/little_loops/loops/schema.py` (extend evaluator type enum)
-- `scripts/little_loops/loops/runner.py` (wire new evaluator)
-- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`
+- `scripts/little_loops/fsm/evaluators.py` — add `evaluate_contract()` function; add `elif eval_type == "contract":` branch in `evaluate()` dispatcher; add `"contract"` to `_EXIT_CODE_AWARE_EVALUATORS` frozenset (line 1187)
+- `scripts/little_loops/fsm/schema.py` — add `"contract"` to `EvaluateConfig.type` `Literal[...]` union; add `pairs: list[dict] | None = None` field; update `to_dict()` / `from_dict()`
+- `scripts/little_loops/fsm/executor.py` — add `"contract"` case to `_action_mode()` (line 1357); handle contract mode in `_execute_state()` to skip action execution
+- `scripts/little_loops/fsm/validation.py` — add `"contract": ["pairs"]` to `EVALUATOR_REQUIRED_FIELDS` (line 64); explicitly exclude `"contract"` from `NON_LLM_EVALUATOR_TYPES` (line 80)
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add `check_contract` section between `check_mcp` (line 107) and `check_skill` (line 162)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/__init__.py` — add `evaluate_contract` to imports and `__all__` exports (same pattern as `evaluate_llm_structured`, `evaluate_blind_comparator`, etc. at lines 82–95)
+- `scripts/little_loops/loops/harness-single-shot.yaml` — add commented `check_contract` block between `check_mcp` and `check_skill` gates (companion annotated template; keeps it consistent with harness-multi-item.yaml)
+- `scripts/tests/test_fsm_schema_fuzz.py` — add `"contract"` to `valid_types` list (line 44); without this, the fuzz strategy never generates `contract`-typed configs
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/loops/loop_runner.py` — imports evaluator registry
-- `scripts/little_loops/cli/ll_loop.py` — `validate` subcommand imports schema
+- `scripts/little_loops/fsm/executor.py:FSMExecutor._evaluate()` — calls `evaluate()` dispatcher; `FSMExecutor._action_mode()` routes action types — both touched in Step 3 above
+- `scripts/little_loops/cli/loop/__init__.py` — `validate` subcommand transitively calls `validation.py`; no direct changes needed (schema changes propagate automatically)
 
 ### Similar Patterns
-- Existing evaluators in `scripts/little_loops/evaluators/` for structural conventions
-- `check_semantic` evaluator for LLM judge call patterns
+- `evaluate_llm_structured()` in `scripts/little_loops/fsm/evaluators.py` — identical `resolve_host().build_blocking_json(...)` + `subprocess.run` + envelope-parsing pattern to follow
+- `evaluate_blind_comparator()` in the same file — shows how multi-pair verdict normalization works
+- `EVALUATOR_REQUIRED_FIELDS` entries with required fields (e.g., `"comparator": ["baseline_path"]`) — model for `"contract": ["pairs"]`
 
 ### Tests
-- `scripts/tests/test_contract_evaluator.py` (new) — aligned, mismatched, file-missing, regex-no-match cases
+- `scripts/tests/test_fsm_evaluators.py` — add `TestContractEvaluator` class (follow `TestLLMStructuredEvaluator` mock pattern at line 650); add `TestEvaluateDispatcher.test_dispatch_contract`; add `"contract"` to `test_dispatch_nonzero_exit_does_not_affect_exit_code_aware_evaluators` parametrize (line 626); do NOT add `contract` to `test_dispatch_exit_code_124_short_circuits_to_error` (line 553) or `test_dispatch_nonzero_exit_generalized_short_circuit` (line 604) — `contract` is exit-code-aware and exempt from those lists
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_schema.py` — add `contract` type validity, round-trip, and `pairs`-field omission tests (follow `TestMcpToolSchema` pattern at line 1819); cover: `EvaluateConfig(type="contract")` validity, `pairs` field serialized/deserialized correctly, `pairs=None` omitted from `to_dict()` output
+- `scripts/tests/test_fsm_validation.py` — add `TestContractEvaluatorValidation` class (follow `TestComparatorEvaluatorValidation` at line 391); cover: `pairs` required-field check (missing `pairs` raises error), MR-1 fires when meta-loop uses only a `contract` evaluator (same as `comparator` since both are excluded from `NON_LLM_EVALUATOR_TYPES`)
+- `scripts/tests/test_fsm_executor.py` — add `test_action_type_contract_skips_runner` in `TestActionType` (line 268); verify that a state with `action_type="contract"` never invokes `MockActionRunner` (follow `TestActionTypeMcpTool` pattern at line 403)
+- `scripts/tests/test_fsm_schema_fuzz.py` — add `"contract"` to `valid_types` list (line 44); will silently under-test the new type without this update
 
 ### Documentation
-- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add `check_contract` section between `check_mcp` and `check_skill`
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — add `check_contract` section between `check_mcp` (line 107) and `check_skill` (line 162)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — add `contract` row to the `### Evaluators` catalog table; add `contract` to the exit-code-aware evaluator prose paragraph in that section (same paragraph that names `diff_stall`, `action_stall`, `llm_structured`, etc.)
 
 ### Configuration
 - N/A
@@ -157,11 +201,17 @@ Verdicts: `yes` (all pairs aligned), `no` (any pair fails), `error` (file unread
 
 | Path | Why relevant |
 |------|--------------|
-| `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` | New evaluator slots into the existing chain documentation |
-| `scripts/little_loops/evaluators/` | Where the implementation lands |
-| `scripts/little_loops/loops/harness-multi-item.yaml` | Example loop to extend with `check_contract` demo |
+| `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` | New evaluator slots into the existing evaluation chain documentation |
+| `scripts/little_loops/fsm/evaluators.py` | Where the evaluator function lives; see `evaluate_llm_structured()` for the LLM judge call pattern |
+| `scripts/little_loops/fsm/schema.py:EvaluateConfig` | Dataclass for `evaluate:` block config — add `pairs` field here |
+| `scripts/little_loops/fsm/validation.py:EVALUATOR_REQUIRED_FIELDS` | Master registry of valid evaluator types — add `"contract": ["pairs"]` here |
+| `scripts/little_loops/fsm/executor.py:FSMExecutor._action_mode` | Action type dispatcher — add `"contract"` self-contained mode here |
+| `scripts/little_loops/loops/harness-multi-item.yaml` | Harness template to extend with a commented `check_contract` example block |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34f84fcf-43f5-4359-b8a7-255b2b1e5f21.jsonl`
+- `/ll:wire-issue` - 2026-06-01T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:refine-issue` - 2026-06-01T19:26:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/393dcf8d-0e5a-4ff6-ba4d-fb43986db4b5.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:format-issue` - 2026-05-29T19:28:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aea29468-dd94-4692-a4e8-f97561c7c2a7.jsonl`

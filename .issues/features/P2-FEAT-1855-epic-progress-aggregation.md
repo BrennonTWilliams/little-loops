@@ -2,8 +2,9 @@
 id: FEAT-1855
 type: FEAT
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-01T17:35:32Z'
+completed_at: '2026-06-01T19:49:09Z'
 discovered_date: '2026-06-01'
 discovered_by: capture-issue
 relates_to:
@@ -77,7 +78,7 @@ def compute_epic_progress(epic_id: str, all_issues: list[IssueInfo]) -> EpicProg
     ...
 ```
 
-Reuse the resolution path established by `SprintManager.load_or_resolve()` / `SprintManager.resolve_epic()` (FEAT-1737) so EPIC→children resolution is identical between sprint execution and progress reporting. Render via a new `cli/issues/epic_progress.py` and bucket-header extension in `cli/issues/list_cmd.py`.
+Reuse the resolution path established by `SprintManager.load_or_resolve()` (FEAT-1737) so EPIC→children resolution is identical between sprint execution and progress reporting. Render via a new `cli/issues/epic_progress.py` and bucket-header extension in `cli/issues/list_cmd.py`.
 
 For age computation, prefer `captured_at:` (ISO 8601) → fall back to `discovered_date:` → fall back to git log first-touched timestamp.
 
@@ -87,7 +88,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Type name correction**: The domain class is `IssueInfo` (from `issue_parser.py`), not `IssueFile`. All references to `IssueFile` in this issue should be read as `IssueInfo`.
 
-**Sprint resolution vs. progress resolution**: `SprintManager.load_or_resolve()` dispatches to `SprintManager.resolve_epic()` (internal method, `sprint.py:~321-331`). Sprint resolution calls `find_issues(config, status_filter=_ACTIVE_STATUSES)` which excludes `done`/`cancelled`/`deferred`. Progress reporting must include all statuses — call `find_issues(config)` with **no status filter** (or `status_filter=None`) to get the full child set, mirroring how `deps.py:main_deps()` does it for tree display. The forward+backward union pattern is identical:
+**Sprint resolution vs. progress resolution**: `SprintManager.load_or_resolve()` contains the epic resolution logic inline (lines ~304-355). Sprint resolution calls `find_issues(config, status_filter=_ACTIVE_STATUSES)` which excludes `done`/`cancelled`/`deferred`. Progress reporting must include all statuses — call `find_issues(config)` with **no status filter** (or `status_filter=None`) to get the full child set, mirroring how `deps.py:main_deps()` does it for tree display. The forward+backward union pattern is identical:
 ```python
 forward_ids = set(epic_info.relates_to)
 backward_ids = {i.issue_id for i in all_issues if i.parent == epic_id}
@@ -106,14 +107,14 @@ child_ids = forward_ids | backward_ids   # no active-only intersection for progr
 
 ### Files to Modify
 - `scripts/little_loops/issue_progress.py` — new pure-function module; `EpicProgress` dataclass + `compute_epic_progress()`
-- `scripts/little_loops/cli/issues/__init__.py` — register `epic-progress` subcommand in `main_issues()` dispatch chain (after `skip` entry, lines ~43-44)
+- `scripts/little_loops/cli/issues/__init__.py` — register `epic-progress` subcommand in `main_issues()` dispatch chain (after `skip` entry, lines ~695-696)
 - `scripts/little_loops/cli/issues/epic_progress.py` — new subcommand; `cmd_epic_progress(config, args) -> int`
 - `scripts/little_loops/cli/issues/list_cmd.py` — extend `--group-by epic` bucket headers in `cmd_list()` (epic-grouping branch, lines ~135-176); call `compute_epic_progress()` per bucket to append `(N/M done · K blocked)` badge
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/sprint.py` — `SprintManager.resolve_epic()` (lines ~321-331) — forward+backward union pattern to replicate (do NOT call directly; copy the two-pass logic and skip the active-only intersection)
+- `scripts/little_loops/sprint.py` — epic resolution inline in `SprintManager.load_or_resolve()` (lines ~304-355) — forward+backward union pattern to replicate (do NOT call directly; copy the two-pass logic and skip the active-only intersection)
 - `scripts/little_loops/issue_parser.py` — `find_issues(config)` with no `status_filter` for all-status child loading; `IssueInfo.parent` (`str | None`) and `IssueInfo.relates_to` (`list[str]`) fields
-- `scripts/little_loops/cli/issues/search.py` — `_parse_discovered_date(fm, raw_front, file_path)` for age fallback chain (`captured_at` → `discovered_date` → file mtime)
+- `scripts/little_loops/cli/issues/search.py` — `_parse_discovered_date(content: str, file_path: Path | None = None)` for age fallback chain (`captured_at` → `discovered_date` → file mtime)
 - `scripts/little_loops/cli/output.py` — `progress(current, total, width)` ASCII bar utility; `print_json()` for `--format json`; `colorize()` / `TYPE_COLOR` / `PRIORITY_COLOR` for terminal output
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -148,8 +149,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. **Resolve children** — replicate the two-pass union from `sprint.py:SprintManager.resolve_epic()` in `issue_progress.py:compute_epic_progress()`: `forward_ids = set(epic_info.relates_to)` + `backward_ids = {i.issue_id for i in all_issues if i.parent == epic_id}`. Call `find_issues(config)` with **no status filter** so done/cancelled/deferred children are included (unlike sprint execution which uses `status_filter=_ACTIVE_STATUSES`).
-2. **Compute aggregates** — `compute_epic_progress()` returns `EpicProgress`; pure function, no I/O. Use `IssueInfo` (not `IssueFile`) as the child type. For age: call `_parse_discovered_date(fm, raw_front, file_path)` from `cli/issues/search.py` or extract it to a shared location first.
+1. **Resolve children** — replicate the two-pass union from `sprint.py:SprintManager.load_or_resolve()` (lines ~304-355) in `issue_progress.py:compute_epic_progress()`: `forward_ids = set(epic_info.relates_to)` + `backward_ids = {i.issue_id for i in all_issues if i.parent == epic_id}`. Call `find_issues(config)` with **no status filter** so done/cancelled/deferred children are included (unlike sprint execution which uses `status_filter=_ACTIVE_STATUSES`).
+2. **Compute aggregates** — `compute_epic_progress()` returns `EpicProgress`; pure function, no I/O. Use `IssueInfo` (not `IssueFile`) as the child type. For age: call `_parse_discovered_date(content: str, file_path: Path | None = None)` from `cli/issues/search.py` or extract it to a shared location first.
 3. **Progress bar** — decide: (a) use existing `cli/output.py:progress(current, total)` ASCII `|###  |` bar and update the expected output, OR (b) add `sparkline(current, total, width=16)` to `cli/output.py` using Unicode block characters. Whichever is chosen, document in `docs/reference/CLI.md`.
 4. **`epic-progress` subcommand** (`cli/issues/epic_progress.py:cmd_epic_progress()`) — add `--format {text,json,markdown}` following the `cli/deps.py` pattern. Register in `cli/issues/__init__.py` `main_issues()` dispatch chain; import `cmd_epic_progress` at the top of the `with cli_event_context(...)` block.
 5. **List badge** — in `cli/issues/list_cmd.py:cmd_list()` epic-grouping branch, call `compute_epic_progress()` per EPIC bucket and append `(N/M done · K blocked)` to the header line. Import `compute_epic_progress` at the top of the function body (deferred import pattern).
@@ -246,6 +247,7 @@ ll-issues list --group-by epic     # now includes (N/M done · K blocked) badge
 `enhancement`, `epics`, `cli`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T19:34:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ab8b4ae-3378-4730-9736-479cb6d5aa6e.jsonl`
 - `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b683bd50-bc7c-486c-b125-062c3399175d.jsonl`
 - `/ll:wire-issue` - 2026-06-01T19:26:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d4e1a7d5-5056-4e46-8db9-e529fbf37c68.jsonl`
 - `/ll:refine-issue` - 2026-06-01T19:17:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba071d29-681d-440e-9a8d-833fa01b9c50.jsonl`

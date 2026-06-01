@@ -24,6 +24,7 @@ def main_issues() -> int:
         from little_loops.cli.issues.check_readiness import cmd_check_readiness
         from little_loops.cli.issues.clusters import cmd_clusters
         from little_loops.cli.issues.count_cmd import cmd_count
+        from little_loops.cli.issues.epic_progress import add_epic_progress_parser, cmd_epic_progress
         from little_loops.cli.issues.fingerprint import cmd_fingerprint
         from little_loops.cli.issues.impact_effort import cmd_impact_effort
         from little_loops.cli.issues.list_cmd import cmd_list
@@ -639,6 +640,8 @@ Examples:
         sk.add_argument("--reason", default=None, help="Reason for skipping (appended to Skip Log)")
         add_config_arg(sk)
 
+        add_epic_progress_parser(subs)
+
         args = parser.parse_args()
 
         if not args.command:
@@ -694,4 +697,6 @@ Examples:
             return cmd_fingerprint(config, args)
         if args.command == "skip":
             return cmd_skip(config, args)
+        if args.command == "epic-progress":
+            return cmd_epic_progress(config, args)
         return 1

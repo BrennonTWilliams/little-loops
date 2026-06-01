@@ -26,7 +26,7 @@ These flags appear across multiple tools:
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100, default: from config) | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-loop resume` |
 | `--context-limit` | | Override context window token estimate (default: from config or model-detected) | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-loop resume` |
 | `--json` | `-j` | Output as JSON (structured, machine-readable) | Most `ll-*` CLIs — see individual tool sections |
-| `--format` | `-f` | Output format: `text`, `json`, `markdown` | `ll-history`, `ll-deps`, `ll-verify-docs`, `ll-check-links` |
+| `--format` | `-f` | Output format: `text`, `json`, `markdown` | `ll-history`, `ll-deps`, `ll-verify-docs`, `ll-check-links`, `ll-issues epic-progress` |
 
 ---
 
@@ -789,7 +789,7 @@ List issues with optional filters.
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
 | `--label` | Filter by label from `labels:` frontmatter; repeatable for OR match |
 | `--milestone` | Filter by milestone name from `milestone:` frontmatter (exact match) |
-| `--group-by` | Group output by `type` (default, existing four-bucket view) or `epic` (group child issues under their parent ID, with an "Unparented" bucket for issues without a `parent:` field) |
+| `--group-by` | Group output by `type` (default, existing four-bucket view) or `epic` (group child issues under their parent ID, with an "Unparented" bucket for issues without a `parent:` field; each EPIC bucket header includes a `(N/M done · K blocked)` progress badge) |
 | `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all`. Note: synonyms in on-disk frontmatter are normalized on read, but `--status` arguments must use canonical values (argparse validates choices before normalization runs). |
 | `--flat` | Output flat list for scripting |
 | `--json` / `-j` | Output as JSON array; each entry includes `id`, `title`, `priority`, `type`, `status`, `path`, `labels`, `milestone`, and `parent` (the parent EPIC or issue ID when set) |
@@ -1025,6 +1025,9 @@ ll-issues anchor-sweep                           # Rewrite file:line refs in act
 ll-issues asw --dry-run                          # Alias: asw
 ll-issues set-status ENH-1725 in_progress        # Transition status
 ll-issues sst BUG-042 done                       # Alias: sst
+ll-issues epic-progress EPIC-1773                # EPIC progress summary (text)
+ll-issues ep EPIC-1773 --format json             # EPIC progress as JSON
+ll-issues ep EPIC-1773 --format markdown         # EPIC progress as markdown
 ```
 
 ---
@@ -1179,6 +1182,34 @@ Transition an issue to a new status value. Validates the target status against t
 ll-issues set-status ENH-1725 in_progress   # ENH-1725: open → in_progress
 ll-issues sst BUG-042 done                  # BUG-042: in_progress → done
 ll-issues set-status FEAT-100 blocked
+```
+
+---
+
+#### `ll-issues epic-progress <epic_id>` / `ll-issues ep <epic_id>`
+
+Show a progress summary for an EPIC and all its child issues. Aggregates child statuses into a completion bar, counts by status, surfaces the oldest open child, and lists any blocked children with their `blocked_by` links.
+
+| Argument/Flag | Short | Default | Description |
+|---------------|-------|---------|-------------|
+| `epic_id` | | _(required)_ | EPIC ID to summarize (e.g., `EPIC-1773`) |
+| `--format` | `-f` | `text` | Output format: `text`, `json`, or `markdown` |
+| `--config` | | | Path to project root |
+
+**Sample text output:**
+```
+EPIC-1773: Audit & simplify built-in FSM loops
+  Progress:     ████████░░░░░░░░  8/12 done (67%)
+  Status:       2 in_progress  •  1 blocked  •  1 open  •  8 done
+  Oldest open:  ENH-1641 (24 days)
+  Blocked:      ENH-1820 → blocked_by BUG-1701
+```
+
+**Examples:**
+```bash
+ll-issues epic-progress EPIC-1773              # Text summary (default)
+ll-issues ep EPIC-1773 --format json           # JSON object with counts and child list
+ll-issues ep EPIC-1773 --format markdown       # Markdown-formatted summary
 ```
 
 ---

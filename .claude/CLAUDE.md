@@ -173,7 +173,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-verify-docs` - Verify documented counts match actual file counts
 - `ll-verify-skill-budget` - Check skill description token footprint against listing budget (exit 1 if over)
 - `ll-check-links` - Check markdown documentation for broken links
-- `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, anchor-sweep, fingerprint)
+- `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, anchor-sweep, fingerprint, epic-progress)
 - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale); record creation is owned by `/ll:explore-api`
 - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
 - `ll-migrate` - One-time migration of completed/deferred issues to type-based directories (ENH-1390)

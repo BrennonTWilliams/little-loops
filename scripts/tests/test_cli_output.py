@@ -644,6 +644,61 @@ class TestProgress:
         assert len(bar) == 5
 
 
+class TestSparkline:
+    """Tests for sparkline() Unicode block progress bar."""
+
+    def test_returns_unicode_blocks(self) -> None:
+        """sparkline() returns a string of block characters."""
+        from little_loops.cli.output import sparkline
+
+        bar = sparkline(5, 10, 10)
+        assert "█" in bar or "░" in bar
+
+    def test_full_bar(self) -> None:
+        """sparkline() at 100% is all filled blocks."""
+        from little_loops.cli.output import sparkline
+
+        bar = sparkline(10, 10, 10)
+        assert bar == "█" * 10
+
+    def test_empty_bar(self) -> None:
+        """sparkline() at 0% is all empty blocks."""
+        from little_loops.cli.output import sparkline
+
+        bar = sparkline(0, 10, 10)
+        assert bar == "░" * 10
+
+    def test_half_bar(self) -> None:
+        """sparkline() at 50% is half filled."""
+        from little_loops.cli.output import sparkline
+
+        bar = sparkline(5, 10, 10)
+        assert bar.count("█") == 5
+        assert bar.count("░") == 5
+
+    def test_zero_total_returns_empty(self) -> None:
+        """sparkline() with zero total returns all empty blocks."""
+        from little_loops.cli.output import sparkline
+
+        bar = sparkline(0, 0, 8)
+        assert bar == "░" * 8
+
+    def test_respects_custom_width(self) -> None:
+        """sparkline() output length equals width."""
+        from little_loops.cli.output import sparkline
+
+        for w in [1, 8, 16, 20]:
+            bar = sparkline(5, 10, w)
+            assert len(bar) == w, f"Expected width {w}, got {len(bar)}"
+
+    def test_width_one_minimum(self) -> None:
+        """sparkline() clamps width to at least 1."""
+        from little_loops.cli.output import sparkline
+
+        bar = sparkline(5, 10, 0)
+        assert len(bar) == 1
+
+
 class TestForceColor:
     """Tests for FORCE_COLOR env var support."""
 
