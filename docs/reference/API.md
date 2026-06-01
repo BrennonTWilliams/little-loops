@@ -4040,6 +4040,7 @@ class RepeatedFailureConfig:
     window: int = 3                        # Consecutive identical triples required to fire
     on_repeated_failure: str = "abort"     # "abort" or name of a declared recovery state
     progress_paths: list[str] = field(default_factory=list)  # BUG-1674: opt-in fingerprint paths
+    exclude_paths: list[str] = field(default_factory=list)   # BUG-1767: paths to exclude from fingerprint
 
 @dataclass
 class CircuitConfig:
@@ -4049,6 +4050,8 @@ class CircuitConfig:
 The stall detector records `(state_name, exit_code, eval_verdict)` after every transition and fires when the last `window` triples are identical. When `on_repeated_failure == "abort"` the run terminates with `terminated_by="stall_detected"` (exit code 1); otherwise the executor routes to the named state. Each firing also emits a `stall_detected` event with `state`, `exit_code`, `verdict`, `consecutive`, and `action` fields.
 
 **`progress_paths` — fingerprint-based reset (BUG-1674):** Loops with a check↔work ping-pong where the work state uses `next:` (no `evaluate:`) are invisible to the detector — only the eval-bearing state records triples, so three identical `check` verdicts fire the stall even when `work` made real file-level progress. Set `progress_paths` to a list of paths (supports `${env.PWD}` interpolation) to watch: if any path's `(mtime, size)` changes between two consecutive records for the same eval-bearing state, the rolling window resets. Empty by default — existing loops without this field retain current semantics.
+
+**`exclude_paths` — bookkeeping file exclusion (BUG-1767):** When a loop's own internal tracking files (plan, DoD, scratchpad) are listed in `progress_paths`, every append to those files resets the stall window, silently disabling stall detection. Add such files to `exclude_paths` so the executor filters them out before computing the fingerprint. Paths support `${env.PWD}` interpolation. `ll-loop validate` emits a WARNING when a state action references a `progress_paths` file that is not also in `exclude_paths`.
 
 **Methods:**
 

@@ -2940,6 +2940,30 @@ class TestCircuitConfig:
         restored = RepeatedFailureConfig.from_dict({})
         assert restored.progress_paths == []
 
+    def test_repeated_failure_exclude_paths_round_trip(self) -> None:
+        """BUG-1767: exclude_paths serializes and deserializes correctly."""
+        excl = ["${env.PWD}/.loops/tmp/plan.md", "${env.PWD}/.loops/tmp/dod.md"]
+        original = RepeatedFailureConfig(
+            window=3,
+            on_repeated_failure="diagnose",
+            exclude_paths=excl,
+        )
+        d = original.to_dict()
+        assert d["exclude_paths"] == excl
+        restored = RepeatedFailureConfig.from_dict(d)
+        assert restored.exclude_paths == excl
+        assert restored.progress_paths == []
+
+    def test_repeated_failure_empty_exclude_paths_omitted_from_dict(self) -> None:
+        """exclude_paths is omitted from to_dict() when empty (skip-if-default)."""
+        original = RepeatedFailureConfig()
+        d = original.to_dict()
+        assert "exclude_paths" not in d
+
+    def test_repeated_failure_defaults_include_empty_exclude_paths(self) -> None:
+        restored = RepeatedFailureConfig.from_dict({})
+        assert restored.exclude_paths == []
+
 
 class TestMetaSelfEvalOk:
     """ENH-1665: meta_self_eval_ok field round-trip serialization."""

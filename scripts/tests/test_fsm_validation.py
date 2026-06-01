@@ -27,6 +27,7 @@ from little_loops.fsm.validation import (
     _validate_harness_multimodal_evaluator_blind_spot,
     _validate_meta_loop_evaluation,
     _validate_parameters,
+    _validate_progress_paths_isolation,
     _validate_zero_retry_counter,
     load_and_validate,
     validate_fsm,
@@ -1079,6 +1080,108 @@ class TestArtifactIsolation:
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
+
+
+class TestProgressPathsIsolation:
+    """BUG-1767: loops must not list self-written files in progress_paths."""
+
+    def _make_fsm(
+        self,
+        action: str,
+        progress_paths: list[str],
+        exclude_paths: list[str] | None = None,
+    ) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": make_state(action=action, on_yes="done", on_no="work"),
+                "done": make_state(terminal=True),
+            },
+            circuit=CircuitConfig(
+                repeated_failure=RepeatedFailureConfig(
+                    progress_paths=progress_paths,
+                    exclude_paths=exclude_paths or [],
+                )
+            ),
+        )
+
+    def test_fires_when_action_writes_to_progress_path(self) -> None:
+        """WARNING fires when a state action references a progress_paths file."""
+        fsm = self._make_fsm(
+            action="echo hi >> .loops/tmp/plan.md",
+            progress_paths=[".loops/tmp/plan.md"],
+        )
+        errors = _validate_progress_paths_isolation(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert ".loops/tmp/plan.md" in errors[0].message
+        assert errors[0].path == "states.work.action"
+
+    def test_fires_with_interpolation_prefix_in_progress_paths(self) -> None:
+        """WARNING fires even when the progress_path has a ${env.PWD}/ prefix."""
+        fsm = self._make_fsm(
+            action="echo step >> .loops/tmp/general-task-plan.md",
+            progress_paths=["${env.PWD}/.loops/tmp/general-task-plan.md"],
+        )
+        errors = _validate_progress_paths_isolation(fsm)
+        assert len(errors) == 1
+        assert ".loops/tmp/general-task-plan.md" in errors[0].message
+
+    def test_does_not_fire_when_no_progress_paths(self) -> None:
+        """No WARNING when progress_paths is empty."""
+        fsm = self._make_fsm(
+            action="echo hi >> .loops/tmp/plan.md",
+            progress_paths=[],
+        )
+        errors = _validate_progress_paths_isolation(fsm)
+        assert errors == []
+
+    def test_does_not_fire_when_action_does_not_reference_path(self) -> None:
+        """No WARNING when the action does not reference any progress_paths file."""
+        fsm = self._make_fsm(
+            action="run-my-tool.sh",
+            progress_paths=[".loops/tmp/plan.md"],
+        )
+        errors = _validate_progress_paths_isolation(fsm)
+        assert errors == []
+
+    def test_does_not_fire_when_path_is_excluded(self) -> None:
+        """No WARNING when the overlapping path is already in exclude_paths."""
+        fsm = self._make_fsm(
+            action="echo hi >> .loops/tmp/plan.md",
+            progress_paths=[".loops/tmp/plan.md"],
+            exclude_paths=[".loops/tmp/plan.md"],
+        )
+        errors = _validate_progress_paths_isolation(fsm)
+        assert errors == []
+
+    def test_does_not_fire_when_no_circuit(self) -> None:
+        """No WARNING when the loop has no circuit block."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": make_state(action="echo .loops/tmp/plan.md", on_yes="done"),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_progress_paths_isolation(fsm)
+        assert errors == []
+
+    def test_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() surfaces the progress_paths isolation warning end-to-end."""
+        fsm = self._make_fsm(
+            action="echo hi >> .loops/tmp/plan.md",
+            progress_paths=[".loops/tmp/plan.md"],
+        )
+        errors = validate_fsm(fsm)
+        overlap_warnings = [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING and "exclude_paths" in e.message
+        ]
+        assert len(overlap_warnings) == 1
 
 
 class TestOnMaxIterationsValidation:

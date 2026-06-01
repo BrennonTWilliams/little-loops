@@ -152,3 +152,16 @@ class TestStallDetector:
         d.record("S", 0, "no", fingerprint=fp2)
         d.record("S", 0, "no", fingerprint=fp2)
         assert d.check() is not None
+
+    # --- exclude_paths regression tests (BUG-1767) ---
+
+    def test_none_fingerprint_still_fires_stall(self) -> None:
+        """BUG-1767: when exclude_paths strips all watched paths, fingerprint is
+        None and the detector still fires — it does not accidentally suppress stall
+        detection when the fingerprint becomes empty."""
+        d = StallDetector(window=3)
+        # Simulate executor passing None when all paths are excluded
+        d.record("check_done", 0, "no", fingerprint=None)
+        d.record("check_done", 0, "no", fingerprint=None)
+        d.record("check_done", 0, "no", fingerprint=None)
+        assert d.check() is not None

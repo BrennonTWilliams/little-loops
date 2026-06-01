@@ -815,6 +815,7 @@ class RepeatedFailureConfig:
     window: int = 3
     on_repeated_failure: str = "abort"
     progress_paths: list[str] = field(default_factory=list)
+    exclude_paths: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization (skip-if-default)."""
@@ -825,6 +826,8 @@ class RepeatedFailureConfig:
             result["on_repeated_failure"] = self.on_repeated_failure
         if self.progress_paths:
             result["progress_paths"] = self.progress_paths
+        if self.exclude_paths:
+            result["exclude_paths"] = self.exclude_paths
         return result
 
     @classmethod
@@ -834,6 +837,7 @@ class RepeatedFailureConfig:
             window=data.get("window", 3),
             on_repeated_failure=data.get("on_repeated_failure", "abort"),
             progress_paths=data.get("progress_paths", []),
+            exclude_paths=data.get("exclude_paths", []),
         )
 
 

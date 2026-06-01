@@ -688,17 +688,32 @@ class FSMExecutor:
         Called just before stall_detector.record() so that file changes made by
         intermediate next:-only states are visible to the detector. Returns None
         when no progress_paths are configured (preserves existing semantics).
+
+        Paths listed in exclude_paths (BUG-1767) are resolved and removed before
+        building the fingerprint tuple so that a loop's internal bookkeeping files
+        cannot reset the stall window on every cycle.
         """
         if self.fsm.circuit is None or self.fsm.circuit.repeated_failure is None:
             return None
-        paths = self.fsm.circuit.repeated_failure.progress_paths
+        rf = self.fsm.circuit.repeated_failure
+        paths = rf.progress_paths
         if not paths:
             return None
+
+        excluded: set[str] = set()
+        for raw_excl in rf.exclude_paths:
+            try:
+                excluded.add(interpolate(raw_excl, ctx))
+            except Exception:
+                pass
+
         entries: list[tuple[float, int]] = []
         for raw_path in paths:
             try:
                 resolved = interpolate(raw_path, ctx)
             except Exception:
+                continue
+            if resolved in excluded:
                 continue
             p = Path(resolved)
             if p.exists():

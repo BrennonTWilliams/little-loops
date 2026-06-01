@@ -6793,6 +6793,85 @@ class TestStallDetector:
         stall_events = [e for e in events if e.get("event") == "stall_detected"]
         assert len(stall_events) == 1
 
+    def test_exclude_paths_allows_stall_despite_self_writes(self, tmp_path: Path) -> None:
+        """BUG-1767: a loop that appends to its own bookkeeping file every cycle
+        must still trip the stall detector when those files are in exclude_paths.
+
+        The self-appending file (simulating a plan.md) is listed in both
+        progress_paths AND exclude_paths so the executor filters it out before
+        building the fingerprint.  With the excluded path removed, the fingerprint
+        is empty (None) on every cycle and the window accumulates normally.
+        """
+        import time
+
+        from little_loops.fsm.schema import CircuitConfig, RepeatedFailureConfig
+
+        self_write_file = tmp_path / "plan.md"
+        self_write_file.write_text("initial")
+
+        @dataclass
+        class SelfWriteRunner:
+            calls: list[str] = field(default_factory=list)
+            step: int = 0
+
+            def run(
+                self,
+                action: str,
+                timeout: int,
+                is_slash_command: bool,
+                on_output_line: Any = None,
+                agent: str | None = None,
+                tools: list[str] | None = None,
+                on_usage: Any = None,
+                on_usage_detailed: Any = None,
+            ) -> ActionResult:
+                del timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
+                self.calls.append(action)
+                # Simulate a loop that always appends to its own plan file (like
+                # general-task's continue_work state) — no real progress is made.
+                self.step += 1
+                time.sleep(0.01)
+                self_write_file.write_text(f"step {self.step}")
+                return ActionResult(output="", stderr="", exit_code=1, duration_ms=10)
+
+        fsm = FSMLoop(
+            name="self-write-stall-test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    evaluate=EvaluateConfig(type="exit_code"),
+                    on_yes="done",
+                    on_no="work",
+                ),
+                "work": StateConfig(action="work.sh", next="check"),
+                "done": StateConfig(terminal=True),
+            },
+            max_iterations=50,
+        )
+        fsm.circuit = CircuitConfig(
+            repeated_failure=RepeatedFailureConfig(
+                window=3,
+                on_repeated_failure="abort",
+                progress_paths=[str(self_write_file)],
+                exclude_paths=[str(self_write_file)],
+            )
+        )
+
+        runner = SelfWriteRunner()
+        events: list[dict] = []
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        # The stall must fire because self-writes to an excluded path should not
+        # reset the window — the fingerprint is effectively empty every cycle.
+        assert result.terminated_by == "stall_detected", (
+            f"Expected stall_detected, got {result.terminated_by!r}. "
+            f"Stall events: {[e for e in events if e.get('event') == 'stall_detected']}"
+        )
+        stall_events = [e for e in events if e.get("event") == "stall_detected"]
+        assert len(stall_events) == 1
+
 
 class TestMaxIterationsSummaryHook:
     """Tests for ENH-1631: on_max_iterations summary hook."""

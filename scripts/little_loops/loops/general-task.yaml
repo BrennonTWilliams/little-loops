@@ -15,7 +15,7 @@ circuit:
   repeated_failure:
     window: 3
     on_repeated_failure: diagnose
-    progress_paths:
+    exclude_paths:
       - "${env.PWD}/.loops/tmp/general-task-plan.md"
       - "${env.PWD}/.loops/tmp/general-task-dod.md"
 

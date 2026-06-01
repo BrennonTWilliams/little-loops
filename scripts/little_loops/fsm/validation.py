@@ -908,6 +908,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_circuit(fsm, defined_states))
 
+    errors.extend(_validate_progress_paths_isolation(fsm))
+
     return errors
 
 
@@ -1240,6 +1242,61 @@ def _validate_circuit(fsm: FSMLoop, defined_states: set[str]) -> list[Validation
             )
         )
 
+    return errors
+
+
+# Matches common interpolation prefixes used in loop YAML paths so we can
+# extract the portable relative component for action-string scanning.
+_INTERPOLATION_PREFIX_RE = re.compile(r"^\$\{[^}]+\}/")
+
+
+def _strip_interpolation_prefix(path: str) -> str:
+    """Return the path with any leading ${...}/ prefix removed."""
+    return _INTERPOLATION_PREFIX_RE.sub("", path)
+
+
+def _validate_progress_paths_isolation(fsm: FSMLoop) -> list[ValidationError]:
+    """Warn when a state's action writes to a file listed in progress_paths (BUG-1767).
+
+    When a loop's own bookkeeping files appear in both progress_paths and the
+    state action strings, every append to those files resets the stall window,
+    silently disabling the BUG-1674 stall guard for that loop. Authors should
+    move such files to exclude_paths so the stall detector can still fire.
+    """
+    if fsm.circuit is None or fsm.circuit.repeated_failure is None:
+        return []
+    rf = fsm.circuit.repeated_failure
+    if not rf.progress_paths:
+        return []
+
+    # Build a set of the relative path components we need to look for.
+    watched = {_strip_interpolation_prefix(p) for p in rf.progress_paths}
+    # Exclude paths that are already in exclude_paths — author acknowledged.
+    excluded = {_strip_interpolation_prefix(p) for p in rf.exclude_paths}
+    active_watched = watched - excluded
+    if not active_watched:
+        return []
+
+    errors: list[ValidationError] = []
+    for state_name, state in fsm.states.items():
+        if not state.action:
+            continue
+        for path_fragment in active_watched:
+            if path_fragment in state.action:
+                errors.append(
+                    ValidationError(
+                        message=(
+                            f"State action references '{path_fragment}', which is also "
+                            "listed in circuit.repeated_failure.progress_paths. Writes "
+                            "to this file will reset the stall window every cycle, "
+                            "silently disabling stall detection. Move it to "
+                            "circuit.repeated_failure.exclude_paths to separate "
+                            "bookkeeping files from real progress signals."
+                        ),
+                        path=f"states.{state_name}.action",
+                        severity=ValidationSeverity.WARNING,
+                    )
+                )
     return errors
 
 

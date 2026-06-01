@@ -226,6 +226,11 @@
               "type": "array",
               "items": {"type": "string"},
               "description": "Paths (supports ${env.PWD} interpolation) to watch for mtime/size changes. When any path changes between consecutive record() calls for the same eval-bearing state, the stall window resets. Opt-in; empty by default preserves existing semantics."
+            },
+            "exclude_paths": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Paths to exclude from the progress_paths fingerprint (BUG-1767). Use this to list the loop's own internal bookkeeping files (plan, DoD, scratchpad) so that appending to them does not reset the stall window. Supports ${env.PWD} interpolation."
             }
           },
           "additionalProperties": false
