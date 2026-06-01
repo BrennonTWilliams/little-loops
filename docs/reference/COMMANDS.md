@@ -392,6 +392,19 @@ AI-guided sprint health check that analyzes a sprint's current state and suggest
 
 ---
 
+### `/ll:review-epic`
+Read-only health audit for an EPIC: surfaces stalled children, flags scope drift, identifies missing coverage, and recommends closure when all children are done.
+
+**Arguments:**
+- `epic_id` (required): EPIC ID to review (e.g., "EPIC-42")
+- `--skip-drift` (optional): Skip LLM scope-drift and missing-coverage passes; emit structural findings only (stall detection + closure check)
+
+**Trigger keywords:** "review epic", "epic health", "epic audit", "epic progress", "check epic", "stalled children", "scope drift", "epic ready to close"
+
+**Output:** A structured health report with progress summary, stalled children, scope-drift findings, missing-coverage findings, and closure recommendation — followed by a numbered Recommendations section mapping each finding to a concrete runnable command. Never writes to any file.
+
+---
+
 ## Auditing & Analysis
 
 ### `/ll:audit-architecture`
@@ -920,6 +933,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `workflow-automation-proposer`^ | Synthesize workflow patterns into automation proposals |
 | `create-sprint` | Create sprint with curated issue list |
 | `review-sprint` | Review sprint health and suggest improvements |
+| `review-epic` | Audit EPIC health: stalled children, scope drift, missing coverage |
 
 ---
 

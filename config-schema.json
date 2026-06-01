@@ -486,6 +486,24 @@
               "description": "Maximum decomposition depth per subtree (default 3)"
             }
           }
+        },
+        "review_epic": {
+          "type": "object",
+          "description": "Configuration for the review-epic skill",
+          "properties": {
+            "stale_days": {
+              "type": "integer",
+              "description": "Days without activity before a child issue is considered stalled",
+              "default": 14,
+              "minimum": 1
+            },
+            "enable_scope_drift_check": {
+              "type": "boolean",
+              "description": "Enable LLM-based scope-drift and missing-coverage passes",
+              "default": true
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

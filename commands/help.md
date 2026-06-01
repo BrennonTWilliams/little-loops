@@ -102,6 +102,10 @@ PLANNING & IMPLEMENTATION
 /ll:review-sprint [sprint_name]
     AI-guided sprint health check and optimization
 
+/ll:review-epic <epic_id> [flags]
+    Audit EPIC health: stalled children, scope drift, missing coverage, closure readiness
+    Flags: --skip-drift (skip LLM scope-drift and missing-coverage passes)
+
 /ll:manage-issue <type> <action> [issue_id] [flags]
     Autonomously manage issues - plan, implement, verify, complete
     Types: bug, feature, enhancement
@@ -301,7 +305,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 
 **Issue Discovery**: `capture-issue`, `scan-codebase`, `scan-product`, `audit-architecture`
 **Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`, `refine-issue`, `wire-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`, `audit-issue-conflicts`
-**Planning & Implementation**: `create-sprint`, `review-sprint`, `manage-issue`, `iterate-plan`
+**Planning & Implementation**: `create-sprint`, `review-sprint`, `review-epic`, `manage-issue`, `iterate-plan`
 **Scanning & Analysis**: `find-dead-code`, `explore-api`
 **Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
 **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`

@@ -2,13 +2,22 @@
 id: FEAT-1856
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-01T17:35:32Z'
+completed_at: '2026-06-01T20:50:44Z'
 discovered_date: '2026-06-01'
 discovered_by: capture-issue
-relates_to: [FEAT-1855, FEAT-1737]
+relates_to:
+- FEAT-1855
+- FEAT-1737
 parent: EPIC-1864
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-1856: `/ll:review-epic` skill — stalled-children and scope-drift audit
@@ -198,6 +207,8 @@ No Python API.
 `enhancement`, `epics`, `skill`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T20:33:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c02ebee-da6d-4506-ae06-aeb102a1c9df.jsonl`
+- `/ll:confidence-check` - 2026-06-01T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aad0ee9c-8434-4485-8146-3413341c2be4.jsonl`
 - `/ll:wire-issue` - 2026-06-01T20:29:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/585d1302-ddc0-4253-8714-8796ad7687e8.jsonl`
 - `/ll:refine-issue` - 2026-06-01T20:23:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/77ea0545-6144-4266-a5c4-0bfff8650779.jsonl`
 - `/ll:format-issue` - 2026-06-01T17:45:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9321137-9371-4510-85ad-95b0940c3c6f.jsonl`

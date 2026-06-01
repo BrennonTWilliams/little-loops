@@ -1,0 +1,3 @@
+interface:
+  display_name: "Review Epic"
+  short_description: "Use when asked to review epic health, audit stalled children, check scope drift,"

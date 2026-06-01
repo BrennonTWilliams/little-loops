@@ -95,6 +95,31 @@ class TestConfigSchema:
         assert rr_props["max_depth"]["minimum"] == 1
         assert rr_props["max_depth"]["default"] == 3
 
+    def test_commands_review_epic_in_schema(self) -> None:
+        """commands.review_epic must be declared inside the commands block.
+
+        The `commands` object has additionalProperties: false, so any config
+        that sets commands.review_epic will fail schema validation unless
+        the block is declared here.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        commands = data["properties"]["commands"]
+        assert commands.get("additionalProperties") is False, (
+            "commands block is expected to have additionalProperties: false"
+        )
+        assert "review_epic" in commands["properties"], (
+            "commands.review_epic is not declared; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        re_ = commands["properties"]["review_epic"]
+        assert re_["type"] == "object"
+        re_props = re_["properties"]
+        assert re_props["stale_days"]["type"] == "integer"
+        assert re_props["stale_days"]["minimum"] == 1
+        assert re_props["stale_days"]["default"] == 14
+        assert re_props["enable_scope_drift_check"]["type"] == "boolean"
+        assert re_props["enable_scope_drift_check"]["default"] is True
+
     def test_commands_rate_limits_block(self) -> None:
         """commands.rate_limits must be declared inside the commands block.
 
