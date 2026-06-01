@@ -656,6 +656,29 @@ class TestSQLiteTransportIssueEvents:
         transport.close()
         assert recent(db, kind="issue") == []
 
+    def test_issue_event_captured_at_round_trip(self, tmp_path: Path) -> None:
+        """captured_at in send() dict is stored and retrieved from issue_events."""
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        transport.send(
+            {
+                "event": "issue.completed",
+                "ts": "2026-05-20T10:00:00Z",
+                "issue_id": "ENH-1839",
+                "captured_at": "2026-05-20T10:00:00Z",
+            }
+        )
+        transport.close()
+        conn = connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT captured_at FROM issue_events WHERE issue_id = ?", ("ENH-1839",)
+            ).fetchall()
+        finally:
+            conn.close()
+        assert len(rows) == 1
+        assert rows[0]["captured_at"] == "2026-05-20T10:00:00Z"
+
 
 class TestSchemaV3:
     """v3 migration: unique dedup index on issue_events (ENH-1690)."""
@@ -883,6 +906,37 @@ class TestSchemaV5:
         finally:
             conn.close()
         assert rows == []
+
+    def test_live_emitted_row_with_captured_at_appears_in_view(self, tmp_path: Path) -> None:
+        """A live-emitted issue_events row with captured_at set appears in issue_sessions VIEW."""
+        db = tmp_path / "session.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, captured_at) VALUES(?,?,?,?)",
+                ("2026-05-20T10:00:00Z", "ENH-1839", "done", "2026-05-20T10:00:00Z"),
+            )
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-05-20T11:00:00Z", "sess-live", "worked on ENH-1839"),
+            )
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                ("sess-live", "/path/to/sess-live.jsonl"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        conn = connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT issue_id, session_id FROM issue_sessions WHERE issue_id = ?",
+                ("ENH-1839",),
+            ).fetchall()
+        finally:
+            conn.close()
+        assert len(rows) == 1
+        assert rows[0]["session_id"] == "sess-live"
 
     def test_v4_db_upgrades_to_v5(self, tmp_path: Path) -> None:
         """A v4 database gains the issue_sessions view on next ensure_db()."""

@@ -713,6 +713,7 @@ Emitted when a new bug issue is automatically created from a failed parent issue
 | `issue_id` | `str` | ID of the newly created bug issue |
 | `file_path` | `str` | Absolute path to the new bug issue file |
 | `parent_issue_id` | `str` | ID of the parent issue that triggered this capture |
+| `captured_at` | `string \| null` | ISO 8601 timestamp from the issue's frontmatter; `null` for issues created before ENH-1839. |
 
 **Example:**
 ```json
@@ -736,6 +737,7 @@ Emitted when an issue is closed without being implemented (e.g. invalid, duplica
 | `issue_id` | `str` | Issue identifier |
 | `file_path` | `str` | Absolute path to the issue file in `completed/` |
 | `close_reason` | `str` | Reason code, e.g. `"already_fixed"`, `"invalid_ref"`, `"duplicate"`, `"unknown"` |
+| `captured_at` | `string \| null` | ISO 8601 timestamp from the issue's frontmatter; `null` for issues created before ENH-1839. |
 
 **Example:**
 ```json
@@ -758,6 +760,7 @@ Emitted when an issue successfully completes its full lifecycle and is moved to 
 |-------|------|-------------|
 | `issue_id` | `str` | Issue identifier |
 | `file_path` | `str` | Absolute path to the issue file in `completed/` |
+| `captured_at` | `string \| null` | ISO 8601 timestamp from the issue's frontmatter; `null` for issues created before ENH-1839. |
 
 **Example:**
 ```json
@@ -780,6 +783,7 @@ Emitted when an issue is moved to the deferred pool.
 | `issue_id` | `str` | Issue identifier |
 | `file_path` | `str` | Absolute path to the issue file in `deferred/` |
 | `reason` | `str` | Human-readable reason for deferral |
+| `captured_at` | `string \| null` | ISO 8601 timestamp from the issue's frontmatter; `null` for issues created before ENH-1839. |
 
 **Example:**
 ```json
@@ -803,6 +807,7 @@ Emitted when an issue is skipped during automated processing (e.g., by `ll-auto`
 | `issue_id` | `str` | Issue identifier |
 | `file_path` | `str` | Absolute path to the issue file |
 | `reason` | `str` | Human-readable reason for skipping |
+| `captured_at` | `string \| null` | ISO 8601 timestamp from the issue's frontmatter; `null` for issues created before ENH-1839. |
 
 **Example:**
 ```json
@@ -826,6 +831,7 @@ Emitted when a deferred issue is undeferred and returned to active status (via `
 | `issue_id` | `str` | Issue identifier |
 | `file_path` | `str` | Absolute path to the issue file |
 | `reason` | `str` | Human-readable reason for restarting |
+| `captured_at` | `string \| null` | ISO 8601 timestamp from the issue's frontmatter; `null` for issues created before ENH-1839. |
 
 **Example:**
 ```json

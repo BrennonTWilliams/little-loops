@@ -1269,7 +1269,7 @@ Export topic-filtered excerpts from completed issue history.
 ```bash
 #### `ll-history sessions <ISSUE_ID>`
 
-List sessions that co-occurred with the given issue's active period. Queries the `issue_sessions` VIEW (v5 schema, ENH-1711) which joins `issue_events` to `message_events` via overlapping timestamps. Requires a prior `ll-session backfill` pass or automatic session-start backfill (ENH-1830) to populate `captured_at` on `issue_events` rows.
+List sessions that co-occurred with the given issue's active period. Queries the `issue_sessions` VIEW (v5 schema, ENH-1711) which joins `issue_events` to `message_events` via overlapping timestamps. Issues processed after ENH-1839 populate `captured_at` immediately on live events; a prior `ll-session backfill` pass (or ENH-1830 auto-backfill) is only needed for older issues.
 
 | Flag | Description |
 |------|-------------|
@@ -1532,7 +1532,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | Flag | Description |
 |------|-------------|
 | `--kind {tool,file,issue,loop,correction,message,skill}` | Event kind to list (required unless `--issue` is given) |
-| `--issue ID` | Filter to sessions that co-occurred with this issue (e.g. `ENH-1710`). Without `--kind`, lists sessions directly from the `issue_sessions` view. Requires a prior `backfill` pass or automatic session-start backfill (ENH-1830). |
+| `--issue ID` | Filter to sessions that co-occurred with this issue (e.g. `ENH-1710`). Without `--kind`, lists sessions directly from the `issue_sessions` view. Issues processed after ENH-1839 populate `captured_at` immediately; a prior `backfill` pass is only needed for older issues. |
 | `--limit N` | Maximum rows (default: 20) |
 | `--json` | Output as a JSON array |
 

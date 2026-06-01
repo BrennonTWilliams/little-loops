@@ -271,9 +271,10 @@ def sessions_for_issue(
     """Return sessions that co-occurred with *issue_id*'s active period.
 
     Queries the ``issue_sessions`` VIEW (v5 migration, ENH-1711), which joins
-    ``issue_events`` to ``message_events`` via overlapping timestamps.  Requires
-    a prior ``backfill`` pass to populate ``captured_at`` on ``issue_events``
-    rows — live-emitted rows have ``captured_at=NULL`` and are excluded.
+    ``issue_events`` to ``message_events`` via overlapping timestamps.  Live-emitted
+    rows (from ``issue_lifecycle.py````'s 6 emit sites) now populate ``captured_at``
+    directly; no prior ``backfill`` pass is needed for issues processed after
+    ENH-1839.
 
     Returns an empty list when the view is absent (pre-v5 schema), the issue
     has no recorded sessions, or the database is unavailable.

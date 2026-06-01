@@ -179,9 +179,9 @@ _MIGRATIONS: list[str] = [
     """,
     # v5 (ENH-1711): issue_sessions VIEW joins issue_events to message_events via
     # overlapping timestamps, making the implicit session→issue link explicit and
-    # queryable. Requires captured_at IS NOT NULL (populated by _backfill_issues());
-    # live-emitted issue_events rows have captured_at=NULL and are excluded until
-    # a backfill pass runs.
+    # queryable. Requires captured_at IS NOT NULL; populated by _backfill_issues()
+    # for historical rows and by issue_lifecycle.py emit sites (ENH-1839) for
+    # live-emitted rows.
     """
     CREATE VIEW issue_sessions AS
     SELECT ie.issue_id,

@@ -56,7 +56,7 @@ def sample_issue_info(tmp_path: Path) -> IssueInfo:
     issue_path = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
     issue_path.parent.mkdir(parents=True, exist_ok=True)
     issue_path.write_text(
-        "---\nstatus: open\n---\n\n# BUG-001: Test Bug\n\n## Summary\nTest content."
+        "---\nstatus: open\ncaptured_at: '2026-05-20T10:00:00Z'\n---\n\n# BUG-001: Test Bug\n\n## Summary\nTest content."
     )
     return IssueInfo(
         path=issue_path,
@@ -1208,6 +1208,7 @@ class TestEventBusEmission:
         assert event["file_path"] == str(sample_issue_info.path)
         assert event["close_reason"] == "already_fixed"
         assert "ts" in event
+        assert event["captured_at"] == "2026-05-20T10:00:00Z"
 
     def test_complete_issue_lifecycle_emits_event(
         self,
@@ -1241,6 +1242,7 @@ class TestEventBusEmission:
         assert event["issue_id"] == sample_issue_info.issue_id
         assert event["file_path"] == str(sample_issue_info.path)
         assert "ts" in event
+        assert event["captured_at"] == "2026-05-20T10:00:00Z"
 
     def test_defer_issue_emits_event(
         self,
@@ -1277,6 +1279,7 @@ class TestEventBusEmission:
         assert event["file_path"] == str(sample_issue_info.path)
         assert event["reason"] == "Waiting for dependency"
         assert "ts" in event
+        assert event["captured_at"] == "2026-05-20T10:00:00Z"
 
     def test_create_issue_from_failure_emits_event(
         self,
@@ -1308,6 +1311,8 @@ class TestEventBusEmission:
         assert "file_path" in event
         assert event["parent_issue_id"] == sample_issue_info.issue_id
         assert "ts" in event
+        assert "captured_at" in event
+        assert event["captured_at"] is not None
 
     def test_no_emission_without_event_bus(
         self,
@@ -1333,7 +1338,7 @@ class TestEventBusEmission:
         bugs_dir = tmp_path / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         original = bugs_dir / "P3-BUG-042-slow-query.md"
-        original.write_text("---\nstatus: open\n---\n\n# BUG-042: Slow Query\n")
+        original.write_text("---\nstatus: open\ncaptured_at: '2026-05-20T10:00:00Z'\n---\n\n# BUG-042: Slow Query\n")
         new_path = bugs_dir / "P5-BUG-042-slow-query.md"
 
         received: list[dict] = []
@@ -1353,6 +1358,7 @@ class TestEventBusEmission:
         assert event["file_path"] == str(new_path)
         assert event["reason"] == "low priority"
         assert "ts" in event
+        assert event["captured_at"] == "2026-05-20T10:00:00Z"
 
     def test_undefer_issue_emits_event(
         self,
@@ -1366,7 +1372,7 @@ class TestEventBusEmission:
         bugs_dir = sample_config.get_issue_dir("bugs")
         deferred_path = bugs_dir / "P2-BUG-007-old-bug.md"
         deferred_path.write_text(
-            "---\nid: BUG-007\nstatus: deferred\ntype: BUG\npriority: P2\n---\n"
+            "---\nid: BUG-007\nstatus: deferred\ntype: BUG\npriority: P2\ncaptured_at: '2026-05-20T10:00:00Z'\n---\n"
             "\n# BUG-007: Old Bug\n\n## Summary\nDeferred before."
         )
 
@@ -1390,6 +1396,7 @@ class TestEventBusEmission:
         assert event["file_path"] == str(deferred_path)
         assert event["reason"] == "Ready"
         assert "ts" in event
+        assert event["captured_at"] == "2026-05-20T10:00:00Z"
 
     def test_skip_issue_no_emission_without_event_bus(self, tmp_path: Path) -> None:
         """skip_issue() works without event_bus (backward compat, no error)."""

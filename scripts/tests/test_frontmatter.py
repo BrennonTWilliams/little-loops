@@ -201,6 +201,18 @@ class TestParseFrontmatter:
         assert result == {"key": "value"}
         assert "Unsupported YAML list syntax" in caplog.text
 
+    def test_single_quoted_value_strips_quotes(self) -> None:
+        """YAML single-quoted strings are returned without surrounding quotes."""
+        content = "---\ncaptured_at: '2026-05-20T10:00:00Z'\n---\n\n"
+        result = parse_frontmatter(content)
+        assert result["captured_at"] == "2026-05-20T10:00:00Z"
+
+    def test_double_quoted_value_strips_quotes(self) -> None:
+        """YAML double-quoted strings are returned without surrounding quotes."""
+        content = '---\ntitle: "My Issue"\n---\n\n'
+        result = parse_frontmatter(content)
+        assert result["title"] == "My Issue"
+
 
 class TestParseSkillFrontmatter:
     """Tests for parse_skill_frontmatter — the SKILL.md-specific helper."""

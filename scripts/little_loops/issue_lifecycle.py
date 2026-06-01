@@ -19,7 +19,7 @@ from typing import Any
 from little_loops.config import BRConfig
 from little_loops.events import EventBus
 from little_loops.file_utils import atomic_write
-from little_loops.frontmatter import update_frontmatter
+from little_loops.frontmatter import parse_frontmatter, update_frontmatter
 from little_loops.issue_parser import IssueInfo, IssueParser, get_next_issue_number, slugify
 from little_loops.logger import Logger
 from little_loops.session_log import append_session_log_entry
@@ -381,8 +381,6 @@ def verify_issue_completed(info: IssueInfo, config: BRConfig, logger: Logger) ->
     Returns:
         True if issue's frontmatter shows it is done/cancelled
     """
-    from little_loops.frontmatter import parse_frontmatter
-
     path = info.path
     if not path.exists():
         # Source removed without lifecycle update — treat as completed for back-compat
@@ -444,12 +442,13 @@ def create_issue_from_failure(
     bugs_dir = config.get_issue_dir("bugs")
     new_issue_path = bugs_dir / filename
 
+    captured_at_val = _completed_at_now()
     content = f"""---
 id: {bug_id}
 type: BUG
 priority: P1
 status: open
-captured_at: {_completed_at_now()}
+captured_at: {captured_at_val}
 discovered_by: auto-generated
 ---
 
@@ -506,6 +505,7 @@ Investigate the error output above and address the root cause.
                     "issue_id": bug_id,
                     "file_path": str(new_issue_path),
                     "parent_issue_id": parent_info.issue_id,
+                    "captured_at": captured_at_val,
                 }
             )
         return new_issue_path
@@ -569,6 +569,7 @@ def close_issue(
                     return False
 
     try:
+        captured_at = parse_frontmatter(original_path.read_text(encoding="utf-8")).get("captured_at")
         # Prepare content with resolution section, then write status + completed_at
         resolution = _build_closure_resolution(
             close_status, close_reason, fix_commit, files_changed
@@ -599,6 +600,7 @@ Status: {close_status}"""
                     "issue_id": info.issue_id,
                     "file_path": str(original_path),
                     "close_reason": close_reason,
+                    "captured_at": captured_at,
                 }
             )
         return True
@@ -636,6 +638,7 @@ def complete_issue_lifecycle(
     logger.info(f"Completing lifecycle for {info.issue_id} (command may have exited early)...")
 
     try:
+        captured_at = parse_frontmatter(original_path.read_text(encoding="utf-8")).get("captured_at")
         # Prepare content with resolution section, then write status + completed_at
         action = config.get_category_action(info.issue_type)
         resolution = _build_completion_resolution(action)
@@ -665,6 +668,7 @@ Status: Completed via fallback lifecycle completion"""
                     "ts": _iso_now(),
                     "issue_id": info.issue_id,
                     "file_path": str(original_path),
+                    "captured_at": captured_at,
                 }
             )
         return True
@@ -737,7 +741,9 @@ def defer_issue(
 
     try:
         deferred_section = _build_deferred_section(reason)
-        content = original_path.read_text(encoding="utf-8") + deferred_section
+        raw_content = original_path.read_text(encoding="utf-8")
+        captured_at = parse_frontmatter(raw_content).get("captured_at")
+        content = raw_content + deferred_section
         content = update_frontmatter(content, {"status": "deferred"})
         original_path.write_text(content, encoding="utf-8")
 
@@ -755,6 +761,7 @@ Reason: {reason}"""
                     "issue_id": info.issue_id,
                     "file_path": str(original_path),
                     "reason": reason,
+                    "captured_at": captured_at,
                 }
             )
         return True
@@ -810,7 +817,9 @@ def skip_issue(
     if new_path.exists():
         raise FileExistsError(f"Target already exists: {new_path}")
 
-    content = original_path.read_text(encoding="utf-8") + _build_skip_section(reason)
+    raw_content = original_path.read_text(encoding="utf-8")
+    captured_at = parse_frontmatter(raw_content).get("captured_at")
+    content = raw_content + _build_skip_section(reason)
 
     if _is_git_tracked(original_path):
         try:
@@ -844,6 +853,7 @@ def skip_issue(
                 "issue_id": issue_id,
                 "file_path": str(new_path),
                 "reason": reason,
+                "captured_at": captured_at,
             }
         )
 
@@ -882,6 +892,7 @@ def undefer_issue(
         info = IssueParser(config).parse_file(deferred_issue_path)
 
         content = deferred_issue_path.read_text(encoding="utf-8")
+        captured_at = parse_frontmatter(content).get("captured_at")
         content += _build_undeferred_section(reason)
         content = update_frontmatter(content, {"status": "open"})
         deferred_issue_path.write_text(content, encoding="utf-8")
@@ -900,6 +911,7 @@ Reason: {reason}"""
                     "issue_id": info.issue_id,
                     "file_path": str(deferred_issue_path),
                     "reason": reason,
+                    "captured_at": captured_at,
                 }
             )
         return deferred_issue_path

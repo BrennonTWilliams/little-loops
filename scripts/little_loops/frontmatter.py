@@ -107,6 +107,9 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
             elif coerce_types and value.isdigit():
                 result[key] = int(value)
             else:
+                # Strip surrounding YAML string quotes (single or double)
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+                    value = value[1:-1]
                 result[key] = value
     # Finalize any trailing empty list key
     if current_list_key is not None and result[current_list_key] == []:
