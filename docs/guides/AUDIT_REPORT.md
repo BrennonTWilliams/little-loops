@@ -87,7 +87,7 @@ All guides pass accuracy, completeness, consistency, and link checks. No open fi
 | `skills/create-loop/{reference,loop-types}.md` | Both exist ✓ |
 | `docs/claude-code/automate-workflows-with-hooks.md` | Exists ✓ |
 | Category/labels feature | Documented at LOOPS_GUIDE.md:1336 ✓ |
-| Fragment library (lib/common.yaml, lib/cli.yaml, lib/benchmark.yaml) | Documented at LOOPS_GUIDE.md:1432 ✓ |
+| Fragment library (lib/common.yaml, lib/cli.yaml, lib/benchmark.yaml, lib/prompt-fragments.yaml) | Documented at LOOPS_GUIDE.md:1432 ✓ |
 | refine-to-ready-issue: timeout recovery + refine limit guard | Documented at LOOPS_GUIDE.md:261 ✓ |
 | Loop YAML inventory | 35 files in `scripts/little_loops/loops/` — LOOPS_GUIDE.md up to date ✓ |
 | Skill directory count | 25 directories in `skills/` — CLAUDE.md lists all except `rename-loop` |

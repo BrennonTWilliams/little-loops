@@ -11,6 +11,9 @@ context:
   target_active_max: 20
   target_weekly_completion: 5
   stale_threshold_days: 21
+  commit_message: "chore(issues): optimize backlog flow"
+import:
+  - lib/prompt-fragments.yaml
 states:
   measure:
     action: |
@@ -124,10 +127,7 @@ states:
       Aim to promote 2-4 issues that can be quickly completed to boost velocity.
     next: commit
   commit:
-    action_type: prompt
-    action: |
-      Run `/ll:commit` to commit the backlog changes.
-      Use message: "chore(issues): optimize backlog flow"
+    fragment: ll_commit
     next: measure
   done:
     terminal: true

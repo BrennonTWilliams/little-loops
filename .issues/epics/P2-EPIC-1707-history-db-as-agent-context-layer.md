@@ -10,7 +10,7 @@ discovered_by: capture-issue
 labels:
   - epic
   - captured
-relates_to: [ENH-1708, ENH-1710, ENH-1711, FEAT-1712, ENH-1752, ENH-1753, FEAT-1736, ENH-1831, ENH-1832, ENH-1833, ENH-1835, ENH-1830, ENH-1834, FEAT-1680]
+relates_to: [ENH-1708, ENH-1710, ENH-1711, FEAT-1712, ENH-1752, ENH-1753, FEAT-1736, ENH-1831, ENH-1832, ENH-1833, ENH-1835, ENH-1830, ENH-1834, FEAT-1680, FEAT-948]
 ---
 
 # EPIC-1707: history.db as Agent Context Layer
@@ -67,6 +67,7 @@ Without a consumer surface, the DB is dead weight: writers cost overhead, the sc
 - **ENH-1830** — Auto-trigger `session_store.backfill()` at session start
 - **ENH-1834** — Record `ll-` CLI command invocations in history.db
 - **FEAT-1680** — Session-end hook to sweep stale cross-issue status references
+- **FEAT-948** — Rules and Decisions Log for Issue Compliance
 
 ## Integration Map
 

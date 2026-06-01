@@ -3147,7 +3147,7 @@ Local `fragments:` definitions override any imported fragment with the same name
 
 ### Built-in Libraries
 
-Four libraries ship with little-loops, all in `scripts/little_loops/loops/lib/`:
+Five libraries ship with little-loops, all in `scripts/little_loops/loops/lib/`:
 
 #### `lib/common.yaml` — type-pattern fragments
 
@@ -3244,6 +3244,27 @@ states:
 | `ll_loop_run` | `ll-loop run ${context.loop_name}` | Run a named FSM loop as a sub-process. Requires `context.loop_name`. |
 
 All `lib/cli.yaml` fragments use `action_type: shell` + `evaluate.type: exit_code`.
+
+#### `lib/prompt-fragments.yaml` — reusable LLM prompt fragments
+
+Pre-built prompt-type fragments for common LLM-driven commit and authoring tasks. Import with `lib/prompt-fragments.yaml`:
+
+```yaml
+import:
+  - lib/prompt-fragments.yaml
+
+context:
+  commit_message: "refactor: apply changes"
+
+states:
+  commit_changes:
+    fragment: ll_commit
+    next: done
+```
+
+| Fragment | Description | Provides | Caller must supply |
+|----------|-------------|----------|--------------------|
+| `ll_commit` | Prompt state that invokes `/ll:commit ${context.commit_message}`. No evaluate block — it's a fire-and-forget prompt state. | `action_type: prompt` + `action: /ll:commit ${context.commit_message}` | `context.commit_message` (in the loop's `context:` block), `next:` |
 
 Built-in loops import the libraries as `import: ["lib/common.yaml"]` or `import: ["lib/cli.yaml"]`. User loops in `.loops/` can do the same — built-in fragment libraries resolve automatically, so no copying or symlinking is required. You can also define your own local fragments in your loop file or a local library.
 

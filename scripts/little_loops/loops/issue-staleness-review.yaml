@@ -8,6 +8,9 @@ initial: find_stale
 on_handoff: spawn
 context:
   stale_days: 30
+  commit_message: "chore(issues): triage stale issues"
+import:
+  - lib/prompt-fragments.yaml
 states:
   find_stale:
     action: |
@@ -65,10 +68,7 @@ states:
       that it's not urgent enough to have been addressed.
     next: commit
   commit:
-    action_type: prompt
-    action: |
-      Run `/ll:commit` to commit the issue triage changes.
-      Use message: "chore(issues): triage stale issues"
+    fragment: ll_commit
     next: find_stale
   done:
     terminal: true

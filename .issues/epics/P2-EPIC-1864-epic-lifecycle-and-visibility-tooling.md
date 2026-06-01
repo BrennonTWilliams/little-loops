@@ -7,7 +7,7 @@ status: open
 discovered_date: 2026-06-01
 discovered_by: link-epics
 labels: [epic, epics, cli, skill, lifecycle, captured]
-relates_to: [FEAT-1855, FEAT-1856, FEAT-1857, ENH-1858, ENH-1859, ENH-1860]
+relates_to: [FEAT-1855, FEAT-1856, FEAT-1857, ENH-1858, ENH-1859, ENH-1860, ENH-1863, ENH-1866]
 ---
 
 # EPIC-1864: EPIC Lifecycle & Visibility Tooling
@@ -30,6 +30,8 @@ EPICs are first-class containers (FEAT-1389, FEAT-1407) and can be dispatched as
 - **ENH-1858** — `ll-deps tree --epic EPIC-NNN` — render EPIC child hierarchy with dependency edges
 - **ENH-1859** — `/ll:review-sprint` EPIC awareness — flag sprints that bypass EPIC critical path
 - **ENH-1860** — EPIC cascade lifecycle — propagate close/cancel to children
+- **ENH-1863** — `format_epic_tree()` rendering engine for EPIC child hierarchy
+- **ENH-1866** — `ll-deps tree` CLI command, tests, and docs
 
 ## Scope
 

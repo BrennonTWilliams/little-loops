@@ -8,6 +8,10 @@ on_handoff: spawn
 context:
   refactor_goal: ""
   test_cmd: "python -m pytest scripts/tests/"
+  commit_message: "refactor: apply incremental refactoring step"
+
+import:
+  - lib/prompt-fragments.yaml
 
 states:
   plan_steps:
@@ -32,7 +36,7 @@ states:
     on_error: revert
 
   commit_step:
-    action: "/ll:commit"
+    fragment: ll_commit
     action_type: slash_command
     next: check_complete
 

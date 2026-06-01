@@ -20,8 +20,10 @@ context:
   focus_dirs: ""               # optional comma-separated dirs to scope coverage
   test_cmd: ""                 # override test command; empty = read from ll-config.json
   coverage_cmd: ""             # override coverage command; empty = auto-detect
+  commit_message: "test: add coverage for <module/function name>"
 import:
   - lib/common.yaml
+  - lib/prompt-fragments.yaml
 states:
 
   measure:
@@ -196,11 +198,7 @@ states:
     next: measure
 
   commit:
-    # Commit the new tests and remeasure coverage.
-    action_type: prompt
-    action: |
-      Run `/ll:commit` to commit the new tests.
-      Use a message like: "test: add coverage for <module/function name>"
+    fragment: ll_commit
     next: measure
 
   done:

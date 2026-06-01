@@ -1126,3 +1126,9 @@ import:
 | `with_rate_limit_handling` | Two-tier rate-limit retry defaults (3 short + long-wait ladder up to 6 h) | `on_rate_limit_exhausted` |
 | `with_throttle` | Per-state tool-call throttle defaults (`normal_max: 3`, `warn_max: 8`, `hard_max: 12`) | `on_throttle_hard` |
 | `parse_tagged_json` | `action_type: shell` — for states that extract a tagged JSON line from LLM output. **No default `action:`** (nested interpolation unsupported); caller's `action:` must reference captured output by literal variable name (e.g. `${captured.raw_enumeration.output}`). | `action` (extraction + normalization script), `capture`, `evaluate`, routing (`on_yes`, `on_no`) |
+
+### `lib/prompt-fragments.yaml` fragments
+
+| Fragment | Provides | Caller must supply |
+|----------|----------|--------------------|
+| `ll_commit` | `action_type: prompt` + `action: /ll:commit ${context.commit_message}` — invokes `/ll:commit` with a parameterized message. No evaluate block. | `context.commit_message` (in loop `context:`), `next:` |

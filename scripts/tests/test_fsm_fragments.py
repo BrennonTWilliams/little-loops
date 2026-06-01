@@ -1295,3 +1295,58 @@ class TestScorePlanQualityFragment:
         assert state["action"] == "score the plans"
         assert state["capture"] == "plan_scores"
         assert "fragment" not in state
+
+
+class TestLlCommitFragment:
+    """Tests that ll_commit fragment exists in lib/prompt-fragments.yaml."""
+
+    @staticmethod
+    def _load_yaml() -> dict:
+        import yaml
+
+        lib_path = (
+            Path(__file__).parent.parent
+            / "little_loops"
+            / "loops"
+            / "lib"
+            / "prompt-fragments.yaml"
+        )
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_ll_commit_defined(self) -> None:
+        data = self._load_yaml()
+        assert "ll_commit" in data["fragments"], (
+            "ll_commit fragment missing from lib/prompt-fragments.yaml"
+        )
+
+    def test_ll_commit_has_prompt_action_type(self) -> None:
+        data = self._load_yaml()
+        assert data["fragments"]["ll_commit"]["action_type"] == "prompt"
+
+    def test_ll_commit_has_description(self) -> None:
+        data = self._load_yaml()
+        frag = data["fragments"]["ll_commit"]
+        assert "description" in frag, "ll_commit fragment is missing a description field"
+        assert frag["description"].strip(), "ll_commit fragment has an empty description"
+
+    def test_ll_commit_resolves_in_loop(self, tmp_path: Path) -> None:
+        """Full resolve_fragments integration against lib/prompt-fragments.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "commit",
+            "import": ["lib/prompt-fragments.yaml"],
+            "states": {
+                "commit": {
+                    "fragment": "ll_commit",
+                    "next": "done",
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["commit"]
+        assert state["action_type"] == "prompt"
+        assert state["action"].strip().startswith("/ll:commit")
+        assert "fragment" not in state

@@ -11,6 +11,9 @@ scope:
 import:
   - lib/common.yaml
   - lib/cli.yaml
+  - lib/prompt-fragments.yaml
+context:
+  commit_message: "docs: sync documentation with codebase state"
 states:
   verify_docs:
     action: "ll-verify-docs 2>&1"
@@ -55,10 +58,7 @@ states:
       Do NOT rewrite prose — only fix factual inaccuracies and broken references.
     next: commit
   commit:
-    action_type: prompt
-    action: |
-      Run `/ll:commit` to commit the documentation fixes.
-      Use message: "docs: sync documentation with codebase state"
+    fragment: ll_commit
     next: verify_docs
   done:
     terminal: true

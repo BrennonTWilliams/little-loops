@@ -9,6 +9,9 @@ scope:
   - "scripts/"
 import:
   - lib/common.yaml
+  - lib/prompt-fragments.yaml
+context:
+  commit_message: "refactor: remove dead code identified by scan"
 states:
   scan:
     action_type: prompt
@@ -92,10 +95,7 @@ states:
       cycles skip it.
     next: scan
   commit:
-    action_type: prompt
-    action: |
-      Run `/ll:commit` to commit the dead code removal.
-      Use message: "refactor: remove dead code identified by scan"
+    fragment: ll_commit
     next: scan
   done:
     terminal: true

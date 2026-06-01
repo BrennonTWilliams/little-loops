@@ -1,0 +1,22 @@
+# Prompt-action fragment library for little-loops.
+#
+# Import in any loop with:
+#   import:
+#     - lib/prompt-fragments.yaml
+#
+# Then reference a fragment in a state:
+#   commit:
+#     fragment: ll_commit
+#     next: scan
+#
+# The caller must supply context.commit_message in the loop's context: block.
+# State-level fields (e.g. action_type: slash_command) override fragment base fields
+# via deep-merge, so incremental-refactor.yaml can keep slash_command behaviour
+# while still reusing this fragment.
+
+fragments:
+  ll_commit:
+    description: Commit staged changes via /ll:commit with a parameterized message
+    action_type: prompt
+    action: |
+      /ll:commit ${context.commit_message}

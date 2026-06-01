@@ -7,7 +7,7 @@ captured_at: "2026-05-29T01:01:55Z"
 discovered_date: 2026-05-28
 discovered_by: capture-issue
 status: open
-relates_to: [ENH-1774, ENH-1775, ENH-1776, ENH-1777, ENH-1643, ENH-1796, FEAT-1794, BUG-1767]
+relates_to: [ENH-1774, ENH-1775, ENH-1776, ENH-1777, ENH-1643, ENH-1796, FEAT-1794, BUG-1767, ENH-1862]
 ---
 
 # EPIC-1773: Audit & Simplify Built-in FSM Loops with Shared Fragments, Sub-loops, and Flows
@@ -52,6 +52,7 @@ Eliminate duplicated state patterns across built-in FSM loops by extracting shar
 - **ENH-1796** — Shared message log alongside captured.* for cross-state context
 - **FEAT-1794** — HITL interrupt FSM state type (action_type human_approval)
 - **BUG-1767** — StallDetector progress_paths fingerprint is defeated by loops that mutate their own progress-path files
+- **ENH-1862** — Wave 2a Part 2 — Create `ll_commit` Fragment, Convert 6 Commit Loops, and Wire Docs
 
 ## Integration Map
 

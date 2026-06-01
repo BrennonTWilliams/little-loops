@@ -5,13 +5,14 @@ title: "Wave 2a Part 2 \u2014 Create `ll_commit` Fragment, Convert 6 Commit Loop
 type: ENH
 priority: P3
 captured_at: '2026-06-01T00:00:00Z'
+completed_at: '2026-06-01T19:03:38Z'
 discovered_date: 2026-06-01
 parent: ENH-1854
 relates_to:
 - ENH-1854
 - ENH-1775
 - EPIC-1773
-status: open
+status: done
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 86
@@ -241,7 +242,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Effort**: Small — mechanical substitution across 6 enumerated files plus new test classes
 - **Risk**: Low — `prompt-fragments.yaml` is a new file (no existing callers); commit state conversions are isolated per-loop; test assertions on `action_type` in cli.yaml unaffected
 
+## Labels
+
+`enhancement`, `fragments`, `loops`, `refactoring`
+
+## Status
+
+**Open** | Created: 2026-06-01 | Priority: P3
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T18:57:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb6e93ea-e494-4ca8-8920-3a041bd01f0c.jsonl`
 - `/ll:wire-issue` - 2026-06-01T18:50:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cd19c9f-6780-4c0b-8ecb-81ed7d5d8630.jsonl`
 - `/ll:refine-issue` - 2026-06-01T18:44:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2378c0a-2bf5-4f29-84da-cb4e09635135.jsonl`
 - `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cacc3f7-f908-4e86-8ef8-b96c1b43a157.jsonl`

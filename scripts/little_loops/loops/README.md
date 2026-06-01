@@ -163,6 +163,7 @@ Built-in fragment libraries are in `lib/`:
 | `lib/cli.yaml` | Pre-filled ll- CLI tool fragments (`ll_auto`, `ll_check_links`, `ll_issues_list`, `ll_loop_run`, etc.) |
 | `lib/benchmark.yaml` | Harbor-format benchmark runner fragment (`run_benchmark`) with `harbor_scorer` evaluator |
 | `lib/score-plan-quality.yaml` | Plan-quality scoring fragment (`score_plan_quality`) used by `rn-plan-apo` to score plan trees on four dimensions |
+| `lib/prompt-fragments.yaml` | Reusable prompt-construction fragments for building structured LLM inputs |
 
 Import a library in any loop:
 
@@ -189,6 +190,7 @@ The `description` field is stripped before merge — the FSM engine never sees i
 ```bash
 ll-loop fragments lib/common.yaml
 ll-loop fragments lib/cli.yaml
+ll-loop fragments lib/prompt-fragments.yaml
 ```
 
 See [`docs/guides/LOOPS_GUIDE.md`](../docs/guides/LOOPS_GUIDE.md) for fragment authoring and the full fragment table.

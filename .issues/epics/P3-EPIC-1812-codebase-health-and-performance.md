@@ -6,7 +6,7 @@ priority: P3
 status: open
 discovered_date: 2026-05-30
 discovered_by: link-epics
-relates_to: [ENH-972, ENH-974, ENH-975, ENH-976, ENH-839]
+relates_to: [ENH-972, ENH-974, ENH-975, ENH-976, ENH-839, ENH-1114]
 ---
 
 # EPIC-1812: Codebase Health & Performance
@@ -57,6 +57,7 @@ When this epic is done:
 - **ENH-975** — `IssueParser.parse_file` double-scans content for session log data
 - **ENH-976** — `detect_manual_patterns` recompiles regex patterns on each call
 - **ENH-839** — Split layout.py diagram rendering into focused modules
+- **ENH-1114** — Intent Parameter for Large `ll-*` CLI Outputs
 
 ## Verification Notes
 

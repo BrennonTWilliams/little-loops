@@ -4967,3 +4967,162 @@ class TestIntegrateSdkLoop:
         assert state.get("on_no") == "enumerate_from_docs", (
             f"scan_existing_usage.on_no should be 'enumerate_from_docs', got {state.get('on_no')!r}"
         )
+
+
+class TestDeadCodeCleanupLoop:
+    """Structural tests for the dead-code-cleanup FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "dead-code-cleanup.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "dead-code-cleanup"
+        assert data.get("initial") == "scan"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        required = {"scan", "count_findings", "remove_code", "verify_tests", "revert_and_scan", "commit", "done"}
+        assert not required - set(data["states"].keys())
+
+    def test_commit_uses_ll_commit_fragment(self, data: dict) -> None:
+        assert data["states"]["commit"].get("fragment") == "ll_commit"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        assert data["states"]["done"].get("terminal") is True
+
+
+class TestTestCoverageImprovementLoop:
+    """Structural tests for the test-coverage-improvement FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "test-coverage-improvement.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "test-coverage-improvement"
+        assert data.get("initial") == "measure"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        required = {"measure", "identify_gaps", "write_tests", "verify_tests", "commit", "done"}
+        assert not required - set(data["states"].keys())
+
+    def test_commit_uses_ll_commit_fragment(self, data: dict) -> None:
+        assert data["states"]["commit"].get("fragment") == "ll_commit"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        assert data["states"]["done"].get("terminal") is True
+
+
+class TestBacklogFlowOptimizerLoop:
+    """Structural tests for the backlog-flow-optimizer FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "backlog-flow-optimizer.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "backlog-flow-optimizer"
+        assert data.get("initial") == "measure"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        required = {"measure", "diagnose", "commit", "done"}
+        assert not required - set(data["states"].keys())
+
+    def test_commit_uses_ll_commit_fragment(self, data: dict) -> None:
+        assert data["states"]["commit"].get("fragment") == "ll_commit"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        assert data["states"]["done"].get("terminal") is True
+
+
+class TestIssueStalenessReviewLoop:
+    """Structural tests for the issue-staleness-review FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "issue-staleness-review.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "issue-staleness-review"
+        assert data.get("initial") == "find_stale"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        required = {"find_stale", "review_issue", "triage", "close_issue", "reprioritize", "commit", "done"}
+        assert not required - set(data["states"].keys())
+
+    def test_commit_uses_ll_commit_fragment(self, data: dict) -> None:
+        assert data["states"]["commit"].get("fragment") == "ll_commit"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        assert data["states"]["done"].get("terminal") is True
+
+
+class TestDocsSyncLoop:
+    """Structural tests for the docs-sync FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "docs-sync.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "docs-sync"
+        assert data.get("initial") == "verify_docs"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        required = {"verify_docs", "check_links", "route_results", "fix_docs", "commit", "done"}
+        assert not required - set(data["states"].keys())
+
+    def test_commit_uses_ll_commit_fragment(self, data: dict) -> None:
+        assert data["states"]["commit"].get("fragment") == "ll_commit"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        assert data["states"]["done"].get("terminal") is True
+
+
+class TestIncrementalRefactorLoop:
+    """Structural tests for the incremental-refactor FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "incremental-refactor.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "incremental-refactor"
+        assert data.get("initial") == "plan_steps"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        required = {"plan_steps", "execute_step", "verify_tests", "commit_step", "check_complete", "revert", "replan", "done"}
+        assert not required - set(data["states"].keys())
+
+    def test_commit_step_uses_ll_commit_fragment(self, data: dict) -> None:
+        assert data["states"]["commit_step"].get("fragment") == "ll_commit"
+
+    def test_commit_step_keeps_slash_command_action_type(self, data: dict) -> None:
+        assert data["states"]["commit_step"].get("action_type") == "slash_command"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        assert data["states"]["done"].get("terminal") is True

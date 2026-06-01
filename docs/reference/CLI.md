@@ -642,10 +642,11 @@ The **Commands** section at the bottom of the output can be overridden by adding
 List fragments defined in a library file, showing each fragment's name and description. Resolves the library path relative to `.loops/`, then falls back to the built-in library directory.
 
 ```bash
-ll-loop fragments lib/common.yaml     # list built-in common fragments
-ll-loop fragments lib/cli.yaml        # list built-in CLI tool fragments
-ll-loop fragments lib/benchmark.yaml  # list built-in benchmark runner fragment
-ll-loop fragments .loops/my-lib.yaml  # list project-local fragment library
+ll-loop fragments lib/common.yaml         # list built-in common fragments
+ll-loop fragments lib/cli.yaml            # list built-in CLI tool fragments
+ll-loop fragments lib/benchmark.yaml      # list built-in benchmark runner fragment
+ll-loop fragments lib/prompt-fragments.yaml  # list built-in prompt fragment library
+ll-loop fragments .loops/my-lib.yaml      # list project-local fragment library
 ```
 
 #### `ll-loop next-loop`
@@ -752,9 +753,10 @@ ll-loop install fix-types             # Install built-in loop
 ll-loop show fix-types                # Show loop details
 ll-loop show fix-types --json         # FSM config as JSON
 ll-loop show fix-types --json --resolved  # FSM config with sub-loop states expanded
-ll-loop fragments lib/common.yaml     # List built-in common fragments with descriptions
-ll-loop fragments lib/cli.yaml        # List built-in CLI tool fragments with descriptions
-ll-loop fragments lib/benchmark.yaml  # List built-in benchmark runner fragment
+ll-loop fragments lib/common.yaml         # List built-in common fragments with descriptions
+ll-loop fragments lib/cli.yaml            # List built-in CLI tool fragments with descriptions
+ll-loop fragments lib/benchmark.yaml      # List built-in benchmark runner fragment
+ll-loop fragments lib/prompt-fragments.yaml  # List built-in prompt fragment library
 ll-loop next-loop                     # Suggest next loop from history
 ll-loop next-loop --count 3 --json    # Top 3 suggestions as JSON
 ll-loop audit-meta fix-types          # Summarize meta-eval agreement stats

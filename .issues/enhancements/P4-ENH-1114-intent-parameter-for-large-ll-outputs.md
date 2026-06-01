@@ -18,6 +18,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 milestone: refined-ready
+parent: EPIC-1812
 ---
 
 # ENH-1114: Intent Parameter for Large ll-* CLI Outputs
