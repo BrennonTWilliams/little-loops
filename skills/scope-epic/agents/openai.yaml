@@ -1,0 +1,3 @@
+interface:
+  display_name: "Scope Epic"
+  short_description: "Use when asked to decompose a theme or goal into an EPIC with 3–8 child issues. "

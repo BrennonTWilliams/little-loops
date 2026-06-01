@@ -405,6 +405,21 @@ Read-only health audit for an EPIC: surfaces stalled children, flags scope drift
 
 ---
 
+### `/ll:scope-epic`
+
+Decompose a high-level theme or goal into an EPIC issue file and 3–8 pre-wired child issue stubs with `parent: EPIC-NNN` frontmatter. Presents an interactive review table before writing; cancellation writes nothing.
+
+**Arguments:**
+- `theme` (required): Natural-language theme or goal description to decompose
+- `--from-doc <path>` (optional): Read the theme from a markdown file instead of the argument string
+- `--priority <P0-P5>` (optional): Override the default EPIC priority (default: P2)
+
+**Trigger keywords:** "decompose theme", "scope epic", "create epic from", "break down initiative", "epic decomposition", "theme to epic", "create child issues"
+
+**Output:** Writes the EPIC file (full template) to `.issues/epics/`, writes each child stub (minimal template) to the appropriate type directory, wires `relates_to:` and `## Children` on the EPIC, sets `parent:` on each child, and stages all files for git. Prints a summary table and next-step hints.
+
+---
+
 ## Auditing & Analysis
 
 ### `/ll:audit-architecture`
@@ -934,6 +949,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `create-sprint` | Create sprint with curated issue list |
 | `review-sprint` | Review sprint health and suggest improvements |
 | `review-epic` | Audit EPIC health: stalled children, scope drift, missing coverage |
+| `scope-epic` | Decompose a theme into an EPIC with 3–8 pre-wired child issue stubs |
 
 ---
 

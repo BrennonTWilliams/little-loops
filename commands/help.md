@@ -106,6 +106,10 @@ PLANNING & IMPLEMENTATION
     Audit EPIC health: stalled children, scope drift, missing coverage, closure readiness
     Flags: --skip-drift (skip LLM scope-drift and missing-coverage passes)
 
+/ll:scope-epic <theme> [flags]
+    Decompose a theme or goal into an EPIC with 3–8 pre-wired child issue stubs
+    Flags: --from-doc <path>, --priority <P0-P5>
+
 /ll:manage-issue <type> <action> [issue_id] [flags]
     Autonomously manage issues - plan, implement, verify, complete
     Types: bug, feature, enhancement
@@ -303,7 +307,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 
 ## Quick Reference Table
 
-**Issue Discovery**: `capture-issue`, `scan-codebase`, `scan-product`, `audit-architecture`
+**Issue Discovery**: `capture-issue`, `scan-codebase`, `scan-product`, `audit-architecture`, `scope-epic`
 **Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`, `refine-issue`, `wire-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`, `audit-issue-conflicts`
 **Planning & Implementation**: `create-sprint`, `review-sprint`, `review-epic`, `manage-issue`, `iterate-plan`
 **Scanning & Analysis**: `find-dead-code`, `explore-api`

@@ -41,7 +41,7 @@ class TestReadmeSkillCount:
 
     def test_skill_count_updated(self) -> None:
         content = README.read_text()
-        assert "60 skills" in content, "README.md must show '60 skills'"
+        assert "61 skills" in content, "README.md must show '61 skills'"
 
 
 class TestContributingWiring:
@@ -49,8 +49,8 @@ class TestContributingWiring:
 
     def test_skill_count_updated(self) -> None:
         content = CONTRIBUTING.read_text()
-        assert "32 skill definitions" in content, (
-            "CONTRIBUTING.md skill count line must show '32 skill definitions'"
+        assert "33 skill definitions" in content, (
+            "CONTRIBUTING.md skill count line must show '33 skill definitions'"
         )
 
     def test_review_epic_in_skills_tree(self) -> None:
@@ -65,14 +65,14 @@ class TestArchitectureSkillCount:
 
     def test_mermaid_skill_count_updated(self) -> None:
         content = ARCHITECTURE.read_text()
-        assert "32 composable skills" in content, (
-            "ARCHITECTURE.md Mermaid node must show '32 composable skills'"
+        assert "33 composable skills" in content, (
+            "ARCHITECTURE.md Mermaid node must show '33 composable skills'"
         )
 
     def test_tree_skill_count_updated(self) -> None:
         content = ARCHITECTURE.read_text()
-        assert "# 32 skill definitions" in content, (
-            "ARCHITECTURE.md directory tree must show '# 32 skill definitions'"
+        assert "# 33 skill definitions" in content, (
+            "ARCHITECTURE.md directory tree must show '# 33 skill definitions'"
         )
 
 

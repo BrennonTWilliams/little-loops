@@ -432,3 +432,31 @@ class TestConfigSchema:
         assert "enum" in host_cli
         assert "claude-code" in host_cli["enum"]
         assert "codex" in host_cli["enum"]
+
+    def test_epics_scope_in_schema(self) -> None:
+        """epics.scope must be declared as a top-level property in config-schema.json.
+
+        The root properties block has additionalProperties: false, so any config
+        that sets epics.scope.* will fail schema validation unless the epics
+        property and its scope sub-properties are declared here.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        root_props = data["properties"]
+        assert "epics" in root_props, (
+            "epics is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        epics = root_props["epics"]
+        assert epics["type"] == "object"
+        assert "scope" in epics["properties"], (
+            "epics.scope is not declared in config-schema.json"
+        )
+        scope = epics["properties"]["scope"]
+        assert scope["type"] == "object"
+        scope_props = scope["properties"]
+        assert scope_props["min_children"]["type"] == "integer"
+        assert scope_props["min_children"]["minimum"] == 1
+        assert scope_props["min_children"]["default"] == 3
+        assert scope_props["max_children"]["type"] == "integer"
+        assert scope_props["max_children"]["minimum"] == 1
+        assert scope_props["max_children"]["default"] == 8
