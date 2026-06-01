@@ -2243,3 +2243,284 @@ class TestSessionCleanupWorktrees:
             )
         finally:
             os.chdir(original_dir)
+
+
+class TestIssueAutoCommitHook:
+    """ENH-1844: issue-auto-commit.sh PostToolUse hook."""
+
+    @pytest.fixture
+    def hook_script(self) -> Path:
+        return Path(__file__).parent.parent.parent / "hooks/scripts/issue-auto-commit.sh"
+
+    def _make_input(self, file_path: str, tool_name: str = "Write") -> str:
+        return json.dumps({"tool_name": tool_name, "tool_input": {"file_path": file_path}})
+
+    def _init_git_repo(self, path: Path) -> None:
+        subprocess.run(["git", "init"], cwd=str(path), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=str(path),
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=str(path),
+            check=True,
+            capture_output=True,
+        )
+
+    def test_non_issue_file_exits_0(self, hook_script: Path, tmp_path: Path) -> None:
+        """Non-issue file path exits 0 immediately without touching git."""
+        import os
+
+        self._init_git_repo(tmp_path)
+        plain_file = tmp_path / "README.md"
+        plain_file.write_text("hello")
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = subprocess.run(
+                [str(hook_script)],
+                input=self._make_input(str(plain_file)),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0
+        git_log = subprocess.run(
+            ["git", "log", "--oneline"], cwd=str(tmp_path), capture_output=True, text=True
+        )
+        assert git_log.stdout.strip() == "", "Expected no commits for non-issue file"
+
+    def test_disabled_exits_0_without_git_commit(self, hook_script: Path, tmp_path: Path) -> None:
+        """auto_commit absent (default false) → hook exits 0 without committing."""
+        import os
+
+        self._init_git_repo(tmp_path)
+        issues_dir = tmp_path / ".issues" / "enhancements"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P3-ENH-1844-test.md"
+        issue_file.write_text("---\nstatus: open\n---\n")
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = subprocess.run(
+                [str(hook_script)],
+                input=self._make_input(str(issue_file)),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0
+        git_log = subprocess.run(
+            ["git", "log", "--oneline"], cwd=str(tmp_path), capture_output=True, text=True
+        )
+        assert git_log.stdout.strip() == "", "Expected no commits when auto_commit disabled"
+
+    def test_enabled_clean_tree_commits_issue_file(self, hook_script: Path, tmp_path: Path) -> None:
+        """auto_commit: true + clean working tree → git add + git commit run."""
+        import os
+
+        self._init_git_repo(tmp_path)
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        config_file = ll_dir / "ll-config.json"
+        config_file.write_text(json.dumps({"issues": {"auto_commit": True}}))
+
+        # Seed the repo with an initial commit so git commit works
+        subprocess.run(["git", "add", str(config_file)], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "init"],
+            cwd=str(tmp_path),
+            check=True,
+            capture_output=True,
+        )
+
+        issues_dir = tmp_path / ".issues" / "enhancements"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P3-ENH-1844-test.md"
+        issue_file.write_text("---\nstatus: open\n---\n")
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = subprocess.run(
+                [str(hook_script)],
+                input=self._make_input(str(issue_file)),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0, f"Hook failed: {result.stderr}"
+        git_log = subprocess.run(
+            ["git", "log", "--oneline", "-1"],
+            cwd=str(tmp_path),
+            capture_output=True,
+            text=True,
+        )
+        assert "chore(issues): capture ENH-1844 test" in git_log.stdout, (
+            f"Expected auto-commit message, got: {git_log.stdout!r}"
+        )
+
+    def test_custom_prefix_in_commit_message(self, hook_script: Path, tmp_path: Path) -> None:
+        """Custom auto_commit_prefix appears in commit message."""
+        import os
+
+        self._init_git_repo(tmp_path)
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        config_file = ll_dir / "ll-config.json"
+        config_file.write_text(
+            json.dumps({"issues": {"auto_commit": True, "auto_commit_prefix": "fix(issues)"}})
+        )
+        subprocess.run(["git", "add", str(config_file)], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "init"],
+            cwd=str(tmp_path),
+            check=True,
+            capture_output=True,
+        )
+
+        issues_dir = tmp_path / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P2-BUG-999-my-bug.md"
+        issue_file.write_text("---\nstatus: open\n---\n")
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = subprocess.run(
+                [str(hook_script)],
+                input=self._make_input(str(issue_file)),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0, f"Hook failed: {result.stderr}"
+        git_log = subprocess.run(
+            ["git", "log", "--oneline", "-1"],
+            cwd=str(tmp_path),
+            capture_output=True,
+            text=True,
+        )
+        assert "fix(issues): capture BUG-999 my-bug" in git_log.stdout, (
+            f"Expected custom prefix in commit, got: {git_log.stdout!r}"
+        )
+
+    def test_dirty_tree_skips_commit_prints_warning(self, hook_script: Path, tmp_path: Path) -> None:
+        """Dirty working tree → hook skips commit and prints warning to stderr."""
+        import os
+
+        self._init_git_repo(tmp_path)
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        config_file = ll_dir / "ll-config.json"
+        config_file.write_text(json.dumps({"issues": {"auto_commit": True}}))
+        subprocess.run(["git", "add", str(config_file)], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "init"],
+            cwd=str(tmp_path),
+            check=True,
+            capture_output=True,
+        )
+
+        issues_dir = tmp_path / ".issues" / "enhancements"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P3-ENH-1844-test.md"
+        issue_file.write_text("---\nstatus: open\n---\n")
+
+        # Create a dirty file (other staged/unstaged change)
+        dirty_file = tmp_path / "dirty.txt"
+        dirty_file.write_text("dirty")
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = subprocess.run(
+                [str(hook_script)],
+                input=self._make_input(str(issue_file)),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0, f"Hook should exit 0 even on dirty tree: {result.stderr}"
+        assert "skipping commit" in result.stderr, (
+            f"Expected warning message in stderr, got: {result.stderr!r}"
+        )
+        git_log = subprocess.run(
+            ["git", "log", "--oneline"],
+            cwd=str(tmp_path),
+            capture_output=True,
+            text=True,
+        )
+        commit_count = len(git_log.stdout.strip().splitlines())
+        assert commit_count == 1, f"Expected only init commit, got {commit_count} commits"
+
+    def test_edit_tool_uses_update_verb(self, hook_script: Path, tmp_path: Path) -> None:
+        """Edit tool calls produce 'update' verb in commit message."""
+        import os
+
+        self._init_git_repo(tmp_path)
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        config_file = ll_dir / "ll-config.json"
+        config_file.write_text(json.dumps({"issues": {"auto_commit": True}}))
+
+        issues_dir = tmp_path / ".issues" / "enhancements"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P3-ENH-1844-test.md"
+        issue_file.write_text("---\nstatus: open\n---\n")
+
+        # Stage and commit initial state
+        subprocess.run(["git", "add", "-A"], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "init"],
+            cwd=str(tmp_path),
+            check=True,
+            capture_output=True,
+        )
+
+        # Modify the file so Edit can re-commit it
+        issue_file.write_text("---\nstatus: in_progress\n---\n")
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = subprocess.run(
+                [str(hook_script)],
+                input=self._make_input(str(issue_file), tool_name="Edit"),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        finally:
+            os.chdir(original_dir)
+
+        assert result.returncode == 0, f"Hook failed: {result.stderr}"
+        git_log = subprocess.run(
+            ["git", "log", "--oneline", "-1"],
+            cwd=str(tmp_path),
+            capture_output=True,
+            text=True,
+        )
+        assert "chore(issues): update ENH-1844 test" in git_log.stdout, (
+            f"Expected 'update' verb for Edit, got: {git_log.stdout!r}"
+        )

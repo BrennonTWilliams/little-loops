@@ -3,7 +3,7 @@ id: ENH-1844
 title: "Auto-commit hook script (issue-auto-commit.sh) and PostToolUse registration"
 type: ENH
 priority: P3
-status: open
+status: done
 parent: ENH-1717
 ---
 

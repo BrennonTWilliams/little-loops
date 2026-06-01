@@ -84,6 +84,28 @@
             "statusMessage": "Checking for post-write duplicate issue IDs..."
           }
         ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/issue-auto-commit.sh",
+            "timeout": 5,
+            "statusMessage": "Auto-committing issue file..."
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/issue-auto-commit.sh",
+            "timeout": 5,
+            "statusMessage": "Auto-committing issue file..."
+          }
+        ]
       }
     ],
     "Stop": [

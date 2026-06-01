@@ -18,6 +18,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -89,65 +90,119 @@ def _detect_issue_id(path: str) -> str | None:
     return m.group(1) if m else None
 
 
-def handle(event: LLHookEvent) -> LLHookResult:
-    """Persist per-tool byte metrics to ``tool_events`` (FEAT-1623).
+def _maybe_auto_commit(config: dict[str, Any], cwd: Path, file_path: str, tool_name: str) -> None:
+    """Auto-commit an issue file change when issues.auto_commit is enabled (ENH-1844)."""
+    if not feature_enabled(config, "issues.auto_commit"):
+        return
 
-    Gated on ``analytics.enabled``; silent on any failure.
+    filename = Path(file_path).name
+    if not re.match(r"^P[0-5]-(BUG|FEAT|ENH|EPIC)-\d{3,}", filename):
+        return
+
+    issues_cfg = config.get("issues", {})
+    base_dir: str = issues_cfg.get("base_dir", ".issues")
+    norm = file_path.replace("\\", "/")
+    if f"/{base_dir}/" not in norm and not norm.startswith(f"{base_dir}/"):
+        return
+
+    prefix: str = issues_cfg.get("auto_commit_prefix", "chore(issues)")
+    m = re.match(r"^P[0-5]-((BUG|FEAT|ENH|EPIC)-\d+)-(.+?)\.md$", filename)
+    if not m:
+        return
+    issue_id = m.group(1)
+    slug = m.group(3)
+    verb = "capture" if tool_name == "Write" else "update"
+    commit_msg = f"{prefix}: {verb} {issue_id} {slug}"
+
+    abs_path = Path(file_path) if Path(file_path).is_absolute() else (cwd / file_path)
+
+    with contextlib.suppress(Exception):
+        subprocess.run(
+            ["git", "add", str(abs_path)], cwd=str(cwd), check=True, capture_output=True
+        )
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        other_changes = [ln for ln in status_result.stdout.splitlines() if filename not in ln]
+        if other_changes:
+            return
+        subprocess.run(
+            ["git", "commit", "-m", commit_msg],
+            cwd=str(cwd),
+            check=True,
+            capture_output=True,
+        )
+
+
+def handle(event: LLHookEvent) -> LLHookResult:
+    """Persist per-tool byte metrics and auto-commit issue files when configured.
+
+    Analytics writes are gated on ``analytics.enabled``; auto-commit is gated on
+    ``issues.auto_commit``. Both features degrade silently on failure.
     """
     cwd = Path(event.cwd) if event.cwd else Path.cwd()
     config = _load_config(cwd)
-    if config is None or not feature_enabled(config, "analytics.enabled"):
-        return LLHookResult(exit_code=0)
 
     payload = event.payload or {}
     tool_input = payload.get("tool_input", {}) or {}
-    tool_response = payload.get("tool_response", {}) or {}
-    bytes_in = len(json.dumps(tool_input, default=str))
-    bytes_out = len(json.dumps(tool_response, default=str))
-    cache_hit = 1 if payload.get("cache_hit") else 0
     tool_name = str(payload.get("tool_name", ""))
-    session_id = payload.get("session_id")
-
-    with contextlib.suppress(Exception):
-        from little_loops.session_store import _hash_args, _now, connect
-
-        conn = connect(cwd / ".ll" / "history.db")
-        try:
-            conn.execute(
-                "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "
-                "result_size, bytes_in, bytes_out, cache_hit) "
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    _now(),
-                    session_id,
-                    tool_name,
-                    _hash_args(tool_input),
-                    bytes_out,
-                    bytes_in,
-                    bytes_out,
-                    cache_hit,
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
     raw_path = _extract_file_path(tool_name, tool_input)
-    if raw_path:
-        capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
-        if capture.file_events:
-            with contextlib.suppress(Exception):
-                from little_loops.session_store import write_file_event
 
-                norm_path = _normalize_path(raw_path, cwd)
-                issue_id = _detect_issue_id(norm_path)
-                write_file_event(
-                    cwd / ".ll" / "history.db",
-                    session_id,
-                    norm_path,
-                    tool_name,
-                    issue_id,
+    if config is not None and feature_enabled(config, "analytics.enabled"):
+        tool_response = payload.get("tool_response", {}) or {}
+        bytes_in = len(json.dumps(tool_input, default=str))
+        bytes_out = len(json.dumps(tool_response, default=str))
+        cache_hit = 1 if payload.get("cache_hit") else 0
+        session_id = payload.get("session_id")
+
+        with contextlib.suppress(Exception):
+            from little_loops.session_store import _hash_args, _now, connect
+
+            conn = connect(cwd / ".ll" / "history.db")
+            try:
+                conn.execute(
+                    "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "
+                    "result_size, bytes_in, bytes_out, cache_hit) "
+                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        _now(),
+                        session_id,
+                        tool_name,
+                        _hash_args(tool_input),
+                        bytes_out,
+                        bytes_in,
+                        bytes_out,
+                        cache_hit,
+                    ),
                 )
-        # TODO(ENH-1835): wire analytics.capture.skills gate when ENH-1833 lands
+                conn.commit()
+            finally:
+                conn.close()
+
+        if raw_path:
+            capture = AnalyticsCaptureConfig.from_dict(
+                config.get("analytics", {}).get("capture", {})
+            )
+            if capture.file_events:
+                with contextlib.suppress(Exception):
+                    from little_loops.session_store import write_file_event
+
+                    norm_path = _normalize_path(raw_path, cwd)
+                    issue_id = _detect_issue_id(norm_path)
+                    write_file_event(
+                        cwd / ".ll" / "history.db",
+                        session_id,
+                        norm_path,
+                        tool_name,
+                        issue_id,
+                    )
+            # TODO(ENH-1835): wire analytics.capture.skills gate when ENH-1833 lands
+
+    if config is not None and tool_name in {"Write", "Edit"} and raw_path:
+        _maybe_auto_commit(config, cwd, raw_path, tool_name)
 
     return LLHookResult(exit_code=0)

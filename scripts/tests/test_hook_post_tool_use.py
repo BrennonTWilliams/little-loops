@@ -439,3 +439,71 @@ class TestPreToolUseBaseline:
             )
         )
         assert result.exit_code == 0
+
+
+class TestIssueAutoCommitPostToolUse:
+    """ENH-1844: auto-commit via Python post_tool_use handler."""
+
+    def _write_issues_config(
+        self, project_dir: Path, *, auto_commit: bool, prefix: str = "chore(issues)"
+    ) -> None:
+        ll_dir = project_dir / ".ll"
+        ll_dir.mkdir(parents=True, exist_ok=True)
+        (ll_dir / "ll-config.json").write_text(
+            json.dumps({"issues": {"auto_commit": auto_commit, "auto_commit_prefix": prefix}}),
+            encoding="utf-8",
+        )
+
+    def test_gate_off_no_subprocess_calls(self, tmp_path: Path, monkeypatch) -> None:
+        """auto_commit: false → no subprocess.run calls for git in the handler."""
+        import subprocess as sp
+
+        self._write_issues_config(tmp_path, auto_commit=False)
+        monkeypatch.chdir(tmp_path)
+
+        git_calls: list[list[str]] = []
+
+        original_run = sp.run
+
+        def mock_run(args, **kwargs):
+            if isinstance(args, (list, tuple)) and args and "git" in str(args[0]):
+                git_calls.append(list(args))
+            return original_run(["true"], capture_output=True)
+
+        monkeypatch.setattr("little_loops.hooks.post_tool_use.subprocess.run", mock_run)
+
+        issue_path = str(tmp_path / ".issues" / "enhancements" / "P3-ENH-1844-test.md")
+        payload = {
+            "tool_name": "Write",
+            "tool_input": {"file_path": issue_path, "content": "---\nstatus: open\n---\n"},
+            "session_id": "test-sess",
+        }
+        result = handle(_event(payload, cwd=str(tmp_path)))
+        assert result.exit_code == 0
+        assert git_calls == [], f"Expected no git calls when auto_commit=false, got: {git_calls}"
+
+    def test_gate_off_no_config_no_calls(self, tmp_path: Path, monkeypatch) -> None:
+        """Missing config (default) → no subprocess.run calls for git."""
+        import subprocess as sp
+
+        monkeypatch.chdir(tmp_path)
+
+        git_calls: list[list[str]] = []
+        original_run = sp.run
+
+        def mock_run(args, **kwargs):
+            if isinstance(args, (list, tuple)) and args and "git" in str(args[0]):
+                git_calls.append(list(args))
+            return original_run(["true"], capture_output=True)
+
+        monkeypatch.setattr("little_loops.hooks.post_tool_use.subprocess.run", mock_run)
+
+        issue_path = str(tmp_path / ".issues" / "enhancements" / "P3-ENH-1844-test.md")
+        payload = {
+            "tool_name": "Write",
+            "tool_input": {"file_path": issue_path, "content": "---\nstatus: open\n---\n"},
+            "session_id": "test-sess",
+        }
+        result = handle(_event(payload, cwd=str(tmp_path)))
+        assert result.exit_code == 0
+        assert git_calls == [], f"Expected no git calls with no config, got: {git_calls}"
