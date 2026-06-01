@@ -1,10 +1,11 @@
 ---
 id: ENH-1836
 title: Scaffold built-in design token profiles when selected in /ll:configure
-status: open
+status: done
 priority: P3
 type: ENH
 captured_at: '2026-06-01T01:32:36Z'
+completed_at: '2026-06-01T19:55:33Z'
 discovered_date: '2026-06-01'
 discovered_by: capture-issue
 decision_needed: false
@@ -16,6 +17,12 @@ labels:
 relates_to:
 - ENH-1768
 - FEAT-1757
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1836: Scaffold built-in design token profiles when selected in /ll:configure
@@ -150,14 +157,14 @@ If the user picks a profile name that is NOT in the enumerated installed list:
 
 ### Dependent Files (Callers/Importers)
 - `skills/configure/areas.md:1029` — pre-question enumeration reads `<path>/<profiles_dir>/` subdirectories; after scaffolding the new profile will appear in subsequent enumerations
-- `scripts/little_loops/config/features.py:313` — `DesignTokensConfig` dataclass owns `active`, `profiles_dir`, and `path` fields used by the skill's template variables
+- `scripts/little_loops/config/features.py:314` — `DesignTokensConfig` dataclass owns `active`, `profiles_dir`, and `path` fields used by the skill's template variables
 - `scripts/little_loops/hooks/session_start.py:196` — runtime loader reads `design_tokens.active` and resolves `<path>/<profiles_dir>/<active>/` to load tokens; will succeed once the profile is scaffolded
 - `scripts/little_loops/config/core.py` — imports `DesignTokensConfig` and exposes it via the `_design_tokens` property on `BRConfig`; no code change needed, but downstream consumers of `config.design_tokens` depend on this chain [Agent 1 finding]
 
 ### Similar Patterns
 - `skills/init/SKILL.md:340` — Step 8.6: existing `Mirror the full templates/design-tokens/profiles/ tree` pattern; identical guard logic (`does not already exist`) and six-file structure to replicate
 - `scripts/tests/test_enh1768_profile_system.py:293` — `_copy_templates()` test fixture uses `shutil.copytree(TEMPLATES_DIR, dest)` — confirms `shutil.copytree` is the established codebase pattern
-- `scripts/little_loops/worktree_utils.py:70` — production `shutil.copytree` usage for `.claude/` subtree deploy — same one-shot copy pattern
+- `scripts/little_loops/worktree_utils.py:73` — production `shutil.copytree` usage for `.claude/` subtree deploy — same one-shot copy pattern
 
 ### Tests
 
@@ -197,8 +204,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 **Open** | Created: 2026-06-01 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T19:53:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73c52d25-5f61-4698-a9bb-65b26c7769ce.jsonl`
 - `/ll:wire-issue` - 2026-06-01T19:48:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb83fecc-8d9c-4767-853a-533a0285f095.jsonl`
 - `/ll:refine-issue` - 2026-06-01T19:41:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db9f327f-09a9-4120-b4b7-aa4ad6b9bf35.jsonl`
 - `/ll:refine-issue` - 2026-06-01T02:00:00 - `auto --full-rewrite`
 - `/ll:format-issue` - 2026-06-01T01:52:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7e90d79-437f-4d91-9dc4-087c4f8bc147.jsonl`
 - `/ll:capture-issue` - 2026-06-01T01:32:36Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c319df2-64d7-4c19-97bc-1121afb93793.jsonl`
+- `/ll:confidence-check` - 2026-06-01T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a3b49c47-258c-4323-aea2-25a8853ad4cb.jsonl`

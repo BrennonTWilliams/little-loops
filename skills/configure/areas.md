@@ -488,7 +488,6 @@ If "Add a category" selected, prompt for:
 ```
 Current Continuation Configuration
 ----------------------------------
-  auto_detect:         {{config.continuation.auto_detect_on_session_start}}
   include_todos:       {{config.continuation.include_todos}}
   include_git:         {{config.continuation.include_git_status}}
   include_files:       {{config.continuation.include_recent_files}}
@@ -496,21 +495,10 @@ Current Continuation Configuration
   expiry_hours:        {{config.continuation.prompt_expiry_hours}}
 ```
 
-### Round 1 (4 questions)
+### Round 1 (3 questions)
 
 ```yaml
 questions:
-  - header: "Auto-detect"
-    question: "Auto-detect continuation prompts on session start?"
-    options:
-      - label: "{{current auto_detect_on_session_start}} (keep)"
-        description: "Keep current setting"
-      - label: "true"
-        description: "Yes, auto-detect (default)"
-      - label: "false"
-        description: "No, require manual /ll:resume"
-    multiSelect: false
-
   - header: "Include"
     question: "What should continuation prompts include?"
     options:
@@ -1068,7 +1056,45 @@ questions:
     multiSelect: false
 ```
 
-If the user picks a profile name that is NOT in the enumerated installed list (e.g. via "Other"), warn that the profile does not yet exist under `<path>/<profiles_dir or "profiles">/` and that the runtime loader will degrade to no tokens until the profile is materialized. Write the value anyway — the user may be intentionally pre-configuring for an upcoming profile.
+If the user picks a profile name that is NOT in the enumerated installed list (e.g. via "Other"):
+  If the name IS one of ["default", "editorial-mono", "warm-paper"]:
+    → trigger the materialization sub-step in "Configuration Result — design_tokens" below (do not warn)
+  Else (genuinely custom/unknown profile):
+    → warn that the profile does not yet exist under `<path>/<profiles_dir or "profiles">/`
+      and that the runtime loader will degrade to no tokens until the profile is materialized.
+      Write the value anyway — the user may be intentionally pre-configuring for an upcoming profile.
+
+### Configuration Result — design_tokens
+
+After writing the config values, apply materialization logic:
+
+**Case A — Active profile changed to a new value:**
+
+  BUILTIN = ["default", "editorial-mono", "warm-paper"]
+  PROFILE_DIR = <config.design_tokens.path>/<profiles_dir or "profiles">/<new_active>
+  TEMPLATE_DIR = templates/design-tokens/profiles/<new_active>
+
+  If PROFILE_DIR does not exist:
+    If new_active is in BUILTIN AND TEMPLATE_DIR exists:
+      If interactive (not DANGEROUSLY_SKIP_PERMISSIONS and not --auto):
+        Use AskUserQuestion:
+          "Profile '<new_active>' is not yet installed locally. Copy the built-in template now?"
+          Options: "Yes, install it (Recommended)" / "No, skip"
+        If yes:
+          Bash(python3:*): python3 -c "import shutil; shutil.copytree('<TEMPLATE_DIR>', '<PROFILE_DIR>')"
+          Report: ✓ Installed profile: <name> → <PROFILE_DIR>/
+      Else (non-interactive / DANGEROUSLY_SKIP_PERMISSIONS or --auto):
+        Bash(python3:*): python3 -c "import shutil; shutil.copytree('<TEMPLATE_DIR>', '<PROFILE_DIR>')"
+        Report: ✓ Auto-installed profile: <name> → <PROFILE_DIR>/
+    Else (profile is custom / not a built-in):
+      [keep existing warning — user is intentionally pre-configuring]
+
+**Case B — `enabled` changed from false → true AND profiles directory does not exist:**
+
+  PROFILES_ROOT = <config.design_tokens.path>/<profiles_dir or "profiles">
+  If PROFILES_ROOT does not exist:
+    Bash(python3:*): python3 -c "import shutil; shutil.copytree('templates/design-tokens/profiles', '<PROFILES_ROOT>', dirs_exist_ok=False)"
+    Report: ✓ Installed all 3 built-in profiles → <PROFILES_ROOT>/
 
 ### Round 2 (3 questions — advanced)
 
