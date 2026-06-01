@@ -566,6 +566,62 @@ class TestActionTypeMcpTool:
         assert result.final_state == "done"
 
 
+class TestActionTypeContract:
+    """Tests for action_type=contract execution in the executor."""
+
+    def test_contract_does_not_call_action_runner(self) -> None:
+        """action_type=contract states skip action_runner entirely."""
+        from little_loops.fsm.evaluators import EvaluateConfig, EvaluationResult
+
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action_type="contract",
+                    evaluate=EvaluateConfig(
+                        type="contract",
+                        pairs=[{"producer": "api.ts", "consumer": "hook.ts", "contract": "match"}],
+                    ),
+                    on_yes="done",
+                    on_no="done",
+                    on_error="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        with patch(
+            "little_loops.fsm.executor.evaluate",
+            return_value=EvaluationResult(verdict="yes", details={}),
+        ):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            executor.run()
+
+        # action_runner should NOT have been called
+        assert len(mock_runner.calls) == 0
+
+    def test_action_mode_contract_returns_contract(self) -> None:
+        """_action_mode returns 'contract' for action_type=contract states."""
+        from little_loops.fsm.schema import EvaluateConfig
+
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        executor = FSMExecutor(fsm, action_runner=MockActionRunner())
+
+        state = StateConfig(
+            action_type="contract",
+            evaluate=EvaluateConfig(type="contract", pairs=[]),
+            on_yes="done",
+        )
+        assert executor._action_mode(state) == "contract"
+
+
 class TestVariableInterpolation:
     """Tests for variable interpolation in executor."""
 

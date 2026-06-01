@@ -73,6 +73,7 @@ EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
     "mcp_result": [],
     "harbor_scorer": [],
     "comparator": ["baseline_path"],
+    "contract": ["pairs"],
 }
 
 # Non-LLM evaluator types: all evaluator types except llm_structured
@@ -80,6 +81,7 @@ EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
 NON_LLM_EVALUATOR_TYPES: frozenset[str] = frozenset(EVALUATOR_REQUIRED_FIELDS.keys()) - {
     "llm_structured",
     "comparator",
+    "contract",
 }
 
 # Meta-loop detector: action string patterns that indicate harness artifact writes

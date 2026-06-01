@@ -429,6 +429,49 @@ class TestComparatorEvaluatorValidation:
         assert len(mr1_errors) >= 1, "MR-1 should fire for comparator-only meta-loop"
 
 
+class TestContractEvaluatorValidation:
+    """Validate contract evaluator type registration and MR-1 behavior."""
+
+    def test_contract_valid_config_passes(self) -> None:
+        """_validate_evaluator accepts contract with pairs set."""
+        config = EvaluateConfig(
+            type="contract",
+            pairs=[{"producer": "api.ts", "consumer": "hook.ts", "contract": "must match"}],
+        )
+        errors = _validate_evaluator("check_contract", config)
+        assert errors == []
+
+    def test_contract_requires_pairs(self) -> None:
+        """_validate_evaluator rejects contract missing pairs."""
+        config = EvaluateConfig(type="contract")
+        errors = _validate_evaluator("check_contract", config)
+        assert any("pairs" in e.message for e in errors)
+
+    def test_mr1_fires_for_meta_loop_with_only_contract_evaluator(self) -> None:
+        """MR-1 fires when meta-loop has only a contract evaluator (contract calls the LLM)."""
+        from little_loops.fsm.schema import RouteConfig
+
+        loop = FSMLoop(
+            name="test-meta-loop",
+            description="meta loop test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="yaml_state_editor loops/some-loop.yaml",
+                    evaluate=EvaluateConfig(
+                        type="contract",
+                        pairs=[{"producer": "api.ts", "consumer": "hook.ts", "contract": "match"}],
+                    ),
+                    route=RouteConfig(routes={"yes": "done", "no": "check"}),
+                ),
+                "done": StateConfig(action="echo done"),
+            },
+        )
+        errors = validate_fsm(loop)
+        mr1_errors = [e for e in errors if "non-LLM evaluator" in e.message]
+        assert len(mr1_errors) >= 1, "MR-1 should fire for contract-only meta-loop"
+
+
 class TestParameterValidation:
     """Validate the parameters: block via _validate_parameters and validate_fsm."""
 

@@ -90,6 +90,27 @@ states:
   #     not_found: check_semantic     # playwright not in .mcp.json → skip this gate
   #     timeout: execute              # dev server not responding → retry
 
+  # OPTIONAL: check_contract
+  # Uncomment to add a producer/consumer contract alignment gate.
+  # Use when the harness implements both sides of an interface (API endpoint + consumer hook,
+  # config file + reader, state transition map + .update() calls) and you want to assert
+  # that their shapes agree before advancing. Cheaper than check_skill (reads files, 1 LLM call
+  # per pair) and more targeted than check_semantic (reads both files simultaneously).
+  # See: docs/guides/AUTOMATIC_HARNESSING_GUIDE.md — Contract Gates section
+  #
+  # check_contract:
+  #   action_type: contract           # self-contained — no shell action runs
+  #   evaluate:
+  #     type: contract
+  #     pairs:
+  #       - producer: "src/app/api/projects/route.ts"
+  #         producer_pattern: "NextResponse\\.json\\((.+?)\\)"  # extract response shape
+  #         consumer: "src/hooks/useProjects.ts"
+  #         consumer_pattern: "fetchJson<(.+?)>"                     # extract expected type
+  #         contract: "shape and field names must align (camelCase, no wrapping mismatch)"
+  #   on_yes: check_semantic
+  #   on_no: execute
+
   # OPTIONAL: check_skill
   # Uncomment to add an agentic user-simulation gate (30–300s, proportional cost).
   # Best for end-to-end user flows that other phases cannot observe.

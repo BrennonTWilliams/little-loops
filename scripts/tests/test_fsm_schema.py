@@ -3039,3 +3039,64 @@ class TestSharedStateOk:
             }
         )
         assert fsm.shared_state_ok is False
+
+
+class TestContractSchema:
+    """Tests for contract evaluator type in EvaluateConfig schema."""
+
+    def test_contract_type_is_valid(self) -> None:
+        """EvaluateConfig accepts type='contract'."""
+        config = EvaluateConfig(
+            type="contract",
+            pairs=[{"producer": "api.ts", "consumer": "hook.ts", "contract": "must match"}],
+        )
+        assert config.type == "contract"
+        assert config.pairs == [{"producer": "api.ts", "consumer": "hook.ts", "contract": "must match"}]
+
+    def test_contract_round_trips_through_dict(self) -> None:
+        """contract evaluator serializes and deserializes pairs correctly."""
+        config = EvaluateConfig(
+            type="contract",
+            pairs=[
+                {
+                    "producer": "src/api/route.ts",
+                    "producer_pattern": "NextResponse\\.json\\((.+?)\\)",
+                    "consumer": "src/hooks/useProjects.ts",
+                    "consumer_pattern": "fetchJson<(.+?)>",
+                    "contract": "shape and field names must align",
+                }
+            ],
+        )
+        d = config.to_dict()
+        assert d["type"] == "contract"
+        assert d["pairs"] == config.pairs
+
+        restored = EvaluateConfig.from_dict(d)
+        assert restored.type == "contract"
+        assert restored.pairs == config.pairs
+
+    def test_contract_pairs_none_omitted_from_dict(self) -> None:
+        """to_dict omits pairs when it is None (non-contract types)."""
+        config = EvaluateConfig(type="exit_code")
+        d = config.to_dict()
+        assert "pairs" not in d
+
+    def test_contract_pairs_from_dict_defaults_to_none(self) -> None:
+        """from_dict sets pairs to None when key is absent."""
+        config = EvaluateConfig.from_dict({"type": "exit_code"})
+        assert config.pairs is None
+
+    def test_contract_multiple_pairs_round_trip(self) -> None:
+        """Multiple pairs serialize and deserialize correctly."""
+        config = EvaluateConfig(
+            type="contract",
+            pairs=[
+                {"producer": "api1.ts", "consumer": "hook1.ts", "contract": "rule 1"},
+                {"producer": "api2.ts", "consumer": "hook2.ts", "contract": "rule 2"},
+            ],
+        )
+        d = config.to_dict()
+        restored = EvaluateConfig.from_dict(d)
+        assert len(restored.pairs) == 2
+        assert restored.pairs[0]["producer"] == "api1.ts"
+        assert restored.pairs[1]["contract"] == "rule 2"

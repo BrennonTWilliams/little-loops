@@ -51,6 +51,7 @@ class EvaluateConfig:
         direction: Optimization direction for convergence (minimize/maximize)
         scope: Paths to limit git diff to for diff_stall evaluator
         max_stall: Consecutive no-change iterations before failure (diff_stall)
+        pairs: List of producer/consumer pair dicts for contract evaluator
     """
 
     type: Literal[
@@ -65,6 +66,7 @@ class EvaluateConfig:
         "mcp_result",
         "harbor_scorer",
         "comparator",
+        "contract",
     ]
     operator: str | None = None
     target: int | float | str | None = None
@@ -86,6 +88,7 @@ class EvaluateConfig:
     baseline_path: str | None = None  # for comparator: path to .loops/baselines/<loop>/ dir
     auto_promote: bool = False         # for comparator: write output to baseline on yes verdict
     min_pairs: int = 1                 # for comparator: number of blind A/B comparisons to run
+    pairs: list[dict] | None = None      # for contract: list of producer/consumer pair dicts
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -132,6 +135,8 @@ class EvaluateConfig:
             result["auto_promote"] = self.auto_promote
         if self.min_pairs != 1:
             result["min_pairs"] = self.min_pairs
+        if self.pairs is not None:
+            result["pairs"] = self.pairs
 
         return result
 
@@ -160,6 +165,7 @@ class EvaluateConfig:
             baseline_path=data.get("baseline_path"),
             auto_promote=data.get("auto_promote", False),
             min_pairs=data.get("min_pairs", 1),
+            pairs=data.get("pairs"),
         )
 
 

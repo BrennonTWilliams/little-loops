@@ -159,6 +159,60 @@ check_mcp:
 
 **Placement**: `check_mcp` slots after `check_concrete` (cheap shell gates first) and before `check_semantic` / `check_invariants`. If the MCP call is expensive or optional, placing it last (just before `check_invariants`) avoids wasted cost on items that fail earlier checks.
 
+### Contract Gates (`check_contract`)
+
+`check_contract` is a deterministic-input + LLM-judged evaluator that reads *two related artifacts simultaneously* and asserts alignment at the integration seam between a producer and a consumer. It targets the boundary-mismatch failure class: two components each correctly implemented but disagreeing at their interface.
+
+**When to use**: After `check_concrete` (cheap shell gates) and before `check_semantic`. Use when a PR implements both a producer (API endpoint, exported function, config file) and a consumer (front-end hook, import, downstream reader) and you need to gate on shape alignment — field names, casing, type structure — rather than just existence.
+
+**How it differs from `check_semantic`:**
+
+| | `check_semantic` | `check_contract` |
+|---|---|---|
+| Input | Single action output blob | Two file paths (producer + consumer) |
+| Reads files | No — evaluates action stdout | Yes — reads both files directly |
+| Cost | ~1 LLM call | 1 LLM call per pair |
+| Best for | Did this action succeed? | Do these two artifacts agree at their boundary? |
+
+**YAML pattern:**
+
+```yaml
+check_contract:
+  action_type: contract          # self-contained: no shell action runs
+  evaluate:
+    type: contract
+    pairs:
+      - producer: "src/app/api/projects/route.ts"
+        producer_pattern: "NextResponse\\.json\\((.+?)\\)"   # optional — extract the relevant slice
+        consumer: "src/hooks/useProjects.ts"
+        consumer_pattern: "fetchJson<(.+?)>"
+        contract: "shape and field names must align (camelCase on both sides, no wrapping mismatch)"
+  on_yes: check_invariants
+  on_no: execute
+```
+
+**Pair fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `producer` | Yes | Path to the producer file |
+| `consumer` | Yes | Path to the consumer file |
+| `contract` | Yes | Alignment rule the LLM judge enforces |
+| `producer_pattern` | No | Regex to extract just the relevant slice from the producer |
+| `consumer_pattern` | No | Regex to extract just the relevant slice from the consumer |
+
+**Verdicts:**
+
+| Verdict | Meaning |
+|---------|---------|
+| `yes` | All pairs aligned |
+| `no` | Any pair fails alignment |
+| `error` | File unreadable or regex pattern matched nothing |
+
+**Placement**: `check_contract` slots after `check_concrete` (cheap shell gates first) and before `check_skill` / `check_semantic`. It reads files directly — no shell action needed — and runs at LLM-judge latency (~2–5s per pair). Use it when your harness implements both sides of an interface in the same session and you want an explicit integration gate before the full user-simulation phase.
+
+**MR-1 note**: `check_contract` uses an LLM judge and does **not** satisfy MR-1 in meta-loops. Pair it with a non-LLM evaluator (e.g., `diff_stall` or `exit_code`) when `modifies_harness: true`.
+
 ### Skill-as-Judge (`check_skill`)
 
 `check_skill` is the highest-fidelity evaluation mode in the pipeline: it invokes a skill whose job is to *use* the feature as a real user would, then judges whether the user experience actually worked. This is the only phase that evaluates from the perspective that actually matters — a real user completing a real workflow. Browser navigation, form submission, multi-step UX flows, or any end-to-end user simulation all belong here.

@@ -862,7 +862,7 @@ class FSMExecutor:
 
         # Execute action if present
         action_result = None
-        if state.action:
+        if state.action and self._action_mode(state) != "contract":
             self._maybe_wait_for_circuit(state)
             baseline_cfg = ctx.context.get("_baseline")
             if baseline_cfg and isinstance(baseline_cfg, dict) and baseline_cfg.get("enabled"):
@@ -1355,7 +1355,9 @@ class FSMExecutor:
             pass
 
     def _action_mode(self, state: StateConfig) -> str:
-        """Return execution mode for the state: 'prompt', 'shell', or 'mcp_tool'."""
+        """Return execution mode for the state: 'prompt', 'shell', 'mcp_tool', or 'contract'."""
+        if state.action_type == "contract":
+            return "contract"
         if state.action_type == "mcp_tool":
             return "mcp_tool"
         if state.action_type in ("prompt", "slash_command"):

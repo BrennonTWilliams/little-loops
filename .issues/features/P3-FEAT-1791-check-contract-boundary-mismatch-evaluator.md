@@ -4,10 +4,16 @@ title: '`check_contract` Boundary-Mismatch Evaluator'
 type: FEAT
 priority: P3
 captured_at: '2026-05-29T19:08:54Z'
+completed_at: '2026-06-01T19:50:21Z'
 discovered_date: '2026-05-29'
 discovered_by: capture-issue
-status: open
-labels: [feature, loops, evaluator, qa, integration]
+status: done
+labels:
+- feature
+- loops
+- evaluator
+- qa
+- integration
 parent: EPIC-1663
 confidence_score: 100
 outcome_confidence: 82
@@ -113,7 +119,7 @@ Verdicts: `yes` (all pairs aligned), `no` (any pair fails), `error` (file unread
 
 3. **Executor action mode** — add `if state.action_type == "contract": return "contract"` to `_action_mode()` in `scripts/little_loops/fsm/executor.py:1357`; handle the `"contract"` mode in `_execute_state()` to skip shell/prompt action execution entirely (action output = `""`, exit_code = `0`) and proceed directly to `_evaluate()`.
 
-4. **Evaluator function** — add `evaluate_contract(config, context)` to `scripts/little_loops/fsm/evaluators.py`; it reads each pair's producer/consumer files, applies optional regex extraction, composes a focused LLM judge prompt with both slices, calls `resolve_host().build_blocking_json(...)` using the identical pattern from `evaluate_llm_structured()` (lines ~1070–1140); add an `elif eval_type == "contract":` branch in the `evaluate()` dispatcher; add `"contract"` to `_EXIT_CODE_AWARE_EVALUATORS` frozenset at line 1187 (the evaluator reads files itself, not action output).
+4. **Evaluator function** — add `evaluate_contract(config, context)` to `scripts/little_loops/fsm/evaluators.py`; it reads each pair's producer/consumer files, applies optional regex extraction, composes a focused LLM judge prompt with both slices, calls `resolve_host().build_blocking_json(...)` using the identical pattern from `evaluate_llm_structured()` (lines ~740–910; `resolve_host().build_blocking_json(...)` call at line 777); add an `elif eval_type == "contract":` branch in the `evaluate()` dispatcher; add `"contract"` to `_EXIT_CODE_AWARE_EVALUATORS` frozenset at line 1187 (the evaluator reads files itself, not action output).
 
 5. **Verdict normalization** — `evaluate_contract()` returns `EvaluationResult(verdict="yes"|"no"|"error", details={"pair_results": [...]})` so `audit-loop-run` can render which specific pair failed.
 
@@ -209,6 +215,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 | `scripts/little_loops/loops/harness-multi-item.yaml` | Harness template to extend with a commented `check_contract` example block |
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T19:38:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/64311e66-c2b0-43ee-8958-99a54082ecb2.jsonl`
 - `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34f84fcf-43f5-4359-b8a7-255b2b1e5f21.jsonl`
 - `/ll:wire-issue` - 2026-06-01T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 - `/ll:refine-issue` - 2026-06-01T19:26:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/393dcf8d-0e5a-4ff6-ba4d-fb43986db4b5.jsonl`

@@ -21,6 +21,7 @@ from little_loops.fsm.evaluators import (
     evaluate_convergence,
     evaluate_diff_stall,
     evaluate_exit_code,
+    evaluate_contract,
     evaluate_llm_structured,
     evaluate_mcp_result,
     evaluate_output_contains,
@@ -631,6 +632,7 @@ class TestEvaluateDispatcher:
             "harbor_scorer",
             "diff_stall",
             "action_stall",
+            "contract",
         ],
     )
     def test_dispatch_nonzero_exit_does_not_affect_exit_code_aware_evaluators(
@@ -645,6 +647,15 @@ class TestEvaluateDispatcher:
             f"{eval_type}: should not be short-circuited, got verdict={result.verdict!r} "
             f"details={result.details}"
         )
+
+
+    def test_dispatch_contract_missing_pairs_returns_error(self) -> None:
+        """contract type with no pairs returns error verdict."""
+        config = EvaluateConfig(type="contract")
+        ctx = InterpolationContext()
+        result = evaluate(config, "", 0, ctx)
+        assert result.verdict == "error"
+        assert "pairs" in result.details.get("error", "").lower()
 
 
 class TestLLMStructuredEvaluator:
@@ -1767,3 +1778,274 @@ class TestComparatorEvaluator:
                 result = evaluate(config, output="new output", exit_code=0, context=ctx)
         assert result.verdict == "yes"
         assert (baseline_with_file / "output.txt").read_text() == original_content
+
+
+class TestContractEvaluator:
+    """Tests for evaluate_contract function (Tier 2 LLM-based, reads files)."""
+
+    @staticmethod
+    def _cli_stdout(verdict: str, confidence: float, reason: str) -> str:
+        """Helper to create mock CLI JSON output."""
+        return json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "structured_output": {
+                    "verdict": verdict,
+                    "confidence": confidence,
+                    "reason": reason,
+                },
+            }
+        )
+
+    @pytest.fixture
+    def mock_cli(self):
+        """Create mock subprocess.run for Claude CLI."""
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+            yield mock_run, mock_result
+
+    def test_aligned_pair_returns_yes(self, mock_cli, tmp_path) -> None:
+        """Single aligned pair returns yes verdict."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("yes", 0.95, "Fields match on both sides")
+
+        producer = tmp_path / "route.ts"
+        producer.write_text('NextResponse.json({ id: 1, name: "test" })')
+        consumer = tmp_path / "hook.ts"
+        consumer.write_text("fetchJson<{ id: number; name: string }>()")
+
+        config = EvaluateConfig(
+            type="contract",
+            pairs=[
+                {
+                    "producer": str(producer),
+                    "consumer": str(consumer),
+                    "contract": "shape must match",
+                }
+            ],
+        )
+        ctx = InterpolationContext()
+        result = evaluate_contract(config, ctx)
+
+        assert result.verdict == "yes"
+        assert len(result.details["pair_results"]) == 1
+        assert result.details["pair_results"][0]["verdict"] == "yes"
+
+    def test_mismatched_pair_returns_no(self, mock_cli, tmp_path) -> None:
+        """Mismatched pair (LLM returns no) yields no verdict."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("no", 0.9, "Field names differ")
+
+        producer = tmp_path / "api.ts"
+        producer.write_text("return { user_id: 1 }")
+        consumer = tmp_path / "hook.ts"
+        consumer.write_text("fetchJson<{ userId: number }>()")
+
+        config = EvaluateConfig(
+            type="contract",
+            pairs=[
+                {
+                    "producer": str(producer),
+                    "consumer": str(consumer),
+                    "contract": "camelCase on both sides",
+                }
+            ],
+        )
+        ctx = InterpolationContext()
+        result = evaluate_contract(config, ctx)
+
+        assert result.verdict == "no"
+        assert result.details["pair_results"][0]["verdict"] == "no"
+        assert result.details["pair_results"][0]["reason"] == "Field names differ"
+
+    def test_missing_producer_file_returns_error(self, tmp_path) -> None:
+        """Unreadable producer file returns error verdict without calling LLM."""
+        consumer = tmp_path / "hook.ts"
+        consumer.write_text("fetchJson<{}>()")
+
+        config = EvaluateConfig(
+            type="contract",
+            pairs=[
+                {
+                    "producer": str(tmp_path / "nonexistent.ts"),
+                    "consumer": str(consumer),
+                    "contract": "must match",
+                }
+            ],
+        )
+        ctx = InterpolationContext()
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            result = evaluate_contract(config, ctx)
+
+        assert result.verdict == "error"
+        assert "cannot read producer file" in result.details["pair_results"][0]["error"]
+        mock_run.assert_not_called()
+
+    def test_missing_consumer_file_returns_error(self, tmp_path) -> None:
+        """Unreadable consumer file returns error verdict without calling LLM."""
+        producer = tmp_path / "api.ts"
+        producer.write_text("return { id: 1 }")
+
+        config = EvaluateConfig(
+            type="contract",
+            pairs=[
+                {
+                    "producer": str(producer),
+                    "consumer": str(tmp_path / "nonexistent.ts"),
+                    "contract": "must match",
+                }
+            ],
+        )
+        ctx = InterpolationContext()
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            result = evaluate_contract(config, ctx)
+
+        assert result.verdict == "error"
+        assert "cannot read consumer file" in result.details["pair_results"][0]["error"]
+        mock_run.assert_not_called()
+
+    def test_regex_no_match_returns_error(self, tmp_path) -> None:
+        """Producer pattern that matches nothing returns error for that pair."""
+        producer = tmp_path / "api.ts"
+        producer.write_text("export const handler = () => Response.json({ id: 1 })")
+        consumer = tmp_path / "hook.ts"
+        consumer.write_text("fetchJson<{ id: number }>()")
+
+        config = EvaluateConfig(
+            type="contract",
+            pairs=[
+                {
+                    "producer": str(producer),
+                    "consumer": str(consumer),
+                    "producer_pattern": r"NextResponse\.json\((.+?)\)",  # won't match
+                    "contract": "must match",
+                }
+            ],
+        )
+        ctx = InterpolationContext()
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            result = evaluate_contract(config, ctx)
+
+        assert result.verdict == "error"
+        assert "producer_pattern matched nothing" in result.details["pair_results"][0]["error"]
+        mock_run.assert_not_called()
+
+    def test_no_pairs_config_returns_error(self) -> None:
+        """Contract evaluator with no pairs returns error immediately."""
+        config = EvaluateConfig(type="contract")
+        ctx = InterpolationContext()
+        result = evaluate_contract(config, ctx)
+
+        assert result.verdict == "error"
+        assert "pairs" in result.details["error"].lower()
+
+    def test_regex_extraction_applies_to_both_sides(self, mock_cli, tmp_path) -> None:
+        """Producer and consumer regex patterns correctly extract slices."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("yes", 0.9, "Slices align")
+
+        producer = tmp_path / "api.ts"
+        producer.write_text('NextResponse.json({ id: 1, name: "test" })')
+        consumer = tmp_path / "hook.ts"
+        consumer.write_text("fetchJson<{ id: number; name: string }>()")
+
+        config = EvaluateConfig(
+            type="contract",
+            pairs=[
+                {
+                    "producer": str(producer),
+                    "consumer": str(consumer),
+                    "producer_pattern": r"NextResponse\.json\((.+?)\)",
+                    "consumer_pattern": r"fetchJson<(.+?)>",
+                    "contract": "shape must match",
+                }
+            ],
+        )
+        ctx = InterpolationContext()
+        result = evaluate_contract(config, ctx)
+
+        assert result.verdict == "yes"
+        # The prompt was passed to the CLI binary — just verify CLI was called
+        assert mock_run.called
+
+    def test_cli_not_found_returns_error(self, tmp_path) -> None:
+        """Returns error immediately when host CLI is not installed."""
+        producer = tmp_path / "api.ts"
+        producer.write_text("return { id: 1 }")
+        consumer = tmp_path / "hook.ts"
+        consumer.write_text("fetchJson<{ id: number }>()")
+
+        config = EvaluateConfig(
+            type="contract",
+            pairs=[{"producer": str(producer), "consumer": str(consumer), "contract": "must match"}],
+        )
+        ctx = InterpolationContext()
+        with patch(
+            "little_loops.fsm.evaluators.subprocess.run",
+            side_effect=FileNotFoundError("claude"),
+        ):
+            result = evaluate_contract(config, ctx)
+
+        assert result.verdict == "error"
+        assert result.details.get("missing_dependency") is True
+
+    def test_multi_pair_any_failure_returns_no(self, mock_cli, tmp_path) -> None:
+        """With multiple pairs, any failure causes overall no verdict."""
+        mock_run, mock_result = mock_cli
+        # First call returns yes, second returns no
+        mock_run.side_effect = [
+            type(mock_result)(
+                returncode=0,
+                stdout=self._cli_stdout("yes", 0.9, "First pair ok"),
+                stderr="",
+            ),
+            type(mock_result)(
+                returncode=0,
+                stdout=self._cli_stdout("no", 0.85, "Second pair fails"),
+                stderr="",
+            ),
+        ]
+
+        p1 = tmp_path / "api1.ts"
+        p1.write_text("{ id: 1 }")
+        c1 = tmp_path / "hook1.ts"
+        c1.write_text("{ id: number }")
+        p2 = tmp_path / "api2.ts"
+        p2.write_text("{ user_id: 1 }")
+        c2 = tmp_path / "hook2.ts"
+        c2.write_text("{ userId: number }")
+
+        config = EvaluateConfig(
+            type="contract",
+            pairs=[
+                {"producer": str(p1), "consumer": str(c1), "contract": "must match"},
+                {"producer": str(p2), "consumer": str(c2), "contract": "camelCase"},
+            ],
+        )
+        ctx = InterpolationContext()
+        result = evaluate_contract(config, ctx)
+
+        assert result.verdict == "no"
+        assert len(result.details["pair_results"]) == 2
+
+    def test_dispatch_contract(self, mock_cli, tmp_path) -> None:
+        """Contract type routes through the evaluate() dispatcher."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("yes", 0.95, "Aligned")
+
+        producer = tmp_path / "api.ts"
+        producer.write_text("{ id: 1 }")
+        consumer = tmp_path / "hook.ts"
+        consumer.write_text("{ id: number }")
+
+        config = EvaluateConfig(
+            type="contract",
+            pairs=[{"producer": str(producer), "consumer": str(consumer), "contract": "must match"}],
+        )
+        ctx = InterpolationContext()
+        result = evaluate(config, output="", exit_code=0, context=ctx)
+        assert result.verdict == "yes"
