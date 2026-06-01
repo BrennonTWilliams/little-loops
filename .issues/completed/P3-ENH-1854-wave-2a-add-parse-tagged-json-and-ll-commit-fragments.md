@@ -9,15 +9,16 @@ discovered_by: split-from-ENH-1775
 parent: EPIC-1773
 relates_to:
 - ENH-1775
-status: open
+status: done
 decision_needed: false
 implementation_order_risk: true
-confidence_score: 85
-outcome_confidence: 51
+confidence_score: 95
+outcome_confidence: 59
 score_complexity: 13
 score_test_coverage: 10
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 18
+size: Very Large
 ---
 
 # ENH-1854: Wave 2a — Add `parse_tagged_json` and `ll_commit` Fragments
@@ -287,21 +288,31 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-01_
+_Updated by `/ll:confidence-check` on 2026-06-01 (re-run after `/ll:decide-issue` resolved Option A)_
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 51/100 → LOW
-
-### Concerns
-- **Step 1 / Step 2 contradiction on stdin mechanism**: The "Expected Behavior" spec and Step 1 both use `sys.stdin.read()`, but the research findings flag stdin as incompatible with FSM capture variable output; Option A (`"""${captured.${context.capture_var}.output}"""`) is the recommended resolution. Update the spec before writing the fragment.
-- **Normalization logic preservation**: Three integration loops embed per-loop business logic (URL domain computation, branch/credentials extraction) beyond raw tag extraction. Decide whether to keep caller `action:` fields (preserving logic) or fully replace them (dropping logic) before converting.
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 59/100 → LOW
 
 ### Outcome Risk Factors
-- **Broad change surface across 17 sites (Pattern B fanout)**: Sites are fully enumerated and changes are mechanical, but no standalone verification grep exists. Tests from Step 5 are the only completeness check and are co-deliverables — implement tests first so any missed site is caught during the implementation pass.
-- **Test coverage gap for 6 commit loops**: `dead-code-cleanup`, `test-coverage-improvement`, `backlog-flow-optimizer`, `issue-staleness-review`, `docs-sync`, and `incremental-refactor` have no existing test classes; write structural tests alongside each conversion, not at the end.
-- **Unresolved design decision — stdin vs. context variable in parse_tagged_json action**: The fragment's `action:` as specified in Expected Behavior will be non-functional. Adopt Option A and update the Expected Behavior section before writing the fragment code.
+- **Broad change surface (~17 sites, Pattern B enumerated fanout)**: Sites are fully enumerated and changes are mechanical; tests from Step 5 are the primary completeness check and are co-deliverables — write structural tests alongside each conversion, not at the end.
+- **Test coverage gap for 6 commit loops**: `dead-code-cleanup`, `test-coverage-improvement`, `backlog-flow-optimizer`, `issue-staleness-review`, `docs-sync`, and `incremental-refactor` have no existing test classes; tests are co-deliverables, implement alongside each conversion.
+- **Step 1 text inconsistency**: "stdin-based forward scan" language in Implementation Step 1 contradicts Option A in the Expected Behavior section; follow Expected Behavior (`${captured.${context.capture_var}.output}`) and update Step 1 text when writing the fragment.
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-06-01
+- **Reason**: Issue too large for single session
+
+### Decomposed Into
+- ENH-1861: Wave 2a Part 1 — Add `parse_tagged_json` Fragment and Convert 3 Integration Loops
+- ENH-1862: Wave 2a Part 2 — Create `ll_commit` Fragment, Convert 6 Commit Loops, and Wire Docs
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cacc3f7-f908-4e86-8ef8-b96c1b43a157.jsonl`
+- `/ll:confidence-check` - 2026-06-01T18:10:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4b04c26-de79-4c51-8480-2b070bef719c.jsonl`
 - `/ll:decide-issue` - 2026-06-01T18:04:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67e4d4e4-1440-479f-9406-ecd40fa28a8b.jsonl`
 - `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75cef0b3-af02-4e85-a2ba-442a86576bc9.jsonl`
 - `/ll:wire-issue` - 2026-06-01T17:56:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/420a5560-0b8d-425f-aeee-14be30fc4b7b.jsonl`

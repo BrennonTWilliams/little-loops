@@ -7,7 +7,7 @@ priority: P2
 discovered_date: 2026-05-23
 discovered_by: manual
 labels: [epic, loops, harness, meta-loop, shor, validation, create-loop]
-relates_to: [ENH-1664, ENH-1665, ENH-1666, ENH-1667, ENH-1547, ENH-1636, ENH-1795, ENH-1793]
+relates_to: [ENH-1664, ENH-1665, ENH-1666, ENH-1667, ENH-1547, ENH-1636, ENH-1795, ENH-1793, FEAT-1791]
 ---
 
 # EPIC-1663: Codify meta-loop harness-design rules (SHOR-driven)
@@ -47,6 +47,7 @@ prescription teeth at design, validation, and (optionally) runtime.
 - **ENH-1636** — `ll-loop validate` lint for zero-retry counter pattern (additional validator rule in the same validate pipeline)
 - **ENH-1795** — Action-level loop detection (complement to diff_stall)
 - **ENH-1793** — Blind Cross-Iteration Comparator
+- **FEAT-1791** — `check_contract` Boundary-Mismatch Evaluator
 
 ## Design Decisions (locked)
 

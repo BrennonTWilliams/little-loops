@@ -1189,6 +1189,12 @@ class TestPromptAcrossIssuesLoop:
         init_action = data["states"].get("init", {}).get("action", "")
         assert "${context.type}" in init_action or "TYPE_ARG" in init_action
 
+    def test_init_supports_parent_filter(self, data: dict) -> None:
+        """context.parent must default to '' and init action must reference it."""
+        assert data.get("context", {}).get("parent") == ""
+        init_action = data["states"].get("init", {}).get("action", "")
+        assert "${context.parent}" in init_action or "context.parent" in init_action
+
 
 class TestAutoRefineAndImplementLoop:
     """Structural tests for the auto-refine-and-implement FSM loop."""

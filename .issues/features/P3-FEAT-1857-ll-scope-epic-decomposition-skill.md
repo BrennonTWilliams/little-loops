@@ -143,6 +143,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `epics`, `skill`, `decomposition`, `captured`
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-01T17:44:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/756a4b19-3f84-45ba-b4ff-aeb860ba5ecf.jsonl`
 - `/ll:capture-issue` - 2026-06-01T17:35:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/277dd3c5-ffef-46cb-bcc6-124409ce1225.jsonl`
 
 ---

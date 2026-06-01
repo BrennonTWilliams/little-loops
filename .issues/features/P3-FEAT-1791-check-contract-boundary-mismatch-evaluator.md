@@ -8,6 +8,7 @@ discovered_date: '2026-05-29'
 discovered_by: capture-issue
 status: open
 labels: [feature, loops, evaluator, qa, integration]
+parent: EPIC-1663
 ---
 
 # FEAT-1791: `check_contract` Boundary-Mismatch Evaluator

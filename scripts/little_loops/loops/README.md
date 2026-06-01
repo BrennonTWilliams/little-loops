@@ -24,7 +24,7 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `auto-refine-and-implement` | For each backlog issue in priority order: refine to ready, then implement; skips issues that fail refinement |
 | `autodev` | Targeted refine-and-implement for a fixed set of issue IDs; interleaves refinement and implementation — each leaf is implemented via `ll-auto --only` as soon as it passes refinement, before the next leaf is refined. Uses per-instance `${context.run_dir}` for temp files and `scope: ["${context.run_dir}"]` to allow concurrent instances with disjoint issue sets. For implementation isolation, use `--worktree`. |
 | `backlog-flow-optimizer` | Iteratively diagnose the primary throughput bottleneck in the issue backlog |
-| `prompt-across-issues` | Run an arbitrary prompt against every open/active issue sequentially; use `{issue_id}` placeholder to inject each issue's ID. Optionally constrain to a single issue type via `--context type=BUG` (one of `BUG`, `FEAT`, `ENH`, `EPIC`) |
+| `prompt-across-issues` | Run an arbitrary prompt against every open/active issue sequentially; use `{issue_id}` placeholder to inject each issue's ID. Optionally constrain to a single issue type via `--context type=BUG` (one of `BUG`, `FEAT`, `ENH`, `EPIC`). Optionally scope to children of an epic via `--context parent=EPIC-NNN`. Both filters may be combined. |
 
 ## Sprint & Worktree
 
