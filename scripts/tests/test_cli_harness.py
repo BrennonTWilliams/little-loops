@@ -1,0 +1,666 @@
+"""Tests for little_loops.cli.harness (ll-harness CLI)."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from typing import Any
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from little_loops.cli.harness import (
+    _parse_harness_args,
+    cmd_cmd,
+    cmd_mcp,
+    cmd_prompt,
+    cmd_skill,
+    main_harness,
+)
+from little_loops.host_runner import HostInvocation
+
+# ---------------------------------------------------------------------------
+# Shared helpers (mirroring test_action.py patterns)
+# ---------------------------------------------------------------------------
+
+
+class FakeRunner:
+    """Test double for HostRunner."""
+
+    name = "claude-code"
+
+    def build_streaming(self, **_: object) -> HostInvocation:
+        return HostInvocation(binary="claude", args=[])
+
+    def build_blocking_json(self, **_: object) -> HostInvocation:
+        return HostInvocation(binary="claude", args=[])
+
+
+def _make_completed(
+    returncode: int = 0, stdout: str = "", stderr: str = ""
+) -> subprocess.CompletedProcess:
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+def _make_namespace(**kwargs: Any) -> Any:
+    import argparse
+
+    ns = argparse.Namespace(
+        exit_code=None,
+        semantic=None,
+        timeout=120,
+        output="text",
+        verbose=False,
+    )
+    for k, v in kwargs.items():
+        setattr(ns, k, v)
+    return ns
+
+
+def _llm_verdict(verdict: str, confidence: float = 0.9, reason: str = "ok") -> str:
+    """Helper to create mock evaluate_llm_structured CompletedProcess stdout."""
+    return json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "structured_output": {
+                "verdict": verdict,
+                "confidence": confidence,
+                "reason": reason,
+            },
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# TestParser
+# ---------------------------------------------------------------------------
+
+
+class TestParser:
+    """Tests for _build_harness_parser() and _parse_harness_args()."""
+
+    def test_skill_subparser_target(self) -> None:
+        args = _parse_harness_args(["skill", "check-code"])
+        assert args.runner == "skill"
+        assert args.target == "check-code"
+        assert args.runner_args == []
+
+    def test_skill_subparser_with_runner_args(self) -> None:
+        args = _parse_harness_args(["skill", "refine-issue", "FEAT-1851"])
+        assert args.runner == "skill"
+        assert args.target == "refine-issue"
+        assert args.runner_args == ["FEAT-1851"]
+
+    def test_cmd_subparser(self) -> None:
+        args = _parse_harness_args(["cmd", "echo hello"])
+        assert args.runner == "cmd"
+        assert args.target == "echo hello"
+
+    def test_mcp_subparser(self) -> None:
+        args = _parse_harness_args(["mcp", "my-server:my-tool"])
+        assert args.runner == "mcp"
+        assert args.target == "my-server:my-tool"
+        assert args.mcp_args == "{}"
+
+    def test_mcp_subparser_with_args(self) -> None:
+        args = _parse_harness_args(["mcp", "srv:tool", "--args", '{"key": "val"}'])
+        assert args.mcp_args == '{"key": "val"}'
+
+    def test_prompt_subparser(self) -> None:
+        args = _parse_harness_args(["prompt", "What is 2+2?"])
+        assert args.runner == "prompt"
+        assert args.target == "What is 2+2?"
+
+    def test_exit_code_flag(self) -> None:
+        args = _parse_harness_args(["cmd", "true", "--exit-code", "0"])
+        assert args.exit_code == 0
+
+    def test_semantic_flag(self) -> None:
+        args = _parse_harness_args(["cmd", "echo hi", "--semantic", "says hello"])
+        assert args.semantic == "says hello"
+
+    def test_timeout_default(self) -> None:
+        args = _parse_harness_args(["cmd", "true"])
+        assert args.timeout == 120
+
+    def test_timeout_override(self) -> None:
+        args = _parse_harness_args(["cmd", "true", "--timeout", "60"])
+        assert args.timeout == 60
+
+    def test_output_default(self) -> None:
+        args = _parse_harness_args(["cmd", "true"])
+        assert args.output == "text"
+
+    def test_output_json(self) -> None:
+        args = _parse_harness_args(["cmd", "true", "--output", "json"])
+        assert args.output == "json"
+
+    def test_verbose_flag(self) -> None:
+        args = _parse_harness_args(["cmd", "true", "--verbose"])
+        assert args.verbose is True
+
+    def test_missing_runner_exits(self) -> None:
+        with pytest.raises(SystemExit):
+            _parse_harness_args([])
+
+    def test_invalid_output_choice_exits(self) -> None:
+        with pytest.raises(SystemExit):
+            _parse_harness_args(["cmd", "true", "--output", "xml"])
+
+
+# ---------------------------------------------------------------------------
+# TestCmdSkill
+# ---------------------------------------------------------------------------
+
+
+class TestCmdSkill:
+    """Tests for cmd_skill()."""
+
+    def test_skill_pass_no_criteria(self, capsys: pytest.CaptureFixture) -> None:
+        """Exits 0 when runner completes and no evaluator criteria are supplied."""
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[])
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout="All checks passed"),
+            ),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "PASS" in out
+
+    def test_skill_with_runner_args(self) -> None:
+        """Passes runner_args as part of the skill prompt."""
+        args = _make_namespace(runner="skill", target="refine-issue", runner_args=["FEAT-1851"])
+        captured_prompt = []
+
+        def fake_build_streaming(*, prompt: str, **_: object) -> HostInvocation:
+            captured_prompt.append(prompt)
+            return HostInvocation(binary="claude", args=[])
+
+        fake_runner = FakeRunner()
+        fake_runner.build_streaming = fake_build_streaming  # type: ignore[method-assign]
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=fake_runner),
+            patch("subprocess.run", return_value=_make_completed()),
+        ):
+            cmd_skill(args)
+
+        assert captured_prompt[0] == "/ll:refine-issue FEAT-1851"
+
+    def test_skill_exit_code_pass(self, capsys: pytest.CaptureFixture) -> None:
+        """Exits 0 when captured exit code matches --exit-code."""
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[], exit_code=0)
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0)),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 0
+
+    def test_skill_exit_code_fail(self, capsys: pytest.CaptureFixture) -> None:
+        """Exits 1 when captured exit code does not match --exit-code."""
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[], exit_code=0)
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=1)),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "FAIL" in out
+
+    def test_skill_timeout_returns_2(self, capsys: pytest.CaptureFixture) -> None:
+        """Exits 2 when runner times out."""
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[])
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=120)
+            ),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 2
+
+    def test_skill_binary_not_found_returns_2(self, capsys: pytest.CaptureFixture) -> None:
+        """Exits 2 when host CLI binary is not found."""
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[])
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=FileNotFoundError("claude not found")),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 2
+
+
+# ---------------------------------------------------------------------------
+# TestCmdCmd
+# ---------------------------------------------------------------------------
+
+
+class TestCmdCmd:
+    """Tests for cmd_cmd()."""
+
+    def _make_popen_mock(
+        self, stdout_lines: list[str], stderr_lines: list[str], returncode: int = 0
+    ) -> MagicMock:
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter(stdout_lines)
+        mock_proc.stderr = iter(stderr_lines)
+        mock_proc.returncode = returncode
+        mock_proc.wait.return_value = None
+        mock_proc.kill.return_value = None
+        return mock_proc
+
+    def test_cmd_captures_stdout(self, capsys: pytest.CaptureFixture) -> None:
+        """Captures stdout from the shell command."""
+        args = _make_namespace(runner="cmd", target="echo hello", verbose=True)
+        mock_proc = self._make_popen_mock(["hello\n"], [])
+
+        with patch("subprocess.Popen", return_value=mock_proc):
+            result = cmd_cmd(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "hello" in out
+
+    def test_cmd_exit_code_pass(self) -> None:
+        """Exits 0 when exit code matches --exit-code."""
+        args = _make_namespace(runner="cmd", target="true", exit_code=0)
+        mock_proc = self._make_popen_mock([], [], returncode=0)
+
+        with patch("subprocess.Popen", return_value=mock_proc):
+            result = cmd_cmd(args)
+
+        assert result == 0
+
+    def test_cmd_exit_code_fail(self, capsys: pytest.CaptureFixture) -> None:
+        """Exits 1 when exit code does not match --exit-code."""
+        args = _make_namespace(runner="cmd", target="false", exit_code=0)
+        mock_proc = self._make_popen_mock([], [], returncode=1)
+
+        with patch("subprocess.Popen", return_value=mock_proc):
+            result = cmd_cmd(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "FAIL" in out
+
+    def test_cmd_no_criteria_always_pass(self) -> None:
+        """Exits 0 with no criteria when runner completes."""
+        args = _make_namespace(runner="cmd", target="false")
+        mock_proc = self._make_popen_mock([], [], returncode=1)
+
+        with patch("subprocess.Popen", return_value=mock_proc):
+            result = cmd_cmd(args)
+
+        assert result == 0
+
+    def test_cmd_timeout_returns_2(self, capsys: pytest.CaptureFixture) -> None:
+        """Exits 2 on timeout."""
+        args = _make_namespace(runner="cmd", target="sleep 999", timeout=1)
+        mock_proc = self._make_popen_mock([], [])
+        # First call (with timeout=) raises; second call (post-kill, no timeout) succeeds.
+        mock_proc.wait.side_effect = [
+            subprocess.TimeoutExpired(cmd="bash", timeout=1),
+            None,
+        ]
+
+        with patch("subprocess.Popen", return_value=mock_proc):
+            result = cmd_cmd(args)
+
+        assert result == 2
+        mock_proc.kill.assert_called_once()
+
+    def test_cmd_json_output(self, capsys: pytest.CaptureFixture) -> None:
+        """--output json produces valid JSON with result field."""
+        args = _make_namespace(runner="cmd", target="echo hi", output="json")
+        mock_proc = self._make_popen_mock(["hi\n"], [])
+
+        with patch("subprocess.Popen", return_value=mock_proc):
+            result = cmd_cmd(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["result"] == "PASS"
+        assert "stdout" in data
+
+
+# ---------------------------------------------------------------------------
+# TestCmdMcp
+# ---------------------------------------------------------------------------
+
+
+class TestCmdMcp:
+    """Tests for cmd_mcp()."""
+
+    def test_mcp_calls_tool(self) -> None:
+        """Calls call_mcp_tool with correct server, tool, and params."""
+        args = _make_namespace(runner="mcp", target="my-server:my-tool", mcp_args="{}")
+        captured: list[Any] = []
+
+        def fake_call(server: str, tool: str, params: dict, **_: Any) -> tuple[dict, int]:
+            captured.append((server, tool, params))
+            return {"content": [{"type": "text", "text": "ok"}]}, 0
+
+        with patch("little_loops.cli.harness.call_mcp_tool", side_effect=fake_call):
+            result = cmd_mcp(args)
+
+        assert result == 0
+        assert captured[0] == ("my-server", "my-tool", {})
+
+    def test_mcp_passes_json_args(self) -> None:
+        """Passes parsed JSON args to call_mcp_tool."""
+        args = _make_namespace(
+            runner="mcp", target="srv:tool", mcp_args='{"key": "val", "num": 42}'
+        )
+        captured: list[dict] = []
+
+        def fake_call(server: str, tool: str, params: dict, **_: Any) -> tuple[dict, int]:
+            captured.append(params)
+            return {}, 0
+
+        with patch("little_loops.cli.harness.call_mcp_tool", side_effect=fake_call):
+            cmd_mcp(args)
+
+        assert captured[0] == {"key": "val", "num": 42}
+
+    def test_mcp_invalid_target_format(self, capsys: pytest.CaptureFixture) -> None:
+        """Returns 2 when target lacks colon separator."""
+        args = _make_namespace(runner="mcp", target="notavalidtarget", mcp_args="{}")
+        result = cmd_mcp(args)
+        assert result == 2
+
+    def test_mcp_invalid_json_args(self, capsys: pytest.CaptureFixture) -> None:
+        """Returns 2 when --args is not valid JSON."""
+        args = _make_namespace(runner="mcp", target="srv:tool", mcp_args="{bad json}")
+        result = cmd_mcp(args)
+        assert result == 2
+
+    def test_mcp_tool_error_exit_code(self, capsys: pytest.CaptureFixture) -> None:
+        """Returns 0 with no criteria even when MCP returns non-zero exit code."""
+        args = _make_namespace(runner="mcp", target="srv:tool", mcp_args="{}")
+
+        with patch(
+            "little_loops.cli.harness.call_mcp_tool",
+            return_value=({"isError": True, "content": []}, 1),
+        ):
+            result = cmd_mcp(args)
+
+        assert result == 0
+
+    def test_mcp_exit_code_criterion_fail(self, capsys: pytest.CaptureFixture) -> None:
+        """Exits 1 when exit code does not match --exit-code criterion."""
+        args = _make_namespace(runner="mcp", target="srv:tool", mcp_args="{}", exit_code=0)
+
+        with patch(
+            "little_loops.cli.harness.call_mcp_tool",
+            return_value=({}, 1),
+        ):
+            result = cmd_mcp(args)
+
+        assert result == 1
+
+
+# ---------------------------------------------------------------------------
+# TestCmdPrompt
+# ---------------------------------------------------------------------------
+
+
+class TestCmdPrompt:
+    """Tests for cmd_prompt()."""
+
+    def test_prompt_sends_request(self) -> None:
+        """Calls resolve_host().build_blocking_json with the prompt text."""
+        args = _make_namespace(runner="prompt", target="What is 2+2?")
+        captured_prompt: list[str] = []
+
+        def fake_build_blocking_json(*, prompt: str, **_: object) -> HostInvocation:
+            captured_prompt.append(prompt)
+            return HostInvocation(binary="claude", args=[])
+
+        fake_runner = FakeRunner()
+        fake_runner.build_blocking_json = fake_build_blocking_json  # type: ignore[method-assign]
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=fake_runner),
+            patch("subprocess.run", return_value=_make_completed(stdout="4")),
+        ):
+            result = cmd_prompt(args)
+
+        assert result == 0
+        assert captured_prompt[0] == "What is 2+2?"
+
+    def test_prompt_timeout_returns_2(self) -> None:
+        """Exits 2 on timeout."""
+        args = _make_namespace(runner="prompt", target="hello")
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=120)
+            ),
+        ):
+            result = cmd_prompt(args)
+
+        assert result == 2
+
+    def test_prompt_binary_not_found_returns_2(self) -> None:
+        """Exits 2 when host CLI binary is not found."""
+        args = _make_namespace(runner="prompt", target="hello")
+
+        with (
+            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=FileNotFoundError("claude not found")),
+        ):
+            result = cmd_prompt(args)
+
+        assert result == 2
+
+
+# ---------------------------------------------------------------------------
+# TestSemanticEvaluator
+# ---------------------------------------------------------------------------
+
+
+class TestSemanticEvaluator:
+    """Tests for --semantic evaluator interaction."""
+
+    def test_semantic_yes_passes(self, capsys: pytest.CaptureFixture) -> None:
+        """Exits 0 when evaluate_llm_structured returns 'yes'."""
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        args = _make_namespace(runner="cmd", target="echo hi", semantic="output contains hi")
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter(["hi\n"])
+        mock_proc.stderr = iter([])
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = None
+
+        with (
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch(
+                "little_loops.cli.harness.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={"confidence": 0.9}),
+            ),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "PASS" in out
+        assert "yes" in out
+
+    @pytest.mark.parametrize("verdict", ["no", "blocked", "partial"])
+    def test_semantic_non_yes_fails(self, verdict: str, capsys: pytest.CaptureFixture) -> None:
+        """Exits 1 when evaluate_llm_structured returns non-yes verdict."""
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        args = _make_namespace(runner="cmd", target="echo hi", semantic="some criterion")
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter(["hi\n"])
+        mock_proc.stderr = iter([])
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = None
+
+        with (
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch(
+                "little_loops.cli.harness.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict=verdict, details={}),
+            ),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "FAIL" in out
+
+    def test_both_criteria_must_pass(self, capsys: pytest.CaptureFixture) -> None:
+        """Exits 1 when exit code passes but semantic fails."""
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        args = _make_namespace(runner="cmd", target="echo hi", exit_code=0, semantic="must fail")
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter(["hi\n"])
+        mock_proc.stderr = iter([])
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = None
+
+        with (
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch(
+                "little_loops.cli.harness.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="no", details={}),
+            ),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 1
+
+
+# ---------------------------------------------------------------------------
+# TestMainHarness
+# ---------------------------------------------------------------------------
+
+
+class TestMainHarness:
+    """Integration tests for main_harness()."""
+
+    def test_main_harness_cmd_pass(self, capsys: pytest.CaptureFixture) -> None:
+        """main_harness returns 0 for a passing cmd invocation."""
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter(["hello\n"])
+        mock_proc.stderr = iter([])
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = None
+
+        with (
+            patch("sys.argv", ["ll-harness", "cmd", "echo hello", "--exit-code", "0"]),
+            patch("subprocess.Popen", return_value=mock_proc),
+        ):
+            result = main_harness(["cmd", "echo hello", "--exit-code", "0"])
+
+        assert result == 0
+
+    def test_main_harness_cmd_fail(self, capsys: pytest.CaptureFixture) -> None:
+        """main_harness returns 1 for a failing cmd invocation."""
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter([])
+        mock_proc.stderr = iter([])
+        mock_proc.returncode = 1
+        mock_proc.wait.return_value = None
+
+        with (
+            patch("sys.argv", ["ll-harness", "cmd", "false", "--exit-code", "0"]),
+            patch("subprocess.Popen", return_value=mock_proc),
+        ):
+            result = main_harness(["cmd", "false", "--exit-code", "0"])
+
+        assert result == 1
+
+    def test_main_harness_skill_pass(self, capsys: pytest.CaptureFixture) -> None:
+        """main_harness returns 0 for a passing skill invocation."""
+        with (
+            patch("sys.argv", ["ll-harness", "skill", "check-code"]),
+            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0)),
+        ):
+            result = main_harness(["skill", "check-code"])
+
+        assert result == 0
+
+    def test_main_harness_mcp_pass(self, capsys: pytest.CaptureFixture) -> None:
+        """main_harness returns 0 for a passing mcp invocation."""
+        with (
+            patch("sys.argv", ["ll-harness", "mcp", "srv:tool"]),
+            patch("little_loops.cli.harness.call_mcp_tool", return_value=({}, 0)),
+        ):
+            result = main_harness(["mcp", "srv:tool"])
+
+        assert result == 0
+
+    def test_main_harness_prompt_pass(self, capsys: pytest.CaptureFixture) -> None:
+        """main_harness returns 0 for a passing prompt invocation."""
+        with (
+            patch("sys.argv", ["ll-harness", "prompt", "hello"]),
+            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="response")),
+        ):
+            result = main_harness(["prompt", "hello"])
+
+        assert result == 0
+
+    def test_main_harness_json_output(self, capsys: pytest.CaptureFixture) -> None:
+        """main_harness --output json produces parseable JSON."""
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter(["hi\n"])
+        mock_proc.stderr = iter([])
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = None
+
+        with (
+            patch("sys.argv", ["ll-harness", "cmd", "echo hi", "--output", "json"]),
+            patch("subprocess.Popen", return_value=mock_proc),
+        ):
+            result = main_harness(["cmd", "echo hi", "--output", "json"])
+
+        assert result == 0
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert data["result"] == "PASS"
+        assert "exit_code" in data
+        assert "semantic" in data
+
+    def test_main_harness_verbose_shows_output_on_pass(self, capsys: pytest.CaptureFixture) -> None:
+        """--verbose shows captured output even when result is PASS."""
+        mock_proc = MagicMock()
+        mock_proc.stdout = iter(["secret output\n"])
+        mock_proc.stderr = iter([])
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = None
+
+        with (
+            patch("sys.argv", ["ll-harness", "cmd", "echo secret output", "--verbose"]),
+            patch("subprocess.Popen", return_value=mock_proc),
+        ):
+            result = main_harness(["cmd", "echo secret output", "--verbose"])
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "secret output" in out

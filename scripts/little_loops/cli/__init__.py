@@ -1,6 +1,7 @@
 """CLI entry points for little-loops tools.
 
 Provides command-line interfaces for automated issue management:
+- ll-harness: One-shot runner evaluation (skill, cmd, mcp, prompt) with exit-code and semantic criteria
 - ll-action: Invoke ll skills as one-shot commands with JSON-structured output
 - ll-adapt-agents-for-codex: Add Codex subagent TOML files to .codex/agents/
 - ll-adapt-skills-for-codex: Add Codex Skills API frontmatter to ll skill SKILL.md files
@@ -33,6 +34,7 @@ Provides command-line interfaces for automated issue management:
 """
 
 from little_loops.cli.action import main_action
+from little_loops.cli.harness import main_harness
 from little_loops.cli.adapt_agents_for_codex import main_adapt_agents_for_codex
 from little_loops.cli.adapt_skills_for_codex import main_adapt_skills_for_codex
 from little_loops.cli.auto import main_auto
@@ -67,6 +69,7 @@ from little_loops.cli.sync import main_sync
 
 __all__ = [
     "main_action",
+    "main_harness",
     "main_adapt_agents_for_codex",
     "main_adapt_skills_for_codex",
     "main_auto",
