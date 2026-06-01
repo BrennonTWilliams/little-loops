@@ -14,6 +14,7 @@ import selectors
 import subprocess
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from little_loops.host_runner import resolve_host
@@ -30,7 +31,23 @@ ProcessCallback = Callable[[subprocess.Popen[str]], None]
 ModelCallback = Callable[[str], None]
 
 # Usage callback: (input_tokens: int, output_tokens: int) -> None
+# Kept for back-compat with issue_manager.py and worker_pool.py callers.
 UsageCallback = Callable[[int, int], None]
+
+
+@dataclass
+class TokenUsage:
+    """Token usage from a single host-CLI invocation."""
+
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_creation_tokens: int
+    model: str
+
+
+# Detailed usage callback — receives all four token fields plus model ID.
+DetailedUsageCallback = Callable[[TokenUsage], None]
 
 # Context handoff detection pattern
 CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh session")
@@ -228,6 +245,7 @@ def run_claude_command(
     idle_timeout: int = 0,
     on_model_detected: ModelCallback | None = None,
     on_usage: UsageCallback | None = None,
+    on_usage_detailed: DetailedUsageCallback | None = None,
     agent: str | None = None,
     tools: list[str] | None = None,
     resume_session: bool = False,
@@ -249,6 +267,9 @@ def run_claude_command(
             stream-json system/init event. Called at most once per invocation.
         on_usage: Optional callback invoked with (input_tokens, output_tokens) from
             the stream-json result event. input_tokens includes cache_read_input_tokens.
+        on_usage_detailed: Optional callback invoked with a TokenUsage dataclass
+            carrying all four token fields (input, output, cache_read, cache_creation)
+            plus the model ID from the stream-json result event.
         resume_session: If True, passes --continue to the Claude CLI to continue the
             most recent conversation. Used for the Option E explicit-handoff path.
 
@@ -366,6 +387,20 @@ def run_claude_command(
                                         usage.get("input_tokens", 0)
                                         + usage.get("cache_read_input_tokens", 0),
                                         usage.get("output_tokens", 0),
+                                    )
+                                if on_usage_detailed and usage:
+                                    on_usage_detailed(
+                                        TokenUsage(
+                                            input_tokens=usage.get("input_tokens", 0),
+                                            output_tokens=usage.get("output_tokens", 0),
+                                            cache_read_tokens=usage.get(
+                                                "cache_read_input_tokens", 0
+                                            ),
+                                            cache_creation_tokens=usage.get(
+                                                "cache_creation_input_tokens", 0
+                                            ),
+                                            model=event.get("model", "unknown"),
+                                        )
                                     )
                                 if event.get("is_error"):
                                     error_text = event.get("error") or event.get("result", "")

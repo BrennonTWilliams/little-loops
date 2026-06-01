@@ -138,6 +138,13 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             "session_jsonl": _nullable_str(
                 "Path to Claude session JSONL file (prompt-only, null for shell commands)"
             ),
+            "input_tokens": _int("Input tokens consumed (prompt/slash_command only)"),
+            "output_tokens": _int("Output tokens generated (prompt/slash_command only)"),
+            "cache_read_tokens": _int("Cache read tokens consumed (prompt/slash_command only)"),
+            "cache_creation_tokens": _int(
+                "Cache creation tokens written (prompt/slash_command only)"
+            ),
+            "model": _str("Model ID reported by the host CLI (prompt/slash_command only)"),
         },
         ["exit_code", "duration_ms", "is_prompt"],
     ),

@@ -1548,6 +1548,55 @@ class TestRunClaudeCommandModelDetection:
 
         assert usage_calls == []
 
+    def test_on_usage_detailed_callback_called_with_result_event(self) -> None:
+        """on_usage_detailed callback receives all four token fields plus model."""
+        result_event = (
+            '{"type": "result", "model": "claude-sonnet-4-6", "usage": {"input_tokens": 1000, '
+            '"output_tokens": 200, "cache_read_input_tokens": 500, "cache_creation_input_tokens": 75}}\n'
+        )
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(result_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        from little_loops.subprocess_utils import TokenUsage
+
+        detailed_calls: list[TokenUsage] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                run_claude_command("test", on_usage_detailed=detailed_calls.append)
+
+        assert len(detailed_calls) == 1
+        u = detailed_calls[0]
+        assert u.input_tokens == 1000
+        assert u.output_tokens == 200
+        assert u.cache_read_tokens == 500
+        assert u.cache_creation_tokens == 75
+        assert u.model == "claude-sonnet-4-6"
+
+    def test_on_usage_detailed_not_called_when_no_usage(self) -> None:
+        """on_usage_detailed is not fired when result event has no usage block."""
+        result_event = '{"type": "result", "subtype": "success"}\n'
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(result_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        from little_loops.subprocess_utils import TokenUsage
+
+        detailed_calls: list[TokenUsage] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                run_claude_command("test", on_usage_detailed=detailed_calls.append)
+
+        assert detailed_calls == []
+
     def test_result_event_is_error_appends_to_stderr(self) -> None:
         """result event with is_error=True appends [result] prefixed error to stderr."""
         result_event = (

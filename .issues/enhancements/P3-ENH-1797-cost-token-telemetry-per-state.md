@@ -3,19 +3,29 @@ id: ENH-1797
 type: ENH
 title: Cost / token telemetry per FSM state in loop runs
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-29T20:37:23Z'
+completed_at: '2026-06-01T15:38:21Z'
 discovered_date: 2026-05-29
 discovered_by: capture-issue
 labels:
-  - captured
-  - fsm
-  - harness
-  - loops
-  - telemetry
-  - cost
-relates_to: [FEAT-1689, ENH-1726]
+- captured
+- fsm
+- harness
+- loops
+- telemetry
+- cost
+relates_to:
+- FEAT-1689
+- ENH-1726
 parent: EPIC-1744
+confidence_score: 98
+outcome_confidence: 70
+score_complexity: 9
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
+implementation_order_risk: true
 ---
 
 # ENH-1797: Cost / token telemetry per FSM state in loop runs
@@ -150,6 +160,12 @@ _Added by `/ll:refine-issue` — concrete implementation surface:_
    - Skip-paths test: confirm `action_type: shell` and `action_type: mcp_tool` invocations either record `n/a`-marked rows or are skipped from `usage.jsonl` (decide explicitly).
 9. **Run the test suite**: `python -m pytest scripts/tests/test_usage_journal.py scripts/tests/test_usage_reporter.py scripts/tests/test_fsm_executor.py scripts/tests/test_fsm_persistence.py -v`.
 
+### Codebase Research Findings — Stale Anchor Correction
+
+_Added by `/ll:refine-issue` — line numbers verified against current codebase (June 2026):_
+
+> ⚠ Step 6 cites "lines 1196-1217" as the insertion point in `run_foreground()`. Those lines are inside the executor invocation `try/finally` block — not the completion print. The actual `print(f"{completion_prefix}: ...")` is at **`_helpers.py:1245`**. Insert the usage table around **line 1225** (after the `finally:` restores the alt-screen, before the `if not renderer.quiet:` block). Step 6's instruction ("immediately before the existing `print(f'{completion_prefix}: ...')` line") is correct; only the line number is stale. Note also that FEAT-1822 added an A/B summary block at lines 1249-1253 after the completion print; the usage table should precede the completion print (line 1225), not follow the A/B block.
+
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
@@ -167,17 +183,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
 20. **Extend `scripts/tests/test_ll_loop_display.py`** — add `test_run_foreground_prints_usage_summary_table` and `test_run_foreground_omits_table_when_no_usage` to `TestRunForegroundResumeMode` (or a new class). Use `capsys` like existing tests.
 21. **Update skills/cleanup-loops/SKILL.md** — if Step 6 bash needs to know about `usage.jsonl` (depends on step 16 decision), update the snippet; otherwise add a one-line note that `usage.jsonl` lives under `.loops/runs/<id>/`.
 22. **Document host-adapter gap** — add a note in `docs/reference/HOST_COMPATIBILITY.md` (or create `HostCapabilities.usage_reporting` flag) that codex/opencode adapters do not yet expose usage events.
+23. **Update `scripts/little_loops/generate_schemas.py`** — `SCHEMA_DEFINITIONS["action_complete"]` entry (around line 129) is the source-of-truth `ll-generate-schemas` reads; the new optional token fields (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `model`) must be authored here before the `ll-generate-schemas` call in step 13 will produce the correct output. The `test_generate_schemas.py:test_action_complete_schema` test should be extended to assert these new properties. [Wiring pass 2]
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loop_runner.py` — action-execution path, journaling, aggregation
-- `scripts/little_loops/loop_reporter.py` — end-of-run summary table
-- `scripts/little_loops/host_runner.py` — token-usage passthrough from host adapters
+- `scripts/little_loops/subprocess_utils.py` — extend `UsageCallback` and result-event parse block (lines 33, 362-369)
+- `scripts/little_loops/fsm/types.py` — add `usage_events: list[TokenUsage]` field to `ActionResult` dataclass (line 58)
+- `scripts/little_loops/fsm/runners.py` — `DefaultActionRunner.run()`: wire callback, collect usage events (~lines 102-110)
+- `scripts/little_loops/fsm/executor.py` — `FSMExecutor._run_action()`: add token fields to `action_complete` payload (~lines 1024-1034)
+- `scripts/little_loops/fsm/persistence.py` — `PersistentExecutor._handle_event()`: write `usage.jsonl` to `run_dir` (line 373 idiom)
+- `scripts/little_loops/cli/loop/_helpers.py` — `run_foreground()`: print per-state aggregation table before completion line (~line 1246)
+- _Possibly new:_ `scripts/little_loops/pricing.py` — `MODEL_PRICING` constant (no existing table in codebase)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/tests/test_loop_runner.py` — new tests for usage journaling
-- `scripts/tests/test_loop_reporter.py` — new tests for summary output
+- `scripts/tests/test_usage_journal.py` — new tests for usage journaling (new file)
+- `scripts/tests/test_usage_reporter.py` — new tests for summary output (new file)
 
 ### Similar Patterns
 - `ll-ctx-stats` — project-level token analytics; follow same aggregation style
@@ -198,6 +219,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md` — currently has no `ll-loop run` stdout examples, so no doc breaks; consider adding an example showing the new per-state summary table. [Agent 2 finding]
 - `docs/reference/HOST_COMPATIBILITY.md` — document the codex/opencode adapter gap (no usage exposed today) so the deferred adapter work is discoverable. [Agent 2 finding]
 - `skills/cleanup-loops/SKILL.md` — Steps 3 and 6 show manual archive bash that moves only `state.json` and `events.jsonl`; if `usage.jsonl` archive behavior changes (see Configuration below), update the skill's bash; otherwise note that `usage.jsonl` lives at `.loops/runs/<id>/` permanently. [Agent 2 finding]
+
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- `docs/generalized-fsm-loop.md` — "Structured Events" section (around line 1606) shows inline `action_complete` JSONL examples with only `exit_code` and `duration_ms`; add the new token fields to those examples so they remain canonical. [Agent 2 finding]
+- `docs/ARCHITECTURE.md` — "OTel mapping" paragraph (around line 534) brackets `action_start`/`action_complete` as an OTel grandchild span; update if token fields are exposed as span attributes. [Agent 2 finding]
 
 ### Configuration
 - N/A — no new config keys in this issue (`max_cost` is deferred to a follow-up)
@@ -264,6 +289,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Skip-paths test gap (decision-pinning test)** — no current test pins whether `action_type: shell` and `action_type: mcp_tool` invocations produce a `usage.jsonl` row marked `n/a` or are skipped entirely. The issue's step 8 bullet 3 says "decide explicitly." Add the decision-pinning test in `test_usage_journal.py`. [Agent 3 finding]
 - **Archive-decision test gap** — pin via a new test in `test_fsm_persistence.py` whether `StatePersistence.archive_run()` copies `usage.jsonl` to `.history/` or leaves it permanently at `.loops/runs/<id>/`. [Wiring decision]
 
+_Wiring pass 2 added by `/ll:wire-issue`:_
+- **`scripts/tests/test_ll_loop_integration.py`** — `TestMainLoopIntegration` (line ~75) exercises `main_loop()` end-to-end and asserts on stdout strings like `"Loop completed: done"` (lines ~148-153). The usage table is printed before that line (additive, won't break existing assertions), but extend with: `test_run_prints_usage_table_when_llm_actions_ran` and `test_run_omits_usage_table_when_no_llm_actions`. [Agent 3 finding]
+- **`scripts/tests/test_issue_manager.py`** — has `on_usage(185_000, 10_000)` two-arg lambda calls (lines ~1374, ~1451, ~1509). **BREAK if `UsageCallback` widens in-place**; safe if parallel `on_usage_detailed` callback is used (preferred per issue). Flag as explicit verification point after callback-signature decision. [Agent 3 finding]
+- **`scripts/tests/test_worker_pool.py`** — has `on_usage(185_000, 10_000)` two-arg lambda call (line ~2382). Same break condition as `test_issue_manager.py`. [Agent 3 finding]
+- **`scripts/tests/test_pricing.py`** (new, if `pricing.py` is a separate module) — test `MODEL_PRICING` lookup, `est_cost` calculation, unknown-model `None`/`n/a` fallback, and ±15% accuracy against reference token counts. If pricing constants are inlined into `_helpers.py`, add these tests to `test_usage_reporter.py` instead. [Agent 3 finding]
+
 **Similar patterns (verified):**
 - `scripts/little_loops/cli/ctx_stats.py:_aggregate_tool_events()` (lines 129-144) — `defaultdict(lambda: {...})` accumulation idiom.
 - `scripts/little_loops/cli/ctx_stats.py:_render()` (lines 196-201) — column-padded `print()` style for the summary table (no `rich` library in use anywhere).
@@ -288,6 +319,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `usage.jsonl` is written for every loop run and contains one line per action invocation
 - The most expensive state in a loop can be identified from the summary alone (no out-of-band billing logs required)
 - Cost estimate in summary is within ±15% of the host CLI's billing totals
+
+## Acceptance Criteria
+
+- `usage.jsonl` exists at `<run_dir>/usage.jsonl` after any `ll-loop run` that executes at least one LLM action state
+- Each line in `usage.jsonl` is valid JSON containing: `iteration` (int), `state` (str), `action_type` (str), `input_tokens` (int), `output_tokens` (int), `cache_read_tokens` (int), `cache_creation_tokens` (int), `model` (str), `timestamp` (ISO-8601 str)
+- `action_type: shell` invocations produce **no row** in `usage.jsonl` (skip-path decision pinned by `test_shell_action_skipped_from_journal`)
+- End-of-run stdout from `ll-loop run` contains a per-state table with columns `state | invocations | input | output | cache | est_cost` when at least one LLM action ran
+- When no LLM action ran, the summary table is absent from stdout (no crash, no empty-header table)
+- `est_cost` values are within ±15% of the host CLI's billing totals for a known fixture
+- Resume (`ll-loop run --resume <id>`) appends to (does not overwrite) `usage.jsonl` because `run_dir` is restored by `lifecycle.py:cmd_resume()` at line 453
+- `StatePersistence.archive_run()` does **not** copy `usage.jsonl` to `.loops/.history/` (permanent at `run_dir`, pinned by `test_usage_journal_not_archived`)
 
 ## Scope Boundaries
 
@@ -317,7 +359,22 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 **Open** | Created: 2026-05-29 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-01_
+
+**Readiness Score**: 98/100 → PROCEED
+**Outcome Confidence**: 70/100 → MODERATE
+
+### Outcome Risk Factors
+- Wide change surface — 16+ distinct sites across core logic (6 Python files), tests (7 test files), and docs/schemas (8 documentation files). Per-site depth is Local (callback wiring, field additions, JSONL append), so risk is coordination overhead from breadth rather than per-site complexity.
+- tests are co-deliverables — implement decision-pinning tests (`test_shell_action_skipped_from_journal`, `test_usage_journal_not_archived`) alongside core logic to lock in the callback-signature and archive-policy decisions early; deferring them risks scope creep as each decision branches into callers.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T15:22:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c67bd210-6925-420e-ba34-e0e71e9d6693.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb12131c-6afa-4a03-ab11-646596f9a0b3.jsonl`
+- `/ll:wire-issue` - 2026-06-01T15:09:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9d6444b-ae99-4db8-9651-f85fa0072ba3.jsonl`
+- `/ll:refine-issue` - 2026-06-01T14:59:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa8f3c24-5078-4643-8c92-8e40de4d18b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:wire-issue` - 2026-05-30T21:49:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cef1c26e-c8c0-44a3-ad97-7b7a90baf186.jsonl`
 - `/ll:refine-issue` - 2026-05-30T21:37:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87dc942-b337-46e9-a574-9cadac23728c.jsonl`

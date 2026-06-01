@@ -108,6 +108,8 @@ Imports `lib/benchmark.yaml` for the `run_benchmark` fragment.
 
 ### Output Artifacts
 
+> **Runner-written files**: every loop run also produces `usage.jsonl` under `<run_dir>/` when at least one LLM action (prompt/slash_command) executes. Each line records `{iteration, state, action_type, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, model, timestamp}`. Shell and mcp_tool actions produce no row. The file lives permanently at `.loops/runs/<id>/usage.jsonl` and is **not** archived to `.loops/.history/`.
+
 In addition to trajectory JSONL files written to `.ll/runs/harness-optimize/<run-id>/`, `harness-optimize` is a meta-loop and produces:
 
 | File | Location | Description |

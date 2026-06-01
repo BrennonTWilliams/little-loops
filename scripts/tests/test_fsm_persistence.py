@@ -617,8 +617,9 @@ class MockActionRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         on_usage: Any = None,
+        on_usage_detailed: Any = None,
     ) -> ActionResult:
-        del on_output_line, agent, tools, on_usage
+        del on_output_line, agent, tools, on_usage, on_usage_detailed
         self.calls.append(action)
         if self._index < len(self.results):
             result = self.results[self._index]

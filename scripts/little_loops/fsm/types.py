@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+from little_loops.subprocess_utils import TokenUsage
 
 if TYPE_CHECKING:
     from little_loops.fsm.evaluators import EvaluationResult
@@ -63,12 +65,14 @@ class ActionResult:
         stderr: stderr from the action
         exit_code: Exit code from the action
         duration_ms: Execution time in milliseconds
+        usage_events: Token usage events from host-CLI invocations (empty for shell actions)
     """
 
     output: str
     stderr: str
     exit_code: int
     duration_ms: int
+    usage_events: list[TokenUsage] = field(default_factory=list)
 
 
 # Type for event callback

@@ -49,7 +49,7 @@ from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
 from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.session_log import get_current_session_jsonl
-from little_loops.subprocess_utils import UsageCallback, run_claude_command
+from little_loops.subprocess_utils import DetailedUsageCallback, TokenUsage, UsageCallback, run_claude_command
 
 # Maximum number of per-state rate-limit retries before emitting rate_limit_exhausted.
 _DEFAULT_RATE_LIMIT_RETRIES: int = 3
@@ -1050,6 +1050,18 @@ class FSMExecutor:
         if action_mode == "prompt":
             session_jsonl = get_current_session_jsonl()
             payload["session_jsonl"] = str(session_jsonl) if session_jsonl else None
+        # Aggregate token usage from host-CLI invocations (prompt / slash_command only)
+        if result.usage_events:
+            total_input = sum(u.input_tokens for u in result.usage_events)
+            total_output = sum(u.output_tokens for u in result.usage_events)
+            total_cache_read = sum(u.cache_read_tokens for u in result.usage_events)
+            total_cache_creation = sum(u.cache_creation_tokens for u in result.usage_events)
+            model = result.usage_events[-1].model
+            payload["input_tokens"] = total_input
+            payload["output_tokens"] = total_output
+            payload["cache_read_tokens"] = total_cache_read
+            payload["cache_creation_tokens"] = total_cache_creation
+            payload["model"] = model
         self._emit("action_complete", payload)
 
         # Capture if requested

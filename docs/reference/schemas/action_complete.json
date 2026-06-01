@@ -46,6 +46,26 @@
         "null"
       ],
       "description": "Path to Claude session JSONL file (prompt-only, null for shell commands)"
+    },
+    "input_tokens": {
+      "type": "integer",
+      "description": "Input tokens consumed (prompt/slash_command only)"
+    },
+    "output_tokens": {
+      "type": "integer",
+      "description": "Output tokens generated (prompt/slash_command only)"
+    },
+    "cache_read_tokens": {
+      "type": "integer",
+      "description": "Cache read tokens consumed (prompt/slash_command only)"
+    },
+    "cache_creation_tokens": {
+      "type": "integer",
+      "description": "Cache creation tokens written (prompt/slash_command only)"
+    },
+    "model": {
+      "type": "string",
+      "description": "Model ID reported by the host CLI (prompt/slash_command only)"
     }
   },
   "additionalProperties": true

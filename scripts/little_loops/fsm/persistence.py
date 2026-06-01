@@ -611,8 +611,29 @@ class PersistentExecutor:
         """
         self.persistence.append_event(event)
 
-        # Save state after state transitions
         event_type = event.get("event")
+
+        # Write per-state token usage to usage.jsonl when an LLM action completes.
+        # Shell and mcp_tool invocations produce no token data and are skipped.
+        if event_type == "action_complete" and "input_tokens" in event:
+            run_dir = self.fsm.context.get("run_dir", "")
+            if run_dir:
+                usage_path = Path(run_dir) / "usage.jsonl"
+                entry = {
+                    "iteration": self._executor.iteration,
+                    "state": self._executor.current_state,
+                    "action_type": "prompt" if event.get("is_prompt") else "shell_or_mcp",
+                    "input_tokens": event["input_tokens"],
+                    "output_tokens": event["output_tokens"],
+                    "cache_read_tokens": event.get("cache_read_tokens", 0),
+                    "cache_creation_tokens": event.get("cache_creation_tokens", 0),
+                    "model": event.get("model", "unknown"),
+                    "timestamp": event.get("ts", ""),
+                }
+                with open(usage_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry) + "\n")
+
+        # Save state after state transitions
         if event_type in ("state_enter", "loop_complete", "baseline_complete"):
             self._save_state()
 

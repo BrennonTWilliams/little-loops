@@ -21,6 +21,7 @@ from little_loops.cli.loop.diagram_modes import (
 from little_loops.cli.output import colorize, strip_ansi, terminal_size, terminal_width
 from little_loops.fsm.concurrency import LockManager, _process_alive, resolve_scope
 from little_loops.logger import Logger
+from little_loops.pricing import MODEL_PRICING, estimate_cost_usd
 
 if TYPE_CHECKING:
     from little_loops.fsm.schema import FSMLoop
@@ -1242,12 +1243,20 @@ def run_foreground(
                 if hasattr(_t, "get_stats"):
                     rejection_count += _t.get_stats().get("client_rejections", 0)
             suffix = f", {rejection_count} client rejections" if rejection_count > 0 else ""
+
+            # Print per-state token/cost table if usage data was collected
+            run_dir = fsm.context.get("run_dir", "")
+            if run_dir:
+                try:
+                    _print_usage_summary(Path(run_dir) / "usage.jsonl")
+                except Exception:
+                    pass  # Non-fatal: display failure shouldn't block exit
+
             print(
                 f"{completion_prefix}: {state_colored} ({result.iterations} iterations, {duration_str}{suffix})"
             )
 
             # FEAT-1822: Print A/B summary if baseline was enabled
-            run_dir = fsm.context.get("run_dir", "")
             if run_dir:
                 ab_path = Path(run_dir) / "ab.json"
                 if ab_path.exists():
@@ -1262,6 +1271,71 @@ def run_foreground(
         sys.stderr = _orig_stderr
         if _log_fh is not None:
             _log_fh.close()
+
+
+def _print_usage_summary(usage_path: Path) -> None:
+    """Print per-state token usage summary from usage.jsonl.
+
+    Args:
+        usage_path: Path to usage.jsonl written by PersistentExecutor
+    """
+    from collections import defaultdict
+
+    if not usage_path.exists():
+        return
+    lines = usage_path.read_text(encoding="utf-8").splitlines()
+    if not lines:
+        return
+
+    per_state: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {
+            "invocations": 0,
+            "input": 0,
+            "output": 0,
+            "cache_read": 0,
+            "cache_creation": 0,
+            "model": "unknown",
+            "est_cost": 0.0,
+            "has_unknown_model": False,
+        }
+    )
+    for raw in lines:
+        try:
+            row = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        state = row.get("state", "unknown")
+        model = row.get("model", "unknown")
+        inp = row.get("input_tokens", 0)
+        out = row.get("output_tokens", 0)
+        cr = row.get("cache_read_tokens", 0)
+        cc = row.get("cache_creation_tokens", 0)
+        bucket = per_state[state]
+        bucket["invocations"] += 1
+        bucket["input"] += inp
+        bucket["output"] += out
+        bucket["cache_read"] += cr
+        bucket["cache_creation"] += cc
+        bucket["model"] = model
+        cost = estimate_cost_usd(model, inp, out, cr, cc)
+        if cost is None:
+            bucket["has_unknown_model"] = True
+        else:
+            bucket["est_cost"] += cost
+
+    if not per_state:
+        return
+
+    print()
+    print(f"{'state':<24} {'invoc':>5} {'input':>8} {'output':>8} {'cache':>8} {'est_cost':>10}")
+    print("-" * 68)
+    for state, b in sorted(per_state.items()):
+        cache = b["cache_read"] + b["cache_creation"]
+        cost_str = f"${b['est_cost']:.4f}" if not b["has_unknown_model"] else "n/a"
+        print(
+            f"{state:<24} {b['invocations']:>5} {b['input']:>8} {b['output']:>8} {cache:>8} {cost_str:>10}"
+        )
+    print()
 
 
 def _print_ab_summary(ab_path: Path) -> None:

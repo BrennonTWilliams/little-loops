@@ -49,10 +49,11 @@ class MockActionRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         on_usage: Any = None,
+        on_usage_detailed: Any = None,
     ) -> ActionResult:
         """Return configured result for action."""
         # Suppress unused variable warnings - these match the Protocol signature
-        del timeout, is_slash_command, on_output_line, agent, tools, on_usage
+        del timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
         self.calls.append(action)
 
         # Use indexed results in order (when results were set as a list)
@@ -1932,8 +1933,9 @@ class TestErrorHandling:
                 agent: str | None = None,
                 tools: list[str] | None = None,
                 on_usage: Any = None,
+                on_usage_detailed: Any = None,
             ) -> ActionResult:
-                del action, timeout, is_slash_command, on_output_line, agent, tools, on_usage
+                del action, timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
                 raise RuntimeError("Connection failed")
 
         executor = FSMExecutor(fsm, action_runner=FailingRunner())  # type: ignore[arg-type]
@@ -2442,8 +2444,9 @@ class TestSignalHandling:
                 agent: str | None = None,
                 tools: list[str] | None = None,
                 on_usage: Any = None,
+                on_usage_detailed: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools, on_usage
+                del timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
                 self.calls.append(action)
                 call_count[0] += 1
 
@@ -2526,8 +2529,9 @@ class TestSignalHandling:
                 agent: str | None = None,
                 tools: list[str] | None = None,
                 on_usage: Any = None,
+                on_usage_detailed: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools, on_usage
+                del timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
                 self.calls.append(action)
                 call_count[0] += 1
 
@@ -2702,8 +2706,9 @@ class TestActionExceptionRouting:
                 agent: str | None = None,
                 tools: list[str] | None = None,
                 on_usage: Any = None,
+                on_usage_detailed: Any = None,
             ) -> ActionResult:
-                del action, timeout, is_slash_command, on_output_line, agent, tools, on_usage
+                del action, timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
                 raise exc
 
         return RaisingRunner()
@@ -4027,6 +4032,7 @@ class TestDefaultTimeout:
             agent: str | None = None,
             tools: list[str] | None = None,
             on_usage: Any = None,
+            on_usage_detailed: Any = None,
         ) -> ActionResult:
             self.captured_timeouts.append(timeout)
             return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
@@ -4783,6 +4789,7 @@ class TestAgentToolsPassThrough:
                 agent: str | None = None,
                 tools: list[str] | None = None,
                 on_usage: Any = None,
+                on_usage_detailed: Any = None,
             ) -> ActionResult:
                 captured.append({"agent": agent, "tools": tools})
                 return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
@@ -4822,6 +4829,7 @@ class TestAgentToolsPassThrough:
                 agent: str | None = None,
                 tools: list[str] | None = None,
                 on_usage: Any = None,
+                on_usage_detailed: Any = None,
             ) -> ActionResult:
                 captured.append({"agent": agent, "tools": tools})
                 return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
@@ -6708,8 +6716,9 @@ class TestStallDetector:
                 agent: str | None = None,
                 tools: list[str] | None = None,
                 on_usage: Any = None,
+                on_usage_detailed: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools, on_usage
+                del timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
                 self.calls.append(action)
                 if "work" in action:
                     self.work_count += 1

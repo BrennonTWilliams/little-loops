@@ -17,7 +17,12 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from little_loops.fsm.types import ActionResult
-from little_loops.subprocess_utils import UsageCallback, run_claude_command
+from little_loops.subprocess_utils import (
+    DetailedUsageCallback,
+    TokenUsage,
+    UsageCallback,
+    run_claude_command,
+)
 
 
 def _now_ms() -> int:
@@ -37,6 +42,7 @@ class ActionRunner(Protocol):
         agent: str | None = None,
         tools: list[str] | None = None,
         on_usage: UsageCallback | None = None,
+        on_usage_detailed: DetailedUsageCallback | None = None,
     ) -> ActionResult:
         """Execute an action and return the result.
 
@@ -48,6 +54,7 @@ class ActionRunner(Protocol):
             agent: Optional agent name to pass as --agent to Claude CLI (prompt-mode only)
             tools: Optional list of tool names to pass as --tools CSV to Claude CLI (prompt-mode only)
             on_usage: Optional callback invoked with (input_tokens, output_tokens) on completion
+            on_usage_detailed: Optional callback invoked with a TokenUsage dataclass on completion
 
         Returns:
             ActionResult with output, stderr, exit_code, duration_ms
@@ -70,6 +77,7 @@ class DefaultActionRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         on_usage: UsageCallback | None = None,
+        on_usage_detailed: DetailedUsageCallback | None = None,
     ) -> ActionResult:
         """Execute action and return result, streaming output line by line.
 
@@ -81,6 +89,7 @@ class DefaultActionRunner:
             agent: Optional agent name to pass as --agent to Claude CLI (prompt-mode only)
             tools: Optional list of tool names to pass as --tools CSV (prompt-mode only)
             on_usage: Optional callback invoked with (input_tokens, output_tokens) on completion
+            on_usage_detailed: Optional callback invoked with a TokenUsage dataclass on completion
 
         Returns:
             ActionResult with execution details
@@ -102,6 +111,13 @@ class DefaultActionRunner:
             def _on_proc_end(p: subprocess.Popen[str]) -> None:
                 self._current_process = None
 
+            collected_usage: list[TokenUsage] = []
+
+            def _collect_usage(u: TokenUsage) -> None:
+                collected_usage.append(u)
+                if on_usage_detailed:
+                    on_usage_detailed(u)
+
             try:
                 completed = run_claude_command(
                     command=action,
@@ -112,6 +128,7 @@ class DefaultActionRunner:
                     agent=agent,
                     tools=tools,
                     on_usage=on_usage,
+                    on_usage_detailed=_collect_usage,
                 )
             except subprocess.TimeoutExpired:
                 return ActionResult(
@@ -125,6 +142,7 @@ class DefaultActionRunner:
                 stderr=completed.stderr,
                 exit_code=completed.returncode,
                 duration_ms=_now_ms() - start,
+                usage_events=collected_usage,
             )
 
         # Shell command

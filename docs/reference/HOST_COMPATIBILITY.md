@@ -92,6 +92,9 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 | Agent selection  | ✓           | ✗        | partial (prompt injection)[^agent] |
 | Tool allowlist   | ✓           | ✗        | ✗                                  |
 | `json_schema`    | ✗           | ✗        | partial (file-mediated)[^schema]   |
+| Token reporting  | ✓           | ✗[^tok]  | ✗[^tok]                            |
+
+[^tok]: OpenCode and Codex CLI do not expose per-invocation token usage in their streaming output. The `on_usage_detailed` callback in `subprocess_utils.run_claude_command()` therefore fires only for `claude`-backed runs. Adapter work to surface usage from OpenCode/Codex is deferred (see EPIC-1744). Loops run under those hosts will produce no `usage.jsonl` file and no per-state cost table in `ll-loop run` output.
 
 [^schema]: `CodexRunner.build_blocking_json` serializes the schema dict to a temp file and passes `--output-schema <path>` to Codex (ENH-1530). The temp file path is returned in `HostInvocation.cleanup_paths`; callers must call `p.unlink(missing_ok=True)` for each path after the subprocess completes. `ClaudeCodeRunner` has no schema flag and silently drops `json_schema`.
 

@@ -148,7 +148,7 @@ class TestGenerateSchemas:
         assert props["iteration"]["type"] == "integer"
 
     def test_action_complete_schema(self, tmp_path: Path) -> None:
-        """action_complete.json has exit_code, duration_ms, output_preview, is_prompt, session_jsonl."""
+        """action_complete.json has exit_code, duration_ms, output_preview, is_prompt, session_jsonl, and token fields."""
         generate_schemas(tmp_path)
         data = json.loads((tmp_path / "action_complete.json").read_text())
         props = data["properties"]
@@ -157,6 +157,14 @@ class TestGenerateSchemas:
         assert "output_preview" in props
         assert "is_prompt" in props
         assert "session_jsonl" in props
+        # Token telemetry fields (ENH-1797)
+        assert "input_tokens" in props
+        assert "output_tokens" in props
+        assert "cache_read_tokens" in props
+        assert "cache_creation_tokens" in props
+        assert "model" in props
+        # Token fields are optional (not in required)
+        assert "input_tokens" not in data.get("required", [])
 
     def test_loop_start_schema_id_format(self, tmp_path: Path) -> None:
         """$id uses little-loops://event-<type>.json format."""
