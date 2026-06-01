@@ -1070,9 +1070,9 @@ When `result_token_count > 0` in `.ll/ll-context-state.json`, the context monito
 
 ### Session Log Auto-Linking
 
-When an issue is moved to `.issues/completed/` via a `git mv` Bash call, a PostToolUse hook automatically appends a Session Log entry to the completed issue file. This ensures session logs are linked regardless of which path completed the issue.
+When an issue file is written with `status: done` in its frontmatter, a PostToolUse hook automatically appends a Session Log entry. This ensures session logs are linked regardless of which path completed the issue.
 
-**Trigger**: Any `Bash` tool call whose command matches `git mv .+ completed/`.
+**Trigger**: Any `Write` tool call whose file path is in `.issues/` and whose frontmatter contains `status: done`.
 
 **Covered completion paths**:
 - `manage-issue` skill (Phase 5)
@@ -1085,6 +1085,20 @@ When an issue is moved to `.issues/completed/` via a `git mv` Bash call, a PostT
 - Hook script: `hooks/scripts/issue-completion-log.sh`
 - Uses `little_loops.session_log.append_session_log_entry()` with source `hook:posttooluse-git-mv`
 - Session JSONL path is read directly from the `transcript_path` field in the PostToolUse stdin payload
+
+---
+
+### Issue Auto-Commit
+
+When `issues.auto_commit: true` is set in `.ll/ll-config.json`, a PostToolUse hook automatically commits issue file changes after every `Write` or `Edit` operation on a file in `.issues/`. The hook skips gracefully if any other changes are staged or unstaged in the working tree.
+
+**Trigger**: Any `Write` or `Edit` tool call whose file path is in `.issues/`.
+
+**Implementation**:
+- Hook script: `hooks/scripts/issue-auto-commit.sh`
+- Config flags: `issues.auto_commit` (bool, default `false`), `issues.auto_commit_prefix` (string, default `"chore(issues)"`)
+- Commit message format: `<prefix>: <verb> <filename>` where verb is `add` (new file) or `update` (existing file)
+- Python handler: `_maybe_auto_commit()` in `scripts/little_loops/hooks/post_tool_use.py`
 
 ---
 

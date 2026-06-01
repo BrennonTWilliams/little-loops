@@ -132,9 +132,11 @@ questions:
 ```
 Current Issues Configuration
 ----------------------------
-  base_dir:         {{config.issues.base_dir}}
-  completed_dir:    {{config.issues.completed_dir}}
-  capture_template: {{config.issues.capture_template}}
+  base_dir:            {{config.issues.base_dir}}
+  completed_dir:       {{config.issues.completed_dir}}
+  capture_template:    {{config.issues.capture_template}}
+  auto_commit:         {{config.issues.auto_commit}}
+  auto_commit_prefix:  {{config.issues.auto_commit_prefix}}
 ```
 
 ### Round 1 (3 questions)
@@ -862,8 +864,9 @@ Current Hook Configuration
   [Plugin]   UserPromptSubmit  (no matcher)   user-prompt-check.sh            3s       [exists/MISSING]
   [Plugin]   PreToolUse        Write|Edit     check-duplicate-issue-id.sh     5s       [exists/MISSING]
   [Plugin]   PostToolUse       *              context-monitor.sh              5s       [exists/MISSING]
-  [Plugin]   PostToolUse       Bash           issue-completion-log.sh         5s       [exists/MISSING]
+  [Plugin]   PostToolUse       Write          issue-completion-log.sh         5s       [exists/MISSING]
   [Plugin]   PostToolUse       Write          check-duplicate-issue-id-post.sh 5s      [exists/MISSING]
+  [Plugin]   PostToolUse       Write|Edit     issue-auto-commit.sh            5s       [exists/MISSING]
   [Plugin]   Stop              (no matcher)   session-cleanup.sh              15s      [exists/MISSING]
   [Plugin]   PreCompact        *              adapters/claude-code/precompact.sh       5s    [exists/MISSING]
   [Project]  ...               ...            ...                             ...      [exists/MISSING]

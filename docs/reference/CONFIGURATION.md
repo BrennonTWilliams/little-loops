@@ -38,7 +38,9 @@ For interactive editing, use `/ll:configure`.
       "exact_threshold": 0.8,
       "similar_threshold": 0.5
     },
-    "next_issue": { "strategy": "confidence_first" }
+    "next_issue": { "strategy": "confidence_first" },
+    "auto_commit": false,
+    "auto_commit_prefix": "chore(issues)"
   },
 
   "automation": {
@@ -274,6 +276,8 @@ Issue management settings:
 | `duplicate_detection.similar_threshold` | `0.5` | Jaccard similarity threshold for similar issues (0.0-1.0) |
 | `next_issue.strategy` | `"confidence_first"` | Selection order for `ll-issues next-issue` / `next-issues`. Named preset: `confidence_first` or `priority_first`. See [`issues.next_issue`](#issuesnext_issue). |
 | `next_issue.sort_keys` | `null` | Optional list of `{key, direction}` entries that overrides `strategy` with a custom sort order. |
+| `auto_commit` | `false` | When `true`, the `issue-auto-commit.sh` PostToolUse hook automatically commits issue file changes (Write/Edit) with no other staged files present. |
+| `auto_commit_prefix` | `"chore(issues)"` | Commit message prefix used by the auto-commit hook. Final message is `<prefix>: <verb> <filename>`. |
 
 **Custom Categories**: The four core categories (bugs, features, enhancements, epics) are always included automatically. You can add custom categories and they will be merged with the required ones:
 

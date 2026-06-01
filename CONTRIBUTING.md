@@ -374,6 +374,8 @@ The issue template has been optimized for AI implementation with **20 sections**
 /ll:capture-issue "Description of the issue"
 ```
 
+**Auto-commit on save**: Set `issues.auto_commit: true` in `.ll/ll-config.json` to have issue file writes/edits automatically committed. Customize the commit prefix with `issues.auto_commit_prefix` (default `"chore(issues)"`). The hook skips gracefully when other uncommitted changes are present.
+
 **Format an issue**:
 ```bash
 /ll:format-issue .issues/bugs/P2-BUG-123-description.md

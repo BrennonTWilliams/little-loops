@@ -3,7 +3,7 @@ id: ENH-1845
 title: "Auto-commit doctor UI, configure areas display, and documentation"
 type: ENH
 priority: P3
-status: open
+status: done
 parent: ENH-1717
 ---
 

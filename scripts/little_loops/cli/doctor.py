@@ -38,6 +38,18 @@ def _print_capture_section(capture: object) -> None:
     print(f"  {fe_sym}  file_events:   {'enabled' if file_events else 'disabled'}")
 
 
+def _print_issues_section(issues_cfg: object) -> None:
+    """Print the Issues config-state section."""
+    print()
+    print("Issues")
+    print("─" * 40)
+    auto_commit = getattr(issues_cfg, "auto_commit", False)
+    auto_commit_prefix = getattr(issues_cfg, "auto_commit_prefix", "chore(issues)")
+    ac_sym = _STATUS_SYMBOLS["full" if auto_commit else "unsupported"]
+    print(f"  {ac_sym}  auto_commit:        {'enabled' if auto_commit else 'disabled'}")
+    print(f"  {_STATUS_SYMBOLS['full']}  auto_commit_prefix: {auto_commit_prefix}")
+
+
 def _print_report(report: object, *, json_mode: bool = False) -> None:
     """Print a CapabilityReport in text or JSON format."""
     from little_loops.host_runner import CapabilityReport
@@ -126,5 +138,6 @@ Exit codes:
 
     if not args.json:
         _print_capture_section(cfg.analytics_capture)
+        _print_issues_section(cfg.issues)
 
     return 0 if not any(c.status == "unsupported" for c in report.capabilities) else 1

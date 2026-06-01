@@ -385,3 +385,61 @@ class TestMainDoctor:
         assert "Analytics Capture" in output
         assert "✗" in output
         assert "disabled" in output
+
+    def test_issues_auto_commit_section_enabled(self) -> None:
+        """Issues section shows ✓ and 'enabled' when auto_commit is True."""
+        report = CapabilityReport(host="claude-code", binary="claude", version="", capabilities=[])
+        runner = _make_runner(report)
+        lines, side_effect = _capture_print()
+
+        mock_config = MagicMock()
+        mock_config.analytics_capture.skills = ["*"]
+        mock_config.analytics_capture.cli_commands = ["*"]
+        mock_config.analytics_capture.corrections = True
+        mock_config.analytics_capture.file_events = True
+        mock_config.issues.auto_commit = True
+        mock_config.issues.auto_commit_prefix = "chore(issues)"
+
+        with (
+            patch("sys.argv", ["ll-doctor"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig", return_value=mock_config),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            main_doctor()
+
+        output = "\n".join(lines)
+        assert "Issues" in output
+        assert "auto_commit" in output
+        assert "enabled" in output
+        assert "✓" in output
+
+    def test_issues_auto_commit_section_disabled(self) -> None:
+        """Issues section shows ✗ and 'disabled' when auto_commit is False."""
+        report = CapabilityReport(host="claude-code", binary="claude", version="", capabilities=[])
+        runner = _make_runner(report)
+        lines, side_effect = _capture_print()
+
+        mock_config = MagicMock()
+        mock_config.analytics_capture.skills = ["*"]
+        mock_config.analytics_capture.cli_commands = ["*"]
+        mock_config.analytics_capture.corrections = True
+        mock_config.analytics_capture.file_events = True
+        mock_config.issues.auto_commit = False
+        mock_config.issues.auto_commit_prefix = "chore(issues)"
+
+        with (
+            patch("sys.argv", ["ll-doctor"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig", return_value=mock_config),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            main_doctor()
+
+        output = "\n".join(lines)
+        assert "Issues" in output
+        assert "auto_commit" in output
+        assert "disabled" in output
+        assert "✗" in output
