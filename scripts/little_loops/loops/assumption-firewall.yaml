@@ -5,6 +5,8 @@ initial: read_issue
 max_iterations: 100
 timeout: 7200
 on_handoff: spawn
+import:
+  - lib/common.yaml
 
 context:
   input: ""  # Issue ID (e.g., FEAT-2001); required
@@ -51,7 +53,7 @@ states:
     on_no: parse_assumptions
 
   parse_assumptions:
-    action_type: shell
+    fragment: parse_tagged_json
     action: |
       python3 << 'PYEOF'
       import json, sys

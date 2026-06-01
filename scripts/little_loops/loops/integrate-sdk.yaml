@@ -10,6 +10,8 @@ initial: scan_existing_usage
 max_iterations: 150
 timeout: 7200
 on_handoff: spawn
+import:
+  - lib/common.yaml
 
 context:
   target: ""                   # SDK/library name (e.g., "anthropic", "stripe"); required
@@ -115,7 +117,7 @@ states:
   # ─── Phase 3: Parse and validate enumeration ────────────────────────────────
 
   parse_enumeration:
-    action_type: shell
+    fragment: parse_tagged_json
     action: |
       python3 << 'PYEOF'
       import json, sys

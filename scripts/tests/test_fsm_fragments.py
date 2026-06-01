@@ -661,6 +661,49 @@ class TestCommonYamlNewFragments:
         assert state["on_rate_limit_exhausted"] == "parked"
         assert "fragment" not in state
 
+    # ENH-1861: parse_tagged_json fragment tests
+
+    def test_parse_tagged_json_defined_in_common_yaml(self) -> None:
+        data = self._load_common_yaml()
+        assert "parse_tagged_json" in data["fragments"], (
+            "parse_tagged_json fragment missing from lib/common.yaml"
+        )
+
+    def test_parse_tagged_json_has_correct_action_type(self) -> None:
+        data = self._load_common_yaml()
+        assert data["fragments"]["parse_tagged_json"]["action_type"] == "shell"
+
+    def test_parse_tagged_json_has_description(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["parse_tagged_json"]
+        assert frag.get("description", "").strip(), (
+            "parse_tagged_json fragment must have a non-empty description"
+        )
+
+    def test_parse_tagged_json_resolves_from_real_common_yaml(self) -> None:
+        """Full resolve_fragments integration against the real lib/common.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "parse",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "parse": {
+                    "fragment": "parse_tagged_json",
+                    "action": "echo '{\"count\": 1}'",
+                    "capture": "parsed",
+                    "evaluate": {"type": "output_json", "path": ".count", "operator": "gt", "target": 0},
+                    "on_yes": "done",
+                    "on_no": "done",
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["parse"]
+        assert state["action_type"] == "shell"
+        assert "fragment" not in state
+
 
 # ---------------------------------------------------------------------------
 # ENH-1115: with_throttle fragment tests

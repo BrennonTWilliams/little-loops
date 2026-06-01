@@ -1103,3 +1103,26 @@ Key fields:
 - `score`: `action_type: shell` (extracts numeric reward), `evaluate.type: convergence`, `direction: maximize`, `route: {target, progress, stall}`
 - `improve`: `next: act`
 - `context.reward_target`: convergence target (0.0–1.0)
+
+---
+
+## Fragment Catalog
+
+Fragments live in `lib/common.yaml` (generic) and `lib/cli.yaml` (ll- CLI tools). Import with:
+
+```yaml
+import:
+  - lib/common.yaml
+```
+
+### `lib/common.yaml` fragments
+
+| Fragment | Provides | Caller must supply |
+|----------|----------|--------------------|
+| `shell_exit` | `action_type: shell` + `evaluate.type: exit_code` | `action`, routing (`on_yes`, `on_no`) |
+| `llm_gate` | `action_type: prompt` + `evaluate.type: llm_structured` | `action`, `evaluate.prompt`, routing (`on_yes`, `on_no`) |
+| `retry_counter` | Shell counter script + `output_numeric` evaluator | `context.counter_key`, `context.max_retries`, routing |
+| `numeric_gate` | `action_type: shell` + `evaluate.type: output_numeric` | `action`, `evaluate.operator`, `evaluate.target`, routing |
+| `with_rate_limit_handling` | Two-tier rate-limit retry defaults (3 short + long-wait ladder up to 6 h) | `on_rate_limit_exhausted` |
+| `with_throttle` | Per-state tool-call throttle defaults (`normal_max: 3`, `warn_max: 8`, `hard_max: 12`) | `on_throttle_hard` |
+| `parse_tagged_json` | `action_type: shell` — for states that extract a tagged JSON line from LLM output. **No default `action:`** (nested interpolation unsupported); caller's `action:` must reference captured output by literal variable name (e.g. `${captured.raw_enumeration.output}`). | `action` (extraction + normalization script), `capture`, `evaluate`, routing (`on_yes`, `on_no`) |

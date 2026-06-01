@@ -82,6 +82,22 @@ fragments:
       warn_max: 8
       hard_max: 12
 
+  parse_tagged_json:
+    description: |
+      Shell state that extracts a tagged JSON line from LLM output.
+      State must supply: action (full extraction + normalization logic),
+      capture, evaluate (output_json recommended), on_yes, on_no.
+      Context: set context.json_tag (e.g. ENUMERATE_JSON) and
+      context.capture_var (e.g. raw_enumeration) to document intent;
+      the action must reference captured output directly
+      (e.g. ${captured.raw_enumeration.output}) as nested interpolation
+      is not supported by the current engine.
+      DESIGN NOTE: No default action: is provided. The FSM interpolation engine
+      (interpolation.py:VARIABLE_PATTERN) is single-pass and stops at the first }
+      so nested ${captured.${context.capture_var}.output} raises InterpolationError.
+      Each caller must supply action: referencing the captured variable by its literal name.
+    action_type: shell
+
   numeric_gate:
     description: |
       Shell command evaluated by numeric output comparison.

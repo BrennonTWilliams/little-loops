@@ -5,6 +5,8 @@ initial: scrape
 max_iterations: 150
 timeout: 7200
 on_handoff: spawn
+import:
+  - lib/common.yaml
 
 context:
   input: ""  # Vendor docs URL (e.g., https://manual.raycast.com/extensions); required
@@ -56,7 +58,7 @@ states:
     on_no: parse_enumeration
 
   parse_enumeration:
-    action_type: shell
+    fragment: parse_tagged_json
     action: |
       python3 << 'PYEOF'
       import json, sys

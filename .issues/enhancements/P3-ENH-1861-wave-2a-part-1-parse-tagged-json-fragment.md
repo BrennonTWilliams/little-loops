@@ -5,13 +5,14 @@ title: "Wave 2a Part 1 \u2014 Add `parse_tagged_json` Fragment and Convert 3 Int
 type: ENH
 priority: P3
 captured_at: '2026-06-01T00:00:00Z'
+completed_at: '2026-06-01T18:36:32Z'
 discovered_date: 2026-06-01
 parent: ENH-1854
 relates_to:
 - ENH-1854
 - ENH-1775
 - EPIC-1773
-status: open
+status: done
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 93
@@ -222,7 +223,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Effort**: Small — mechanical substitution across 3 enumerated files, 4 new tests
 - **Risk**: Low — fragment resolution is well-tested; integration loop test classes don't assert on action content; nested interpolation constraint is pre-empted by omitting the default `action:`
 
+## Scope Boundaries
+
+- **In scope**: Adding the `parse_tagged_json` fragment to `lib/common.yaml` and converting exactly the 3 enumerated integration loops (`adopt-third-party-api.yaml`, `integrate-sdk.yaml`, `assumption-firewall.yaml`)
+- **Out of scope**: The `ll_commit` fragment — that is ENH-1862 (Wave 2a Part 2)
+- **Out of scope**: Modifying the FSM interpolation engine or removing the single-pass constraint
+- **Out of scope**: Adding a default `action:` to the fragment (the nested interpolation limitation prevents a generic default)
+- **Out of scope**: Converting loops beyond the 3 enumerated integration loops
+- **Out of scope**: Changes to any existing fragment behavior or interface
+
+## Labels
+
+`loops`, `fragments`, `refactoring`, `enhancement`
+
+## Status
+
+**Open** | Created: 2026-06-01 | Priority: P3
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T18:32:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea6d0bf0-9645-4b35-9737-42cfcda25d44.jsonl`
 - `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08b37632-8612-4103-9d09-928ebcf3d023.jsonl`
 - `/ll:wire-issue` - 2026-06-01T18:27:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f047901e-179f-434b-9f07-6133fafddcb9.jsonl`
 - `/ll:refine-issue` - 2026-06-01T18:20:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/308a7bec-74a4-4a3c-bed1-559a8fc73ada.jsonl`
