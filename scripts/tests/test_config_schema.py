@@ -53,6 +53,25 @@ class TestConfigSchema:
         assert "priority_first" in strategy["enum"]
         assert "bogus" not in strategy["enum"]  # sentinel guard, not real validation
 
+    def test_issues_auto_commit_in_schema(self) -> None:
+        """issues.auto_commit and auto_commit_prefix must be declared in config-schema.json.
+
+        issues has additionalProperties: false, so these fields must be declared
+        or any config using them will be rejected at validation time.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        issues_props = data["properties"]["issues"]["properties"]
+        assert "auto_commit" in issues_props, (
+            "issues.auto_commit is not declared in config-schema.json"
+        )
+        assert issues_props["auto_commit"]["type"] == "boolean"
+        assert issues_props["auto_commit"].get("default") is False
+
+        assert "auto_commit_prefix" in issues_props, (
+            "issues.auto_commit_prefix is not declared in config-schema.json"
+        )
+        assert issues_props["auto_commit_prefix"]["type"] == "string"
+
     def test_commands_recursive_refine_in_schema(self) -> None:
         """commands.recursive_refine must be declared inside the commands block.
 

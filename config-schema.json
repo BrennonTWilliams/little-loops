@@ -236,6 +236,16 @@
         "milestone": {
           "type": "string",
           "description": "Sprint or milestone name this issue is assigned to (e.g., sprint-2026-q2)"
+        },
+        "auto_commit": {
+          "type": "boolean",
+          "description": "Automatically commit issue file changes after CRUD operations",
+          "default": false
+        },
+        "auto_commit_prefix": {
+          "type": "string",
+          "description": "Commit message prefix used by the auto-commit hook",
+          "default": "chore(issues)"
         }
       },
       "additionalProperties": false

@@ -149,6 +149,14 @@ class TestIssuesConfig:
         assert config.priorities == ["P0", "P1"]
         assert config.templates_dir == "templates/"
         assert config.capture_template == "minimal"
+        assert config.auto_commit is False
+        assert config.auto_commit_prefix == "chore(issues)"
+
+    def test_from_dict_with_auto_commit(self) -> None:
+        """Test creating IssuesConfig with explicit auto_commit values."""
+        config = IssuesConfig.from_dict({"auto_commit": True, "auto_commit_prefix": "fix(issues)"})
+        assert config.auto_commit is True
+        assert config.auto_commit_prefix == "fix(issues)"
 
     def test_from_dict_with_deferred_dir(self) -> None:
         """Test creating IssuesConfig with custom deferred_dir."""
@@ -183,6 +191,8 @@ class TestIssuesConfig:
         assert config.duplicate_detection.similar_threshold == 0.5
         assert config.next_issue.strategy == "confidence_first"
         assert config.next_issue.sort_keys is None
+        assert config.auto_commit is False
+        assert config.auto_commit_prefix == "chore(issues)"
 
 
 class TestDuplicateDetectionConfig:
@@ -2269,6 +2279,26 @@ class TestBRConfigLearningTestsIntegration:
         assert lt["stale_after_days"] == 30
         assert "discoverability" in lt
         assert lt["discoverability"]["mode"] == "warn"
+
+    def test_issues_auto_commit_round_trip_to_dict(self, temp_project_dir: Path) -> None:
+        """auto_commit fields appear in to_dict() issues sub-dict with correct defaults (ENH-1843)."""
+        config = BRConfig(temp_project_dir)
+        d = config.to_dict()
+        assert "issues" in d
+        issues = d["issues"]
+        assert issues["auto_commit"] is False
+        assert issues["auto_commit_prefix"] == "chore(issues)"
+
+    def test_issues_auto_commit_round_trip_override(self, temp_project_dir: Path) -> None:
+        """auto_commit overrides from config file are preserved through to_dict() (ENH-1843)."""
+        config_file = temp_project_dir / ".ll" / "ll-config.json"
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file.write_text('{"issues": {"auto_commit": true, "auto_commit_prefix": "ci(issues)"}}')
+        config = BRConfig(temp_project_dir)
+        d = config.to_dict()
+        issues = d["issues"]
+        assert issues["auto_commit"] is True
+        assert issues["auto_commit_prefix"] == "ci(issues)"
 
 
 class TestDesignTokensConfig:

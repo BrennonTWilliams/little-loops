@@ -201,6 +201,8 @@ class IssuesConfig:
     capture_template: str = "full"
     duplicate_detection: DuplicateDetectionConfig = field(default_factory=DuplicateDetectionConfig)
     next_issue: NextIssueConfig = field(default_factory=NextIssueConfig)
+    auto_commit: bool = False
+    auto_commit_prefix: str = "chore(issues)"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> IssuesConfig:
@@ -236,6 +238,8 @@ class IssuesConfig:
                 data.get("duplicate_detection", {})
             ),
             next_issue=NextIssueConfig.from_dict(data.get("next_issue", {})),
+            auto_commit=data.get("auto_commit", False),
+            auto_commit_prefix=data.get("auto_commit_prefix", "chore(issues)"),
         )
 
     def get_category_by_prefix(self, prefix: str) -> CategoryConfig | None:

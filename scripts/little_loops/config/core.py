@@ -516,6 +516,8 @@ class BRConfig:
                 "priorities": self._issues.priorities,
                 "templates_dir": self._issues.templates_dir,
                 "capture_template": self._issues.capture_template,
+                "auto_commit": self._issues.auto_commit,
+                "auto_commit_prefix": self._issues.auto_commit_prefix,
             },
             "automation": {
                 "timeout_seconds": self._automation.timeout_seconds,
