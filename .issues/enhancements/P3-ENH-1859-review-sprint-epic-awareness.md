@@ -112,7 +112,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. **Read sprint YAML** — already done in Phase 1 via `ll-sprint show $SPRINT_NAME` and direct YAML read at `{{config.sprints.sprints_dir}}/$SPRINT_NAME.yaml`. Sprint `issues:` list is available.
+1. **Read sprint YAML** — already done in Phase 1 via `ll-sprint show $SPRINT_NAME` and direct YAML read at `.sprints/$SPRINT_NAME.yaml`. Sprint `issues:` list is available.
 
 2. **Detect EPIC touchpoints (new Phase 3f)** — for each issue ID in the sprint, read the issue file frontmatter (or use `ll-issues show $ID --json`) and extract the `parent:` field. Collect IDs matching `EPIC-\d+` pattern; group sprint members by EPIC ID.
 
@@ -182,10 +182,11 @@ No new flags. Behavior change only:
 `enhancement`, `epics`, `sprint`, `skill`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T20:17:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21fc4d51-9f05-467d-9e9a-9dfbe2765d14.jsonl`
 - `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e874e443-0b3b-43eb-88ed-57be305c96d0.jsonl`
 - `/ll:wire-issue` - 2026-06-01T20:12:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/30a028ae-141d-4e0f-b13f-1be393a6ebb5.jsonl`
 - `/ll:refine-issue` - 2026-06-01T20:05:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b04cf320-86fa-45f9-bd06-8d0f92e9c407.jsonl`
-- `/ll:refine-issue` - 2026-06-01T00:00:00 - `{{session_path}}`
+- `/ll:refine-issue` - 2026-06-01T00:00:00 - `unknown`
 - `/ll:format-issue` - 2026-06-01T17:45:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac3a8d0e-1e74-47b1-9d58-b8dbb8f453b4.jsonl`
 - `/ll:capture-issue` - 2026-06-01T17:35:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/277dd3c5-ffef-46cb-bcc6-124409ce1225.jsonl`
 

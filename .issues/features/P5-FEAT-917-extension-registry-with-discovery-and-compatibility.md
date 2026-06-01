@@ -3,6 +3,7 @@ id: FEAT-917
 title: Extension Registry with Discovery and Compatibility Checking
 type: FEAT
 priority: P5
+status: deferred
 discovered_date: 2026-04-02
 discovered_by: capture-issue
 ---
@@ -114,7 +115,9 @@ A team evaluating ll wants to see what extensions are available. They run `ll ex
 
 ## Status
 
-**Open** | Created: 2026-04-02 | Priority: P5
+**Deferred** | Created: 2026-04-02 | Priority: P5
+
+**Deferred**: Premature until multiple third-party `little-loops-ext-*` extensions actually exist. Revisit when there are ≥2 published extensions that would benefit from discovery/compatibility tooling.
 
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`

@@ -3,7 +3,7 @@ id: BUG-1723
 title: Wire idle_timeout through FSM schema, Protocol, runner, and executor to kill
   hung subprocesses
 type: BUG
-status: open
+status: deferred
 priority: P2
 parent: BUG-1706
 size: Very Large
