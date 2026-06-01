@@ -2,26 +2,38 @@
 id: ENH-1866
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-01T00:00:00Z'
+completed_at: '2026-06-01T19:32:27Z'
 discovered_date: '2026-06-01'
 discovered_by: issue-size-review
 parent: ENH-1858
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1866: `ll-deps tree` CLI command, tests, and docs
 
 ## Summary
 
-Wire `ll-deps tree --epic EPIC-NNN` as a new subcommand in `scripts/little_loops/cli/deps.py`, consuming `format_epic_tree()` from ENH-1863. Add a `TestDepsTree` class in a new `scripts/tests/test_deps_cli.py`, update `docs/reference/CLI.md` and `docs/reference/API.md`, and add the `ll-deps tree` row to `skills/map-dependencies/SKILL.md`.
+Document the already-shipped `ll-deps tree` subcommand: add the `ll-deps tree` block to `docs/reference/CLI.md`, correct the stale `main_deps` sub-commands list in `docs/reference/API.md` (`validate, suggest, report` → `analyze, validate, fix, apply, tree`), and add the `ll-deps tree --epic EPIC-NNN` row to `skills/map-dependencies/SKILL.md`.
+
+The CLI implementation and tests shipped in commit `91ae2f9c` — `scripts/little_loops/cli/deps.py` has the `tree` subparser (lines 222–238) and handler (lines 254–315), `scripts/little_loops/dependency_mapper/formatting.py` has `format_epic_tree()` (line 252), and `scripts/tests/test_deps_cli.py:TestDepsTree` has 6 passing tests. Only documentation remains.
 
 ## Current Behavior
 
-The `ll-deps` CLI provides `analyze`, `validate`, `fix`, and `apply` subcommands but has no `tree` subcommand. There is no way to render an EPIC's child issue hierarchy with dependency edges from the CLI.
+`ll-deps tree --epic EPIC-NNN` works end-to-end — the subcommand shipped in commit `91ae2f9c`. However:
+- `docs/reference/CLI.md` has no `ll-deps tree` section (only `analyze`, `validate`, `fix`, `apply` are documented)
+- `docs/reference/API.md:3427` lists stale sub-commands: `validate, suggest, report`
+- `skills/map-dependencies/SKILL.md` has no `tree` row in its Examples table
 
 ## Expected Behavior
 
-Running `ll-deps tree --epic EPIC-NNN` renders the EPIC's child hierarchy as a tree with `├──`/`└──` connectors and a `X/Y done` summary line. Supports `--format json` for structured output (`root`, `nodes`, `edges`). Exits 0 on success; exits non-zero if the EPIC is not found.
+After this issue: `docs/reference/CLI.md` documents `ll-deps tree` with `--epic`/`--format` flags and example output. `docs/reference/API.md` lists `analyze, validate, fix, apply, tree` for `main_deps`. `skills/map-dependencies/SKILL.md` includes an `ll-deps tree --epic EPIC-NNN` row.
 
 ## Parent Issue
 
@@ -29,113 +41,136 @@ Decomposed from ENH-1858: `ll-deps tree --epic EPIC-NNN` — render EPIC child h
 
 ## Prerequisite
 
-**ENH-1863 must ship first.** This issue imports `format_epic_tree()` from `dependency_mapper/formatting.py`; that function is defined in ENH-1863.
+~~**ENH-1863 must ship first.**~~ `format_epic_tree()` shipped in `formatting.py:252` as part of commit `91ae2f9c`. Prerequisite satisfied.
 
 ## Proposed Solution
 
-### Step 1 — Add `tree` subparser in `main_deps()`
+_Steps 1–5 shipped in commit `91ae2f9c`. Only documentation remains._
 
-In `scripts/little_loops/cli/deps.py`, add alongside existing `analyze`, `validate`, `fix`, `apply` subparsers:
+### ~~Step 1 — Add `tree` subparser in `main_deps()`~~ ✓ Done
 
-```python
-tree_parser = subparsers.add_parser("tree", help="Render EPIC child hierarchy")
-tree_parser.add_argument("--epic", required=True, metavar="EPIC-NNN")
-tree_parser.add_argument("-f", "--format", choices=["text", "json"], default="text")
+`deps.py:222–238`. Subparser declares `--epic` (required) and `-f/--format {text,json}` (default `text`).
+
+### ~~Step 2 — Implement `_cmd_tree()` handler~~ ✓ Done
+
+`deps.py:254–315`. Loads all issues with `status_filter=all_statuses` (all 6 values), resolves forward refs from `epic_info.relates_to` and backward refs where `i.parent == epic_id`, builds `DependencyGraph.from_issues()`, dispatches on `args.format`.
+
+### ~~Step 3 — JSON path~~ ✓ Done
+
+`deps.py:289–307`. Emits `{"root": ..., "nodes": [...], "edges": [...]}` via `print_json()`.
+
+### ~~Step 4 — Tests~~ ✓ Done
+
+`scripts/tests/test_deps_cli.py:TestDepsTree` — 6 test cases:
+- `test_tree_epic_not_found` — EPIC not found → exit 1
+- `test_tree_no_children` — empty EPIC → `"{EPIC}: (no children)"`, exit 0
+- `test_tree_linear_chain` — renders `├──`/`└──` connectors
+- `test_tree_backward_refs` — `parent:` frontmatter child resolution
+- `test_tree_done_children_included` — done children appear in tree and count
+- `test_tree_json_output` — JSON round-trip with `root`, `nodes`, `edges`
+
+### Step 5 — `docs/reference/CLI.md` (REMAINING)
+
+Insert `#### ll-deps tree` block immediately before the `**Examples:**` block at line 1237 of `docs/reference/CLI.md`. Add usage, `--epic`/`--format` args table, and a brief example:
+
+```markdown
+#### `ll-deps tree`
+
+Render an EPIC's child issue hierarchy as a Unicode box-drawing tree with dependency edges.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--epic` | | EPIC issue ID to render (required, e.g. `EPIC-1773`) |
+| `--format` | `-f` | Output format: `text` (default), `json` |
+
+JSON output (`--format json`) emits `{"root": "EPIC-NNN", "nodes": [...], "edges": [...]}`.
+Exits 0 on success; exits non-zero if the EPIC is not found.
 ```
 
-Dispatch: `if args.command == "tree": return _cmd_tree(args, config, logger)`.
+Also add `ll-deps tree --epic EPIC-NNN` to the `**Examples:**` bash block.
 
-### Step 2 — Implement `_cmd_tree()` handler
+### Step 6 — `docs/reference/API.md` (REMAINING)
 
-Child resolution (do NOT use `SprintManager.load_or_resolve()` — it filters to active statuses only, but the tree needs all children including done/deferred for the `8/12 done` summary line. Do NOT call the internal `_load_issues()` helper in `deps.py` (lines 15–32) — it wraps `find_issues()` with the same active-only default):
+At `API.md:3427`, replace:
 
-1. Parse EPIC file via `IssueParser(config).parse_file(epic_path)` → `epic_info.relates_to` (forward refs).
-2. Call `find_issues` with an explicit `status_filter` — the default excludes `done` and `deferred`, which must appear in the tree for the `8/12 done` count:
-   ```python
-   all_issues = find_issues(
-       config,
-       status_filter={"open", "in_progress", "blocked", "deferred", "done"},
-   )
-   ```
-   Filter `issue.parent == epic_id` (backward refs). Union with forward-ref set.
-3. Separate into `done_ids` (status in `{"done", "deferred"}`) and the full child set.
-
-Build filtered graph: `graph = DependencyGraph.from_issues(child_issues, completed_ids=done_ids, all_known_ids=all_child_ids)`.
-
-Text path: call `format_epic_tree(root_id, root_info, child_map, graph, use_color=use_color_enabled())` and print.
-
-### Step 3 — JSON path
-
-Build and emit via `print_json()` from `cli/output.py`:
-
-```json
-{
-  "root": "EPIC-NNN",
-  "nodes": [{"id": "...", "title": "...", "status": "...", "parent": "..."}],
-  "edges": [{"from": "...", "to": "...", "kind": "..."}]
-}
+```
+**Sub-commands:** `validate`, `suggest`, `report`
 ```
 
-### Step 4 — Tests (`test_deps_cli.py`)
+with:
 
-New file `scripts/tests/test_deps_cli.py` with `TestDepsTree` class. Use `tmp_path` + `patch.object(sys, "argv", [...])` pattern from `test_dependency_mapper.py:TestMainCLI`. Cover:
+```
+**Sub-commands:** `analyze`, `validate`, `fix`, `apply`, `tree`
+```
 
-1. EPIC with no children → clear message, exit 0
-2. EPIC with linear chain → renders chain with `├──` / `└──`
-3. EPIC with diamond dependency → renders correctly (shared node annotation)
-4. EPIC not found → exit non-zero
-5. `--format json` round-trips (nodes + edges structure)
+### Step 7 — `skills/map-dependencies/SKILL.md` (REMAINING)
 
-### Step 5 — `docs/reference/CLI.md`
+Add two rows to the `## Examples` table at `SKILL.md:118–131`:
 
-Add `ll-deps tree` subcommand block with usage, `--epic`/`--format` args, and example output matching the "Expected Behavior" block from ENH-1858.
+```markdown
+| "Show EPIC child hierarchy" | `ll-deps tree --epic EPIC-NNN` |
+| "EPIC tree as JSON" | `ll-deps tree --epic EPIC-NNN --format json` |
+```
 
-### Step 6 — `docs/reference/API.md`
+Add a `### EPIC Tree View` usage section under the existing `### Validation Only` section:
 
-Update `### main_deps` sub-commands list: correct stale `validate, suggest, report` → `analyze, validate, fix, apply, tree`.
+```markdown
+### EPIC Tree View
 
-### Step 7 — `skills/map-dependencies/SKILL.md`
-
-Add `ll-deps tree --epic EPIC-NNN` row to the `## Examples` table and a `### EPIC Tree View` usage section.
+```bash
+ll-deps tree --epic EPIC-1773          # Text tree with ├──/└── connectors
+ll-deps tree --epic EPIC-1773 -f json  # Structured JSON (root, nodes, edges)
+```
+```
 
 ## Integration Map
 
-### Files to Modify
+### Files Already Modified (shipped `91ae2f9c`)
 
-- `scripts/little_loops/cli/deps.py` — add `tree` subparser + `_cmd_tree()` handler
-- `docs/reference/CLI.md` — add `ll-deps tree` subcommand block
-- `docs/reference/API.md` — update `main_deps` sub-commands list
-- `skills/map-dependencies/SKILL.md` — add `ll-deps tree` row + usage section
+- `scripts/little_loops/cli/deps.py` — `tree` subparser at lines 222–238, handler at lines 254–315
+- `scripts/little_loops/dependency_mapper/formatting.py` — `format_epic_tree()` at line 252
+- `scripts/tests/test_deps_cli.py` — `TestDepsTree` with 6 test cases (created by this work)
 
-### Files to Create
+### Files to Modify (remaining doc work)
 
-- `scripts/tests/test_deps_cli.py` — new `TestDepsTree` class
+- `docs/reference/CLI.md` — add `#### ll-deps tree` block before the `**Examples:**` block (after line 1235)
+- `docs/reference/API.md` — fix `main_deps` sub-commands at line 3427 (`validate, suggest, report` → `analyze, validate, fix, apply, tree`)
+- `skills/map-dependencies/SKILL.md` — add two `tree` rows to Examples table (after line 131) and a `### EPIC Tree View` usage section
 
-### Dependent Files (Callers/Importers)
+### Dependent Files (read-only, no changes needed)
 
-- `scripts/little_loops/dependency_mapper/formatting.py` — `format_epic_tree()` (defined in ENH-1863)
-- `scripts/little_loops/dependency_mapper/__init__.py` — public export of `format_epic_tree` (wired in ENH-1863)
-- `scripts/little_loops/issue_parser.py` — `find_issues(config)` + `IssueInfo.parent` for backward child lookup
-- `scripts/little_loops/dependency_graph.py` — `DependencyGraph.from_issues()`
-- `scripts/little_loops/cli/output.py` — `colorize()`, `print_json()`, `configure_output()`, `use_color_enabled()`
-- `scripts/little_loops/cli_args.py` — `--format {text,json}` pattern from `analyze` subcommand
+- `scripts/little_loops/dependency_mapper/formatting.py:252` — `format_epic_tree(root_id, root_info, child_map, graph, use_color=True) -> str`
+- `scripts/little_loops/dependency_graph.py:55` — `DependencyGraph.from_issues(issues, completed_ids, all_known_ids) -> DependencyGraph`
+- `scripts/little_loops/issue_parser.py:831` — `find_issues(config, status_filter=...) -> list[IssueInfo]`; `IssueInfo.parent` at line 251
+- `scripts/little_loops/cli/output.py` — `colorize()` (line 139), `print_json()` (line 146), `configure_output()` (line 88), `use_color_enabled()` (line 134)
 
 ### Similar Patterns
 
-- `scripts/little_loops/cli/deps.py:_cmd_analyze()` — existing handler shape; `--format {text,json}` dispatch pattern
-- `scripts/tests/test_dependency_mapper.py:TestMainCLI` — `patch.object(sys, "argv", [...])` test pattern to follow
-- `scripts/little_loops/cli/issues/list_cmd.py:cmd_list()` — `parent:` field child-bucketing, including `issue.parent.split("-", 1)[0] == "EPIC"` guard
+- `scripts/little_loops/cli/deps.py:222` — existing `tree` subparser (reference for docs)
+- `scripts/tests/test_deps_cli.py:TestDepsTree` — 6 test cases (already exist)
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_enh1866_doc_wiring.py` — new test file needed; follow pattern in `scripts/tests/test_enh1846_doc_wiring.py`. Assert: (1) `"ll-deps tree"` in `CLI.md`, (2) `"--epic"` in `CLI.md`, (3) `"tree"` in `API.md` after the `main_deps` anchor, (4) stale `"suggest"` and `"report"` absent from `API.md` `main_deps` block, (5) `"ll-deps tree --epic"` in `skills/map-dependencies/SKILL.md` [Agent 3 finding]
 
 ## Implementation Steps
 
-1. Add `tree` subparser in `main_deps()` in `deps.py`
-2. Implement `_cmd_tree()` with child resolution (forward + backward refs, status split)
-3. Build `DependencyGraph.from_issues()` restricted to child set
-4. Call `format_epic_tree()` (text path) or build JSON dict (JSON path) and emit
-5. Add `TestDepsTree` in new `test_deps_cli.py` covering five cases
-6. Update `docs/reference/CLI.md` with `ll-deps tree` block
-7. Update `docs/reference/API.md` `### main_deps` sub-commands list
-8. Update `skills/map-dependencies/SKILL.md` with `ll-deps tree` row
+~~1. Add `tree` subparser in `main_deps()` in `deps.py`~~ ✓ `deps.py:222`
+~~2. Implement `_cmd_tree()` with child resolution~~ ✓ `deps.py:254`
+~~3. Build `DependencyGraph.from_issues()` restricted to child set~~ ✓ `deps.py:284`
+~~4. Call `format_epic_tree()` (text) or `print_json()` (JSON)~~ ✓ `deps.py:289–313`
+~~5. Add `TestDepsTree` in `test_deps_cli.py`~~ ✓ 6 tests passing
+
+6. Add `#### ll-deps tree` block to `docs/reference/CLI.md` (before `**Examples:**` block, after line 1235)
+7. Fix stale `main_deps` sub-commands in `docs/reference/API.md:3427`
+8. Add `tree` rows and `### EPIC Tree View` section to `skills/map-dependencies/SKILL.md`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+9. Write `scripts/tests/test_enh1866_doc_wiring.py` — doc wiring test file asserting all three doc targets contain the expected `ll-deps tree` content and the stale `suggest`/`report` text is absent from `API.md`; follow pattern in `scripts/tests/test_enh1846_doc_wiring.py`
 
 ## Covers (from ENH-1858)
 
@@ -159,10 +194,12 @@ Parent steps covered by this child:
 
 ## Success Metrics
 
-- `ll-deps tree --epic EPIC-NNN` works end-to-end and matches the expected output in ENH-1858
-- All five `TestDepsTree` test cases pass
-- `ll-deps tree` appears in `ll-deps --help`
-- `docs/reference/CLI.md`, `docs/reference/API.md`, and `skills/map-dependencies/SKILL.md` are updated
+- ~~`ll-deps tree --epic EPIC-NNN` works end-to-end~~ ✓ shipped
+- ~~All `TestDepsTree` test cases pass~~ ✓ 6/6 passing
+- ~~`ll-deps tree` appears in `ll-deps --help`~~ ✓ confirmed
+- `docs/reference/CLI.md` has `#### ll-deps tree` section with `--epic`/`--format` args table
+- `docs/reference/API.md:3427` lists `analyze, validate, fix, apply, tree` (not the stale `validate, suggest, report`)
+- `skills/map-dependencies/SKILL.md` Examples table includes `ll-deps tree --epic EPIC-NNN` row
 
 ## Scope Boundaries
 
@@ -177,8 +214,21 @@ Parent steps covered by this child:
 
 ## Status
 
-**Open** | Created: 2026-06-01 | Priority: P3
+**Done** | Created: 2026-06-01 | Completed: 2026-06-01 | Priority: P3
+
+## Resolution
+
+Completed 2026-06-01T19:32:27Z.
+
+- Added `#### ll-deps tree` section to `docs/reference/CLI.md` with `--epic`/`--format` flags table and examples
+- Fixed stale `main_deps` sub-commands in `docs/reference/API.md` (`validate, suggest, report` → `analyze, validate, fix, apply, tree`)
+- Added two `tree` rows to `skills/map-dependencies/SKILL.md` Examples table and a `### EPIC Tree View` usage section
+- Created `scripts/tests/test_enh1866_doc_wiring.py` with 6 passing wiring tests
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-01T19:26:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/393dcf8d-0e5a-4ff6-ba4d-fb43986db4b5.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/393dcf8d-0e5a-4ff6-ba4d-fb43986db4b5.jsonl`
+- `/ll:wire-issue` - 2026-06-01T19:20:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36158ddf-75a7-400d-9f98-59ebf44c44b6.jsonl`
+- `/ll:refine-issue` - 2026-06-01T19:15:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d1e555b-f2c7-4df6-b812-792f05bcbe18.jsonl`
 - `/ll:format-issue` - 2026-06-01T18:50:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c41ca909-db8c-449b-9875-0d6bc9aa84fa.jsonl`
 - `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcaa931c-330d-44e9-b237-2540a93e4fcb.jsonl`

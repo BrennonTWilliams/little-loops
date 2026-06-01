@@ -3424,7 +3424,7 @@ Entry point for `ll-deps` command. Cross-issue dependency analysis and validatio
 
 **Returns:** Exit code
 
-**Sub-commands:** `validate`, `suggest`, `report`
+**Sub-commands:** `analyze`, `validate`, `fix`, `apply`, `tree`
 
 ### main_verify_docs
 

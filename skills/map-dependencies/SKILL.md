@@ -108,6 +108,14 @@ ll-deps validate --json
 
 > **Note:** `ll-deps validate` uses `--json`/`-j` for structured output (consistent with most `ll-*` CLIs), while `ll-deps analyze` uses `--format json`. This is a known pattern inconsistency — `analyze` predates the universal `--json` contract.
 
+### EPIC Tree View
+
+Render an EPIC's child issue hierarchy with dependency edges:
+```bash
+ll-deps tree --epic EPIC-1773          # Text tree with ├──/└── connectors
+ll-deps tree --epic EPIC-1773 -f json  # Structured JSON (root, nodes, edges)
+```
+
 ### Custom Issues Directory
 
 If issues are not in the default `.issues` directory:
@@ -129,6 +137,8 @@ ll-deps -d path/to/issues analyze
 | "Which issues conflict?" | `ll-deps analyze` |
 | "Map deps non-interactively" | `/ll:map-dependencies --auto` |
 | "Check if all deps are mapped" | `/ll:map-dependencies --check` |
+| "Show EPIC child hierarchy" | `ll-deps tree --epic EPIC-NNN` |
+| "EPIC tree as JSON" | `ll-deps tree --epic EPIC-NNN --format json` |
 
 ## Interpreting Results
 

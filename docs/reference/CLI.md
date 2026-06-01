@@ -1234,6 +1234,18 @@ Write proposed dependency relationships to issue files. Re-runs analysis interna
 | `--sprint` | | Restrict to issues in named sprint |
 | `<source> <relation> <target>` | | Explicit pair: `FEAT-001 blocks FEAT-002` or `FEAT-001 blocked-by FEAT-002` |
 
+#### `ll-deps tree`
+
+Render an EPIC's child issue hierarchy as a Unicode box-drawing tree with dependency edges.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--epic` | | EPIC issue ID to render (required, e.g. `EPIC-1773`) |
+| `--format` | `-f` | Output format: `text` (default), `json` |
+
+JSON output (`--format json`) emits `{"root": "EPIC-NNN", "nodes": [...], "edges": [...]}`.
+Exits 0 on success; exits non-zero if the EPIC is not found.
+
 **Examples:**
 ```bash
 ll-deps analyze                       # Full analysis with markdown output
@@ -1251,6 +1263,8 @@ ll-deps apply --dry-run               # Preview only (no writes)
 ll-deps apply --sprint my-sprint      # Sprint-scoped apply
 ll-deps apply FEAT-001 blocks FEAT-002       # Manual explicit pair
 ll-deps apply FEAT-001 blocked-by FEAT-002   # Manual explicit pair (inverse)
+ll-deps tree --epic EPIC-1773        # Text tree with ├──/└── connectors
+ll-deps tree --epic EPIC-1773 -f json  # Structured JSON (root, nodes, edges)
 ```
 
 ---
