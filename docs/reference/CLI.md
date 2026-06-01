@@ -472,6 +472,38 @@ When `--llm-model` is passed, the header reflects the override model. When the d
 
 <!-- END TODO stub -->
 
+<!-- TODO: update-docs stub — ENH-1797 — drafted 2026-06-01 -->
+##### Per-State Token/Cost Summary (ENH-1797)
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Verify the table columns and sample output before finalizing.
+
+After a loop run completes, `ll-loop run` prints a per-state token and cost summary table immediately before the final completion line. The table is produced whenever at least one LLM action (`prompt` or `slash_command`) executed during the run.
+
+```
+state                    invoc    input   output    cache     est_cost
+────────────────────────────────────────────────────────────────────
+execute                      3   12 400    2 100    8 500      $0.042
+check_semantic               3    3 200      480    2 900      $0.011
+────────────────────────────────────────────────────────────────────
+TOTAL                        6   15 600    2 580   11 400      $0.053
+```
+
+**Columns:**
+
+| Column | Description |
+|--------|-------------|
+| `state` | FSM state name |
+| `invoc` | Number of times the state ran an LLM action |
+| `input` | Total input tokens (prompt + cached) |
+| `output` | Total output tokens |
+| `cache` | Cache read tokens (`cache_read_tokens`) |
+| `est_cost` | Estimated USD cost (using `pricing.py` MODEL_PRICING constants; shown as `~$X.XXX (model unknown)` when the model is not in the pricing table) |
+
+Shell (`action_type: shell`) and MCP tool (`action_type: mcp_tool`) states are omitted from the table — they produce no token usage row in `usage.jsonl`.
+
+The raw per-iteration data lives at `.loops/runs/<run-id>/usage.jsonl` (not archived to `.loops/.history/`). See [Output Artifacts](loops.md#output-artifacts) for the `usage.jsonl` schema.
+<!-- END TODO stub -->
+
 > **Note:** `agent:` and `tools:` are per-state YAML fields, not CLI flags. See [Subprocess Agent and Tool Scoping](../guides/LOOPS_GUIDE.md#subprocess-agent-and-tool-scoping) in the Loops Guide for per-state agent and tool scoping options.
 
 ##### Queue entries (`.loops/.queue/`)

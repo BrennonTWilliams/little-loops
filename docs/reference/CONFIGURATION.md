@@ -556,6 +556,20 @@ Built-in profiles:
 
 Run `/ll:configure design-tokens` to interactively set up profiles and select the active one.
 
+<!-- TODO: update-docs stub — ENH-1836 — drafted 2026-06-01 -->
+#### Auto-scaffolding built-in profiles
+
+> **Stub**: This section was auto-drafted by `/ll:update-docs`. Verify the two Case descriptions and the DANGEROUSLY_SKIP_PERMISSIONS note before finalizing.
+
+When you run `/ll:configure` and select or enable a built-in design token profile, the skill detects whether the profile directory is missing from disk and offers to materialize it automatically via `shutil.copytree`:
+
+- **Case A — switching active profile to an unmaterialized built-in**: If `active` is changed to `default`, `editorial-mono`, or `warm-paper` but that profile subdirectory does not yet exist under `path/profiles/`, `/ll:configure` prompts you to scaffold it. Accept to copy the built-in bundle from the ll package into your project's profile directory.
+
+- **Case B — enabling design tokens for the first time with no profiles directory**: If `enabled` is flipped from `false` to `true` (or was absent) and no `profiles/` directory exists at all, all three built-in profiles are copied in one operation without prompting.
+
+Both cases accept automatically when `DANGEROUSLY_SKIP_PERMISSIONS` is set or when `/ll:configure` is invoked with `--auto`.
+
+Custom or unknown profile names (anything not in the built-in list) are unaffected — a warning is emitted if the directory is missing, but no scaffold is offered.
 <!-- END TODO stub -->
 
 **Legacy flat structure (pre-ENH-1768):**

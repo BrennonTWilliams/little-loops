@@ -470,7 +470,8 @@
             "llm_structured",
             "mcp_result",
             "harbor_scorer",
-            "comparator"
+            "comparator",
+            "contract"
           ]
         },
         "operator": {
@@ -574,6 +575,22 @@
           "description": "Number of blind A/B comparison pairs to run (majority vote)",
           "default": 1,
           "minimum": 1
+        },
+        "pairs": {
+          "type": "array",
+          "description": "Producer/consumer file pairs for contract evaluator",
+          "items": {
+            "type": "object",
+            "required": ["producer", "consumer", "contract"],
+            "properties": {
+              "producer": { "type": "string", "description": "Path to the producer file" },
+              "consumer": { "type": "string", "description": "Path to the consumer file" },
+              "contract": { "type": "string", "description": "Alignment rule for the LLM judge to enforce" },
+              "producer_pattern": { "type": "string", "description": "Optional regex to extract relevant slice from producer" },
+              "consumer_pattern": { "type": "string", "description": "Optional regex to extract relevant slice from consumer" }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false,
@@ -617,6 +634,15 @@
           },
           "then": {
             "required": ["baseline_path"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "contract" } },
+            "required": ["type"]
+          },
+          "then": {
+            "required": ["pairs"]
           }
         }
       ]
