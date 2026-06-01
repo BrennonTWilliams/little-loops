@@ -332,3 +332,56 @@ class TestMainDoctor:
             result = main_doctor()
 
         assert result == 1
+
+    def test_analytics_capture_section_all_enabled(self) -> None:
+        """Analytics Capture section appears with ✓ symbols when all fields enabled."""
+        report = CapabilityReport(host="claude-code", binary="claude", version="", capabilities=[])
+        runner = _make_runner(report)
+        lines, side_effect = _capture_print()
+
+        mock_config = MagicMock()
+        mock_config.analytics_capture.skills = ["*"]
+        mock_config.analytics_capture.cli_commands = ["*"]
+        mock_config.analytics_capture.corrections = True
+        mock_config.analytics_capture.file_events = True
+
+        with (
+            patch("sys.argv", ["ll-doctor"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig", return_value=mock_config),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            main_doctor()
+
+        output = "\n".join(lines)
+        assert "Analytics Capture" in output
+        assert "corrections" in output
+        assert "file_events" in output
+        assert "enabled" in output
+
+    def test_analytics_capture_section_file_events_disabled(self) -> None:
+        """Analytics Capture section shows ✗ for file_events when disabled."""
+        report = CapabilityReport(host="claude-code", binary="claude", version="", capabilities=[])
+        runner = _make_runner(report)
+        lines, side_effect = _capture_print()
+
+        mock_config = MagicMock()
+        mock_config.analytics_capture.skills = ["*"]
+        mock_config.analytics_capture.cli_commands = ["*"]
+        mock_config.analytics_capture.corrections = True
+        mock_config.analytics_capture.file_events = False
+
+        with (
+            patch("sys.argv", ["ll-doctor"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig", return_value=mock_config),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            main_doctor()
+
+        output = "\n".join(lines)
+        assert "Analytics Capture" in output
+        assert "✗" in output
+        assert "disabled" in output

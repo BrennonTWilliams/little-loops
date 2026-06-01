@@ -20,6 +20,24 @@ _STATUS_SYMBOLS: dict[str, str] = {
 }
 
 
+def _print_capture_section(capture: object) -> None:
+    """Print the Analytics Capture config-state section."""
+    print()
+    print("Analytics Capture")
+    print("─" * 40)
+    full = _STATUS_SYMBOLS["full"]
+    skills = getattr(capture, "skills", ["*"])
+    cli_commands = getattr(capture, "cli_commands", ["*"])
+    corrections = getattr(capture, "corrections", True)
+    file_events = getattr(capture, "file_events", True)
+    print(f"  {full}  skills:        {skills}")
+    print(f"  {full}  cli_commands:  {cli_commands}")
+    corr_sym = _STATUS_SYMBOLS["full" if corrections else "unsupported"]
+    print(f"  {corr_sym}  corrections:   {'enabled' if corrections else 'disabled'}")
+    fe_sym = _STATUS_SYMBOLS["full" if file_events else "unsupported"]
+    print(f"  {fe_sym}  file_events:   {'enabled' if file_events else 'disabled'}")
+
+
 def _print_report(report: object, *, json_mode: bool = False) -> None:
     """Print a CapabilityReport in text or JSON format."""
     from little_loops.host_runner import CapabilityReport
@@ -99,10 +117,14 @@ Exit codes:
     configure_output()
     Logger(use_color=use_color_enabled())
 
-    apply_host_cli_from_config(BRConfig(Path.cwd()))
+    cfg = BRConfig(Path.cwd())
+    apply_host_cli_from_config(cfg)
     runner = resolve_host()
     report = runner.describe_capabilities()
 
     _print_report(report, json_mode=args.json)
+
+    if not args.json:
+        _print_capture_section(cfg.analytics_capture)
 
     return 0 if not any(c.status == "unsupported" for c in report.capabilities) else 1

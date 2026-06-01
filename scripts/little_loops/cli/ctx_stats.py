@@ -217,7 +217,7 @@ def _render_fallback(state: dict[str, Any], logger: Logger) -> None:
 
     logger.info(
         "SQLite session store not found — falling back to .ll/ll-context-state.json "
-        "(set analytics.enabled: true in .ll/ll-config.json to collect per-tool byte metrics)."
+        "(enable analytics (analytics.enabled: true) and ensure analytics.capture.file_events is not disabled)."
     )
     print()
     print(f"Estimated tokens in context: {estimated:,}")
@@ -283,8 +283,8 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         total_rows = int(summary["total_in"]) + int(summary["total_out"])
         if total_rows == 0:
             logger.warning(
-                "No analytic rows in .ll/history.db — set analytics.enabled: true "
-                "in .ll/ll-config.json and run a few tool calls to populate the store."
+                "No analytic rows in .ll/history.db — enable analytics (analytics.enabled: true) "
+                "and ensure analytics.capture.file_events is not disabled, then run a few tool calls."
             )
             if fallback is None:
                 fallback = _load_fallback_state(state_path)

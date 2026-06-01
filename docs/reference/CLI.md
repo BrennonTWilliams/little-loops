@@ -126,15 +126,24 @@ Probes the active host CLI and reports which little-loops features are supported
 Host:    claude  (1.2.3)
 Binary:  /usr/local/bin/claude
 
-Capabilities:
-  streaming          full
-  permission_skip    full
-  agent_select       full
-  tool_allowlist     partial  (flag accepted but not validated)
+Capabilities
+────────────────────────────────────────
+  ✓  streaming
+  ✓  permission_skip
+  ✓  agent_select
+  ○  tool_allowlist  (flag accepted but not validated)
 
-Hooks:
-  pre_tool_use       installed
-  post_tool_use      registered
+Hooks
+────────────────────────────────────────
+  ✓  pre_tool_use
+  ○  post_tool_use
+
+Analytics Capture
+────────────────────────────────────────
+  ✓  skills:        ['*']
+  ✓  cli_commands:  ['*']
+  ✓  corrections:   enabled
+  ✗  file_events:   disabled
 ```
 
 **Examples:**

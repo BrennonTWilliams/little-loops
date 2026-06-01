@@ -438,6 +438,29 @@ the ctx-stats CLI ships.
 |-----|---------|-------------|
 | `enabled` | `false` | Enable per-tool byte tracking and file-event recording in the `post_tool_use` hook. When false, the handler is a no-op and writes nothing to SQLite (`tool_events` or `file_events`). |
 
+#### `analytics.capture`
+
+Per-category gating for analytics writes (ENH-1840). All categories default to enabled; set individual fields to restrict which data is collected. `ll-doctor` reports the current state of these settings.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `analytics.capture.skills` | `list[str]` | `["*"]` | Skill names whose invocations are recorded. `["*"]` captures all; use an explicit list to restrict (e.g. `["refine-issue", "scan-codebase"]`). |
+| `analytics.capture.cli_commands` | `list[str]` | `["*"]` | CLI command names whose invocations are recorded. `["*"]` captures all. |
+| `analytics.capture.corrections` | `bool` | `true` | Record user correction events into `user_corrections`. |
+| `analytics.capture.file_events` | `bool` | `true` | Record file-read/write events into `file_events`. When `false`, `ll-ctx-stats` will not have per-file byte data. |
+
+**Example** — disable file-event recording:
+```json
+{
+  "analytics": {
+    "enabled": true,
+    "capture": {
+      "file_events": false
+    }
+  }
+}
+```
+
 ### `sprints`
 
 Sprint management settings (ll-sprint, `/ll:create-sprint`):

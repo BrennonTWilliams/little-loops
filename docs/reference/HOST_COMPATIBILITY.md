@@ -211,7 +211,7 @@ ll-doctor          # human-readable ✓/○/✗ table
 ll-doctor --json   # machine-readable CapabilityReport
 ```
 
-`ll-doctor` probes the active host binary and prints a `CapabilityReport` with one entry per capability (streaming, permission skip, agent selection, tool allowlist) and per registered hook event. Exits non-zero if any capability is unsupported. See [`docs/reference/API.md#capabilityreport`](API.md#capabilityreport) for the data model.
+`ll-doctor` probes the active host binary and prints a `CapabilityReport` with one entry per capability (streaming, permission skip, agent selection, tool allowlist) and per registered hook event. It also prints an "Analytics Capture" section reporting the current `analytics.capture` config state (enabled/disabled per category). Exits non-zero if any capability is unsupported. See [`docs/reference/API.md#capabilityreport`](API.md#capabilityreport) for the data model.
 
 ## User onboarding
 

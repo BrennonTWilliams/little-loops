@@ -3493,7 +3493,7 @@ Entry point for `ll-ctx-stats` command. Show context-window analytics for the cu
 - `--db PATH` — Use a non-default session database (default `.ll/history.db`)
 - `--json` — Emit the report as JSON instead of the human-readable summary
 
-Enable per-tool byte tracking by setting `"analytics": {"enabled": true}` in `.ll/ll-config.json`. The `post_tool_use` hook reads this gate and no-ops when disabled or absent.
+Enable per-tool byte tracking by setting `"analytics": {"enabled": true}` in `.ll/ll-config.json`. The `post_tool_use` hook reads this gate and no-ops when disabled or absent. Use `analytics.capture` for per-category control (e.g. `analytics.capture.file_events: false` disables file-event recording while keeping tool-event metrics active). See [CONFIGURATION.md § analytics.capture](CONFIGURATION.md#analyticscapture) for the full key reference.
 
 ---
 
