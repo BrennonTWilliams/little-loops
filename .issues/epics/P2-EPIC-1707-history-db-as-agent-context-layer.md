@@ -10,7 +10,7 @@ discovered_by: capture-issue
 labels:
   - epic
   - captured
-relates_to: [ENH-1708, ENH-1710, ENH-1711, FEAT-1712, ENH-1752, ENH-1753, FEAT-1736]
+relates_to: [ENH-1708, ENH-1710, ENH-1711, FEAT-1712, ENH-1752, ENH-1753, FEAT-1736, ENH-1831]
 ---
 
 # EPIC-1707: history.db as Agent Context Layer
@@ -60,6 +60,7 @@ Without a consumer surface, the DB is dead weight: writers cost overhead, the sc
 - **ENH-1711** — Add issue-to-session cross-reference queries to history.db (depends on ENH-1710).
 - **FEAT-1712** — LCM-style hierarchical summary DAG over session history (depends on ENH-1710, ENH-1711).
 - **FEAT-1736** — Wire-Issue Coupling Rules via Decisions Log
+- **ENH-1831** — Add write path for `user_corrections` table
 
 ## Integration Map
 

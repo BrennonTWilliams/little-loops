@@ -13,6 +13,7 @@ relates_to:
 labels:
   - enhancement
   - captured
+parent: EPIC-1707
 ---
 
 # ENH-1831: Add write path for `user_corrections` table
