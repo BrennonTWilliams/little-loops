@@ -102,6 +102,10 @@ states:
     # 1. Pixi v8 is loaded from CDN; sketch body wrapped in IIFE async function.
     # 2. Sketch exposes window.__loopFrame for the screenshot harness.
     # 3. Deterministic seeding required.
+    # 4. Sketch must assign window.__pixiApp = app after initialization so the
+    #    harness can stop the ticker around page.screenshot() for frame-exact
+    #    captures. The optional-chaining access (?.ticker?.stop()) means old
+    #    sketches that omit this degrade silently, but new ones must include it.
     #
     # Data-viz-specific rules:
     # 4. The synthetic dataset must be embedded as a JSON literal at the top
@@ -135,6 +139,7 @@ states:
             const app = new PIXI.Application();
             await app.init({ width: 1200, height: 800, background: '#fafafa', antialias: true });
             document.body.appendChild(app.canvas);
+            window.__pixiApp = app;  // REQUIRED: harness calls ticker.stop/start around screenshots
             // ... build axes, legend, title using PIXI.Text — render chrome FIRST ...
             window.__loopFrame = 0;
             app.ticker.add(() => {
@@ -196,7 +201,9 @@ states:
         await page.goto(url);
         for (const f of frames) {
           await page.waitForFunction(([n]) => window.__loopFrame >= Number(n), [f], { timeout: 30000 });
+          await page.evaluate(() => window.__pixiApp?.ticker?.stop());
           await page.screenshot({ path: '${captured.run_dir.output}/frame_' + f + '.png' });
+          await page.evaluate(() => window.__pixiApp?.ticker?.start());
         }
         await browser.close();
         console.log('CAPTURED');

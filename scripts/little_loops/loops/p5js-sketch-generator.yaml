@@ -101,8 +101,9 @@ states:
       - Calls `randomSeed(SEED)` and `noiseSeed(SEED)` ONCE in `setup()` with a
         constant integer seed. Drive all motion from `frameCount`, never from
         `Date.now()` or un-seeded `random()` calls inside `draw()`. The screenshot
-        harness captures specific frameCounts and requires the same input to
-        produce the same pixels.
+        harness calls `noLoop()` before each `page.screenshot()` and `loop()`
+        after, pinning the capture to the exact frame. Both functions are p5.js
+        globals exposed by global-mode sketches — do not override or shadow them.
       - Implements the generative concept from the brief — no canned p5 examples,
         no unmodified flow-field tutorial code.
       - If design tokens are provided above, use their semantic names and resolved
@@ -140,7 +141,9 @@ states:
         await page.goto(url);
         for (const f of frames) {
           await page.waitForFunction(([n]) => window.frameCount >= Number(n), [f], { timeout: 30000 });
+          await page.evaluate(() => noLoop());
           await page.screenshot({ path: '${captured.run_dir.output}/frame_' + f + '.png' });
+          await page.evaluate(() => loop());
         }
         await browser.close();
         console.log('CAPTURED');

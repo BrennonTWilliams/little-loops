@@ -87,7 +87,7 @@ states:
     # only the brief; on subsequent iterations it also addresses the
     # evaluator's critique.
     #
-    # Three Pixi-specific rules differ from the p5 harness:
+    # Four Pixi-specific rules differ from the p5 harness:
     # 1. Pixi v8 is loaded from CDN (the only external resource permitted)
     #    and initializes asynchronously, so the sketch body must be wrapped
     #    in an IIFE async function.
@@ -97,6 +97,12 @@ states:
     # 3. Deterministic seeding is required (a seeded PRNG plus all motion
     #    driven by __loopFrame). Without this, screenshots at "frame 90"
     #    would differ run-to-run and the critique would chase noise.
+    # 4. The sketch must assign window.__pixiApp = app after initialization so
+    #    the harness can call window.__pixiApp.ticker.stop() before each
+    #    page.screenshot() and .start() after, pinning the capture to the
+    #    exact frame. The optional-chaining access (?.ticker?.stop()) means
+    #    old sketches that omit the assignment degrade silently rather than
+    #    erroring, but newly-generated sketches must include it.
     action_type: prompt
     action: |
       Read ${captured.run_dir.output}/brief.md for the sketch brief.
@@ -121,6 +127,7 @@ states:
             const app = new PIXI.Application();
             await app.init({ width: 1200, height: 800, background: '#0a0a0a', antialias: true });
             document.body.appendChild(app.canvas);
+            window.__pixiApp = app;  // REQUIRED: harness calls ticker.stop/start around screenshots
             // ... sketch setup: filters, containers, sprites ...
             window.__loopFrame = 0;
             app.ticker.add(() => {
@@ -181,7 +188,9 @@ states:
         await page.goto(url);
         for (const f of frames) {
           await page.waitForFunction(([n]) => window.__loopFrame >= Number(n), [f], { timeout: 30000 });
+          await page.evaluate(() => window.__pixiApp?.ticker?.stop());
           await page.screenshot({ path: '${captured.run_dir.output}/frame_' + f + '.png' });
+          await page.evaluate(() => window.__pixiApp?.ticker?.start());
         }
         await browser.close();
         console.log('CAPTURED');

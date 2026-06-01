@@ -2987,6 +2987,304 @@ class TestSvgImageGeneratorLoop:
         assert not state.get("terminal", False)
 
 
+class TestP5jsSketchGeneratorLoop:
+    """Structural tests for the p5js-sketch-generator FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "p5js-sketch-generator.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, input_key, and states fields."""
+        assert data.get("name") == "p5js-sketch-generator"
+        assert data.get("initial") == "init"
+        assert data.get("input_key") == "description"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {"init", "plan", "generate", "evaluate", "score", "done", "failed"}
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
+
+    def test_evaluate_state_is_shell(self, data: dict) -> None:
+        """evaluate state must use action_type: shell for the Playwright call."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("action_type") == "shell"
+
+    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
+        """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
+        state = data["states"].get("evaluate", {})
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "CAPTURED"
+
+    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
+        """evaluate state must route to score when screenshot succeeds."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_yes") == "score"
+
+    def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
+        """evaluate state must route back to generate when screenshot fails."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_no") == "generate"
+
+    def test_evaluate_action_has_noloop_pause(self, data: dict) -> None:
+        """evaluate action must call noLoop() before page.screenshot() for frame-exact capture."""
+        state = data["states"].get("evaluate", {})
+        action = state.get("action", "")
+        assert "noLoop()" in action, f"evaluate.action must contain noLoop() call, got: {action!r}"
+
+    def test_evaluate_action_has_loop_resume(self, data: dict) -> None:
+        """evaluate action must call loop() after page.screenshot() to resume animation."""
+        state = data["states"].get("evaluate", {})
+        action = state.get("action", "")
+        assert "loop()" in action, f"evaluate.action must contain loop() call, got: {action!r}"
+
+    def test_evaluate_action_pause_before_screenshot(self, data: dict) -> None:
+        """noLoop() must appear before page.screenshot() in the evaluate action."""
+        state = data["states"].get("evaluate", {})
+        action = state.get("action", "")
+        noloop_pos = action.find("noLoop()")
+        screenshot_pos = action.find("page.screenshot(")
+        assert noloop_pos != -1 and screenshot_pos != -1
+        assert noloop_pos < screenshot_pos, "noLoop() must come before page.screenshot()"
+
+    def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
+        """score state must route to done when all criteria pass."""
+        state = data["states"].get("score", {})
+        assert state.get("on_yes") == "done"
+
+    def test_context_has_sample_frames(self, data: dict) -> None:
+        """context block must define sample_frames for multi-frame capture."""
+        ctx = data.get("context", {})
+        assert "sample_frames" in ctx
+
+    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_iterations and timeout."""
+        assert data.get("max_iterations", 0) > 0
+        assert data.get("timeout", 0) > 0
+
+
+class TestPixiGenerativeArtLoop:
+    """Structural tests for the pixi-generative-art FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "pixi-generative-art.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, input_key, and states fields."""
+        assert data.get("name") == "pixi-generative-art"
+        assert data.get("initial") == "init"
+        assert data.get("input_key") == "description"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {"init", "plan", "generate", "evaluate", "score", "done", "failed"}
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
+
+    def test_evaluate_state_is_shell(self, data: dict) -> None:
+        """evaluate state must use action_type: shell for the Playwright call."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("action_type") == "shell"
+
+    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
+        """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
+        state = data["states"].get("evaluate", {})
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "CAPTURED"
+
+    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
+        """evaluate state must route to score when screenshot succeeds."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_yes") == "score"
+
+    def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
+        """evaluate state must route back to generate when screenshot fails."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_no") == "generate"
+
+    def test_evaluate_action_has_ticker_stop(self, data: dict) -> None:
+        """evaluate action must call ticker.stop() before page.screenshot() for frame-exact capture."""
+        state = data["states"].get("evaluate", {})
+        action = state.get("action", "")
+        assert "ticker?.stop()" in action, (
+            f"evaluate.action must contain ticker?.stop() call, got: {action!r}"
+        )
+
+    def test_evaluate_action_has_ticker_start(self, data: dict) -> None:
+        """evaluate action must call ticker.start() after page.screenshot() to resume animation."""
+        state = data["states"].get("evaluate", {})
+        action = state.get("action", "")
+        assert "ticker?.start()" in action, (
+            f"evaluate.action must contain ticker?.start() call, got: {action!r}"
+        )
+
+    def test_evaluate_action_pause_before_screenshot(self, data: dict) -> None:
+        """ticker.stop() must appear before page.screenshot() in the evaluate action."""
+        state = data["states"].get("evaluate", {})
+        action = state.get("action", "")
+        stop_pos = action.find("ticker?.stop()")
+        screenshot_pos = action.find("page.screenshot(")
+        assert stop_pos != -1 and screenshot_pos != -1
+        assert stop_pos < screenshot_pos, "ticker?.stop() must come before page.screenshot()"
+
+    def test_generate_action_requires_pixiapp_exposure(self, data: dict) -> None:
+        """generate action must instruct sketch to assign window.__pixiApp = app."""
+        state = data["states"].get("generate", {})
+        action = state.get("action", "")
+        assert "window.__pixiApp = app" in action, (
+            f"generate.action must require window.__pixiApp = app assignment, got: {action!r}"
+        )
+
+    def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
+        """score state must route to done when all criteria pass."""
+        state = data["states"].get("score", {})
+        assert state.get("on_yes") == "done"
+
+    def test_context_has_sample_frames(self, data: dict) -> None:
+        """context block must define sample_frames for multi-frame capture."""
+        ctx = data.get("context", {})
+        assert "sample_frames" in ctx
+
+    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_iterations and timeout."""
+        assert data.get("max_iterations", 0) > 0
+        assert data.get("timeout", 0) > 0
+
+
+class TestPixiDataVizLoop:
+    """Structural tests for the pixi-data-viz FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "pixi-data-viz.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, input_key, and states fields."""
+        assert data.get("name") == "pixi-data-viz"
+        assert data.get("initial") == "init"
+        assert data.get("input_key") == "description"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {"init", "plan", "generate", "evaluate", "score", "done", "failed"}
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
+
+    def test_evaluate_state_is_shell(self, data: dict) -> None:
+        """evaluate state must use action_type: shell for the Playwright call."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("action_type") == "shell"
+
+    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
+        """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
+        state = data["states"].get("evaluate", {})
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "CAPTURED"
+
+    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
+        """evaluate state must route to score when screenshot succeeds."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_yes") == "score"
+
+    def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
+        """evaluate state must route back to generate when screenshot fails."""
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_no") == "generate"
+
+    def test_evaluate_action_has_ticker_stop(self, data: dict) -> None:
+        """evaluate action must call ticker.stop() before page.screenshot() for frame-exact capture."""
+        state = data["states"].get("evaluate", {})
+        action = state.get("action", "")
+        assert "ticker?.stop()" in action, (
+            f"evaluate.action must contain ticker?.stop() call, got: {action!r}"
+        )
+
+    def test_evaluate_action_has_ticker_start(self, data: dict) -> None:
+        """evaluate action must call ticker.start() after page.screenshot() to resume animation."""
+        state = data["states"].get("evaluate", {})
+        action = state.get("action", "")
+        assert "ticker?.start()" in action, (
+            f"evaluate.action must contain ticker?.start() call, got: {action!r}"
+        )
+
+    def test_evaluate_action_pause_before_screenshot(self, data: dict) -> None:
+        """ticker.stop() must appear before page.screenshot() in the evaluate action."""
+        state = data["states"].get("evaluate", {})
+        action = state.get("action", "")
+        stop_pos = action.find("ticker?.stop()")
+        screenshot_pos = action.find("page.screenshot(")
+        assert stop_pos != -1 and screenshot_pos != -1
+        assert stop_pos < screenshot_pos, "ticker?.stop() must come before page.screenshot()"
+
+    def test_generate_action_requires_pixiapp_exposure(self, data: dict) -> None:
+        """generate action must instruct sketch to assign window.__pixiApp = app."""
+        state = data["states"].get("generate", {})
+        action = state.get("action", "")
+        assert "window.__pixiApp = app" in action, (
+            f"generate.action must require window.__pixiApp = app assignment, got: {action!r}"
+        )
+
+    def test_encoding_clarity_hard_gated(self, data: dict) -> None:
+        """score state action must hard-gate encoding_clarity at threshold 7."""
+        state = data["states"].get("score", {})
+        action = state.get("action", "")
+        assert "encoding_clarity" in action and "7" in action, (
+            "score.action must reference encoding_clarity hard gate at threshold 7"
+        )
+
+    def test_sample_frames_default_is_three_phase(self, data: dict) -> None:
+        """sample_frames default must capture initial chrome, mid-transition, and settled state."""
+        ctx = data.get("context", {})
+        assert ctx.get("sample_frames") == "0,120,240", (
+            "pixi-data-viz sample_frames must be '0,120,240' (chrome, mid-transition, settled)"
+        )
+
+    def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
+        """score state must route to done when all criteria pass."""
+        state = data["states"].get("score", {})
+        assert state.get("on_yes") == "done"
+
+    def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
+        """Loop must define max_iterations and timeout."""
+        assert data.get("max_iterations", 0) > 0
+        assert data.get("timeout", 0) > 0
+
+
 class TestAdversarialRedesignLoop:
     """Structural tests for the adversarial-redesign FSM loop."""
 
