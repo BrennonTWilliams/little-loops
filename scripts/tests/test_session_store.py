@@ -1138,3 +1138,25 @@ class TestRecordCorrection:
         record_correction(db, "sess-r2", "revert that last commit", "user_prompt_submit")
         results = search(db, query="revert")
         assert any(r["kind"] == "correction" for r in results)
+
+    def test_record_correction_gate_disabled(self, tmp_path: Path) -> None:
+        """capture.corrections: false suppresses write regardless of call site."""
+        from little_loops.session_store import record_correction, recent
+        db = tmp_path / "session.db"
+        record_correction(
+            db, "sess-g1", "no, stop", "user_prompt_submit",
+            config={"analytics": {"capture": {"corrections": False}}},
+        )
+        rows = recent(db, kind="correction")
+        assert len(rows) == 0, "record_correction must be a no-op when capture.corrections is false"
+
+    def test_write_file_event_gate_disabled(self, tmp_path: Path) -> None:
+        """capture.file_events: false suppresses write regardless of call site."""
+        from little_loops.session_store import write_file_event, recent
+        db = tmp_path / "session.db"
+        write_file_event(
+            db, "sess-g2", "scripts/foo.py", "Read",
+            config={"analytics": {"capture": {"file_events": False}}},
+        )
+        rows = recent(db, kind="file")
+        assert len(rows) == 0, "write_file_event must be a no-op when capture.file_events is false"

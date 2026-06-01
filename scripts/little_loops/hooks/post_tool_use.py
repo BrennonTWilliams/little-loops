@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.config.core import resolve_config_path
-from little_loops.config.features import feature_enabled
+from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 
 # Matches a file-path token inside a Bash command string.  Two alternatives:
@@ -134,17 +134,20 @@ def handle(event: LLHookEvent) -> LLHookResult:
 
     raw_path = _extract_file_path(tool_name, tool_input)
     if raw_path:
-        with contextlib.suppress(Exception):
-            from little_loops.session_store import write_file_event
+        capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
+        if capture.file_events:
+            with contextlib.suppress(Exception):
+                from little_loops.session_store import write_file_event
 
-            norm_path = _normalize_path(raw_path, cwd)
-            issue_id = _detect_issue_id(norm_path)
-            write_file_event(
-                cwd / ".ll" / "history.db",
-                session_id,
-                norm_path,
-                tool_name,
-                issue_id,
-            )
+                norm_path = _normalize_path(raw_path, cwd)
+                issue_id = _detect_issue_id(norm_path)
+                write_file_event(
+                    cwd / ".ll" / "history.db",
+                    session_id,
+                    norm_path,
+                    tool_name,
+                    issue_id,
+                )
+        # TODO(ENH-1835): wire analytics.capture.skills gate when ENH-1833 lands
 
     return LLHookResult(exit_code=0)

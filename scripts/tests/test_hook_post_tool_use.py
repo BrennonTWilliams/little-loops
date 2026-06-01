@@ -82,12 +82,17 @@ class TestPostToolUseBaseline:
             assert result.exit_code == 0, f"non-zero exit for host={host}"
 
 
-def _write_config(project_dir: Path, *, analytics_enabled: bool) -> None:
+def _write_config(
+    project_dir: Path, *, analytics_enabled: bool, analytics_capture: dict | None = None
+) -> None:
     """Write a minimal ``.ll/ll-config.json`` toggling ``analytics.enabled``."""
     ll_dir = project_dir / ".ll"
     ll_dir.mkdir(parents=True, exist_ok=True)
+    analytics: dict = {"enabled": analytics_enabled}
+    if analytics_capture is not None:
+        analytics["capture"] = analytics_capture
     (ll_dir / "ll-config.json").write_text(
-        json.dumps({"analytics": {"enabled": analytics_enabled}}),
+        json.dumps({"analytics": analytics}),
         encoding="utf-8",
     )
 
@@ -374,6 +379,46 @@ class TestFileEventsWrite:
 
         assert result.exit_code == 0
         assert not (tmp_path / ".ll" / "history.db").exists()
+
+    def test_file_events_gate_disabled(self, tmp_path, monkeypatch) -> None:
+        """analytics enabled at top level but capture.file_events: false → write_file_event NOT called."""
+        _write_config(tmp_path, analytics_enabled=True, analytics_capture={"file_events": False})
+        monkeypatch.chdir(tmp_path)
+
+        import little_loops.session_store as session_store
+
+        write_calls: list = []
+        monkeypatch.setattr(session_store, "write_file_event", lambda *a, **kw: write_calls.append(a))
+
+        handle(
+            _event(
+                {"tool_name": "Read", "tool_input": {"file_path": "scripts/foo.py"}, "session_id": "s1"},
+                cwd=str(tmp_path),
+            )
+        )
+
+        assert len(write_calls) == 0, "write_file_event must not be called when capture.file_events is false"
+
+    def test_file_events_gate_enabled_explicitly(self, tmp_path, monkeypatch) -> None:
+        """analytics enabled with capture.file_events: true → write_file_event IS called."""
+        _write_config(tmp_path, analytics_enabled=True, analytics_capture={"file_events": True})
+        monkeypatch.chdir(tmp_path)
+
+        handle(
+            _event(
+                {"tool_name": "Read", "tool_input": {"file_path": "scripts/foo.py"}, "session_id": "s1"},
+                cwd=str(tmp_path),
+            )
+        )
+
+        db_path = tmp_path / ".ll" / "history.db"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute("SELECT path FROM file_events").fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "write_file_event must be called when capture.file_events is explicitly true"
+        assert row[0] == "scripts/foo.py"
 
 
 class TestPreToolUseBaseline:

@@ -311,10 +311,16 @@ def write_file_event(
 ) -> None:
     """Write one row to ``file_events`` and index it in ``search_index``.
 
-    ``config`` is accepted for forward-compatibility with ENH-1835's finer-grained
-    gate; it is not used here — the write is controlled by the ``analytics.enabled``
-    gate applied by the caller.
+    Gated by ``analytics.capture.file_events`` (ENH-1841): when ``config`` is
+    provided and the flag is ``false``, the write is suppressed. Missing ``capture``
+    key defaults to permissive (no behavior change).
     """
+    if config is not None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
+        if not capture.file_events:
+            return
     conn = connect(db_path)
     ts = _now()
     try:
@@ -334,8 +340,20 @@ def record_correction(
     session_id: str | None,
     content: str,
     source: str,
+    config: dict | None = None,
 ) -> None:
-    """Write one row to ``user_corrections`` and index it in ``search_index``."""
+    """Write one row to ``user_corrections`` and index it in ``search_index``.
+
+    Gated by ``analytics.capture.corrections`` (ENH-1841): when ``config`` is
+    provided and the flag is ``false``, the write is suppressed. Missing ``capture``
+    key defaults to permissive (no behavior change).
+    """
+    if config is not None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
+        if not capture.corrections:
+            return
     content = content[:512]
     conn = connect(db_path)
     ts = _now()

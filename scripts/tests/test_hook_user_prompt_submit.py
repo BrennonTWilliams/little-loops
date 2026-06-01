@@ -27,11 +27,16 @@ def _event(payload: dict | None = None, *, cwd: str | None = None) -> LLHookEven
     )
 
 
-def _write_config(project_dir: Path, *, analytics_enabled: bool) -> None:
+def _write_config(
+    project_dir: Path, *, analytics_enabled: bool, analytics_capture: dict | None = None
+) -> None:
     ll_dir = project_dir / ".ll"
     ll_dir.mkdir(parents=True, exist_ok=True)
+    analytics: dict = {"enabled": analytics_enabled}
+    if analytics_capture is not None:
+        analytics["capture"] = analytics_capture
     (ll_dir / "ll-config.json").write_text(
-        json.dumps({"analytics": {"enabled": analytics_enabled}}),
+        json.dumps({"analytics": analytics}),
         encoding="utf-8",
     )
 
@@ -99,3 +104,39 @@ class TestUserPromptSubmitWithSessionStore:
         monkeypatch.setattr(session_store, "connect", boom)
         result = handle(_event({"prompt": "stop, revert that"}, cwd=str(tmp_path)))
         assert result.exit_code == 0
+
+    def test_corrections_gate_disabled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """analytics enabled but capture.corrections: false → no DB write."""
+        import sqlite3 as _sqlite3
+
+        _write_config(tmp_path, analytics_enabled=True, analytics_capture={"corrections": False})
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"prompt": "no, don't do that", "session_id": "sess-g1"}, cwd=str(tmp_path)))
+
+        db_path = tmp_path / ".ll" / "history.db"
+        if db_path.exists():
+            conn = _sqlite3.connect(str(db_path))
+            try:
+                count = conn.execute("SELECT COUNT(*) FROM user_corrections").fetchone()[0]
+            finally:
+                conn.close()
+            assert count == 0, "record_correction must not write when capture.corrections is false"
+
+    def test_corrections_gate_enabled_explicitly(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """analytics enabled with capture.corrections: true → row written."""
+        import sqlite3 as _sqlite3
+
+        _write_config(tmp_path, analytics_enabled=True, analytics_capture={"corrections": True})
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"prompt": "no, don't do that", "session_id": "sess-g2"}, cwd=str(tmp_path)))
+
+        db_path = tmp_path / ".ll" / "history.db"
+        assert db_path.is_file(), "DB must be created when capture.corrections is explicitly true"
+        conn = _sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute("SELECT content FROM user_corrections").fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "record_correction must write when capture.corrections is explicitly true"
