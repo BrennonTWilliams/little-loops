@@ -284,3 +284,113 @@ generate_queries → search_web → evaluate_sources → score_coverage
 ### Fragment dependency
 
 Imports `lib/common.yaml`. No Playwright or harness fragments required.
+
+---
+
+## `oracles/implement-issue-chain`
+
+**Category**: oracle sub-loop
+**File**: `scripts/little_loops/loops/oracles/implement-issue-chain.yaml`
+
+Reusable issue-implementation oracle. Drains the `recursive-refine-passed.txt` queue written by a calling loop's `recursive-refine` delegation: seeds a caller-prefixed impl-queue, pops each issue ID, gates it through `go-no-go`, and runs `ll-auto --only` to implement it. Skips issues already in `.issues/completed/`.
+
+Used by `auto-refine-and-implement` and `sprint-refine-and-implement` as a `loop:` delegation state named `implement_chain` (ENH-1874).
+
+### Parameters
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `caller_prefix` | yes | — | Prefix for queue and skip files under `.loops/tmp/` (e.g. `"auto-refine-and-implement"`). Prevents queue collisions when multiple loops run concurrently. |
+
+### Invocation (thin-wrapper pattern)
+
+```yaml
+implement_chain:
+  loop: oracles/implement-issue-chain
+  with:
+    caller_prefix: "my-loop-name"
+  on_success: done
+  on_failure: failed
+  on_error: failed
+```
+
+### Internal state machine
+
+```
+get_passed_issues  (shell: seed impl-queue from recursive-refine-passed.txt)
+  on_yes (queue non-empty) → implement_next
+  on_no  (nothing to implement) → done
+
+implement_next  (shell: pop head of impl-queue)
+  on_yes (item popped) → go_no_go
+  on_no  (queue empty) → done
+
+go_no_go  (shell: ll-action invoke go-no-go --check --auto)
+  on_yes → implement_issue
+  on_no  → implement_next   (skip this issue)
+  on_error → implement_issue (proceed on gate error)
+
+implement_issue  (shell: ll-auto --only <issue-id>; fragment: with_rate_limit_handling)
+  → implement_next  (unconditional; drain continues)
+```
+
+### Notes
+
+- `shared_state_ok: true` is set at the loop level — the oracle reads `.loops/tmp/recursive-refine-passed.txt` written by the calling loop's `recursive-refine` sub-loop. This cross-run dependency is intentional.
+- Issues already in `.issues/completed/` are silently skipped without calling `ll-auto`.
+
+### Fragment dependency
+
+Imports `lib/common.yaml` for `shell_exit` and `with_rate_limit_handling` fragments.
+
+---
+
+## `oracles/enumerate-and-prove`
+
+**Category**: oracle sub-loop
+**File**: `scripts/little_loops/loops/oracles/enumerate-and-prove.yaml`
+
+Reusable enumeration-and-proof oracle. Parses a tagged `ENUMERATE_JSON:` line from captured LLM output, extracts and validates a targets list (up to 7 items), flattens it to a comma-joined string, and proves each target is ready-to-implement via the `ready-to-implement-gate` sub-loop. Eliminates the duplicated parse → flatten → prove state chain that previously appeared in both `adopt-third-party-api` and `integrate-sdk`.
+
+Used by `adopt-third-party-api` and `integrate-sdk` as a `loop:` delegation state named `run_enumeration` (ENH-1873).
+
+### Parameters
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `raw_enumeration` | yes | — | Captured LLM output containing the tagged JSON line (e.g. `${captured.enumerate_output.output}`) |
+| `max_retries` | no | `"2"` | Per-target `explore-api` retries passed to `ready-to-implement-gate` |
+| `tag` | no | `"ENUMERATE_JSON"` | Tag prefix to scan for in the LLM output (e.g. `"ENUMERATE_JSON"`) |
+
+### Invocation (thin-wrapper pattern)
+
+```yaml
+run_enumeration:
+  loop: oracles/enumerate-and-prove
+  with:
+    raw_enumeration: "${captured.enumerate_output.output}"
+    max_retries: "3"
+  on_success: done
+  on_failure: failed
+  on_error: failed
+```
+
+### Internal state machine
+
+```
+parse_enumeration  (shell: extract + validate ENUMERATE_JSON: line; fragment: parse_tagged_json)
+  on_yes (count > 0) → flatten
+  on_no  (no targets) → failed
+
+flatten  (shell: join targets list to comma-separated string; captures: targets)
+  → prove
+
+prove  (sub-loop: ready-to-implement-gate; passes targets + max_retries)
+  on_success → done
+  on_failure → failed
+  on_error   → failed
+```
+
+### Fragment dependency
+
+Imports `lib/common.yaml` for the `parse_tagged_json` fragment used in `parse_enumeration`.
