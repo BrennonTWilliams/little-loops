@@ -75,6 +75,7 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - Pi adapter implementation not started: `hooks/adapters/pi/` does not exist; PiRunner.build_*() still raises `HostNotConfigured` ✓
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-02T22:49:03 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:18 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 

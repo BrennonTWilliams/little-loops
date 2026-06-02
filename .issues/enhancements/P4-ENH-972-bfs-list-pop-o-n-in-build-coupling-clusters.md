@@ -118,6 +118,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - Feature not yet implemented
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-02T22:48:33 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:16 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:verify-issues` - 2026-05-03T15:20:58 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 - `/ll:verify-issues` - 2026-04-26T19:34:06 - `316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`

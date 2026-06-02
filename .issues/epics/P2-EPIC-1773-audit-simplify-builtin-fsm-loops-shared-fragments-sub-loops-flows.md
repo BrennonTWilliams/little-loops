@@ -7,7 +7,7 @@ captured_at: "2026-05-29T01:01:55Z"
 discovered_date: 2026-05-28
 discovered_by: capture-issue
 status: open
-relates_to: [ENH-1774, ENH-1775, ENH-1776, ENH-1777, ENH-1643, BUG-1767, ENH-1862]
+relates_to: [ENH-1774, ENH-1775, ENH-1776, ENH-1777, ENH-1643, BUG-1767, ENH-1862, FEAT-1798]
 ---
 
 # EPIC-1773: Audit & Simplify Built-in FSM Loops with Shared Fragments, Sub-loops, and Flows
@@ -112,6 +112,7 @@ _Updated by `/ll:ready-issue` on 2026-06-01_
 - ENH-1775, ENH-1776, ENH-1777 (Waves 2–4): open; Wave 2 is the correct next pickup
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-02T22:49:02 - `aeb556c4-3814-4aa1-9bd0-5b4a91c2087e.jsonl`
 - `/ll:ready-issue` - 2026-06-01T16:33:57 - `92bcd8b4-38a6-46b1-9488-9de681167c3e.jsonl`
 - `/ll:ready-issue` - 2026-06-01T16:31:33 - `3a1e93de-8612-478d-aeff-494b4c425433.jsonl`
 - `/ll:verify-issues` - 2026-06-01T03:08:51 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`

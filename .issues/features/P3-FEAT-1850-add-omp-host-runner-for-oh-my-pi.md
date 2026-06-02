@@ -166,6 +166,7 @@ class OmpRunner:
 `feat`, `captured`, `host-compat`, `pi-adapter`, `omp`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-02T22:48:43 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:format-issue` - 2026-06-01T15:09:51 - `135049e3-c3b6-4e47-a1b7-f422e4bce835.jsonl`
 
 - `/ll:capture-issue` - 2026-06-01T15:06:49Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

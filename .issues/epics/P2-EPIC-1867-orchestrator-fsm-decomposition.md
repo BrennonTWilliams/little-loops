@@ -130,6 +130,7 @@ Acceptance gates from the plan:
 | `docs/ARCHITECTURE.md` | Target for orchestration architecture updates |
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-02T22:49:02 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:capture-issue` - 2026-06-02T02:18:04Z - `1758d419-8959-4946-ab38-e7f9cbf959a8.jsonl`
 
 ---

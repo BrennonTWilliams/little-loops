@@ -203,6 +203,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-02T22:47:58 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:16 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-29T20:07:40 - `7409b034-0513-44ad-a2a1-f3e47126e95b.jsonl`
 - `/ll:verify-issues` - 2026-05-23T00:35:43 - `2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
@@ -242,6 +243,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 ---
 
 ## Verification Notes
+
+- **Date**: 2026-06-02
+- **Verdict**: VALID (line counts refreshed)
+- **6 skills** exceed 500 lines: `confidence-check/SKILL.md` = **827** (+10), `init/SKILL.md` = **739** (+42), `audit-claude-config/SKILL.md` = **712** (unchanged), `debug-loop-run/SKILL.md` = **603** (+1), `review-loop/SKILL.md` = **577** (unchanged), `manage-issue/SKILL.md` = **562** (+2). No companion files extracted yet.
 
 - **Date**: 2026-05-22 / scope expanded 2026-05-24
 - **Verdict**: VALID (scope updated to cover all 6 violators)

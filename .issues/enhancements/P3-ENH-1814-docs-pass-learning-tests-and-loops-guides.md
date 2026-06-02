@@ -134,6 +134,7 @@ it the feature is invisible to anyone reading the guides.
 **Open** | Created: 2026-05-30 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-02T22:48:35 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:16 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:17 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-30T21:35:04Z - `f3ee23bc-341c-48d2-b09f-f34e658c7031.jsonl`

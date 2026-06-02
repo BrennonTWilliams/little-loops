@@ -7,7 +7,7 @@ status: open
 captured_at: '2026-05-25T20:53:43Z'
 discovered_date: '2026-05-25'
 discovered_by: capture-issue
-relates_to: [FEAT-1692, FEAT-1695, FEAT-1696, FEAT-1697, FEAT-1287, FEAT-1283, FEAT-1285, FEAT-1286, EPIC-1663, FEAT-1738, FEAT-1739, ENH-1740, ENH-1741, FEAT-1742, FEAT-1743, FEAT-1798, ENH-1284, FEAT-1813, ENH-1814, FEAT-1826, ENH-1827]
+relates_to: [FEAT-1692, FEAT-1695, FEAT-1696, FEAT-1697, FEAT-1287, FEAT-1283, FEAT-1285, FEAT-1286, EPIC-1663, FEAT-1738, FEAT-1739, ENH-1740, ENH-1741, FEAT-1742, FEAT-1743, ENH-1284, FEAT-1813, ENH-1814]
 ---
 
 # EPIC-1694: Built-in FSM Loops Powered by the Learning-Test Registry
@@ -51,9 +51,6 @@ This constraint is why FEAT-1695 (`ready-to-implement-gate`) is shell-driven rat
 - **ENH-1284** — Learning-Test Gate in Issue Lifecycle: `/ll:ready-issue`/`/ll:go-no-go` block on missing or stale proofs declared in issue frontmatter (un-deferred 2026-05-30)
 - **FEAT-1813** — `migrate-sdk-version`: bulk re-prove stale records and classify (still-valid / needs-upgrade / refuted); counterpart to FEAT-1739
 - **ENH-1814** — Docs pass for `LEARNING_TESTS_GUIDE.md` and `LOOPS_GUIDE.md` covering the EPIC-1694 surface
-- **FEAT-1826** — sft-corpus FSM loop for SLM fine-tuning from session logs
-- **ENH-1827** — Add `--sft-format` flag to `ll-messages` CLI
-
 ## Scope
 
 ### In Scope
@@ -111,6 +108,7 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - Four core loop YAMLs (FEAT-1692, 1695, 1696, 1697) remain unimplemented — no corresponding files in `loops/` ✓
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-02T22:49:02 - `aeb556c4-3814-4aa1-9bd0-5b4a91c2087e.jsonl`
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:capture-issue` - 2026-05-25T20:53:43Z - `810cf8d1-477c-42da-bb20-b577b2ee3ad9.jsonl`
