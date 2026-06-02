@@ -85,7 +85,7 @@ states:
       " > ${context.run_dir}/autodev-pre-ids.txt) || true
 
       echo "$CURRENT"
-    fragment: shell_exit
+    fragment: queue_pop
     capture: input
     on_yes: refine_current
     on_no: done
@@ -118,6 +118,7 @@ states:
     action: |
       echo "${captured.input.output}" >> ${context.run_dir}/autodev-skipped.txt
       rm -f ${context.run_dir}/autodev-inflight
+    fragment: queue_track
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next

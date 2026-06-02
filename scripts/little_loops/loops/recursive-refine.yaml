@@ -99,7 +99,7 @@ states:
       printf '[%s/%s] → %s%s | passed: %d | queued: %d | skipped: %d\n' \
         "$DEQUEUED" "$TOTAL" "$CURRENT" "$DEPTH_STR" "$PASSED" "$QUEUED" "$SKIPPED" >&2
       echo "$CURRENT"
-    fragment: shell_exit
+    fragment: shell_exit  # queue_pop fragment not used — see ENH-1875 for exception rationale
     capture: input
     on_yes: check_attempt_budget
     on_no: aggregate_decomposition

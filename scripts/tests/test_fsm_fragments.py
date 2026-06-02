@@ -1012,6 +1012,8 @@ class TestBuiltinLoopMigration:
             "rl-coding-agent.yaml",
             "rl-policy.yaml",
             "harness-optimize.yaml",
+            "auto-refine-and-implement.yaml",
+            "sprint-refine-and-implement.yaml",
         ]
         for loop_name in migration_targets:
             path = loops_dir / loop_name

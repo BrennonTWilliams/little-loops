@@ -66,7 +66,7 @@ states:
     action: |
       echo "Skipping ${captured.input.output} after refinement failure"
       echo "${captured.input.output}" >> .loops/tmp/sprint-refine-and-implement-skipped.txt
-    action_type: shell
+    fragment: queue_track
     next: get_next_issue
 
   done:
