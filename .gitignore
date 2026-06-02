@@ -105,3 +105,10 @@ loop-catalog.*
 docs/research/
 *.gif
 thoughts/
+
+# Archive folders (any depth)
+Archive/
+_Archive/
+
+# Nested .ll/ directories (e.g. .issues/epics/.ll/)
+**/.ll/

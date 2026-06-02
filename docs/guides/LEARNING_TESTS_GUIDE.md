@@ -20,7 +20,7 @@
 
 You are about to write code against an unfamiliar API, SDK, or stdlib corner. Instead of guessing its shape from docs (which may be wrong, out of date, or silent on the edge cases you care about), run a tiny script against it, write down what it actually returned, and save that evidence to a file the next agent — or the next session of you — can read.
 
-That file is a learning test. The term comes from Michael Feathers; see [the philosophy essay](../research/_Archive/deterministic-backpressure-learning-tests.md) for the long version.
+That file is a learning test — a term from Michael Feathers, repurposed here for harness engineering. The underpinning idea is *deterministic backpressure*: agents go wrong when they rely on probabilistic feedback (a model guessing, or a second model grading the first), because a reviewer drawn from the same latent space tends to share the builder's wrong assumptions. The fix is to ground the agent in non-opinionated, observable truth — run real code against the real system and persist exactly what it returned. That captured evidence is a fact, not an opinion, so every later session reuses verified behavior instead of re-hallucinating the API's shape.
 
 little-loops gives you three things to make this routine:
 
@@ -223,7 +223,6 @@ Phase 1 (Ingest) prompts before overwriting. Answer "reuse" to short-circuit. To
 
 ## Further Reading
 
-- [Agentic Workflow Architecture: Designing Deterministic Backpressure Systems](../research/_Archive/deterministic-backpressure-learning-tests.md) — the philosophy: why proof-based exploration beats LLM-on-LLM critique.
 - [ARCHITECTURE.md → Learning Test Registry](../ARCHITECTURE.md#learning-test-registry) — registry design, slug derivation, and integration with the rest of the system.
 - [CLI Reference → ll-learning-tests](../reference/CLI.md#ll-learning-tests) — terse subcommand reference.
 - [LOOPS_GUIDE.md → Progressive tool-call throttling](LOOPS_GUIDE.md#progressive-tool-call-throttling) — the `type: learning` FSM state reference and event payloads.
