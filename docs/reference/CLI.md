@@ -1582,8 +1582,9 @@ Extract user messages from Claude Code session logs.
 | `--commands-only` | | Extract only CLI commands, no user messages |
 | `--tools` | | Comma-separated tools to extract commands from (default: `Bash`) |
 | `--skill` | | Filter to sessions where this skill was invoked (e.g. `capture-issue`) |
-| `--examples-format` | | Output `(input, output)` training pairs instead of raw messages (requires `--skill`) |
-| `--context-window` | | Number of preceding messages to include as context in `--examples-format` (default: 3) |
+| `--examples-format` | | Output `(input, output)` training pairs instead of raw messages (requires `--skill`); mutually exclusive with `--sft-format` |
+| `--sft-format` | | Output conversation turns in SFT training format as JSON-lines (`chatml`, `alpaca`, `sharegpt`); mutually exclusive with `--examples-format` |
+| `--context-window` | | Number of context turn-pairs per window in `--examples-format` or `--sft-format` (default: 3) |
 
 **Examples:**
 ```bash
@@ -1598,6 +1599,9 @@ ll-messages --commands-only               # Extract only CLI commands
 ll-messages --skill capture-issue         # Filter to sessions where /ll:capture-issue was invoked
 ll-messages --skill capture-issue --examples-format --since 2026-01-01 -o examples.jsonl
 ll-messages --skill refine-issue --examples-format --context-window 5 --stdout
+ll-messages --sft-format chatml --stdout
+ll-messages --sft-format sharegpt --context-window 3 --since 2026-05-01 --stdout
+ll-messages --sft-format alpaca --output data/sft/raw.jsonl
 ```
 
 ---

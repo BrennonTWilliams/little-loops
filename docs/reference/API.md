@@ -3374,6 +3374,10 @@ Entry point for `ll-messages` command. Extract user messages from Claude Code lo
 - `--exclude-agents` - Exclude agent session files
 - `--stdout` - Print to stdout instead of file
 - `-v, --verbose` - Verbose progress output
+- `--skill` - Filter to sessions where this skill was invoked
+- `--examples-format` - Output (input, output) training pairs (requires `--skill`); mutually exclusive with `--sft-format`
+- `--sft-format` - Output conversation turns in SFT training format (`chatml`/`alpaca`/`sharegpt`); mutually exclusive with `--examples-format`
+- `--context-window` - Number of context turn-pairs per window in `--examples-format` or `--sft-format` (default: 3)
 
 ### main_sprint
 

@@ -3,8 +3,9 @@ id: ENH-1827
 title: Add --sft-format flag to ll-messages CLI
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-05-31T22:00:59Z'
+completed_at: '2026-06-02T23:41:29Z'
 discovered_date: '2026-05-31'
 discovered_by: capture-issue
 parent: EPIC-1880
@@ -144,6 +145,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `enhancement`, `cli`, `sft`, `ll-messages`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-06-02T23:41:29 - `5f2bd088-984a-42ca-95bd-6003e7b6312c.jsonl`
 - `/ll:ready-issue` - 2026-06-02T23:32:42 - `adaf9bf1-77d1-459c-b949-ba44567e0443.jsonl`
 - `/ll:confidence-check` - 2026-06-02T23:45:00 - `6d2e5d05-1442-431e-a2c2-c3847d73a670.jsonl`
 - `/ll:wire-issue` - 2026-06-02T23:23:21 - `16d2eea7-9cc0-4d21-9d84-d96036fdb70d.jsonl`
@@ -153,6 +155,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `/ll:capture-issue` - 2026-05-31T22:00:59Z - `109abe71-e47d-4222-b37d-c17fd7d98dee.jsonl`
 
 ---
+## Resolution
+
+Implemented `--sft-format {chatml,alpaca,sharegpt}` flag for `ll-messages`, mutually exclusive with `--examples-format`. Added:
+- `scripts/little_loops/sft_formatter.py` — `to_chatml()`, `to_alpaca()`, `to_sharegpt()` functions
+- `extract_conversation_turns()` + `_extract_turn_pairs()` in `user_messages.py` — extracts both sides of conversations with sliding context windows
+- CLI wiring in `messages.py` with `add_mutually_exclusive_group()`, SFT output branch, `_SFTItem` wrapper
+- 11 new tests across `TestSFTFormatter` and `TestMainMessagesAdditionalCoverage`
+- Docs updated in `CLI.md`, `API.md`, and `loops/lib/cli.yaml`
+
 ## Status
 
-`open`
+`done`

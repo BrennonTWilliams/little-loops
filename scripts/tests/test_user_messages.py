@@ -1530,3 +1530,153 @@ class TestBuildExamples:
         assert d["session_id"] == "sess-1"
         assert d["context_window"] == 3
         assert "timestamp" in d
+
+
+class TestSFTFormatter:
+    """Tests for the sft_formatter module functions."""
+
+    def test_to_chatml_basic(self) -> None:
+        """to_chatml produces ChatML messages list."""
+        from little_loops.sft_formatter import to_chatml
+
+        turns = [("user", "Hello"), ("assistant", "Hi there")]
+        result = to_chatml(turns)
+        assert result == {
+            "messages": [
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi there"},
+            ]
+        }
+
+    def test_to_chatml_empty(self) -> None:
+        """to_chatml handles empty turns list."""
+        from little_loops.sft_formatter import to_chatml
+
+        assert to_chatml([]) == {"messages": []}
+
+    def test_to_alpaca_basic(self) -> None:
+        """to_alpaca maps first user turn to instruction and last assistant turn to output."""
+        from little_loops.sft_formatter import to_alpaca
+
+        turns = [("user", "What is 2+2?"), ("assistant", "It is 4.")]
+        result = to_alpaca(turns)
+        assert result == {"instruction": "What is 2+2?", "input": "", "output": "It is 4."}
+
+    def test_to_alpaca_multi_user_turns(self) -> None:
+        """to_alpaca concatenates extra user turns into input field."""
+        from little_loops.sft_formatter import to_alpaca
+
+        turns = [
+            ("user", "First question"),
+            ("assistant", "First answer"),
+            ("user", "Follow up"),
+            ("assistant", "Follow up answer"),
+        ]
+        result = to_alpaca(turns)
+        assert result["instruction"] == "First question"
+        assert result["input"] == "Follow up"
+        assert result["output"] == "Follow up answer"
+
+    def test_to_alpaca_empty(self) -> None:
+        """to_alpaca handles empty turns list."""
+        from little_loops.sft_formatter import to_alpaca
+
+        result = to_alpaca([])
+        assert result == {"instruction": "", "input": "", "output": ""}
+
+    def test_to_sharegpt_basic(self) -> None:
+        """to_sharegpt maps user→human and assistant→gpt."""
+        from little_loops.sft_formatter import to_sharegpt
+
+        turns = [("user", "Hello"), ("assistant", "Hi")]
+        result = to_sharegpt(turns)
+        assert result == {
+            "conversations": [
+                {"from": "human", "value": "Hello"},
+                {"from": "gpt", "value": "Hi"},
+            ]
+        }
+
+    def test_to_sharegpt_preserves_unknown_roles(self) -> None:
+        """to_sharegpt passes through unknown roles unchanged."""
+        from little_loops.sft_formatter import to_sharegpt
+
+        turns = [("system", "You are helpful")]
+        result = to_sharegpt(turns)
+        assert result["conversations"][0]["from"] == "system"
+
+    def test_extract_conversation_turns_basic(self) -> None:
+        """extract_conversation_turns returns windows of (role, content) tuples."""
+        import json
+        import tempfile
+        from datetime import datetime
+        from pathlib import Path
+
+        from little_loops.user_messages import extract_conversation_turns
+
+        records = [
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "sessionId": "sess-1",
+                "uuid": "u1",
+                "message": {"content": "Hello assistant"},
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [{"type": "text", "text": "Hello user!"}]
+                },
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = Path(tmpdir)
+            session_file = project_dir / "session.jsonl"
+            session_file.write_text("\n".join(json.dumps(r) for r in records))
+
+            windows = extract_conversation_turns(project_dir, context_window=3)
+
+        assert len(windows) == 1
+        window = windows[0]
+        assert ("user", "Hello assistant") in window
+        assert ("assistant", "Hello user!") in window
+
+    def test_extract_conversation_turns_windowing(self) -> None:
+        """extract_conversation_turns produces sliding windows of context_window pairs."""
+        import json
+        import tempfile
+        from pathlib import Path
+
+        from little_loops.user_messages import extract_conversation_turns
+
+        records = []
+        for i in range(5):
+            records.append(
+                {
+                    "type": "user",
+                    "timestamp": f"2026-01-01T00:0{i}:00Z",
+                    "sessionId": "sess-1",
+                    "uuid": f"u{i}",
+                    "message": {"content": f"User turn {i}"},
+                }
+            )
+            records.append(
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "text", "text": f"Assistant turn {i}"}]},
+                }
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = Path(tmpdir)
+            (project_dir / "session.jsonl").write_text(
+                "\n".join(json.dumps(r) for r in records)
+            )
+            windows = extract_conversation_turns(project_dir, context_window=3)
+
+        # 5 pairs, window=3 → 3 windows (sliding: [0,1,2], [1,2,3], [2,3,4])
+        assert len(windows) == 3
+        # Each window has 3 pairs × 2 turns = 6 tuples
+        for window in windows:
+            assert len(window) == 6

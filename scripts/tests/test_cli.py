@@ -1943,6 +1943,81 @@ class TestMainMessagesAdditionalCoverage:
         assert "input" in record
         assert "output" in record
 
+    def test_sft_format_and_examples_format_mutually_exclusive(self) -> None:
+        """--sft-format and --examples-format cannot be used together."""
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
+            mock_get_folder.return_value = Path("/mock/project")
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-messages",
+                    "--skill",
+                    "capture-issue",
+                    "--examples-format",
+                    "--sft-format",
+                    "chatml",
+                    "--stdout",
+                ],
+            ):
+                from little_loops.cli import main_messages
+
+                with pytest.raises(SystemExit) as exc_info:
+                    main_messages()
+                assert exc_info.value.code != 0
+
+    def test_sft_format_chatml_produces_records(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--sft-format chatml emits ChatML JSON-lines records via --stdout."""
+        import json
+        import tempfile
+
+        records = [
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "sessionId": "sess-1",
+                "uuid": "u1",
+                "message": {"content": "Hello assistant"},
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [{"type": "text", "text": "Hello user!"}]
+                },
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = Path(tmpdir)
+            (project_dir / "session.jsonl").write_text(
+                "\n".join(json.dumps(r) for r in records)
+            )
+
+            with patch(
+                "little_loops.user_messages.get_project_folder"
+            ) as mock_folder:
+                mock_folder.return_value = project_dir
+                with patch.object(
+                    sys,
+                    "argv",
+                    ["ll-messages", "--sft-format", "chatml", "--stdout"],
+                ):
+                    from little_loops.cli import main_messages
+
+                    result = main_messages()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        lines = [line for line in captured.out.strip().split("\n") if line]
+        assert len(lines) >= 1
+        record = json.loads(lines[0])
+        assert "messages" in record
+        roles = [m["role"] for m in record["messages"]]
+        assert "user" in roles
+        assert "assistant" in roles
+
 
 class TestMainLoopAdditionalCoverage:
     """Additional coverage tests for main_loop entry point."""

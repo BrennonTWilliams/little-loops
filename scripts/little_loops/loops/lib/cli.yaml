@@ -80,7 +80,7 @@ fragments:
     description: |
       Extract user messages from Claude Code session logs to stdout.
       State must supply: on_yes, on_no.
-      Optional action override: add --skill, --examples-format, --context-window, --since.
+      Optional action override: add --skill, --examples-format, --sft-format {chatml,alpaca,sharegpt}, --context-window, --since.
     action_type: shell
     action: "ll-messages --stdout"
     evaluate:
