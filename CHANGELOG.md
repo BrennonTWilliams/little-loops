@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
-## [1.114.0] - 2026-06-01
+## [1.114.0] - 2026-06-02
 
 ### Added
 
@@ -30,6 +30,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ll-doctor` + `/ll:configure` expose `auto_commit` flag** — `ll-doctor` prints an Issues section showing `auto_commit` enabled/disabled status; `/ll:configure` issues display and hooks table updated to reflect both new config fields. (ENH-1845)
 - **`analytics.capture` config sub-object** — New `analytics.capture` block in `ll-config.json` with per-category gates: `skills` (list of skill names or `["*"]`), `cli_commands` (list or `["*"]`), `corrections` (bool), `file_events` (bool). All default to permissive (capture everything). `feature_enabled_for()` glob-matching helper added. (ENH-1840, ENH-1841)
 - **`skill_events` table — track `/ll:` skill invocations** — `history.db` schema v7 adds a `skill_events` table. The `user_prompt_submit` hook detects `/ll:<name>` patterns and records a skill event at dispatch time. Enables `ll-session recent --kind skill` and FTS search with `kind='skill'`. (ENH-1833)
+- **`generator-evaluator` oracle sub-loop** — New `loops/oracles/generator-evaluator.yaml` drives a generate → evaluate → revise cycle for any skill; converts 5 existing harness loops to thin wrappers. Includes `playwright_screenshot` fragment. (ENH-1775)
+- **`enumerate-and-prove` oracle** — New oracle that enumerates candidates and proves each satisfies a predicate; converts 2 integration loops. (ENH-1776)
+- **`convergence_gate` + `ll_rubric_score` fragments** — Shared fragments for convergence exit predicates and numeric rubric scoring; converts 5 convergence callers. (ENH-1776)
+- **`implement-issue-chain` oracle** — Reusable chained-implementation sub-loop extracted from `auto` and `sprint-refine-and-implement` for standardized chained issue execution.
+- **`research-coverage` oracle** — Coverage-driven research sub-loop extracted from `deep-research` loops as a reusable primitive.
+- **`diff_stall_gate` fragment** — Extracted evaluator config fragment for diff stall detection; shared across callers.
+- **`queue_pop` + `queue_track` fragments** — `lib/common.yaml` fragments for queue-based issue processing; `dequeue_next` and `skip` states in auto/sprint loops converted to use these. (ENH-1875)
+- **`/ll:scope-epic` skill** — Decomposes a theme or product area into a structured EPIC with scaffolded child issues.
+- **`/ll:review-epic` skill** — Audits EPIC health: assesses completeness, dependency ordering, and implementation risk.
+- **`ll-workflows propose` subcommand** — Step 3 of the workflow analysis pipeline; proposes automation loop designs from patterns identified in prior steps.
+- **`ll-issues epic-progress` subcommand** — Aggregates per-type completion statistics across an EPIC's child issues with progress percentage.
+- **`ll-deps tree --epic` subcommand** — Renders the EPIC child hierarchy as an ASCII dependency tree with edge labels. (ENH-1858)
+- **`check_contract` FSM evaluator** — Detects boundary-mismatch violations where an action output crosses a defined scope contract. (FEAT-1791)
+- **`--cascade` flag for `ll-issues set-status`** — Propagates EPIC closure to all incomplete child issues when setting an EPIC to `done`.
+- **Per-state token/cost telemetry in `ll-loop run`** — Each state transition records token usage and estimated cost; summarized in the run report.
+- **Session-end sweep hook for stale cross-issue refs** — Post-session hook sweeps `relates_to:` / `parent:` fields for references to closed or cancelled issues.
+
+### Fixed
+
+- **Log path resolution via `cwd` field** — `ll-logs` now uses the `cwd` field from JSONL records to correctly resolve project-relative paths. (aed16b18)
+- **FSM stall detector false positives on bookkeeping writes** — `exclude_paths` added to the diff-stall evaluator config so issue-file housekeeping writes no longer mask real stalls. (BUG-1767)
+- **Session log stores filename not absolute path** — Session ID records now store the JSONL filename instead of an absolute path, enabling cross-machine portability. (9e06b8cf)
+
+### Changed
+
+- **EPIC critical-path awareness in `review-sprint`** — Sprint review now surfaces EPIC-blocking issues and warns when critical-path items are absent from the sprint. (ENH-1859)
+- **Built-in design token profiles in `/ll:configure`** — Configure scaffolds the selected token profile into `.ll/design-tokens.yaml` on first selection.
 
 ## [1.113.0] - 2026-05-31
 
@@ -421,7 +448,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Normalize timezone-aware datetimes to naive UTC when parsing `captured_at` (b2271de4)
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
-[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.113.0...HEAD
+[Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.114.0...HEAD
+[1.114.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.113.0...v1.114.0
 [1.113.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.112.0...v1.113.0
 [1.112.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.111.0...v1.112.0
 [1.111.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.110.0...v1.111.0
