@@ -6,7 +6,8 @@ description: |
   specialized for academic literature search: constrains web search to site:arxiv.org,
   scores sources on relevance + recency (derived from arxiv submission date) instead
   of relevance + credibility, and emits a citation-ready report.md with an
-  arxiv-ID-keyed sources table and a BibTeX section. Run as:
+  arxiv-ID-keyed sources table and a BibTeX section. Delegates the inner research FSM
+  chain to the oracles/research-coverage oracle with academic_mode=true (ENH-1876). Run as:
   ll-loop run deep-research-arxiv "your research topic"
 initial: init
 max_iterations: 30
@@ -32,312 +33,24 @@ states:
       : > "$DIR/query-log.md"
       echo "$(pwd)/$DIR"
     capture: run_dir
-    next: generate_queries
+    next: run_research
 
-  generate_queries:
-    # Query generation — analyzes the topic and writes the initial set of academic
-    # search queries to query-log.md. Frames the topic into 3–5 distinct facets that
-    # together provide comprehensive coverage of the research question. Queries are
-    # phrased in academic terminology (method names, problem formulations).
-    action_type: prompt
-    action: |
-      Your task is to generate an initial set of arxiv-only search queries for this
-      research topic:
-      "${context.topic}"
-
-      Analyze the topic and identify 3–5 distinct facets that together would provide
-      comprehensive coverage of the research question. For each facet, write a targeted
-      search query phrased in academic terminology — use established method names,
-      problem formulations, and technical vocabulary (e.g. "speculative decoding
-      acceptance rate" not "how to make LLM faster"). Each query will be constrained
-      to arxiv in the next state, so frame queries the way you would scan a
-      conference proceedings index.
-
-      Append the queries to ${captured.run_dir.output}/query-log.md using exactly this format:
-
-      ```
-      ## Iteration 1 — Initial Queries
-
-      **Research Topic**: ${context.topic}
-
-      **Facets and Queries**:
-      1. [Facet name]: [search query]
-      2. [Facet name]: [search query]
-      3. [Facet name]: [search query]
-      ```
-
-      Also initialize ${captured.run_dir.output}/coverage.md with the facet list:
-
-      ```
-      # Coverage Tracker
-
-      **Topic**: ${context.topic}
-      **Target Coverage**: ${context.coverage_threshold_pct}%
-
-      ## Facets
-      1. [Facet name] — score: 0/5
-      2. [Facet name] — score: 0/5
-      3. [Facet name] — score: 0/5
-      ```
-    next: search_web
-
-  search_web:
-    # Arxiv-only web research — uses WebSearch and WebFetch to surface arxiv
-    # preprints for the queries from the latest iteration block. Every WebSearch
-    # query is constrained with site:arxiv.org. Abstract pages are fetched for
-    # metadata (arxiv ID, authors, submission date, optional Journal-ref).
-    action_type: prompt
-    action: |
-      Read ${captured.run_dir.output}/query-log.md and find the most recent iteration block
-      (the last "## Iteration N" section).
-
-      Use the WebSearch and WebFetch tools to research each query in that block,
-      constraining ALL queries to arxiv:
-
-      1. Issue 2–3 WebSearch calls per query, appending `site:arxiv.org` to every
-         query (prefer results whose URLs are `arxiv.org/abs/...` over PDF or HTML
-         listings)
-      2. For each promising hit, WebFetch the abstract page (`arxiv.org/abs/<id>`)
-         to extract: arxiv ID (YYMM.NNNNN or older 4-digit format), title, authors,
-         submission date (the "[Submitted on YYYY-MM-DD]" line), and optional
-         Journal-ref / DOI when present
-      3. Capture the abstract text and key claims from each fetched paper
-
-      Append your findings to ${captured.run_dir.output}/knowledge-base.md using this format:
-
-      ```
-      ## Iteration N Findings
-
-      ### [Facet name]
-      [Key findings, claims, and method/result summaries from the abstract]
-      [Source: https://arxiv.org/abs/YYMM.NNNNN]
-
-      [Additional findings as needed]
-      [Source: https://arxiv.org/abs/YYMM.NNNNN]
-      ```
-
-      Include at least one [Source: <arxiv-url>] marker per facet covered. URLs in
-      this file should be predominantly `arxiv.org/abs/...` — if a query surfaces
-      no arxiv hits, note the gap rather than substituting non-arxiv sources.
-    next: evaluate_sources
-
-  evaluate_sources:
-    # Source evaluation — reviews newly added findings in knowledge-base.md, scores
-    # each source for relevance and recency (derived from arxiv submission date),
-    # deduplicates citations by arxiv ID, and prunes low-quality or redundant entries
-    # before coverage scoring. Recency replaces the parent loop's credibility axis,
-    # which flattens on arxiv-only corpora where every source is a peer-reviewable
-    # preprint.
-    action_type: prompt
-    action: |
-      Read ${captured.run_dir.output}/knowledge-base.md and review the most recent
-      iteration's findings.
-
-      For each source cited (each [Source: <arxiv-url>] entry):
-      1. Score relevance (1–5): does this paper directly address the research topic?
-      2. Score recency (1–5) based on the arxiv submission date relative to today:
-         - 5: submitted within the last 6 months
-         - 4: submitted within the last 1 year (and >6 months)
-         - 3: submitted within the last 2 years (and >1 year)
-         - 2: submitted within the last 5 years (and >2 years)
-         - 1: submitted more than 5 years ago
-      3. Extract the arxiv ID from the URL (the YYMM.NNNNN or older identifier
-         after `arxiv.org/abs/`)
-      4. Flag any duplicate arxiv IDs (same paper cited multiple times across
-         iterations — arxiv ID, not URL, is the dedup key since `/abs/`, `/pdf/`,
-         and version-suffixed URLs all point to the same paper)
-
-      Update the most recent iteration block in ${captured.run_dir.output}/knowledge-base.md:
-      - Append a relevance/recency/arxiv-id annotation after each [Source: <arxiv-url>] line:
-        [Source: <arxiv-url>] (relevance: N/5, recency: N/5, arxiv-id: YYMM.NNNNN)
-      - Remove or mark [DUPLICATE] any citations whose arxiv ID was already present
-        in earlier iterations
-      - Remove or mark [LOW-QUALITY] any entries with relevance < 2 (recency alone
-        does not justify pruning — a foundational older paper may still be highly
-        relevant)
-
-      Do not prune entries from earlier iterations — only annotate the most recent block.
-    next: score_coverage
-
-  score_coverage:
-    # Coverage scoring — reads knowledge-base.md and coverage.md to score how well
-    # the accumulated research addresses each facet of the topic. Updates coverage.md
-    # with new scores and emits a convergence sentinel when coverage is sufficient.
-    # Convergence is embedded here — no separate routing state needed (Option A pattern).
-    action_type: prompt
-    action: |
-      Read both files:
-      - ${captured.run_dir.output}/knowledge-base.md — accumulated research findings
-      - ${captured.run_dir.output}/coverage.md — current facet scores
-
-      Evaluate how thoroughly the knowledge base covers each facet using a 1–5 scale:
-      - 1 (Minimal): topic mentioned but no substantive information
-      - 2 (Basic): surface-level coverage, major gaps remain
-      - 3 (Moderate): good coverage of core aspects, some gaps
-      - 4 (Good): comprehensive coverage with only minor gaps
-      - 5 (Excellent): thorough, authoritative coverage with strong sourcing
-
-      Update ${captured.run_dir.output}/coverage.md — rewrite the ## Facets section with
-      the new scores and add a ## Summary section:
-
-      ```
-      ## Summary
-
-      Iteration: [N]
-      Facet scores: [score1]/5, [score2]/5, [score3]/5, ...
-      Average coverage: [X.X]/5 ([YY]%)
-      Depth target: ${context.depth} rounds minimum
-      ```
-
-      Convergence rules:
-      - Coverage is SUFFICIENT if: average facet score >= 4.0 AND current iteration >= ${context.depth}
-      - Otherwise: more research is needed
-
-      After updating coverage.md:
-      - If coverage is SUFFICIENT, output exactly: COVERAGE_SUFFICIENT
-      - Otherwise output: NEED_MORE
-    evaluate:
-      type: output_contains
-      pattern: "COVERAGE_SUFFICIENT"
-    on_yes: synthesize
-    on_no: plan_next
-    on_error: synthesize
-
-  plan_next:
-    # Next-round planning — reads the coverage gaps identified by score_coverage and
-    # generates targeted follow-up arxiv queries for the next search iteration.
-    # Appends a new iteration block to query-log.md and loops back to search_web.
-    # Follow-up queries continue to use academic terminology.
-    action_type: prompt
-    action: |
-      Read both files:
-      - ${captured.run_dir.output}/coverage.md — current facet scores and gaps
-      - ${captured.run_dir.output}/query-log.md — all queries issued so far
-
-      Identify the facets with the lowest coverage scores. For each under-covered facet
-      (score < 4), generate 2–3 targeted follow-up queries that:
-      1. Address the specific gaps identified in coverage.md
-      2. Do NOT duplicate queries already listed in query-log.md
-      3. Use academic terminology — method names, problem formulations, specific
-         technical results — rather than informal phrasing
-      4. Target different angles: look for ablation studies, follow-on work, surveys,
-         or theoretical analyses that deepen the prior round's surface coverage
-
-      Also identify 1–2 cross-cutting queries that might surface connections between facets.
-
-      Append the new queries to ${captured.run_dir.output}/query-log.md using exactly this format:
-
-      ```
-      ## Iteration [N+1] — Gap-Filling Queries
-
-      **Coverage gaps addressed**:
-      - [Facet name] (score: N/5): [what is missing]
-
-      **Queries**:
-      1. [Facet name]: [follow-up query]
-      2. [Facet name]: [follow-up query]
-      3. Cross-cutting: [query spanning multiple facets]
-      ```
-    next: search_web
-
-  synthesize:
-    # Synthesis — consolidates knowledge-base.md into a structured Markdown research
-    # report. Deduplicates source citations by arxiv ID, organizes findings by facet,
-    # and writes a final report.md with executive summary, key findings, arxiv-ID-keyed
-    # sources table, coverage gaps, conclusion, and a BibTeX section ready to drop
-    # into a LaTeX bibliography.
-    action_type: prompt
-    action: |
-      Read all research artifacts:
-      - ${captured.run_dir.output}/knowledge-base.md — all accumulated findings
-      - ${captured.run_dir.output}/coverage.md — final facet scores
-      - ${captured.run_dir.output}/query-log.md — all queries issued
-
-      Write a structured research report to ${captured.run_dir.output}/report.md.
-      The report uses this structure (shown inside a 4-backtick fence so the
-      inline ```bibtex block inside it is unambiguous):
-
-      ````markdown
-      # Research Report: ${context.topic}
-
-      **Generated by**: deep-research-arxiv loop
-      **Research depth**: [N iterations, M queries issued]
-
-      ## Executive Summary
-
-      [2–3 paragraph synthesis of the most important findings from the arxiv
-      literature. Directly answer the research question based on the evidence
-      gathered. Note where the literature is mature vs. emerging.]
-
-      ## Key Findings
-
-      ### [Facet 1 Name]
-      [Substantive findings with inline citations. Use [1], [2], ... notation referencing
-      the source table below.]
-
-      ### [Facet 2 Name]
-      [Findings with citations...]
-
-      [Continue for each facet covered]
-
-      ## Coverage Gaps
-
-      [List facets or sub-questions that remain under-researched after all iterations.
-      Note what additional arxiv search angles or non-arxiv sources would be needed
-      to address them.]
-
-      ## Sources
-
-      | # | arXiv ID | Title | Authors | Year | Relevance | Recency | Facet |
-      |---|----------|-------|---------|------|-----------|---------|-------|
-      | 1 | YYMM.NNNNN | [paper title] | [first author et al.] | YYYY | N/5 | N/5 | [facet name] |
-      | 2 | YYMM.NNNNN | [paper title] | [first author et al.] | YYYY | N/5 | N/5 | [facet name] |
-
-      [Deduplicate by arxiv ID: each unique paper appears once. Exclude LOW-QUALITY
-      and DUPLICATE entries. Year is derived from arxiv submission date.]
-
-      ## Conclusion
-
-      [1–2 paragraph conclusion synthesizing the overall answer to the research question,
-      noting confidence level based on the breadth and recency of the arxiv coverage.]
-
-      ## BibTeX
-
-      ```bibtex
-      @misc{YYMMNNNNN,
-        title         = {[paper title]},
-        author        = {[Author One and Author Two and ...]},
-        year          = {YYYY},
-        eprint        = {YYMM.NNNNN},
-        archivePrefix = {arXiv},
-        primaryClass  = {[arxiv category, e.g. cs.LG]},
-      }
-
-      [One @misc{...} entry per unique arxiv ID in the Sources table above. Use the
-      arxiv ID with the dot stripped as the citation key (e.g. 2401.10774 → 240110774).
-      Omit primaryClass if the abstract page did not surface a clear category.]
-      ```
-      ````
-
-      After writing report.md, output the absolute path to the report:
-      ${captured.run_dir.output}/report.md
-    next: done
+  run_research:
+    # Delegates the full research FSM chain to the research-coverage oracle with
+    # arxiv-specific parameters: source_filter constrains all queries to site:arxiv.org,
+    # academic_mode enables recency scoring, arxiv ID dedup, and BibTeX output.
+    loop: oracles/research-coverage
+    with:
+      run_dir: "${captured.run_dir.output}"
+      topic: "${context.topic}"
+      source_filter: "site:arxiv.org"
+      academic_mode: true
+    on_success: done
+    on_failure: failed
+    on_error: failed
 
   done:
-    # Terminal — reached when coverage is sufficient or max_iterations is exhausted.
-    # Reports the final output file locations so the user can access the research report
-    # and drop the BibTeX section into their bibliography file.
-    action_type: prompt
-    action: |
-      The deep-research-arxiv loop has completed.
+    terminal: true
 
-      Final output files:
-      - ${captured.run_dir.output}/report.md          — the research report with arxiv-ID-keyed sources and BibTeX section (primary output)
-      - ${captured.run_dir.output}/knowledge-base.md  — accumulated source findings
-      - ${captured.run_dir.output}/coverage.md        — final facet coverage scores
-      - ${captured.run_dir.output}/query-log.md       — all search queries issued
-
-      Read ${captured.run_dir.output}/coverage.md and report the final facet scores
-      and average coverage to the user. Confirm the research report is ready for review
-      and note that the ## BibTeX section can be copied directly into a .bib file.
+  failed:
     terminal: true

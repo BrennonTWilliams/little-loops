@@ -155,6 +155,7 @@ Internal sub-loops invoked via `loop:` delegation from parent loops. Not intende
 | `oracles/oracle-capture-issue` | Capture and classify a single issue from conversation context, write it to `.issues/`, and emit the path; thin wrapper around `/ll:capture-issue` with `context_passthrough: true`. |
 | `oracles/enumerate-and-prove` | Parse a tagged ENUMERATE_JSON line from LLM output, validate and flatten the targets list, then prove each target via ready-to-implement-gate; used by adopt-third-party-api and integrate-sdk to eliminate duplicated parse → flatten → prove state chains. |
 | `oracles/implement-issue-chain` | Drain a recursive-refine passed-issues queue: reads recursive-refine-passed.txt, populates a caller-prefixed impl-queue, pops each issue, gates it through go-no-go, and runs ll-auto --only; used by auto-refine-and-implement and sprint-refine-and-implement to eliminate the mirrored 4-state implementation chain. |
+| `oracles/research-coverage` | Iterative web research synthesis oracle — generate queries → search web → evaluate sources → score coverage until sufficient, then synthesize a report; parameterized for general web research (`source_filter=""`, `academic_mode=false`) and arxiv-only research (`source_filter="site:arxiv.org"`, `academic_mode=true`); used by deep-research and deep-research-arxiv (ENH-1876). |
 
 ---
 

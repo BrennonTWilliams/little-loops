@@ -5337,3 +5337,83 @@ class TestImplementIssueChainOracle:
         """implement_issue must loop back to implement_next to drain the queue."""
         state = data["states"].get("implement_issue", {})
         assert state.get("next") == "implement_next"
+
+
+class TestResearchCoverageOracle:
+    """Structural tests for the research-coverage oracle sub-loop (ENH-1876)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "oracles/research-coverage.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "research-coverage"
+        assert data.get("initial") == "generate_queries"
+        assert isinstance(data.get("states"), dict)
+
+    def test_has_parameters_block(self, data: dict) -> None:
+        params = data.get("parameters", {})
+        assert "run_dir" in params, "parameters block must declare run_dir"
+        assert params["run_dir"].get("required") is True
+        assert "topic" in params, "parameters block must declare topic"
+        assert params["topic"].get("required") is True
+        assert "source_filter" in params, "parameters block must declare source_filter"
+        assert params["source_filter"].get("required") is not True, "source_filter must be optional"
+        assert "academic_mode" in params, "parameters block must declare academic_mode"
+        assert params["academic_mode"].get("required") is not True, "academic_mode must be optional"
+
+    def test_has_on_handoff_spawn(self, data: dict) -> None:
+        assert data.get("on_handoff") == "spawn"
+
+    def test_required_states_exist(self, data: dict) -> None:
+        states = data.get("states", {})
+        for name in (
+            "generate_queries", "search_web", "evaluate_sources",
+            "score_coverage", "plan_next", "synthesize", "done",
+        ):
+            assert name in states, f"required state '{name}' missing"
+
+    def test_coverage_state_uses_sentinel(self, data: dict) -> None:
+        state = data["states"]["score_coverage"]
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "output_contains"
+        assert evaluator.get("pattern") == "COVERAGE_SUFFICIENT"
+        assert state.get("on_yes") == "synthesize"
+        assert state.get("on_no") == "plan_next"
+        assert state.get("on_error") == "synthesize"
+
+    def test_plan_next_loops_back_to_search_web(self, data: dict) -> None:
+        state = data["states"]["plan_next"]
+        assert state.get("next") == "search_web"
+
+    def test_score_coverage_has_on_error(self, data: dict) -> None:
+        state = data["states"]["score_coverage"]
+        assert "on_error" in state, "score_coverage must have on_error for graceful degradation"
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        state = data["states"].get("done", {})
+        assert state.get("terminal") is True, "done.terminal should be True"
+
+    def test_imports_common_yaml(self, data: dict) -> None:
+        imports = data.get("import", [])
+        assert "lib/common.yaml" in imports, "must import lib/common.yaml"
+
+    def test_synthesize_supports_bibtex_for_academic_mode(self, data: dict) -> None:
+        action = data["states"]["synthesize"].get("action", "")
+        assert "## BibTeX" in action, "synthesize must support BibTeX section for academic_mode"
+        assert "@misc" in action, "synthesize BibTeX must use @misc{...} entries"
+
+    def test_evaluate_sources_supports_recency_axis(self, data: dict) -> None:
+        action = data["states"]["evaluate_sources"].get("action", "")
+        assert "recency" in action.lower(), (
+            "evaluate_sources must support recency scoring axis for academic_mode"
+        )
+
+    def test_search_web_uses_source_filter(self, data: dict) -> None:
+        action = data["states"]["search_web"].get("action", "")
+        assert "source_filter" in action, (
+            "search_web must reference source_filter parameter for site constraint"
+        )

@@ -49,16 +49,7 @@ class TestDeepResearchYaml:
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
-        required = {
-            "init",
-            "generate_queries",
-            "search_web",
-            "evaluate_sources",
-            "score_coverage",
-            "plan_next",
-            "synthesize",
-            "done",
-        }
+        required = {"init", "run_research", "done", "failed"}
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing required states: {missing}"
@@ -67,7 +58,27 @@ class TestDeepResearchYaml:
         state = data["states"]["init"]
         assert state.get("action_type") == "shell"
         assert state.get("capture") == "run_dir"
-        assert state.get("next") == "generate_queries"
+        assert state.get("next") == "run_research"
+
+    def test_run_research_delegates_to_oracle(self, data: dict) -> None:
+        state = data["states"].get("run_research", {})
+        assert state.get("loop") == "oracles/research-coverage", (
+            f"run_research.loop should be 'oracles/research-coverage', got {state.get('loop')!r}"
+        )
+
+    def test_run_research_with_bindings_present(self, data: dict) -> None:
+        state = data["states"].get("run_research", {})
+        with_ = state.get("with", {})
+        assert "run_dir" in with_, f"run_research.with must contain 'run_dir'"
+        assert "topic" in with_, f"run_research.with must contain 'topic'"
+        assert "source_filter" in with_, f"run_research.with must contain 'source_filter'"
+        assert "academic_mode" in with_, f"run_research.with must contain 'academic_mode'"
+
+    def test_run_research_routes_to_done_on_success(self, data: dict) -> None:
+        state = data["states"].get("run_research", {})
+        assert state.get("on_success") == "done"
+        assert state.get("on_failure") == "failed"
+        assert state.get("on_error") == "failed"
 
     def test_init_action_uses_absolute_path(self, data: dict) -> None:
         action = data["states"]["init"].get("action", "")
@@ -77,19 +88,6 @@ class TestDeepResearchYaml:
         action = data["states"]["init"].get("action", "")
         for artifact in ("report.md", "knowledge-base.md", "coverage.md", "query-log.md"):
             assert artifact in action, f"init.action must touch {artifact}"
-
-    def test_coverage_state_uses_sentinel(self, data: dict) -> None:
-        state = data["states"]["score_coverage"]
-        evaluator = state.get("evaluate", {})
-        assert evaluator.get("type") == "output_contains"
-        assert evaluator.get("pattern") == "COVERAGE_SUFFICIENT"
-        assert state.get("on_yes") == "synthesize"
-        assert state.get("on_no") == "plan_next"
-        assert state.get("on_error") == "synthesize"
-
-    def test_plan_next_loops_back_to_search_web(self, data: dict) -> None:
-        state = data["states"]["plan_next"]
-        assert state.get("next") == "search_web"
 
     def test_terminal_done_state(self, data: dict) -> None:
         assert data["states"]["done"].get("terminal") is True
@@ -106,10 +104,6 @@ class TestDeepResearchYaml:
 
     def test_max_iterations_is_30(self, data: dict) -> None:
         assert data.get("max_iterations") == 30
-
-    def test_score_coverage_has_on_error(self, data: dict) -> None:
-        state = data["states"]["score_coverage"]
-        assert "on_error" in state, "score_coverage must have on_error for graceful degradation"
 
 
 class TestDeepResearchShellStates:
@@ -147,25 +141,6 @@ echo "$(pwd)/$DIR"
         assert result.returncode == 0
         path = result.stdout.strip()
         assert path.startswith("/"), f"init must output absolute path, got: {path!r}"
-
-
-class TestDeepResearchEvaluators:
-    """Unit-test the convergence evaluator without subprocess."""
-
-    def test_coverage_sentinel_matches(self) -> None:
-        """COVERAGE_SUFFICIENT → yes; NEED_MORE → no."""
-        data = yaml.safe_load(LOOP_FILE.read_text())
-        pattern = data["states"]["score_coverage"]["evaluate"]["pattern"]
-
-        assert evaluate_output_contains("COVERAGE_SUFFICIENT\n", pattern).verdict == "yes"
-        assert evaluate_output_contains("NEED_MORE\n", pattern).verdict == "no"
-        assert (
-            evaluate_output_contains(
-                "Average coverage: 4.2/5\nCOVERAGE_SUFFICIENT", pattern
-            ).verdict
-            == "yes"
-        )
-        assert evaluate_output_contains("", pattern).verdict == "no"
 
 
 class TestDeepResearchResolution:

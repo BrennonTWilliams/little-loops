@@ -49,16 +49,7 @@ class TestDeepResearchArxivYaml:
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
-        required = {
-            "init",
-            "generate_queries",
-            "search_web",
-            "evaluate_sources",
-            "score_coverage",
-            "plan_next",
-            "synthesize",
-            "done",
-        }
+        required = {"init", "run_research", "done", "failed"}
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing required states: {missing}"
@@ -67,7 +58,7 @@ class TestDeepResearchArxivYaml:
         state = data["states"]["init"]
         assert state.get("action_type") == "shell"
         assert state.get("capture") == "run_dir"
-        assert state.get("next") == "generate_queries"
+        assert state.get("next") == "run_research"
 
     def test_init_action_uses_absolute_path(self, data: dict) -> None:
         action = data["states"]["init"].get("action", "")
@@ -77,19 +68,6 @@ class TestDeepResearchArxivYaml:
         action = data["states"]["init"].get("action", "")
         for artifact in ("report.md", "knowledge-base.md", "coverage.md", "query-log.md"):
             assert artifact in action, f"init.action must touch {artifact}"
-
-    def test_coverage_state_uses_sentinel(self, data: dict) -> None:
-        state = data["states"]["score_coverage"]
-        evaluator = state.get("evaluate", {})
-        assert evaluator.get("type") == "output_contains"
-        assert evaluator.get("pattern") == "COVERAGE_SUFFICIENT"
-        assert state.get("on_yes") == "synthesize"
-        assert state.get("on_no") == "plan_next"
-        assert state.get("on_error") == "synthesize"
-
-    def test_plan_next_loops_back_to_search_web(self, data: dict) -> None:
-        state = data["states"]["plan_next"]
-        assert state.get("next") == "search_web"
 
     def test_terminal_done_state(self, data: dict) -> None:
         assert data["states"]["done"].get("terminal") is True
@@ -113,52 +91,41 @@ class TestDeepResearchArxivYaml:
     def test_category_is_research(self, data: dict) -> None:
         assert data.get("category") == "research"
 
-    def test_score_coverage_has_on_error(self, data: dict) -> None:
-        state = data["states"]["score_coverage"]
-        assert "on_error" in state, "score_coverage must have on_error for graceful degradation"
-
-    def test_search_web_constrains_to_arxiv(self, data: dict) -> None:
-        """search_web prompt must instruct the LLM to constrain queries with site:arxiv.org."""
-        action = data["states"]["search_web"].get("action", "")
-        assert "site:arxiv.org" in action, (
-            "search_web must constrain queries to site:arxiv.org for arxiv-only research"
+    def test_run_research_source_filter_is_arxiv(self, data: dict) -> None:
+        """run_research.with must pass source_filter=site:arxiv.org to the oracle."""
+        state = data["states"].get("run_research", {})
+        with_ = state.get("with", {})
+        assert with_.get("source_filter") == "site:arxiv.org", (
+            f"run_research.with.source_filter must be 'site:arxiv.org', got {with_.get('source_filter')!r}"
         )
 
-    def test_evaluate_sources_uses_recency_not_credibility(self, data: dict) -> None:
-        """evaluate_sources must score on recency (not credibility) per FEAT-1673."""
-        action = data["states"]["evaluate_sources"].get("action", "")
-        assert "recency" in action.lower(), (
-            "evaluate_sources must score sources on recency for arxiv preprints"
-        )
-        # Credibility flattens on arxiv (everything is academic) — it must be dropped.
-        # Use a word-boundary-style check to avoid false positives if "credibility"
-        # appears as part of a different phrase. The original parent loop uses the
-        # exact tokens 'credibility (1–5)' and 'credibility: N/5'.
-        assert "credibility:" not in action.lower(), (
-            "evaluate_sources must not annotate with credibility: — use recency: instead"
-        )
-        assert "credibility (1" not in action.lower(), (
-            "evaluate_sources must not score credibility (1-5) — use recency (1-5) instead"
+    def test_run_research_academic_mode_is_true(self, data: dict) -> None:
+        """run_research.with must pass academic_mode=true to enable recency scoring and BibTeX."""
+        state = data["states"].get("run_research", {})
+        with_ = state.get("with", {})
+        assert with_.get("academic_mode") is True, (
+            f"run_research.with.academic_mode must be True, got {with_.get('academic_mode')!r}"
         )
 
-    def test_evaluate_sources_emits_arxiv_id_annotation(self, data: dict) -> None:
-        """evaluate_sources annotation format must include arxiv-id for dedup."""
-        action = data["states"]["evaluate_sources"].get("action", "")
-        assert "arxiv-id" in action.lower(), (
-            "evaluate_sources annotation must include arxiv-id field"
+    def test_run_research_delegates_to_oracle(self, data: dict) -> None:
+        state = data["states"].get("run_research", {})
+        assert state.get("loop") == "oracles/research-coverage", (
+            f"run_research.loop should be 'oracles/research-coverage', got {state.get('loop')!r}"
         )
 
-    def test_synthesize_sources_table_has_arxiv_columns(self, data: dict) -> None:
-        """synthesize sources table must use arXiv ID columns, not the generic URL table."""
-        action = data["states"]["synthesize"].get("action", "")
-        for column in ("arXiv ID", "Title", "Authors", "Year", "Relevance", "Recency", "Facet"):
-            assert column in action, f"synthesize sources table missing column: {column}"
+    def test_run_research_with_bindings_present(self, data: dict) -> None:
+        state = data["states"].get("run_research", {})
+        with_ = state.get("with", {})
+        assert "run_dir" in with_
+        assert "topic" in with_
+        assert "source_filter" in with_
+        assert "academic_mode" in with_
 
-    def test_synthesize_emits_bibtex_section(self, data: dict) -> None:
-        """synthesize must instruct the LLM to emit a ## BibTeX section with @misc{...} entries."""
-        action = data["states"]["synthesize"].get("action", "")
-        assert "## BibTeX" in action, "synthesize must emit a ## BibTeX section"
-        assert "@misc" in action, "synthesize BibTeX section must use @misc{...} entries"
+    def test_run_research_routes_to_done_on_success(self, data: dict) -> None:
+        state = data["states"].get("run_research", {})
+        assert state.get("on_success") == "done"
+        assert state.get("on_failure") == "failed"
+        assert state.get("on_error") == "failed"
 
 
 class TestDeepResearchArxivShellStates:
@@ -196,25 +163,6 @@ echo "$(pwd)/$DIR"
         assert result.returncode == 0
         path = result.stdout.strip()
         assert path.startswith("/"), f"init must output absolute path, got: {path!r}"
-
-
-class TestDeepResearchArxivEvaluators:
-    """Unit-test the convergence evaluator without subprocess."""
-
-    def test_coverage_sentinel_matches(self) -> None:
-        """COVERAGE_SUFFICIENT → yes; NEED_MORE → no."""
-        data = yaml.safe_load(LOOP_FILE.read_text())
-        pattern = data["states"]["score_coverage"]["evaluate"]["pattern"]
-
-        assert evaluate_output_contains("COVERAGE_SUFFICIENT\n", pattern).verdict == "yes"
-        assert evaluate_output_contains("NEED_MORE\n", pattern).verdict == "no"
-        assert (
-            evaluate_output_contains(
-                "Average coverage: 4.2/5\nCOVERAGE_SUFFICIENT", pattern
-            ).verdict
-            == "yes"
-        )
-        assert evaluate_output_contains("", pattern).verdict == "no"
 
 
 class TestDeepResearchArxivResolution:

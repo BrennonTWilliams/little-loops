@@ -1,0 +1,414 @@
+name: research-coverage
+description: |
+  Oracle sub-loop for iterative web research synthesis. Accepts a topic, run_dir for
+  artifact storage, and mode parameters; runs generate_queries → search_web →
+  evaluate_sources → score_coverage until coverage is sufficient, then synthesizes a
+  structured Markdown report. Parameterized for both general web research and
+  arxiv-only academic research via source_filter and academic_mode.
+  Used by deep-research and deep-research-arxiv (ENH-1876).
+
+initial: generate_queries
+on_handoff: spawn
+timeout: 3600
+max_iterations: 30
+
+parameters:
+  run_dir:
+    type: string
+    required: true
+    description: "Absolute path to the per-run artifact directory created by the caller's init state"
+  topic:
+    type: string
+    required: true
+    description: "Research topic or question (passed from caller's input_key binding)"
+  source_filter:
+    type: string
+    required: false
+    description: "Site constraint appended to every search query (e.g. 'site:arxiv.org'); empty string = no constraint"
+  academic_mode:
+    type: boolean
+    required: false
+    description: "Gates academic-specific behaviors: recency scoring axis, arxiv ID dedup, BibTeX section in synthesize, academic query terminology"
+
+import:
+  - lib/common.yaml
+
+context:
+  source_filter: ""
+  academic_mode: false
+  depth: 3
+  coverage_threshold_pct: 85
+
+states:
+
+  generate_queries:
+    # Query generation — analyzes the topic and writes the initial set of search
+    # queries to query-log.md. Mode controlled by academic_mode parameter.
+    action_type: prompt
+    action: |
+      Your task is to generate an initial set of search queries for this research topic:
+      "${context.topic}"
+
+      Analyze the topic and identify 3–5 distinct facets that together would provide
+      comprehensive coverage of the research question. For each facet, write a targeted
+      search query designed to surface high-quality sources.
+
+      Query phrasing (academic_mode = ${context.academic_mode}):
+      - If academic_mode is true: phrase each query in academic terminology — established
+        method names, problem formulations, and technical vocabulary. Frame queries as you
+        would scan a conference proceedings index (e.g. "speculative decoding acceptance
+        rate" not "how to make LLM faster"). Queries will be constrained to arxiv.
+      - If academic_mode is false: use clear, broadly accessible phrasing designed to
+        surface high-quality sources across academic papers, documentation, and expert
+        blog posts.
+
+      Append the queries to ${context.run_dir}/query-log.md using exactly this format:
+
+      ```
+      ## Iteration 1 — Initial Queries
+
+      **Research Topic**: ${context.topic}
+
+      **Facets and Queries**:
+      1. [Facet name]: [search query]
+      2. [Facet name]: [search query]
+      3. [Facet name]: [search query]
+      ```
+
+      Also initialize ${context.run_dir}/coverage.md with the facet list:
+
+      ```
+      # Coverage Tracker
+
+      **Topic**: ${context.topic}
+      **Target Coverage**: ${context.coverage_threshold_pct}%
+
+      ## Facets
+      1. [Facet name] — score: 0/5
+      2. [Facet name] — score: 0/5
+      3. [Facet name] — score: 0/5
+      ```
+    next: search_web
+
+  search_web:
+    # Web research — uses WebSearch and WebFetch to gather information on the queries
+    # from the latest iteration block. source_filter constrains search engine queries;
+    # academic_mode gates arxiv ID extraction and abstract fetching behaviour.
+    action_type: prompt
+    action: |
+      Read ${context.run_dir}/query-log.md and find the most recent iteration block
+      (the last "## Iteration N" section).
+
+      Use the WebSearch and WebFetch tools to research each query in that block.
+
+      Search constraints (source_filter = "${context.source_filter}"):
+      - If source_filter is non-empty, append "${context.source_filter}" to EVERY search
+        query (e.g. "my query ${context.source_filter}")
+      - Issue 2–3 WebSearch calls per query
+
+      Fetching strategy (academic_mode = ${context.academic_mode}):
+      - If academic_mode is true (arxiv mode):
+        * Prefer results at arxiv.org/abs/... over PDF or HTML listings
+        * For each promising hit, WebFetch the abstract page (arxiv.org/abs/<id>) to
+          extract: arxiv ID (YYMM.NNNNN or older 4-digit format), title, authors,
+          submission date ("[Submitted on YYYY-MM-DD]" line), and optional Journal-ref/DOI
+        * Capture the abstract text and key claims from each fetched paper
+        * If a query surfaces no arxiv hits, note the gap rather than substituting
+          non-arxiv sources
+      - If academic_mode is false (general mode):
+        * Follow the most relevant results with WebFetch to extract detailed content
+        * Focus on authoritative sources: academic papers, official documentation,
+          expert blog posts, and primary sources
+
+      Append your findings to ${context.run_dir}/knowledge-base.md using this format:
+
+      ```
+      ## Iteration N Findings
+
+      ### [Facet name]
+      [Key findings, claims, and relevant details]
+      [Source: <url>]
+
+      [Additional findings as needed]
+      [Source: <url>]
+      ```
+
+      Include at least one [Source: <url>] marker per facet covered.
+      In arxiv mode (academic_mode = true): URLs should be arxiv.org/abs/... format.
+    next: evaluate_sources
+
+  evaluate_sources:
+    # Source evaluation — reviews newly added findings, scores each source, deduplicates
+    # citations, and prunes low-quality entries. Scoring axis is recency (academic_mode
+    # true) or credibility (academic_mode false); dedup key is arxiv ID vs URL.
+    action_type: prompt
+    action: |
+      Read ${context.run_dir}/knowledge-base.md and review the most recent
+      iteration's findings.
+
+      Scoring mode (academic_mode = ${context.academic_mode}):
+
+      If academic_mode is true (arxiv mode):
+        For each source cited (each [Source: <arxiv-url>] entry):
+        1. Score relevance (1–5): does this paper directly address the research topic?
+        2. Score recency (1–5) based on the arxiv submission date relative to today:
+           - 5: submitted within the last 6 months
+           - 4: submitted within the last 1 year (and >6 months)
+           - 3: submitted within the last 2 years (and >1 year)
+           - 2: submitted within the last 5 years (and >2 years)
+           - 1: submitted more than 5 years ago
+        3. Extract the arxiv ID from the URL (the YYMM.NNNNN or older identifier
+           after arxiv.org/abs/)
+        4. Flag any duplicate arxiv IDs (same paper cited multiple times across
+           iterations — arxiv ID, not URL, is the dedup key since /abs/, /pdf/,
+           and version-suffixed URLs all point to the same paper)
+
+        Update the most recent iteration block in ${context.run_dir}/knowledge-base.md:
+        - Append annotation after each [Source: <arxiv-url>] line:
+          [Source: <arxiv-url>] (relevance: N/5, recency: N/5, arxiv-id: YYMM.NNNNN)
+        - Remove or mark [DUPLICATE] any citations whose arxiv ID was already present
+          in earlier iterations
+        - Remove or mark [LOW-QUALITY] any entries with relevance < 2 (recency alone
+          does not justify pruning — a foundational older paper may still be relevant)
+
+      If academic_mode is false (general mode):
+        For each source cited (each [Source: <url>] entry):
+        1. Score relevance (1–5): does this source directly address the research topic?
+        2. Score credibility (1–5): is this an authoritative or peer-reviewed source?
+        3. Flag any duplicate URLs (same URL cited multiple times across iterations)
+
+        Update the most recent iteration block in ${context.run_dir}/knowledge-base.md:
+        - Append annotation after each [Source: <url>] line:
+          [Source: <url>] (relevance: N/5, credibility: N/5)
+        - Remove or mark [DUPLICATE] any citations already present in earlier iterations
+        - Remove or mark [LOW-QUALITY] any entries with relevance < 2 AND credibility < 2
+
+      Do not prune entries from earlier iterations — only annotate the most recent block.
+    next: score_coverage
+
+  score_coverage:
+    # Coverage scoring — reads knowledge-base.md and coverage.md to score how well
+    # the accumulated research addresses each facet. Emits COVERAGE_SUFFICIENT when
+    # convergence criteria are met. Identical logic for both modes.
+    action_type: prompt
+    action: |
+      Read both files:
+      - ${context.run_dir}/knowledge-base.md — accumulated research findings
+      - ${context.run_dir}/coverage.md — current facet scores
+
+      Evaluate how thoroughly the knowledge base covers each facet using a 1–5 scale:
+      - 1 (Minimal): topic mentioned but no substantive information
+      - 2 (Basic): surface-level coverage, major gaps remain
+      - 3 (Moderate): good coverage of core aspects, some gaps
+      - 4 (Good): comprehensive coverage with only minor gaps
+      - 5 (Excellent): thorough, authoritative coverage with strong sourcing
+
+      Update ${context.run_dir}/coverage.md — rewrite the ## Facets section with
+      the new scores and add a ## Summary section:
+
+      ```
+      ## Summary
+
+      Iteration: [N]
+      Facet scores: [score1]/5, [score2]/5, [score3]/5, ...
+      Average coverage: [X.X]/5 ([YY]%)
+      Depth target: ${context.depth} rounds minimum
+      ```
+
+      Convergence rules:
+      - Coverage is SUFFICIENT if: average facet score >= 4.0 AND current iteration >= ${context.depth}
+      - Otherwise: more research is needed
+
+      After updating coverage.md:
+      - If coverage is SUFFICIENT, output exactly: COVERAGE_SUFFICIENT
+      - Otherwise output: NEED_MORE
+    evaluate:
+      type: output_contains
+      pattern: "COVERAGE_SUFFICIENT"
+    on_yes: synthesize
+    on_no: plan_next
+    on_error: synthesize
+
+  plan_next:
+    # Next-round planning — reads coverage gaps and generates targeted follow-up queries.
+    # academic_mode adds item 4 targeting ablation studies and academic angles.
+    action_type: prompt
+    action: |
+      Read both files:
+      - ${context.run_dir}/coverage.md — current facet scores and gaps
+      - ${context.run_dir}/query-log.md — all queries issued so far
+
+      Identify the facets with the lowest coverage scores. For each under-covered facet
+      (score < 4), generate 2–3 targeted follow-up queries that:
+      1. Address the specific gaps identified in coverage.md
+      2. Do NOT duplicate queries already listed in query-log.md
+      3. Target different angles: look for counter-arguments, edge cases, or deeper
+         technical detail than the initial round
+      4. (Only if academic_mode = ${context.academic_mode} is true): use academic
+         terminology — method names, problem formulations, specific technical results —
+         and target ablation studies, follow-on work, surveys, or theoretical analyses
+
+      Also identify 1–2 cross-cutting queries that might surface connections between facets.
+
+      Append the new queries to ${context.run_dir}/query-log.md using exactly this format:
+
+      ```
+      ## Iteration [N+1] — Gap-Filling Queries
+
+      **Coverage gaps addressed**:
+      - [Facet name] (score: N/5): [what is missing]
+
+      **Queries**:
+      1. [Facet name]: [follow-up query]
+      2. [Facet name]: [follow-up query]
+      3. Cross-cutting: [query spanning multiple facets]
+      ```
+    next: search_web
+
+  synthesize:
+    # Synthesis — consolidates knowledge-base.md into a structured Markdown report.
+    # academic_mode gates BibTeX section, arxiv-ID-keyed sources table, and
+    # different table columns and report header.
+    action_type: prompt
+    action: |
+      Read all research artifacts:
+      - ${context.run_dir}/knowledge-base.md — all accumulated findings
+      - ${context.run_dir}/coverage.md — final facet scores
+      - ${context.run_dir}/query-log.md — all queries issued
+
+      Synthesis mode (academic_mode = ${context.academic_mode}):
+
+      If academic_mode is false (general mode): write to ${context.run_dir}/report.md:
+
+      ```markdown
+      # Research Report: ${context.topic}
+
+      **Generated by**: deep-research loop
+      **Research depth**: [N iterations, M queries issued]
+
+      ## Executive Summary
+
+      [2–3 paragraph synthesis of the most important findings. Directly answer the
+      research question based on the evidence gathered. Note where evidence is strong
+      vs. limited.]
+
+      ## Key Findings
+
+      ### [Facet 1 Name]
+      [Substantive findings with inline citations. Use [1], [2], ... notation referencing
+      the source table below.]
+
+      ### [Facet 2 Name]
+      [Findings with citations...]
+
+      [Continue for each facet covered]
+
+      ## Coverage Gaps
+
+      [List facets or sub-questions that remain under-researched after all iterations.
+      Note what additional research would be needed to address them.]
+
+      ## Sources
+
+      | # | URL | Relevance | Credibility | Facet |
+      |---|-----|-----------|-------------|-------|
+      | 1 | [url] | N/5 | N/5 | [facet name] |
+      | 2 | [url] | N/5 | N/5 | [facet name] |
+
+      [Deduplicate: each unique URL appears once. Exclude LOW-QUALITY and DUPLICATE entries.]
+
+      ## Conclusion
+
+      [1–2 paragraph conclusion synthesizing the overall answer to the research question,
+      noting confidence level based on source quality and coverage depth.]
+      ```
+
+      If academic_mode is true (arxiv mode): write to ${context.run_dir}/report.md using
+      the structure below (shown inside a 4-backtick fence so the inline bibtex block
+      inside it is unambiguous):
+
+      ````markdown
+      # Research Report: ${context.topic}
+
+      **Generated by**: deep-research-arxiv loop
+      **Research depth**: [N iterations, M queries issued]
+
+      ## Executive Summary
+
+      [2–3 paragraph synthesis of the most important findings from the arxiv
+      literature. Directly answer the research question based on the evidence
+      gathered. Note where the literature is mature vs. emerging.]
+
+      ## Key Findings
+
+      ### [Facet 1 Name]
+      [Substantive findings with inline citations. Use [1], [2], ... notation referencing
+      the source table below.]
+
+      ### [Facet 2 Name]
+      [Findings with citations...]
+
+      [Continue for each facet covered]
+
+      ## Coverage Gaps
+
+      [List facets or sub-questions that remain under-researched after all iterations.
+      Note what additional arxiv search angles or non-arxiv sources would be needed
+      to address them.]
+
+      ## Sources
+
+      | # | arXiv ID | Title | Authors | Year | Relevance | Recency | Facet |
+      |---|----------|-------|---------|------|-----------|---------|-------|
+      | 1 | YYMM.NNNNN | [paper title] | [first author et al.] | YYYY | N/5 | N/5 | [facet name] |
+      | 2 | YYMM.NNNNN | [paper title] | [first author et al.] | YYYY | N/5 | N/5 | [facet name] |
+
+      [Deduplicate by arxiv ID: each unique paper appears once. Exclude LOW-QUALITY
+      and DUPLICATE entries. Year is derived from arxiv submission date.]
+
+      ## Conclusion
+
+      [1–2 paragraph conclusion synthesizing the overall answer to the research question,
+      noting confidence level based on the breadth and recency of the arxiv coverage.]
+
+      ## BibTeX
+
+      ```bibtex
+      @misc{YYMMNNNNN,
+        title         = {[paper title]},
+        author        = {[Author One and Author Two and ...]},
+        year          = {YYYY},
+        eprint        = {YYMM.NNNNN},
+        archivePrefix = {arXiv},
+        primaryClass  = {[arxiv category, e.g. cs.LG]},
+      }
+
+      [One @misc{...} entry per unique arxiv ID in the Sources table above. Use the
+      arxiv ID with the dot stripped as the citation key (e.g. 2401.10774 → 240110774).
+      Omit primaryClass if the abstract page did not surface a clear category.]
+      ```
+      ````
+
+      After writing report.md, output the absolute path to the report:
+      ${context.run_dir}/report.md
+    next: done
+
+  done:
+    # Terminal — reports final output file locations and facet coverage summary.
+    # academic_mode gates the BibTeX copy note.
+    action_type: prompt
+    action: |
+      The research loop has completed.
+
+      Final output files:
+      - ${context.run_dir}/report.md          — the research report (primary output)
+      - ${context.run_dir}/knowledge-base.md  — accumulated source findings
+      - ${context.run_dir}/coverage.md        — final facet coverage scores
+      - ${context.run_dir}/query-log.md       — all search queries issued
+
+      Read ${context.run_dir}/coverage.md and report the final facet scores and average
+      coverage to the user. Confirm the research report is ready for review.
+
+      If academic_mode is ${context.academic_mode} and true: also note that the
+      ## BibTeX section in report.md can be copied directly into a .bib file.
+    terminal: true

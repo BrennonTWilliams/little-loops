@@ -236,3 +236,51 @@ generate → evaluate (playwright_screenshot fragment) → score (ll_rubric_scor
 ### Fragment dependency
 
 Imports `lib/harness.yaml` for the `playwright_screenshot` fragment used in the `evaluate` state and the `ll_rubric_score` fragment used in the `score` state. See `## Fragment Catalog → lib/harness.yaml fragments` in `skills/create-loop/reference.md`.
+
+---
+
+## `oracles/research-coverage`
+
+**Category**: oracle sub-loop
+**File**: `scripts/little_loops/loops/oracles/research-coverage.yaml`
+
+Reusable iterative web research synthesis oracle. Runs `generate_queries → search_web → evaluate_sources → score_coverage` until coverage is sufficient, then `synthesize → done`. Parameterized for both general web research and arxiv-only academic research.
+
+Used by `deep-research` (general web, `source_filter=""`, `academic_mode=false`) and `deep-research-arxiv` (arxiv-only, `source_filter="site:arxiv.org"`, `academic_mode=true`) as a `loop:` delegation state named `run_research` (ENH-1876).
+
+### Parameters
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `run_dir` | yes | — | Absolute path to the per-run artifact directory created by the caller's `init` state |
+| `topic` | yes | — | Research topic or question (passed from caller's `input_key` binding) |
+| `source_filter` | no | `""` | Site constraint appended to every search query (e.g. `"site:arxiv.org"`); empty string = no constraint |
+| `academic_mode` | no | `false` | Gates academic-specific behaviors: recency scoring axis, arxiv ID dedup key, BibTeX section in `synthesize`, academic query terminology in `generate_queries` |
+
+### Invocation (thin-wrapper pattern)
+
+```yaml
+run_research:
+  loop: oracles/research-coverage
+  with:
+    run_dir: ${captured.run_dir.output}
+    topic: ${context.topic}
+    source_filter: ""        # or "site:arxiv.org" for arxiv mode
+    academic_mode: false     # or true for arxiv mode
+  on_success: done
+  on_failure: failed
+  on_error: failed
+```
+
+### Internal state machine
+
+```
+generate_queries → search_web → evaluate_sources → score_coverage
+  score_coverage.on_yes (COVERAGE_SUFFICIENT) → synthesize → done (terminal)
+  score_coverage.on_no  (NEED_MORE)           → plan_next  → search_web
+  score_coverage.on_error                     → synthesize (graceful degradation)
+```
+
+### Fragment dependency
+
+Imports `lib/common.yaml`. No Playwright or harness fragments required.
