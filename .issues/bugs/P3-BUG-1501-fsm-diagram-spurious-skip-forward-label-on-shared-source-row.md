@@ -91,7 +91,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Steps to Reproduce
 
-1. `cd /Users/brennon/AIProjects/ai-workspaces/blender-agents`
+1. `cd ~/AIProjects/ai-workspaces/blender-agents`
 2. `ll-loop show eval-specfile-gold`
 3. Inspect line 33 — observe `error` rendered on the `resolve_input` `yes` row.
 

@@ -47,7 +47,7 @@ completed_at: 2026-02-15T00:00:00Z
 ## Error Messages
 
 ```
-[Errno 21] Is a directory: '/Users/brennon/AIProjects/ai-workspaces/headstorm/maw-demo-ui/node_modules'
+[Errno 21] Is a directory: '~/AIProjects/ai-workspaces/headstorm/maw-demo-ui/node_modules'
 ```
 
 Logged as: `BUG-005 failed: [Errno 21] Is a directory: '/path/to/repo/node_modules'`

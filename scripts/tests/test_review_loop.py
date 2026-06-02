@@ -359,7 +359,7 @@ class TestReviewLoopQualityChecks:
 
     def test_qc5_hardcoded_user_path_detected(self) -> None:
         """QC-5: Shell action with /Users/ path → Warning."""
-        action = "/Users/brennon/scripts/run_checks.sh"
+        action = "/Users/you/scripts/run_checks.sh"
         hardcoded_prefixes = ["/Users/", "/home/", "~/"]
         assert any(action.startswith(p) or p in action for p in hardcoded_prefixes)
         # → skill should flag as QC-5 Warning

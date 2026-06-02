@@ -129,7 +129,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Steps to Reproduce
 
-1. `cd /Users/brennon/AIProjects/ai-workspaces/blender-agents`
+1. `cd ~/AIProjects/ai-workspaces/blender-agents`
 2. `ll-loop show eval-specfile-gold`
 3. Inspect line 51 — observe the merged label overflowing the right edge and the surrounding box borders corrupted.
 

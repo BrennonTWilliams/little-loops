@@ -35,7 +35,7 @@ Hook commands written to `settings.local.json` should use absolute paths. The in
 
 **Expected result** in `settings.local.json`:
 ```json
-"command": "bash /Users/brennon/AIProjects/lmc-voice/hooks/scripts/session-cleanup.sh"
+"command": "bash ~/AIProjects/lmc-voice/hooks/scripts/session-cleanup.sh"
 ```
 
 ## Motivation
@@ -152,13 +152,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-The proposed solution resolves `${CLAUDE_PLUGIN_ROOT}` with `pwd`. If the resolved path contains spaces (e.g. `/Users/brennon/My Projects/little-loops`), the simple string substitution will produce an unquoted path in the command string:
+The proposed solution resolves `${CLAUDE_PLUGIN_ROOT}` with `pwd`. If the resolved path contains spaces (e.g. `~/My Projects/little-loops`), the simple string substitution will produce an unquoted path in the command string:
 
 ```json
-"command": "bash /Users/brennon/My Projects/little-loops/hooks/scripts/session-cleanup.sh"
+"command": "bash ~/My Projects/little-loops/hooks/scripts/session-cleanup.sh"
 ```
 
-This will fail at execution. The fix should wrap the resolved path in quotes when substituting, or verify this is not a concern in practice for the target user base. The current test case in the issue (`/Users/brennon/AIProjects/lmc-voice/...`) has no spaces, so this edge case won't surface in basic testing.
+This will fail at execution. The fix should wrap the resolved path in quotes when substituting, or verify this is not a concern in practice for the target user base. The current test case in the issue (`~/AIProjects/lmc-voice/...`) has no spaces, so this edge case won't surface in basic testing.
 
 ## Labels
 

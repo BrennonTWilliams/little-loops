@@ -114,7 +114,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 | `docs/` root | `ARCHITECTURE.md`, `INDEX.md`, `generalized-fsm-loop.md` | No `docs/architecture/` subdirectory exists |
 
 #### Content Hazards
-- `docs/demo/scenarios.md:4` — hardcoded local absolute path (`/Users/brennon/AIProjects/...`); would render on public site
+- `docs/demo/scenarios.md:4` — hardcoded local absolute path (`~/AIProjects/...`); would render on public site
 - `docs/guides/AUDIT_REPORT.md` — dated internal audit (2026-03-17); absent from INDEX.md; should be excluded from nav
 - `docs/research/LCM- Lossless Context Management.pdf` — non-markdown; MkDocs cannot render it as a page
 - `docs/research/` contains third-party paper content (Voltropy PBC authors) — consider licensing implications for public hosting

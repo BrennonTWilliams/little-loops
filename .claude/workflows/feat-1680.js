@@ -9,7 +9,7 @@ export const meta = {
   ],
 }
 
-const P = '/Users/brennon/AIProjects/brenentech/little-loops'
+const P = '.'
 
 phase('Core Files')
 await parallel([

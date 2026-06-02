@@ -151,7 +151,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `cwd_path = args.project or Path.cwd()`
 - `folder = get_project_folder(cwd_path)` → null-check with `logger.error()`
 - Output slug: `cwd_path.resolve().name` (last path component, e.g. `little-loops`)
-- Command: `ll-logs extract --project /Users/brennon/AIProjects/brenentech/little-loops`
+- Command: `ll-logs extract --project ~/AIProjects/brenentech/little-loops`
 
 This mirrors the `--cwd` pattern in `scripts/little_loops/cli/messages.py:75-157`.
 

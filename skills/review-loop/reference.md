@@ -191,7 +191,7 @@ For each state with `action_type: shell` or action that appears to be a shell co
 **Fix template**:
 ```yaml
 # Before
-action: "/Users/brennon/scripts/run_checks.sh"
+action: "/Users/you/scripts/run_checks.sh"
 
 # After
 action: "./scripts/run_checks.sh"   # or: "$HOME/scripts/run_checks.sh"
