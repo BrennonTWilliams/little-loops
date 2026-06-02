@@ -1008,6 +1008,10 @@ class TestBuiltinLoopMigration:
             "sprint-build-and-validate.yaml",
             "svg-image-generator.yaml",
             "test-coverage-improvement.yaml",
+            "agent-eval-improve.yaml",
+            "rl-coding-agent.yaml",
+            "rl-policy.yaml",
+            "harness-optimize.yaml",
         ]
         for loop_name in migration_targets:
             path = loops_dir / loop_name
@@ -1440,4 +1444,81 @@ class TestHarnessYamlFragments:
         assert state["action_type"] == "shell"
         assert state["evaluate"]["type"] == "output_contains"
         assert state["evaluate"]["pattern"] == "CAPTURED"
+        assert "fragment" not in state
+
+
+# ---------------------------------------------------------------------------
+# lib/common.yaml: verify convergence_gate fragment is present and correct
+# ---------------------------------------------------------------------------
+
+
+class TestConvergenceGateFragment:
+    """Tests that convergence_gate exists in the real lib/common.yaml."""
+
+    @staticmethod
+    def _load_common_yaml() -> dict:
+        import yaml
+
+        lib_path = (
+            Path(__file__).parent.parent
+            / "little_loops"
+            / "loops"
+            / "lib"
+            / "common.yaml"
+        )
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_convergence_gate_defined_in_common_yaml(self) -> None:
+        data = self._load_common_yaml()
+        assert "convergence_gate" in data["fragments"], (
+            "convergence_gate fragment missing from lib/common.yaml"
+        )
+
+    def test_convergence_gate_has_correct_action_type(self) -> None:
+        data = self._load_common_yaml()
+        assert data["fragments"]["convergence_gate"]["action_type"] == "shell"
+
+    def test_convergence_gate_has_convergence_evaluator(self) -> None:
+        data = self._load_common_yaml()
+        evaluate = data["fragments"]["convergence_gate"].get("evaluate", {})
+        assert evaluate.get("type") == "convergence"
+        assert evaluate.get("direction") == "maximize"
+
+    def test_convergence_gate_has_description(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["convergence_gate"]
+        assert "description" in frag, "convergence_gate fragment is missing a description field"
+        assert frag["description"].strip(), "convergence_gate fragment has an empty description"
+
+    def test_convergence_gate_resolves_in_loop(self) -> None:
+        """Full resolve_fragments integration against the real lib/common.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "gate",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "gate": {
+                    "fragment": "convergence_gate",
+                    "action": 'echo "0.9"',
+                    "evaluate": {
+                        "target": "0.85",
+                        "tolerance": 0.05,
+                    },
+                    "route": {
+                        "target": "done",
+                        "progress": "gate",
+                        "stall": "done",
+                    },
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["gate"]
+        assert state["action_type"] == "shell"
+        assert state["evaluate"]["type"] == "convergence"
+        assert state["evaluate"]["direction"] == "maximize"
+        assert state["evaluate"]["target"] == "0.85"
         assert "fragment" not in state

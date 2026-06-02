@@ -12,6 +12,7 @@ timeout: 7200
 on_handoff: spawn
 import:
   - lib/benchmark.yaml
+  - lib/common.yaml
 
 context:
   targets: ""         # required — space-separated file paths, e.g. "skills/foo/SKILL.md"
@@ -176,15 +177,13 @@ states:
     on_error: revert_and_log
 
   gate:
-    action_type: shell
+    fragment: convergence_gate
     action: |
       echo "${captured.benchmark_score.output}" | tail -1 | tr -d '[:space:]'
     evaluate:
-      type: convergence
-      direction: maximize
       target: "${context.target_score}"
-      previous: "${captured.prev_score.output}"
       tolerance: 0.02
+      previous: "${captured.prev_score.output}"
     route:
       target: commit_and_log
       progress: commit_and_log

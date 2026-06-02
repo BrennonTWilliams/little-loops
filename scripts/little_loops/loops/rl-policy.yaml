@@ -8,6 +8,8 @@ description: |
 initial: act
 context:
   reward_target: 0.85
+import:
+  - lib/common.yaml
 states:
   act:
     action: |
@@ -28,14 +30,12 @@ states:
     capture: observation
     next: score
   score:
+    fragment: convergence_gate
     action: |
       # Extract the numeric reward from the observation for convergence evaluation.
       echo "${captured.observation.output}" | tail -1 | tr -d '[:space:]'
-    action_type: shell
     evaluate:
-      type: convergence
       target: "${context.reward_target}"
-      direction: maximize
       tolerance: 0.05
     route:
       target: done

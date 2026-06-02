@@ -67,7 +67,7 @@ states:
 
   extract_percentage:
     # Parse the coverage percentage from the report for convergence tracking.
-    action_type: shell
+    fragment: convergence_gate
     action: |
       # Extract the TOTAL coverage percentage from pytest-cov output
       PERCENT=$(grep -oE 'TOTAL[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+[0-9]+%' \
@@ -79,9 +79,7 @@ states:
       echo "$PERCENT"
     capture: current_coverage
     evaluate:
-      type: convergence
       target: "${context.coverage_target}"
-      direction: maximize
       tolerance: 1
     route:
       target: commit

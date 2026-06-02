@@ -15,6 +15,7 @@ context:
   agent_config: "agent.yaml"
 import:
   - lib/benchmark.yaml
+  - lib/common.yaml
 
 states:
   run_eval:
@@ -65,13 +66,11 @@ states:
     on_no: done
     on_error: diagnose
   route_quality:
-    action_type: shell
+    fragment: convergence_gate
     action: |
       echo "${captured.scores.output}" | tail -1 | tr -d '[:space:]'
     evaluate:
-      type: convergence
       target: "${context.quality_target}"
-      direction: maximize
       tolerance: 0.03
     route:
       target: done

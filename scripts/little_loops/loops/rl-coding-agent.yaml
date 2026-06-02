@@ -14,6 +14,8 @@ context:
   target_files: ""         # Override: space-separated file globs to act on
   test_cmd: "python -m pytest"  # Fallback if not set in ll-config.json project.test_cmd
   lint_cmd: "ruff check"        # Fallback if not set in ll-config.json project.lint_cmd
+import:
+  - lib/common.yaml
 states:
 
   # POLICY OUTER: Execute the current coding strategy on target files.
@@ -93,13 +95,11 @@ states:
   # POLICY OUTER: Extract numeric reward and route via convergence evaluator.
   # Routes: target → done, progress → improve, stall → act, error → failed.
   score:
+    fragment: convergence_gate
     action: |
       echo "${captured.observation.output}" | tail -1 | tr -d '[:space:]'
-    action_type: shell
     evaluate:
-      type: convergence
       target: "${context.reward_target}"
-      direction: maximize
       tolerance: 0.05
       previous: "${captured.prev_reward.output}"
     route:

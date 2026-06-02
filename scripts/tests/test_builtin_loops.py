@@ -4549,6 +4549,53 @@ class TestAgentEvalImproveLoop:
         )
 
 
+class TestRlPolicyLoop:
+    """Structural tests for the rl-policy FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rl-policy.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, and states fields."""
+        assert data.get("name") == "rl-policy"
+        assert data.get("initial") == "act"
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {"act", "observe", "score", "improve", "done", "diagnose", "failed"}
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_score_uses_convergence_gate_fragment(self, data: dict) -> None:
+        """score state must use fragment: convergence_gate after ENH-1871 conversion."""
+        state = data["states"].get("score", {})
+        assert state.get("fragment") == "convergence_gate", (
+            f"score.fragment should be 'convergence_gate', got {state.get('fragment')!r}"
+        )
+
+    def test_score_error_routes_to_diagnose(self, data: dict) -> None:
+        """score state convergence evaluator error route must target diagnose."""
+        state = data["states"].get("score", {})
+        route = state.get("route", {})
+        assert route.get("error") == "diagnose", (
+            f"score.route.error should be 'diagnose', got {route.get('error')!r}"
+        )
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        assert data["states"].get("done", {}).get("terminal") is True
+
+    def test_failed_state_is_terminal(self, data: dict) -> None:
+        """failed state must have terminal: true."""
+        assert data["states"].get("failed", {}).get("terminal") is True
+
+
 class TestReadyToImplementGateLoop:
     """Tests that ready-to-implement-gate.yaml has correct structure and routing."""
 

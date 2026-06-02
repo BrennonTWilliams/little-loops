@@ -120,9 +120,11 @@ class TestHarnessOptimizeStates:
         assert state.get("on_error") == "revert_and_log"
 
     def test_gate_has_convergence_evaluator(self, loop_data: dict) -> None:
-        evaluate = loop_data["states"]["gate"].get("evaluate", {})
-        assert evaluate.get("type") == "convergence"
-        assert evaluate.get("direction") == "maximize"
+        state = loop_data["states"]["gate"]
+        assert state.get("fragment") == "convergence_gate", (
+            "gate state must use fragment: convergence_gate (provides type: convergence, direction: maximize)"
+        )
+        evaluate = state.get("evaluate", {})
         assert "previous" in evaluate, (
             "gate evaluate must have previous field (prevents always-progress bug on iteration 1)"
         )

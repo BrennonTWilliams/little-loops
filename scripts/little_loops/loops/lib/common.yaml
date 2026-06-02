@@ -107,3 +107,16 @@ fragments:
     action_type: shell
     evaluate:
       type: output_numeric
+
+  convergence_gate:
+    description: |
+      Shell state evaluated by the convergence evaluator (direction: maximize).
+      State must supply: action (shell command that prints a number on its last line),
+      evaluate.target (convergence threshold, e.g. "${context.coverage_target}"),
+      evaluate.tolerance (acceptable delta before declaring stall),
+      route.target, route.progress, route.stall (and optionally route.error,
+      evaluate.previous for stall-detection across iterations).
+    action_type: shell
+    evaluate:
+      type: convergence
+      direction: maximize
