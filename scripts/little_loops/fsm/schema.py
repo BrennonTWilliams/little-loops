@@ -400,6 +400,7 @@ class StateConfig:
     next: str | None = None
     terminal: bool = False
     capture: str | None = None
+    append_to_messages: str | None = None
     timeout: int | None = None
     on_maintain: str | None = None
     max_retries: int | None = None
@@ -451,6 +452,8 @@ class StateConfig:
             result["terminal"] = self.terminal
         if self.capture is not None:
             result["capture"] = self.capture
+        if self.append_to_messages is not None:
+            result["append_to_messages"] = self.append_to_messages
         if self.timeout is not None:
             result["timeout"] = self.timeout
         if self.on_maintain is not None:
@@ -546,6 +549,7 @@ class StateConfig:
             next=data.get("next"),
             terminal=data.get("terminal", False),
             capture=data.get("capture"),
+            append_to_messages=data.get("append_to_messages"),
             timeout=data.get("timeout"),
             on_maintain=data.get("on_maintain"),
             max_retries=data.get("max_retries"),

@@ -299,6 +299,27 @@ class TestStateConfig:
         )
         assert state.on_partial == "fix"
 
+    def test_append_to_messages_from_dict(self) -> None:
+        """from_dict parses append_to_messages field."""
+        data = {"action": "run.sh", "append_to_messages": "${captured.run.output}", "next": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.append_to_messages == "${captured.run.output}"
+
+    def test_append_to_messages_roundtrip(self) -> None:
+        """append_to_messages survives to_dict/from_dict roundtrip."""
+        original = StateConfig(
+            action="run.sh",
+            append_to_messages="${captured.run.output}",
+            next="done",
+        )
+        restored = StateConfig.from_dict(original.to_dict())
+        assert restored.append_to_messages == "${captured.run.output}"
+
+    def test_append_to_messages_default_none(self) -> None:
+        """append_to_messages defaults to None when absent."""
+        state = StateConfig.from_dict({"action": "run.sh", "next": "done"})
+        assert state.append_to_messages is None
+
     def test_on_partial_in_from_dict(self) -> None:
         """from_dict reads on_partial key from YAML data."""
         data = {

@@ -906,6 +906,54 @@ max_iterations: 10
 
 **Most users can omit this field** — capture is needed only when states must share dynamic data. For static configuration, use the `context:` block at the loop level instead.
 
+#### append_to_messages (Optional)
+
+The `append_to_messages` field appends a state's output to a **run-scoped, append-only messages log** that every subsequent state can read in full. It is the FSM analogue of LangGraph's `MessagesState` — you get O(1) context sharing instead of O(N) `${captured.*}` chains.
+
+**Type:** `str` — an interpolation expression whose resolved value is appended (e.g. `"${captured.execute.output}"`)
+
+**Template variables provided:**
+- `${messages}` — full message log (all appended strings joined by newline)
+- `${messages.last(N)}` — last N messages joined by newline (windowed view)
+- `${messages.summary}` — pre-computed summary string (populated by summarization middleware when a budget is set)
+
+**JSONL audit trail:** each append is written to `.loops/runs/<run-id>/messages.jsonl` for replay and audit.
+
+**When to use:**
+- A 3+ state pipeline (Plan → Research → Implement → Report) where every state needs the prior reasoning, not just the immediately-preceding output
+- Replacing a long chain of `${captured.A.output} ${captured.B.output} ${captured.C.output}` in a downstream prompt
+
+**Example - 4-state pipeline sharing context:**
+```yaml
+states:
+  plan:
+    action: "/ll:plan ${context.issue_id}"
+    capture: plan_out
+    append_to_messages: "${captured.plan_out.output}"
+    next: research
+
+  research:
+    action: "/ll:research ${context.issue_id}\n\nContext so far:\n${messages}"
+    capture: research_out
+    append_to_messages: "${captured.research_out.output}"
+    next: implement
+
+  implement:
+    action: "/ll:manage-issue enh implement ${context.issue_id}\n\nPrior work:\n${messages}"
+    capture: impl_out
+    append_to_messages: "${captured.impl_out.output}"
+    next: report
+
+  report:
+    action: "echo 'Summary of all steps:\n${messages}'"
+    terminal: true
+
+initial: plan
+max_iterations: 10
+```
+
+**Relationship to `capture:`** — both fields are complementary, not exclusive. `capture:` provides per-variable access (`${captured.X.output}`, `${captured.X.exit_code}`); `append_to_messages` provides a single chronological log. Use `capture:` when a downstream state needs structured access to specific fields; use `append_to_messages` when later states just need the accumulated narrative.
+
 #### max_retries and on_retry_exhausted (Optional, paired)
 
 The `max_retries` and `on_retry_exhausted` fields provide first-class per-state retry limiting. When a state is entered consecutively more than `max_retries` times (i.e., it keeps routing back to itself), the executor automatically transitions to `on_retry_exhausted` instead of executing the state again.

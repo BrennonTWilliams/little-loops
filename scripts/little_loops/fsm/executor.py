@@ -172,6 +172,7 @@ class FSMExecutor:
         self.current_state = fsm.initial
         self.iteration = 0
         self.captured: dict[str, dict[str, Any]] = {}
+        self.messages: list[str] = []
         self.prev_result: dict[str, Any] | None = None
         self.started_at = ""
         self.start_time_ms = 0
@@ -1091,6 +1092,16 @@ class FSMExecutor:
                 "duration_ms": result.duration_ms,
             }
 
+        # Append to shared messages log if requested
+        if state.append_to_messages:
+            post_ctx = self._build_context()
+            message = interpolate(state.append_to_messages, post_ctx)
+            self.messages.append(message)
+            self._emit(
+                "messages_append",
+                {"message": message, "state": self.current_state},
+            )
+
         # Check for signals in output
         if self.signal_detector:
             signal = self.signal_detector.detect_first(result.output)
@@ -1550,6 +1561,7 @@ class FSMExecutor:
             loop_name=self.fsm.name,
             started_at=self.started_at,
             elapsed_ms=_now_ms() - self.start_time_ms + self.elapsed_offset_ms,
+            messages=list(self.messages),
         )
 
     def _emit(self, event: str, data: dict[str, Any]) -> None:
@@ -1806,6 +1818,7 @@ class FSMExecutor:
             duration_ms=_now_ms() - self.start_time_ms + self.elapsed_offset_ms,
             captured=self.captured,
             error=error,
+            messages=list(self.messages),
         )
 
     def _handle_handoff(self, signal: DetectedSignal) -> ExecutionResult:

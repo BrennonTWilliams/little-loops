@@ -12,6 +12,7 @@ Supported namespaces:
     state: Current state metadata (name, iteration)
     loop: Loop-level metadata (name, started_at, elapsed_ms, elapsed)
     env: Environment variables
+    messages: Shared append-only message log (${messages}, ${messages.last(N)}, ${messages.summary})
 """
 
 from __future__ import annotations
@@ -61,6 +62,8 @@ class InterpolationContext:
     loop_name: str = ""
     started_at: str = ""
     elapsed_ms: int = 0
+    messages: list[str] = field(default_factory=list)
+    messages_summary: str = ""
 
     def resolve(self, namespace: str, path: str) -> Any:
         """Resolve a namespace.path reference to its value.
@@ -96,6 +99,8 @@ class InterpolationContext:
             if value is None:
                 raise InterpolationError(f"Environment variable '{path}' not set")
             return value
+        elif namespace == "messages":
+            return self._get_messages_value(path)
         else:
             raise InterpolationError(f"Unknown namespace: {namespace}")
 
@@ -142,6 +147,29 @@ class InterpolationContext:
         else:
             raise InterpolationError(f"Unknown state property: {key}")
 
+    def _get_messages_value(self, path: str) -> str:
+        """Get value from the shared messages log.
+
+        Args:
+            path: Empty string or "output" for full log; "last(N)" for last N entries;
+                  "summary" for the pre-computed summary string.
+
+        Returns:
+            The resolved messages string
+
+        Raises:
+            InterpolationError: If path is unrecognised
+        """
+        if not path or path == "output":
+            return "\n".join(self.messages)
+        m = re.match(r"^last\((\d+)\)$", path)
+        if m:
+            n = int(m.group(1))
+            return "\n".join(self.messages[-n:])
+        if path == "summary":
+            return self.messages_summary
+        raise InterpolationError(f"Unknown messages property: {path!r}")
+
     def _get_loop_value(self, key: str) -> Any:
         """Get loop metadata value.
 
@@ -187,11 +215,15 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
 
     def replace_var(match: re.Match[str]) -> str:
         full_path = match.group(1)
-        if "." not in full_path:
+        if full_path == "messages":
+            # Bare ${messages} is shorthand for the full message log
+            namespace, path = "messages", ""
+        elif "." not in full_path:
             raise InterpolationError(
                 f"Invalid variable: ${{{full_path}}} (expected namespace.path)"
             )
-        namespace, path = full_path.split(".", 1)
+        else:
+            namespace, path = full_path.split(".", 1)
         value = ctx.resolve(namespace, path)
         # Convert to string, handling empty values
         if value is None:

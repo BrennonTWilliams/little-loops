@@ -37,6 +37,7 @@ class ExecutionResult:
     error: str | None = None
     handoff: bool = False
     continuation_prompt: str | None = None
+    messages: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -53,6 +54,8 @@ class ExecutionResult:
             result["handoff"] = self.handoff
         if self.continuation_prompt is not None:
             result["continuation_prompt"] = self.continuation_prompt
+        if self.messages:
+            result["messages"] = self.messages
         return result
 
 

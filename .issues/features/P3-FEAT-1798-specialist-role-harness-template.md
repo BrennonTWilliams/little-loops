@@ -15,7 +15,7 @@ labels:
   - templates
   - create-loop
 relates_to: [ENH-1796, FEAT-1808]
-parent: EPIC-1694
+parent: EPIC-1773
 decision_needed: false
 blocked_by: [FEAT-1808]
 decision: Option B — omit HITL gates, ship as autonomous pipeline (Plan → Research → Implement → Report without human gates). Simplest, works today. Include commented-out HITL block for future activation when FEAT-1794 lands. Upgrade to Option C after FEAT-1794.
@@ -94,6 +94,25 @@ Wizard additions:
 - Documentation entry in `AUTOMATIC_HARNESSING_GUIDE.md` § Generated
   FSM Structure as "Variant C".
 
+## Use Case
+
+**Who**: A developer authoring automation loops with the `/ll:create-loop` wizard
+
+**Context**: When building a task that benefits from explicit phase decomposition — deep refactors, multi-file features, or cross-cutting changes — where a single `execute` state is too coarse-grained
+
+**Goal**: Generate a ready-to-run Variant C FSM YAML (Plan → Research → Implement → Report) without hand-authoring the full state machine (30–60 min saved)
+
+**Outcome**: A validated YAML file is created under `scripts/little_loops/loops/` that passes `ll-loop validate` and includes annotated comments for optional HITL gates
+
+## Acceptance Criteria
+
+- [ ] `/ll:create-loop` wizard presents a "Specialist role pipeline" option at the loop type selection step (`SKILL.md` ~line 136)
+- [ ] Wizard generates a Variant C FSM YAML with `plan`, `research`, `implement`, and `report` states routed consecutively
+- [ ] Generated YAML is written to `scripts/little_loops/loops/harness-plan-research-implement-report.yaml` and passes `ll-loop validate` without errors
+- [ ] `harness-plan-research-implement-report` is added to the expected loops set in `test_expected_loops_exist` (`test_builtin_loops.py:66`)
+- [ ] `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` includes a `### Variant C: Specialist-Role Pipeline` section after Variant B
+- [ ] Generated YAML includes a `# EXAMPLE:` commented HITL block showing the FEAT-1794 activation pattern
+
 ## Impact
 
 - **Priority**: P3 — Net-new template; existing variants still cover
@@ -121,13 +140,15 @@ Wizard additions:
 - `skills/create-loop/loop-types.md` — After Harness Questions section (after line 914): add `## Specialist Pipeline Questions` with S1-S5 question flow and Variant C FSM YAML template block
 - `skills/create-loop/templates.md` — Add Variant C template entry if available in "Start from template" path (Step 0.1)
 - `skills/create-loop/reference.md` — Add specialist pipeline state structure to "Loop Type State Structures" section
+- `scripts/little_loops/loops/greenfield-builder.yaml` — `plan_harness` state action text hard-codes "two harness variants" and lists only `ll-loop install harness-single-shot` / `harness-multi-item`; expand to include Variant C option [Wiring pass]
 
 ### Files to Create
 - `scripts/little_loops/loops/harness-plan-research-implement-report.yaml` — Runnable annotated example (Variant C), matching `harness-single-shot.yaml` / `harness-multi-item.yaml` pattern with `# EXAMPLE:` comments
 
 ### Dependent Files (Documentation)
-- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — Add `### Variant C: Specialist-Role Pipeline` section after Variant B (after line ~561), plus entry in "Using the Example Files" table
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — Add `### Variant C: Specialist-Role Pipeline` section after Variant B (after line ~561), plus entry in "Using the Example Files" table; also update `## Table of Contents` and `## See Also` which enumerate only Variant A/B
 - `scripts/little_loops/loops/README.md` — Add Variant C entry under "Harness / Templates" section
+- `docs/guides/LOOPS_GUIDE.md` — **Harness Examples** table under the built-in loops catalog lists only `harness-single-shot` and `harness-multi-item`; add `harness-plan-research-implement-report` row [Wiring pass]
 
 ### Similar Patterns (Existing Code to Model After)
 - `skills/create-loop/loop-types.md:700-857` — Variant A and B FSM YAML templates with conditional-phase comments — exact pattern to replicate
@@ -138,9 +159,16 @@ Wizard additions:
 - `scripts/little_loops/loops/deep-research.yaml` — Research → Synthesis pipeline with per-run artifact isolation (`capture: run_dir`)
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py:66` — `test_expected_loops_exist` — add new Variant C name to expected set
-- `scripts/tests/test_builtin_loops.py:30,37,47` — `test_all_parse_as_yaml`, `test_all_validate_as_valid_fsm`, `test_all_have_description_field` — auto-cover new YAML in loops dir
+- `scripts/tests/test_builtin_loops.py:66` — `test_expected_loops_exist` — add `"harness-plan-research-implement-report"` to the `expected` set alongside the three existing harness names at lines 92–94 (exact equality check; will fail without this)
+- `scripts/tests/test_builtin_loops.py:30,37,47` — `test_all_parse_as_yaml`, `test_all_validate_as_valid_fsm`, `test_all_have_description_field` — auto-cover new YAML in loops dir; new YAML **must** have a non-empty `description:` field
 - `scripts/tests/test_create_loop.py` — Add YAML pattern validation for Variant C output following existing `TestLoopFileValidation` pattern
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_create_loop.py` — Add `TestHarnessPlanResearchImplementReport` class: module-level YAML constant for Variant C scaffold, per-field assertions for required states (`plan`, `research`, `implement`, `report`, `done`), `initial == "plan"`, phase sequencing, and terminal state — follow `TestEvalHarnessVariantA`/`B` shape in `scripts/tests/test_create_eval_from_issues.py:142`
+- `scripts/tests/test_builtin_loops.py:1031` — `TestHarnessCapture.HARNESS_FILES`: add `"harness-plan-research-implement-report.yaml"` **only if** Variant C YAML includes `execute`, `check_semantic`, and `check_stall` states (topology-dependent; skip if using `plan→research→implement→report` chain without canonical harness states)
+- `scripts/tests/test_fsm_fragments.py` — `TestBuiltinLoopMigration.migration_targets` at line ~998: add new YAML filename if it uses `fragment: shell_exit` states (optional but conventional)
+- **Constraint**: editing `skills/create-loop/loop-types.md` or `skills/create-loop/reference.md` must preserve `circuit_breaker_enabled` and `circuit_breaker_path` tokens (`test_circuit_breaker_doc_wiring.py` checks these)
+- **Constraint**: editing `skills/create-loop/loop-types.md` or `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` must preserve `timeout: 1500` and `MCP calls` tokens (`test_enh1639_doc_wiring.py` checks these)
 
 ### Key Architectural Insight
 
@@ -204,6 +232,16 @@ Three implementation options identified based on HITL gate handling:
 
 7. **Validate**: Run `ll-loop validate harness-plan-research-implement-report` and `python -m pytest scripts/tests/test_builtin_loops.py -v`
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `docs/guides/LOOPS_GUIDE.md` — add `harness-plan-research-implement-report` row to the **Harness Examples** table under the built-in loops catalog
+9. Update `scripts/little_loops/loops/greenfield-builder.yaml` — `plan_harness` state action: expand "two harness variants" guidance to list Variant C as a third option (`ll-loop install harness-plan-research-implement-report`)
+10. Write `TestHarnessPlanResearchImplementReport` class in `scripts/tests/test_create_loop.py` — structural assertions: `initial == "plan"`, required state names (`plan`, `research`, `implement`, `report`, `done`), phase sequencing chain, non-empty `description:` field
+11. When editing `loop-types.md` or `reference.md`, verify `circuit_breaker_enabled` and `circuit_breaker_path` tokens are preserved
+12. When editing `loop-types.md` or `AUTOMATIC_HARNESSING_GUIDE.md`, verify `timeout: 1500` and `MCP calls` tokens are preserved
+
 ## Labels
 
 `captured`, `create-loop`, `fsm`, `harness`, `loops`, `templates`
@@ -213,6 +251,9 @@ Three implementation options identified based on HITL gate handling:
 **Open** | Created: 2026-05-29 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-02T23:30:00 - `3b0a90a1-2b16-41b1-bc9f-bda420fe11ad.jsonl`
+- `/ll:format-issue` - 2026-06-02T23:08:59 - `d869663f-6cbd-441f-aa25-5bb3a2dafe09.jsonl`
+- `/ll:verify-issues` - 2026-06-02T22:48:42 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:44:01 - `6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:34:34 - `922ffae8-14ce-45e5-a71a-02187250e8c9.jsonl`

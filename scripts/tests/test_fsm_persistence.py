@@ -86,6 +86,39 @@ class TestLoopState:
         assert state.prev_result is None
         assert state.last_result is None
         assert state.updated_at == ""
+        assert state.messages == []
+
+    def test_messages_roundtrip(self) -> None:
+        """messages list round-trips through to_dict/from_dict."""
+        original = LoopState(
+            loop_name="test",
+            current_state="report",
+            iteration=3,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-01-01T00:00:00Z",
+            updated_at="",
+            status="running",
+            messages=["Plan complete", "Research done", "Implementation finished"],
+        )
+        restored = LoopState.from_dict(original.to_dict())
+        assert restored.messages == original.messages
+
+    def test_messages_omitted_when_empty(self) -> None:
+        """to_dict omits 'messages' key when list is empty."""
+        state = LoopState(
+            loop_name="test",
+            current_state="check",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-01-01T00:00:00Z",
+            updated_at="",
+            status="running",
+        )
+        assert "messages" not in state.to_dict()
 
     def test_active_sub_loop_field_roundtrip(self) -> None:
         """active_sub_loop round-trips through to_dict/from_dict (FEAT-659)."""

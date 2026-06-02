@@ -212,6 +212,7 @@ class LoopState:
     active_sub_loop: str | None = None  # name of currently executing sub-loop (observability)
     pid: int | None = None  # OS PID of the process that started this run (for reconciliation sweep)
     reconciled_at: str | None = None  # ISO timestamp when orphaned-running state was auto-flipped
+    messages: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -243,6 +244,8 @@ class LoopState:
             result["pid"] = self.pid
         if self.reconciled_at is not None:
             result["reconciled_at"] = self.reconciled_at
+        if self.messages:
+            result["messages"] = self.messages
         return result
 
     @classmethod
@@ -291,6 +294,7 @@ class LoopState:
             active_sub_loop=data.get("active_sub_loop"),
             pid=data.get("pid"),
             reconciled_at=data.get("reconciled_at"),
+            messages=data.get("messages", []),
         )
 
 
@@ -633,6 +637,20 @@ class PersistentExecutor:
                 with open(usage_path, "a", encoding="utf-8") as f:
                     f.write(json.dumps(entry) + "\n")
 
+        # Append shared message to messages.jsonl when a state appends to the log.
+        if event_type == "messages_append":
+            run_dir = self.fsm.context.get("run_dir", "")
+            if run_dir:
+                messages_path = Path(run_dir) / "messages.jsonl"
+                entry = {
+                    "iteration": self._executor.iteration,
+                    "state": event.get("state", ""),
+                    "message": event.get("message", ""),
+                    "timestamp": event.get("ts", ""),
+                }
+                with open(messages_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry) + "\n")
+
         # Save state after state transitions
         if event_type in ("state_enter", "loop_complete", "baseline_complete"):
             self._save_state()
@@ -725,6 +743,7 @@ class PersistentExecutor:
             consecutive_rate_limit_exhaustions=(self._executor._consecutive_rate_limit_exhaustions),
             edge_revisit_counts=dict(self._executor._edge_revisit_counts),
             pid=self._run_pid,
+            messages=list(self._executor.messages),
         )
         self.persistence.save_state(state)
 
@@ -801,6 +820,7 @@ class PersistentExecutor:
             state.consecutive_rate_limit_exhaustions
         )
         self._executor._edge_revisit_counts = dict(state.edge_revisit_counts)
+        self._executor.messages = list(state.messages)
 
         # Restore accumulated elapsed time so duration_ms and ${loop.elapsed_ms} reflect
         # the full loop lifetime (all segments), not just the resumed segment.

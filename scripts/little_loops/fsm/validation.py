@@ -413,6 +413,19 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
     errors: list[ValidationError] = []
     path = f"states.{state_name}"
 
+    # append_to_messages must contain at least one ${...} interpolation expression
+    if state.append_to_messages is not None:
+        if "${" not in state.append_to_messages:
+            errors.append(
+                ValidationError(
+                    message=(
+                        "'append_to_messages' must contain a ${...} interpolation expression "
+                        f"(e.g. '${{captured.{state_name}.output}}')"
+                    ),
+                    path=f"{path}.append_to_messages",
+                )
+            )
+
     # params field is only valid for mcp_tool states
     if state.params and state.action_type != "mcp_tool":
         errors.append(

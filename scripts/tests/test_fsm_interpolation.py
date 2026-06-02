@@ -418,6 +418,60 @@ class TestInterpolateEdgeCases:
         assert result == '"${HEAD_PART}"$\'\\n...\\n\'"${TAIL_PART}"'
 
 
+class TestMessagesNamespace:
+    """Tests for the messages namespace in InterpolationContext."""
+
+    def test_messages_full_log(self) -> None:
+        """${messages} / ${messages.output} returns all messages joined by newline."""
+        ctx = InterpolationContext(messages=["step A output", "step B output"])
+        assert ctx.resolve("messages", "") == "step A output\nstep B output"
+        assert ctx.resolve("messages", "output") == "step A output\nstep B output"
+
+    def test_messages_empty(self) -> None:
+        """${messages} returns empty string when no messages appended."""
+        ctx = InterpolationContext()
+        assert ctx.resolve("messages", "") == ""
+
+    def test_messages_last_n(self) -> None:
+        """${messages.last(N)} returns the last N messages."""
+        ctx = InterpolationContext(messages=["a", "b", "c", "d"])
+        assert ctx.resolve("messages", "last(2)") == "c\nd"
+        assert ctx.resolve("messages", "last(1)") == "d"
+
+    def test_messages_last_n_exceeds_length(self) -> None:
+        """${messages.last(N)} with N > len returns all messages."""
+        ctx = InterpolationContext(messages=["a", "b"])
+        assert ctx.resolve("messages", "last(10)") == "a\nb"
+
+    def test_messages_summary(self) -> None:
+        """${messages.summary} returns the pre-computed summary string."""
+        ctx = InterpolationContext(messages=["x"], messages_summary="Summarized context")
+        assert ctx.resolve("messages", "summary") == "Summarized context"
+
+    def test_messages_summary_default_empty(self) -> None:
+        """${messages.summary} defaults to empty string when no summary computed."""
+        ctx = InterpolationContext(messages=["x"])
+        assert ctx.resolve("messages", "summary") == ""
+
+    def test_messages_unknown_property(self) -> None:
+        """Unknown messages property raises InterpolationError."""
+        ctx = InterpolationContext(messages=["x"])
+        with pytest.raises(InterpolationError, match="Unknown messages property"):
+            ctx.resolve("messages", "unknown")
+
+    def test_bare_messages_interpolation(self) -> None:
+        """${messages} bare syntax resolves to full log via interpolate()."""
+        ctx = InterpolationContext(messages=["first", "second"])
+        result = interpolate("Context:\n${messages}", ctx)
+        assert result == "Context:\nfirst\nsecond"
+
+    def test_messages_last_interpolation(self) -> None:
+        """${messages.last(2)} resolves via interpolate()."""
+        ctx = InterpolationContext(messages=["a", "b", "c"])
+        result = interpolate("Recent: ${messages.last(2)}", ctx)
+        assert result == "Recent: b\nc"
+
+
 class TestFormatDuration:
     """Tests for the _format_duration helper."""
 

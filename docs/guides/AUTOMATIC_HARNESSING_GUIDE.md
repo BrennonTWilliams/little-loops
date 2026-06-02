@@ -340,6 +340,41 @@ prompt: "Review this output: ${captured.execute.output}"
 
 Use `${prev.output}` to reference the immediately preceding state's output.
 
+### Shared Messages Log (`append_to_messages`)
+
+For pipelines where **every later state needs the accumulated prior reasoning** (not just the immediately-preceding output), use `append_to_messages` to build a run-scoped log:
+
+```yaml
+states:
+  plan:
+    action: "/ll:plan ${context.issue_id}"
+    capture: plan_out
+    append_to_messages: "${captured.plan_out.output}"
+    next: execute
+
+  execute:
+    action: "/ll:manage-issue enh implement ${context.issue_id}\n\nContext:\n${messages}"
+    capture: exec_out
+    append_to_messages: "${captured.exec_out.output}"
+    next: report
+
+  report:
+    action: "echo 'Full run log:\n${messages.last(5)}'"
+    terminal: true
+```
+
+**Available template variables:**
+- `${messages}` — full log (all appended strings, newline-separated)
+- `${messages.last(N)}` — last N entries (windowed view)
+- `${messages.summary}` — pre-computed summary (when summarization middleware is active)
+
+**When to prefer `append_to_messages` over `captured.*` chains:**
+- 3+ states all need the same accumulated context
+- You find yourself writing `${captured.A.output}\n${captured.B.output}\n${captured.C.output}` in prompts
+- Specialist-role pipelines (Plan → Research → Implement → Report) where each stage builds on all prior reasoning
+
+The two mechanisms are complementary: keep `capture:` for structured per-field access (`${captured.X.exit_code}`, `${captured.X.stderr}`); add `append_to_messages` when later states need the narrative history.
+
 ### Stall Detection (`check_stall`) {#stall-detection-check_stall}
 
 Add a `check_stall` state when a skill might loop without making any code changes. This is especially important for prompt-based skills that sometimes conclude "nothing to do" — without stall detection, they exhaust `max_iterations` silently.

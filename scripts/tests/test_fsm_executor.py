@@ -1000,6 +1000,132 @@ class TestCaptureWorkflow:
         assert 'echo "Took: 1500ms"' in mock_runner.calls[1]
 
 
+class TestAppendToMessages:
+    """Tests for the append_to_messages state field."""
+
+    def test_append_to_messages_stores_message(self) -> None:
+        """append_to_messages appends interpolated output to executor.messages."""
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="echo hello",
+                    capture="out",
+                    append_to_messages="${captured.out.output}",
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("echo hello", output="hello")
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.messages == ["hello"]
+
+    def test_messages_accumulates_across_states(self) -> None:
+        """Multiple states each append to the shared messages log."""
+        fsm = FSMLoop(
+            name="test",
+            initial="plan",
+            states={
+                "plan": StateConfig(
+                    action="plan.sh",
+                    capture="plan_out",
+                    append_to_messages="${captured.plan_out.output}",
+                    next="execute",
+                ),
+                "execute": StateConfig(
+                    action="exec.sh",
+                    capture="exec_out",
+                    append_to_messages="${captured.exec_out.output}",
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("plan.sh", output="Plan: fix the bug")
+        mock_runner.set_result("exec.sh", output="Exec: patched line 42")
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.messages == ["Plan: fix the bug", "Exec: patched line 42"]
+
+    def test_messages_available_in_next_state(self) -> None:
+        """${messages} in a later state's action resolves to all prior messages."""
+        fsm = FSMLoop(
+            name="test",
+            initial="step1",
+            states={
+                "step1": StateConfig(
+                    action="step1.sh",
+                    capture="s1",
+                    append_to_messages="${captured.s1.output}",
+                    next="step2",
+                ),
+                "step2": StateConfig(
+                    action='report.sh "${messages}"',
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("step1.sh", output="finding A")
+        mock_runner.set_result('report.sh "finding A"', output="reported")
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.messages == ["finding A"]
+        assert 'report.sh "finding A"' in mock_runner.calls[1]
+
+    def test_append_to_messages_literal_string(self) -> None:
+        """append_to_messages with a literal (no interpolation) is stored as-is."""
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="noop.sh",
+                    append_to_messages="static label",
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("noop.sh", output="ignored")
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.messages == ["static label"]
+
+    def test_no_append_to_messages_leaves_list_empty(self) -> None:
+        """States without append_to_messages leave executor.messages empty."""
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(action="noop.sh", capture="out", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("noop.sh", output="output")
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.messages == []
+
+
 class TestRouting:
     """Tests for verdict routing."""
 
@@ -3093,6 +3219,20 @@ class TestExecutionResultToDict:
         )
         d = result.to_dict()
         assert "handoff" not in d
+        assert "messages" not in d
+
+    def test_to_dict_with_messages(self) -> None:
+        """to_dict includes messages when non-empty."""
+        result = ExecutionResult(
+            final_state="done",
+            iterations=2,
+            terminated_by="terminal",
+            duration_ms=100,
+            captured={},
+            messages=["step 1 output", "step 2 output"],
+        )
+        d = result.to_dict()
+        assert d["messages"] == ["step 1 output", "step 2 output"]
         assert "continuation_prompt" not in d
         assert "error" not in d
 

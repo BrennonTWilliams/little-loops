@@ -301,6 +301,10 @@
           "type": "string",
           "description": "Variable name to store action output"
         },
+        "append_to_messages": {
+          "type": "string",
+          "description": "Interpolation expression whose result is appended to the shared run-scoped messages log (e.g. '${captured.execute.output}')"
+        },
         "timeout": {
           "type": "integer",
           "description": "Action-level timeout in seconds",
