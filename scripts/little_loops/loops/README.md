@@ -164,7 +164,7 @@ Built-in fragment libraries are in `lib/`:
 | `lib/benchmark.yaml` | Harbor-format benchmark runner fragment (`run_benchmark`) with `harbor_scorer` evaluator |
 | `lib/score-plan-quality.yaml` | Plan-quality scoring fragment (`score_plan_quality`) used by `rn-plan-apo` to score plan trees on four dimensions |
 | `lib/prompt-fragments.yaml` | Reusable prompt-construction fragments for building structured LLM inputs |
-| `lib/harness.yaml` | Harness evaluation fragment (`playwright_screenshot`) — Playwright screenshot capture with `output_contains: CAPTURED` evaluator; used by `oracles/generator-evaluator` |
+| `lib/harness.yaml` | Harness evaluation fragments (`playwright_screenshot`, `ll_rubric_score`) — Playwright screenshot capture and LLM rubric scoring; used by `oracles/generator-evaluator` |
 
 Import a library in any loop:
 

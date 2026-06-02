@@ -62,18 +62,7 @@ states:
     on_error: score
 
   score:
-    action_type: prompt
-    action: |
-      Review the generated artifact in ${context.run_dir} against the rubric below.
-
-      ${context.rubric}
-
-      Pass threshold: ${context.pass_threshold}/10 per criterion.
-      If all criteria meet or exceed the threshold, output ALL_PASS on its own line.
-      Otherwise output NEEDS_WORK and describe the specific improvements required.
-    evaluate:
-      type: output_contains
-      pattern: "ALL_PASS"
+    fragment: ll_rubric_score
     on_yes: done
     on_no: generate
     on_error: generate

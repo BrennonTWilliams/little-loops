@@ -1448,6 +1448,76 @@ class TestHarnessYamlFragments:
 
 
 # ---------------------------------------------------------------------------
+# lib/harness.yaml: verify ll_rubric_score fragment is present and correct
+# ---------------------------------------------------------------------------
+
+
+class TestLlRubricScoreFragment:
+    """Tests that ll_rubric_score exists in the real lib/harness.yaml."""
+
+    @staticmethod
+    def _load_harness_yaml() -> dict:
+        import yaml
+
+        lib_path = (
+            Path(__file__).parent.parent
+            / "little_loops"
+            / "loops"
+            / "lib"
+            / "harness.yaml"
+        )
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_ll_rubric_score_defined_in_harness_yaml(self) -> None:
+        data = self._load_harness_yaml()
+        assert "ll_rubric_score" in data["fragments"], (
+            "ll_rubric_score fragment missing from lib/harness.yaml"
+        )
+
+    def test_ll_rubric_score_has_correct_action_type(self) -> None:
+        data = self._load_harness_yaml()
+        assert data["fragments"]["ll_rubric_score"]["action_type"] == "prompt"
+
+    def test_ll_rubric_score_has_output_contains_evaluator(self) -> None:
+        data = self._load_harness_yaml()
+        evaluate = data["fragments"]["ll_rubric_score"].get("evaluate", {})
+        assert evaluate.get("type") == "output_contains"
+        assert evaluate.get("pattern") == "ALL_PASS"
+
+    def test_ll_rubric_score_has_description(self) -> None:
+        data = self._load_harness_yaml()
+        frag = data["fragments"]["ll_rubric_score"]
+        assert "description" in frag, "ll_rubric_score fragment is missing a description field"
+        assert frag["description"].strip(), "ll_rubric_score fragment has an empty description"
+
+    def test_ll_rubric_score_resolves_in_loop(self) -> None:
+        """Full resolve_fragments integration against the real lib/harness.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "score",
+            "import": ["lib/harness.yaml"],
+            "states": {
+                "score": {
+                    "fragment": "ll_rubric_score",
+                    "on_yes": "done",
+                    "on_no": "generate",
+                    "on_error": "generate",
+                },
+                "done": {"terminal": True},
+                "generate": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["score"]
+        assert state["action_type"] == "prompt"
+        assert state["evaluate"]["type"] == "output_contains"
+        assert state["evaluate"]["pattern"] == "ALL_PASS"
+        assert "fragment" not in state
+
+
+# ---------------------------------------------------------------------------
 # lib/common.yaml: verify convergence_gate fragment is present and correct
 # ---------------------------------------------------------------------------
 

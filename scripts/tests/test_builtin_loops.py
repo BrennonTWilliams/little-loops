@@ -5206,9 +5206,7 @@ class TestGeneratorEvaluatorOracle:
 
     def test_score_uses_output_contains_all_pass(self, data: dict) -> None:
         state = data["states"].get("score", {})
-        evaluate = state.get("evaluate", {})
-        assert evaluate.get("type") == "output_contains"
-        assert evaluate.get("pattern") == "ALL_PASS"
+        assert state.get("fragment") == "ll_rubric_score"
 
     def test_score_routes_to_done_on_yes(self, data: dict) -> None:
         state = data["states"].get("score", {})

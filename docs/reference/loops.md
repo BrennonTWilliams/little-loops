@@ -227,7 +227,7 @@ run_gen_eval:
 ### Internal state machine
 
 ```
-generate → evaluate (playwright_screenshot fragment) → score
+generate → evaluate (playwright_screenshot fragment) → score (ll_rubric_score fragment)
   score.on_yes → done (terminal)
   score.on_no  → generate
   evaluate.on_yes/no/error → score   # graceful degradation if Playwright unavailable
@@ -235,4 +235,4 @@ generate → evaluate (playwright_screenshot fragment) → score
 
 ### Fragment dependency
 
-Imports `lib/harness.yaml` for the `playwright_screenshot` fragment used in the `evaluate` state. See `## Fragment Catalog → lib/harness.yaml fragments` in `skills/create-loop/reference.md`.
+Imports `lib/harness.yaml` for the `playwright_screenshot` fragment used in the `evaluate` state and the `ll_rubric_score` fragment used in the `score` state. See `## Fragment Catalog → lib/harness.yaml fragments` in `skills/create-loop/reference.md`.

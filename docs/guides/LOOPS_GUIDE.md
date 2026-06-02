@@ -3268,7 +3268,7 @@ states:
 |----------|-------------|----------|--------------------|
 | `ll_commit` | Prompt state that invokes `/ll:commit ${context.commit_message}`. No evaluate block — it's a fire-and-forget prompt state. | `action_type: prompt` + `action: /ll:commit ${context.commit_message}` | `context.commit_message` (in the loop's `context:` block), `next:` |
 
-#### `lib/harness.yaml` — Playwright screenshot fragment
+#### `lib/harness.yaml` — Playwright screenshot and rubric scoring fragments
 
 Shell fragment for capturing screenshots of generated HTML/SVG artifacts. Used by the `generator-evaluator` oracle sub-loop and the five harness loops (`html-website-generator`, `html-anything`, `hitl-md`, `p5js-sketch-generator`, `svg-image-generator`).
 
@@ -3288,6 +3288,7 @@ states:
 | Fragment | Description | Provides | Caller must supply |
 |----------|-------------|----------|--------------------|
 | `playwright_screenshot` | Runs `playwright screenshot` and emits `CAPTURED` on success. Default action uses `context.file_url` and `context.screenshot_path` with `2>&1` stderr capture (Variant B). Variant A callers needing `$(pwd)/` expansion must override `action:` at the call site. | `action_type: shell` + `evaluate.type: output_contains` (`pattern: "CAPTURED"`) | `context.file_url`, `context.screenshot_path` (or override `action:`), routing (`on_yes`, `on_no`, `on_error`) |
+| `ll_rubric_score` | Scores a generated artifact in `context.run_dir` against `context.rubric` with pass threshold `context.pass_threshold`. Emits `ALL_PASS` when all criteria pass; otherwise `NEEDS_WORK` with improvement notes. Used in the `generator-evaluator` oracle `score` state. | `action_type: prompt` + `evaluate.type: output_contains` (`pattern: "ALL_PASS"`) | `context.run_dir`, `context.rubric`, `context.pass_threshold` in loop context, routing (`on_yes`, `on_no`, `on_error`) |
 
 Built-in loops import the libraries as `import: ["lib/common.yaml"]` or `import: ["lib/cli.yaml"]`. User loops in `.loops/` can do the same — built-in fragment libraries resolve automatically, so no copying or symlinking is required. You can also define your own local fragments in your loop file or a local library.
 

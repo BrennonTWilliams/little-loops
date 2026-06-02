@@ -1139,3 +1139,4 @@ import:
 | Fragment | Provides | Caller must supply |
 |----------|----------|--------------------|
 | `playwright_screenshot` | `action_type: shell` + default `action` (`playwright screenshot "${context.file_url}" "${context.screenshot_path}" 2>&1 && echo "CAPTURED"`) + `evaluate.type: output_contains` with `pattern: "CAPTURED"` — callers that need `$(pwd)/` path expansion must override `action:` at the call site | `on_yes`, `on_no`, `on_error` routing; override `action:` when using absolute paths via `$(pwd)` |
+| `ll_rubric_score` | `action_type: prompt` + rubric scoring action referencing `${context.run_dir}`, `${context.rubric}`, `${context.pass_threshold}` + `evaluate.type: output_contains` with `pattern: "ALL_PASS"` — emits `ALL_PASS` when all rubric criteria pass | `on_yes`, `on_no`, `on_error` routing; `context.run_dir`, `context.rubric`, `context.pass_threshold` in loop context |
