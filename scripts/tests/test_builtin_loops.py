@@ -5126,3 +5126,61 @@ class TestIncrementalRefactorLoop:
 
     def test_done_state_is_terminal(self, data: dict) -> None:
         assert data["states"]["done"].get("terminal") is True
+
+
+class TestGeneratorEvaluatorOracle:
+    """Structural tests for the generator-evaluator oracle sub-loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "oracles/generator-evaluator.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "generator-evaluator"
+        assert data.get("initial") == "generate"
+        assert isinstance(data.get("states"), dict)
+
+    def test_has_parameters_block(self, data: dict) -> None:
+        params = data.get("parameters", {})
+        assert "run_dir" in params, "parameters block must declare run_dir"
+        assert "generate_prompt" in params, "parameters block must declare generate_prompt"
+        assert params["run_dir"].get("required") is True
+        assert params["generate_prompt"].get("required") is True
+
+    def test_required_states_exist(self, data: dict) -> None:
+        states = data.get("states", {})
+        for name in ("generate", "evaluate", "score", "done"):
+            assert name in states, f"required state '{name}' missing"
+
+    def test_evaluate_uses_playwright_screenshot_fragment(self, data: dict) -> None:
+        state = data["states"].get("evaluate", {})
+        assert state.get("fragment") == "playwright_screenshot", (
+            "evaluate state must use fragment: playwright_screenshot"
+        )
+
+    def test_evaluate_routes_to_score_on_all_outcomes(self, data: dict) -> None:
+        state = data["states"].get("evaluate", {})
+        assert state.get("on_yes") == "score"
+        assert state.get("on_no") == "score"
+        assert state.get("on_error") == "score"
+
+    def test_score_uses_output_contains_all_pass(self, data: dict) -> None:
+        state = data["states"].get("score", {})
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_contains"
+        assert evaluate.get("pattern") == "ALL_PASS"
+
+    def test_score_routes_to_done_on_yes(self, data: dict) -> None:
+        state = data["states"].get("score", {})
+        assert state.get("on_yes") == "done"
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        state = data["states"].get("done", {})
+        assert state.get("terminal") is True, "done.terminal should be True"
+
+    def test_imports_harness_yaml(self, data: dict) -> None:
+        imports = data.get("import", [])
+        assert "lib/harness.yaml" in imports, "must import lib/harness.yaml"

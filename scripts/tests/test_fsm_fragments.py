@@ -1136,6 +1136,22 @@ class TestFragmentDescriptionStripping:
             assert "description" in frag, f"Fragment '{name}' is missing a description field"
             assert frag["description"].strip(), f"Fragment '{name}' has an empty description"
 
+    def test_all_harness_yaml_fragments_have_description(self) -> None:
+        """Every fragment in lib/harness.yaml defines a description field."""
+        import yaml
+
+        lib_path = (
+            Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "harness.yaml"
+        )
+        with open(lib_path) as f:
+            data = yaml.safe_load(f)
+        fragments = data.get("fragments", {})
+        assert fragments, "lib/harness.yaml should define at least one fragment"
+        for name, frag in fragments.items():
+            assert isinstance(frag, dict), f"Fragment '{name}' should be a dict"
+            assert "description" in frag, f"Fragment '{name}' is missing a description field"
+            assert frag["description"].strip(), f"Fragment '{name}' has an empty description"
+
 
 # ---------------------------------------------------------------------------
 # lib/benchmark.yaml: verify harbor_scorer fragment is present and correct
@@ -1349,4 +1365,74 @@ class TestLlCommitFragment:
         state = result["states"]["commit"]
         assert state["action_type"] == "prompt"
         assert state["action"].strip().startswith("/ll:commit")
+        assert "fragment" not in state
+
+
+# ---------------------------------------------------------------------------
+# lib/harness.yaml: verify playwright_screenshot fragment is present and correct
+# ---------------------------------------------------------------------------
+
+
+class TestHarnessYamlFragments:
+    """Tests that playwright_screenshot exists in the real lib/harness.yaml."""
+
+    @staticmethod
+    def _load_harness_yaml() -> dict:
+        import yaml
+
+        lib_path = (
+            Path(__file__).parent.parent
+            / "little_loops"
+            / "loops"
+            / "lib"
+            / "harness.yaml"
+        )
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_playwright_screenshot_defined_in_harness_yaml(self) -> None:
+        data = self._load_harness_yaml()
+        assert "playwright_screenshot" in data["fragments"], (
+            "playwright_screenshot fragment missing from lib/harness.yaml"
+        )
+
+    def test_playwright_screenshot_has_correct_action_type(self) -> None:
+        data = self._load_harness_yaml()
+        assert data["fragments"]["playwright_screenshot"]["action_type"] == "shell"
+
+    def test_playwright_screenshot_has_output_contains_evaluator(self) -> None:
+        data = self._load_harness_yaml()
+        evaluate = data["fragments"]["playwright_screenshot"].get("evaluate", {})
+        assert evaluate.get("type") == "output_contains"
+        assert evaluate.get("pattern") == "CAPTURED"
+
+    def test_playwright_screenshot_has_description(self) -> None:
+        data = self._load_harness_yaml()
+        frag = data["fragments"]["playwright_screenshot"]
+        assert "description" in frag, "playwright_screenshot fragment is missing a description field"
+        assert frag["description"].strip(), "playwright_screenshot fragment has an empty description"
+
+    def test_playwright_screenshot_resolves_in_loop(self) -> None:
+        """Full resolve_fragments integration against the real lib/harness.yaml."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "capture",
+            "import": ["lib/harness.yaml"],
+            "states": {
+                "capture": {
+                    "fragment": "playwright_screenshot",
+                    "action": 'playwright screenshot "file:///tmp/test.html" "/tmp/test.png" && echo "CAPTURED"',
+                    "on_yes": "done",
+                    "on_no": "done",
+                    "on_error": "done",
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["capture"]
+        assert state["action_type"] == "shell"
+        assert state["evaluate"]["type"] == "output_contains"
+        assert state["evaluate"]["pattern"] == "CAPTURED"
         assert "fragment" not in state

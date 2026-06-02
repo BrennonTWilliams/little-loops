@@ -134,6 +134,20 @@ class TestIsRunnableLoop:
         if oracle.exists():
             assert is_runnable_loop(oracle) is True
 
+    def test_generator_evaluator_is_runnable(self) -> None:
+        """generator-evaluator oracle sub-loop is recognized as runnable."""
+        from pathlib import Path as _Path
+
+        oracle = (
+            _Path(__file__).resolve().parents[1]
+            / "little_loops"
+            / "loops"
+            / "oracles"
+            / "generator-evaluator.yaml"
+        )
+        if oracle.exists():
+            assert is_runnable_loop(oracle) is True
+
     def test_lib_fragments_are_not_runnable(self) -> None:
         """All real library fragments under loops/lib/ are excluded by the predicate."""
         from pathlib import Path as _Path

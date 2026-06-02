@@ -1,0 +1,76 @@
+name: generator-evaluator
+description: |
+  Oracle sub-loop for iterative artifact generation with visual evaluation. Loops
+  generate → evaluate (Playwright screenshot) → score (LLM rubric) until ALL_PASS or
+  max_iterations. Returns done on success; parent routes on_yes to its next state.
+  Used by html-website-generator, html-anything, hitl-md, p5js-sketch-generator, and
+  svg-image-generator thin wrappers (ENH-1869).
+
+initial: generate
+on_handoff: spawn
+timeout: 7200
+max_iterations: 20
+
+parameters:
+  run_dir:
+    type: string
+    required: true
+    description: Directory path for generated artifacts (runner-injected context.run_dir or absolute path)
+  generate_prompt:
+    type: string
+    required: true
+    description: Full prompt to use in the generate state LLM call including where to write output
+  rubric:
+    type: string
+    required: false
+    description: Rubric criteria for scoring the generated artifact as markdown text
+  pass_threshold:
+    type: number
+    required: false
+    description: Minimum rubric score threshold to accept (default 6)
+
+import:
+  - lib/harness.yaml
+
+context:
+  pass_threshold: 6
+  rubric: ""
+
+states:
+  generate:
+    action_type: prompt
+    action: |
+      ${context.generate_prompt}
+    on_yes: evaluate
+    on_error: failed
+
+  evaluate:
+    fragment: playwright_screenshot
+    action: |
+      playwright screenshot "file://$(pwd)/${context.run_dir}/index.html" "${context.run_dir}/screenshot.png" 2>&1 && echo "CAPTURED"
+    on_yes: score
+    on_no: score
+    on_error: score
+
+  score:
+    action_type: prompt
+    action: |
+      Review the generated artifact in ${context.run_dir} against the rubric below.
+
+      ${context.rubric}
+
+      Pass threshold: ${context.pass_threshold}/10 per criterion.
+      If all criteria meet or exceed the threshold, output ALL_PASS on its own line.
+      Otherwise output NEEDS_WORK and describe the specific improvements required.
+    evaluate:
+      type: output_contains
+      pattern: "ALL_PASS"
+    on_yes: done
+    on_no: generate
+    on_error: generate
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true

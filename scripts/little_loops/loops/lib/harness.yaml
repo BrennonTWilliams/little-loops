@@ -1,0 +1,13 @@
+fragments:
+  playwright_screenshot:
+    description: |
+      Shell fragment that captures a Playwright screenshot of a generated artifact and emits
+      "CAPTURED" on success. Default action uses context.file_url (the file:// URL) and
+      context.screenshot_path (output .png path) with 2>&1 stderr capture (Variant B).
+      Callers needing $(pwd)/ path expansion (Variant A) must override action: at the call site.
+    action_type: shell
+    action: |
+      playwright screenshot "${context.file_url}" "${context.screenshot_path}" 2>&1 && echo "CAPTURED"
+    evaluate:
+      type: output_contains
+      pattern: "CAPTURED"
