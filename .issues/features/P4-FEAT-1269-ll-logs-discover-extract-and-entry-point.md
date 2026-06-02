@@ -176,12 +176,12 @@ _Added by `/ll:confidence-check` on 2026-04-23_
 - **Zero pre-existing test coverage on new module**: `test_ll_logs.py` doesn't exist yet. Write the specified test classes (`TestArgumentParsing`, `TestDiscover`, `TestExtract`) in the same PR to close this gap.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-23T15:22:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6ad50e3-3dbd-47b4-ad8c-d697aadf8c71.jsonl`
-- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed4d5750-36dc-4fa5-b93c-32d8a7a1ab88.jsonl`
-- `/ll:wire-issue` - 2026-04-23T15:17:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed4d5750-36dc-4fa5-b93c-32d8a7a1ab88.jsonl`
-- `/ll:refine-issue` - 2026-04-23T15:12:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d712c91e-065b-4dbb-b4d3-ea0c962ee8f6.jsonl`
-- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36817284-b23d-4550-8ba1-417e527e53d0.jsonl`
-- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-23T15:22:58 - `a6ad50e3-3dbd-47b4-ad8c-d697aadf8c71.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `ed4d5750-36dc-4fa5-b93c-32d8a7a1ab88.jsonl`
+- `/ll:wire-issue` - 2026-04-23T15:17:44 - `ed4d5750-36dc-4fa5-b93c-32d8a7a1ab88.jsonl`
+- `/ll:refine-issue` - 2026-04-23T15:12:06 - `d712c91e-065b-4dbb-b4d3-ea0c962ee8f6.jsonl`
+- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `36817284-b23d-4550-8ba1-417e527e53d0.jsonl`
+- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
 
 ---
 

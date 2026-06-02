@@ -141,11 +141,11 @@ Added `NO-GO REASON` sub-classification to `skills/go-no-go/SKILL.md`:
 All changes are additive — GO verdict format and existing check-mode exit codes are unchanged.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-23T02:26:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2f86a73-ed97-4e5e-af24-578ebd4142da.jsonl`
-- `/ll:confidence-check` - 2026-03-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68210813-d5d3-4e1b-8275-68e36e51933a.jsonl`
-- `/ll:refine-issue` - 2026-03-23T01:58:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9359449-731d-43e3-ba00-6082cc3bba84.jsonl`
+- `/ll:ready-issue` - 2026-03-23T02:26:53 - `a2f86a73-ed97-4e5e-af24-578ebd4142da.jsonl`
+- `/ll:confidence-check` - 2026-03-22T00:00:00Z - `68210813-d5d3-4e1b-8275-68e36e51933a.jsonl`
+- `/ll:refine-issue` - 2026-03-23T01:58:55 - `b9359449-731d-43e3-ba00-6082cc3bba84.jsonl`
 - `/ll:capture-issue` - 2026-03-22T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d4128213-770f-4cd5-ac30-edbbda895fb4.jsonl`
-- `/ll:manage-issue` - 2026-03-23T02:30:05Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4654b148-423e-4a16-b229-d5d8d8c1a1ef.jsonl`
+- `/ll:manage-issue` - 2026-03-23T02:30:05Z - `4654b148-423e-4a16-b229-d5d8d8c1a1ef.jsonl`
 
 ---
 

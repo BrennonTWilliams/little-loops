@@ -220,9 +220,9 @@ Updated `test_workflow_sequence_analyzer.py` to reflect that the "ll-messages" h
 All 4687 tests pass; ruff reports no issues on modified files.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-13T01:36:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6e3722e7-a57d-48d1-a6fa-57ba269d61b3.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60aa1d19-112b-4250-a43b-a5986852e393.jsonl`
-- `/ll:wire-issue` - 2026-04-13T01:29:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1b3029d-1f24-48d8-a235-4f55d666b8c3.jsonl`
-- `/ll:refine-issue` - 2026-04-13T01:17:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b19e73-9a31-4405-88d4-1165503fb996.jsonl`
-- `/ll:capture-issue` - 2026-04-12T19:32:44Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0da757c9-7ce6-4e48-97f4-06e4c7a2b36b.jsonl`
-- `/ll:manage-issue` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b19e73-9a31-4405-88d4-1165503fb996.jsonl`
+- `/ll:ready-issue` - 2026-04-13T01:36:41 - `6e3722e7-a57d-48d1-a6fa-57ba269d61b3.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `60aa1d19-112b-4250-a43b-a5986852e393.jsonl`
+- `/ll:wire-issue` - 2026-04-13T01:29:41 - `d1b3029d-1f24-48d8-a235-4f55d666b8c3.jsonl`
+- `/ll:refine-issue` - 2026-04-13T01:17:36 - `e9b19e73-9a31-4405-88d4-1165503fb996.jsonl`
+- `/ll:capture-issue` - 2026-04-12T19:32:44Z - `0da757c9-7ce6-4e48-97f4-06e4c7a2b36b.jsonl`
+- `/ll:manage-issue` - 2026-04-13T00:00:00Z - `e9b19e73-9a31-4405-88d4-1165503fb996.jsonl`

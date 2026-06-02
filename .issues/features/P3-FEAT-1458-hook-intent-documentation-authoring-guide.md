@@ -285,9 +285,9 @@ Implemented FEAT-1458 — Hook-Intent Documentation Authoring Guide.
 - FEAT-1460 Step 14 (CLI.md cross-link) is now a verification step, not an edit.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-12T04:51:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42a87158-4715-487e-9607-65a4368e7b76.jsonl`
-- `/ll:ready-issue` - 2026-05-12T04:44:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cacd405-07ec-45fd-9483-f49ad9cf7343.jsonl`
-- `/ll:wire-issue` - 2026-05-12T04:40:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6631d514-aa18-41b4-a905-645bdb8bf3fe.jsonl`
-- `/ll:refine-issue` - 2026-05-12T04:35:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/94a3b45b-9842-4161-a6eb-d42432c12d64.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c649d9b-2581-4606-bbef-f8600ec424d0.jsonl`
-- `/ll:issue-size-review` - 2026-05-12T04:28:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
+- `/ll:manage-issue` - 2026-05-12T04:51:06Z - `42a87158-4715-487e-9607-65a4368e7b76.jsonl`
+- `/ll:ready-issue` - 2026-05-12T04:44:39 - `5cacd405-07ec-45fd-9483-f49ad9cf7343.jsonl`
+- `/ll:wire-issue` - 2026-05-12T04:40:47 - `6631d514-aa18-41b4-a905-645bdb8bf3fe.jsonl`
+- `/ll:refine-issue` - 2026-05-12T04:35:32 - `94a3b45b-9842-4161-a6eb-d42432c12d64.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `2c649d9b-2581-4606-bbef-f8600ec424d0.jsonl`
+- `/ll:issue-size-review` - 2026-05-12T04:28:55 - `001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`

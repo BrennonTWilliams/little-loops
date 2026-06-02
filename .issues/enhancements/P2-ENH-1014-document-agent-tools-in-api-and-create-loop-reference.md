@@ -243,9 +243,9 @@ _Added by `/ll:confidence-check` on 2026-04-09_
 - **Heading format inconsistency**: Acceptance criteria item 4 says `#### agent: (Optional)` (with colon) but Implementation Steps explicitly say to use `#### agent (Optional)` (no colon). Follow the Implementation Steps format.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb52f860-f8b3-47fd-89ce-763a41dbdc5a.jsonl`
-- `/ll:wire-issue` - 2026-04-09T15:46:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb52f860-f8b3-47fd-89ce-763a41dbdc5a.jsonl`
-- `/ll:refine-issue` - 2026-04-09T15:41:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2408bcd-760c-4589-a5bb-13fd356691b2.jsonl`
-- `/ll:format-issue` - 2026-04-09T15:37:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5318c406-f32e-436b-b6df-7b27eeeb7634.jsonl`
-- `/ll:issue-size-review` - 2026-04-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40c29be0-4e98-4828-a76b-5f21269ed7a5.jsonl`
-- `/ll:issue-size-review` - 2026-04-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a3e695e-d9fa-4fce-939c-e7bfcc83f05b.jsonl`
+- `/ll:confidence-check` - 2026-04-09T00:00:00Z - `fb52f860-f8b3-47fd-89ce-763a41dbdc5a.jsonl`
+- `/ll:wire-issue` - 2026-04-09T15:46:48 - `fb52f860-f8b3-47fd-89ce-763a41dbdc5a.jsonl`
+- `/ll:refine-issue` - 2026-04-09T15:41:45 - `c2408bcd-760c-4589-a5bb-13fd356691b2.jsonl`
+- `/ll:format-issue` - 2026-04-09T15:37:18 - `5318c406-f32e-436b-b6df-7b27eeeb7634.jsonl`
+- `/ll:issue-size-review` - 2026-04-09T00:00:00Z - `40c29be0-4e98-4828-a76b-5f21269ed7a5.jsonl`
+- `/ll:issue-size-review` - 2026-04-09T00:00:00Z - `6a3e695e-d9fa-4fce-939c-e7bfcc83f05b.jsonl`

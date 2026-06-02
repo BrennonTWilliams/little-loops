@@ -242,11 +242,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [x] Docs updated (`HOST_COMPATIBILITY.md`, `usage.md`, `README.md`)
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-17T01:47:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1772a9c9-375e-4635-9d23-f8a61e7e3c7f.jsonl`
-- `/ll:ready-issue` - 2026-05-17T01:44:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0920b66e-b585-4634-aa48-c95491936234.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c6e016f-d3b2-4f3e-a2c1-6c7553275998.jsonl`
-- `/ll:wire-issue` - 2026-05-17T01:32:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e664a0e-d46b-43da-88ab-df08578151ac.jsonl`
-- `/ll:decide-issue` - 2026-05-17T01:20:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a7b4be4f-93c3-4066-a776-3422cb63071d.jsonl`
-- `/ll:refine-issue` - 2026-05-17T01:14:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11b2bd3e-08b6-454d-bb99-5e0f2ce9ef23.jsonl`
-- `/ll:format-issue` - 2026-05-17T01:01:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6225396e-0ee6-4e54-8a47-2e90e54ff0ef.jsonl`
-- `/ll:capture-issue` - 2026-05-17T00:50:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-17T01:47:24 - `1772a9c9-375e-4635-9d23-f8a61e7e3c7f.jsonl`
+- `/ll:ready-issue` - 2026-05-17T01:44:54 - `0920b66e-b585-4634-aa48-c95491936234.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `9c6e016f-d3b2-4f3e-a2c1-6c7553275998.jsonl`
+- `/ll:wire-issue` - 2026-05-17T01:32:55 - `8e664a0e-d46b-43da-88ab-df08578151ac.jsonl`
+- `/ll:decide-issue` - 2026-05-17T01:20:12 - `a7b4be4f-93c3-4066-a776-3422cb63071d.jsonl`
+- `/ll:refine-issue` - 2026-05-17T01:14:57 - `11b2bd3e-08b6-454d-bb99-5e0f2ce9ef23.jsonl`
+- `/ll:format-issue` - 2026-05-17T01:01:08 - `6225396e-0ee6-4e54-8a47-2e90e54ff0ef.jsonl`
+- `/ll:capture-issue` - 2026-05-17T00:50:07Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

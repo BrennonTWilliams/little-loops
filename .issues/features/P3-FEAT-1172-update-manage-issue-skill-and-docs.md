@@ -119,9 +119,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 4. Create `scripts/tests/test_feat1172_doc_wiring.py` — a doc-wiring test asserting that `completed_at` appears in the `docs/reference/ISSUE_TEMPLATE.md` frontmatter fields table, following the pattern in `scripts/tests/test_enh1138_doc_wiring.py`
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-18T21:12:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d491456c-76f4-49f2-b873-5e4c42016793.jsonl`
-- `/ll:manage-issue` - 2026-04-18T21:11:47Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d491456c-76f4-49f2-b873-5e4c42016793.jsonl`
-- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec44b430-72d7-40d7-80da-a4758ee0bea7.jsonl`
-- `/ll:wire-issue` - 2026-04-18T21:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc8fa437-a5ed-4e83-a696-6f08da57756c.jsonl`
-- `/ll:refine-issue` - 2026-04-18T21:01:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7ab691fc-9228-4fdb-a8dd-351434afc882.jsonl`
-- `/ll:issue-size-review` - 2026-04-18T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f4fec2da-840f-48eb-a5e3-fc86007899b8.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-18T21:12:22 - `d491456c-76f4-49f2-b873-5e4c42016793.jsonl`
+- `/ll:manage-issue` - 2026-04-18T21:11:47Z - `d491456c-76f4-49f2-b873-5e4c42016793.jsonl`
+- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `ec44b430-72d7-40d7-80da-a4758ee0bea7.jsonl`
+- `/ll:wire-issue` - 2026-04-18T21:05:45 - `dc8fa437-a5ed-4e83-a696-6f08da57756c.jsonl`
+- `/ll:refine-issue` - 2026-04-18T21:01:00 - `7ab691fc-9228-4fdb-a8dd-351434afc882.jsonl`
+- `/ll:issue-size-review` - 2026-04-18T21:00:00Z - `f4fec2da-840f-48eb-a5e3-fc86007899b8.jsonl`

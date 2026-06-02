@@ -112,9 +112,9 @@ def _update_issue_frontmatter(content: str, updates: dict[str, str | int]) -> st
 Added `update_frontmatter(content, updates)` to `scripts/little_loops/frontmatter.py` (module docstring and module-index entry in `docs/reference/API.md` updated from "parsing" to "read/write utilities"). The implementation mirrors `sync.py:_update_issue_frontmatter` — uses `yaml.safe_load` / `yaml.dump(default_flow_style=False, sort_keys=False)` to preserve key order and round-trip colon-containing values (URLs, ISO timestamps, quoted colons) without corruption. Added `TestUpdateFrontmatter` class to `scripts/tests/test_frontmatter.py` with the 7 cases mirroring `test_sync.py::TestFrontmatterUpdating`. All 35 frontmatter tests pass; full suite (4966 tests) passes; ruff and mypy clean. `sync.py:_update_issue_frontmatter` left in place — its migration is deferred per FEAT-1170/1171 plan.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-18T20:26:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21ab1448-5e0d-47e0-872e-be05c2d909ec.jsonl`
-- `/ll:refine-issue` - 2026-04-18T20:15:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a75f89c-6cf6-4de2-95ec-3b3c44d624ac.jsonl`
-- `/ll:issue-size-review` - 2026-04-18T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f4fec2da-840f-48eb-a5e3-fc86007899b8.jsonl`
-- `/ll:wire-issue` - 2026-04-18T20:19:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ff04500-da95-4337-960b-a7afab63af2c.jsonl`
-- `/ll:manage-issue` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21ab1448-5e0d-47e0-872e-be05c2d909ec.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-18T20:26:08 - `21ab1448-5e0d-47e0-872e-be05c2d909ec.jsonl`
+- `/ll:refine-issue` - 2026-04-18T20:15:21 - `6a75f89c-6cf6-4de2-95ec-3b3c44d624ac.jsonl`
+- `/ll:issue-size-review` - 2026-04-18T21:00:00Z - `f4fec2da-840f-48eb-a5e3-fc86007899b8.jsonl`
+- `/ll:wire-issue` - 2026-04-18T20:19:04
+- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `9ff04500-da95-4337-960b-a7afab63af2c.jsonl`
+- `/ll:manage-issue` - 2026-04-18T00:00:00Z - `21ab1448-5e0d-47e0-872e-be05c2d909ec.jsonl`

@@ -298,13 +298,13 @@ _Added by `/ll:confidence-check` on 2026-05-16 (updated — decision resolved)_
 - **Tests are co-deliverables** — `TestProcessCommands` and `TestRealCommandsIntegrationGuard` must be written alongside `_process_commands()`; implement tests first so they drive the namespace-prefix assertions and output-directory structure before the function is finalized.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-16T14:44:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010190c-509e-453e-bb85-c00575d1e590.jsonl`
-- `/ll:ready-issue` - 2026-05-16T14:34:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5552b020-a161-462d-b52b-bde7de3f95a9.jsonl`
-- `/ll:refine-issue` - 2026-05-16T14:27:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/294b6cd1-8fe5-4d83-b159-1a7c4340f30e.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7559348-bfd0-4c60-b23c-022b113b6169.jsonl`
-- `/ll:decide-issue` - 2026-05-16T14:21:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1f75157-7a21-4776-94d5-de65373150bd.jsonl`
-- `/ll:confidence-check` - 2026-05-16T15:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb8fc19d-3730-4a14-bee0-2c1b48a9c669.jsonl`
-- `/ll:wire-issue` - 2026-05-16T14:11:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cc5d7f3-0b4f-40a1-9684-95479666b681.jsonl`
-- `/ll:refine-issue` - 2026-05-16T14:05:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6722ff2e-ab5e-415c-92ca-52f0e679ac77.jsonl`
-- `/ll:format-issue` - 2026-05-16T13:18:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d491efd-1e9f-48e7-91e7-1d0390a23fbc.jsonl`
-- `/ll:capture-issue` - 2026-05-16T13:04:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f112cdc-ed18-410c-85e1-0d7cc45aa863.jsonl`
+- `/ll:manage-issue` - 2026-05-16T14:44:12Z - `0010190c-509e-453e-bb85-c00575d1e590.jsonl`
+- `/ll:ready-issue` - 2026-05-16T14:34:59 - `5552b020-a161-462d-b52b-bde7de3f95a9.jsonl`
+- `/ll:refine-issue` - 2026-05-16T14:27:24 - `294b6cd1-8fe5-4d83-b159-1a7c4340f30e.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00 - `c7559348-bfd0-4c60-b23c-022b113b6169.jsonl`
+- `/ll:decide-issue` - 2026-05-16T14:21:35 - `c1f75157-7a21-4776-94d5-de65373150bd.jsonl`
+- `/ll:confidence-check` - 2026-05-16T15:00:00 - `eb8fc19d-3730-4a14-bee0-2c1b48a9c669.jsonl`
+- `/ll:wire-issue` - 2026-05-16T14:11:48 - `6cc5d7f3-0b4f-40a1-9684-95479666b681.jsonl`
+- `/ll:refine-issue` - 2026-05-16T14:05:50 - `6722ff2e-ab5e-415c-92ca-52f0e679ac77.jsonl`
+- `/ll:format-issue` - 2026-05-16T13:18:16 - `9d491efd-1e9f-48e7-91e7-1d0390a23fbc.jsonl`
+- `/ll:capture-issue` - 2026-05-16T13:04:12Z - `0f112cdc-ed18-410c-85e1-0d7cc45aa863.jsonl`

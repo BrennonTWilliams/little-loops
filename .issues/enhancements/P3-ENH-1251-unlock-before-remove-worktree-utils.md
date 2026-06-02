@@ -209,12 +209,12 @@ Out of scope:
 `parallel`, `worktree`, `reliability`, `cleanup`, `testing`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-22T19:25:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93a73918-267f-4ec5-beda-c629b853d4cc.jsonl`
-- `/ll:verify-issues` - 2026-04-22T19:23:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/981b93f6-7840-486e-af3f-5e953df5ecd6.jsonl`
-- `/ll:wire-issue` - 2026-04-22T16:10:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d3f74547-c9d2-42f1-92b3-69f67200920d.jsonl`
-- `/ll:refine-issue` - 2026-04-22T16:04:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44820dc9-a5a0-4cb5-b513-13d37140c707.jsonl`
-- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d28f812d-9c9f-4c1d-9132-8d4f61f6064c.jsonl`
-- `/ll:confidence-check` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c75b766d-4937-42d9-a12a-3613998a9d55.jsonl`
+- `/ll:ready-issue` - 2026-04-22T19:25:15 - `93a73918-267f-4ec5-beda-c629b853d4cc.jsonl`
+- `/ll:verify-issues` - 2026-04-22T19:23:16 - `981b93f6-7840-486e-af3f-5e953df5ecd6.jsonl`
+- `/ll:wire-issue` - 2026-04-22T16:10:14 - `d3f74547-c9d2-42f1-92b3-69f67200920d.jsonl`
+- `/ll:refine-issue` - 2026-04-22T16:04:57 - `44820dc9-a5a0-4cb5-b513-13d37140c707.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `d28f812d-9c9f-4c1d-9132-8d4f61f6064c.jsonl`
+- `/ll:confidence-check` - 2026-04-22T00:00:00 - `c75b766d-4937-42d9-a12a-3613998a9d55.jsonl`
 
 ## Resolution
 

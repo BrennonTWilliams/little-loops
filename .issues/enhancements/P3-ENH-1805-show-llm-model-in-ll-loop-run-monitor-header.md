@@ -147,8 +147,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `ux`, `ll-loop`
 
 ## Session Log
-- `/ll:refine-issue` - 2026-05-30T04:27:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b91afdfc-9ce2-4940-af6d-9e5124943227.jsonl`
-- `/ll:format-issue` - 2026-05-30T04:19:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e63eedbc-67a8-44a9-a0e7-5aaba9394a38.jsonl`
+- `/ll:refine-issue` - 2026-05-30T04:27:17 - `b91afdfc-9ce2-4940-af6d-9e5124943227.jsonl`
+- `/ll:format-issue` - 2026-05-30T04:19:59 - `e63eedbc-67a8-44a9-a0e7-5aaba9394a38.jsonl`
 - `/ll:capture-issue` - 2026-05-30T04:12:22Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3dadd8e3-fc7a-4acb-bcd9-75794404ebd6.jsonl`
 
 ---

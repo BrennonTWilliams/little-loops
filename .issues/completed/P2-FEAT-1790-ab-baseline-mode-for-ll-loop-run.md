@@ -280,13 +280,13 @@ _Added by `/ll:confidence-check` on 2026-05-30_
 - Minor unresolved ambiguity: whether to extend `HostRunner.build_blocking_json()` to return token usage for the blind comparator, or accept the limitation. Defaulting to "accept limitation" is low-risk but should be decided before Phase 4 implementation.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-30T22:41:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d542f308-7cab-474d-867c-e6f0880d809d.jsonl`
-- `/ll:refine-issue` - 2026-05-31T03:29:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/978f76da-364f-47df-9714-284d10ef065f.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:format-issue` - 2026-05-29T19:24:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5eabe11-4b00-427f-9af0-61ff507f3409.jsonl`
-- `/ll:capture-issue` - 2026-05-29T19:08:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
-- `/ll:wire-issue` - 2026-05-30T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7cd48205-807a-4498-ba78-6558afacbf4d.jsonl`
-- `/ll:issue-size-review` - 2026-05-30T23:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:confidence-check` - 2026-05-30T22:41:00Z - `d542f308-7cab-474d-867c-e6f0880d809d.jsonl`
+- `/ll:refine-issue` - 2026-05-31T03:29:40 - `978f76da-364f-47df-9714-284d10ef065f.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:14 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:format-issue` - 2026-05-29T19:24:46 - `d5eabe11-4b00-427f-9af0-61ff507f3409.jsonl`
+- `/ll:capture-issue` - 2026-05-29T19:08:54Z - `5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
+- `/ll:wire-issue` - 2026-05-30T00:00:00 - `7cd48205-807a-4498-ba78-6558afacbf4d.jsonl`
+- `/ll:issue-size-review` - 2026-05-30T23:00:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 
 ---
 

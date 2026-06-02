@@ -174,10 +174,10 @@ _Updated by `/ll:confidence-check` on 2026-04-20_
 - FEAT-1206: TestParallelRunnerRealThreading — Fail Fast + Timeout Tests
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ed5d9eb-8026-4655-8ff3-63958b109e67.jsonl`
-- `/ll:refine-issue` - 2026-04-21T03:19:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d3d655e9-2b80-4758-b8d2-61a85ff1693e.jsonl`
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/628aabf4-d66c-4fb0-b275-6946311dcfc7.jsonl`
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f87ed8a-22e1-4fb3-8418-fd0b638c6558.jsonl`
-- `/ll:wire-issue` - 2026-04-21T03:14:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38e7a9d0-9262-4670-8ac7-28934af36866.jsonl`
-- `/ll:refine-issue` - 2026-04-21T03:10:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7cfd1ec1-906d-4e09-af52-188f7454ffcb.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee39c2da-53b6-4990-b649-6f5e43993562.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `2ed5d9eb-8026-4655-8ff3-63958b109e67.jsonl`
+- `/ll:refine-issue` - 2026-04-21T03:19:44 - `d3d655e9-2b80-4758-b8d2-61a85ff1693e.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `628aabf4-d66c-4fb0-b275-6946311dcfc7.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `6f87ed8a-22e1-4fb3-8418-fd0b638c6558.jsonl`
+- `/ll:wire-issue` - 2026-04-21T03:14:57 - `38e7a9d0-9262-4670-8ac7-28934af36866.jsonl`
+- `/ll:refine-issue` - 2026-04-21T03:10:17 - `7cfd1ec1-906d-4e09-af52-188f7454ffcb.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `ee39c2da-53b6-4990-b649-6f5e43993562.jsonl`

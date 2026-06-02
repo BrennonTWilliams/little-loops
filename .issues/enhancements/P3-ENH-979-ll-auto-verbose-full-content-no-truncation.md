@@ -142,11 +142,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `ll-auto`, `verbose`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-06T16:56:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a0aba70-1e76-466e-b894-a7e407ae5312.jsonl`
+- `/ll:ready-issue` - 2026-04-06T16:56:30 - `1a0aba70-1e76-466e-b894-a7e407ae5312.jsonl`
 - `/ll:wire-issue` - 2026-04-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:refine-issue` - 2026-04-06T16:20:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29fbacf3-5ab1-4393-bae1-5ddf56f58c33.jsonl`
+- `/ll:refine-issue` - 2026-04-06T16:20:17 - `29fbacf3-5ab1-4393-bae1-5ddf56f58c33.jsonl`
 - `/ll:capture-issue` - 2026-04-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
-- `/ll:confidence-check` - 2026-04-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/14c5639a-6d13-4c2e-bff7-74c8b914dcc3.jsonl`
+- `/ll:confidence-check` - 2026-04-06T00:00:00Z - `14c5639a-6d13-4c2e-bff7-74c8b914dcc3.jsonl`
 
 ---
 

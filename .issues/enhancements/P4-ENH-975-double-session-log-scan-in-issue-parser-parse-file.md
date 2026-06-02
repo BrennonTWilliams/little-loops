@@ -154,16 +154,16 @@ _Added by `/ll:go-no-go` on 2026-04-24_ — **NO-GO (REFINE)**
 The redundancy is real and the fix is conceptually sound, but the proposed `parse_session_log_full` code contained two bugs: (1) iterating all regex section matches rather than using `matches[-1]`, and (2) using `.group()` instead of `.group(1)`. The iterate-all bug is tested behavior (`test_session_log.py:212-235`) and would produce silent regressions on files with multiple session log sections. The proposed solution in this issue has been corrected; it is now safe to implement.
 
 ## Session Log
-- `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
-- `/ll:verify-issues` - 2026-05-14T20:42:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:20:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:verify-issues` - 2026-04-26T19:34:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
-- `/ll:go-no-go` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95ce9f52-7f8a-47aa-b3b4-d4a9581c25ab.jsonl`
-- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
-- `/ll:verify-issues` - 2026-04-11T23:05:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
-- `/ll:verify-issues` - 2026-04-11T19:02:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
-- `/ll:scan-codebase` - 2026-04-06T16:12:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:16 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:verify-issues` - 2026-05-23T00:35:43 - `2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
+- `/ll:verify-issues` - 2026-05-14T20:42:04 - `08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:20:58 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:verify-issues` - 2026-04-26T19:34:06 - `316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
+- `/ll:go-no-go` - 2026-04-24T00:00:00 - `95ce9f52-7f8a-47aa-b3b4-d4a9581c25ab.jsonl`
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+- `/ll:verify-issues` - 2026-04-11T23:05:00 - `5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
+- `/ll:verify-issues` - 2026-04-11T19:02:02 - `4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
+- `/ll:scan-codebase` - 2026-04-06T16:12:29 - `c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 
 ## Status
 

@@ -156,17 +156,17 @@ _Resolved 2026-03-18: sub-loop badge standardized to `↳⟳`; `wcwidth` require
 - No test validation of new badges: existing tests won't catch regressions in badge string values; consider adding a minimal assertion
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-18T21:08:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3fec43af-cec2-467f-a768-5983e0362e95.jsonl`
-- `/ll:ready-issue` - 2026-03-18T21:07:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3fec43af-cec2-467f-a768-5983e0362e95.jsonl`
-- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99fb3108-5258-4dd7-a41c-e5235bf3351d.jsonl`
-- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/deac850f-4f1f-4d78-b685-fb9e12887a16.jsonl`
-- `/ll:refine-issue` - 2026-03-18T20:22:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/deac850f-4f1f-4d78-b685-fb9e12887a16.jsonl`
-- `/ll:refine-issue` - 2026-03-16T02:01:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73de97cd-c70a-4e30-a624-ccf2502dd5ce.jsonl`
-- `/ll:format-issue` - 2026-03-16T00:58:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8bc41a61-b249-4f82-b1e4-50bab87ac931.jsonl`
+- `/ll:ready-issue` - 2026-03-18T21:08:13 - `3fec43af-cec2-467f-a768-5983e0362e95.jsonl`
+- `/ll:ready-issue` - 2026-03-18T21:07:59 - `3fec43af-cec2-467f-a768-5983e0362e95.jsonl`
+- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `99fb3108-5258-4dd7-a41c-e5235bf3351d.jsonl`
+- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `deac850f-4f1f-4d78-b685-fb9e12887a16.jsonl`
+- `/ll:refine-issue` - 2026-03-18T20:22:54 - `deac850f-4f1f-4d78-b685-fb9e12887a16.jsonl`
+- `/ll:refine-issue` - 2026-03-16T02:01:11 - `73de97cd-c70a-4e30-a624-ccf2502dd5ce.jsonl`
+- `/ll:format-issue` - 2026-03-16T00:58:24 - `8bc41a61-b249-4f82-b1e4-50bab87ac931.jsonl`
 - `/ll:format-issue` - 2026-03-15T00:00:00Z - auto
-- `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
-- `/ll:capture-issue` - 2026-03-13T22:51:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
-- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa4d2baf-3524-4c44-a9ad-16fe76a5f6b8.jsonl`
-- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/542b29e8-0de5-4f06-8439-bc467dc3bdab.jsonl`
-- `/ll:ready-issue` - 2026-03-18T21:08:35Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:verify-issues` - 2026-03-15T00:11:17 - `623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
+- `/ll:capture-issue` - 2026-03-13T22:51:23Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `fa4d2baf-3524-4c44-a9ad-16fe76a5f6b8.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `542b29e8-0de5-4f06-8439-bc467dc3bdab.jsonl`
+- `/ll:ready-issue` - 2026-03-18T21:08:35Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`

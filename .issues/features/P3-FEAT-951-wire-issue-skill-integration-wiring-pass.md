@@ -74,7 +74,7 @@ Without this wiring, implementation agents discover these touchpoints mid-flight
 `feature`, `skills`, `issue-workflow`
 
 ## Session Log
-- `/ll:capture-issue` + implementation - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd5a2fbc-571f-40ff-8b29-84ba38e167a4.jsonl`
+- `/ll:capture-issue` + implementation - 2026-04-04T00:00:00Z - `cd5a2fbc-571f-40ff-8b29-84ba38e167a4.jsonl`
 
 ---
 

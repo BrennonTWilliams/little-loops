@@ -125,12 +125,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `ll-loop`, `ux`, `captured`
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c86a5056-7391-48c4-89c7-a1ee90c46ccb.jsonl`
-- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f350e6bc-336a-44c3-8a3b-81c0c9c69795.jsonl`
-- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f27e2da-59cc-4ccf-a9a7-f55ce3418ad1.jsonl`
-- `/ll:ready-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e85f17e-3bf6-49c7-a987-8bcc25562c84.jsonl`
-- `/ll:manage-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/manage-issue.jsonl`
+- `/ll:capture-issue` - 2026-03-13T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `c86a5056-7391-48c4-89c7-a1ee90c46ccb.jsonl`
+- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `f350e6bc-336a-44c3-8a3b-81c0c9c69795.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `8f27e2da-59cc-4ccf-a9a7-f55ce3418ad1.jsonl`
+- `/ll:ready-issue` - 2026-03-13T00:00:00Z - `2e85f17e-3bf6-49c7-a987-8bcc25562c84.jsonl`
+- `/ll:manage-issue` - 2026-03-13T00:00:00Z - `manage-issue.jsonl`
 
 ## Resolution
 

@@ -75,7 +75,9 @@ class TestAppendSessionLogEntry:
         content = issue.read_text()
         assert "## Session Log" in content
         assert "/ll:manage-issue" in content
-        assert str(jsonl) in content
+        # Only the filename (session id) is recorded, not the absolute path.
+        assert jsonl.name in content
+        assert str(jsonl) not in content
         # Session Log should be before Status
         assert content.index("## Session Log") < content.index("## Status")
 
@@ -144,11 +146,11 @@ class TestAppendSessionLogEntry:
         append_session_log_entry(issue, "/ll:test", session_jsonl=jsonl)
 
         content = issue.read_text()
-        # Entry should have format: - `command` - timestamp - `path`
+        # Entry should have format: - `command` - timestamp - `filename`
         lines = [line for line in content.split("\n") if line.startswith("- `")]
         assert len(lines) == 1
         assert lines[0].startswith("- `/ll:test` - ")
-        assert lines[0].endswith(f"- `{jsonl}`")
+        assert lines[0].endswith(f"- `{jsonl.name}`")
 
     def test_append_uses_os_replace(self, tmp_path: Path) -> None:
         issue = tmp_path / "issue.md"

@@ -125,7 +125,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `scripts/tests/test_dependency_mapper.py` — new test classes
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-02-15T02:29:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3135ba2c-6ec1-44c9-ae59-0d6a65c71853.jsonl`
+- `/ll:scan-codebase` - 2026-02-15T02:29:53Z - `3135ba2c-6ec1-44c9-ae59-0d6a65c71853.jsonl`
 - `/ll:manage-issue feature implement FEAT-432` - 2026-02-14
 
 ---

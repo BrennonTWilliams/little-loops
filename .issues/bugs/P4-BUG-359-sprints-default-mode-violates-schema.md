@@ -143,4 +143,4 @@ Update first - Schema-config mismatch needs investigation to determine if this i
 
 ## Session Log
 - `/ll:format-issue --all --auto` - 2026-02-13
-- `/ll:manage-issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3277caec-96af-44a0-a3eb-f6fa8595c338.jsonl`
+- `/ll:manage-issue` - 2026-02-13T00:00:00Z - `3277caec-96af-44a0-a3eb-f6fa8595c338.jsonl`

@@ -257,9 +257,9 @@ def calculate_ab_summary(per_item_results: list[dict]) -> ABResults:
 - Auto-tuning the harness based on A/B results
 
 ## Session Log
-- `/ll:wire-issue` - 2026-05-31T04:50:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/723a5598-07cc-4fa4-8ccd-f304cb75343b.jsonl`
-- `/ll:wire-issue` - 2026-05-31T04:50:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/723a5598-07cc-4fa4-8ccd-f304cb75343b.jsonl`
-- `/ll:refine-issue` - 2026-05-31T04:42:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9590608-82fc-47be-be21-ce61b52c070b.jsonl`
-- `/ll:format-issue` - 2026-05-31T04:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab2f4112-ed66-4b9b-8254-f2481b5689f4.jsonl`
-- `/ll:issue-size-review` - 2026-05-30T23:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
-- `/ll:confidence-check` - 2026-05-31T04:54:16Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/702b1067-ab29-4c28-85f5-65e4d6327c3f.jsonl`
+- `/ll:wire-issue` - 2026-05-31T04:50:10 - `723a5598-07cc-4fa4-8ccd-f304cb75343b.jsonl`
+- `/ll:wire-issue` - 2026-05-31T04:50:06 - `723a5598-07cc-4fa4-8ccd-f304cb75343b.jsonl`
+- `/ll:refine-issue` - 2026-05-31T04:42:30 - `f9590608-82fc-47be-be21-ce61b52c070b.jsonl`
+- `/ll:format-issue` - 2026-05-31T04:30:15 - `ab2f4112-ed66-4b9b-8254-f2481b5689f4.jsonl`
+- `/ll:issue-size-review` - 2026-05-30T23:00:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:confidence-check` - 2026-05-31T04:54:16Z - `702b1067-ab29-4c28-85f5-65e4d6327c3f.jsonl`

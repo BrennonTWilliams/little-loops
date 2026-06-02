@@ -116,13 +116,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - **Tests**: 3335 passed, 4 skipped
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
-- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
-- `/ll:format-issue` - 2026-03-13T01:35:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:verify-issues` - 2026-03-13T01:35:30Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:ready-issue` - 2026-03-13T19:43:10Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
-- `/ll:manage-issue` - 2026-03-13T19:43:10Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/.ll-session-41181`
+- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:35:00Z - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:verify-issues` - 2026-03-13T01:35:30Z - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:ready-issue` - 2026-03-13T19:43:10Z - `6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
+- `/ll:manage-issue` - 2026-03-13T19:43:10Z - `.ll-session-41181`
 
 ---
 

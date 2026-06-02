@@ -281,19 +281,19 @@ Completed 2026-05-10. Issue status decoupled from directory location across disc
 **Backwards compatibility**: legacy `completed/` and `deferred/` directory paths are still recognized on read paths (`scan_completed_issues`, `reopen_issue`) so projects mid-migration remain queryable. ENH-1420 will backfill old files with `completed_at` and `status:` frontmatter; ENH-1421 will retire the 2 remaining out-of-scope `get_completed_dir`/`get_deferred_dir` callers in `dependency_mapper/operations.py` and `cli/deps.py`.
 
 ## Session Log
-- `/ll:manage-issue enhancement implement ENH-1418` - 2026-05-10T20:30:19Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/06a08234-7cc0-4921-8333-cac311b14aae.jsonl`
-- `/ll:ready-issue` - 2026-05-10T19:39:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/352776de-104b-4d04-8f03-9bcc30f6ad6a.jsonl`
-- `/ll:ready-issue` - 2026-05-10T19:39:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
-- `/ll:confidence-check` - 2026-05-10T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f40524ce-2922-413f-a399-279fedc232ed.jsonl`
-- `/ll:confidence-check` - 2026-05-10T19:20:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed9a9795-a7b0-47a3-97cf-548f6a30ffc0.jsonl`
-- `/ll:refine-issue` - 2026-05-10T19:16:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74aeeec5-fc5d-4f88-a949-3a7e09578427.jsonl`
-- `/ll:confidence-check` - 2026-05-10T16:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b93d10a-1270-495b-8f3d-ce1762741200.jsonl`
-- `/ll:decide-issue` - 2026-05-10T16:07:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0789119-e04f-48b3-b529-bba840aad2c2.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b13a1909-3e87-4e90-8703-a8986abba494.jsonl`
-- `/ll:wire-issue` - 2026-05-10T15:59:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1627752a-c16c-41da-904e-698f0b8696ed.jsonl`
-- `/ll:refine-issue` - 2026-05-10T15:49:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dfe609fd-21c3-4081-be18-b955d37bfbac.jsonl`
-- `/ll:format-issue` - 2026-05-10T15:19:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a80bb47e-7a06-453e-a016-be6695656fd0.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
+- `/ll:manage-issue enhancement implement ENH-1418` - 2026-05-10T20:30:19Z - `06a08234-7cc0-4921-8333-cac311b14aae.jsonl`
+- `/ll:ready-issue` - 2026-05-10T19:39:55 - `352776de-104b-4d04-8f03-9bcc30f6ad6a.jsonl`
+- `/ll:ready-issue` - 2026-05-10T19:39:47 - `6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
+- `/ll:confidence-check` - 2026-05-10T21:00:00 - `f40524ce-2922-413f-a399-279fedc232ed.jsonl`
+- `/ll:confidence-check` - 2026-05-10T19:20:00 - `ed9a9795-a7b0-47a3-97cf-548f6a30ffc0.jsonl`
+- `/ll:refine-issue` - 2026-05-10T19:16:56 - `74aeeec5-fc5d-4f88-a949-3a7e09578427.jsonl`
+- `/ll:confidence-check` - 2026-05-10T16:15:00 - `7b93d10a-1270-495b-8f3d-ce1762741200.jsonl`
+- `/ll:decide-issue` - 2026-05-10T16:07:06 - `d0789119-e04f-48b3-b529-bba840aad2c2.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00 - `b13a1909-3e87-4e90-8703-a8986abba494.jsonl`
+- `/ll:wire-issue` - 2026-05-10T15:59:57 - `1627752a-c16c-41da-904e-698f0b8696ed.jsonl`
+- `/ll:refine-issue` - 2026-05-10T15:49:34 - `dfe609fd-21c3-4081-be18-b955d37bfbac.jsonl`
+- `/ll:format-issue` - 2026-05-10T15:19:42 - `a80bb47e-7a06-453e-a016-be6695656fd0.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
 
 ---
 

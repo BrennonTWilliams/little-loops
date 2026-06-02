@@ -142,14 +142,14 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 Added `REMAINING=$(wc -l < .loops/tmp/prompt-across-issues-pending.txt | tr -d ' ')` and `echo "Progress: $REMAINING items remaining"` to the `advance` state action body. Added `test_advance_emits_progress_count` assertion to `TestPromptAcrossIssuesLoop`. YAML validates; 14 tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T19:14:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8839a46d-00c0-4f31-b8c8-188151579b21.jsonl`
-- `/ll:ready-issue` - 2026-05-24T17:52:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43b7fa3e-acf7-4526-95d7-b6317ea8e31d.jsonl`
-- `/ll:wire-issue` - 2026-05-24T15:13:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/847e0ce1-8815-443b-b5e6-c534c63a9949.jsonl`
-- `/ll:refine-issue` - 2026-05-24T15:09:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f05cec5c-4ab5-4f6b-84dc-9ddd8140f4b1.jsonl`
-- `/ll:format-issue` - 2026-05-23T22:12:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc1fd6ed-dcdc-4bc4-b6c1-4c76f8056fd9.jsonl`
+- `/ll:ready-issue` - 2026-05-24T19:14:36 - `8839a46d-00c0-4f31-b8c8-188151579b21.jsonl`
+- `/ll:ready-issue` - 2026-05-24T17:52:18 - `43b7fa3e-acf7-4526-95d7-b6317ea8e31d.jsonl`
+- `/ll:wire-issue` - 2026-05-24T15:13:56 - `847e0ce1-8815-443b-b5e6-c534c63a9949.jsonl`
+- `/ll:refine-issue` - 2026-05-24T15:09:19 - `f05cec5c-4ab5-4f6b-84dc-9ddd8140f4b1.jsonl`
+- `/ll:format-issue` - 2026-05-23T22:12:46 - `bc1fd6ed-dcdc-4bc4-b6c1-4c76f8056fd9.jsonl`
 
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2e7bf37-f8f2-40f5-a049-b975a301f9c6.jsonl`
-- `/ll:capture-issue` - 2026-05-23T22:10:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/220a4517-38ba-4722-a76b-94bd2d986f30.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `f2e7bf37-f8f2-40f5-a049-b975a301f9c6.jsonl`
+- `/ll:capture-issue` - 2026-05-23T22:10:27Z - `220a4517-38ba-4722-a76b-94bd2d986f30.jsonl`
 
 ---
 

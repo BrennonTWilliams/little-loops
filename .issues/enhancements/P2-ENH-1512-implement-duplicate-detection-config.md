@@ -105,8 +105,8 @@ Implemented `duplicate_detection` config wiring across 6 files:
 5 new tests added covering defaults, `from_dict`, `IssuesConfig` integration, and `FindingMatch` threshold propagation. All 3852 tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-23T16:34:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b0600f3-5e7c-4cd8-aed4-54083da0e121.jsonl`
-- `/ll:refine-issue` - 2026-03-23T16:03:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d106e83-f07c-4417-a00b-467c82f88f42.jsonl`
-- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/834df235-fade-4c5c-9680-95839070d795.jsonl`
-- `/ll:ready-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/memory/MEMORY.md`
-- `/ll:manage-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-03-23T16:34:18 - `2b0600f3-5e7c-4cd8-aed4-54083da0e121.jsonl`
+- `/ll:refine-issue` - 2026-03-23T16:03:38 - `0d106e83-f07c-4417-a00b-467c82f88f42.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `834df235-fade-4c5c-9680-95839070d795.jsonl`
+- `/ll:ready-issue` - 2026-03-23T00:00:00Z - `MEMORY.md`
+- `/ll:manage-issue` - 2026-03-23T00:00:00Z

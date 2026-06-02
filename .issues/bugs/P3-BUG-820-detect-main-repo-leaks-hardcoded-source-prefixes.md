@@ -131,9 +131,9 @@ Added regression test `test_detect_main_repo_leaks_uses_configured_src_dir` in `
 **Line number update**: Key `elif` is now at line 1010–1011; method definition at line 954.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-03-20T20:33:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5dffd95d-00b8-4884-b44f-ce4532c2a67c.jsonl`
-- `/ll:refine-issue` - 2026-03-20T19:30:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fc8b6bb-dbc0-4a9e-a015-97a9f20b7147.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4db97f80-f87e-4cf7-9f2e-13139630f81c.jsonl`
-- `/ll:verify-issues` - 2026-03-19T22:44:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
-- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:manage-issue` - 2026-03-20T00:00:00Z
+- `/ll:ready-issue` - 2026-03-20T20:33:39 - `5dffd95d-00b8-4884-b44f-ce4532c2a67c.jsonl`
+- `/ll:refine-issue` - 2026-03-20T19:30:35 - `2fc8b6bb-dbc0-4a9e-a015-97a9f20b7147.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `4db97f80-f87e-4cf7-9f2e-13139630f81c.jsonl`
+- `/ll:verify-issues` - 2026-03-19T22:44:42 - `0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
+- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `f1798556-30de-4e10-a591-2da06903a76f.jsonl`

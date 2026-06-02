@@ -27,7 +27,7 @@ Issue encountered during automated implementation of ENH-1533.
 Implementation should complete without errors.
 
 ## Root Cause
-Discovered during automated processing of `/Users/brennon/AIProjects/brenentech/little-loops/.issues/enhancements/P3-ENH-1533-codex-agent-selection-ux-and-prompt-injection.md`.
+Discovered during automated processing of `.issues/enhancements/P3-ENH-1533-codex-agent-selection-ux-and-prompt-injection.md`.
 
 ## Steps to Reproduce
 1. Run: `/ll:manage-issue enhancements fix ENH-1533`
@@ -46,7 +46,7 @@ Investigate the error output above and address the root cause.
 `bug`, `high-priority`, `auto-generated`, `implementation-failure`
 
 ## Session Log
-- `/ll:audit-issue-conflicts` - 2026-05-17T06:18:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2014a17-48ef-42b3-af50-4be647f7894a.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-17T06:18:43 - `a2014a17-48ef-42b3-af50-4be647f7894a.jsonl`
 
 ---
 
@@ -58,6 +58,6 @@ Resolved: the prior automation run was interrupted by a context-window limit (no
 **Note (added by `/ll:audit-issue-conflicts`)**: BUG-1538 (open) provides a more complete diagnosis — Phase 3 verification in `work_verification.py` and `issue_lifecycle.py` has false negatives that can cause `ll-auto` to misreport success/failure. The "context-window interruption" conclusion here remains valid for this specific incident, but readers should consult BUG-1538 for the systemic verification failure root cause.
 
 ## Related Issues
-- [ENH-1533](/Users/brennon/AIProjects/brenentech/little-loops/.issues/enhancements/P3-ENH-1533-codex-agent-selection-ux-and-prompt-injection.md)
+- [ENH-1533](.issues/enhancements/P3-ENH-1533-codex-agent-selection-ux-and-prompt-injection.md)
 - BUG-1538 — supersedes this diagnosis with a code-level root cause in Phase 3 verification
 - BUG-1374 — similar auto-generated false-positive impl-failure pattern

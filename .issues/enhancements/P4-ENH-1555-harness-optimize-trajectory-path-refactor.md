@@ -256,10 +256,10 @@ Decided by `/ll:decide-issue` on 2026-05-17.
 Implemented Option A (init_run state) as decided. Added `init_run` shell state that generates a run-id-keyed trajectory path via `capture: traj_path`, replacing all four hardcoded `.loops/tmp/harness-optimize-trajectory.jsonl` references. Resume logic in `load_directive` updated to scan all existing per-run trajectory files with `find`. Added `.ll/runs/harness-optimize/` to `.gitignore`. Updated 2 existing test assertions and added 4 new tests covering description, old-path absence, state structure, and subprocess directory creation. All 664 tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-17T11:15:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca7e31a9-8637-478a-8139-90e66f7b6354.jsonl`
-- `/ll:confidence-check` - 2026-05-17T11:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/598255d9-334a-4c28-b2ca-8a6b917f31bf.jsonl`
-- `/ll:decide-issue` - 2026-05-17T11:09:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc2b7042-7b88-4ed2-a480-2c1f1d46f02d.jsonl`
-- `/ll:wire-issue` - 2026-05-17T11:01:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81ad1499-f295-4782-9e91-e8500d2215b6.jsonl`
-- `/ll:refine-issue` - 2026-05-17T10:57:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bffa119a-4f5e-40b0-86ad-662d5d5e73ec.jsonl`
-- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0eb46b7-c5e1-422c-9f74-c918759ffc2a.jsonl`
-- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b39a59d-86eb-4a83-8a70-0817334cd894.jsonl`
+- `/ll:ready-issue` - 2026-05-17T11:15:18 - `ca7e31a9-8637-478a-8139-90e66f7b6354.jsonl`
+- `/ll:confidence-check` - 2026-05-17T11:15:00 - `598255d9-334a-4c28-b2ca-8a6b917f31bf.jsonl`
+- `/ll:decide-issue` - 2026-05-17T11:09:30 - `dc2b7042-7b88-4ed2-a480-2c1f1d46f02d.jsonl`
+- `/ll:wire-issue` - 2026-05-17T11:01:09 - `81ad1499-f295-4782-9e91-e8500d2215b6.jsonl`
+- `/ll:refine-issue` - 2026-05-17T10:57:32 - `bffa119a-4f5e-40b0-86ad-662d5d5e73ec.jsonl`
+- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `f0eb46b7-c5e1-422c-9f74-c918759ffc2a.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `7b39a59d-86eb-4a83-8a70-0817334cd894.jsonl`

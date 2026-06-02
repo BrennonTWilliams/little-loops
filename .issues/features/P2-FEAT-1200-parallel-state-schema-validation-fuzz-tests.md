@@ -182,10 +182,10 @@ _Added by `/ll:confidence-check` on 2026-04-21_
 - FEAT-1214: Parallel Validation, Fuzz, and Doc Tests
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-21T06:05:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a265903-88c7-42fb-834d-7570e407e2f1.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c673dd08-c18f-45ea-8b10-ac013e832de1.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/703c068c-80d2-438e-af63-fd69424ac458.jsonl`
-- `/ll:wire-issue` - 2026-04-21T06:01:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c807f52-c768-4ac1-8191-d75a4df290fc.jsonl`
-- `/ll:refine-issue` - 2026-04-21T05:55:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62089722-1f5f-490c-8649-3eeea573c9bc.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb2a4d4b-681c-4336-8ebc-dacfae9712d8.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc287f64-ac41-4ff3-967d-f2d38642710b.jsonl`
+- `/ll:refine-issue` - 2026-04-21T06:05:10 - `1a265903-88c7-42fb-834d-7570e407e2f1.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `c673dd08-c18f-45ea-8b10-ac013e832de1.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `703c068c-80d2-438e-af63-fd69424ac458.jsonl`
+- `/ll:wire-issue` - 2026-04-21T06:01:27 - `1c807f52-c768-4ac1-8191-d75a4df290fc.jsonl`
+- `/ll:refine-issue` - 2026-04-21T05:55:11 - `62089722-1f5f-490c-8649-3eeea573c9bc.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `eb2a4d4b-681c-4336-8ebc-dacfae9712d8.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `dc287f64-ac41-4ff3-967d-f2d38642710b.jsonl`

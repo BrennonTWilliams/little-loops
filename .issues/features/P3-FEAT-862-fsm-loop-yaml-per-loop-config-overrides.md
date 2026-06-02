@@ -243,11 +243,11 @@ Precedence confirmed: CLI flags > YAML `config:` block > global ll-config > sche
 **Completed** | Created: 2026-03-23 | Completed: 2026-03-23 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-24T01:25:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c8b36b2-bce5-4170-9443-730c147b51ed.jsonl`
-- `/ll:refine-issue` - 2026-03-23T21:26:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07d161e2-659e-4958-84f2-8dc2ec15fb6d.jsonl`
-- `/ll:format-issue` - 2026-03-23T21:07:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9db96889-7141-4c7a-9208-51f9a202e218.jsonl`
-- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87d63032-1c5a-48a2-bbbb-58a14a066171.jsonl`
-- `/ll:refine-issue` - 2026-03-23T19:44:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4128aee-3c7e-4973-884d-baaf30142c8f.jsonl`
-- `/ll:refine-issue` - 2026-03-23T19:28:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96b5e822-aa37-416b-9c6d-1f4c72316bb4.jsonl`
+- `/ll:ready-issue` - 2026-03-24T01:25:54 - `0c8b36b2-bce5-4170-9443-730c147b51ed.jsonl`
+- `/ll:refine-issue` - 2026-03-23T21:26:35 - `07d161e2-659e-4958-84f2-8dc2ec15fb6d.jsonl`
+- `/ll:format-issue` - 2026-03-23T21:07:54 - `9db96889-7141-4c7a-9208-51f9a202e218.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `87d63032-1c5a-48a2-bbbb-58a14a066171.jsonl`
+- `/ll:refine-issue` - 2026-03-23T19:44:36 - `a4128aee-3c7e-4973-884d-baaf30142c8f.jsonl`
+- `/ll:refine-issue` - 2026-03-23T19:28:39 - `96b5e822-aa37-416b-9c6d-1f4c72316bb4.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/345cc7c0-0969-446e-b124-5aecd9852207.jsonl`
-- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d420b221-a92a-4a4a-ac2a-b4d27643c447.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `d420b221-a92a-4a4a-ac2a-b4d27643c447.jsonl`

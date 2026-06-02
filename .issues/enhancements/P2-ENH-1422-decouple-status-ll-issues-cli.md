@@ -179,12 +179,12 @@ _Added by `/ll:confidence-check` on 2026-05-10_
 - **`list_cmd.py:146` cosmetic gap**: Footer string `"Total: N active issues"` is hardcoded and not addressed in the implementation steps; after the vocab change it remains technically accurate but semantically inconsistent with the new status model
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-10T16:47:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de4dc0e-8a1e-41f5-94a2-7daaa289459e.jsonl`
-- `/ll:refine-issue` - 2026-05-10T16:35:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd815340-befe-4ac6-be99-c7eb1fcf40df.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
-- `/ll:wire-issue` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3bd3fb7c-c4db-4606-aebf-3f3a746fba7b.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de4dc0e-8a1e-41f5-94a2-7daaa289459e.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-10T16:47:36 - `8de4dc0e-8a1e-41f5-94a2-7daaa289459e.jsonl`
+- `/ll:refine-issue` - 2026-05-10T16:35:02 - `cd815340-befe-4ac6-be99-c7eb1fcf40df.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
+- `/ll:wire-issue` - 2026-05-10T00:00:00Z
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `3bd3fb7c-c4db-4606-aebf-3f3a746fba7b.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `8de4dc0e-8a1e-41f5-94a2-7daaa289459e.jsonl`
 
 ---
 

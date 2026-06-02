@@ -347,9 +347,9 @@ Implemented `scripts/little_loops/loops/adopt-third-party-api.yaml` — a 9-stat
 Also updated: `test_builtin_loops.py` (expected set + `TestAdoptThirdPartyApiLoop`), `README.md` (54→57 FSM loops), loops README catalog, LOOPS_GUIDE.md (API Adoption section), LEARNING_TESTS_GUIDE.md (end-to-end adoption pattern).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-27T04:41:58Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-27T04:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a67b0ab-80e1-4a4e-8e68-036bd62c36e3.jsonl`
-- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fdfb6b0a-f45e-498c-aa5c-9d67c1fbc347.jsonl`
-- `/ll:wire-issue` - 2026-05-27T04:25:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec9a57c6-1dde-454e-9982-6951fab1dbee.jsonl`
-- `/ll:refine-issue` - 2026-05-27T04:20:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d4cc50b2-5fc3-49cf-96e7-6ce8189bc5f6.jsonl`
-- `/ll:capture-issue` - 2026-05-25T20:53:43Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/810cf8d1-477c-42da-bb20-b577b2ee3ad9.jsonl`
+- `/ll:manage-issue` - 2026-05-27T04:41:58Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-27T04:34:07 - `7a67b0ab-80e1-4a4e-8e68-036bd62c36e3.jsonl`
+- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `fdfb6b0a-f45e-498c-aa5c-9d67c1fbc347.jsonl`
+- `/ll:wire-issue` - 2026-05-27T04:25:23 - `ec9a57c6-1dde-454e-9982-6951fab1dbee.jsonl`
+- `/ll:refine-issue` - 2026-05-27T04:20:19 - `d4cc50b2-5fc3-49cf-96e7-6ce8189bc5f6.jsonl`
+- `/ll:capture-issue` - 2026-05-25T20:53:43Z - `810cf8d1-477c-42da-bb20-b577b2ee3ad9.jsonl`

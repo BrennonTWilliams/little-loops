@@ -138,10 +138,10 @@ All 158 tests pass.
 - **Confidence**: High — bug logic and location are accurate
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00f5970a-005d-4048-9178-bd7b6fd43284.jsonl`
-- `/ll:ready-issue` - 2026-03-20T20:26:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00f5970a-005d-4048-9178-bd7b6fd43284.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1b24f49-0ca4-4c97-bf45-3f90c26e257c.jsonl`
-- `/ll:refine-issue` - 2026-03-20T20:14:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b203c0f-8ccf-4004-9c82-59375350b1d4.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:verify-issues` - 2026-03-19T22:48:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `00f5970a-005d-4048-9178-bd7b6fd43284.jsonl`
+- `/ll:ready-issue` - 2026-03-20T20:26:10 - `00f5970a-005d-4048-9178-bd7b6fd43284.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `d1b24f49-0ca4-4c97-bf45-3f90c26e257c.jsonl`
+- `/ll:refine-issue` - 2026-03-20T20:14:43 - `7b203c0f-8ccf-4004-9c82-59375350b1d4.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:verify-issues` - 2026-03-19T22:48:46 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `f1798556-30de-4e10-a591-2da06903a76f.jsonl`

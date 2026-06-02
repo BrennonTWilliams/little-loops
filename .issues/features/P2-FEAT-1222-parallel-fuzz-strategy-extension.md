@@ -135,10 +135,10 @@ _Last updated by `/ll:confidence-check` on 2026-04-21 (re-run; scores unchanged)
 - **FEAT-1074 unresolved**: The `parallel` key is absent from `fsm-loop-schema.json` and `ParallelStateConfig` does not yet exist in `schema.py`. Until that dependency lands, the new draw block is inert — `StateConfig.from_dict` silently ignores unknown keys, so no rejection paths are exercised. Implementation Step 1 correctly flags this as a stop condition; hold this issue until FEAT-1074 merges.
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-21T08:34:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/912edf79-dc25-49f7-aed4-de81c93c3bcd.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fed5e14f-7ef3-4359-b8ec-b0e9e9d90d64.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cd1442f-806d-4a64-b181-233de7991e0b.jsonl`
-- `/ll:wire-issue` - 2026-04-21T08:31:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fed5e14f-7ef3-4359-b8ec-b0e9e9d90d64.jsonl`
-- `/ll:refine-issue` - 2026-04-21T08:26:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87e85cf1-1284-40fb-b75d-fa0a68277e9d.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98f68405-0917-4592-af11-ba9a9de2ae0c.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66880b0b-393c-4d21-819b-64abdc9eb645.jsonl`
+- `/ll:refine-issue` - 2026-04-21T08:34:37 - `912edf79-dc25-49f7-aed4-de81c93c3bcd.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `fed5e14f-7ef3-4359-b8ec-b0e9e9d90d64.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `6cd1442f-806d-4a64-b181-233de7991e0b.jsonl`
+- `/ll:wire-issue` - 2026-04-21T08:31:15 - `fed5e14f-7ef3-4359-b8ec-b0e9e9d90d64.jsonl`
+- `/ll:refine-issue` - 2026-04-21T08:26:36 - `87e85cf1-1284-40fb-b75d-fa0a68277e9d.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `98f68405-0917-4592-af11-ba9a9de2ae0c.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `66880b0b-393c-4d21-819b-64abdc9eb645.jsonl`

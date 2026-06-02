@@ -515,15 +515,15 @@ _Added by `/ll:confidence-check` on 2026-04-02_
 - 3-level sub-loop nesting (greenfield-builder → eval-driven-development → issue-refinement) is novel — only 1-level nesting is established in existing loops. Debugging failures in deeply nested sub-loops has no established pattern.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-02T16:39:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/559d7ee1-0b28-4714-bc85-f7f06316dc14.jsonl`
-- `/ll:refine-issue` - 2026-04-02T16:23:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d41e142-95a4-4d7a-a114-f07f2bbc44bd.jsonl`
-- `/ll:refine-issue` - 2026-04-02T16:23:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d41e142-95a4-4d7a-a114-f07f2bbc44bd.jsonl`
-- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a3dfd289-19b3-42ae-91c4-9110cbc966f7.jsonl`
-- `/ll:refine-issue` - 2026-04-02T14:46:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b7533a7-29d7-44d6-8489-bc5e06ed005f.jsonl`
-- `/ll:refine-issue` - 2026-04-02T06:15:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d667a6c-0a49-4284-a4ce-4b5ecbbfe4a3.jsonl`
-- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79abedd4-e354-40a5-a5ad-3c6d38b65535.jsonl`
-- `/ll:refine-issue` - 2026-04-02T05:14:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42dd0907-a734-4d2d-9267-44252d3837e7.jsonl`
-- `/ll:format-issue` - 2026-04-02T05:05:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42f55760-d9eb-4053-a9a0-e47fdee21521.jsonl`
+- `/ll:ready-issue` - 2026-04-02T16:39:12 - `559d7ee1-0b28-4714-bc85-f7f06316dc14.jsonl`
+- `/ll:refine-issue` - 2026-04-02T16:23:51 - `9d41e142-95a4-4d7a-a114-f07f2bbc44bd.jsonl`
+- `/ll:refine-issue` - 2026-04-02T16:23:42 - `9d41e142-95a4-4d7a-a114-f07f2bbc44bd.jsonl`
+- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `a3dfd289-19b3-42ae-91c4-9110cbc966f7.jsonl`
+- `/ll:refine-issue` - 2026-04-02T14:46:14 - `6b7533a7-29d7-44d6-8489-bc5e06ed005f.jsonl`
+- `/ll:refine-issue` - 2026-04-02T06:15:47 - `3d667a6c-0a49-4284-a4ce-4b5ecbbfe4a3.jsonl`
+- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `79abedd4-e354-40a5-a5ad-3c6d38b65535.jsonl`
+- `/ll:refine-issue` - 2026-04-02T05:14:59 - `42dd0907-a734-4d2d-9267-44252d3837e7.jsonl`
+- `/ll:format-issue` - 2026-04-02T05:05:14 - `42f55760-d9eb-4053-a9a0-e47fdee21521.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/691b200f-7de4-4ff4-bdb4-e101673139e8.jsonl`
 
 ---

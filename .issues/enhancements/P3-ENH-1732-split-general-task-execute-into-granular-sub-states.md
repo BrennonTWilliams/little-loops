@@ -294,8 +294,8 @@ FSM persists `current_state` at `state_enter` (before the action runs). SIGKILL 
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-27T02:28:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb13003f-ba8f-40f1-84e6-077a0739deb1.jsonl`
-- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/147823b3-5677-4a95-9394-0e44304c03ce.jsonl`
-- `/ll:wire-issue` - 2026-05-27T01:08:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71ba2e27-21e9-408e-8681-668910c7758a.jsonl`
-- `/ll:refine-issue` - 2026-05-27T00:36:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bab12386-1d63-4f54-900d-e9f3196d5409.jsonl`
-- `/ll:format-issue` - 2026-05-27T00:28:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/abc07224-3eb5-43f2-aa50-5c5476afdc3d.jsonl`
+- `/ll:ready-issue` - 2026-05-27T02:28:22 - `eb13003f-ba8f-40f1-84e6-077a0739deb1.jsonl`
+- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `147823b3-5677-4a95-9394-0e44304c03ce.jsonl`
+- `/ll:wire-issue` - 2026-05-27T01:08:16 - `71ba2e27-21e9-408e-8681-668910c7758a.jsonl`
+- `/ll:refine-issue` - 2026-05-27T00:36:34 - `bab12386-1d63-4f54-900d-e9f3196d5409.jsonl`
+- `/ll:format-issue` - 2026-05-27T00:28:54 - `abc07224-3eb5-43f2-aa50-5c5476afdc3d.jsonl`

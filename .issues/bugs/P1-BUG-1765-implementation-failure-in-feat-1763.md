@@ -23,7 +23,7 @@ Issue encountered during automated implementation of FEAT-1763.
 Implementation should complete without errors.
 
 ## Root Cause
-Discovered during automated processing of `/Users/brennon/AIProjects/brenentech/little-loops/.issues/features/P3-FEAT-1763-ll-loop-monitor-extract-state-feed-renderer.md`.
+Discovered during automated processing of `.issues/features/P3-FEAT-1763-ll-loop-monitor-extract-state-feed-renderer.md`.
 
 ## Steps to Reproduce
 1. Run: `/ll:manage-issue features fix FEAT-1763`
@@ -51,4 +51,4 @@ interruption during automated processing, not a code defect. FEAT-1763 was
 retried and completed (`status: done`). No action required.
 
 ## Related Issues
-- [FEAT-1763](/Users/brennon/AIProjects/brenentech/little-loops/.issues/features/P3-FEAT-1763-ll-loop-monitor-extract-state-feed-renderer.md)
+- [FEAT-1763](.issues/features/P3-FEAT-1763-ll-loop-monitor-extract-state-feed-renderer.md)

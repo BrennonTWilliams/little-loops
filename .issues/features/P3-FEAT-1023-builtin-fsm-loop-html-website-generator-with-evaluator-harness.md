@@ -299,11 +299,11 @@ ll-loop run html-website-generator "a landing page for a Dutch art museum"
 **Completed** | Created: 2026-04-10 | Completed: 2026-04-11 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-11T05:04:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b458173b-e5fe-4cf5-b55c-ef414ac7c145.jsonl`
-- `/ll:confidence-check` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/761f2624-ecc1-499c-ac48-e18b3e383406.jsonl`
-- `/ll:refine-issue` - 2026-04-11T04:58:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db48a35e-dc5e-4578-b3f1-212165c748a3.jsonl`
-- `/ll:confidence-check` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ea2245e-b201-46b7-a15d-81c084e20c95.jsonl`
-- `/ll:refine-issue` - 2026-04-11T04:35:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a695a0b4-55df-4b40-9759-8d3eeda245c7.jsonl`
-- `/ll:wire-issue` - 2026-04-11T04:30:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32154347-e8f6-4756-b187-425c7a06970e.jsonl`
-- `/ll:format-issue` - 2026-04-11T04:23:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3be8bdda-d42f-491e-8a93-0f32e4fd87aa.jsonl`
-- `/ll:capture-issue` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe9849b2-c9ca-4d60-92fc-cfd769be2923.jsonl`
+- `/ll:ready-issue` - 2026-04-11T05:04:07 - `b458173b-e5fe-4cf5-b55c-ef414ac7c145.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00Z - `761f2624-ecc1-499c-ac48-e18b3e383406.jsonl`
+- `/ll:refine-issue` - 2026-04-11T04:58:24 - `db48a35e-dc5e-4578-b3f1-212165c748a3.jsonl`
+- `/ll:confidence-check` - 2026-04-10T00:00:00Z - `4ea2245e-b201-46b7-a15d-81c084e20c95.jsonl`
+- `/ll:refine-issue` - 2026-04-11T04:35:58 - `a695a0b4-55df-4b40-9759-8d3eeda245c7.jsonl`
+- `/ll:wire-issue` - 2026-04-11T04:30:22 - `32154347-e8f6-4756-b187-425c7a06970e.jsonl`
+- `/ll:format-issue` - 2026-04-11T04:23:55 - `3be8bdda-d42f-491e-8a93-0f32e4fd87aa.jsonl`
+- `/ll:capture-issue` - 2026-04-10T00:00:00Z - `fe9849b2-c9ca-4d60-92fc-cfd769be2923.jsonl`

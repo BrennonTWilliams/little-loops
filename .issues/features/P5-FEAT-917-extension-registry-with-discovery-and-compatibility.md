@@ -120,17 +120,17 @@ A team evaluating ll wants to see what extensions are available. They run `ll ex
 **Deferred**: Premature until multiple third-party `little-loops-ext-*` extensions actually exist. Revisit when there are ≥2 published extensions that would benefit from discovery/compatibility tooling.
 
 ## Session Log
-- `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-10T19:40:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
-- `/ll:verify-issues` - 2026-04-26T19:34:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
-- `/ll:verify-issues` - 2026-04-11T23:05:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
-- `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
-- `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
-- `/ll:verify-issues` - 2026-04-03T02:58:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
-- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/233246d6-aba3-4c73-842f-437f09922574.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:13 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-10T19:40:47 - `6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:21:17 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:02 - `4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
+- `/ll:verify-issues` - 2026-04-26T19:34:08 - `316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
+- `/ll:verify-issues` - 2026-04-11T23:05:12 - `5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
+- `/ll:verify-issues` - 2026-04-11T19:37:17 - `74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
+- `/ll:verify-issues` - 2026-04-02T00:00:00 - `a2482dff-8512-481e-813c-be16a2afb222.jsonl`
+- `/ll:verify-issues` - 2026-04-03T02:58:19 - `7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
+- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `233246d6-aba3-4c73-842f-437f09922574.jsonl`
 
 ---
 

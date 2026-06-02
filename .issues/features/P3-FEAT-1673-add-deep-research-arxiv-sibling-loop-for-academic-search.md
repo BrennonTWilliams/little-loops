@@ -232,10 +232,10 @@ Wired in: `scripts/tests/test_builtin_loops.py` expected set (52 → 53 entries)
 All verification passed: `ll-loop validate deep-research-arxiv`, `ll-loop list` (loop visible with `[built-in]` tag), `ll-verify-docs` (all 10 counts match), and the full builtin-loops + deep-research test suite (495 passed).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-24T07:38:47Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92f99b2b-14c2-4ff7-94e7-d8d309f75b40.jsonl`
-- `/ll:ready-issue` - 2026-05-24T07:33:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/995aa695-3c58-4826-8afa-21cb7bcdc032.jsonl`
-- `/ll:confidence-check` - 2026-05-24T08:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2aaa4e23-87ed-4641-85ed-a9de682a4d82.jsonl`
-- `/ll:wire-issue` - 2026-05-24T07:28:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6928f817-2322-4383-8ed6-d30877fc7d71.jsonl`
-- `/ll:refine-issue` - 2026-05-24T07:23:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a811c0d3-136c-4394-b80a-ab4435a7e6a2.jsonl`
-- `/ll:format-issue` - 2026-05-24T07:12:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faf9a9a-9e72-4c6e-95c6-08c2d631638f.jsonl`
-- `/ll:capture-issue` - 2026-05-24T07:09:02Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e118fada-be27-4510-9c7c-e66238684c9d.jsonl`
+- `/ll:manage-issue` - 2026-05-24T07:38:47Z - `92f99b2b-14c2-4ff7-94e7-d8d309f75b40.jsonl`
+- `/ll:ready-issue` - 2026-05-24T07:33:03 - `995aa695-3c58-4826-8afa-21cb7bcdc032.jsonl`
+- `/ll:confidence-check` - 2026-05-24T08:00:00Z - `2aaa4e23-87ed-4641-85ed-a9de682a4d82.jsonl`
+- `/ll:wire-issue` - 2026-05-24T07:28:39 - `6928f817-2322-4383-8ed6-d30877fc7d71.jsonl`
+- `/ll:refine-issue` - 2026-05-24T07:23:20 - `a811c0d3-136c-4394-b80a-ab4435a7e6a2.jsonl`
+- `/ll:format-issue` - 2026-05-24T07:12:16 - `1faf9a9a-9e72-4c6e-95c6-08c2d631638f.jsonl`
+- `/ll:capture-issue` - 2026-05-24T07:09:02Z - `e118fada-be27-4510-9c7c-e66238684c9d.jsonl`

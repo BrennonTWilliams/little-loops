@@ -191,11 +191,11 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - **Step ordering constraint**: implement steps 1-4 (SKILL.md + fixtures) first; gate steps 5-6 on ENH-1335's COMMANDS.md landing.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:wire-issue` - 2026-05-03T04:51:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ffb837c-fbed-4b17-979a-21f952936d58.jsonl`
-- `/ll:refine-issue` - 2026-05-03T04:46:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f1a3aae-d4f5-418e-925c-2341954b5c96.jsonl`
-- `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17077eeb-0a80-4927-8736-7cffe26a726a.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T04:56:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8af1a3a1-23af-4c82-98e3-c5e3dde0272f.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00Z
+- `/ll:wire-issue` - 2026-05-03T04:51:54 - `1ffb837c-fbed-4b17-979a-21f952936d58.jsonl`
+- `/ll:refine-issue` - 2026-05-03T04:46:36 - `7f1a3aae-d4f5-418e-925c-2341954b5c96.jsonl`
+- `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `17077eeb-0a80-4927-8736-7cffe26a726a.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T04:56:57 - `8af1a3a1-23af-4c82-98e3-c5e3dde0272f.jsonl`
 
 ---
 

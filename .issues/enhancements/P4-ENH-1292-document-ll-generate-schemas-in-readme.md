@@ -75,7 +75,7 @@ ll-generate-schemas --help
 `enhancement`, `documentation`, `auto-generated`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-26T15:43:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e00e6b64-a720-442d-aa7b-7ccecb6bbad2.jsonl`
+- `/ll:ready-issue` - 2026-04-26T15:43:38 - `e00e6b64-a720-442d-aa7b-7ccecb6bbad2.jsonl`
 
 ---
 

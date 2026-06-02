@@ -283,26 +283,26 @@ _Updated by `/ll:confidence-check` on 2026-03-20 (post-refine-issue run 5 — Op
 - **JS test gap**: No Bun test runner; 6 new plugin files have zero automated coverage at completion; establish Bun testing setup in step 11 as a scope item, not an afterthought
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-06T04:30:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e591ecf6-7232-42fc-b4c4-903ec2858064.jsonl`
-- `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
-- `/ll:verify-issues` - 2026-04-03T02:58:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
-- `/ll:verify-issues` - 2026-04-01T17:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:39:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:refine-issue` - 2026-03-20T00:37:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:30:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:refine-issue` - 2026-03-20T00:29:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:25:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:refine-issue` - 2026-03-20T00:22:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:18:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:refine-issue` - 2026-03-20T00:15:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:13:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:refine-issue` - 2026-03-20T00:10:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:verify-issues` - 2026-03-20T00:03:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:format-issue` - 2026-03-20T00:02:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-06T04:30:35 - `e591ecf6-7232-42fc-b4c4-903ec2858064.jsonl`
+- `/ll:verify-issues` - 2026-04-02T00:00:00 - `a2482dff-8512-481e-813c-be16a2afb222.jsonl`
+- `/ll:verify-issues` - 2026-04-03T02:58:19 - `7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
+- `/ll:verify-issues` - 2026-04-01T17:45:21 - `712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:39:51 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:refine-issue` - 2026-03-20T00:37:16 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:30:26 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:refine-issue` - 2026-03-20T00:29:00 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:25:02 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:refine-issue` - 2026-03-20T00:22:29 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:18:32 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:refine-issue` - 2026-03-20T00:15:39 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:13:43 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:refine-issue` - 2026-03-20T00:10:03 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:verify-issues` - 2026-03-20T00:03:13 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:format-issue` - 2026-03-20T00:02:04 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd2aa170-6761-45f4-b494-2ab248f32aea.jsonl`
-- `/ll:issue-size-review` - 2026-04-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e591ecf6-7232-42fc-b4c4-903ec2858064.jsonl`
+- `/ll:issue-size-review` - 2026-04-05T00:00:00 - `e591ecf6-7232-42fc-b4c4-903ec2858064.jsonl`
 
 ---
 

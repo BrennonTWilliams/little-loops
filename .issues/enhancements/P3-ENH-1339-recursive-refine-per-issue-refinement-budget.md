@@ -230,9 +230,9 @@ Implemented all acceptance criteria. Added `check_attempt_budget` gate state bet
 - 2026 research: [Anthropic Building Effective Agents](https://www.anthropic.com/research/building-effective-agents), [Microsoft CORPGEN](https://www.marktechpost.com/2026/02/26/microsoft-research-introduces-corpgen-to-manage-multi-horizon-tasks-for-autonomous-ai-agents-using-hierarchical-planning-and-memory/).
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-03T18:01:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eeb05989-bb52-4f97-a9e6-6cfc0bf7e810.jsonl`
-- `/ll:confidence-check` - 2026-05-03T18:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f5b42c3-e8ef-47a4-b2b9-4b91bb35d4b7.jsonl`
-- `/ll:wire-issue` - 2026-05-03T17:57:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae7f0997-427e-458f-95b4-c226b92b17c5.jsonl`
-- `/ll:refine-issue` - 2026-05-03T17:51:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/64c39cda-d1f7-426c-bbff-5c05ec002ffb.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:20:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:format-issue` - 2026-05-03T04:41:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a41e2fe5-b6da-449b-8d60-6b8ddd06d97c.jsonl`
+- `/ll:ready-issue` - 2026-05-03T18:01:22 - `eeb05989-bb52-4f97-a9e6-6cfc0bf7e810.jsonl`
+- `/ll:confidence-check` - 2026-05-03T18:30:00 - `4f5b42c3-e8ef-47a4-b2b9-4b91bb35d4b7.jsonl`
+- `/ll:wire-issue` - 2026-05-03T17:57:09 - `ae7f0997-427e-458f-95b4-c226b92b17c5.jsonl`
+- `/ll:refine-issue` - 2026-05-03T17:51:30 - `64c39cda-d1f7-426c-bbff-5c05ec002ffb.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:20:54 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:format-issue` - 2026-05-03T04:41:51 - `a41e2fe5-b6da-449b-8d60-6b8ddd06d97c.jsonl`

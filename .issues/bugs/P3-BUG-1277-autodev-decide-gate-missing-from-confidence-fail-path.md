@@ -174,8 +174,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 All 53 `TestAutodevLoop` tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-24T22:40:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9a8a42c-4849-4148-b8b0-416cf4114ab6.jsonl`
-- `/ll:confidence-check` - 2026-04-24T22:40:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b555737-a9aa-43db-91b7-1b3ecde9ae73.jsonl`
-- `/ll:wire-issue` - 2026-04-24T22:36:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9cc9c7c9-af52-4e80-bc86-ea713600a86c.jsonl`
-- `/ll:refine-issue` - 2026-04-24T22:31:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f410820a-4ea5-4ee4-ad56-cc00bf1d18d8.jsonl`
-- `/ll:capture-issue` - 2026-04-24T21:18:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82f88b14-6ac1-4d64-a028-6d67f78c0498.jsonl`
+- `/ll:ready-issue` - 2026-04-24T22:40:50 - `c9a8a42c-4849-4148-b8b0-416cf4114ab6.jsonl`
+- `/ll:confidence-check` - 2026-04-24T22:40:00Z - `3b555737-a9aa-43db-91b7-1b3ecde9ae73.jsonl`
+- `/ll:wire-issue` - 2026-04-24T22:36:08 - `9cc9c7c9-af52-4e80-bc86-ea713600a86c.jsonl`
+- `/ll:refine-issue` - 2026-04-24T22:31:07 - `f410820a-4ea5-4ee4-ad56-cc00bf1d18d8.jsonl`
+- `/ll:capture-issue` - 2026-04-24T21:18:45Z - `82f88b14-6ac1-4d64-a028-6d67f78c0498.jsonl`

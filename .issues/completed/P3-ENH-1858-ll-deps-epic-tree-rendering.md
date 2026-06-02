@@ -192,14 +192,14 @@ _Added by `/ll:confidence-check` on 2026-06-01_
 - **File placement choice** (`formatting.py` vs `cli/deps/tree.py`): the `tree.py` path requires promoting `deps.py` to a package; recommend `formatting.py` to keep the change surface flat.
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b821a849-b0a9-44d9-97a9-a7d0507e8dea.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1b2c3d4e-5678-90ab-cdef-1234567890ab.jsonl`
-- `/ll:wire-issue` - 2026-06-01T18:24:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/028ea300-f57a-416f-89b3-3b59a694635d.jsonl`
-- `/ll:refine-issue` - 2026-06-01T18:18:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82ca77a3-3757-46eb-bd70-4bbff3c8fb0e.jsonl`
-- `/ll:refine-issue` - 2026-06-01T00:00:00 - ``
-- `/ll:format-issue` - 2026-06-01T17:45:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9321137-9371-4510-85ad-95b0940c3c6f.jsonl`
-- `/ll:capture-issue` - 2026-06-01T17:35:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/277dd3c5-ffef-46cb-bcc6-124409ce1225.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcaa931c-330d-44e9-b237-2540a93e4fcb.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00 - `b821a849-b0a9-44d9-97a9-a7d0507e8dea.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00 - `1b2c3d4e-5678-90ab-cdef-1234567890ab.jsonl`
+- `/ll:wire-issue` - 2026-06-01T18:24:00 - `028ea300-f57a-416f-89b3-3b59a694635d.jsonl`
+- `/ll:refine-issue` - 2026-06-01T18:18:20 - `82ca77a3-3757-46eb-bd70-4bbff3c8fb0e.jsonl`
+- `/ll:refine-issue` - 2026-06-01T00:00:00
+- `/ll:format-issue` - 2026-06-01T17:45:13 - `f9321137-9371-4510-85ad-95b0940c3c6f.jsonl`
+- `/ll:capture-issue` - 2026-06-01T17:35:32Z - `277dd3c5-ffef-46cb-bcc6-124409ce1225.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `bcaa931c-330d-44e9-b237-2540a93e4fcb.jsonl`
 
 ## Resolution
 

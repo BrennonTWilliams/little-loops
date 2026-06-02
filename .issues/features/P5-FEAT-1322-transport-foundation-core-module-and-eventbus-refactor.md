@@ -233,11 +233,11 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - **`__init__.py` exports resolved**: `Transport`, `JsonlTransport`, and `wire_transports` will be added to `__all__` (step 8), consistent with the extension system pattern. No judgment call remains.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-02T15:46:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca51ce79-fc5d-451e-b964-005cf666a01c.jsonl`
-- `/ll:ready-issue` - 2026-05-02T15:46:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca51ce79-fc5d-451e-b964-005cf666a01c.jsonl`
-- `/ll:confidence-check` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea8713f7-6133-46d3-a7c4-835e7fe80de1.jsonl`
-- `/ll:wire-issue` - 2026-05-02T15:35:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0920c085-edd5-4d96-901f-87d998a45ed1.jsonl`
-- `/ll:refine-issue` - 2026-05-02T15:27:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34a9360e-afb7-429d-aa82-7d4cf5507f1f.jsonl`
-- `/ll:format-issue` - 2026-05-02T15:22:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/784c461e-af3a-415e-9ed1-30cb388a8682.jsonl`
-- `/ll:issue-size-review` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19344c8e-9db2-4d37-b7f7-d6bf19e299d8.jsonl`
-- `/ll:manage-issue` - 2026-05-02T15:59:58Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b593866a-d3e5-4a59-9fd9-49e3382dda71.jsonl`
+- `/ll:ready-issue` - 2026-05-02T15:46:48 - `ca51ce79-fc5d-451e-b964-005cf666a01c.jsonl`
+- `/ll:ready-issue` - 2026-05-02T15:46:38 - `ca51ce79-fc5d-451e-b964-005cf666a01c.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00 - `ea8713f7-6133-46d3-a7c4-835e7fe80de1.jsonl`
+- `/ll:wire-issue` - 2026-05-02T15:35:27 - `0920c085-edd5-4d96-901f-87d998a45ed1.jsonl`
+- `/ll:refine-issue` - 2026-05-02T15:27:47 - `34a9360e-afb7-429d-aa82-7d4cf5507f1f.jsonl`
+- `/ll:format-issue` - 2026-05-02T15:22:11 - `784c461e-af3a-415e-9ed1-30cb388a8682.jsonl`
+- `/ll:issue-size-review` - 2026-05-02T00:00:00 - `19344c8e-9db2-4d37-b7f7-d6bf19e299d8.jsonl`
+- `/ll:manage-issue` - 2026-05-02T15:59:58Z - `b593866a-d3e5-4a59-9fd9-49e3382dda71.jsonl`

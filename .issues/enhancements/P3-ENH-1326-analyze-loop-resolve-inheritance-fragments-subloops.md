@@ -172,10 +172,10 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - **assess-loop SKILL.md coupling**: Updating `skills/assess-loop/SKILL.md` to `--resolved` is listed as optional; if deferred, the two skills will have inconsistent sub-loop visibility.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1b37ceff-241e-4ddb-8c92-dbcb8cc24dac.jsonl`
-- `/ll:wire-issue` - 2026-05-02T21:23:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/94faadcc-1622-46db-a2a3-05ae22038062.jsonl`
-- `/ll:refine-issue` - 2026-05-02T21:17:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e712cefa-7a5f-4f34-865c-8db6b646a184.jsonl`
-- `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3504f81c-8403-4c3e-84f2-f27905b579d2.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `1b37ceff-241e-4ddb-8c92-dbcb8cc24dac.jsonl`
+- `/ll:wire-issue` - 2026-05-02T21:23:02 - `94faadcc-1622-46db-a2a3-05ae22038062.jsonl`
+- `/ll:refine-issue` - 2026-05-02T21:17:30 - `e712cefa-7a5f-4f34-865c-8db6b646a184.jsonl`
+- `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `3504f81c-8403-4c3e-84f2-f27905b579d2.jsonl`
 
 ---
 

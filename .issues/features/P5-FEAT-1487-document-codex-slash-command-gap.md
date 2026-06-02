@@ -166,12 +166,12 @@ All three acceptance criteria were verified as already satisfied in live files d
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-16T05:34:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f57340e-a102-4af2-83c4-aa87c1c90b24.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bfcdb563-da12-4eda-a615-ec5c3c36f292.jsonl`
-- `/ll:wire-issue` - 2026-05-16T05:29:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68b8d7ac-7611-418f-b1ab-8f6237162b76.jsonl`
-- `/ll:refine-issue` - 2026-05-16T05:26:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1590f00d-ff0d-42a0-8087-d447e25a51a1.jsonl`
-- `/ll:format-issue` - 2026-05-16T03:55:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/604904cc-0700-49df-ba1a-c56e52eb7fa1.jsonl`
-- `/ll:format-issue` - 2026-05-16T03:45:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0311cf7-493f-4a79-bc9d-67419d002020.jsonl`
+- `/ll:ready-issue` - 2026-05-16T05:34:57 - `7f57340e-a102-4af2-83c4-aa87c1c90b24.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `bfcdb563-da12-4eda-a615-ec5c3c36f292.jsonl`
+- `/ll:wire-issue` - 2026-05-16T05:29:57 - `68b8d7ac-7611-418f-b1ab-8f6237162b76.jsonl`
+- `/ll:refine-issue` - 2026-05-16T05:26:06 - `1590f00d-ff0d-42a0-8087-d447e25a51a1.jsonl`
+- `/ll:format-issue` - 2026-05-16T03:55:05 - `604904cc-0700-49df-ba1a-c56e52eb7fa1.jsonl`
+- `/ll:format-issue` - 2026-05-16T03:45:34 - `b0311cf7-493f-4a79-bc9d-67419d002020.jsonl`
 
 
 ---

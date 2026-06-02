@@ -199,14 +199,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Is fingerprint extraction stable enough without an LLM (TF-IDF vs embedding)?
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-31T20:53:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf581b66-96e8-4c83-ba66-89f686b12efc.jsonl`
-- `/ll:confidence-check` - 2026-05-31T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c66a399b-a087-496d-a49a-4d67bd2d86e8.jsonl`
-- `/ll:wire-issue` - 2026-05-31T20:48:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/531ec7f7-1448-4d6e-ba53-afe5c4ef0322.jsonl`
-- `/ll:refine-issue` - 2026-05-31T20:43:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81e2ee88-285d-4fe2-9057-76f78da601d4.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:format-issue` - 2026-05-29T21:11:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f7876db-05fe-44b7-8207-daa880a4618f.jsonl`
-- `/ll:capture-issue` - 2026-05-29T20:55:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
+- `/ll:ready-issue` - 2026-05-31T20:53:14 - `cf581b66-96e8-4c83-ba66-89f686b12efc.jsonl`
+- `/ll:confidence-check` - 2026-05-31T21:00:00 - `c66a399b-a087-496d-a49a-4d67bd2d86e8.jsonl`
+- `/ll:wire-issue` - 2026-05-31T20:48:50 - `531ec7f7-1448-4d6e-ba53-afe5c4ef0322.jsonl`
+- `/ll:refine-issue` - 2026-05-31T20:43:27 - `81e2ee88-285d-4fe2-9057-76f78da601d4.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:16 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:15 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:format-issue` - 2026-05-29T21:11:57 - `9f7876db-05fe-44b7-8207-daa880a4618f.jsonl`
+- `/ll:capture-issue` - 2026-05-29T20:55:00Z - `53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
 
 ## Status
 

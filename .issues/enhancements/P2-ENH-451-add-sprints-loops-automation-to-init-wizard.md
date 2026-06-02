@@ -100,7 +100,7 @@ Alternatively, mention these in the completion message as configurable via `/ll:
 - Added completion message next steps and `/ll:configure` mention for automation features
 
 ## Session Log
-- `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
+- `/ll:format-issue` - 2026-02-22 - `38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
 - `/ll:manage-issue enh implement ENH-451` - 2026-02-22
 
 ## Blocked By

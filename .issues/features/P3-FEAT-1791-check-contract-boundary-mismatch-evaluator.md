@@ -215,14 +215,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 | `scripts/little_loops/loops/harness-multi-item.yaml` | Harness template to extend with a commented `check_contract` example block |
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T19:38:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/64311e66-c2b0-43ee-8958-99a54082ecb2.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34f84fcf-43f5-4359-b8a7-255b2b1e5f21.jsonl`
-- `/ll:wire-issue` - 2026-06-01T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:refine-issue` - 2026-06-01T19:26:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/393dcf8d-0e5a-4ff6-ba4d-fb43986db4b5.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:format-issue` - 2026-05-29T19:28:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aea29468-dd94-4692-a4e8-f97561c7c2a7.jsonl`
-- `/ll:capture-issue` - 2026-05-29T19:08:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
+- `/ll:ready-issue` - 2026-06-01T19:38:34 - `64311e66-c2b0-43ee-8958-99a54082ecb2.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `34f84fcf-43f5-4359-b8a7-255b2b1e5f21.jsonl`
+- `/ll:wire-issue` - 2026-06-01T20:00:00 - `current.jsonl`
+- `/ll:refine-issue` - 2026-06-01T19:26:42 - `393dcf8d-0e5a-4ff6-ba4d-fb43986db4b5.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:08 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:15 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:format-issue` - 2026-05-29T19:28:53 - `aea29468-dd94-4692-a4e8-f97561c7c2a7.jsonl`
+- `/ll:capture-issue` - 2026-05-29T19:08:54Z - `5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
 
 ---
 

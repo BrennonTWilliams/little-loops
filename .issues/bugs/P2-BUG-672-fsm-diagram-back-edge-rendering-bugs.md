@@ -134,11 +134,11 @@ src_row = row_start.get(src, 0) + 1  # name row, not bottom border
 `bug`, `cli`, `fsm-diagram`, `captured`
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2628af2a-aca0-4d4e-ad1b-655fd8aab5a9.jsonl`
-- `/ll:format-issue` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd96b75e-fbd0-4dcc-ba9f-72fc5447a846.jsonl`
-- `/ll:refine-issue` - 2026-03-11T20:05:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:confidence-check` - 2026-03-11T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21ea8198-c82d-4b22-b5c8-95b42f2a2a44.jsonl`
-- `/ll:ready-issue` - 2026-03-11T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/64f45eec-7908-4137-8d2a-5de38967a693.jsonl`
+- `/ll:capture-issue` - 2026-03-11T00:00:00Z - `2628af2a-aca0-4d4e-ad1b-655fd8aab5a9.jsonl`
+- `/ll:format-issue` - 2026-03-11T00:00:00Z - `cd96b75e-fbd0-4dcc-ba9f-72fc5447a846.jsonl`
+- `/ll:refine-issue` - 2026-03-11T20:05:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:confidence-check` - 2026-03-11T20:30:00Z - `21ea8198-c82d-4b22-b5c8-95b42f2a2a44.jsonl`
+- `/ll:ready-issue` - 2026-03-11T21:00:00Z - `64f45eec-7908-4137-8d2a-5de38967a693.jsonl`
 
 ## Resolution
 

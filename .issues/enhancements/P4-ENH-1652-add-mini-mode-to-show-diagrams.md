@@ -325,14 +325,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `docs/ARCHITECTURE.md` — system design context for the loop runtime.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-24T03:23:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63dce85f-0d2f-440f-b9da-c565783c6e52.jsonl`
-- `/ll:ready-issue` - 2026-05-24T03:12:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c8e2614-3a50-4a38-b563-453afa6d8387.jsonl`
-- `/ll:confidence-check` - 2026-05-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/878d2895-1ff5-4c50-9f87-68cfeff2a885.jsonl`
-- `/ll:wire-issue` - 2026-05-24T03:07:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/318cb2d7-a132-4b82-8cc9-89275534f290.jsonl`
-- `/ll:refine-issue` - 2026-05-24T02:59:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a113d99-eb5c-413d-a55a-065ab944490c.jsonl`
-- `/ll:refine-issue` - 2026-05-24T02:43:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9eaefb33-d00d-4955-9bd3-f90c748f44ef.jsonl`
-- `/ll:format-issue` - 2026-05-24T02:24:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d11a32bd-ee0b-4bc3-aa81-bbd2c70eaca5.jsonl`
-- `/ll:capture-issue` - 2026-05-24T02:16:50Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/facffb2c-69ed-4e7f-9785-031798b54171.jsonl`
+- `/ll:manage-issue` - 2026-05-24T03:23:39Z - `63dce85f-0d2f-440f-b9da-c565783c6e52.jsonl`
+- `/ll:ready-issue` - 2026-05-24T03:12:37 - `6c8e2614-3a50-4a38-b563-453afa6d8387.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:00 - `878d2895-1ff5-4c50-9f87-68cfeff2a885.jsonl`
+- `/ll:wire-issue` - 2026-05-24T03:07:53 - `318cb2d7-a132-4b82-8cc9-89275534f290.jsonl`
+- `/ll:refine-issue` - 2026-05-24T02:59:50 - `1a113d99-eb5c-413d-a55a-065ab944490c.jsonl`
+- `/ll:refine-issue` - 2026-05-24T02:43:10 - `9eaefb33-d00d-4955-9bd3-f90c748f44ef.jsonl`
+- `/ll:format-issue` - 2026-05-24T02:24:34 - `d11a32bd-ee0b-4bc3-aa81-bbd2c70eaca5.jsonl`
+- `/ll:capture-issue` - 2026-05-24T02:16:50Z - `facffb2c-69ed-4e7f-9785-031798b54171.jsonl`
 
 ---
 

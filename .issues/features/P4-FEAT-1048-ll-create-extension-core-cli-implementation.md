@@ -234,12 +234,12 @@ Implemented `ll-create-extension <name> [--dry-run]` CLI command:
 - `scripts/tests/test_create_extension.py` — 10 tests, all passing
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-12T04:20:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ed6a07b-21b2-4dd2-b642-a8f8ee28dcfa.jsonl`
-- `/ll:ready-issue` - 2026-04-12T04:12:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/944df040-d306-46c9-91a4-e21802bb110a.jsonl`
-- `/ll:confidence-check` - 2026-04-11T04:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32c003c1-efad-4d24-b9eb-63cacaec1777.jsonl`
-- `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/552f9ae8-b018-49c2-96eb-16e112223147.jsonl`
-- `/ll:confidence-check` - 2026-04-12T04:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/717e28ae-eb80-4486-985b-4a93bb32c71f.jsonl`
-- `/ll:wire-issue` - 2026-04-12T03:10:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51a1aad7-49ce-434e-8ce5-a76e8376deb3.jsonl`
-- `/ll:refine-issue` - 2026-04-12T03:05:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f875fa22-3b06-4f03-882b-0bca893be6d5.jsonl`
-- `/ll:format-issue` - 2026-04-12T03:02:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/136340fb-a87f-495a-a00c-d5c8ef84d1cb.jsonl`
-- `/ll:issue-size-review` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/641c5bf7-b7c1-42cd-b701-507df2a51df9.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-12T04:20:43 - `0ed6a07b-21b2-4dd2-b642-a8f8ee28dcfa.jsonl`
+- `/ll:ready-issue` - 2026-04-12T04:12:36 - `944df040-d306-46c9-91a4-e21802bb110a.jsonl`
+- `/ll:confidence-check` - 2026-04-11T04:00:00 - `32c003c1-efad-4d24-b9eb-63cacaec1777.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00 - `552f9ae8-b018-49c2-96eb-16e112223147.jsonl`
+- `/ll:confidence-check` - 2026-04-12T04:00:00 - `717e28ae-eb80-4486-985b-4a93bb32c71f.jsonl`
+- `/ll:wire-issue` - 2026-04-12T03:10:40 - `51a1aad7-49ce-434e-8ce5-a76e8376deb3.jsonl`
+- `/ll:refine-issue` - 2026-04-12T03:05:50 - `f875fa22-3b06-4f03-882b-0bca893be6d5.jsonl`
+- `/ll:format-issue` - 2026-04-12T03:02:21 - `136340fb-a87f-495a-a00c-d5c8ef84d1cb.jsonl`
+- `/ll:issue-size-review` - 2026-04-11T00:00:00 - `641c5bf7-b7c1-42cd-b701-507df2a51df9.jsonl`

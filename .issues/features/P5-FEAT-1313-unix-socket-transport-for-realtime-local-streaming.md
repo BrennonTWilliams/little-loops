@@ -281,13 +281,13 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 See the **Pinned Decisions** section above for the full list. These remove ambiguity around per-client queue maxsize, queue-full policy, drop-log rate, `close()` timeout split, socket file permissions, listen backlog, `json.dumps()` failure handling, and `_TRANSPORT_REGISTRY` dispatch shape — all previously implementer-discretion items.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-02T17:20:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ee4581b-3eff-49c4-b2e2-421a1a703829.jsonl`
-- `/ll:ready-issue` - 2026-05-02T17:07:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2482c293-1d07-45a1-adb2-d5da53a231a9.jsonl`
-- `/ll:confidence-check` - 2026-05-02T17:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e5721f1-ad32-42d3-b159-8e41135a2c42.jsonl`
-- `/ll:wire-issue` - 2026-05-02T16:55:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e5721f1-ad32-42d3-b159-8e41135a2c42.jsonl`
-- `/ll:refine-issue` - 2026-05-02T16:48:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48467571-3ea8-4dbd-9b91-f183ae524eb8.jsonl`
-- `/ll:ready-issue` - 2026-05-02T16:44:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32aad54d-9610-4b9c-8508-4ec484b15073.jsonl`
-- `/ll:format-issue` - 2026-05-02T16:39:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83d74176-84ac-4ea2-9c73-06de95bcdbd2.jsonl`
-- `/ll:refine-issue` - 2026-05-01T20:59:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1a27e94-952b-4a2d-adc7-4cec048a5642.jsonl`
+- `/ll:manage-issue` - 2026-05-02T17:20:11 - `1ee4581b-3eff-49c4-b2e2-421a1a703829.jsonl`
+- `/ll:ready-issue` - 2026-05-02T17:07:31 - `2482c293-1d07-45a1-adb2-d5da53a231a9.jsonl`
+- `/ll:confidence-check` - 2026-05-02T17:30:00 - `5e5721f1-ad32-42d3-b159-8e41135a2c42.jsonl`
+- `/ll:wire-issue` - 2026-05-02T16:55:12 - `5e5721f1-ad32-42d3-b159-8e41135a2c42.jsonl`
+- `/ll:refine-issue` - 2026-05-02T16:48:53 - `48467571-3ea8-4dbd-9b91-f183ae524eb8.jsonl`
+- `/ll:ready-issue` - 2026-05-02T16:44:02 - `32aad54d-9610-4b9c-8508-4ec484b15073.jsonl`
+- `/ll:format-issue` - 2026-05-02T16:39:06 - `83d74176-84ac-4ea2-9c73-06de95bcdbd2.jsonl`
+- `/ll:refine-issue` - 2026-05-01T20:59:22 - `c1a27e94-952b-4a2d-adc7-4cec048a5642.jsonl`
 
 - Split from FEAT-918 - 2026-05-01

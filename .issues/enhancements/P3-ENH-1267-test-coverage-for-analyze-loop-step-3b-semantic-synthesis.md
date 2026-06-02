@@ -258,9 +258,9 @@ Implemented by `/ll:manage-issue` on 2026-04-23.
 All 26 tests passed: `python -m pytest scripts/tests/test_analyze_loop_synthesis.py scripts/tests/test_enh1146_doc_wiring.py -v`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-23T03:24:36Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3c75e0d-fff1-4f6a-a91a-7188868319dd.jsonl`
-- `/ll:ready-issue` - 2026-04-23T03:18:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3c75e0d-fff1-4f6a-a91a-7188868319dd.jsonl`
-- `/ll:wire-issue` - 2026-04-23T03:11:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/100383fa-ae6f-4332-a8a7-f66b0135eed9.jsonl`
-- `/ll:refine-issue` - 2026-04-23T03:07:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e7ed822-ee8c-47c4-89ee-dec801417887.jsonl`
-- `/ll:issue-size-review` - 2026-04-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac265e54-5386-49fe-bf5b-6e6f9305772d.jsonl`
-- `/ll:confidence-check` - 2026-04-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c4436af-605a-4242-89e1-38fa218f74ee.jsonl`
+- `/ll:manage-issue` - 2026-04-23T03:24:36Z - `f3c75e0d-fff1-4f6a-a91a-7188868319dd.jsonl`
+- `/ll:ready-issue` - 2026-04-23T03:18:54 - `f3c75e0d-fff1-4f6a-a91a-7188868319dd.jsonl`
+- `/ll:wire-issue` - 2026-04-23T03:11:12 - `100383fa-ae6f-4332-a8a7-f66b0135eed9.jsonl`
+- `/ll:refine-issue` - 2026-04-23T03:07:17 - `8e7ed822-ee8c-47c4-89ee-dec801417887.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T00:00:00Z - `ac265e54-5386-49fe-bf5b-6e6f9305772d.jsonl`
+- `/ll:confidence-check` - 2026-04-22T00:00:00Z - `5c4436af-605a-4242-89e1-38fa218f74ee.jsonl`

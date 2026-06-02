@@ -193,9 +193,9 @@ FEAT-1527 (this issue) → FEAT-1528 (docs + wiring).
 FEAT-1528 can be drafted in parallel once the CLI interface is known, but merges after this issue.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-16T21:17:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b89dae9b-9215-4367-9b30-b7ec670bf70e.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1bfaaaa8-1e83-4e7a-a506-a0ffb1065885.jsonl`
-- `/ll:wire-issue` - 2026-05-16T21:13:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5636f01-9a0b-468a-b705-6a0f1cc68eae.jsonl`
-- `/ll:refine-issue` - 2026-05-16T21:08:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98bdb2c4-6ab8-4c6d-b9cd-a673604e57d0.jsonl`
-- `/ll:refine-issue` - 2026-05-16T21:08:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98bdb2c4-6ab8-4c6d-b9cd-a673604e57d0.jsonl`
-- `/ll:issue-size-review` - 2026-05-16T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0de5eba4-6630-4b6f-ac14-f65397d900bb.jsonl`
+- `/ll:ready-issue` - 2026-05-16T21:17:48 - `b89dae9b-9215-4367-9b30-b7ec670bf70e.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `1bfaaaa8-1e83-4e7a-a506-a0ffb1065885.jsonl`
+- `/ll:wire-issue` - 2026-05-16T21:13:24 - `e5636f01-9a0b-468a-b705-6a0f1cc68eae.jsonl`
+- `/ll:refine-issue` - 2026-05-16T21:08:53 - `98bdb2c4-6ab8-4c6d-b9cd-a673604e57d0.jsonl`
+- `/ll:refine-issue` - 2026-05-16T21:08:49 - `98bdb2c4-6ab8-4c6d-b9cd-a673604e57d0.jsonl`
+- `/ll:issue-size-review` - 2026-05-16T21:00:00Z - `0de5eba4-6630-4b6f-ac14-f65397d900bb.jsonl`

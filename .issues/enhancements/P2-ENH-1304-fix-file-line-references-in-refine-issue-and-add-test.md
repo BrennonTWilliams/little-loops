@@ -147,12 +147,12 @@ python -m pytest scripts/tests/test_refine_issue_command.py -v
 `enhancement`, `reference-cleanup`, `authoring-pipeline`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-27T18:43:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:ready-issue` - 2026-04-27T18:41:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4b62644-f4af-461c-a0ff-08313901945c.jsonl`
-- `/ll:wire-issue` - 2026-04-27T18:35:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67265d08-b297-43f4-b705-889e30253317.jsonl`
-- `/ll:refine-issue` - 2026-04-27T18:31:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac506ecf-0d87-45f2-991d-52d96f5f9589.jsonl`
-- `/ll:issue-size-review` - 2026-04-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffb785b8-11a4-4944-a15b-8d407ae45324.jsonl`
-- `/ll:confidence-check` - 2026-04-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90714593-20ef-48ad-9b7e-1cf4e4248415.jsonl`
+- `/ll:manage-issue` - 2026-04-27T18:43:56Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-04-27T18:41:43 - `a4b62644-f4af-461c-a0ff-08313901945c.jsonl`
+- `/ll:wire-issue` - 2026-04-27T18:35:48 - `67265d08-b297-43f4-b705-889e30253317.jsonl`
+- `/ll:refine-issue` - 2026-04-27T18:31:18 - `ac506ecf-0d87-45f2-991d-52d96f5f9589.jsonl`
+- `/ll:issue-size-review` - 2026-04-27T00:00:00Z - `ffb785b8-11a4-4944-a15b-8d407ae45324.jsonl`
+- `/ll:confidence-check` - 2026-04-27T00:00:00Z - `90714593-20ef-48ad-9b7e-1cf4e4248415.jsonl`
 
 ## Resolution
 

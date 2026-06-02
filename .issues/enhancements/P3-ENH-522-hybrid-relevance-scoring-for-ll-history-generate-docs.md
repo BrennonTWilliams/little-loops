@@ -138,7 +138,7 @@ Added `score_bm25()` to `text_utils.py` (Robertson BM25 with IDF smoothing, k1=1
 - `docs/reference/API.md` — Documented `score_bm25()`, `extract_words()`, `calculate_word_overlap()`, `main_history`, `--scoring` flag
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/54ea04b1-9748-4277-ba23-8560b42c40a0.jsonl`
+- `/ll:capture-issue` - 2026-03-02 - `54ea04b1-9748-4277-ba23-8560b42c40a0.jsonl`
 - `/ll:refine-issue` - 2026-03-03 - Corrected test file refs (test_issue_history.py→test_doc_synthesis.py); added exact line numbers for score_relevance, synthesize_docs, extract_words; identified similar patterns (compute_conflict_score, semantic_similarity); enriched integration map and implementation steps
 - `/ll:manage-issue` - 2026-03-03 - Implemented hybrid BM25 scoring; all 3099 tests pass
 

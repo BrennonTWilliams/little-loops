@@ -126,11 +126,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Interactive `commands` configure flow allows setting `circuit_breaker_enabled` and `circuit_breaker_path`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-17T06:43:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a9253dba-044a-4492-bd2a-c8135b63d643.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d263f7b-fc36-4cab-8a74-a78825b49d65.jsonl`
-- `/ll:wire-issue` - 2026-04-17T06:40:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05017e96-f5f9-48c7-8516-44ca084f620b.jsonl`
-- `/ll:refine-issue` - 2026-04-17T06:36:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8cd9c76-1934-4bbf-95dc-7b9f55681882.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e20512e-4152-4cfc-9884-2846f71c2341.jsonl`
+- `/ll:ready-issue` - 2026-04-17T06:43:25 - `a9253dba-044a-4492-bd2a-c8135b63d643.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `4d263f7b-fc36-4cab-8a74-a78825b49d65.jsonl`
+- `/ll:wire-issue` - 2026-04-17T06:40:09 - `05017e96-f5f9-48c7-8516-44ca084f620b.jsonl`
+- `/ll:refine-issue` - 2026-04-17T06:36:12 - `a8cd9c76-1934-4bbf-95dc-7b9f55681882.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `7e20512e-4152-4cfc-9884-2846f71c2341.jsonl`
 
 ---
 
@@ -154,5 +154,5 @@ circuit-breaker knobs added by ENH-1134.
 **Verification:** 4912 tests pass, ruff clean. Pre-existing mypy `wcwidth` import-stub warning unrelated to this change.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-17T06:47:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/459c2294-9b6d-47c2-9f97-328232145283.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-17T06:47:34 - `459c2294-9b6d-47c2-9f97-328232145283.jsonl`
 - `/ll:manage-issue` - 2026-04-17T00:00:00Z - implementation

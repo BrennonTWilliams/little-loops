@@ -159,12 +159,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 `enhancement`, `issue-size-review`, `frontmatter`, `skill`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-13T02:29:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a05252dd-602c-4971-8046-d4e06bc3971f.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ecbdeb4-1c63-45f3-9557-6949fade4f15.jsonl`
-- `/ll:wire-issue` - 2026-04-13T02:17:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7addff48-eee5-445a-8178-a9b53cef39e6.jsonl`
-- `/ll:refine-issue` - 2026-04-13T02:12:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/557fd7f8-4e77-4e6b-b846-071483492cc3.jsonl`
-- `/ll:format-issue` - 2026-04-13T02:07:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0bfb43c5-a9c7-48af-be46-8bbb8a4d02b0.jsonl`
-- `/ll:issue-size-review` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24bfa590-00d2-4387-9ba6-799d36510a45.jsonl`
+- `/ll:ready-issue` - 2026-04-13T02:29:23 - `a05252dd-602c-4971-8046-d4e06bc3971f.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `5ecbdeb4-1c63-45f3-9557-6949fade4f15.jsonl`
+- `/ll:wire-issue` - 2026-04-13T02:17:56 - `7addff48-eee5-445a-8178-a9b53cef39e6.jsonl`
+- `/ll:refine-issue` - 2026-04-13T02:12:14 - `557fd7f8-4e77-4e6b-b846-071483492cc3.jsonl`
+- `/ll:format-issue` - 2026-04-13T02:07:55 - `0bfb43c5-a9c7-48af-be46-8bbb8a4d02b0.jsonl`
+- `/ll:issue-size-review` - 2026-04-12T00:00:00Z - `24bfa590-00d2-4387-9ba6-799d36510a45.jsonl`
 
 ---
 
@@ -183,7 +183,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
   - Updated BUG-1062 to reference Phase 6: Execution (phase renumbering follow-up)
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a05252dd-602c-4971-8046-d4e06bc3971f.jsonl`
+- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `a05252dd-602c-4971-8046-d4e06bc3971f.jsonl`
 
 ---
 

@@ -331,11 +331,11 @@ _Added by `/ll:confidence-check` on 2026-05-30 | Updated 2026-05-31_
 No concerns, gaps, or risk factors — clean bill of health.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-31T03:12:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3429f501-3e51-46b9-9aec-02bd2b00cdfe.jsonl`
-- `/ll:confidence-check` - 2026-05-31T03:15:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b7df17f-a880-43b3-bdde-974af6dce947.jsonl`
-- `/ll:decide-issue` - 2026-05-31T03:07:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8386755f-dd94-4045-b533-371ffc0ec47d.jsonl`
-- `/ll:confidence-check` - 2026-05-30T06:07:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/787ce0c0-e1a8-4c2d-8ef4-89cc995661e7.jsonl`
-- `/ll:refine-issue` - 2026-05-31T02:49:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93ce2bb2-a420-4b9e-add7-55f34fb013b6.jsonl`
-- `/ll:refine-issue` - 2026-05-30T00:12:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2bd7f76-b0bd-4154-ac21-38679054df7a.jsonl`
-- `/ll:format-issue` - 2026-05-29T18:46:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e778a487-9894-450e-a694-a731058b51d1.jsonl`
-- `/ll:wire-issue` - 2026-05-30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/<session-id>.jsonl`
+- `/ll:ready-issue` - 2026-05-31T03:12:00 - `3429f501-3e51-46b9-9aec-02bd2b00cdfe.jsonl`
+- `/ll:confidence-check` - 2026-05-31T03:15:00Z - `9b7df17f-a880-43b3-bdde-974af6dce947.jsonl`
+- `/ll:decide-issue` - 2026-05-31T03:07:36 - `8386755f-dd94-4045-b533-371ffc0ec47d.jsonl`
+- `/ll:confidence-check` - 2026-05-30T06:07:00Z - `787ce0c0-e1a8-4c2d-8ef4-89cc995661e7.jsonl`
+- `/ll:refine-issue` - 2026-05-31T02:49:59 - `93ce2bb2-a420-4b9e-add7-55f34fb013b6.jsonl`
+- `/ll:refine-issue` - 2026-05-30T00:12:15 - `f2bd7f76-b0bd-4154-ac21-38679054df7a.jsonl`
+- `/ll:format-issue` - 2026-05-29T18:46:39 - `e778a487-9894-450e-a694-a731058b51d1.jsonl`
+- `/ll:wire-issue` - 2026-05-30 - `<session-id>.jsonl`

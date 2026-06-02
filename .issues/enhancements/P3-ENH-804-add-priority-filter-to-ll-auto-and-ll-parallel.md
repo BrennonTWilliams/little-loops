@@ -156,12 +156,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `cli`, `ll-auto`, `ll-parallel`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-18T21:49:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f299283-a702-4c96-899f-663835d6448c.jsonl`
-- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56e068a2-169f-4e14-b8ca-00caa619a741.jsonl`
-- `/ll:refine-issue` - 2026-03-18T21:38:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/18f420b1-0c39-4794-9ebd-f0386a21c8dd.jsonl`
-- `/ll:refine-issue` - 2026-03-18T21:32:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3aa0fcd8-e52b-4672-b5cc-4af0e7f14784.jsonl`
+- `/ll:ready-issue` - 2026-03-18T21:49:51 - `2f299283-a702-4c96-899f-663835d6448c.jsonl`
+- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `56e068a2-169f-4e14-b8ca-00caa619a741.jsonl`
+- `/ll:refine-issue` - 2026-03-18T21:38:58 - `18f420b1-0c39-4794-9ebd-f0386a21c8dd.jsonl`
+- `/ll:refine-issue` - 2026-03-18T21:32:56 - `3aa0fcd8-e52b-4672-b5cc-4af0e7f14784.jsonl`
 
-- `/ll:capture-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:capture-issue` - 2026-03-18T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 

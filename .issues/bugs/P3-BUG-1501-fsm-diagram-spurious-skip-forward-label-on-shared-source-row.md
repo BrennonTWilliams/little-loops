@@ -128,8 +128,8 @@ Closely related: BUG-1499 (shares the `used_label_rows` fix mechanism).
 - **Captured by**: `/ll:capture-issue`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-17T14:03:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84c55d0d-16b1-4406-9ef7-cff79317a1c0.jsonl`
-- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08a32b43-a82c-44ca-870c-a3ed903e4428.jsonl`
-- `/ll:wire-issue` - 2026-05-17T13:59:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6bd8d2eb-0ceb-4004-9285-6618c0bf77a5.jsonl`
-- `/ll:refine-issue` - 2026-05-17T13:55:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5965c677-65b9-41f7-b51f-cbb05e9da3ac.jsonl`
-- `/ll:capture-issue` - 2026-05-16T14:12:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f204025d-307a-4f4d-80b2-206dfd3b1de1.jsonl`
+- `/ll:ready-issue` - 2026-05-17T14:03:00 - `84c55d0d-16b1-4406-9ef7-cff79317a1c0.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `08a32b43-a82c-44ca-870c-a3ed903e4428.jsonl`
+- `/ll:wire-issue` - 2026-05-17T13:59:42 - `6bd8d2eb-0ceb-4004-9285-6618c0bf77a5.jsonl`
+- `/ll:refine-issue` - 2026-05-17T13:55:31 - `5965c677-65b9-41f7-b51f-cbb05e9da3ac.jsonl`
+- `/ll:capture-issue` - 2026-05-16T14:12:59Z - `f204025d-307a-4f4d-80b2-206dfd3b1de1.jsonl`

@@ -140,9 +140,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-11T18:15:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10444532-ceab-45d1-a111-8caae8b29ff9.jsonl`
-- `/ll:confidence-check` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd951d64-2d65-443e-982a-ea4205e199e4.jsonl`
-- `/ll:refine-issue` - 2026-04-11T18:08:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/357454b3-7b86-4dcc-8764-fe83bcd065e4.jsonl`
+- `/ll:ready-issue` - 2026-04-11T18:15:05 - `10444532-ceab-45d1-a111-8caae8b29ff9.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00Z - `fd951d64-2d65-443e-982a-ea4205e199e4.jsonl`
+- `/ll:refine-issue` - 2026-04-11T18:08:21 - `357454b3-7b86-4dcc-8764-fe83bcd065e4.jsonl`
 - `/ll:capture-issue` - 2026-04-11T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91dfec95-ddc4-425f-ab2e-4702ccaf176d.jsonl`
 
 ---

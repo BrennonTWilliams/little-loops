@@ -202,13 +202,13 @@ Fixed 2026-03-19. Applied the BUG-744 pattern (`Path.cwd() / ".loops/tmp" / name
 All 3725 tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-19T21:20:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c767d130-5c65-4a34-bedc-53a6d5738733.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/934d9f0f-b9bc-4615-9e82-33b060fb05ae.jsonl`
-- `/ll:refine-issue` - 2026-03-19T21:10:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0b191584-d516-4c9b-9c77-d1ebf5b58898.jsonl`
+- `/ll:ready-issue` - 2026-03-19T21:20:07 - `c767d130-5c65-4a34-bedc-53a6d5738733.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `934d9f0f-b9bc-4615-9e82-33b060fb05ae.jsonl`
+- `/ll:refine-issue` - 2026-03-19T21:10:17 - `0b191584-d516-4c9b-9c77-d1ebf5b58898.jsonl`
 
 - `/ll:capture-issue` - 2026-03-19T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50a1c997-86c0-49fe-9276-210a71c2c9da.jsonl`
 
 ---
 
 **Open** | Created: 2026-03-19 | Priority: P2
-- `/ll:ready-issue` - 2026-03-19T21:20:16Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c767d130-5c65-4a34-bedc-53a6d5738733.jsonl`
+- `/ll:ready-issue` - 2026-03-19T21:20:16Z - `c767d130-5c65-4a34-bedc-53a6d5738733.jsonl`

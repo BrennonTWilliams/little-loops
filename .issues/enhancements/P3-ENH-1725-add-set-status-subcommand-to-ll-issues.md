@@ -170,10 +170,10 @@ Implemented `ll-issues set-status <ID> <status>` (alias: `sst`) following the `s
 **Done** | Created: 2026-05-26 | Completed: 2026-05-26 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-26T20:56:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08569b32-e98a-481e-bbd9-087eb6d434d7.jsonl`
-- `/ll:confidence-check` - 2026-05-26T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc7968db-3e9d-4d3f-9e5f-c474581ec628.jsonl`
-- `/ll:wire-issue` - 2026-05-26T20:52:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2a278fd8-3fcf-49da-87b1-0e71e703408d.jsonl`
-- `/ll:refine-issue` - 2026-05-26T20:47:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3848533-ceeb-4ba0-a2a3-728158b97567.jsonl`
-- `/ll:format-issue` - 2026-05-26T20:18:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67bf951e-1315-435e-b229-24894f754149.jsonl`
+- `/ll:ready-issue` - 2026-05-26T20:56:18 - `08569b32-e98a-481e-bbd9-087eb6d434d7.jsonl`
+- `/ll:confidence-check` - 2026-05-26T21:00:00Z - `dc7968db-3e9d-4d3f-9e5f-c474581ec628.jsonl`
+- `/ll:wire-issue` - 2026-05-26T20:52:18 - `2a278fd8-3fcf-49da-87b1-0e71e703408d.jsonl`
+- `/ll:refine-issue` - 2026-05-26T20:47:46 - `b3848533-ceeb-4ba0-a2a3-728158b97567.jsonl`
+- `/ll:format-issue` - 2026-05-26T20:18:01 - `67bf951e-1315-435e-b229-24894f754149.jsonl`
 - `/ll:capture-issue` - 2026-05-26T20:15:32Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:manage-issue` - 2026-05-26T21:02:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:manage-issue` - 2026-05-26T21:02:11Z

@@ -202,9 +202,9 @@ _Updated by `/ll:confidence-check` on 2026-04-21 (originally 2026-04-20)_
 - **Scope question (minor)**: 3 extra test cases from FEAT-1075 acceptance criteria (`on_worker_complete` callback, exception-swallowed callback, `starting_item_index` offset) have no placement decision — flag for resolution at implementation start.
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-21T03:02:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07623ac5-5513-4145-aea8-be71852f8e8c.jsonl`
+- `/ll:refine-issue` - 2026-04-21T03:02:05 - `07623ac5-5513-4145-aea8-be71852f8e8c.jsonl`
 - `/ll:confidence-check` - 2026-04-20T00:00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/adf19c3d-af16-4568-99a4-72ac7ad42433.jsonl`
-- `/ll:wire-issue` - 2026-04-21T02:58:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86381121-9ca4-4fa8-8a67-27c9fa03a53f.jsonl`
-- `/ll:refine-issue` - 2026-04-21T02:54:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3b8d4aa-c1fc-49e8-825b-5fcfad583404.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee39c2da-53b6-4990-b649-6f5e43993562.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `adf19c3d-af16-4568-99a4-72ac7ad42433.jsonl`
+- `/ll:wire-issue` - 2026-04-21T02:58:26 - `86381121-9ca4-4fa8-8a67-27c9fa03a53f.jsonl`
+- `/ll:refine-issue` - 2026-04-21T02:54:55 - `b3b8d4aa-c1fc-49e8-825b-5fcfad583404.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `ee39c2da-53b6-4990-b649-6f5e43993562.jsonl`

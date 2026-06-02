@@ -145,11 +145,11 @@ Fixed in `scripts/little_loops/cli/loop/layout.py` (`_render_layered_diagram`, r
 - Updated `test_branching_fsm_shows_branches_section` to accept `◄` as a valid arrowhead (the `fix → done` edge in that test is legitimately right-to-left)
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-17T23:11:40Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-05-17T23:06:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5ab478e-beb2-4a23-ad03-18f9718dcc6b.jsonl`
-- `/ll:confidence-check` - 2026-05-17T23:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f8ebccd-978d-4ea8-82c6-c1e4e6f0e1e9.jsonl`
-- `/ll:wire-issue` - 2026-05-17T23:03:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07bcc90f-c1cb-4e31-a39c-5e5fad281c38.jsonl`
-- `/ll:refine-issue` - 2026-05-17T22:58:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81514626-4858-4e0f-b637-be7914aaeea1.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
-- `/ll:refine-issue` - 2026-05-17T14:48:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70b5ac5f-6894-4bfd-9384-d9d089bceb7e.jsonl`
-- `/ll:capture-issue` - 2026-05-16T14:12:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f204025d-307a-4f4d-80b2-206dfd3b1de1.jsonl`
+- `/ll:manage-issue` - 2026-05-17T23:11:40Z
+- `/ll:ready-issue` - 2026-05-17T23:06:29 - `d5ab478e-beb2-4a23-ad03-18f9718dcc6b.jsonl`
+- `/ll:confidence-check` - 2026-05-17T23:30:00 - `4f8ebccd-978d-4ea8-82c6-c1e4e6f0e1e9.jsonl`
+- `/ll:wire-issue` - 2026-05-17T23:03:02 - `07bcc90f-c1cb-4e31-a39c-5e5fad281c38.jsonl`
+- `/ll:refine-issue` - 2026-05-17T22:58:00 - `81514626-4858-4e0f-b637-be7914aaeea1.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:34 - `ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
+- `/ll:refine-issue` - 2026-05-17T14:48:54 - `70b5ac5f-6894-4bfd-9384-d9d089bceb7e.jsonl`
+- `/ll:capture-issue` - 2026-05-16T14:12:59Z - `f204025d-307a-4f4d-80b2-206dfd3b1de1.jsonl`

@@ -89,9 +89,9 @@ Update the epilog example to show `--skip-cli` instead of `--include-commands`:
 `bug`, `cli`, `documentation`, `auto-generated`
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
-- `/ll:manage-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl`
+- `/ll:manage-issue` - 2026-02-24 - `ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl`
 
 ---
 

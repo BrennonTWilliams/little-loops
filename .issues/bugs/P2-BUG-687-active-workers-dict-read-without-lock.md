@@ -96,11 +96,11 @@ Added `with self._process_lock:` guards to two locations in `worker_pool.py`:
 Both now match the existing locking discipline used for `_active_worktrees`, `_active_processes`, and `_worker_stages`. All 3329 tests pass.
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
-- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 - `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl`
-- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:ready-issue` - 2026-03-13T19:34:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:ready-issue` - 2026-03-13T19:34:00Z - `6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
 
 ---
 

@@ -364,12 +364,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | FEAT-1541 (`.issues/features/P2-FEAT-1541-add-html-anything-generalized-html-artifact-harness.md`) | Scope Boundary note already flagged the harness pattern duplication this issue would extend |
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-17T07:43:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7e4f13a-3acd-435c-a079-10fe48342d31.jsonl`
-- `/ll:confidence-check` - 2026-05-17T07:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63ea35fd-1756-4a65-bf42-4a38c5c4701b.jsonl`
-- `/ll:wire-issue` - 2026-05-17T07:27:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d712238-1a06-4b9f-9d5b-5639228894d7.jsonl`
-- `/ll:refine-issue` - 2026-05-17T07:20:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6dd09366-ca88-452f-87df-e7e23ed6a020.jsonl`
-- `/ll:format-issue` - 2026-05-17T07:13:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b335707c-c3d5-4e5a-abbf-cce433334d6b.jsonl`
-- `/ll:capture-issue` - 2026-05-17T07:08:30Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ff0fc28-0ac8-422c-b957-293025b6214c.jsonl`
+- `/ll:ready-issue` - 2026-05-17T07:43:43 - `d7e4f13a-3acd-435c-a079-10fe48342d31.jsonl`
+- `/ll:confidence-check` - 2026-05-17T07:45:00 - `63ea35fd-1756-4a65-bf42-4a38c5c4701b.jsonl`
+- `/ll:wire-issue` - 2026-05-17T07:27:15 - `4d712238-1a06-4b9f-9d5b-5639228894d7.jsonl`
+- `/ll:refine-issue` - 2026-05-17T07:20:50 - `6dd09366-ca88-452f-87df-e7e23ed6a020.jsonl`
+- `/ll:format-issue` - 2026-05-17T07:13:28 - `b335707c-c3d5-4e5a-abbf-cce433334d6b.jsonl`
+- `/ll:capture-issue` - 2026-05-17T07:08:30Z - `5ff0fc28-0ac8-422c-b957-293025b6214c.jsonl`
 
 ---
 

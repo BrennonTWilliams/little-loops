@@ -187,7 +187,7 @@ Options:
 `enhancement`, `captured`, `manage-issue`, `confidence-check`, `config`, `workflow`
 
 ## Session Log
-- `/ll:capture-issue` - 2026-02-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88e50ae7-8f86-442f-bc39-9214f39f18c1.jsonl`
+- `/ll:capture-issue` - 2026-02-22T00:00:00Z - `88e50ae7-8f86-442f-bc39-9214f39f18c1.jsonl`
 
 ## Resolution
 

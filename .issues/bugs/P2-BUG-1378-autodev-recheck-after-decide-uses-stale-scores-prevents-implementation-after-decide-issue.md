@@ -148,13 +148,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 `bug`, `automation`, `fsm`, `autodev`, `confidence-check`, `decide-issue`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-06T23:48:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3dd2669d-a95c-459b-a819-dbc3904c736f.jsonl`
-- `/ll:wire-issue` - 2026-05-06T23:42:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fdbefc85-ec0b-4f2a-a624-65d633366c3e.jsonl`
-- `/ll:refine-issue` - 2026-05-06T23:37:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef001d96-6ef8-487d-8a1c-daeba6502985.jsonl`
-- `/ll:format-issue` - 2026-05-06T23:31:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8bdc0e06-85ea-43b5-8eeb-b06ffc964981.jsonl`
-- `/ll:confidence-check` - 2026-05-06T23:55:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:manage-issue` - 2026-05-06T23:51:01Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-
+- `/ll:ready-issue` - 2026-05-06T23:48:11 - `3dd2669d-a95c-459b-a819-dbc3904c736f.jsonl`
+- `/ll:wire-issue` - 2026-05-06T23:42:12 - `fdbefc85-ec0b-4f2a-a624-65d633366c3e.jsonl`
+- `/ll:refine-issue` - 2026-05-06T23:37:24 - `ef001d96-6ef8-487d-8a1c-daeba6502985.jsonl`
+- `/ll:format-issue` - 2026-05-06T23:31:50 - `8bdc0e06-85ea-43b5-8eeb-b06ffc964981.jsonl`
+- `/ll:confidence-check` - 2026-05-06T23:55:00Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:manage-issue` - 2026-05-06T23:51:01Z
 ---
 
 ## Resolution

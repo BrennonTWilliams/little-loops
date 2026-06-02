@@ -308,10 +308,10 @@ previous-state tracker through the pinned-pane runtime:
 Four regression tests added to `TestRenderNeighborhoodDiagram`: arrow-row alignment, main-mode `on_error` filter, orange prev-pred border, and silent skip when prev isn't a pred. Direct repro on `rn-refine`'s `synthesize` state confirms all three modes (full+prev, main+prev, main+noprev) render as specified.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-24T00:35:09Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ba7a251-01eb-435c-ba22-90efa9dacf11.jsonl`
-- `/ll:ready-issue` - 2026-05-24T00:26:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27289f74-cb45-483a-9d52-9268dd9c6cb2.jsonl`
-- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8311c047-8810-418e-b17f-3b5114a82646.jsonl`
-- `/ll:wire-issue` - 2026-05-24T00:21:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f27164c8-4912-4ca8-a0c5-2f5e2455ff40.jsonl`
-- `/ll:refine-issue` - 2026-05-24T00:15:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39fbfb52-75b3-4f11-80a3-7cf258630615.jsonl`
-- `/ll:format-issue` - 2026-05-23T23:56:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d1880bf-1a07-4c5c-960e-3a80cb77af53.jsonl`
-- `/ll:capture-issue` - 2026-05-23T23:49:04Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/787b8c29-7b75-4828-8410-238863693d02.jsonl`
+- `/ll:manage-issue` - 2026-05-24T00:35:09Z - `8ba7a251-01eb-435c-ba22-90efa9dacf11.jsonl`
+- `/ll:ready-issue` - 2026-05-24T00:26:48 - `27289f74-cb45-483a-9d52-9268dd9c6cb2.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `8311c047-8810-418e-b17f-3b5114a82646.jsonl`
+- `/ll:wire-issue` - 2026-05-24T00:21:24 - `f27164c8-4912-4ca8-a0c5-2f5e2455ff40.jsonl`
+- `/ll:refine-issue` - 2026-05-24T00:15:28 - `39fbfb52-75b3-4f11-80a3-7cf258630615.jsonl`
+- `/ll:format-issue` - 2026-05-23T23:56:37 - `1d1880bf-1a07-4c5c-960e-3a80cb77af53.jsonl`
+- `/ll:capture-issue` - 2026-05-23T23:49:04Z - `787b8c29-7b75-4828-8410-238863693d02.jsonl`

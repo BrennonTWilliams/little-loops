@@ -235,14 +235,14 @@ _Added by `/ll:confidence-check` on 2026-05-04_
 - **httpx optional-dep test**: Mocking `builtins.__import__` is fragile if test order matters; isolate the import-mock test in its own method (as the referenced pattern does at `test_issue_history_formatting.py:137`).
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-05T18:01:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a724b9ed-c1a7-4c7b-b6f1-b41661567ae0.jsonl`
-- `/ll:confidence-check` - 2026-05-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/61328427-9db0-4165-a515-89b899d0858b.jsonl`
-- `/ll:refine-issue` - 2026-05-05T17:46:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76919b1c-78ef-4e2f-b9d8-636083810f70.jsonl`
-- `/ll:wire-issue` - 2026-05-05T04:28:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d01428b3-36bf-4273-8acb-4dec51c409f8.jsonl`
-- `/ll:refine-issue` - 2026-05-05T04:23:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a202e3b-c7a9-41fd-a93d-16f49a478d61.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
-- `/ll:format-issue` - 2026-05-03T17:13:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7ea146a5-288b-488a-b878-065475896445.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:ready-issue` - 2026-05-05T18:01:55 - `a724b9ed-c1a7-4c7b-b6f1-b41661567ae0.jsonl`
+- `/ll:confidence-check` - 2026-05-05T00:00:00 - `61328427-9db0-4165-a515-89b899d0858b.jsonl`
+- `/ll:refine-issue` - 2026-05-05T17:46:43 - `76919b1c-78ef-4e2f-b9d8-636083810f70.jsonl`
+- `/ll:wire-issue` - 2026-05-05T04:28:18 - `d01428b3-36bf-4273-8acb-4dec51c409f8.jsonl`
+- `/ll:refine-issue` - 2026-05-05T04:23:28 - `8a202e3b-c7a9-41fd-a93d-16f49a478d61.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
+- `/ll:format-issue` - 2026-05-03T17:13:28 - `7ea146a5-288b-488a-b878-065475896445.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:21:17 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 
 - Split from FEAT-918 - 2026-05-01
 - `/ll:manage-issue` - 2026-05-05T18:12:08Z - implemented

@@ -151,9 +151,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `python -m mypy scripts/little_loops/cli/issues/search.py scripts/little_loops/cli/issues/list_cmd.py` — no issues.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-18T21:51:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3fac7303-44f1-4ca6-8a6d-9e9f3bfae350.jsonl`
-- `/ll:confidence-check` - 2026-04-18T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d99e4ff1-a50f-4a21-95bb-0e3a032dd7eb.jsonl`
-- `/ll:wire-issue` - 2026-04-18T21:48:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/050f49f9-2994-46ba-b73a-28acb529326d.jsonl`
-- `/ll:refine-issue` - 2026-04-18T21:42:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9ba1f24-83c4-49e2-824c-bcfc7c6a231d.jsonl`
-- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1357a791-c921-47ef-95b7-1d0a7b03979b.jsonl`
-- `/ll:manage-issue` - 2026-04-18T21:56:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/815856ca-4c2b-4a38-9909-96967ce1bcbf.jsonl`
+- `/ll:ready-issue` - 2026-04-18T21:51:30 - `3fac7303-44f1-4ca6-8a6d-9e9f3bfae350.jsonl`
+- `/ll:confidence-check` - 2026-04-18T22:00:00 - `d99e4ff1-a50f-4a21-95bb-0e3a032dd7eb.jsonl`
+- `/ll:wire-issue` - 2026-04-18T21:48:03 - `050f49f9-2994-46ba-b73a-28acb529326d.jsonl`
+- `/ll:refine-issue` - 2026-04-18T21:42:34 - `f9ba1f24-83c4-49e2-824c-bcfc7c6a231d.jsonl`
+- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `1357a791-c921-47ef-95b7-1d0a7b03979b.jsonl`
+- `/ll:manage-issue` - 2026-04-18T21:56:22 - `815856ca-4c2b-4a38-9909-96967ce1bcbf.jsonl`

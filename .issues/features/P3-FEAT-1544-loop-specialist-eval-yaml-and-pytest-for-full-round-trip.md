@@ -291,13 +291,13 @@ Implemented via `/ll:manage-issue` on 2026-05-17.
 All 25 structural tests pass in CI (0 live LLM required). Behavioral class is gated by @pytest.mark.skipif(shutil.which("claude") is None).
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-17T06:56:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51a66358-79c9-4b90-a353-1ad5d5387149.jsonl`
-- `/ll:confidence-check` - 2026-05-17T07:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef9ca494-2be9-4304-94ae-01645da1598c.jsonl`
-- `/ll:decide-issue` - 2026-05-17T06:51:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ad726dc-f84b-4588-b026-51f74db04434.jsonl`
-- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03e36d1b-d310-479e-800b-33f687338d1c.jsonl`
-- `/ll:wire-issue` - 2026-05-17T06:42:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87a7c4bc-9a32-4209-86b1-fe1931bcd7b6.jsonl`
-- `/ll:refine-issue` - 2026-05-17T06:37:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c15321a7-dce4-49df-a764-c95bf09bf56f.jsonl`
-- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f2aa363-89b4-48fb-b7e2-882be8ac2cc8.jsonl`
+- `/ll:ready-issue` - 2026-05-17T06:56:27 - `51a66358-79c9-4b90-a353-1ad5d5387149.jsonl`
+- `/ll:confidence-check` - 2026-05-17T07:00:00Z - `ef9ca494-2be9-4304-94ae-01645da1598c.jsonl`
+- `/ll:decide-issue` - 2026-05-17T06:51:37 - `0ad726dc-f84b-4588-b026-51f74db04434.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `03e36d1b-d310-479e-800b-33f687338d1c.jsonl`
+- `/ll:wire-issue` - 2026-05-17T06:42:54 - `87a7c4bc-9a32-4209-86b1-fe1931bcd7b6.jsonl`
+- `/ll:refine-issue` - 2026-05-17T06:37:08 - `c15321a7-dce4-49df-a764-c95bf09bf56f.jsonl`
+- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `1f2aa363-89b4-48fb-b7e2-882be8ac2cc8.jsonl`
 - `/ll:manage-issue` - 2026-05-17T06:59:43Z - implementation complete
 
 ---

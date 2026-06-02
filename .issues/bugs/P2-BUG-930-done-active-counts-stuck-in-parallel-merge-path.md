@@ -135,10 +135,10 @@ Sprint operators monitoring `ll-sprint run` cannot track real progress because `
 - Bug accurately describes the stuck `Done: 0` counter issue
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-03T05:37:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2a22a762-f90b-4d21-8b54-0d68359a5f3c.jsonl`
-- `/ll:ready-issue` - 2026-04-03T05:34:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76919c64-3158-40a0-b0d0-629a4e9f20d2.jsonl`
-- `/ll:verify-issues` - 2026-04-03T05:17:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b45ed298-5c0e-4210-81fa-321bbdd0f5d6.jsonl`
-- `/ll:refine-issue` - 2026-04-03T05:00:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c6eb14c-ae28-48b5-a6c5-331e0ce26f1f.jsonl`
-- `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
-- `/ll:format-issue` - 2026-04-03T04:47:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/677939b4-0616-4d61-b3ac-9611ab44a683.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-03T05:37:09 - `2a22a762-f90b-4d21-8b54-0d68359a5f3c.jsonl`
+- `/ll:ready-issue` - 2026-04-03T05:34:22 - `76919c64-3158-40a0-b0d0-629a4e9f20d2.jsonl`
+- `/ll:verify-issues` - 2026-04-03T05:17:28 - `b45ed298-5c0e-4210-81fa-321bbdd0f5d6.jsonl`
+- `/ll:refine-issue` - 2026-04-03T05:00:39 - `2c6eb14c-ae28-48b5-a6c5-331e0ce26f1f.jsonl`
+- `/ll:verify-issues` - 2026-04-02T00:00:00 - `a2482dff-8512-481e-813c-be16a2afb222.jsonl`
+- `/ll:format-issue` - 2026-04-03T04:47:02 - `677939b4-0616-4d61-b3ac-9611ab44a683.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ea0ca77-c1cb-4ae8-865c-0bb7cb7aaee1.jsonl`

@@ -150,7 +150,7 @@ comparison_ergonomics: N/10 — [does the comparison control make it easy to
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-18T04:36:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab59de2b-3fb0-486c-b9c0-1922dd88280a.jsonl`
-- `/ll:refine-issue` - 2026-05-18T04:04:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e39b66da-1e72-475b-ab82-8b6388836b42.jsonl`
-- `/ll:format-issue` - 2026-05-18T03:52:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab25afc6-dfd4-4acd-af80-cded46580624.jsonl`
-- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1649998a-0fbd-40d7-9bd5-4c979e5df1a9.jsonl`
+- `/ll:ready-issue` - 2026-05-18T04:36:33 - `ab59de2b-3fb0-486c-b9c0-1922dd88280a.jsonl`
+- `/ll:refine-issue` - 2026-05-18T04:04:46 - `e39b66da-1e72-475b-ab82-8b6388836b42.jsonl`
+- `/ll:format-issue` - 2026-05-18T03:52:56 - `ab25afc6-dfd4-4acd-af80-cded46580624.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `1649998a-0fbd-40d7-9bd5-4c979e5df1a9.jsonl`

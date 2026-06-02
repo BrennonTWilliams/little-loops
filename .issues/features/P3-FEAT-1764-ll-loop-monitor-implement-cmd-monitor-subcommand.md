@@ -259,10 +259,10 @@ Tests: 7 new `TestCmdMonitor` cases in `scripts/tests/test_cli_loop_lifecycle.py
 Docs updated: `docs/reference/CLI.md` (new `#### ll-loop monitor` section with flag table), `docs/guides/LOOPS_GUIDE.md` (Monitoring progress example block), `docs/generalized-fsm-loop.md` (status/stop/resume trio), `docs/development/E2E_TESTING.md` (tested-subcommand list), `docs/reference/COMMANDS.md` (See also reference), `docs/ARCHITECTURE.md` (one-row note that monitor is read-only and does NOT wire EventBus).
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-28T16:59:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82ba7977-1b2c-4fd0-8581-713c494d45b9.jsonl`
-- `/ll:confidence-check` - 2026-05-28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07fb8f63-a9d0-4346-88b6-9d2747d4f2a2.jsonl`
-- `/ll:wire-issue` - 2026-05-28T16:48:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7d79ec0-7d99-4b4d-a7e5-465bffc3b2ce.jsonl`
-- `/ll:refine-issue` - 2026-05-28T16:00:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8a58e19-ff47-420f-a383-89832f5ec3a9.jsonl`
-- `/ll:format-issue` - 2026-05-28T15:49:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc7247ee-8296-46dd-8af9-37feb36945ac.jsonl`
-- `/ll:issue-size-review` - 2026-05-27T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d019e6bc-bb14-4867-a8ae-4b748fc8e055.jsonl`
-- `/ll:resume` (implementation) - 2026-05-28T17:20:55Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9692e803-0538-42a3-a5d2-4502cdb68d2e.jsonl`
+- `/ll:ready-issue` - 2026-05-28T16:59:32 - `82ba7977-1b2c-4fd0-8581-713c494d45b9.jsonl`
+- `/ll:confidence-check` - 2026-05-28 - `07fb8f63-a9d0-4346-88b6-9d2747d4f2a2.jsonl`
+- `/ll:wire-issue` - 2026-05-28T16:48:26 - `e7d79ec0-7d99-4b4d-a7e5-465bffc3b2ce.jsonl`
+- `/ll:refine-issue` - 2026-05-28T16:00:06 - `f8a58e19-ff47-420f-a383-89832f5ec3a9.jsonl`
+- `/ll:format-issue` - 2026-05-28T15:49:51 - `fc7247ee-8296-46dd-8af9-37feb36945ac.jsonl`
+- `/ll:issue-size-review` - 2026-05-27T00:00:00 - `d019e6bc-bb14-4867-a8ae-4b748fc8e055.jsonl`
+- `/ll:resume` (implementation) - 2026-05-28T17:20:55Z - `9692e803-0538-42a3-a5d2-4502cdb68d2e.jsonl`

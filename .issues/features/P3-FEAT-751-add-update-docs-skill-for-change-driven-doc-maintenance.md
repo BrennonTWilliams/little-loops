@@ -216,10 +216,10 @@ Or if a topic filter is useful, `ll-history export "<topic>" --since="$SINCE_DAT
 **Completed** | Created: 2026-03-14 | Completed: 2026-03-15 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-15T05:52:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2af0a79-40cb-4a4e-bd6b-2ea2573c7e3b.jsonl`
-- `/ll:ready-issue` - 2026-03-15T05:44:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/160da40d-9e36-48d6-bafb-a6e61c636324.jsonl`
-- `/ll:refine-issue` - 2026-03-15T05:08:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bd2338a-cb49-4e75-a5ae-a3ae2b55958e.jsonl`
-- `/ll:refine-issue` - 2026-03-15T04:57:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c186be22-701d-4c89-a0c1-5b746b4d0e5b.jsonl`
-- `/ll:refine-issue` - 2026-03-15T04:47:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/140d76f3-1325-4291-9c9d-17c281a9d0cf.jsonl`
-- `/ll:manage-issue feature implement FEAT-751` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eaa8d229-0594-4366-bff7-6d5160769e5e.jsonl`
+- `/ll:ready-issue` - 2026-03-15T05:52:04 - `d2af0a79-40cb-4a4e-bd6b-2ea2573c7e3b.jsonl`
+- `/ll:ready-issue` - 2026-03-15T05:44:49 - `160da40d-9e36-48d6-bafb-a6e61c636324.jsonl`
+- `/ll:refine-issue` - 2026-03-15T05:08:43 - `5bd2338a-cb49-4e75-a5ae-a3ae2b55958e.jsonl`
+- `/ll:refine-issue` - 2026-03-15T04:57:19 - `c186be22-701d-4c89-a0c1-5b746b4d0e5b.jsonl`
+- `/ll:refine-issue` - 2026-03-15T04:47:33 - `140d76f3-1325-4291-9c9d-17c281a9d0cf.jsonl`
+- `/ll:manage-issue feature implement FEAT-751` - 2026-03-15T00:00:00Z - `eaa8d229-0594-4366-bff7-6d5160769e5e.jsonl`
 - `/ll:capture-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1c90f23-ff83-489f-b756-ad36ef9940cc.jsonl`

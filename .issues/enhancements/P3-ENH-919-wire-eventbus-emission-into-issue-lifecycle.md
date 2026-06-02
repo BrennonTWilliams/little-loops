@@ -205,8 +205,8 @@ def create_issue_from_failure(
   - `scripts/tests/test_issue_lifecycle.py`
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-02T18:54:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/41b7e13f-e7a5-4e5d-9839-ca0cca6a202b.jsonl`
-- `/ll:format-issue` - 2026-04-02T18:47:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8eeca827-dfcc-4857-981f-5b6e7a04f182.jsonl`
-- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ec33f5e-0af1-4604-bdc4-0c4331282e3e.jsonl`
-- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/121e99c6-8412-4e37-9a57-c5f047090d07.jsonl`
+- `/ll:refine-issue` - 2026-04-02T18:54:37 - `41b7e13f-e7a5-4e5d-9839-ca0cca6a202b.jsonl`
+- `/ll:format-issue` - 2026-04-02T18:47:02 - `8eeca827-dfcc-4857-981f-5b6e7a04f182.jsonl`
+- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `4ec33f5e-0af1-4604-bdc4-0c4331282e3e.jsonl`
+- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `121e99c6-8412-4e37-9a57-c5f047090d07.jsonl`
 - `/ll:ready-issue` - 2026-04-02T20:37:22 - `no-session-resolved`

@@ -292,16 +292,16 @@ Implemented the dual-pattern Criterion D rubric in `skills/confidence-check/SKIL
 - Added `TestCriterionDDualPattern` and `TestPhase48LargeFileSurfaceSuppression` test classes (8 new tests, all pass)
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-10T14:45:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d3fbf53-11df-4123-b09d-c40a2dd2ecd8.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82c63ff4-db5c-4e59-810d-728950c519de.jsonl`
-- `/ll:wire-issue` - 2026-05-10T14:39:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53bdb699-3a45-41f3-aedb-29193b8f19ee.jsonl`
-- `/ll:refine-issue` - 2026-05-10T14:35:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b7e602a-b2e1-4533-813b-72b5edfd0b67.jsonl`
-- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2c7ce99-47aa-48a1-876b-c2f744b66423.jsonl`
-- `/ll:wire-issue` - 2026-05-10T04:08:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62659fe4-d489-47aa-b301-b9bdee7803ac.jsonl`
-- `/ll:refine-issue` - 2026-05-10T03:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d75ce7f-2881-4167-a665-bd1bbb4f69da.jsonl`
-- `/ll:format-issue` - 2026-05-10T02:01:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/983e540e-227c-4cd1-bd1c-d34619c7c558.jsonl`
-- `/ll:manage-issue` - 2026-05-10T14:49:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46846dc2-7fae-479f-81c0-7ff4c1279c2c.jsonl`
-- `/ll:capture-issue` - 2026-05-10T00:49:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba13deab-d917-4b01-b05e-c45e8583e56f.jsonl`
+- `/ll:ready-issue` - 2026-05-10T14:45:51 - `1d3fbf53-11df-4123-b09d-c40a2dd2ecd8.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `82c63ff4-db5c-4e59-810d-728950c519de.jsonl`
+- `/ll:wire-issue` - 2026-05-10T14:39:41 - `53bdb699-3a45-41f3-aedb-29193b8f19ee.jsonl`
+- `/ll:refine-issue` - 2026-05-10T14:35:29 - `6b7e602a-b2e1-4533-813b-72b5edfd0b67.jsonl`
+- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `c2c7ce99-47aa-48a1-876b-c2f744b66423.jsonl`
+- `/ll:wire-issue` - 2026-05-10T04:08:46 - `62659fe4-d489-47aa-b301-b9bdee7803ac.jsonl`
+- `/ll:refine-issue` - 2026-05-10T03:46:35 - `8d75ce7f-2881-4167-a665-bd1bbb4f69da.jsonl`
+- `/ll:format-issue` - 2026-05-10T02:01:59 - `983e540e-227c-4cd1-bd1c-d34619c7c558.jsonl`
+- `/ll:manage-issue` - 2026-05-10T14:49:06Z - `46846dc2-7fae-479f-81c0-7ff4c1279c2c.jsonl`
+- `/ll:capture-issue` - 2026-05-10T00:49:33Z - `ba13deab-d917-4b01-b05e-c45e8583e56f.jsonl`
 
 ---
 

@@ -214,13 +214,13 @@ Implemented by `/ll:manage-issue enhancement improve ENH-1701` on 2026-05-29.
 - `mypy` type checking passes
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-29T03:24:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d85f12a7-c85e-4471-b885-9197d219ef77.jsonl`
-- `/ll:ready-issue` - 2026-05-29T02:55:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82f0529e-8000-4736-8a2a-e8c25f82d1b0.jsonl`
-- `/ll:confidence-check` - 2026-05-28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/358f113a-4acd-4899-a149-3c67227c3aac.jsonl`
-- `/ll:wire-issue` - 2026-05-29T02:48:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae7b0149-ae11-41b9-943c-cc3211273c10.jsonl`
-- `/ll:refine-issue` - 2026-05-29T02:41:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/805655a0-3762-4e3d-929a-ece68774fd31.jsonl`
-- `/ll:format-issue` - 2026-05-29T02:25:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c530bceb-47b8-4d43-bb17-49b4bbf4410b.jsonl`
-- `/ll:format-issue` - 2026-05-25T22:02:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/432171fe-0cc8-40cb-a835-f0fb1286db77.jsonl`
+- `/ll:manage-issue` - 2026-05-29T03:24:02 - `d85f12a7-c85e-4471-b885-9197d219ef77.jsonl`
+- `/ll:ready-issue` - 2026-05-29T02:55:50 - `82f0529e-8000-4736-8a2a-e8c25f82d1b0.jsonl`
+- `/ll:confidence-check` - 2026-05-28 - `358f113a-4acd-4899-a149-3c67227c3aac.jsonl`
+- `/ll:wire-issue` - 2026-05-29T02:48:32 - `ae7b0149-ae11-41b9-943c-cc3211273c10.jsonl`
+- `/ll:refine-issue` - 2026-05-29T02:41:24 - `805655a0-3762-4e3d-929a-ece68774fd31.jsonl`
+- `/ll:format-issue` - 2026-05-29T02:25:47 - `c530bceb-47b8-4d43-bb17-49b4bbf4410b.jsonl`
+- `/ll:format-issue` - 2026-05-25T22:02:36 - `432171fe-0cc8-40cb-a835-f0fb1286db77.jsonl`
 - `/ll:capture-issue` - 2026-05-25T21:57:02Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 
 ---

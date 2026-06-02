@@ -204,7 +204,7 @@ Superseded
 Closed as superseded. The existing TDD feature flag in `/ll:manage-issue` already provides the red-green-refactor cycle natively, making a dedicated `tdd-issue-impl` built-in loop redundant.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:verify-issues` - 2026-03-16T19:41:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:format-issue` - 2026-03-16T19:37:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:verify-issues` - 2026-03-16T19:41:02 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:format-issue` - 2026-03-16T19:37:00 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z

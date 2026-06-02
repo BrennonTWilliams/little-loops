@@ -98,8 +98,8 @@ Alternatively, capture `git status --porcelain .issues/` before Phase 4b begins,
 - **Breaking Change**: No
 
 ## Session Log
-- `/ll:format-issue` - 2026-05-29T21:11:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f6ce04a2-c38b-41b5-adda-cd8229dbc363.jsonl`
-- `/ll:capture-issue` - 2026-05-29T20:55:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
+- `/ll:format-issue` - 2026-05-29T21:11:43 - `f6ce04a2-c38b-41b5-adda-cd8229dbc363.jsonl`
+- `/ll:capture-issue` - 2026-05-29T20:55:00Z - `53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
 
 ## Status
 

@@ -128,11 +128,11 @@ Fixed by removing `choices=` from `--priority` in both `list` and `count` subcom
 - `docs/reference/CLI.md` — updated `--priority` docs to show comma-separated usage
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-20T21:28:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e98dce6-6d03-4e9a-9181-cd971fdca8cc.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae4f7fa9-4038-444b-b34c-8c4cea5178e2.jsonl`
-- `/ll:refine-issue` - 2026-03-20T20:49:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0f20ea2-de01-4aad-9b50-0fb474f379d2.jsonl`
+- `/ll:ready-issue` - 2026-03-20T21:28:32 - `5e98dce6-6d03-4e9a-9181-cd971fdca8cc.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `ae4f7fa9-4038-444b-b34c-8c4cea5178e2.jsonl`
+- `/ll:refine-issue` - 2026-03-20T20:49:21 - `a0f20ea2-de01-4aad-9b50-0fb474f379d2.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7180b81f-d6f9-4361-8292-01d583d240bd.jsonl`
-- `/ll:manage-issue` - 2026-03-20T21:35:58Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:manage-issue` - 2026-03-20T21:35:58Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 ## Status

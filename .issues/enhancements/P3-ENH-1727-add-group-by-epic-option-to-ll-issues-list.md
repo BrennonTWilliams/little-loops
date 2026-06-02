@@ -161,11 +161,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `cli`, `issues`, `epics`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-27T02:18:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01cdd312-a82e-4fc3-9f8d-a582dd91db5b.jsonl`
-- `/ll:confidence-check` - 2026-05-27T01:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca60f941-c956-4861-b798-811fcaf0e874.jsonl`
-- `/ll:wire-issue` - 2026-05-27T00:39:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f67938c-cbb3-4914-bee5-0317a112a94e.jsonl`
-- `/ll:refine-issue` - 2026-05-27T00:34:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/276b0668-a79f-456b-bedc-b6bd95271676.jsonl`
-- `/ll:format-issue` - 2026-05-26T20:40:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76dc2061-8005-4612-bcf4-1672e52ae597.jsonl`
+- `/ll:ready-issue` - 2026-05-27T02:18:22 - `01cdd312-a82e-4fc3-9f8d-a582dd91db5b.jsonl`
+- `/ll:confidence-check` - 2026-05-27T01:00:00Z - `ca60f941-c956-4861-b798-811fcaf0e874.jsonl`
+- `/ll:wire-issue` - 2026-05-27T00:39:56 - `8f67938c-cbb3-4914-bee5-0317a112a94e.jsonl`
+- `/ll:refine-issue` - 2026-05-27T00:34:09 - `276b0668-a79f-456b-bedc-b6bd95271676.jsonl`
+- `/ll:format-issue` - 2026-05-26T20:40:41 - `76dc2061-8005-4612-bcf4-1672e52ae597.jsonl`
 - `/ll:capture-issue` - 2026-05-26T20:32:38Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b05a1db1-f9bd-43eb-b427-427c3cdbc0ac.jsonl`
 
 ---

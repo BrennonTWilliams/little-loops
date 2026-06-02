@@ -193,8 +193,8 @@ Implemented `loops/apo-beam.yaml` with a 4-state FSM: `generate_variants` → `s
 - `docs/guides/LOOPS_GUIDE.md` — added `apo-beam` to built-in loops table, added detailed section with context variable table and invocation examples, updated comparison table to cover all 4 APO loops, updated intro text from "Two" to "Four"
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-16T03:28:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f248881-4da0-409c-a0dd-16d6672bc709.jsonl`
-- `/ll:refine-issue` - 2026-03-16T02:11:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b918c53-10e7-4c18-8f65-7a0fdd85cd04.jsonl`
+- `/ll:ready-issue` - 2026-03-16T03:28:34 - `1f248881-4da0-409c-a0dd-16d6672bc709.jsonl`
+- `/ll:refine-issue` - 2026-03-16T02:11:46 - `5b918c53-10e7-4c18-8f65-7a0fdd85cd04.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - conversation
-- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1ae078c-0743-4f48-bee3-15017b2d071b.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `b1ae078c-0743-4f48-bee3-15017b2d071b.jsonl`
 - `/ll:manage-issue` - 2026-03-15T00:00:00Z - conversation

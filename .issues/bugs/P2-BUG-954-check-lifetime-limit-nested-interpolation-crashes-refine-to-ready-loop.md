@@ -124,10 +124,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-05T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe65ef92-61d7-48e7-9480-2ddbdda7849a.jsonl`
-- `/ll:confidence-check` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ee6c09c-8ee0-4bad-8093-0998a2a2b822.jsonl`
-- `/ll:refine-issue` - 2026-04-05T20:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7aaf98df-ca35-41ef-907a-497c0d4415fb.jsonl`
-- `/ll:format-issue` - 2026-04-05T20:47:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93bb5375-947f-4363-9244-b165bc2b59d1.jsonl`
+- `/ll:ready-issue` - 2026-04-05T20:59:17 - `fe65ef92-61d7-48e7-9480-2ddbdda7849a.jsonl`
+- `/ll:confidence-check` - 2026-04-05T00:00:00Z - `6ee6c09c-8ee0-4bad-8093-0998a2a2b822.jsonl`
+- `/ll:refine-issue` - 2026-04-05T20:53:51 - `7aaf98df-ca35-41ef-907a-497c0d4415fb.jsonl`
+- `/ll:format-issue` - 2026-04-05T20:47:14 - `93bb5375-947f-4363-9244-b165bc2b59d1.jsonl`
 
 - `/ll:capture-issue` - 2026-04-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a3203fd4-ea84-4c13-b186-96678a2c9062.jsonl`
-- `/ll:manage-issue` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe65ef92-61d7-48e7-9480-2ddbdda7849a.jsonl`
+- `/ll:manage-issue` - 2026-04-05T00:00:00Z - `fe65ef92-61d7-48e7-9480-2ddbdda7849a.jsonl`

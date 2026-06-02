@@ -94,7 +94,7 @@ PreCompact exit 2 is safe — the event cannot block compaction. Exit 2 simply m
 
 ## Session Log
 - `/ll:format-issue --all --auto` - 2026-02-13
-- `/ll:manage-issue` - 2026-02-13T19:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dcc8e5f2-3df0-4b8a-8723-252e07ec9b1a.jsonl`
+- `/ll:manage-issue` - 2026-02-13T19:45:00Z - `dcc8e5f2-3df0-4b8a-8723-252e07ec9b1a.jsonl`
 
 ---
 

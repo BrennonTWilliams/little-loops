@@ -179,13 +179,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feature`, `loops`, `harness`, `svg`, `captured`
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-13T14:58:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/329ccb1c-f63d-4b65-9cbf-df408d8e5d7c.jsonl`
-- `/ll:ready-issue` - 2026-04-13T14:53:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23fe1a90-9dab-4b2b-86ec-90e7ecfd5c14.jsonl`
-- `/ll:confidence-check` - 2026-04-13T15:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d22c48e-5d04-4aa3-8512-55595e860c13.jsonl`
-- `/ll:wire-issue` - 2026-04-13T14:49:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d22c48e-5d04-4aa3-8512-55595e860c13.jsonl`
-- `/ll:refine-issue` - 2026-04-13T14:38:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c3402160-b653-4d97-830f-c84897abb872.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-13T14:58:31 - `329ccb1c-f63d-4b65-9cbf-df408d8e5d7c.jsonl`
+- `/ll:ready-issue` - 2026-04-13T14:53:55 - `23fe1a90-9dab-4b2b-86ec-90e7ecfd5c14.jsonl`
+- `/ll:confidence-check` - 2026-04-13T15:00:00 - `0d22c48e-5d04-4aa3-8512-55595e860c13.jsonl`
+- `/ll:wire-issue` - 2026-04-13T14:49:39 - `0d22c48e-5d04-4aa3-8512-55595e860c13.jsonl`
+- `/ll:refine-issue` - 2026-04-13T14:38:35 - `c3402160-b653-4d97-830f-c84897abb872.jsonl`
 
-- `/ll:capture-issue` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67c8ca0c-f335-4cea-9728-0ea006ddfcfc.jsonl`
+- `/ll:capture-issue` - 2026-04-13T00:00:00Z - `67c8ca0c-f335-4cea-9728-0ea006ddfcfc.jsonl`
 
 ---
 

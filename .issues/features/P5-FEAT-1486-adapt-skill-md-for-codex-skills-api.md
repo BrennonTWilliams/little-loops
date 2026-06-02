@@ -277,9 +277,9 @@ All acceptance criteria satisfied:
 `docs/claude-code/skills.md` all updated.
 
 ## Session Log
-- `/ll:wire-issue` - 2026-05-16T04:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/510b7dce-4e29-440d-9ada-e3da78700741.jsonl`
-- `/ll:refine-issue` - 2026-05-16T04:11:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e2adda96-b8f4-4c4c-8c1d-f78f1ca1d727.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6cfbcca-43bc-445d-b90f-328332d02daf.jsonl`
-- `/ll:wire-issue` - 2026-05-16T03:54:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/986a2315-fa44-4bc3-83b9-3e72df663cac.jsonl`
-- `/ll:refine-issue` - 2026-05-16T03:49:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/69a28b96-46bc-4615-b15f-bafca259f985.jsonl`
-- `/ll:format-issue` - 2026-05-16T03:44:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/895ed89a-4cbd-4a2a-a74e-26e9cb8dd7c3.jsonl`
+- `/ll:wire-issue` - 2026-05-16T04:45:21 - `510b7dce-4e29-440d-9ada-e3da78700741.jsonl`
+- `/ll:refine-issue` - 2026-05-16T04:11:21 - `e2adda96-b8f4-4c4c-8c1d-f78f1ca1d727.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00Z - `d6cfbcca-43bc-445d-b90f-328332d02daf.jsonl`
+- `/ll:wire-issue` - 2026-05-16T03:54:42 - `986a2315-fa44-4bc3-83b9-3e72df663cac.jsonl`
+- `/ll:refine-issue` - 2026-05-16T03:49:01 - `69a28b96-46bc-4615-b15f-bafca259f985.jsonl`
+- `/ll:format-issue` - 2026-05-16T03:44:06 - `895ed89a-4cbd-4a2a-a74e-26e9cb8dd7c3.jsonl`

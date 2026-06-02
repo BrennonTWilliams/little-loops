@@ -188,10 +188,10 @@ _Added by `/ll:confidence-check` on 2026-04-21_
 - FEAT-1212: test_items_hash_mismatch_warning_is_prominent (resume-warning test)
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-21T05:15:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b81df27a-b04e-4518-8864-70ad291ebb13.jsonl`
+- `/ll:refine-issue` - 2026-04-21T05:15:52 - `b81df27a-b04e-4518-8864-70ad291ebb13.jsonl`
 - `/ll:confidence-check` - 2026-04-21T00:00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f6986cb5-4dbc-4c04-b517-f2ff10b4476f.jsonl`
-- `/ll:wire-issue` - 2026-04-21T05:11:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28a5b938-df29-4cdd-8a8d-ba0a49c5f19f.jsonl`
-- `/ll:refine-issue` - 2026-04-21T05:04:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/edb9716a-29af-42f1-8488-311d53642d0e.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee39c2da-53b6-4990-b649-6f5e43993562.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dfd96a3-66df-4e02-b30b-139bf75f812f.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `f6986cb5-4dbc-4c04-b517-f2ff10b4476f.jsonl`
+- `/ll:wire-issue` - 2026-04-21T05:11:46 - `28a5b938-df29-4cdd-8a8d-ba0a49c5f19f.jsonl`
+- `/ll:refine-issue` - 2026-04-21T05:04:17 - `edb9716a-29af-42f1-8488-311d53642d0e.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `ee39c2da-53b6-4990-b649-6f5e43993562.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `0dfd96a3-66df-4e02-b30b-139bf75f812f.jsonl`

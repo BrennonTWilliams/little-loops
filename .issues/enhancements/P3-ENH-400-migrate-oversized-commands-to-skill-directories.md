@@ -111,7 +111,7 @@ _None — BUG-402 (previously a blocker) has been completed._
 
 ## Session Log
 - /ll:format-issue --all --auto - 2026-02-13
-- `/ll:manage-issue` - 2026-02-13T16:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a39d0f52-f614-4bb0-a3ce-9b3ae5687c16.jsonl`
+- `/ll:manage-issue` - 2026-02-13T16:30:00Z - `a39d0f52-f614-4bb0-a3ce-9b3ae5687c16.jsonl`
 
 ---
 

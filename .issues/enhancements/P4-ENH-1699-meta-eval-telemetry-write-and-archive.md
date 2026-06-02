@@ -316,8 +316,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `archive_run()` copies `meta-eval.jsonl` alongside `events.jsonl` and `state.json`.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-25T22:02:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f360a7f8-c817-4ae2-95db-0b84dfdf3ee6.jsonl`
-- `/ll:wire-issue` - 2026-05-25T21:57:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26cf1dbf-472d-4db3-8f33-aac18fae86eb.jsonl`
-- `/ll:refine-issue` - 2026-05-25T21:50:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7033f867-b050-4b60-8afb-7642aa185381.jsonl`
-- `/ll:issue-size-review` - 2026-05-25T22:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1164a851-abd3-4d31-9115-03f9bcd570f7.jsonl`
-- `/ll:confidence-check` - 2026-05-25T23:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6a3c6a3-666b-4b59-8bfb-287c7f66148b.jsonl`
+- `/ll:ready-issue` - 2026-05-25T22:02:03 - `f360a7f8-c817-4ae2-95db-0b84dfdf3ee6.jsonl`
+- `/ll:wire-issue` - 2026-05-25T21:57:45 - `26cf1dbf-472d-4db3-8f33-aac18fae86eb.jsonl`
+- `/ll:refine-issue` - 2026-05-25T21:50:03 - `7033f867-b050-4b60-8afb-7642aa185381.jsonl`
+- `/ll:issue-size-review` - 2026-05-25T22:45:00Z - `1164a851-abd3-4d31-9115-03f9bcd570f7.jsonl`
+- `/ll:confidence-check` - 2026-05-25T23:30:00Z - `c6a3c6a3-666b-4b59-8bfb-287c7f66148b.jsonl`

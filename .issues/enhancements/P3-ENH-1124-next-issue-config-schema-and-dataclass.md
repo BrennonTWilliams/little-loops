@@ -144,11 +144,11 @@ Full resolver/CLI wiring and dedicated unit tests deferred to ENH-1125 / ENH-112
 - `python -m mypy scripts/little_loops/config/` — clean.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/011d2dd3-667a-4e14-8841-6cb6d04b6a05.jsonl`
-- `/ll:wire-issue` - 2026-04-16T19:49:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/440521b7-a91d-45cb-a303-98153044e62c.jsonl`
-- `/ll:refine-issue` - 2026-04-16T19:45:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a48397f-7141-4224-9c75-454a5790de55.jsonl`
-- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed68bd1a-5a6f-4d92-94fd-8ff3a80f7d09.jsonl`
-- `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4020196-7b0d-4e7b-81bf-9ae034a88254.jsonl`
+- `/ll:manage-issue` - 2026-04-17 - `011d2dd3-667a-4e14-8841-6cb6d04b6a05.jsonl`
+- `/ll:wire-issue` - 2026-04-16T19:49:59 - `440521b7-a91d-45cb-a303-98153044e62c.jsonl`
+- `/ll:refine-issue` - 2026-04-16T19:45:28 - `3a48397f-7141-4224-9c75-454a5790de55.jsonl`
+- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `ed68bd1a-5a6f-4d92-94fd-8ff3a80f7d09.jsonl`
+- `/ll:confidence-check` - 2026-04-16T00:00:00 - `e4020196-7b0d-4e7b-81bf-9ae034a88254.jsonl`
 
 ---
 

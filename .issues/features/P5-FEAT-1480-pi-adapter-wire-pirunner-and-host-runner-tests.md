@@ -104,11 +104,11 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `test_ll_hook_host_env_var_propagates_pi` test in `test_hook_intents.py` tests the **Python-side host routing** — that the intent dispatcher reads `LL_HOOK_HOST=pi` and routes correctly. FEAT-1478's sentinel-file test in `test_pi_adapter.py` verifies the **TypeScript adapter** sets `LL_HOOK_HOST=pi` before spawning Python. Both tests are needed, but their assertions must be non-overlapping to avoid redundancy: this issue asserts Python routing behavior; FEAT-1478 asserts env-var propagation from the TypeScript layer.
 
 ## Session Log
-- `/ll:verify-issues` - 2026-06-01T14:29:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:verify-issues` - 2026-05-23T00:35:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T20:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e9b11ad-de12-4f82-9761-25c38e59c783.jsonl`
+- `/ll:verify-issues` - 2026-06-01T14:29:19 - `f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:10 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:13 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:verify-issues` - 2026-05-23T00:35:44 - `2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T20:30:00 - `3e9b11ad-de12-4f82-9761-25c38e59c783.jsonl`

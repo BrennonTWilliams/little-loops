@@ -93,5 +93,5 @@ Rewrite the `issue_history` section of API.md to match the actual module:
 - Fixed usage example to use actual function names (`scan_completed_issues`, `calculate_summary`, `format_summary_text`)
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d7223a0-7f18-4556-a998-58c9508af197.jsonl`
-- `/ll:manage-issue bug fix BUG-643` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d7223a0-7f18-4556-a998-58c9508af197.jsonl`
+- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `9d7223a0-7f18-4556-a998-58c9508af197.jsonl`
+- `/ll:manage-issue bug fix BUG-643` - 2026-03-07T00:00:00Z - `9d7223a0-7f18-4556-a998-58c9508af197.jsonl`

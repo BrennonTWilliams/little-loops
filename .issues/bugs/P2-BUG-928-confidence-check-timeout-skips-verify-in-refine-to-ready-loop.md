@@ -162,10 +162,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Bug accurately describes the infinite re-processing cycle
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-04-03T05:25:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/194b369b-ada5-4faa-bf9d-afcfa22d790e.jsonl`
-- `/ll:verify-issues` - 2026-04-03T05:17:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b45ed298-5c0e-4210-81fa-321bbdd0f5d6.jsonl`
-- `/ll:refine-issue` - 2026-04-03T05:00:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c6eb14c-ae28-48b5-a6c5-331e0ce26f1f.jsonl`
-- `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
-- `/ll:format-issue` - 2026-04-03T04:47:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f43418ef-b4eb-43f5-b9ea-6b5a4a440f1c.jsonl`
-- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d10376d2-598f-4355-a0dc-b5100fe5afca.jsonl`
+- `/ll:manage-issue` - 2026-04-03T00:00:00 - `current.jsonl`
+- `/ll:ready-issue` - 2026-04-03T05:25:59 - `194b369b-ada5-4faa-bf9d-afcfa22d790e.jsonl`
+- `/ll:verify-issues` - 2026-04-03T05:17:28 - `b45ed298-5c0e-4210-81fa-321bbdd0f5d6.jsonl`
+- `/ll:refine-issue` - 2026-04-03T05:00:39 - `2c6eb14c-ae28-48b5-a6c5-331e0ce26f1f.jsonl`
+- `/ll:verify-issues` - 2026-04-02T00:00:00 - `a2482dff-8512-481e-813c-be16a2afb222.jsonl`
+- `/ll:format-issue` - 2026-04-03T04:47:02 - `f43418ef-b4eb-43f5-b9ea-6b5a4a440f1c.jsonl`
+- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `d10376d2-598f-4355-a0dc-b5100fe5afca.jsonl`

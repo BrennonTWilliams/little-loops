@@ -273,12 +273,12 @@ Implemented all changes described in the Implementation Steps:
 9. Updated `docs/guides/LOOPS_GUIDE.md` — revised FSM flow diagram, expanded state table to 12 rows, corrected `max_iterations` (12→16), and updated notes paragraph.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-04-12T15:47:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b19cb46d-b61f-4d1a-bc1a-9728fc653a38.jsonl`
-- `/ll:refine-issue` - 2026-04-12T15:39:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fcdf7dd3-3cb0-44f1-85d6-31c0e94a8b9b.jsonl`
-- `/ll:confidence-check` - 2026-04-12T07:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d64acb1-074d-4a9a-b53f-0dd501023ce8.jsonl`
-- `/ll:confidence-check` - 2026-04-12T16:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0f2188f-9d4a-4362-b3cf-0d63fc2a210b.jsonl`
-- `/ll:wire-issue` - 2026-04-12T06:16:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f6a239b-e9da-4157-b63f-3a2abce9fbff.jsonl`
-- `/ll:refine-issue` - 2026-04-12T06:11:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db8cb68e-7bf2-4092-9a6c-0ce37f9256a2.jsonl`
-- `/ll:format-issue` - 2026-04-12T06:07:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8ed1a08-56b0-4a31-83a0-df7ee39f37a0.jsonl`
-- `/ll:capture-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-04-12T15:47:52 - `b19cb46d-b61f-4d1a-bc1a-9728fc653a38.jsonl`
+- `/ll:refine-issue` - 2026-04-12T15:39:29 - `fcdf7dd3-3cb0-44f1-85d6-31c0e94a8b9b.jsonl`
+- `/ll:confidence-check` - 2026-04-12T07:00:00 - `9d64acb1-074d-4a9a-b53f-0dd501023ce8.jsonl`
+- `/ll:confidence-check` - 2026-04-12T16:00:00 - `c0f2188f-9d4a-4362-b3cf-0d63fc2a210b.jsonl`
+- `/ll:wire-issue` - 2026-04-12T06:16:48 - `0f6a239b-e9da-4157-b63f-3a2abce9fbff.jsonl`
+- `/ll:refine-issue` - 2026-04-12T06:11:26 - `db8cb68e-7bf2-4092-9a6c-0ce37f9256a2.jsonl`
+- `/ll:format-issue` - 2026-04-12T06:07:16 - `d8ed1a08-56b0-4a31-83a0-df7ee39f37a0.jsonl`
+- `/ll:capture-issue` - 2026-04-12T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`

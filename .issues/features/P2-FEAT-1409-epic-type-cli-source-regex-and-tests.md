@@ -229,12 +229,12 @@ _Added by `/ll:confidence-check` on 2026-05-09_
 - **test_sprint.py EPIC prune test is conditional**: Wiring item 13 says "add EPIC prune scenario if the fixture is easily extended with epics/." Investigate `_setup_edit_project()` fixture at test_sprint.py:1451 before skipping — it creates a real directory tree, and adding `epics/` is likely a one-liner.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-09T23:37:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62980d84-6316-4d76-811c-87774aefc470.jsonl`
-- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a2148c1-474b-4f4b-ae8e-a4d6d5a820ee.jsonl`
-- `/ll:refine-issue` - 2026-05-09T23:24:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1cff3e7-0ad2-4324-9519-ae5959cbec9c.jsonl`
-- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc6cf2a8-dd50-4817-9fa7-649612acf79b.jsonl`
-- `/ll:wire-issue` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fde16374-687e-47dc-8e0a-90c0abbfa1e1.jsonl`
-- `/ll:issue-size-review` - 2026-05-09T23:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62980d84-6316-4d76-811c-87774aefc470.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-09T23:37:39 - `62980d84-6316-4d76-811c-87774aefc470.jsonl`
+- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `3a2148c1-474b-4f4b-ae8e-a4d6d5a820ee.jsonl`
+- `/ll:refine-issue` - 2026-05-09T23:24:02 - `d1cff3e7-0ad2-4324-9519-ae5959cbec9c.jsonl`
+- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `bc6cf2a8-dd50-4817-9fa7-649612acf79b.jsonl`
+- `/ll:wire-issue` - 2026-05-09T00:00:00Z - `fde16374-687e-47dc-8e0a-90c0abbfa1e1.jsonl`
+- `/ll:issue-size-review` - 2026-05-09T23:30:00Z - `62980d84-6316-4d76-811c-87774aefc470.jsonl`
 
 ---
 

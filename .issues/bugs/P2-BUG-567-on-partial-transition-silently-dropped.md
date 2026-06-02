@@ -98,8 +98,8 @@ Added `on_partial` as a first-class transition on `StateConfig`:
 The `issue-refinement.yaml` `evaluate` state now correctly routes to `fix` when the LLM returns `"partial"`.
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d569869-6d78-45db-ae07-4c05f23b46fe.jsonl`
-- `/ll:format-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f47bc1e-2cb1-41eb-be41-2e8dd439840b.jsonl`
-- `/ll:confidence-check` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b724eec7-f97e-418e-8aac-949276d8cc5c.jsonl`
-- `/ll:ready-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4873f6c-fec8-49b3-a0ea-d0f20ce70262.jsonl`
+- `/ll:capture-issue` - 2026-03-04T00:00:00 - `0d569869-6d78-45db-ae07-4c05f23b46fe.jsonl`
+- `/ll:format-issue` - 2026-03-04T00:00:00 - `4f47bc1e-2cb1-41eb-be41-2e8dd439840b.jsonl`
+- `/ll:confidence-check` - 2026-03-04T00:00:00 - `b724eec7-f97e-418e-8aac-949276d8cc5c.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00 - `a4873f6c-fec8-49b3-a0ea-d0f20ce70262.jsonl`
 - `/ll:manage-issue bug fix BUG-567` - 2026-03-04T00:00:00 - current session

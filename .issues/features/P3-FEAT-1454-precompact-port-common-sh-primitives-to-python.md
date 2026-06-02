@@ -217,9 +217,9 @@ _These touchpoints were identified by wiring analysis and must be addressed duri
 **Verification**: `python -m pytest scripts/tests/test_file_utils.py scripts/tests/test_config.py scripts/tests/test_hooks_integration.py -v` → 252 passed. `python -m mypy scripts/little_loops/file_utils.py scripts/little_loops/config/` → no issues. `ruff check` → clean. Full pytest suite shows 7 pre-existing failures in `test_generate_schemas.py` / `test_update_skill.py` unrelated to FEAT-1454 scope.
 
 ## Session Log
-- `/ll:manage-issue feature implement FEAT-1454` - 2026-05-12T01:32:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e5f6a22-78eb-4d07-abdb-1dd8e5918efc.jsonl`
-- `/ll:ready-issue` - 2026-05-12T01:24:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bdf149e-d761-4941-845b-48e95c585f82.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cc930c4-274c-44dc-ba72-41c83d8a694c.jsonl`
-- `/ll:wire-issue` - 2026-05-12T01:20:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d3a00a5f-ee5e-44a7-8db8-4540ddf6b6e8.jsonl`
-- `/ll:refine-issue` - 2026-05-12T01:14:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9394b375-f65a-47e6-8794-9044c5abf0d6.jsonl`
-- `/ll:issue-size-review` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c5f319b-68fa-4ac3-990a-9ace13bbeaea.jsonl`
+- `/ll:manage-issue feature implement FEAT-1454` - 2026-05-12T01:32:27Z - `9e5f6a22-78eb-4d07-abdb-1dd8e5918efc.jsonl`
+- `/ll:ready-issue` - 2026-05-12T01:24:43 - `7bdf149e-d761-4941-845b-48e95c585f82.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `3cc930c4-274c-44dc-ba72-41c83d8a694c.jsonl`
+- `/ll:wire-issue` - 2026-05-12T01:20:23 - `d3a00a5f-ee5e-44a7-8db8-4540ddf6b6e8.jsonl`
+- `/ll:refine-issue` - 2026-05-12T01:14:58 - `9394b375-f65a-47e6-8794-9044c5abf0d6.jsonl`
+- `/ll:issue-size-review` - 2026-05-11T00:00:00Z - `3c5f319b-68fa-4ac3-990a-9ace13bbeaea.jsonl`

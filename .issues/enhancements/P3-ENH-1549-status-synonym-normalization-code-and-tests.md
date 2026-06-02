@@ -178,8 +178,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 Implemented `STATUS_SYNONYMS` map in `scripts/little_loops/frontmatter.py` as a module-level constant applied in `parse_frontmatter()`. Removed dead `"completed"` arms from `issue_parser.py`, `cli/issues/skip.py`, and `cli/issues/search.py`. Added full test suite: synonym parametrize tests in `test_frontmatter.py`, regression guard in `test_issue_lifecycle.py`, sanity checks in `test_issue_parser_properties.py`, and updated `test_issues_cli.py` to expect `"done"` error message. All 7024 tests pass.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-17T08:38:48Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b1164e0-6366-41c0-8bc7-414b81b8fe85.jsonl`
-- `/ll:ready-issue` - 2026-05-17T08:33:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b1164e0-6366-41c0-8bc7-414b81b8fe85.jsonl`
-- `/ll:wire-issue` - 2026-05-17T08:28:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eed74e85-8b30-4e8a-9587-0adf8cb755dc.jsonl`
-- `/ll:refine-issue` - 2026-05-17T08:22:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f43d242c-55ef-4f4f-bf5d-7c2c581de27f.jsonl`
-- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e994b5a7-bd67-4e1b-8e86-ff8daad14873.jsonl`
+- `/ll:manage-issue` - 2026-05-17T08:38:48Z - `8b1164e0-6366-41c0-8bc7-414b81b8fe85.jsonl`
+- `/ll:ready-issue` - 2026-05-17T08:33:48 - `8b1164e0-6366-41c0-8bc7-414b81b8fe85.jsonl`
+- `/ll:wire-issue` - 2026-05-17T08:28:35 - `eed74e85-8b30-4e8a-9587-0adf8cb755dc.jsonl`
+- `/ll:refine-issue` - 2026-05-17T08:22:52 - `f43d242c-55ef-4f4f-bf5d-7c2c581de27f.jsonl`
+- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `e994b5a7-bd67-4e1b-8e86-ff8daad14873.jsonl`

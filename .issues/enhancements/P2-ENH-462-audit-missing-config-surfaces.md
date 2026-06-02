@@ -82,9 +82,9 @@ Extend the `skills/audit-claude-config` Wave 1 Task 3 (config files auditor) and
 `enhancement`, `captured`, `skills`, `audit-claude-config`
 
 ## Session Log
-- `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
-- `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6952751c-b227-418e-a8d3-d419ea5b0bf6.jsonl`
-- `/ll:manage-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff26efc-756f-45c9-b95d-159619b176d9.jsonl`
+- `/ll:format-issue` - 2026-02-22 - `38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
+- `/ll:format-issue` - 2026-02-22 - `6952751c-b227-418e-a8d3-d419ea5b0bf6.jsonl`
+- `/ll:manage-issue` - 2026-02-22 - `fff26efc-756f-45c9-b95d-159619b176d9.jsonl`
 
 ---
 

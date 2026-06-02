@@ -153,8 +153,8 @@ Sprint name → issue list: `cat {{config.sprints.sprints_dir}}/<sprint-name>.ya
 **Completed** | Created: 2026-03-19 | Priority: P3
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1034ca11-fa1c-4d2c-adec-b1cb83f3e254.jsonl`
-- `/ll:ready-issue` - 2026-03-19T18:43:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09ae314a-9811-4a52-9fe2-ae18bf4b4f54.jsonl`
-- `/ll:refine-issue` - 2026-03-19T03:23:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe93df18-9bd8-4ea2-b803-eb08b9798bc3.jsonl`
-- `/ll:capture-issue` - 2026-03-19T03:10:22Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e62307c-bbbf-4088-99bc-a42ef930c75f.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2bce9f8b-7339-49ed-88ba-ffe6b245d592.jsonl`
+- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `1034ca11-fa1c-4d2c-adec-b1cb83f3e254.jsonl`
+- `/ll:ready-issue` - 2026-03-19T18:43:02 - `09ae314a-9811-4a52-9fe2-ae18bf4b4f54.jsonl`
+- `/ll:refine-issue` - 2026-03-19T03:23:55 - `fe93df18-9bd8-4ea2-b803-eb08b9798bc3.jsonl`
+- `/ll:capture-issue` - 2026-03-19T03:10:22Z - `7e62307c-bbbf-4088-99bc-a42ef930c75f.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `2bce9f8b-7339-49ed-88ba-ffe6b245d592.jsonl`

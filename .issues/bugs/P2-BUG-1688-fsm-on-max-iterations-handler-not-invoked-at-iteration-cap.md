@@ -244,13 +244,13 @@ Remaining steps completed in this session:
 - All 34 related tests pass
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-25T01:50:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/563f1f37-7ecf-468a-aff8-fe95c01b8246.jsonl`
-- `/ll:ready-issue` - 2026-05-25T01:45:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/563f1f37-7ecf-468a-aff8-fe95c01b8246.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00dd214e-21f4-4853-b307-06bad0e24d20.jsonl`
-- `/ll:wire-issue` - 2026-05-25T01:40:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7d694883-29f9-4b64-81ff-f0a075e5216f.jsonl`
-- `/ll:refine-issue` - 2026-05-25T01:34:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a56fddde-c519-4734-949d-5f8dcca5921f.jsonl`
-- `/ll:format-issue` - 2026-05-24T23:53:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3421ff4b-05fc-4e80-bb1d-cb7ee266a185.jsonl`
-- `/ll:capture-issue` - 2026-05-24T22:52:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b11535be-d77b-46f8-a622-5a6525775721.jsonl`
+- `/ll:manage-issue` - 2026-05-25T01:50:59Z - `563f1f37-7ecf-468a-aff8-fe95c01b8246.jsonl`
+- `/ll:ready-issue` - 2026-05-25T01:45:58 - `563f1f37-7ecf-468a-aff8-fe95c01b8246.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `00dd214e-21f4-4853-b307-06bad0e24d20.jsonl`
+- `/ll:wire-issue` - 2026-05-25T01:40:40 - `7d694883-29f9-4b64-81ff-f0a075e5216f.jsonl`
+- `/ll:refine-issue` - 2026-05-25T01:34:17 - `a56fddde-c519-4734-949d-5f8dcca5921f.jsonl`
+- `/ll:format-issue` - 2026-05-24T23:53:40 - `3421ff4b-05fc-4e80-bb1d-cb7ee266a185.jsonl`
+- `/ll:capture-issue` - 2026-05-24T22:52:33Z - `b11535be-d77b-46f8-a622-5a6525775721.jsonl`
 
 ---
 

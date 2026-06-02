@@ -122,8 +122,8 @@ Removed the standalone `ll-next-id` CLI tool. All 13 references across commands,
 - Types: No issues in 87 source files
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl`
-- `/ll:manage-issue` - 2026-03-01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl`
+- `/ll:capture-issue` - 2026-03-01 - `ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl`
+- `/ll:manage-issue` - 2026-03-01 - `ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl`
 
 ---
 

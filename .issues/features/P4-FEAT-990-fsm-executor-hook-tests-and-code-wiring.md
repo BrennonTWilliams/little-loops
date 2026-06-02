@@ -202,5 +202,5 @@ All 4440 tests pass; mypy clean on `executor.py` and `schema.py`.
 **Completed** | Created: 2026-04-07 | Completed: 2026-04-07 | Priority: P4
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-08T04:25:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5e8ff3f-6ff1-4255-b8b3-8511d145a869.jsonl`
-- `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0b5b8fb2-d663-482d-be59-6aa37de8e735.jsonl`
+- `/ll:ready-issue` - 2026-04-08T04:25:04 - `a5e8ff3f-6ff1-4255-b8b3-8511d145a869.jsonl`
+- `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `0b5b8fb2-d663-482d-be59-6aa37de8e735.jsonl`

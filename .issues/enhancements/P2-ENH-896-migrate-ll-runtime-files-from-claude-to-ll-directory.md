@@ -364,16 +364,16 @@ All `.claude/ll-*` runtime file paths migrated to `.ll/` across the entire codeb
 3930 tests pass, lint clean, type check clean. Zero orphaned `.claude/ll-` references in source files.
 
 ## Session Log
-- `/ll:manage-issue implement` - 2026-03-31T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a62cb204-a08d-41fb-9a83-5319e1119ba4.jsonl`
-- `/ll:ready-issue` - 2026-03-31T16:20:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15b8c31c-0cd9-4489-9637-959697fdd1b4.jsonl`
-- `/ll:refine-issue` - 2026-03-26T21:46:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60805218-5038-4a93-a36c-b69a86db157c.jsonl`
-- `/ll:confidence-check` - 2026-03-26T23:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60805218-5038-4a93-a36c-b69a86db157c.jsonl`
-- `/ll:refine-issue` - 2026-03-26T21:40:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60805218-5038-4a93-a36c-b69a86db157c.jsonl`
-- `/ll:confidence-check` - 2026-03-26T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60805218-5038-4a93-a36c-b69a86db157c.jsonl`
-- `/ll:refine-issue` - 2026-03-26T21:34:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60805218-5038-4a93-a36c-b69a86db157c.jsonl`
-- `/ll:confidence-check` - 2026-03-26T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60805218-5038-4a93-a36c-b69a86db157c.jsonl`
-- `/ll:refine-issue` - 2026-03-26T21:29:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60805218-5038-4a93-a36c-b69a86db157c.jsonl`
-- `/ll:confidence-check` - 2026-03-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60805218-5038-4a93-a36c-b69a86db157c.jsonl`
-- `/ll:refine-issue` - 2026-03-26T21:19:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a144f8f6-b87d-4e3d-84c3-177d86c2baca.jsonl`
-- `/ll:format-issue` - 2026-03-26T21:14:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/184fd12a-1de3-4eba-9d21-0c994ea1a12d.jsonl`
+- `/ll:manage-issue implement` - 2026-03-31T17:00:00 - `a62cb204-a08d-41fb-9a83-5319e1119ba4.jsonl`
+- `/ll:ready-issue` - 2026-03-31T16:20:21 - `15b8c31c-0cd9-4489-9637-959697fdd1b4.jsonl`
+- `/ll:refine-issue` - 2026-03-26T21:46:18 - `60805218-5038-4a93-a36c-b69a86db157c.jsonl`
+- `/ll:confidence-check` - 2026-03-26T23:15:00 - `60805218-5038-4a93-a36c-b69a86db157c.jsonl`
+- `/ll:refine-issue` - 2026-03-26T21:40:41 - `60805218-5038-4a93-a36c-b69a86db157c.jsonl`
+- `/ll:confidence-check` - 2026-03-26T22:30:00 - `60805218-5038-4a93-a36c-b69a86db157c.jsonl`
+- `/ll:refine-issue` - 2026-03-26T21:34:26 - `60805218-5038-4a93-a36c-b69a86db157c.jsonl`
+- `/ll:confidence-check` - 2026-03-26T22:00:00 - `60805218-5038-4a93-a36c-b69a86db157c.jsonl`
+- `/ll:refine-issue` - 2026-03-26T21:29:16 - `60805218-5038-4a93-a36c-b69a86db157c.jsonl`
+- `/ll:confidence-check` - 2026-03-26T00:00:00Z - `60805218-5038-4a93-a36c-b69a86db157c.jsonl`
+- `/ll:refine-issue` - 2026-03-26T21:19:43 - `a144f8f6-b87d-4e3d-84c3-177d86c2baca.jsonl`
+- `/ll:format-issue` - 2026-03-26T21:14:49 - `184fd12a-1de3-4eba-9d21-0c994ea1a12d.jsonl`
 - `/ll:capture-issue` - 2026-03-26T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09734997-4b5e-4d15-a3cc-89e8eb882723.jsonl`

@@ -90,8 +90,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `captured`, `ux`, `handoff`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-19T04:32:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bb6a792-a2fe-4d51-b678-f9c1a1745893.jsonl`
-- `/ll:refine-issue` - 2026-03-19T04:31:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4dd7eb52-05b2-4dee-89fa-f20e6fb0fa81.jsonl`
+- `/ll:ready-issue` - 2026-03-19T04:32:33 - `7bb6a792-a2fe-4d51-b678-f9c1a1745893.jsonl`
+- `/ll:refine-issue` - 2026-03-19T04:31:35 - `4dd7eb52-05b2-4dee-89fa-f20e6fb0fa81.jsonl`
 
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0769f82c-7917-4279-b938-66dfdf42d867.jsonl`
 

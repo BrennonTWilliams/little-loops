@@ -213,12 +213,12 @@ Implemented all five changes described in the Implementation Steps:
 6. **Example harnesses** (`harness-single-shot.yaml`, `harness-multi-item.yaml`): Reformatted prose prompts to numbered multi-criteria format.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-25T03:50:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83280324-52b5-44e9-b8f2-0920a7fb2a15.jsonl`
-- `/ll:confidence-check` - 2026-03-25T04:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39ccdd92-6e91-4cbf-a732-3a2195f532e6.jsonl`
-- `/ll:refine-issue` - 2026-03-25T03:36:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f0c9302-3842-474a-b57f-bab3e4187f1d.jsonl`
-- `/ll:refine-issue` - 2026-03-25T02:34:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d706ae24-efb5-4d22-b384-27e1793cb625.jsonl`
-- `/ll:format-issue` - 2026-03-25T01:57:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15f2515b-b7d9-4642-9556-f9fa1158773a.jsonl`
-- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/556f7371-7835-47ca-a34d-204ed0fd9aed.jsonl`
-- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e447577-879b-46c6-bd2c-f3b7cdd1e037.jsonl`
-- `/ll:refine-issue` - 2026-03-25T00:48:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7bda774-ec89-44b3-8910-da455deea386.jsonl`
-- `/ll:capture-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3df6195-41d1-442e-a5ec-89e21c18fa59.jsonl`
+- `/ll:ready-issue` - 2026-03-25T03:50:20 - `83280324-52b5-44e9-b8f2-0920a7fb2a15.jsonl`
+- `/ll:confidence-check` - 2026-03-25T04:00:00Z - `39ccdd92-6e91-4cbf-a732-3a2195f532e6.jsonl`
+- `/ll:refine-issue` - 2026-03-25T03:36:46 - `9f0c9302-3842-474a-b57f-bab3e4187f1d.jsonl`
+- `/ll:refine-issue` - 2026-03-25T02:34:46 - `d706ae24-efb5-4d22-b384-27e1793cb625.jsonl`
+- `/ll:format-issue` - 2026-03-25T01:57:20 - `15f2515b-b7d9-4642-9556-f9fa1158773a.jsonl`
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `556f7371-7835-47ca-a34d-204ed0fd9aed.jsonl`
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `5e447577-879b-46c6-bd2c-f3b7cdd1e037.jsonl`
+- `/ll:refine-issue` - 2026-03-25T00:48:21 - `c7bda774-ec89-44b3-8910-da455deea386.jsonl`
+- `/ll:capture-issue` - 2026-03-24T00:00:00Z - `f3df6195-41d1-442e-a5ec-89e21c18fa59.jsonl`

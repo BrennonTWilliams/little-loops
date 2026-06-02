@@ -199,11 +199,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 Implemented Option A: `_load_skills()` in `action.py` refactored to call `parse_skill_frontmatter()` directly, reading `args:` (with `argument-hint:` as fallback). `ll-action list --json` now emits `{"name", "description", "args"}` per skill. Five priority skills populated with `args:` fields. Tests updated with 4 new aliasing/precedence tests. Docs updated in CLI.md, API.md, and skills.md.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-26T03:51:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
-- `/ll:ready-issue` - 2026-05-26T03:48:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fbab99cf-3bec-4073-9828-ca111f51daac.jsonl`
-- `/ll:confidence-check` - 2026-05-25T12:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/825670bc-74a6-4b2d-b39c-2eeecf7b59b8.jsonl`
-- `/ll:decide-issue` - 2026-05-26T03:44:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/862c9e92-a486-4454-9a73-4928af017504.jsonl`
-- `/ll:wire-issue` - 2026-05-26T03:40:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d20f5560-2c92-4d4b-b42a-601e81b5c9d3.jsonl`
-- `/ll:refine-issue` - 2026-05-26T03:34:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1080a152-438d-4546-858f-084e48968314.jsonl`
-- `/ll:format-issue` - 2026-05-26T02:41:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e516063e-2929-474d-a82c-786360571ff5.jsonl`
-- `/ll:confidence-check` - 2026-05-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/009a9eb7-1bb9-4e0f-8397-05b8ef3c2aeb.jsonl`
+- `/ll:manage-issue` - 2026-05-26T03:51:27 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:ready-issue` - 2026-05-26T03:48:01 - `fbab99cf-3bec-4073-9828-ca111f51daac.jsonl`
+- `/ll:confidence-check` - 2026-05-25T12:00:00 - `825670bc-74a6-4b2d-b39c-2eeecf7b59b8.jsonl`
+- `/ll:decide-issue` - 2026-05-26T03:44:27 - `862c9e92-a486-4454-9a73-4928af017504.jsonl`
+- `/ll:wire-issue` - 2026-05-26T03:40:17 - `d20f5560-2c92-4d4b-b42a-601e81b5c9d3.jsonl`
+- `/ll:refine-issue` - 2026-05-26T03:34:17 - `1080a152-438d-4546-858f-084e48968314.jsonl`
+- `/ll:format-issue` - 2026-05-26T02:41:04 - `e516063e-2929-474d-a82c-786360571ff5.jsonl`
+- `/ll:confidence-check` - 2026-05-25T00:00:00 - `009a9eb7-1bb9-4e0f-8397-05b8ef3c2aeb.jsonl`

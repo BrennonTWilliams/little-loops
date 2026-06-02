@@ -191,12 +191,12 @@ logs/
 | [docs/reference/API.md](../../docs/reference/API.md) | Architecture | CLI tool API reference |
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17b07b1c-a2bc-4b42-ad8d-3bb135de155e.jsonl`
-- `/ll:wire-issue` - 2026-04-08T21:19:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27202b3b-3157-49a8-8dc9-cd7f6690b42f.jsonl`
-- `/ll:refine-issue` - 2026-04-08T21:13:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a569a938-713f-4245-a2c8-b4fe32d2801d.jsonl`
-- `/ll:format-issue` - 2026-04-08T21:08:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97d18de7-fd1d-462e-ba82-62e58ba8fba0.jsonl`
+- `/ll:confidence-check` - 2026-04-08T00:00:00Z - `17b07b1c-a2bc-4b42-ad8d-3bb135de155e.jsonl`
+- `/ll:wire-issue` - 2026-04-08T21:19:25 - `27202b3b-3157-49a8-8dc9-cd7f6690b42f.jsonl`
+- `/ll:refine-issue` - 2026-04-08T21:13:38 - `a569a938-713f-4245-a2c8-b4fe32d2801d.jsonl`
+- `/ll:format-issue` - 2026-04-08T21:08:51 - `97d18de7-fd1d-462e-ba82-62e58ba8fba0.jsonl`
 - `/ll:capture-issue` - 2026-04-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e6d40974-cea1-44b9-8a10-0015ac9f66eb.jsonl`
-- `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4567c5b-d32d-41b7-b9a6-b02cb4590a4e.jsonl`
+- `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `e4567c5b-d32d-41b7-b9a6-b02cb4590a4e.jsonl`
 
 ---
 

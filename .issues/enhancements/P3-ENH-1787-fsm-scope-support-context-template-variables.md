@@ -217,15 +217,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Correction** (_`/ll:wire-issue`_): `dead-code-cleanup.yaml` and `docs-sync.yaml` already have `scope:` fields with static paths. These loops must still work correctly after template resolution is added — static paths should pass through `resolve_scope()` unchanged (verified by `test_resolve_scope_static`).
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-30T00:52:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/510e1ac5-0d93-499d-b580-7d6d6823c0e9.jsonl`
-- `/ll:wire-issue` - 2026-05-30T00:40:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7eddc41-f09a-4067-8b06-c318dcb4a0f3.jsonl`
-- `/ll:wire-issue` - 2026-05-29T20:04:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/abdc7cdc-bdc0-4301-8614-cf927bab7407.jsonl`
-- `/ll:refine-issue` - 2026-05-29T06:48:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cce38edf-049a-436e-a20e-74ea5a16ea27.jsonl`
-- `/ll:format-issue` - 2026-05-29T06:38:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0074390b-f718-4916-9a17-f29727630895.jsonl`
-- `/ll:capture-issue` - 2026-05-29T06:08:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b88328d9-b43a-4afd-b941-7bc140700c24.jsonl`
-- `/ll:confidence-check` - 2026-05-29T22:09:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42d54349-d303-49ce-a074-ab7903bdc951.jsonl`
-- `/ll:confidence-check` - 2026-05-29T23:55:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b6b1a25-9bd5-4bfa-b9af-3e66895667f1.jsonl`
-- `/ll:manage-issue` - 2026-05-30T01:02:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/85e38556-0bbe-4faa-95e6-62f36805098f.jsonl`
+- `/ll:ready-issue` - 2026-05-30T00:52:48 - `510e1ac5-0d93-499d-b580-7d6d6823c0e9.jsonl`
+- `/ll:wire-issue` - 2026-05-30T00:40:52 - `d7eddc41-f09a-4067-8b06-c318dcb4a0f3.jsonl`
+- `/ll:wire-issue` - 2026-05-29T20:04:10 - `abdc7cdc-bdc0-4301-8614-cf927bab7407.jsonl`
+- `/ll:refine-issue` - 2026-05-29T06:48:58 - `cce38edf-049a-436e-a20e-74ea5a16ea27.jsonl`
+- `/ll:format-issue` - 2026-05-29T06:38:32 - `0074390b-f718-4916-9a17-f29727630895.jsonl`
+- `/ll:capture-issue` - 2026-05-29T06:08:56Z - `b88328d9-b43a-4afd-b941-7bc140700c24.jsonl`
+- `/ll:confidence-check` - 2026-05-29T22:09:00Z - `42d54349-d303-49ce-a074-ab7903bdc951.jsonl`
+- `/ll:confidence-check` - 2026-05-29T23:55:00Z - `5b6b1a25-9bd5-4bfa-b9af-3e66895667f1.jsonl`
+- `/ll:manage-issue` - 2026-05-30T01:02:06Z - `85e38556-0bbe-4faa-95e6-62f36805098f.jsonl`
 
 ---
 

@@ -251,8 +251,8 @@ _Added by `/ll:confidence-check` on 2026-05-16_
 - **Verify doc-wiring test survivability**: `test_mentions_capability_not_supported` (line 159 of `test_enh1495_doc_wiring.py`) is a cross-issue concern — the rewrite of `docs/codex/usage.md` must ensure `CapabilityNotSupported` remains present elsewhere in the doc.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5d588c7-1ba0-4bcb-a5ba-c8587170e0e5.jsonl`
-- `/ll:wire-issue` - 2026-05-17T00:19:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a9fab1fc-477c-4ee2-a2eb-d8dd86332269.jsonl`
-- `/ll:refine-issue` - 2026-05-17T00:15:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/084e1eff-7d0f-4eff-9e63-fe55c4d7d338.jsonl`
-- `/ll:format-issue` - 2026-05-16T23:48:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bfe30d89-0fc5-435c-9b3a-8f2605ed9dab.jsonl`
-- `/ll:capture-issue` - 2026-05-16T23:44:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0206f559-f5c2-4dd0-8164-e7046c404768.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `f5d588c7-1ba0-4bcb-a5ba-c8587170e0e5.jsonl`
+- `/ll:wire-issue` - 2026-05-17T00:19:49 - `a9fab1fc-477c-4ee2-a2eb-d8dd86332269.jsonl`
+- `/ll:refine-issue` - 2026-05-17T00:15:49 - `084e1eff-7d0f-4eff-9e63-fe55c4d7d338.jsonl`
+- `/ll:format-issue` - 2026-05-16T23:48:37 - `bfe30d89-0fc5-435c-9b3a-8f2605ed9dab.jsonl`
+- `/ll:capture-issue` - 2026-05-16T23:44:25Z - `0206f559-f5c2-4dd0-8164-e7046c404768.jsonl`

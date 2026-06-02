@@ -121,9 +121,9 @@ branch_name = worktree_path.name.replace("worker-", "parallel/")
 **Update needed**: Change the `## Current Behavior` comparison reference from `(line 679)` to `worker_pool.py:_cleanup_worktree (line 641)`.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-21T05:36:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74cd69e1-66b2-4bb5-bf13-330f4de54da8.jsonl`
-- `/ll:refine-issue` - 2026-03-21T05:23:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/356af2e8-db65-4a06-a82f-a7cc1aa781aa.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:verify-issues` - 2026-03-19T23:49:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
-- `/ll:confidence-check` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3b18d90-a338-4eff-b0ba-be389b8e767d.jsonl`
+- `/ll:ready-issue` - 2026-03-21T05:36:16 - `74cd69e1-66b2-4bb5-bf13-330f4de54da8.jsonl`
+- `/ll:refine-issue` - 2026-03-21T05:23:53 - `356af2e8-db65-4a06-a82f-a7cc1aa781aa.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:verify-issues` - 2026-03-19T23:49:19 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:confidence-check` - 2026-03-21T00:00:00Z - `e3b18d90-a338-4eff-b0ba-be389b8e767d.jsonl`

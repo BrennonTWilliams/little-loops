@@ -168,13 +168,13 @@ If `claude plugin list` fails or returns empty, fall through to running `claude 
 `TestUpdateSkillSkipLogic` in `scripts/tests/test_update_skill.py` (5 tests, all passing).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-04-02T03:59:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aef94f24-fa0c-4234-9cf9-00b1839f38df.jsonl`
-- `/ll:confidence-check` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55240902-445e-4d6a-95cf-171fcd330636.jsonl`
-- `/ll:refine-issue` - 2026-04-02T03:53:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a4f1b01-67b9-4287-b97b-4c053fd50cb7.jsonl`
-- `/ll:refine-issue` - 2026-04-02T03:45:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e287fb1-9497-4145-8422-6b6a7f5b6bba.jsonl`
-- `/ll:format-issue` - 2026-04-02T03:20:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b87ef8cd-b696-4139-81a3-d6129ab0c040.jsonl`
-- `/ll:verify-issues` - 2026-04-01T17:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
+- `/ll:manage-issue` - 2026-04-01T00:00:00
+- `/ll:ready-issue` - 2026-04-02T03:59:02 - `aef94f24-fa0c-4234-9cf9-00b1839f38df.jsonl`
+- `/ll:confidence-check` - 2026-04-01T00:00:00 - `55240902-445e-4d6a-95cf-171fcd330636.jsonl`
+- `/ll:refine-issue` - 2026-04-02T03:53:37 - `4a4f1b01-67b9-4287-b97b-4c053fd50cb7.jsonl`
+- `/ll:refine-issue` - 2026-04-02T03:45:41 - `4e287fb1-9497-4145-8422-6b6a7f5b6bba.jsonl`
+- `/ll:format-issue` - 2026-04-02T03:20:44 - `b87ef8cd-b696-4139-81a3-d6129ab0c040.jsonl`
+- `/ll:verify-issues` - 2026-04-01T17:45:21 - `712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
 - `/ll:capture-issue` - 2026-03-31T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a08a6ef4-ca07-4031-8993-a8bc29361f74.jsonl`
 
 ---

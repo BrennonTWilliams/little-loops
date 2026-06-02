@@ -244,15 +244,15 @@ Blocks: FEAT-1120 (harness-optimize loop) — needs this fragment as its scoring
 `feature`, `benchmark`, `fsm`, `evaluator`, `fragment`, `harbor`
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-23T16:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4ee2422-6ef4-4b8d-87df-99cb7d580718.jsonl`
-- `/ll:ready-issue` - 2026-04-23T16:03:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f53b5b9-ab9d-439a-9dc3-99baadda2091.jsonl`
-- `/ll:confidence-check` - 2026-04-23T16:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b35255f7-b6b6-46d3-af77-efb623ea0ed7.jsonl`
-- `/ll:refine-issue` - 2026-04-23T15:39:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2e64653-610d-4248-b1f2-429ccbd66f0c.jsonl`
-- `/ll:refine-issue` - 2026-04-23T15:21:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/469627b2-baca-42d7-992d-8bdee85ebf48.jsonl`
-- `/ll:decide-issue` - 2026-04-23T15:04:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07e9009f-4f75-414d-9885-0866e07cd4e6.jsonl`
-- `/ll:wire-issue` - 2026-04-21T23:54:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da57548e-ff8e-44e0-a3f7-da5dfbdd9e89.jsonl`
-- `/ll:refine-issue` - 2026-04-21T23:48:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8d696c9-774d-426c-af80-044a2fdce014.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/acc1b9ba-37ad-4355-95fb-ff7907feebf3.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-23T16:12:55 - `e4ee2422-6ef4-4b8d-87df-99cb7d580718.jsonl`
+- `/ll:ready-issue` - 2026-04-23T16:03:43 - `0f53b5b9-ab9d-439a-9dc3-99baadda2091.jsonl`
+- `/ll:confidence-check` - 2026-04-23T16:00:00 - `b35255f7-b6b6-46d3-af77-efb623ea0ed7.jsonl`
+- `/ll:refine-issue` - 2026-04-23T15:39:15 - `a2e64653-610d-4248-b1f2-429ccbd66f0c.jsonl`
+- `/ll:refine-issue` - 2026-04-23T15:21:31 - `469627b2-baca-42d7-992d-8bdee85ebf48.jsonl`
+- `/ll:decide-issue` - 2026-04-23T15:04:00 - `07e9009f-4f75-414d-9885-0866e07cd4e6.jsonl`
+- `/ll:wire-issue` - 2026-04-21T23:54:25 - `da57548e-ff8e-44e0-a3f7-da5dfbdd9e89.jsonl`
+- `/ll:refine-issue` - 2026-04-21T23:48:36 - `d8d696c9-774d-426c-af80-044a2fdce014.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00Z - `acc1b9ba-37ad-4355-95fb-ff7907feebf3.jsonl`
 
 ---
 

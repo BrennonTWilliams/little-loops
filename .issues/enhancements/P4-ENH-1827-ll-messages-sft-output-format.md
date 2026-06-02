@@ -49,7 +49,7 @@ ll-messages --sft-format alpaca --output data/sft/raw.jsonl
 - `scripts/little_loops/` — `ll-messages` implementation lives here
 
 ## Session Log
-- `/ll:capture-issue` - 2026-05-31T22:00:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/109abe71-e47d-4222-b37d-c17fd7d98dee.jsonl`
+- `/ll:capture-issue` - 2026-05-31T22:00:59Z - `109abe71-e47d-4222-b37d-c17fd7d98dee.jsonl`
 
 ---
 ## Status

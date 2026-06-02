@@ -168,12 +168,12 @@ _Added by `/ll:verify-issues` on 2026-05-30_
 - All referenced files and line anchors verified as accurate ✓
 
 ## Session Log
-- `/ll:verify-issues` - 2026-05-31T02:30:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:issue-size-review` - 2026-05-25T18:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c841cd66-9a6d-4efd-9971-f4ce6e734f58.jsonl`
-- `/ll:wire-issue` - 2026-05-26T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a81eae6-fc78-4eca-a52a-8960c2ffbd7a.jsonl`
-- `/ll:refine-issue` - 2026-05-26T02:55:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010b6d0-c5ea-42f5-b7da-dacb34c4bb15.jsonl`
-- `/ll:issue-size-review` - 2026-05-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3ec7ab86-eac4-42cb-b06f-00661e557291.jsonl`
-- `/ll:confidence-check` - 2026-05-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c66ef3df-2111-4e4b-a024-348d313b0477.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:03 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:issue-size-review` - 2026-05-25T18:00:00Z - `c841cd66-9a6d-4efd-9971-f4ce6e734f58.jsonl`
+- `/ll:wire-issue` - 2026-05-26T03:02:16 - `6a81eae6-fc78-4eca-a52a-8960c2ffbd7a.jsonl`
+- `/ll:refine-issue` - 2026-05-26T02:55:25 - `0010b6d0-c5ea-42f5-b7da-dacb34c4bb15.jsonl`
+- `/ll:issue-size-review` - 2026-05-25T00:00:00Z - `3ec7ab86-eac4-42cb-b06f-00661e557291.jsonl`
+- `/ll:confidence-check` - 2026-05-25T00:00:00Z - `c66ef3df-2111-4e4b-a024-348d313b0477.jsonl`
 
 ---
 

@@ -133,8 +133,8 @@ Implemented column elision in `scripts/little_loops/cli/issues/refine_status.py`
 ---
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-03-16T01:17:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f07d141f-c10b-4237-8f07-e0a5d89864ca.jsonl`
-- `/ll:format-issue` - 2026-03-16T00:56:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8bc41a61-b249-4f82-b1e4-50bab87ac931.jsonl`
+- `/ll:manage-issue` - 2026-03-15T00:00:00Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-03-16T01:17:42 - `f07d141f-c10b-4237-8f07-e0a5d89864ca.jsonl`
+- `/ll:format-issue` - 2026-03-16T00:56:59 - `8bc41a61-b249-4f82-b1e4-50bab87ac931.jsonl`
 - `/ll:capture-issue` - 2026-03-15T04:11:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0e4ff8a-9271-4c55-a606-a120317ccfad.jsonl`
-- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/572a622a-9f9a-4c1c-bba4-ab1e066ec125.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `572a622a-9f9a-4c1c-bba4-ab1e066ec125.jsonl`

@@ -148,10 +148,10 @@ Implemented `LLTestBus` as a standalone class in `scripts/little_loops/testing.p
 **Completed** | Created: 2026-04-11 | Completed: 2026-04-11 | Priority: P4
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-04-12T02:40:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e760b44-f4b0-4713-8c67-eee2ba125404.jsonl`
-- `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e4f0ded-d1f5-453e-84a5-52a048e214e3.jsonl`
-- `/ll:wire-issue` - 2026-04-12T02:32:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76ef449f-bfef-4e93-a88b-7745bf0d095d.jsonl`
-- `/ll:refine-issue` - 2026-04-12T02:23:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5703b25f-485b-4dde-b132-7d7c67442741.jsonl`
-- `/ll:verify-issues` - 2026-04-11T23:05:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
-- `/ll:issue-size-review` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8463ec2-3356-49c3-888b-ccb8aab90cb6.jsonl`
+- `/ll:manage-issue` - 2026-04-11T00:00:00 - `current.jsonl`
+- `/ll:ready-issue` - 2026-04-12T02:40:40 - `9e760b44-f4b0-4713-8c67-eee2ba125404.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00 - `9e4f0ded-d1f5-453e-84a5-52a048e214e3.jsonl`
+- `/ll:wire-issue` - 2026-04-12T02:32:05 - `76ef449f-bfef-4e93-a88b-7745bf0d095d.jsonl`
+- `/ll:refine-issue` - 2026-04-12T02:23:26 - `5703b25f-485b-4dde-b132-7d7c67442741.jsonl`
+- `/ll:verify-issues` - 2026-04-11T23:05:12 - `5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
+- `/ll:issue-size-review` - 2026-04-11T00:00:00 - `c8463ec2-3356-49c3-888b-ccb8aab90cb6.jsonl`

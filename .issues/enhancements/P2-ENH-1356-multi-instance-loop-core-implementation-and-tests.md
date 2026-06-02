@@ -205,11 +205,11 @@ _Added by `/ll:refine-issue` — verified against current code:_
 `enhancement`, `multi-instance`, `fsm-loops`, `cli`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-03T20:32:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9801a914-60fd-4c39-bd37-f692c9dedc08.jsonl`
-- `/ll:wire-issue` - 2026-05-03T20:27:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/879ddfc0-5808-4a4e-a0a4-51d0bf3fb3a9.jsonl`
-- `/ll:refine-issue` - 2026-05-03T20:21:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/94486e63-c38d-4bfc-93ce-d33e07f115ca.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T21:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/995ae302-a902-4497-a747-428e14fa83da.jsonl`
-- `/ll:confidence-check` - 2026-05-03T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a287343-6cbe-4223-ac2d-83767cd52baf.jsonl`
+- `/ll:ready-issue` - 2026-05-03T20:32:57 - `9801a914-60fd-4c39-bd37-f692c9dedc08.jsonl`
+- `/ll:wire-issue` - 2026-05-03T20:27:54 - `879ddfc0-5808-4a4e-a0a4-51d0bf3fb3a9.jsonl`
+- `/ll:refine-issue` - 2026-05-03T20:21:19 - `94486e63-c38d-4bfc-93ce-d33e07f115ca.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T21:45:00Z - `995ae302-a902-4497-a747-428e14fa83da.jsonl`
+- `/ll:confidence-check` - 2026-05-03T22:00:00Z - `4a287343-6cbe-4223-ac2d-83767cd52baf.jsonl`
 
 ---
 

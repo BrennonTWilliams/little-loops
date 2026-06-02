@@ -42,5 +42,5 @@ ll-loop run outer-loop-eval eval-specfile-gold --context loop_input="some value"
 ```
 
 ## Session Log
-- `hook:posttooluse-status-done` - 2026-05-17T05:35:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76ac37c3-b42c-4f32-8ffb-dec49dee3945.jsonl`
+- `hook:posttooluse-status-done` - 2026-05-17T05:35:25 - `76ac37c3-b42c-4f32-8ffb-dec49dee3945.jsonl`
 - `/ll:capture-issue` - 2026-05-17T05:35:08Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f83462fc-6ed8-4bc4-b54c-c8a7368feb83.jsonl`

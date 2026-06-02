@@ -133,11 +133,11 @@ Three targeted edits to `skills/issue-size-review/SKILL.md`:
 3. Avoid list: added antipattern for tests/docs child issues for newly-introduced behavior
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-21T22:49:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/703b1905-bd69-4468-8591-1bb37d335db4.jsonl`
-- `/ll:confidence-check` - 2026-04-21T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
-- `/ll:refine-issue` - 2026-04-21T21:53:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4eb56bac-9901-4808-9ce3-1ce85ecc5f08.jsonl`
-- `/ll:capture-issue` - 2026-04-21T21:48:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5c6e7c1-6ecf-4c7a-8c50-e42175af1abf.jsonl`
-- `/ll:manage-issue` - 2026-04-21T22:50:17Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/703b1905-bd69-4468-8591-1bb37d335db4.jsonl`
+- `/ll:ready-issue` - 2026-04-21T22:49:21 - `703b1905-bd69-4468-8591-1bb37d335db4.jsonl`
+- `/ll:confidence-check` - 2026-04-21T22:00:00Z - `fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `/ll:refine-issue` - 2026-04-21T21:53:40 - `4eb56bac-9901-4808-9ce3-1ce85ecc5f08.jsonl`
+- `/ll:capture-issue` - 2026-04-21T21:48:57Z - `f5c6e7c1-6ecf-4c7a-8c50-e42175af1abf.jsonl`
+- `/ll:manage-issue` - 2026-04-21T22:50:17Z - `703b1905-bd69-4468-8591-1bb37d335db4.jsonl`
 
 ---
 

@@ -144,10 +144,10 @@ ll-loop status [<name>]           # Show running background loops with PID + liv
 `feature`, `cli`, `loops`, `daemon`, `auto-generated`
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
-- `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with specific file references and daemon pattern; no knowledge gaps identified
-- `/ll:refine-issue` - 2026-02-27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2279c5d8-0ee5-4951-b318-c58cfb3e1d4f.jsonl` - Deep research: found 2 prior closed issues (FEAT-255, FEAT-431), signal handling gap, directory convention mismatch, enriched integration map with 17 pattern references
+- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-25 - `6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with specific file references and daemon pattern; no knowledge gaps identified
+- `/ll:refine-issue` - 2026-02-27 - `2279c5d8-0ee5-4951-b318-c58cfb3e1d4f.jsonl` - Deep research: found 2 prior closed issues (FEAT-255, FEAT-431), signal handling gap, directory convention mismatch, enriched integration map with 17 pattern references
 
 ## Resolution
 

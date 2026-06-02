@@ -118,7 +118,7 @@ All 8 issues resolved in `docs/guides/SESSION_HANDOFF.md`:
 **Completed** | Created: 2026-03-17 | Resolved: 2026-03-18 | Priority: P1
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-03-18T16:10:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ead85031-58d8-47c0-8a15-a5566d00fe7b.jsonl`
-- `/ll:format-issue` - 2026-03-18T01:51:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6fe969a-a054-43aa-be89-f0f4d50aacab.jsonl`
-- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`
+- `/ll:manage-issue` - 2026-03-18T00:00:00Z
+- `/ll:ready-issue` - 2026-03-18T16:10:21 - `ead85031-58d8-47c0-8a15-a5566d00fe7b.jsonl`
+- `/ll:format-issue` - 2026-03-18T01:51:23 - `a6fe969a-a054-43aa-be89-f0f4d50aacab.jsonl`
+- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`

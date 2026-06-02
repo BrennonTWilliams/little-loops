@@ -237,11 +237,11 @@ _Updated by `/ll:confidence-check` on 2026-05-18 (re-check after `/ll:decide-iss
 - BUG-1608: Add test coverage for failure terminal diagnostic action requirement
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fbd13cdc-51a4-41ee-85fe-30c33cc936aa.jsonl`
-- `/ll:confidence-check` - 2026-05-18T02:41:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/868ad7ff-5134-4abc-be3d-7b1974ab0307.jsonl`
-- `/ll:decide-issue` - 2026-05-18T07:39:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e8dacdf-1a43-4fa8-9fc4-1e0c26fe183e.jsonl`
-- `/ll:confidence-check` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f3e8c8a-56e8-42d1-962f-1b9123e15590.jsonl`
-- `/ll:wire-issue` - 2026-05-18T07:34:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdd4c28f-092b-44f6-b6e5-d3d60d73042a.jsonl`
-- `/ll:refine-issue` - 2026-05-18T07:28:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04710424-5961-447e-bcb0-7b1019912227.jsonl`
-- `/ll:format-issue` - 2026-05-18T05:16:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb7f2fc9-52f4-4d22-8182-c197fa8741c5.jsonl`
-- `/ll:verify-issues` - 2026-05-18T04:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2807bd8b-4e79-4b76-994d-e6f6cae14245.jsonl`
+- `/ll:issue-size-review` - 2026-05-18T00:00:00 - `fbd13cdc-51a4-41ee-85fe-30c33cc936aa.jsonl`
+- `/ll:confidence-check` - 2026-05-18T02:41:00 - `868ad7ff-5134-4abc-be3d-7b1974ab0307.jsonl`
+- `/ll:decide-issue` - 2026-05-18T07:39:09 - `4e8dacdf-1a43-4fa8-9fc4-1e0c26fe183e.jsonl`
+- `/ll:confidence-check` - 2026-05-18T00:00:00 - `7f3e8c8a-56e8-42d1-962f-1b9123e15590.jsonl`
+- `/ll:wire-issue` - 2026-05-18T07:34:22 - `bdd4c28f-092b-44f6-b6e5-d3d60d73042a.jsonl`
+- `/ll:refine-issue` - 2026-05-18T07:28:17 - `04710424-5961-447e-bcb0-7b1019912227.jsonl`
+- `/ll:format-issue` - 2026-05-18T05:16:02 - `fb7f2fc9-52f4-4d22-8182-c197fa8741c5.jsonl`
+- `/ll:verify-issues` - 2026-05-18T04:53:51 - `2807bd8b-4e79-4b76-994d-e6f6cae14245.jsonl`

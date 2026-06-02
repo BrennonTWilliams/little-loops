@@ -311,10 +311,10 @@ _Updated by `/ll:confidence-check` on 2026-06-01 (re-run after `/ll:decide-issue
 - ENH-1862: Wave 2a Part 2 — Create `ll_commit` Fragment, Convert 6 Commit Loops, and Wire Docs
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cacc3f7-f908-4e86-8ef8-b96c1b43a157.jsonl`
-- `/ll:confidence-check` - 2026-06-01T18:10:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4b04c26-de79-4c51-8480-2b070bef719c.jsonl`
-- `/ll:decide-issue` - 2026-06-01T18:04:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67e4d4e4-1440-479f-9406-ecd40fa28a8b.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75cef0b3-af02-4e85-a2ba-442a86576bc9.jsonl`
-- `/ll:wire-issue` - 2026-06-01T17:56:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/420a5560-0b8d-425f-aeee-14be30fc4b7b.jsonl`
-- `/ll:refine-issue` - 2026-06-01T17:51:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dfa382d0-dd02-477b-b6ac-1ce77830448d.jsonl`
-- `/ll:format-issue` - 2026-06-01T17:28:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac3a8d0e-1e74-47b1-9d58-b8dbb8f453b4.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `2cacc3f7-f908-4e86-8ef8-b96c1b43a157.jsonl`
+- `/ll:confidence-check` - 2026-06-01T18:10:00Z - `e4b04c26-de79-4c51-8480-2b070bef719c.jsonl`
+- `/ll:decide-issue` - 2026-06-01T18:04:17 - `67e4d4e4-1440-479f-9406-ecd40fa28a8b.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `75cef0b3-af02-4e85-a2ba-442a86576bc9.jsonl`
+- `/ll:wire-issue` - 2026-06-01T17:56:56 - `420a5560-0b8d-425f-aeee-14be30fc4b7b.jsonl`
+- `/ll:refine-issue` - 2026-06-01T17:51:04 - `dfa382d0-dd02-477b-b6ac-1ce77830448d.jsonl`
+- `/ll:format-issue` - 2026-06-01T17:28:44 - `ac3a8d0e-1e74-47b1-9d58-b8dbb8f453b4.jsonl`

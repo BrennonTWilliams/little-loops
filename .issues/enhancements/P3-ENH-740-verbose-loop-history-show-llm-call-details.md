@@ -85,12 +85,12 @@ ll-loop history issue-refinement --verbose
 - `scripts/little_loops/fsm/executor.py` emits `action_complete` at line 583 with `is_prompt` field but no `session_jsonl` field. `scripts/little_loops/cli/loop/info.py` handles `--verbose` mode (lines 125, 243-251) but shows no LLM call input/output, token counts, or latency per state. Feature not yet implemented.
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c96e34f-66f6-47a9-8e06-75aea65c7264.jsonl`
-- `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3777c8ff-1714-43df-b4e3-5fada0728038.jsonl`
-- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3777c8ff-1714-43df-b4e3-5fada0728038.jsonl`
-- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d69664f2-c580-4a55-b04c-9cddea5b7fc0.jsonl`
-- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
-- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/14afb5fd-1b91-4652-91a5-92cf08c7de6a.jsonl`
+- `/ll:capture-issue` - 2026-03-13T00:00:00Z - `4c96e34f-66f6-47a9-8e06-75aea65c7264.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `3777c8ff-1714-43df-b4e3-5fada0728038.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `3777c8ff-1714-43df-b4e3-5fada0728038.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `d69664f2-c580-4a55-b04c-9cddea5b7fc0.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `14afb5fd-1b91-4652-91a5-92cf08c7de6a.jsonl`
 
 ---
 
@@ -122,8 +122,7 @@ ll-loop history issue-refinement --verbose
 - 269 tests pass, no regressions
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z
 ---
 
 ## Status

@@ -175,14 +175,14 @@ _Added by `/ll:confidence-check` on 2026-04-23_
 - **FEAT-1271 is an unresolved critical blocker**: `logs.py`, `discover_all_projects()`, `test_ll_logs.py`, and the `ll-logs` pyproject entry point are all created by FEAT-1271, which is still in backlog. FEAT-1272 has nothing to extend until FEAT-1271 merges.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-23T16:02:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/965334bc-43d3-43d2-add7-d5f59631e49a.jsonl`
-- `/ll:refine-issue` - 2026-04-23T15:55:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b35255f7-b6b6-46d3-af77-efb623ea0ed7.jsonl`
-- `/ll:confidence-check` - 2026-04-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/adbd4941-0ef6-48a9-b49a-f6150ed66268.jsonl`
-- `/ll:confidence-check` - 2026-04-23T16:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5466f70c-2a0b-41bd-b115-50a7fdab0c35.jsonl`
-- `/ll:wire-issue` - 2026-04-23T15:45:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/06b56281-3d1e-47d5-8c2d-a2b87d670bd7.jsonl`
-- `/ll:refine-issue` - 2026-04-23T15:40:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35ac7496-e8f6-4f6d-8dd0-4b7a2571b36e.jsonl`
-- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
-- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/965334bc-43d3-43d2-add7-d5f59631e49a.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-23T16:02:02 - `965334bc-43d3-43d2-add7-d5f59631e49a.jsonl`
+- `/ll:refine-issue` - 2026-04-23T15:55:36 - `b35255f7-b6b6-46d3-af77-efb623ea0ed7.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00 - `adbd4941-0ef6-48a9-b49a-f6150ed66268.jsonl`
+- `/ll:confidence-check` - 2026-04-23T16:30:00 - `5466f70c-2a0b-41bd-b115-50a7fdab0c35.jsonl`
+- `/ll:wire-issue` - 2026-04-23T15:45:11 - `06b56281-3d1e-47d5-8c2d-a2b87d670bd7.jsonl`
+- `/ll:refine-issue` - 2026-04-23T15:40:42 - `35ac7496-e8f6-4f6d-8dd0-4b7a2571b36e.jsonl`
+- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `965334bc-43d3-43d2-add7-d5f59631e49a.jsonl`
 
 ---
 

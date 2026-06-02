@@ -185,9 +185,9 @@ New tests added to `TestSvgTextgradLoop` (4 evaluate-state + 2 assertion tests) 
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-13T21:41:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a86dde56-89fe-4aa9-8745-62e28440c3ca.jsonl`
-- `/ll:wire-issue` - 2026-04-13T21:24:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c747beff-7e43-47bc-99a8-7f6f0bb6cb61.jsonl`
-- `/ll:refine-issue` - 2026-04-13T21:21:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f39523a9-97cc-418d-92e6-6b9bb0352a28.jsonl`
-- `/ll:format-issue` - 2026-04-13T21:16:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd5585d9-0d17-46c7-8655-fca6a1847cf7.jsonl`
-- `/ll:confidence-check` - 2026-04-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fda6395c-5a12-49f3-b6ab-3be2fa830521.jsonl`
-- `/ll:manage-issue` - 2026-04-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-04-13T21:41:11 - `a86dde56-89fe-4aa9-8745-62e28440c3ca.jsonl`
+- `/ll:wire-issue` - 2026-04-13T21:24:57 - `c747beff-7e43-47bc-99a8-7f6f0bb6cb61.jsonl`
+- `/ll:refine-issue` - 2026-04-13T21:21:25 - `f39523a9-97cc-418d-92e6-6b9bb0352a28.jsonl`
+- `/ll:format-issue` - 2026-04-13T21:16:25 - `fd5585d9-0d17-46c7-8655-fca6a1847cf7.jsonl`
+- `/ll:confidence-check` - 2026-04-13T00:00:00 - `fda6395c-5a12-49f3-b6ab-3be2fa830521.jsonl`
+- `/ll:manage-issue` - 2026-04-13T00:00:00

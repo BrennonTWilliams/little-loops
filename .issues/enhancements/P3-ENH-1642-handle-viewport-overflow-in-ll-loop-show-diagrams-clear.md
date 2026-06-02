@@ -219,12 +219,12 @@ _Added by `/ll:confidence-check` on 2026-05-23_
 - New test subdirectory `scripts/tests/cli/loop/` must be created (Step 9) before pytest can discover `test_layout.py` and `test_choose_pinned_layout.py` — do this early to avoid silent test-skip during incremental development
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-23T23:24:44Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d302e094-e886-4f1c-9e6a-9cb4dda50f7a.jsonl`
-- `/ll:ready-issue` - 2026-05-23T23:01:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92b102a9-99e9-4cdd-8526-0159e852073f.jsonl`
-- `/ll:refine-issue` - 2026-05-23T22:43:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f15a5c6-3934-4aa0-9929-5919c5d54ab9.jsonl`
-- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb2aacf2-aaf0-4d77-a561-a081f97a838b.jsonl`
-- `/ll:confidence-check` - 2026-05-23T00:00:01Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a5569b1-158a-4faa-90cf-e467767979cc.jsonl`
-- `/ll:wire-issue` - 2026-05-23T20:49:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/94688148-bcef-4c17-a138-b92c41a25e82.jsonl`
-- `/ll:refine-issue` - 2026-05-23T20:37:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc466dbf-f3b4-404a-ac13-8482df50d3d6.jsonl`
-- `/ll:format-issue` - 2026-05-23T19:40:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00d572b0-3074-4df8-b905-4443cc9bb298.jsonl`
-- `/ll:capture-issue` - 2026-05-23T19:35:10Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1dcaab2-247a-402c-ac8c-78f94253581e.jsonl`
+- `/ll:manage-issue` - 2026-05-23T23:24:44Z - `d302e094-e886-4f1c-9e6a-9cb4dda50f7a.jsonl`
+- `/ll:ready-issue` - 2026-05-23T23:01:41 - `92b102a9-99e9-4cdd-8526-0159e852073f.jsonl`
+- `/ll:refine-issue` - 2026-05-23T22:43:55 - `0f15a5c6-3934-4aa0-9929-5919c5d54ab9.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `fb2aacf2-aaf0-4d77-a561-a081f97a838b.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:01Z - `1a5569b1-158a-4faa-90cf-e467767979cc.jsonl`
+- `/ll:wire-issue` - 2026-05-23T20:49:12 - `94688148-bcef-4c17-a138-b92c41a25e82.jsonl`
+- `/ll:refine-issue` - 2026-05-23T20:37:47 - `dc466dbf-f3b4-404a-ac13-8482df50d3d6.jsonl`
+- `/ll:format-issue` - 2026-05-23T19:40:39 - `00d572b0-3074-4df8-b905-4443cc9bb298.jsonl`
+- `/ll:capture-issue` - 2026-05-23T19:35:10Z - `f1dcaab2-247a-402c-ac8c-78f94253581e.jsonl`

@@ -118,8 +118,8 @@ Fixed in `scripts/little_loops/loops/autodev.yaml` `triage_outcome_failure` stat
 **Completed** | Created: 2026-04-26 | Resolved: 2026-04-26 | Priority: P2
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-26T20:45:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8737d3b4-7f4b-441c-9a1b-ed0e7167d434.jsonl`
-- `/ll:confidence-check` - 2026-04-26T20:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9415f2ec-a628-4e20-bce0-66c7cf4228f2.jsonl`
-- `/ll:format-issue` - 2026-04-26T20:40:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/412ee35d-5b5b-4449-ba52-3eb93c29860a.jsonl`
-- `/ll:manage-issue` - 2026-04-26T20:49:02Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8737d3b4-7f4b-441c-9a1b-ed0e7167d434.jsonl`
+- `/ll:ready-issue` - 2026-04-26T20:45:01 - `8737d3b4-7f4b-441c-9a1b-ed0e7167d434.jsonl`
+- `/ll:confidence-check` - 2026-04-26T20:45:00Z - `9415f2ec-a628-4e20-bce0-66c7cf4228f2.jsonl`
+- `/ll:format-issue` - 2026-04-26T20:40:26 - `412ee35d-5b5b-4449-ba52-3eb93c29860a.jsonl`
+- `/ll:manage-issue` - 2026-04-26T20:49:02Z - `8737d3b4-7f4b-441c-9a1b-ed0e7167d434.jsonl`
 - `/ll:capture-issue` - 2026-04-26T20:35:25Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52be9e23-3914-464f-97ac-e73aca9d145b.jsonl`

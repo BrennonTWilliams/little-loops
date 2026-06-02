@@ -206,9 +206,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 11. **Verify** — `python -m pytest scripts/tests/test_config_schema.py scripts/tests/test_issue_parser.py scripts/tests/test_issue_parser_properties.py scripts/tests/test_issue_parser_fuzz.py -v` — also run `test_loops_recursive_refine.py` and confirm the new deprecation warning logs do not break any assertion in that module.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-10T23:02:46Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-10T22:56:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c66f0de9-0780-444d-9aac-80015c099696.jsonl`
-- `/ll:wire-issue` - 2026-05-10T22:50:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e55238b5-aeb7-4357-85aa-85b11d5af80f.jsonl`
-- `/ll:refine-issue` - 2026-05-10T22:43:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd4e407a-1507-4958-a2b9-82f714371500.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T22:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d7aaebe-3f48-42d8-9447-6f3abf7cabd4.jsonl`
-- `/ll:confidence-check` - 2026-05-10T23:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68cccc04-0d5f-414d-bb6a-13e6957466b6.jsonl`
+- `/ll:manage-issue` - 2026-05-10T23:02:46Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-10T22:56:12 - `c66f0de9-0780-444d-9aac-80015c099696.jsonl`
+- `/ll:wire-issue` - 2026-05-10T22:50:24 - `e55238b5-aeb7-4357-85aa-85b11d5af80f.jsonl`
+- `/ll:refine-issue` - 2026-05-10T22:43:03 - `dd4e407a-1507-4958-a2b9-82f714371500.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T22:45:00Z - `9d7aaebe-3f48-42d8-9447-6f3abf7cabd4.jsonl`
+- `/ll:confidence-check` - 2026-05-10T23:00:00Z - `68cccc04-0d5f-414d-bb6a-13e6957466b6.jsonl`

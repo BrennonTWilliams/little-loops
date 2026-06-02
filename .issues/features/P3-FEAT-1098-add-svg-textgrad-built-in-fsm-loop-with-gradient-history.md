@@ -208,8 +208,8 @@ All 4747 tests pass.
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-13T20:11:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/12fc2d40-967a-4755-b6db-3fd9fc6053cd.jsonl`
-- `/ll:confidence-check` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdedf90e-4d4e-4f89-b815-b5c239501618.jsonl`
-- `/ll:wire-issue` - 2026-04-13T19:20:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee2a7734-4c20-43d2-81d7-7fc7742b4beb.jsonl`
-- `/ll:refine-issue` - 2026-04-13T19:00:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0a940ed-94f1-4edf-888f-181582227a03.jsonl`
+- `/ll:ready-issue` - 2026-04-13T20:11:10 - `12fc2d40-967a-4755-b6db-3fd9fc6053cd.jsonl`
+- `/ll:confidence-check` - 2026-04-13T00:00:00Z - `bdedf90e-4d4e-4f89-b815-b5c239501618.jsonl`
+- `/ll:wire-issue` - 2026-04-13T19:20:19 - `ee2a7734-4c20-43d2-81d7-7fc7742b4beb.jsonl`
+- `/ll:refine-issue` - 2026-04-13T19:00:58 - `a0a940ed-94f1-4edf-888f-181582227a03.jsonl`
 - `/ll:capture-issue` - 2026-04-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ec013ba-177c-4041-8da5-23ee6cecf9a6.jsonl`

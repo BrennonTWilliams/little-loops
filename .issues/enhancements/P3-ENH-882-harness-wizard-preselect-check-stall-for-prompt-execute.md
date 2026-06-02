@@ -118,15 +118,15 @@ Implemented all three scope items:
 All 8 existing `test_create_loop.py` tests pass.
 
 ## Session Log
-- `/ll:verify-issues` - 2026-03-25T03:33:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9edfa2c8-9075-40b8-90e5-e170754a8201.jsonl`
-- `/ll:manage-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-03-25T02:31:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cde3f7e-fca2-4395-b55a-e28e71a38dcf.jsonl`
-- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80e15269-8cb1-400c-bfab-f3ed9eab7c73.jsonl`
-- `/ll:refine-issue` - 2026-03-25T02:05:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2efc34df-45f4-4127-ac70-33a748d33768.jsonl`
-- `/ll:format-issue` - 2026-03-25T01:57:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c4c4f281-2969-4dd6-85c0-25be3fb48a6e.jsonl`
-- `/ll:confidence-check` - 2026-03-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/556f7371-7835-47ca-a34d-204ed0fd9aed.jsonl`
-- `/ll:refine-issue` - 2026-03-25T00:45:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62553ed0-a6a8-48a9-af6f-3ab4cdac1a47.jsonl`
-- `/ll:capture-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3df6195-41d1-442e-a5ec-89e21c18fa59.jsonl`
+- `/ll:verify-issues` - 2026-03-25T03:33:56 - `9edfa2c8-9075-40b8-90e5-e170754a8201.jsonl`
+- `/ll:manage-issue` - 2026-03-24T00:00:00Z
+- `/ll:ready-issue` - 2026-03-25T02:31:45 - `0cde3f7e-fca2-4395-b55a-e28e71a38dcf.jsonl`
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `80e15269-8cb1-400c-bfab-f3ed9eab7c73.jsonl`
+- `/ll:refine-issue` - 2026-03-25T02:05:52 - `2efc34df-45f4-4127-ac70-33a748d33768.jsonl`
+- `/ll:format-issue` - 2026-03-25T01:57:19 - `c4c4f281-2969-4dd6-85c0-25be3fb48a6e.jsonl`
+- `/ll:confidence-check` - 2026-03-25T00:00:00Z - `556f7371-7835-47ca-a34d-204ed0fd9aed.jsonl`
+- `/ll:refine-issue` - 2026-03-25T00:45:54 - `62553ed0-a6a8-48a9-af6f-3ab4cdac1a47.jsonl`
+- `/ll:capture-issue` - 2026-03-24T00:00:00Z - `f3df6195-41d1-442e-a5ec-89e21c18fa59.jsonl`
 
 ## Status
 

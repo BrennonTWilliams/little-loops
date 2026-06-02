@@ -141,5 +141,5 @@ return evaluate_llm_structured(
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-15T23:09:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d17fbbd-36b8-4335-83e3-dd4b0e77d8b2.jsonl`
-- `/ll:refine-issue` - 2026-03-15T23:04:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c84ab5a-c97c-49a5-bd30-6defbaef2cab.jsonl`
+- `/ll:ready-issue` - 2026-03-15T23:09:35 - `2d17fbbd-36b8-4335-83e3-dd4b0e77d8b2.jsonl`
+- `/ll:refine-issue` - 2026-03-15T23:04:53 - `5c84ab5a-c97c-49a5-bd30-6defbaef2cab.jsonl`

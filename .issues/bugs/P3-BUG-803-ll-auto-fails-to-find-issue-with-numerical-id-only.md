@@ -185,10 +185,10 @@ Then update each filter site:
 `bug`, `cli`, `ll-auto`, `ll-parallel`, `ll-sprint`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-18T21:30:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca94f3f3-959e-43fd-ac13-c9e47fdec9ac.jsonl`
-- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6efbf13e-9ad7-4b3c-b086-8e2cc5c01743.jsonl`
-- `/ll:refine-issue` - 2026-03-18T21:23:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c4bef4a0-8ef2-4791-9ece-23a973e8fe9b.jsonl`
-- `/ll:capture-issue` - 2026-03-18T16:10:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-18T21:30:22 - `ca94f3f3-959e-43fd-ac13-c9e47fdec9ac.jsonl`
+- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `6efbf13e-9ad7-4b3c-b086-8e2cc5c01743.jsonl`
+- `/ll:refine-issue` - 2026-03-18T21:23:35 - `c4bef4a0-8ef2-4791-9ece-23a973e8fe9b.jsonl`
+- `/ll:capture-issue` - 2026-03-18T16:10:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 

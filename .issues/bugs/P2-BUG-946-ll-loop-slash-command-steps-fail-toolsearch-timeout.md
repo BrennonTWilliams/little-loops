@@ -186,13 +186,12 @@ def run_claude_command(
 `bug`, `fsm`, `ll-loop`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-04T03:52:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e94e2071-e3f7-4324-98fe-e817a4961f94.jsonl`
-- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b333ee9b-a17d-4e46-80c3-e1e9b655ac40.jsonl`
-- `/ll:refine-issue` - 2026-04-04T03:48:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56740bd0-a1c0-4c17-82fe-d5a9a3b4cb7c.jsonl`
+- `/ll:ready-issue` - 2026-04-04T03:52:40 - `e94e2071-e3f7-4324-98fe-e817a4961f94.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `b333ee9b-a17d-4e46-80c3-e1e9b655ac40.jsonl`
+- `/ll:refine-issue` - 2026-04-04T03:48:20 - `56740bd0-a1c0-4c17-82fe-d5a9a3b4cb7c.jsonl`
 
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b25bbd11-d148-42ec-b212-9c6172060a64.jsonl`
-- `/ll:manage-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-
+- `/ll:manage-issue` - 2026-04-03T00:00:00Z
 ---
 
 **Completed** | Created: 2026-04-03 | Completed: 2026-04-03 | Priority: P2

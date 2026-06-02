@@ -303,13 +303,13 @@ Implemented `action_type: mcp_tool` for FSM loops via the near-term shell wrappe
 - All referenced line numbers still accurate: `_is_prompt_action()` at executor.py:808, `_run_action()` branch at line 616, `_evaluate()` at line 684, `interpolate_dict()` at interpolation.py:209.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-14T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
-- `/ll:ready-issue` - 2026-03-15T04:07:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8565afcb-7de8-476e-94cd-76c81f7c9e0a.jsonl`
-- `/ll:verify-issues` - 2026-03-15T04:03:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1231390f-e07b-43cf-82bc-62fcb1500cc9.jsonl`
-- `/ll:confidence-check` - 2026-03-14T22:41:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9983e1f-574b-4ba2-b486-db906fc5539a.jsonl`
-- `/ll:refine-issue` - 2026-03-15T03:13:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/855ff716-46a0-4225-82ec-c048ef094860.jsonl`
-- `/ll:verify-issues` - 2026-03-15T00:11:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
-- `/ll:capture-issue` - 2026-03-13T21:15:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
-- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
-- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2acb782e-c208-43f1-8534-96bfd95ced6e.jsonl`
+- `/ll:manage-issue` - 2026-03-14T00:00:00 - `current-session.jsonl`
+- `/ll:ready-issue` - 2026-03-15T04:07:29 - `8565afcb-7de8-476e-94cd-76c81f7c9e0a.jsonl`
+- `/ll:verify-issues` - 2026-03-15T04:03:35 - `1231390f-e07b-43cf-82bc-62fcb1500cc9.jsonl`
+- `/ll:confidence-check` - 2026-03-14T22:41:00 - `b9983e1f-574b-4ba2-b486-db906fc5539a.jsonl`
+- `/ll:refine-issue` - 2026-03-15T03:13:34 - `855ff716-46a0-4225-82ec-c048ef094860.jsonl`
+- `/ll:verify-issues` - 2026-03-15T00:11:18 - `623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
+- `/ll:capture-issue` - 2026-03-13T21:15:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `2acb782e-c208-43f1-8534-96bfd95ced6e.jsonl`

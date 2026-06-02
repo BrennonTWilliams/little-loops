@@ -254,8 +254,8 @@ def test_init_on_error_routes_to_diagnose_error(self, data: dict) -> None:
 **Priority**: P3 | **Created**: 2026-05-18
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-18T08:54:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/432522a5-afac-4f66-8030-82eb31701e84.jsonl`
-- `/ll:confidence-check` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a910a85-ab3f-4425-9beb-e6f55b2a3509.jsonl`
-- `/ll:wire-issue` - 2026-05-18T08:48:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1a75732-1463-4591-9df1-c93fc0254092.jsonl`
-- `/ll:refine-issue` - 2026-05-18T08:42:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a6af136-3690-4fe3-9864-f6e0f5f3d980.jsonl`
-- `/ll:issue-size-review` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3772e425-1416-4cc8-baac-8e0f351122fa.jsonl`
+- `/ll:ready-issue` - 2026-05-18T08:54:37 - `432522a5-afac-4f66-8030-82eb31701e84.jsonl`
+- `/ll:confidence-check` - 2026-05-18T00:00:00 - `9a910a85-ab3f-4425-9beb-e6f55b2a3509.jsonl`
+- `/ll:wire-issue` - 2026-05-18T08:48:45 - `e1a75732-1463-4591-9df1-c93fc0254092.jsonl`
+- `/ll:refine-issue` - 2026-05-18T08:42:26 - `0a6af136-3690-4fe3-9864-f6e0f5f3d980.jsonl`
+- `/ll:issue-size-review` - 2026-05-18T00:00:00 - `3772e425-1416-4cc8-baac-8e0f351122fa.jsonl`

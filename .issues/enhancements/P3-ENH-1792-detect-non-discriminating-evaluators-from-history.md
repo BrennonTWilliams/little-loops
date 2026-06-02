@@ -232,14 +232,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 | `.issues/features/P2-FEAT-1790-ab-baseline-mode-for-ll-loop-run.md` | Stronger signal source — paired with/without runs amplify the variance read |
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-31T03:50:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2968db23-d30a-4fb4-b91c-3c30dd626600.jsonl`
-- `/ll:wire-issue` - 2026-05-31T03:45:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea9e94a2-c77d-45f9-87f4-5405d4c3b67e.jsonl`
-- `/ll:refine-issue` - 2026-05-31T03:38:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5706391b-b4d6-4dc9-9959-0b1db732c320.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:format-issue` - 2026-05-29T19:36:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22fa3793-04ed-422e-a858-92ebec183578.jsonl`
-- `/ll:capture-issue` - 2026-05-29T19:08:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
-- `/ll:confidence-check` - 2026-05-30T22:48:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a85e424a-d8a3-4574-955e-4442d05c5fe2.jsonl`
-- `/ll:manage-issue` - 2026-05-31T04:01:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b10ff71-7428-45d7-8799-ab85bfd7e39c.jsonl`
+- `/ll:ready-issue` - 2026-05-31T03:50:52 - `2968db23-d30a-4fb4-b91c-3c30dd626600.jsonl`
+- `/ll:wire-issue` - 2026-05-31T03:45:22 - `ea9e94a2-c77d-45f9-87f4-5405d4c3b67e.jsonl`
+- `/ll:refine-issue` - 2026-05-31T03:38:33 - `5706391b-b4d6-4dc9-9959-0b1db732c320.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:18 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:format-issue` - 2026-05-29T19:36:49 - `22fa3793-04ed-422e-a858-92ebec183578.jsonl`
+- `/ll:capture-issue` - 2026-05-29T19:08:54Z - `5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
+- `/ll:confidence-check` - 2026-05-30T22:48:00Z - `a85e424a-d8a3-4574-955e-4442d05c5fe2.jsonl`
+- `/ll:manage-issue` - 2026-05-31T04:01:27Z - `7b10ff71-7428-45d7-8799-ab85bfd7e39c.jsonl`
 
 ---
 

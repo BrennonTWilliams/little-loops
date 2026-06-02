@@ -143,11 +143,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `loops`, `outer-loop-eval`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-08T18:43:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4b3c2f63-bd77-4f05-beff-62dfd0e3b7b5.jsonl`
-- `/ll:confidence-check` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/099e75da-a1a5-40c7-a589-3871b7902a35.jsonl`
-- `/ll:wire-issue` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:refine-issue` - 2026-04-08T18:35:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29500f71-5c9a-408d-a706-2f171a54f6dc.jsonl`
-- `/ll:format-issue` - 2026-04-08T18:31:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc203fc7-0ff3-4083-ad37-4f7804f33e8d.jsonl`
+- `/ll:ready-issue` - 2026-04-08T18:43:17 - `4b3c2f63-bd77-4f05-beff-62dfd0e3b7b5.jsonl`
+- `/ll:confidence-check` - 2026-04-08T00:00:00 - `099e75da-a1a5-40c7-a589-3871b7902a35.jsonl`
+- `/ll:wire-issue` - 2026-04-08T00:00:00 - `current.jsonl`
+- `/ll:refine-issue` - 2026-04-08T18:35:22 - `29500f71-5c9a-408d-a706-2f171a54f6dc.jsonl`
+- `/ll:format-issue` - 2026-04-08T18:31:38 - `fc203fc7-0ff3-4083-ad37-4f7804f33e8d.jsonl`
 
 - `/ll:capture-issue` - 2026-04-08T18:24:52Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8163e06d-ba51-4c89-ad08-3b2526018e0f.jsonl`
 

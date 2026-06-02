@@ -143,15 +143,15 @@ Verified 2026-03-16 (re-verified, still accurate). All core claims confirmed acc
 **Correction applied**: Integration Map listed `skills/loop-suggester/SKILL.md` — this path does not exist. `loop-suggester` is a command at `commands/loop-suggester.md` and does not reference create-loop template names directly.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6456b659-c5ad-4cbd-b4bb-654a02c3ae00.jsonl`
-- `/ll:ready-issue` - 2026-03-17T05:13:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5fa8754-d7aa-4cec-9784-96236a9573da.jsonl`
-- `/ll:verify-issues` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6845dcb9-5d3d-4e87-aaff-4382e49ef209.jsonl`
-- `/ll:verify-issues` - 2026-03-17T03:55:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5cd3087-827b-4f96-b97c-87f26d20ce04.jsonl`
-- `/ll:refine-issue` - 2026-03-17T03:49:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df1153d7-c8ab-4322-adaa-43294b1e0618.jsonl`
-- `/ll:refine-issue` - 2026-03-16T23:50:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a6f7f86-5e6a-45f1-a1df-d24d55c9a6fc.jsonl`
-- `/ll:refine-issue` - 2026-03-16T23:38:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46067e65-3dd1-4058-a36b-dc2c5cfbade9.jsonl`
-- `/ll:verify-issues` - 2026-03-15T19:32:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
-- `/ll:format-issue` - 2026-03-15T19:29:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
-- `/ll:confidence-check` - 2026-03-15T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a783bed6-ca14-454d-baf2-ee97b0cf2f33.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5d2a676-504a-430c-a0d5-b6a5a25cb87d.jsonl`
+- `/ll:manage-issue` - 2026-03-17T00:00:00 - `6456b659-c5ad-4cbd-b4bb-654a02c3ae00.jsonl`
+- `/ll:ready-issue` - 2026-03-17T05:13:10 - `e5fa8754-d7aa-4cec-9784-96236a9573da.jsonl`
+- `/ll:verify-issues` - 2026-03-16T00:00:00 - `6845dcb9-5d3d-4e87-aaff-4382e49ef209.jsonl`
+- `/ll:verify-issues` - 2026-03-17T03:55:27 - `c5cd3087-827b-4f96-b97c-87f26d20ce04.jsonl`
+- `/ll:refine-issue` - 2026-03-17T03:49:01 - `df1153d7-c8ab-4322-adaa-43294b1e0618.jsonl`
+- `/ll:refine-issue` - 2026-03-16T23:50:39 - `4a6f7f86-5e6a-45f1-a1df-d24d55c9a6fc.jsonl`
+- `/ll:refine-issue` - 2026-03-16T23:38:44 - `46067e65-3dd1-4058-a36b-dc2c5cfbade9.jsonl`
+- `/ll:verify-issues` - 2026-03-15T19:32:00 - `5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
+- `/ll:format-issue` - 2026-03-15T19:29:53 - `5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
+- `/ll:confidence-check` - 2026-03-15T20:00:00 - `5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `a783bed6-ca14-454d-baf2-ee97b0cf2f33.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `e5d2a676-504a-430c-a0d5-b6a5a25cb87d.jsonl`

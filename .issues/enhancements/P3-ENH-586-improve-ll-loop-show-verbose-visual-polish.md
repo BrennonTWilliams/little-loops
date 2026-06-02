@@ -240,12 +240,12 @@ ENH-540, ENH-541, ENH-542, FEAT-543 share `scripts/little_loops/cli/loop/info.py
 
 ## Session Log
 
-- `/ll:capture-issue` - 2026-03-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/06c58b54-ce27-447a-8683-f1add2d8414b.jsonl`
-- `/ll:format-issue` - 2026-03-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
-- `/ll:format-issue` - 2026-03-05T12:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec462971-7c6a-4df7-ac85-37adb7889f90.jsonl`
-- `/ll:verify-issues` - 2026-03-05T12:01:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/58908625-dc68-4472-81a3-f053c146f77f.jsonl`
-- `/ll:map-dependencies` - 2026-03-05T12:02:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/58908625-dc68-4472-81a3-f053c146f77f.jsonl`
-- `/ll:confidence-check` - 2026-03-05T12:03:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/58908625-dc68-4472-81a3-f053c146f77f.jsonl`
+- `/ll:capture-issue` - 2026-03-05T00:00:00 - `06c58b54-ce27-447a-8683-f1add2d8414b.jsonl`
+- `/ll:format-issue` - 2026-03-05T00:00:00 - `ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:format-issue` - 2026-03-05T12:00:00 - `ec462971-7c6a-4df7-ac85-37adb7889f90.jsonl`
+- `/ll:verify-issues` - 2026-03-05T12:01:00 - `58908625-dc68-4472-81a3-f053c146f77f.jsonl`
+- `/ll:map-dependencies` - 2026-03-05T12:02:00 - `58908625-dc68-4472-81a3-f053c146f77f.jsonl`
+- `/ll:confidence-check` - 2026-03-05T12:03:00 - `58908625-dc68-4472-81a3-f053c146f77f.jsonl`
 
 ## Resolution
 
@@ -273,7 +273,7 @@ ENH-540, ENH-541, ENH-542, FEAT-543 share `scripts/little_loops/cli/loop/info.py
 
 ## Session Log
 
-- `/ll:manage-issue` - 2026-03-05T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:manage-issue` - 2026-03-05T00:00:00 - `ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
 
 ## Status
 

@@ -141,12 +141,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Full regression: 5142 passed, 0 failures.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-22T19:35:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a859f5cc-f7cb-4667-9421-95d38ae68112.jsonl`
-- `/ll:verify-issues` - 2026-04-22T19:23:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/981b93f6-7840-486e-af3f-5e953df5ecd6.jsonl`
-- `/ll:wire-issue` - 2026-04-22T16:31:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a35c25d-86e0-4d3c-b6dd-aef15be8bbd8.jsonl`
-- `/ll:refine-issue` - 2026-04-22T16:25:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01c6c26c-1c26-4390-9e46-9fc453943199.jsonl`
-- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d28f812d-9c9f-4c1d-9132-8d4f61f6064c.jsonl`
-- `/ll:confidence-check` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9951fc11-0afc-4200-a1a9-d359e2c874c3.jsonl`
+- `/ll:ready-issue` - 2026-04-22T19:35:58 - `a859f5cc-f7cb-4667-9421-95d38ae68112.jsonl`
+- `/ll:verify-issues` - 2026-04-22T19:23:17 - `981b93f6-7840-486e-af3f-5e953df5ecd6.jsonl`
+- `/ll:wire-issue` - 2026-04-22T16:31:22 - `7a35c25d-86e0-4d3c-b6dd-aef15be8bbd8.jsonl`
+- `/ll:refine-issue` - 2026-04-22T16:25:56 - `01c6c26c-1c26-4390-9e46-9fc453943199.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `d28f812d-9c9f-4c1d-9132-8d4f61f6064c.jsonl`
+- `/ll:confidence-check` - 2026-04-22T00:00:00 - `9951fc11-0afc-4200-a1a9-d359e2c874c3.jsonl`
 
 ---
 

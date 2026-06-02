@@ -163,15 +163,15 @@ Docs: updated `docs/guides/LOOPS_GUIDE.md` (summary table, Technique paragraph, 
 Out of scope (as specified): `recursive-refine.yaml`, `refine-to-ready-issue.yaml`, `auto-refine-and-implement.yaml` are unmodified; cross-loop `.loops/tmp/` lock discipline remains a future cross-cutting issue.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-16T21:13:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d92dd787-613a-4b5b-b647-4d4d13988224.jsonl`
-- `/ll:manage-issue` - 2026-04-16T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d92dd787-613a-4b5b-b647-4d4d13988224.jsonl`
-- `/ll:ready-issue` - 2026-04-16T21:05:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7b1d464-b428-4d24-bdd8-cdaeee0a8f26.jsonl`
-- `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55b4de4f-cca6-43c5-91b9-e3975086b634.jsonl`
-- `/ll:confidence-check` - 2026-04-16T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aaebd784-810f-4805-a32b-e4738f31ef3f.jsonl`
-- `/ll:wire-issue` - 2026-04-16T20:42:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96d02ce5-8f98-44e4-8c86-7a470c9fbe61.jsonl`
-- `/ll:refine-issue` - 2026-04-16T20:35:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2b798fe-90a5-495d-a364-a94a8c145fba.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-16T21:13:39 - `d92dd787-613a-4b5b-b647-4d4d13988224.jsonl`
+- `/ll:manage-issue` - 2026-04-16T22:00:00 - `d92dd787-613a-4b5b-b647-4d4d13988224.jsonl`
+- `/ll:ready-issue` - 2026-04-16T21:05:37 - `b7b1d464-b428-4d24-bdd8-cdaeee0a8f26.jsonl`
+- `/ll:confidence-check` - 2026-04-16T00:00:00 - `55b4de4f-cca6-43c5-91b9-e3975086b634.jsonl`
+- `/ll:confidence-check` - 2026-04-16T21:00:00 - `aaebd784-810f-4805-a32b-e4738f31ef3f.jsonl`
+- `/ll:wire-issue` - 2026-04-16T20:42:19 - `96d02ce5-8f98-44e4-8c86-7a470c9fbe61.jsonl`
+- `/ll:refine-issue` - 2026-04-16T20:35:05 - `f2b798fe-90a5-495d-a364-a94a8c145fba.jsonl`
 
-- `/ll:capture-issue` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba64c432-8f9f-4867-9fe9-0e01b12d2cf4.jsonl`
+- `/ll:capture-issue` - 2026-04-16T00:00:00 - `ba64c432-8f9f-4867-9fe9-0e01b12d2cf4.jsonl`
 
 ---
 

@@ -199,9 +199,9 @@ Implemented `scripts/little_loops/generate_schemas.py` with all 19 `SCHEMA_DEFIN
 **Completed** | Created: 2026-04-04 | Completed: 2026-04-05 | Priority: P5
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-05T04:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-04-05T03:25:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7d1e605-0fdb-435d-9c24-51c6b2c887ca.jsonl`
-- `/ll:confidence-check` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e4f6cfd-636d-4792-9a4c-92d415af7aa5.jsonl`
-- `/ll:refine-issue` - 2026-04-05T02:50:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5220b845-c800-42be-a6a4-bb7a3ba497cc.jsonl`
-- `/ll:format-issue` - 2026-04-05T02:45:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7958e8d2-a116-487b-bcf4-0dbe75ee95ea.jsonl`
+- `/ll:manage-issue` - 2026-04-05T04:00:00Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-04-05T03:25:49 - `b7d1e605-0fdb-435d-9c24-51c6b2c887ca.jsonl`
+- `/ll:confidence-check` - 2026-04-04T00:00:00Z - `2e4f6cfd-636d-4792-9a4c-92d415af7aa5.jsonl`
+- `/ll:refine-issue` - 2026-04-05T02:50:11 - `5220b845-c800-42be-a6a4-bb7a3ba497cc.jsonl`
+- `/ll:format-issue` - 2026-04-05T02:45:43 - `7958e8d2-a116-487b-bcf4-0dbe75ee95ea.jsonl`
 - `/ll:capture-issue` - 2026-04-04T00:00:00Z - split from FEAT-916

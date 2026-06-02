@@ -165,8 +165,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `python -m mypy scripts/little_loops/parallel/orchestrator.py` — clean
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0acc05ca-0e56-4d0d-b243-afd1e09ac0f8.jsonl`
-- `/ll:wire-issue` - 2026-04-18T20:51:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afe1f263-543e-40fd-838a-107e48c560ab.jsonl`
-- `/ll:refine-issue` - 2026-04-18T20:45:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78cf1b63-ee15-475a-9bbd-d4abe407f318.jsonl`
-- `/ll:issue-size-review` - 2026-04-18T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f4fec2da-840f-48eb-a5e3-fc86007899b8.jsonl`
-- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c5bb8fb-3ecb-45f7-9cd0-f674b644124e.jsonl`
+- `/ll:manage-issue` - 2026-04-18T00:00:00Z - `0acc05ca-0e56-4d0d-b243-afd1e09ac0f8.jsonl`
+- `/ll:wire-issue` - 2026-04-18T20:51:12 - `afe1f263-543e-40fd-838a-107e48c560ab.jsonl`
+- `/ll:refine-issue` - 2026-04-18T20:45:39 - `78cf1b63-ee15-475a-9bbd-d4abe407f318.jsonl`
+- `/ll:issue-size-review` - 2026-04-18T21:00:00Z - `f4fec2da-840f-48eb-a5e3-fc86007899b8.jsonl`
+- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `5c5bb8fb-3ecb-45f7-9cd0-f674b644124e.jsonl`

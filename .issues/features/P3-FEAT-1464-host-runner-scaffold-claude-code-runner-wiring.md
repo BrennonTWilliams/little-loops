@@ -246,8 +246,8 @@ _Added by `/ll:confidence-check` on 2026-05-15_
 **Note**: Children are strictly sequential (FEAT-1468 requires FEAT-1467). If parallelism isn't available, consider implementing as a single PR.
 
 ## Session Log
-- `/ll:refine-issue` - 2026-05-15T12:46:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82fbcae4-2906-4b5e-9aa8-40a0851611c6.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0a84cca-2574-4c32-8edd-684205b8feb0.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/edba2017-dcd5-412e-a69d-62b9a5dd8541.jsonl`
-- `/ll:wire-issue` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6024d56a-9aff-4760-9ebc-3ce5b51bb09f.jsonl`
+- `/ll:refine-issue` - 2026-05-15T12:46:34 - `82fbcae4-2906-4b5e-9aa8-40a0851611c6.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `d0a84cca-2574-4c32-8edd-684205b8feb0.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `edba2017-dcd5-412e-a69d-62b9a5dd8541.jsonl`
+- `/ll:wire-issue` - 2026-05-15T00:00:00
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `6024d56a-9aff-4760-9ebc-3ce5b51bb09f.jsonl`

@@ -110,7 +110,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feature`, `testing`, `sync`, `captured`
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-04-06T16:12:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
+- `/ll:scan-codebase` - 2026-04-06T16:12:29 - `c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 
 ## Status
 

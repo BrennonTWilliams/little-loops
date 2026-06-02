@@ -195,10 +195,10 @@ No public API changes. The `--show-diagrams` flag behavior is extended, not alte
 **Completed** | Created: 2026-04-03 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-03T22:44:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2bdb7a8-2c16-4553-abe8-2d4ad65a977a.jsonl`
-- `/ll:verify-issues` - 2026-04-03T21:58:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b97f38eb-10b6-49e1-9b95-16bde969e44b.jsonl`
-- `/ll:refine-issue` - 2026-04-03T21:55:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b97f38eb-10b6-49e1-9b95-16bde969e44b.jsonl`
-- `/ll:confidence-check` - 2026-04-03T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f7e84b3-4142-485f-b208-f3c6eab0403e.jsonl`
-- `/ll:format-issue` - 2026-04-03T21:51:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7874a99-6dd2-4c37-bbb7-a3cc34468974.jsonl`
-- `/ll:capture-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/225d2a56-bcaa-4bef-9bb5-92a00d3997ee.jsonl`
-- `/ll:manage-issue enhancement improve ENH-935` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-03T22:44:33 - `c2bdb7a8-2c16-4553-abe8-2d4ad65a977a.jsonl`
+- `/ll:verify-issues` - 2026-04-03T21:58:14 - `b97f38eb-10b6-49e1-9b95-16bde969e44b.jsonl`
+- `/ll:refine-issue` - 2026-04-03T21:55:16 - `b97f38eb-10b6-49e1-9b95-16bde969e44b.jsonl`
+- `/ll:confidence-check` - 2026-04-03T22:30:00 - `2f7e84b3-4142-485f-b208-f3c6eab0403e.jsonl`
+- `/ll:format-issue` - 2026-04-03T21:51:08 - `b7874a99-6dd2-4c37-bbb7-a3cc34468974.jsonl`
+- `/ll:capture-issue` - 2026-04-03T00:00:00Z - `225d2a56-bcaa-4bef-9bb5-92a00d3997ee.jsonl`
+- `/ll:manage-issue enhancement improve ENH-935` - 2026-04-03T00:00:00Z - `current.jsonl`

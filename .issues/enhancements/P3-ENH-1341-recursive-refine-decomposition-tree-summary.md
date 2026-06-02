@@ -221,9 +221,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 Implemented fallback tree reconstruction using `parent_issue:` frontmatter grep (ENH-1340 not yet available). Added `tree_summary: true` context variable to `recursive-refine.yaml`, extended the `done` state with an inline Python depth-first tree renderer, updated `TestDoneSummary._DONE_SCRIPT` and added 3 new tree tests, updated `LOOPS_GUIDE.md` context table and summary example, and added `test_enh1341_doc_wiring.py`.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-03T18:28:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c073749a-0a8f-468e-b646-4a3878f4c8b1.jsonl`
-- `/ll:confidence-check` - 2026-05-03T19:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ccd162c-559d-45b4-8072-deaaeb589fb9.jsonl`
-- `/ll:wire-issue` - 2026-05-03T18:23:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d906b4c-4829-4094-a674-e4103fda9dc4.jsonl`
-- `/ll:refine-issue` - 2026-05-03T18:15:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c5899e6-a66d-4aa4-877c-73b8f4a247c6.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:20:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:format-issue` - 2026-05-03T04:41:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a41e2fe5-b6da-449b-8d60-6b8ddd06d97c.jsonl`
+- `/ll:ready-issue` - 2026-05-03T18:28:39 - `c073749a-0a8f-468e-b646-4a3878f4c8b1.jsonl`
+- `/ll:confidence-check` - 2026-05-03T19:00:00 - `5ccd162c-559d-45b4-8072-deaaeb589fb9.jsonl`
+- `/ll:wire-issue` - 2026-05-03T18:23:18 - `4d906b4c-4829-4094-a674-e4103fda9dc4.jsonl`
+- `/ll:refine-issue` - 2026-05-03T18:15:13 - `8c5899e6-a66d-4aa4-877c-73b8f4a247c6.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:20:54 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:format-issue` - 2026-05-03T04:41:51 - `a41e2fe5-b6da-449b-8d60-6b8ddd06d97c.jsonl`

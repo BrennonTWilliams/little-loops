@@ -122,8 +122,8 @@ Added Phase 4.5 (Findings Write-Back) to `skills/confidence-check/SKILL.md`:
 - Skipped when `CHECK_MODE` is true (consistent with existing no-writes guard)
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:ready-issue` - 2026-03-16T18:28:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4eb2f439-d3e3-4349-99c9-26bfa27320ed.jsonl`
-- `/ll:refine-issue` - 2026-03-16T17:32:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
+- `/ll:manage-issue` - 2026-03-16T00:00:00Z - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:ready-issue` - 2026-03-16T18:28:37 - `4eb2f439-d3e3-4349-99c9-26bfa27320ed.jsonl`
+- `/ll:refine-issue` - 2026-03-16T17:32:12 - `d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
 - `/ll:capture-issue` - 2026-03-16T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7b97881-4db4-44f5-a2fe-58abb7c61bc4.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52f4c420-68f1-4545-9ebd-d15632861f05.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `52f4c420-68f1-4545-9ebd-d15632861f05.jsonl`

@@ -228,14 +228,14 @@ Routing conventions: `on_yes` / `on_partial` / `on_no`. Captures: `${captured.<s
 ---
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-18T19:51:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ff9cd96-1544-4ffa-b28c-15aab5e9f3e8.jsonl`
-- `/ll:confidence-check` - 2026-04-12T19:21:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/af507141-e237-44c4-86f4-c20c393e747e.jsonl`
-- `/ll:refine-issue` - 2026-04-13T00:19:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df842483-0396-4e4d-ad0e-01b546a41fd1.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/64ed8017-a10a-4a9e-9954-5d3beb6f9e8e.jsonl`
-- `/ll:wire-issue` - 2026-04-13T00:13:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a631dce1-2f8a-4459-8742-f86265563643.jsonl`
-- `/ll:refine-issue` - 2026-04-13T00:06:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1f36fa8-ae70-432a-976e-5a3909abedde.jsonl`
-- `/ll:format-issue` - 2026-04-13T00:02:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/170bc7ad-db01-4440-a01d-bd81fa955111.jsonl`
-- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/847acfcb-8aba-4124-8dc8-a98c7902e550.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-18T19:51:48 - `8ff9cd96-1544-4ffa-b28c-15aab5e9f3e8.jsonl`
+- `/ll:confidence-check` - 2026-04-12T19:21:00 - `af507141-e237-44c4-86f4-c20c393e747e.jsonl`
+- `/ll:refine-issue` - 2026-04-13T00:19:25 - `df842483-0396-4e4d-ad0e-01b546a41fd1.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00 - `64ed8017-a10a-4a9e-9954-5d3beb6f9e8e.jsonl`
+- `/ll:wire-issue` - 2026-04-13T00:13:57 - `a631dce1-2f8a-4459-8742-f86265563643.jsonl`
+- `/ll:refine-issue` - 2026-04-13T00:06:54 - `e1f36fa8-ae70-432a-976e-5a3909abedde.jsonl`
+- `/ll:format-issue` - 2026-04-13T00:02:42 - `170bc7ad-db01-4440-a01d-bd81fa955111.jsonl`
+- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `847acfcb-8aba-4124-8dc8-a98c7902e550.jsonl`
 
 ---
 

@@ -216,10 +216,10 @@ Test coverage added:
 **Completed** | Created: 2026-05-03 | Completed: 2026-05-03 | Priority: P3
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-03T21:27:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:ready-issue` - 2026-05-03T21:18:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e707af3-cf6e-4f2e-9f3b-b72a86d802c5.jsonl`
-- `/ll:confidence-check` - 2026-05-03T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c4e6ce0-8004-4a8f-bb90-942b42832dd6.jsonl`
-- `/ll:wire-issue` - 2026-05-03T21:15:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e707af3-cf6e-4f2e-9f3b-b72a86d802c5.jsonl`
-- `/ll:refine-issue` - 2026-05-03T21:10:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c4e6ce0-8004-4a8f-bb90-942b42832dd6.jsonl`
-- `/ll:format-issue` - 2026-05-03T19:20:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16a69f6f-62b6-4282-8d76-179c33de8c88.jsonl`
-- `/ll:capture-issue` - 2026-05-03T16:43:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81b5153d-e662-4abf-af0e-b3ec54065e0b.jsonl`
+- `/ll:manage-issue` - 2026-05-03T21:27:21Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-03T21:18:46 - `2e707af3-cf6e-4f2e-9f3b-b72a86d802c5.jsonl`
+- `/ll:confidence-check` - 2026-05-03T22:00:00Z - `3c4e6ce0-8004-4a8f-bb90-942b42832dd6.jsonl`
+- `/ll:wire-issue` - 2026-05-03T21:15:14 - `2e707af3-cf6e-4f2e-9f3b-b72a86d802c5.jsonl`
+- `/ll:refine-issue` - 2026-05-03T21:10:51 - `3c4e6ce0-8004-4a8f-bb90-942b42832dd6.jsonl`
+- `/ll:format-issue` - 2026-05-03T19:20:55 - `16a69f6f-62b6-4282-8d76-179c33de8c88.jsonl`
+- `/ll:capture-issue` - 2026-05-03T16:43:25Z - `81b5153d-e662-4abf-af0e-b3ec54065e0b.jsonl`

@@ -209,16 +209,16 @@ Only `enqueue` records with `content` starting with `/ll:` indicate ll activity.
 **Key finding**: `queue-operation` records appear only in JSONL files under worktree/worker project folders (e.g. `-Users-…-worktrees-worker-*`), not in the main project folder. The `discover` subcommand must iterate across *all* project folders (not just the current one) to catch these.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-23T20:48:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91ca2041-f6d7-42db-87e7-ed4feb5fe3d6.jsonl`
-- `/ll:ready-issue` - 2026-04-23T20:39:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e6fcf12-648c-435c-aad9-6d0077b45ffe.jsonl`
-- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42248e1e-57b2-46b9-b309-6400d9dce735.jsonl`
-- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/633190e4-6411-4813-8acd-58cafc8b3394.jsonl`
-- `/ll:refine-issue` - 2026-04-23T20:27:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c12e9ac9-558a-4d95-b9cb-bbcf05d2e8f8.jsonl`
-- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de8ffde5-dc2f-4352-8703-9f41f72514a5.jsonl`
-- `/ll:wire-issue` - 2026-04-23T15:32:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de8ffde5-dc2f-4352-8703-9f41f72514a5.jsonl`
-- `/ll:refine-issue` - 2026-04-23T15:26:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fde7109f-3979-4ed7-a527-cc1fc3edcffb.jsonl`
-- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
-- `/ll:manage-issue` - 2026-04-23T20:48:10Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e6fcf12-648c-435c-aad9-6d0077b45ffe.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-23T20:48:39 - `91ca2041-f6d7-42db-87e7-ed4feb5fe3d6.jsonl`
+- `/ll:ready-issue` - 2026-04-23T20:39:03 - `9e6fcf12-648c-435c-aad9-6d0077b45ffe.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `42248e1e-57b2-46b9-b309-6400d9dce735.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `633190e4-6411-4813-8acd-58cafc8b3394.jsonl`
+- `/ll:refine-issue` - 2026-04-23T20:27:11 - `c12e9ac9-558a-4d95-b9cb-bbcf05d2e8f8.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `de8ffde5-dc2f-4352-8703-9f41f72514a5.jsonl`
+- `/ll:wire-issue` - 2026-04-23T15:32:08 - `de8ffde5-dc2f-4352-8703-9f41f72514a5.jsonl`
+- `/ll:refine-issue` - 2026-04-23T15:26:29 - `fde7109f-3979-4ed7-a527-cc1fc3edcffb.jsonl`
+- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `/ll:manage-issue` - 2026-04-23T20:48:10Z - `9e6fcf12-648c-435c-aad9-6d0077b45ffe.jsonl`
 
 ---
 

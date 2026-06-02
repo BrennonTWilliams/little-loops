@@ -170,15 +170,15 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feat`, `loops`, `built-in-loop`, `loop-eval`, `captured`
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-04T19:06:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6ca967e-440e-4dde-a986-22680c5a2ffc.jsonl`
-- `/ll:manage-issue` - 2026-04-04T14:06:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:ready-issue` - 2026-04-04T19:01:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a82e662-8eb3-4575-ae69-c73211dd0513.jsonl`
-- `/ll:refine-issue` - 2026-04-04T18:52:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76ac4db8-bcc3-4fbf-b0ad-52eed4d8e24a.jsonl`
-- `/ll:verify-issues` - 2026-04-03T06:41:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:refine-issue` - 2026-04-03T06:37:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:format-issue` - 2026-04-03T06:31:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:capture-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c25f637-5481-4d98-bba6-846f5500e0e9.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-04T19:06:59 - `d6ca967e-440e-4dde-a986-22680c5a2ffc.jsonl`
+- `/ll:manage-issue` - 2026-04-04T14:06:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-04-04T19:01:05 - `4a82e662-8eb3-4575-ae69-c73211dd0513.jsonl`
+- `/ll:refine-issue` - 2026-04-04T18:52:06 - `76ac4db8-bcc3-4fbf-b0ad-52eed4d8e24a.jsonl`
+- `/ll:verify-issues` - 2026-04-03T06:41:05 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T06:37:22 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:format-issue` - 2026-04-03T06:31:57 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:capture-issue` - 2026-04-03T00:00:00Z - `2c25f637-5481-4d98-bba6-846f5500e0e9.jsonl`
 
 ---
 

@@ -355,14 +355,14 @@ Implemented `loop-router` as a 20-state built-in FSM loop at `scripts/little_loo
 - Recursion guard: `discover_loops` explicitly excludes `loop-router` from the catalog
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T06:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d611ca18-ab9d-4e03-a8ec-22faf5278b1e.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97139a79-dcef-4b4c-81a6-1f92ca838d7f.jsonl`
-- `/ll:refine-issue` - 2026-05-24T05:59:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a3ba6256-c98b-41f3-aa42-08b4d281735f.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c95a88a-c371-475b-bf49-5d58dbcf7c25.jsonl`
-- `/ll:refine-issue` - 2026-05-24T05:31:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b12732b3-3fbc-45ff-97ff-40b2acebd193.jsonl`
-- `/ll:format-issue` - 2026-05-24T02:35:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9eaefb33-d00d-4955-9bd3-f90c748f44ef.jsonl`
-- `/ll:capture-issue` - 2026-05-24T02:32:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ba66e45-43d3-4537-a63b-088dff9cbb2f.jsonl`
-- `/ll:refine-issue` - 2026-05-24T08:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73db8a10-ad41-49e8-a62e-6cbe1b3b0ebf.jsonl`
+- `/ll:ready-issue` - 2026-05-24T06:12:56 - `d611ca18-ab9d-4e03-a8ec-22faf5278b1e.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `97139a79-dcef-4b4c-81a6-1f92ca838d7f.jsonl`
+- `/ll:refine-issue` - 2026-05-24T05:59:49 - `a3ba6256-c98b-41f3-aa42-08b4d281735f.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `7c95a88a-c371-475b-bf49-5d58dbcf7c25.jsonl`
+- `/ll:refine-issue` - 2026-05-24T05:31:39 - `b12732b3-3fbc-45ff-97ff-40b2acebd193.jsonl`
+- `/ll:format-issue` - 2026-05-24T02:35:31 - `9eaefb33-d00d-4955-9bd3-f90c748f44ef.jsonl`
+- `/ll:capture-issue` - 2026-05-24T02:32:39Z - `1ba66e45-43d3-4537-a63b-088dff9cbb2f.jsonl`
+- `/ll:refine-issue` - 2026-05-24T08:15:00 - `73db8a10-ad41-49e8-a62e-6cbe1b3b0ebf.jsonl`
 
 ---
 

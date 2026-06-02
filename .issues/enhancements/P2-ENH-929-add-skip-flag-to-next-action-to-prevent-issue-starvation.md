@@ -191,12 +191,12 @@ Implemented as described. All success metrics met:
 - Enhancement is accurately described; the fix is additive only
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae5f2d8c-a912-40b2-b762-74de7662f6ff.jsonl`
-- `/ll:ready-issue` - 2026-04-03T20:34:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae5f2d8c-a912-40b2-b762-74de7662f6ff.jsonl`
-- `/ll:verify-issues` - 2026-04-03T06:21:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:confidence-check` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:refine-issue` - 2026-04-03T06:18:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:format-issue` - 2026-04-03T06:14:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
-- `/ll:format-issue` - 2026-04-03T04:47:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/677939b4-0616-4d61-b3ac-9611ab44a683.jsonl`
-- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d10376d2-598f-4355-a0dc-b5100fe5afca.jsonl`
+- `/ll:manage-issue` - 2026-04-03T00:00:00 - `ae5f2d8c-a912-40b2-b762-74de7662f6ff.jsonl`
+- `/ll:ready-issue` - 2026-04-03T20:34:32 - `ae5f2d8c-a912-40b2-b762-74de7662f6ff.jsonl`
+- `/ll:verify-issues` - 2026-04-03T06:21:17 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T06:18:37 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:format-issue` - 2026-04-03T06:14:30 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:verify-issues` - 2026-04-02T00:00:00 - `a2482dff-8512-481e-813c-be16a2afb222.jsonl`
+- `/ll:format-issue` - 2026-04-03T04:47:00 - `677939b4-0616-4d61-b3ac-9611ab44a683.jsonl`
+- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `d10376d2-598f-4355-a0dc-b5100fe5afca.jsonl`

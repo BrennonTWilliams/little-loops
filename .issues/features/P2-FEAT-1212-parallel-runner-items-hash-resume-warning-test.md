@@ -128,9 +128,9 @@ _Added by `/ll:confidence-check` on 2026-04-21_
 - FEAT-1174 stdout-echo gap: `persistence.py.resume()` currently emits no WARNING-level logs and `lifecycle.py` has no `Logger.warning()` call for items_hash. If FEAT-1174 omits this echo, assertion #4 (`capsys` stdout check) will fail on delivery.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e495daf-e8c8-43ef-8911-8b0f5ec74795.jsonl`
-- `/ll:refine-issue` - 2026-04-21T05:48:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6631d765-0e68-4ae1-aace-6660a853172c.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ee07b9c-f8db-4390-b679-840b3b16f223.jsonl`
-- `/ll:wire-issue` - 2026-04-21T05:44:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23c62886-3b1f-4c0e-ac39-b325ca81e731.jsonl`
-- `/ll:refine-issue` - 2026-04-21T05:38:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e9b8fde-f907-4393-a9bf-d155310a2741.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dfd96a3-66df-4e02-b30b-139bf75f812f.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `5e495daf-e8c8-43ef-8911-8b0f5ec74795.jsonl`
+- `/ll:refine-issue` - 2026-04-21T05:48:36 - `6631d765-0e68-4ae1-aace-6660a853172c.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `5ee07b9c-f8db-4390-b679-840b3b16f223.jsonl`
+- `/ll:wire-issue` - 2026-04-21T05:44:42 - `23c62886-3b1f-4c0e-ac39-b325ca81e731.jsonl`
+- `/ll:refine-issue` - 2026-04-21T05:38:37 - `9e9b8fde-f907-4393-a9bf-d155310a2741.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `0dfd96a3-66df-4e02-b30b-139bf75f812f.jsonl`

@@ -174,9 +174,9 @@ Implemented the foundational hook-intent types and package skeleton.
 Downstream issues (FEAT-1449, FEAT-1450, FEAT-1451, FEAT-1452, FEAT-1453) can now import these types and consume the wire format.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-12T00:44:08Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6757264-73e6-4e0f-831d-fb2fb85ba038.jsonl`
-- `/ll:ready-issue` - 2026-05-12T00:39:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78401886-76fe-4446-b5d3-3d5306bdd8c9.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d741a832-b0c4-4e6a-84d5-8faf4d5dd659.jsonl`
-- `/ll:wire-issue` - 2026-05-12T00:35:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6752dc5e-825c-4ea9-99ad-59b0667cabe9.jsonl`
-- `/ll:refine-issue` - 2026-05-12T00:28:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8211e223-fbea-436e-8701-f51574d9f5c8.jsonl`
-- `/ll:issue-size-review` - 2026-05-12T00:20:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cb0dc9a-fd6f-4945-97b0-ad6acec56482.jsonl`
+- `/ll:manage-issue` - 2026-05-12T00:44:08Z - `b6757264-73e6-4e0f-831d-fb2fb85ba038.jsonl`
+- `/ll:ready-issue` - 2026-05-12T00:39:47 - `78401886-76fe-4446-b5d3-3d5306bdd8c9.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `d741a832-b0c4-4e6a-84d5-8faf4d5dd659.jsonl`
+- `/ll:wire-issue` - 2026-05-12T00:35:59 - `6752dc5e-825c-4ea9-99ad-59b0667cabe9.jsonl`
+- `/ll:refine-issue` - 2026-05-12T00:28:40 - `8211e223-fbea-436e-8701-f51574d9f5c8.jsonl`
+- `/ll:issue-size-review` - 2026-05-12T00:20:02 - `5cb0dc9a-fd6f-4945-97b0-ad6acec56482.jsonl`

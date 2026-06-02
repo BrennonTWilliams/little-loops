@@ -133,9 +133,9 @@ fi
 
 ## Session Log
 - `/ll:capture-issue` - 2026-02-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc790b97-8457-4261-96c9-b25c3abc9efc.jsonl`
-- `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Identified exact insertion point (format-issue/SKILL.md:81-85) and priority loop pattern from manage-issue/SKILL.md:62-70
-- `/ll:manage-issue` - 2026-03-01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/65b1e12e-afaf-4daa-8340-a9901db9e490.jsonl` - Implemented no-arg priority selection
+- `/ll:format-issue` - 2026-02-25 - `6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Identified exact insertion point (format-issue/SKILL.md:81-85) and priority loop pattern from manage-issue/SKILL.md:62-70
+- `/ll:manage-issue` - 2026-03-01 - `65b1e12e-afaf-4daa-8340-a9901db9e490.jsonl` - Implemented no-arg priority selection
 
 ---
 

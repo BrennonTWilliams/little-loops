@@ -257,13 +257,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Breaking Change**: No
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-03T15:58:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbb0e63c-be49-432f-9671-f8f7f8a4d675.jsonl`
-- `/ll:confidence-check` - 2026-05-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9e566ce-792b-43e0-bdf1-cf831bfcaa71.jsonl`
-- `/ll:wire-issue` - 2026-05-03T15:51:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea3b6b2c-b0c9-45be-b20f-36916aa5d82d.jsonl`
-- `/ll:refine-issue` - 2026-05-03T15:48:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/250d0331-e2df-4ba1-aae2-e18bac88b7d1.jsonl`
-- `/ll:refine-issue` - 2026-05-03T15:48:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/250d0331-e2df-4ba1-aae2-e18bac88b7d1.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f5908fa-e7cf-482b-a91b-52624eb2a99c.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbb0e63c-be49-432f-9671-f8f7f8a4d675.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-03T15:58:59 - `dbb0e63c-be49-432f-9671-f8f7f8a4d675.jsonl`
+- `/ll:confidence-check` - 2026-05-03T00:00:00 - `c9e566ce-792b-43e0-bdf1-cf831bfcaa71.jsonl`
+- `/ll:wire-issue` - 2026-05-03T15:51:58 - `ea3b6b2c-b0c9-45be-b20f-36916aa5d82d.jsonl`
+- `/ll:refine-issue` - 2026-05-03T15:48:05 - `250d0331-e2df-4ba1-aae2-e18bac88b7d1.jsonl`
+- `/ll:refine-issue` - 2026-05-03T15:48:00 - `250d0331-e2df-4ba1-aae2-e18bac88b7d1.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T00:00:00 - `9f5908fa-e7cf-482b-a91b-52624eb2a99c.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T00:00:00 - `dbb0e63c-be49-432f-9671-f8f7f8a4d675.jsonl`
 
 ---
 

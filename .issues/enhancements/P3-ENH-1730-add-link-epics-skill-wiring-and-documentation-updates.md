@@ -138,10 +138,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `commands/help.md` contains a `link-epics` entry in the ISSUE REFINEMENT block
 
 ## Session Log
-- `/ll:wire-issue` - 2026-05-26T23:03:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52106e6a-2007-47aa-a7aa-17b1421a6040.jsonl`
-- `/ll:refine-issue` - 2026-05-26T22:56:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cab094d-290b-469d-bdf6-fdf86146f89f.jsonl`
-- `/ll:issue-size-review` - 2026-05-26T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2480abd-758c-47ca-aa87-454ae8a76200.jsonl`
-- `/ll:confidence-check` - 2026-05-26T18:05:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e0e182b-2dca-4b85-82cb-bf3fdb2e7bfa.jsonl`
+- `/ll:wire-issue` - 2026-05-26T23:03:12 - `52106e6a-2007-47aa-a7aa-17b1421a6040.jsonl`
+- `/ll:refine-issue` - 2026-05-26T22:56:46 - `0cab094d-290b-469d-bdf6-fdf86146f89f.jsonl`
+- `/ll:issue-size-review` - 2026-05-26T22:30:00Z - `d2480abd-758c-47ca-aa87-454ae8a76200.jsonl`
+- `/ll:confidence-check` - 2026-05-26T18:05:00Z - `5e0e182b-2dca-4b85-82cb-bf3fdb2e7bfa.jsonl`
 
 ---
 

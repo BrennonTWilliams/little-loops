@@ -128,11 +128,11 @@ Added 4 test methods to `TestAnalyzeCoupling` in `scripts/tests/test_issue_histo
 All 11 `TestAnalyzeCoupling` tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-18T02:01:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4be36514-c9dd-4c89-acc0-99b253f39cc2.jsonl`
-- `/ll:refine-issue` - 2026-03-18T01:39:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b2aa1ab-7a2b-4015-8d5b-fef9b7dd4c2e.jsonl`
+- `/ll:ready-issue` - 2026-03-18T02:01:59 - `4be36514-c9dd-4c89-acc0-99b253f39cc2.jsonl`
+- `/ll:refine-issue` - 2026-03-18T01:39:01 - `5b2aa1ab-7a2b-4015-8d5b-fef9b7dd4c2e.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
-- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
-- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

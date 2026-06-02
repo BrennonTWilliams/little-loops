@@ -231,12 +231,12 @@ CHANGELOG entry deferred to the next release prep per the maintainer convention 
 Pre-existing test failures unrelated to ENH-1770 (`test_no_bare_bash_variable_in_shell_actions` and `test_expected_loops_exist`, both regarding `cli-anything-bootstrap.yaml`) were observed on `main` before this change and remain.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-29T19:13:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010b6d0-c5ea-42f5-b7da-dacb34c4bb15.jsonl`
-- `/ll:ready-issue` - 2026-05-29T18:51:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97af05f4-024d-4e1b-8b35-cbcf8ccdca06.jsonl`
-- `/ll:wire-issue` - 2026-05-29T18:30:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/174d6d2b-73db-4379-829e-28085556667d.jsonl`
-- `/ll:refine-issue` - 2026-05-29T05:02:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67b57fec-0cce-4cf6-8ad3-3e79d6cd8777.jsonl`
-- `/ll:format-issue` - 2026-05-29T02:27:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2337e492-f7f1-44fd-a9a4-27d67af90051.jsonl`
-- `/ll:capture-issue` - 2026-05-28T17:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1814a47-ceda-478f-aac4-3e3bf601d202.jsonl`
-- `/ll:confidence-check` - 2026-05-29T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d6ccc1e-b9ff-4db2-8494-fead3e4fd7cb.jsonl`
+- `/ll:manage-issue` - 2026-05-29T19:13:53Z - `0010b6d0-c5ea-42f5-b7da-dacb34c4bb15.jsonl`
+- `/ll:ready-issue` - 2026-05-29T18:51:21 - `97af05f4-024d-4e1b-8b35-cbcf8ccdca06.jsonl`
+- `/ll:wire-issue` - 2026-05-29T18:30:43 - `174d6d2b-73db-4379-829e-28085556667d.jsonl`
+- `/ll:refine-issue` - 2026-05-29T05:02:59 - `67b57fec-0cce-4cf6-8ad3-3e79d6cd8777.jsonl`
+- `/ll:format-issue` - 2026-05-29T02:27:55 - `2337e492-f7f1-44fd-a9a4-27d67af90051.jsonl`
+- `/ll:capture-issue` - 2026-05-28T17:00:00Z - `c1814a47-ceda-478f-aac4-3e3bf601d202.jsonl`
+- `/ll:confidence-check` - 2026-05-29T22:00:00Z - `1d6ccc1e-b9ff-4db2-8494-fead3e4fd7cb.jsonl`
 
 **Done** | Created: 2026-05-28 | Completed: 2026-05-29 | Priority: P3

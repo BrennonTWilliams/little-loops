@@ -170,14 +170,14 @@ _Added by `/ll:confidence-check` on 2026-05-10_
 Updated 7 documentation files to reflect frontmatter-based status vocabulary (`open/in_progress/blocked/deferred/done/cancelled`) introduced by ENH-1427. All stale `--status active`, `--status completed`, and directory-model prose removed. Created `scripts/tests/test_enh1428_doc_wiring.py` with 31 wiring tests (all pass). `ll-verify-docs` passes.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-10T21:36:24Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be39e338-241c-4325-ba20-779c072a84de.jsonl`
-- `/ll:ready-issue` - 2026-05-10T21:32:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be39e338-241c-4325-ba20-779c072a84de.jsonl`
-- `/ll:confidence-check` - 2026-05-10T21:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/073e9f7f-9842-49ed-99f5-f42a29385746.jsonl`
-- `/ll:refine-issue` - 2026-05-10T21:19:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f597c5b-71d2-4636-a269-729638a87833.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f1fbcc4-921a-4867-adfe-8fef6dd9af14.jsonl`
-- `/ll:wire-issue` - 2026-05-10T17:31:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd82a9f5-907d-4fb1-9121-455f3a13ef6b.jsonl`
-- `/ll:refine-issue` - 2026-05-10T17:26:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3eed4435-21f6-476e-9d6f-a0e9d4bf5fd3.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de4dc0e-8a1e-41f5-94a2-7daaa289459e.jsonl`
+- `/ll:manage-issue` - 2026-05-10T21:36:24Z - `be39e338-241c-4325-ba20-779c072a84de.jsonl`
+- `/ll:ready-issue` - 2026-05-10T21:32:06 - `be39e338-241c-4325-ba20-779c072a84de.jsonl`
+- `/ll:confidence-check` - 2026-05-10T21:30:00 - `073e9f7f-9842-49ed-99f5-f42a29385746.jsonl`
+- `/ll:refine-issue` - 2026-05-10T21:19:53 - `7f597c5b-71d2-4636-a269-729638a87833.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00 - `2f1fbcc4-921a-4867-adfe-8fef6dd9af14.jsonl`
+- `/ll:wire-issue` - 2026-05-10T17:31:57 - `cd82a9f5-907d-4fb1-9121-455f3a13ef6b.jsonl`
+- `/ll:refine-issue` - 2026-05-10T17:26:56 - `3eed4435-21f6-476e-9d6f-a0e9d4bf5fd3.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `8de4dc0e-8a1e-41f5-94a2-7daaa289459e.jsonl`
 
 ---
 

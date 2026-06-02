@@ -139,7 +139,7 @@ Also register a second entry for `"matcher": "Edit"`.
 - `hooks/scripts/lib/common.sh` — `ll_feature_enabled()` at line 198, `ll_resolve_config()` at line 184, `ll_config_value()` at line 218 — shared bash utilities sourced by the script
 
 ## Session Log
-- `/ll:refine-issue` - 2026-06-01T08:51:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/670784ff-d4f0-40c6-9a7b-020bd45b719d.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e2ad9a6-4834-4969-9404-2babd791318d.jsonl`
-- `/ll:wire-issue` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a7a962c9-d8d6-406a-b38f-3c88d907de2b.jsonl`
+- `/ll:refine-issue` - 2026-06-01T08:51:49 - `670784ff-d4f0-40c6-9a7b-020bd45b719d.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `1e2ad9a6-4834-4969-9404-2babd791318d.jsonl`
+- `/ll:wire-issue` - 2026-06-01T00:00:00Z - `current.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `a7a962c9-d8d6-406a-b38f-3c88d907de2b.jsonl`

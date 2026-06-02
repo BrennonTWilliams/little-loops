@@ -239,11 +239,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `tdd_mode: true` is active — wiring (allowed-tools, bridge stub sync) belongs in this issue alongside the skill modifications; do not split them
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T10:44:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3bcd7db2-479f-4bd7-849e-a08f485cdf0b.jsonl`
-- `/ll:wire-issue` - 2026-06-01T10:39:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3577710b-49d5-4e73-b489-706d2683bcc2.jsonl`
-- `/ll:refine-issue` - 2026-06-01T10:33:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/353e8d6f-0bad-4ffd-ad51-df1444d5af58.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d65087d-00c0-4a66-9066-5e5d9ee479f5.jsonl`
+- `/ll:ready-issue` - 2026-06-01T10:44:27 - `3bcd7db2-479f-4bd7-849e-a08f485cdf0b.jsonl`
+- `/ll:wire-issue` - 2026-06-01T10:39:20 - `3577710b-49d5-4e73-b489-706d2683bcc2.jsonl`
+- `/ll:refine-issue` - 2026-06-01T10:33:57 - `353e8d6f-0bad-4ffd-ad51-df1444d5af58.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `2d65087d-00c0-4a66-9066-5e5d9ee479f5.jsonl`
 
 ---
 

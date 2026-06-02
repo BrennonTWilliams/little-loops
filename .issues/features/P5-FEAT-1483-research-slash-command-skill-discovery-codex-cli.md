@@ -240,13 +240,13 @@ codex, research, commands, skills
 **Done** | Created: 2026-05-15 | Completed: 2026-05-15 | Priority: P5
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-15T22:58:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1fce2a9a-5f39-49db-8501-6abacda70207.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/242e7bd0-56c9-4de6-a36d-68ac7b97d673.jsonl`
-- `/ll:wire-issue` - 2026-05-15T22:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99232db3-8d20-454e-8776-772a4ccd707a.jsonl`
-- `/ll:refine-issue` - 2026-05-15T22:49:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8ea0b66-61a8-4204-b490-073127e17124.jsonl`
-- `/ll:refine-issue` - 2026-05-15T21:25:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c6fcfa4-b17c-4d21-8cbb-87bc6c248119.jsonl`
-- `/ll:wire-issue` - 2026-05-15T21:15:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cdf8b29b-c64d-4fd5-9d5c-9082345d0652.jsonl`
-- `/ll:refine-issue` - 2026-05-15T21:08:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d42dbf9b-cc4b-408b-9155-54a52d42f2f2.jsonl`
+- `/ll:ready-issue` - 2026-05-15T22:58:35 - `1fce2a9a-5f39-49db-8501-6abacda70207.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00Z - `242e7bd0-56c9-4de6-a36d-68ac7b97d673.jsonl`
+- `/ll:wire-issue` - 2026-05-15T22:53:58 - `99232db3-8d20-454e-8776-772a4ccd707a.jsonl`
+- `/ll:refine-issue` - 2026-05-15T22:49:52 - `d8ea0b66-61a8-4204-b490-073127e17124.jsonl`
+- `/ll:refine-issue` - 2026-05-15T21:25:40 - `3c6fcfa4-b17c-4d21-8cbb-87bc6c248119.jsonl`
+- `/ll:wire-issue` - 2026-05-15T21:15:45 - `cdf8b29b-c64d-4fd5-9d5c-9082345d0652.jsonl`
+- `/ll:refine-issue` - 2026-05-15T21:08:50 - `d42dbf9b-cc4b-408b-9155-54a52d42f2f2.jsonl`
 - `manual update` - 2026-05-15 - codex installed via npm on dev host; binary blocker resolved, all research steps now runnable locally; `depends_on: FEAT-1481` added
-- `/ll:capture-issue` - 2026-05-15T20:37:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ac48eaf-913e-40cd-8b15-98d99f2901cc.jsonl`
-- `/ll:manage-issue implement` - 2026-05-15T23:02:13Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:capture-issue` - 2026-05-15T20:37:29Z - `5ac48eaf-913e-40cd-8b15-98d99f2901cc.jsonl`
+- `/ll:manage-issue implement` - 2026-05-15T23:02:13Z - `current.jsonl`

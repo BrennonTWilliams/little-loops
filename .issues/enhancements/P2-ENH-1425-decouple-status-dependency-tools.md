@@ -188,13 +188,13 @@ Use this pattern when rewriting `test_scans_all_categories` (line 635), the `Tes
 `enhancement`, `refactoring`, `decoupling`, `dependencies`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-10T21:05:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0101930c-df19-4f81-9d12-75e7fa7087b2.jsonl`
-- `/ll:ready-issue` - 2026-05-10T21:00:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0101930c-df19-4f81-9d12-75e7fa7087b2.jsonl`
-- `/ll:confidence-check` - 2026-05-10T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0101930c-df19-4f81-9d12-75e7fa7087b2.jsonl`
-- `/ll:wire-issue` - 2026-05-10T20:55:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0101930c-df19-4f81-9d12-75e7fa7087b2.jsonl`
-- `/ll:refine-issue` - 2026-05-10T20:49:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b00184a9-4790-43b5-863b-e3a2d2a0c1ff.jsonl`
-- `/ll:format-issue` - 2026-05-10T20:35:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0612cbb2-b886-45d0-8bec-88f7ba66f6e5.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
+- `/ll:manage-issue` - 2026-05-10T21:05:25Z - `0101930c-df19-4f81-9d12-75e7fa7087b2.jsonl`
+- `/ll:ready-issue` - 2026-05-10T21:00:33 - `0101930c-df19-4f81-9d12-75e7fa7087b2.jsonl`
+- `/ll:confidence-check` - 2026-05-10T21:00:00 - `0101930c-df19-4f81-9d12-75e7fa7087b2.jsonl`
+- `/ll:wire-issue` - 2026-05-10T20:55:02 - `0101930c-df19-4f81-9d12-75e7fa7087b2.jsonl`
+- `/ll:refine-issue` - 2026-05-10T20:49:44 - `b00184a9-4790-43b5-863b-e3a2d2a0c1ff.jsonl`
+- `/ll:format-issue` - 2026-05-10T20:35:28 - `0612cbb2-b886-45d0-8bec-88f7ba66f6e5.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
 
 ---
 

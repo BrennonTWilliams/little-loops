@@ -127,11 +127,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `bug`, `ll-loop`, `process-management`, `signal-handling`, `regression`
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da7dc305-837f-4e45-9a7f-90e7eae114d2.jsonl`
-- `/ll:format-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c428d45b-7ea7-4ea3-89cd-1ed4a2a48023.jsonl`
-- `/ll:refine-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8a0f657-a512-4e80-9946-68695952f105.jsonl`
-- `/ll:confidence-check` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9538dd1-f957-415d-b790-afa66f18ac32.jsonl`
-- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d11c154b-ec01-40ba-bc51-c1eb3dd6ae2f.jsonl`
+- `/ll:capture-issue` - 2026-03-07T00:00:00Z - `da7dc305-837f-4e45-9a7f-90e7eae114d2.jsonl`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `c428d45b-7ea7-4ea3-89cd-1ed4a2a48023.jsonl`
+- `/ll:refine-issue` - 2026-03-07T00:00:00Z - `d8a0f657-a512-4e80-9946-68695952f105.jsonl`
+- `/ll:confidence-check` - 2026-03-07T00:00:00Z - `b9538dd1-f957-415d-b790-afa66f18ac32.jsonl`
+- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `d11c154b-ec01-40ba-bc51-c1eb3dd6ae2f.jsonl`
 
 ---
 

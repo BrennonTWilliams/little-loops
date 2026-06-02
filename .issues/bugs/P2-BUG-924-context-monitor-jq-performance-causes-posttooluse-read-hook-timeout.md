@@ -194,11 +194,11 @@ All claims confirmed against current codebase:
 - **Integration map**: All dependent files, documentation, and config references verified
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-02T22:19:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ce45c89-4ad8-4c6d-b8ea-43d33fdd3374.jsonl`
-- `/ll:verify-issues` - 2026-04-02T22:15:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
-- `/ll:confidence-check` - 2026-04-02T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
-- `/ll:refine-issue` - 2026-04-02T22:11:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
-- `/ll:format-issue` - 2026-04-02T22:05:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
+- `/ll:ready-issue` - 2026-04-02T22:19:35 - `4ce45c89-4ad8-4c6d-b8ea-43d33fdd3374.jsonl`
+- `/ll:verify-issues` - 2026-04-02T22:15:13 - `290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
+- `/ll:confidence-check` - 2026-04-02T22:30:00Z - `290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
+- `/ll:refine-issue` - 2026-04-02T22:11:04 - `290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
+- `/ll:format-issue` - 2026-04-02T22:05:52 - `290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
 - `/ll:capture-issue` - 2026-04-02 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f1745da-4e21-4370-979f-bddf31a380b8.jsonl`
 
 - `/ll:manage-issue` - 2026-04-02T22:30:00Z - `fix BUG-924`

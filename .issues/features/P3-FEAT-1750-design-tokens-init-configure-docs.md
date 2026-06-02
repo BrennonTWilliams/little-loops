@@ -332,12 +332,12 @@ _Added by `/ll:confidence-check` on 2026-05-27_
 - FEAT-1758: Design tokens documentation, README, and changelog
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-27T23:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
-- `/ll:confidence-check` - 2026-05-27T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d8e66f0-d813-4ec6-ab52-6f97ac667a9d.jsonl`
-- `/ll:wire-issue` - 2026-05-27T22:52:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a2c6f28-fb66-4948-ba95-e89448b3cdd7.jsonl`
-- `/ll:refine-issue` - 2026-05-27T22:45:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2c651e2-36b6-4645-a115-fb6e284f5d1f.jsonl`
-- `/ll:format-issue` - 2026-05-27T20:25:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/652005b7-b7e9-404a-9ee0-b21de41aeefa.jsonl`
-- `/ll:issue-size-review` - 2026-05-27T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f94f108-c36b-4b4d-b486-f41734145a41.jsonl`
+- `/ll:issue-size-review` - 2026-05-27T23:30:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:confidence-check` - 2026-05-27T23:00:00 - `8d8e66f0-d813-4ec6-ab52-6f97ac667a9d.jsonl`
+- `/ll:wire-issue` - 2026-05-27T22:52:22 - `5a2c6f28-fb66-4948-ba95-e89448b3cdd7.jsonl`
+- `/ll:refine-issue` - 2026-05-27T22:45:47 - `a2c651e2-36b6-4645-a115-fb6e284f5d1f.jsonl`
+- `/ll:format-issue` - 2026-05-27T20:25:05 - `652005b7-b7e9-404a-9ee0-b21de41aeefa.jsonl`
+- `/ll:issue-size-review` - 2026-05-27T20:30:00Z - `5f94f108-c36b-4b4d-b486-f41734145a41.jsonl`
 
 ---
 

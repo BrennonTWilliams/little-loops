@@ -166,9 +166,9 @@ class OmpRunner:
 `feat`, `captured`, `host-compat`, `pi-adapter`, `omp`
 
 ## Session Log
-- `/ll:format-issue` - 2026-06-01T15:09:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/135049e3-c3b6-4e47-a1b7-f422e4bce835.jsonl`
+- `/ll:format-issue` - 2026-06-01T15:09:51 - `135049e3-c3b6-4e47-a1b7-f422e4bce835.jsonl`
 
-- `/ll:capture-issue` - 2026-06-01T15:06:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:capture-issue` - 2026-06-01T15:06:49Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 
 ## Status
 

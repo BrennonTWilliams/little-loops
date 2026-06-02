@@ -190,18 +190,18 @@ _Added by `/ll:confidence-check` on 2026-05-11 (re-run after `/ll:decide-issue`)
 - **Open decision — `from:` inheritance vs standalone YAML**: `decision_needed: true` is still set in frontmatter despite `/ll:decide-issue` having run. FEAT-1308 is complete and `apo-beam.yaml` demonstrates the `from:` pattern. Resolve this before writing the first line of SKILL.md — check `scripts/little_loops/fsm/fragments.py` or a FEAT-1308 completed loop YAML to confirm `from:` is viable.
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03785380-ad15-4700-be73-f3d5f0c746ce.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/adfe3ad7-7b51-4cab-883a-1b34cd1d982f.jsonl`
-- `/ll:decide-issue` - 2026-05-11T23:06:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/acff6b8e-720e-493f-ac80-47e74f906b77.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c72b779c-abe8-4a10-a8ec-4d5c63f48a8e.jsonl`
-- `/ll:wire-issue` - 2026-05-11T23:00:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1726baf4-57db-44d2-8634-da26718af849.jsonl`
-- `/ll:refine-issue` - 2026-05-11T22:56:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bc7ca3f-067f-4222-a0a9-dc00eb0dc50a.jsonl`
-- `/ll:format-issue` - 2026-05-11T20:30:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a07d6155-3a77-4261-82da-bcebc9ff9d11.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
-- `/ll:format-issue` - 2026-05-01T17:38:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1483ec77-4cf9-4aca-8312-065f15a52a5f.jsonl`
-- `/ll:capture-issue` - 2026-05-01T17:33:26Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a6d2d86-ddb4-4191-bb20-7505a1373a52.jsonl`
+- `/ll:issue-size-review` - 2026-05-11T00:00:00Z - `03785380-ad15-4700-be73-f3d5f0c746ce.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `adfe3ad7-7b51-4cab-883a-1b34cd1d982f.jsonl`
+- `/ll:decide-issue` - 2026-05-11T23:06:11 - `acff6b8e-720e-493f-ac80-47e74f906b77.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `c72b779c-abe8-4a10-a8ec-4d5c63f48a8e.jsonl`
+- `/ll:wire-issue` - 2026-05-11T23:00:46 - `1726baf4-57db-44d2-8634-da26718af849.jsonl`
+- `/ll:refine-issue` - 2026-05-11T22:56:06 - `7bc7ca3f-067f-4222-a0a9-dc00eb0dc50a.jsonl`
+- `/ll:format-issue` - 2026-05-11T20:30:34 - `a07d6155-3a77-4261-82da-bcebc9ff9d11.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:21:16 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:02 - `4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
+- `/ll:format-issue` - 2026-05-01T17:38:24 - `1483ec77-4cf9-4aca-8312-065f15a52a5f.jsonl`
+- `/ll:capture-issue` - 2026-05-01T17:33:26Z - `1a6d2d86-ddb4-4191-bb20-7505a1373a52.jsonl`
 
 ---
 

@@ -227,13 +227,13 @@ Implemented `ll-migrate` as `scripts/little_loops/cli/migrate.py`. Key decisions
 - Registered in `pyproject.toml`, `cli/__init__.py`, and all 5 doc locations; updated 3 count assertions across wiring tests
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-10T22:12:31Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-10T21:57:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62f22df3-03b1-4da2-a95b-bb95e7af9e65.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59c0f1a4-24eb-4243-bf34-3449d41f1dfe.jsonl`
-- `/ll:wire-issue` - 2026-05-10T21:52:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08f9118c-1ea4-48e8-b5b5-0eea815b1327.jsonl`
-- `/ll:refine-issue` - 2026-05-10T21:46:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/525e757d-20a6-49b8-9440-f8e278d12be7.jsonl`
-- `/ll:format-issue` - 2026-05-10T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/293739bc-9ebc-4dac-a29c-99529166ae17.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
+- `/ll:manage-issue` - 2026-05-10T22:12:31Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-10T21:57:51 - `62f22df3-03b1-4da2-a95b-bb95e7af9e65.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `59c0f1a4-24eb-4243-bf34-3449d41f1dfe.jsonl`
+- `/ll:wire-issue` - 2026-05-10T21:52:46 - `08f9118c-1ea4-48e8-b5b5-0eea815b1327.jsonl`
+- `/ll:refine-issue` - 2026-05-10T21:46:43 - `525e757d-20a6-49b8-9440-f8e278d12be7.jsonl`
+- `/ll:format-issue` - 2026-05-10T15:21:15 - `293739bc-9ebc-4dac-a29c-99529166ae17.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
 
 ---
 

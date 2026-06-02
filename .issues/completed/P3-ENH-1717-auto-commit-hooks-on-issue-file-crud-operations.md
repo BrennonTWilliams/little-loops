@@ -193,11 +193,11 @@ _Added by `/ll:confidence-check` on 2026-06-01_
 - ENH-1845: Auto-commit doctor UI, configure areas display, and documentation
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e2ad9a6-4834-4969-9404-2babd791318d.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4837d03-e4ce-4492-b86b-4f74c879e76b.jsonl`
-- `/ll:decide-issue` - 2026-06-01T08:02:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c4629f4c-0850-443f-846b-0e92b36a9504.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4344aff9-0824-4016-a232-00c716ad88cf.jsonl`
-- `/ll:wire-issue` - 2026-06-01T07:53:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c98dca55-eae5-4922-a76d-f5738e5366d9.jsonl`
-- `/ll:refine-issue` - 2026-06-01T07:47:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd90d199-24ff-478f-80a5-4ac233159309.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `1e2ad9a6-4834-4969-9404-2babd791318d.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `e4837d03-e4ce-4492-b86b-4f74c879e76b.jsonl`
+- `/ll:decide-issue` - 2026-06-01T08:02:59 - `c4629f4c-0850-443f-846b-0e92b36a9504.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `4344aff9-0824-4016-a232-00c716ad88cf.jsonl`
+- `/ll:wire-issue` - 2026-06-01T07:53:34 - `c98dca55-eae5-4922-a76d-f5738e5366d9.jsonl`
+- `/ll:refine-issue` - 2026-06-01T07:47:42 - `fd90d199-24ff-478f-80a5-4ac233159309.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:15 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:capture-issue` - 2026-05-26T02:15:56Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

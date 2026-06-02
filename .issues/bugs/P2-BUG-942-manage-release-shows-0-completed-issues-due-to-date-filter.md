@@ -135,15 +135,15 @@ Replaced Agent 2's date-filter approach with `git log --diff-filter=A` in `comma
 `bug`, `fixed`
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-04T02:43:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c48f8c13-757e-4d26-8db0-bfb5d0373bae.jsonl`
-- `/ll:ready-issue` - 2026-04-04T02:41:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5730fd7f-44f9-49c7-bbda-9a59720ac3d7.jsonl`
-- `/ll:ready-issue` - 2026-04-04T02:41:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5730fd7f-44f9-49c7-bbda-9a59720ac3d7.jsonl`
-- `/ll:verify-issues` - 2026-04-04T02:38:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70a65834-6c36-45b0-b1a2-8ffa02ed29b4.jsonl`
-- `/ll:confidence-check` - 2026-04-04T02:37:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70a65834-6c36-45b0-b1a2-8ffa02ed29b4.jsonl`
-- `/ll:refine-issue` - 2026-04-04T02:34:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70a65834-6c36-45b0-b1a2-8ffa02ed29b4.jsonl`
-- `/ll:confidence-check` - 2026-04-03T21:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/69c0de15-3382-46bd-b200-6d488ba0739a.jsonl`
-- `/ll:refine-issue` - 2026-04-04T02:29:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/69c0de15-3382-46bd-b200-6d488ba0739a.jsonl`
-- `/ll:format-issue` - 2026-04-04T02:25:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7308edca-cfb1-4076-acfb-845ecd8be944.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-04T02:43:18 - `c48f8c13-757e-4d26-8db0-bfb5d0373bae.jsonl`
+- `/ll:ready-issue` - 2026-04-04T02:41:44 - `5730fd7f-44f9-49c7-bbda-9a59720ac3d7.jsonl`
+- `/ll:ready-issue` - 2026-04-04T02:41:39 - `5730fd7f-44f9-49c7-bbda-9a59720ac3d7.jsonl`
+- `/ll:verify-issues` - 2026-04-04T02:38:14 - `70a65834-6c36-45b0-b1a2-8ffa02ed29b4.jsonl`
+- `/ll:confidence-check` - 2026-04-04T02:37:05 - `70a65834-6c36-45b0-b1a2-8ffa02ed29b4.jsonl`
+- `/ll:refine-issue` - 2026-04-04T02:34:58 - `70a65834-6c36-45b0-b1a2-8ffa02ed29b4.jsonl`
+- `/ll:confidence-check` - 2026-04-03T21:30:00 - `69c0de15-3382-46bd-b200-6d488ba0739a.jsonl`
+- `/ll:refine-issue` - 2026-04-04T02:29:16 - `69c0de15-3382-46bd-b200-6d488ba0739a.jsonl`
+- `/ll:format-issue` - 2026-04-04T02:25:24 - `7308edca-cfb1-4076-acfb-845ecd8be944.jsonl`
 
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7308edca-cfb1-4076-acfb-845ecd8be944.jsonl`
 

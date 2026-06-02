@@ -176,19 +176,19 @@ _Updated by `/ll:confidence-check` on 2026-05-11_
 - Pattern B verification chain incomplete: 5 sites enumerated + spot-check grep specified (step 4), but no automated wiring test asserting completeness.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-11T20:15:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:ready-issue` - 2026-05-11T20:13:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/445a93c8-05ff-4bfc-bf41-6d7b2a7cf592.jsonl`
-- `/ll:confidence-check` - 2026-05-11T20:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/373f6a58-c552-4de7-a881-0d71318a6873.jsonl`
-- `/ll:wire-issue` - 2026-05-11T20:09:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/364a3eba-8e8d-4e02-9004-4d6306fcaefe.jsonl`
-- `/ll:refine-issue` - 2026-05-11T20:04:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/743e1871-ec24-486c-9536-5de729f828d4.jsonl`
-- `/ll:issue-size-review` - 2026-05-11T10:13:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8da1efd7-3aca-49c4-9873-ccde11dae506.jsonl`
-- `/ll:issue-size-review` - 2026-05-11T10:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5787b1a3-847a-4d77-ae60-8f0638e3429d.jsonl`
-- `/ll:confidence-check` - 2026-05-11T09:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d76d8938-e809-494e-92bb-545bcd5d8b26.jsonl`
-- `/ll:refine-issue` - 2026-05-11T08:40:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bbc33c0c-5e48-4db2-b24b-3ce0d476b92c.jsonl`
-- `/ll:wire-issue` - 2026-05-11T08:34:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d50399d9-8071-4239-8ddd-576bec12c255.jsonl`
-- `/ll:refine-issue` - 2026-05-11T08:28:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/738a9c42-7028-4bea-9dfa-7e9c727b4b87.jsonl`
-- `/ll:issue-size-review` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a400556-76fe-4ad7-9557-40b6a1c32a72.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be1e58ed-bc9d-4da3-8129-97d5e6621836.jsonl`
+- `/ll:manage-issue` - 2026-05-11T20:15:46 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-11T20:13:33 - `445a93c8-05ff-4bfc-bf41-6d7b2a7cf592.jsonl`
+- `/ll:confidence-check` - 2026-05-11T20:30:00 - `373f6a58-c552-4de7-a881-0d71318a6873.jsonl`
+- `/ll:wire-issue` - 2026-05-11T20:09:17 - `364a3eba-8e8d-4e02-9004-4d6306fcaefe.jsonl`
+- `/ll:refine-issue` - 2026-05-11T20:04:42 - `743e1871-ec24-486c-9536-5de729f828d4.jsonl`
+- `/ll:issue-size-review` - 2026-05-11T10:13:00 - `8da1efd7-3aca-49c4-9873-ccde11dae506.jsonl`
+- `/ll:issue-size-review` - 2026-05-11T10:00:00 - `5787b1a3-847a-4d77-ae60-8f0638e3429d.jsonl`
+- `/ll:confidence-check` - 2026-05-11T09:00:00 - `d76d8938-e809-494e-92bb-545bcd5d8b26.jsonl`
+- `/ll:refine-issue` - 2026-05-11T08:40:04 - `bbc33c0c-5e48-4db2-b24b-3ce0d476b92c.jsonl`
+- `/ll:wire-issue` - 2026-05-11T08:34:42 - `d50399d9-8071-4239-8ddd-576bec12c255.jsonl`
+- `/ll:refine-issue` - 2026-05-11T08:28:28 - `738a9c42-7028-4bea-9dfa-7e9c727b4b87.jsonl`
+- `/ll:issue-size-review` - 2026-05-11T00:00:00 - `8a400556-76fe-4ad7-9557-40b6a1c32a72.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `be1e58ed-bc9d-4da3-8129-97d5e6621836.jsonl`
 
 ---
 

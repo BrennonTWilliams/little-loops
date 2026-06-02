@@ -159,5 +159,5 @@ All 3529 tests pass (`python -m pytest scripts/tests/ --no-cov -q`).
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-15T23:17:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c2267ab-ffdb-4f12-b274-1fb55704ed47.jsonl`
-- `/ll:refine-issue` - 2026-03-15T23:05:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/346718bd-e365-4d89-b1b7-2c6df93e57b0.jsonl`
+- `/ll:ready-issue` - 2026-03-15T23:17:36 - `0c2267ab-ffdb-4f12-b274-1fb55704ed47.jsonl`
+- `/ll:refine-issue` - 2026-03-15T23:05:16 - `346718bd-e365-4d89-b1b7-2c6df93e57b0.jsonl`

@@ -177,11 +177,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feature`, `cli`, `ll-issues`, `automation`, `captured`
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-03-24T18:39:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f120a405-1dbe-489e-8f05-ef1b6c0cc034.jsonl`
-- `/ll:ready-issue` - 2026-03-24T18:35:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7dfd19a0-16f2-474a-a5c7-2f75e73d0042.jsonl`
-- `/ll:refine-issue` - 2026-03-24T18:16:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/134f1b03-a3a9-4307-be17-0dfb2df69a25.jsonl`
+- `hook:posttooluse-git-mv` - 2026-03-24T18:39:45 - `f120a405-1dbe-489e-8f05-ef1b6c0cc034.jsonl`
+- `/ll:ready-issue` - 2026-03-24T18:35:49 - `7dfd19a0-16f2-474a-a5c7-2f75e73d0042.jsonl`
+- `/ll:refine-issue` - 2026-03-24T18:16:55 - `134f1b03-a3a9-4307-be17-0dfb2df69a25.jsonl`
 - `/ll:capture-issue` - 2026-03-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/123be0f8-c950-4f44-830e-69b04d0e686c.jsonl`
-- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63d71b4c-9315-4b47-a4ae-d35a8ba619c4.jsonl`
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `63d71b4c-9315-4b47-a4ae-d35a8ba619c4.jsonl`
 
 ---
 

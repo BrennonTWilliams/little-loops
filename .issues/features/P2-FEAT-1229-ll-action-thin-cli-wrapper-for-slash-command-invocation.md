@@ -275,10 +275,10 @@ Registered `ll-action = "little_loops.cli:main_action"` in `pyproject.toml`. All
 ---
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-21T17:16:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
-- `/ll:ready-issue` - 2026-04-21T17:05:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de0addfd-b5f2-407c-a851-0927b44fecc6.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/822c48e1-ef44-4af9-8758-ad90ec148023.jsonl`
-- `/ll:wire-issue` - 2026-04-21T16:47:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa148307-a740-4cfb-a0a0-18cc0f7967a8.jsonl`
-- `/ll:refine-issue` - 2026-04-21T16:34:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24aea90c-410b-44e1-8768-f887bdf017e4.jsonl`
-- `/ll:format-issue` - 2026-04-21T16:23:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/475826cc-7152-4238-88ba-f765d2ba39dd.jsonl`
+- `/ll:manage-issue` - 2026-04-21T17:16:34Z - `current-session.jsonl`
+- `/ll:ready-issue` - 2026-04-21T17:05:49 - `de0addfd-b5f2-407c-a851-0927b44fecc6.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00Z - `822c48e1-ef44-4af9-8758-ad90ec148023.jsonl`
+- `/ll:wire-issue` - 2026-04-21T16:47:15 - `aa148307-a740-4cfb-a0a0-18cc0f7967a8.jsonl`
+- `/ll:refine-issue` - 2026-04-21T16:34:33 - `24aea90c-410b-44e1-8768-f887bdf017e4.jsonl`
+- `/ll:format-issue` - 2026-04-21T16:23:26 - `475826cc-7152-4238-88ba-f765d2ba39dd.jsonl`
 - `/ll:capture-issue` - 2026-04-21T16:19:58Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73395bc0-9919-4b5b-bdc2-9c26c0d59d7f.jsonl`

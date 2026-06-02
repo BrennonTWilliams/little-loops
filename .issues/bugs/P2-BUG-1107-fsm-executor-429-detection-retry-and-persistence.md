@@ -155,12 +155,12 @@ Tests patch `_DEFAULT_RATE_LIMIT_BACKOFF_BASE` to 0 (or 0.05 for the sleep-calle
 `bug`, `fsm`, `rate-limit`, `executor`, `persistence`, `reliability`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-14T18:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1defb91-5a29-46cb-a793-f97c945ac442.jsonl`
-- `/ll:ready-issue` - 2026-04-14T16:23:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d8797e9-af80-4be1-86af-ea2dc537dc4a.jsonl`
-- `/ll:refine-issue` - 2026-04-14T16:00:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd35ea7b-b89a-4d9f-9b21-2d82d177c6c6.jsonl`
-- `/ll:issue-size-review` - 2026-04-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4abdbd46-1b62-4801-9d00-a2569583afde.jsonl`
-- `/ll:confidence-check` - 2026-04-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a94e7ca3-0764-413e-b1a0-589250334b95.jsonl`
-- `/ll:confidence-check` - 2026-04-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/848b5fee-42e8-4aa7-8e5d-15811fe3db56.jsonl`
+- `/ll:manage-issue` - 2026-04-14T18:15:00 - `c1defb91-5a29-46cb-a793-f97c945ac442.jsonl`
+- `/ll:ready-issue` - 2026-04-14T16:23:41 - `1d8797e9-af80-4be1-86af-ea2dc537dc4a.jsonl`
+- `/ll:refine-issue` - 2026-04-14T16:00:23 - `dd35ea7b-b89a-4d9f-9b21-2d82d177c6c6.jsonl`
+- `/ll:issue-size-review` - 2026-04-14T00:00:00Z - `4abdbd46-1b62-4801-9d00-a2569583afde.jsonl`
+- `/ll:confidence-check` - 2026-04-14T00:00:00Z - `a94e7ca3-0764-413e-b1a0-589250334b95.jsonl`
+- `/ll:confidence-check` - 2026-04-14T00:00:00Z - `848b5fee-42e8-4aa7-8e5d-15811fe3db56.jsonl`
 
 ---
 

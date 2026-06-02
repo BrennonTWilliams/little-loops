@@ -37,7 +37,7 @@ Now I'll add throttle checks after each `_run_action_or_route` call:
 Implementation should complete without errors.
 
 ## Root Cause
-Discovered during automated processing of `/Users/brennon/AIProjects/brenentech/little-loops/.issues/enhancements/P3-ENH-1115-progressive-throttling-for-fsm-loops.md`.
+Discovered during automated processing of `.issues/enhancements/P3-ENH-1115-progressive-throttling-for-fsm-loops.md`.
 
 ## Steps to Reproduce
 1. Run: `/ll:manage-issue enhancements fix ENH-1115`
@@ -56,7 +56,7 @@ Investigate the error output above and address the root cause.
 `bug`, `high-priority`, `auto-generated`, `implementation-failure`
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-06T22:44:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c80964e7-d93e-49be-ac7b-f2a886defae2.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-06T22:44:03 - `c80964e7-d93e-49be-ac7b-f2a886defae2.jsonl`
 
 ---
 
@@ -67,7 +67,7 @@ Investigate the error output above and address the root cause.
 Closed. ENH-1115 was successfully implemented in commit c2f41949 ("feat(fsm): implement ENH-1115 progressive tool-call throttling"). The captured "implementation failure" reflected mid-run narration, not an actual failure.
 
 ## Related Issues
-- [ENH-1115](/Users/brennon/AIProjects/brenentech/little-loops/.issues/enhancements/P3-ENH-1115-progressive-throttling-for-fsm-loops.md)
+- [ENH-1115](.issues/enhancements/P3-ENH-1115-progressive-throttling-for-fsm-loops.md)
 - BUG-1537 — same auto-generated false-positive pattern (both resolved with no code defect found)
 
 **Note** (added by `/ll:audit-issue-conflicts`): Both BUG-1374 and BUG-1537 are examples of the auto-capture mechanism filing P1 issues for mid-run narration or context-window interruptions rather than genuine code failures. See ENH-191 for work on distinguishing transient vs real failures to reduce these false positives.

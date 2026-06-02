@@ -242,10 +242,10 @@ All sub-commands accept `--config PATH` to specify project root (consistent with
 `feature`, `cli`, `visualization`, `ux`, `tooling`, `sprint-planning`
 
 ## Session Log
-- `/ll:capture-issue` - 2026-02-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71365a34-a4b0-468f-af55-a3641738c45e.jsonl`
-- `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
-- `/ll:refine-issue` - 2026-02-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
-- `/ll:manage-issue` - 2026-02-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:capture-issue` - 2026-02-24T00:00:00Z - `71365a34-a4b0-468f-af55-a3641738c45e.jsonl`
+- `/ll:format-issue` - 2026-02-25 - `6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
+- `/ll:refine-issue` - 2026-02-25T00:00:00Z - `6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
+- `/ll:manage-issue` - 2026-02-25T00:00:00Z - `current.jsonl`
 
 ---
 

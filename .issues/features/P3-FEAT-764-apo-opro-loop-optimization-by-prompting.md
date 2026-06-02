@@ -216,9 +216,9 @@ ll-loop show apo-opro
 Implemented `loops/apo-opro.yaml` following the OPRO pattern with `init_history` seeding, history-accumulating `update_history` state, and `output_contains` convergence routing. Updated the test expected set and LOOPS_GUIDE.md table. All 18 tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-16T03:22:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec916e72-2c5c-4ed0-acb5-84a29b90647f.jsonl`
-- `/ll:refine-issue` - 2026-03-16T02:58:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5174c024-3fd6-45af-99ec-40b65318a9fe.jsonl`
-- `/ll:refine-issue` - 2026-03-16T01:43:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/985aba8f-2b18-4a2d-9edb-1476f791cb38.jsonl`
+- `/ll:ready-issue` - 2026-03-16T03:22:05 - `ec916e72-2c5c-4ed0-acb5-84a29b90647f.jsonl`
+- `/ll:refine-issue` - 2026-03-16T02:58:39 - `5174c024-3fd6-45af-99ec-40b65318a9fe.jsonl`
+- `/ll:refine-issue` - 2026-03-16T01:43:26 - `985aba8f-2b18-4a2d-9edb-1476f791cb38.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - conversation
-- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b13fa42-ae65-4611-bb1d-5fee30b6940b.jsonl`
-- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7cfa2c78-0022-4007-b1b6-448ac982f4aa.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `7b13fa42-ae65-4611-bb1d-5fee30b6940b.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `7cfa2c78-0022-4007-b1b6-448ac982f4aa.jsonl`

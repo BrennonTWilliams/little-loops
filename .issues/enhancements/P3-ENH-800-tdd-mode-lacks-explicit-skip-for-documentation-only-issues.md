@@ -143,9 +143,9 @@ All changes are markdown skill-prompt and documentation files. No Python code wa
 - `config-schema.json` unchanged — `testable` is an issue-file field, not a config field.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d291ca8c-ece5-4433-b750-0c282dcfe485.jsonl`
-- `/ll:ready-issue` - 2026-03-18T02:37:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0594017-e79c-402c-b761-dc25efc2dbce.jsonl`
-- `/ll:refine-issue` - 2026-03-18T02:24:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8afbe716-0bb6-44ed-abbe-d48406e9d90f.jsonl`
-- `/ll:confidence-check` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73090a87-0698-4eeb-9d27-83936dec2511.jsonl`
-- `/ll:refine-issue` - 2026-03-18T02:15:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a56e6201-d603-4920-9c45-b18975f046e7.jsonl`
-- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b46a31d3-3cc1-4027-98da-b1787e431d19.jsonl`
+- `/ll:manage-issue` - 2026-03-17T00:00:00Z - `d291ca8c-ece5-4433-b750-0c282dcfe485.jsonl`
+- `/ll:ready-issue` - 2026-03-18T02:37:18 - `b0594017-e79c-402c-b761-dc25efc2dbce.jsonl`
+- `/ll:refine-issue` - 2026-03-18T02:24:11 - `8afbe716-0bb6-44ed-abbe-d48406e9d90f.jsonl`
+- `/ll:confidence-check` - 2026-03-17T00:00:00Z - `73090a87-0698-4eeb-9d27-83936dec2511.jsonl`
+- `/ll:refine-issue` - 2026-03-18T02:15:49 - `a56e6201-d603-4920-9c45-b18975f046e7.jsonl`
+- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `b46a31d3-3cc1-4027-98da-b1787e431d19.jsonl`

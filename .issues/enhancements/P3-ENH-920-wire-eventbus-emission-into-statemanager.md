@@ -162,8 +162,8 @@ Implemented EventBus emission in StateManager with 5 new tests. Changes:
 - `test_state.py`: 5 new tests covering both emission paths, backward compatibility, and flat dict format
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8394421c-530d-4c82-897e-1edcec40a825.jsonl`
-- `/ll:refine-issue` - 2026-04-02T19:10:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87eedb33-487e-4156-9a11-3b9a54f1b62b.jsonl`
-- `/ll:format-issue` - 2026-04-02T18:47:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d44d738d-0717-4906-af00-9fc93600eff9.jsonl`
-- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ec33f5e-0af1-4604-bdc4-0c4331282e3e.jsonl`
-- `/ll:ready-issue` - 2026-04-02T20:37:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4bda8160-2032-44ba-98ff-2c78bc74395e.jsonl`
+- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `8394421c-530d-4c82-897e-1edcec40a825.jsonl`
+- `/ll:refine-issue` - 2026-04-02T19:10:12 - `87eedb33-487e-4156-9a11-3b9a54f1b62b.jsonl`
+- `/ll:format-issue` - 2026-04-02T18:47:13 - `d44d738d-0717-4906-af00-9fc93600eff9.jsonl`
+- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `4ec33f5e-0af1-4604-bdc4-0c4331282e3e.jsonl`
+- `/ll:ready-issue` - 2026-04-02T20:37:55 - `4bda8160-2032-44ba-98ff-2c78bc74395e.jsonl`

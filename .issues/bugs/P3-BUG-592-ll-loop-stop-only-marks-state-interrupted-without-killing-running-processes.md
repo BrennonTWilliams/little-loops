@@ -159,11 +159,11 @@ _Added by `/ll:refine-issue` — corrections and clarifications from code analys
 
 ## Session Log
 
-- `/ll:capture-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b0f4198-4bb4-4cba-b6a8-cdb86ec3578a.jsonl`
-- `/ll:format-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19557ee2-cfec-4412-af6c-b7b067698753.jsonl`
-- `/ll:refine-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
-- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b92afff5-c86d-4ee6-92e3-0b30466a71ee.jsonl`
-- `/ll:ready-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1dfa842e-65bc-4b98-8b08-f110045316ff.jsonl`
+- `/ll:capture-issue` - 2026-03-05T00:00:00Z - `8b0f4198-4bb4-4cba-b6a8-cdb86ec3578a.jsonl`
+- `/ll:format-issue` - 2026-03-05T00:00:00Z - `19557ee2-cfec-4412-af6c-b7b067698753.jsonl`
+- `/ll:refine-issue` - 2026-03-05T00:00:00Z - `ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `b92afff5-c86d-4ee6-92e3-0b30466a71ee.jsonl`
+- `/ll:ready-issue` - 2026-03-05T00:00:00Z - `1dfa842e-65bc-4b98-8b08-f110045316ff.jsonl`
 
 ---
 

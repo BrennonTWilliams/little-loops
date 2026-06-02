@@ -97,8 +97,8 @@ Less critical fields (`p0_sequential`, `max_merge_retries`, `custom_verification
 `enhancement`, `init`, `interactive-wizard`, `parallel`, `config`
 
 ## Session Log
-- `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
-- `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6952751c-b227-418e-a8d3-d419ea5b0bf6.jsonl`
+- `/ll:format-issue` - 2026-02-22 - `38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
+- `/ll:format-issue` - 2026-02-22 - `6952751c-b227-418e-a8d3-d419ea5b0bf6.jsonl`
 
 ## Blocked By
 

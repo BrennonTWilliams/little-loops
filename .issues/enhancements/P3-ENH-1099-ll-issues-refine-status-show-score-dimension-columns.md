@@ -233,9 +233,9 @@ All 4757 tests pass.
 **Milestone**: —
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-13T20:15:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4119b7f-c66e-4356-ba44-626aab115633.jsonl`
-- `/ll:confidence-check` - 2026-04-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c3151a7-1ff6-4fbf-9704-43e5cc5e1606.jsonl`
-- `/ll:wire-issue` - 2026-04-13T20:09:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53122ea2-9d1d-40fb-96e4-bb9f54c45744.jsonl`
-- `/ll:refine-issue` - 2026-04-13T19:29:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9695aacf-403b-43f3-b1c5-452f7a1b7656.jsonl`
+- `/ll:ready-issue` - 2026-04-13T20:15:28 - `e4119b7f-c66e-4356-ba44-626aab115633.jsonl`
+- `/ll:confidence-check` - 2026-04-13T00:00:00 - `4c3151a7-1ff6-4fbf-9704-43e5cc5e1606.jsonl`
+- `/ll:wire-issue` - 2026-04-13T20:09:17 - `53122ea2-9d1d-40fb-96e4-bb9f54c45744.jsonl`
+- `/ll:refine-issue` - 2026-04-13T19:29:30 - `9695aacf-403b-43f3-b1c5-452f7a1b7656.jsonl`
 - `/ll:capture-issue` - 2026-04-13T14:24:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac88abde-52c1-42fa-afd6-ba7adbf884d8.jsonl`
 - `/ll:manage-issue` - 2026-04-13T00:00:00 - implemented

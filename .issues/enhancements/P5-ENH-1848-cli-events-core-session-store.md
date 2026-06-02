@@ -165,12 +165,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 Implemented `cli_events` table (schema v8), `cli_event_context()` context manager, and `__all__` in `session_store.py`. Added 4 unit tests in `TestCliEventContext`. Updated `TestSchemaV6`, `TestEnsureDb`, CONTRIBUTING.md, and ARCHITECTURE.md to reflect v8. All 89 tests pass; ruff clean.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T12:24:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ffe721c-3812-4f8b-a94d-d393292df9eb.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2a69032c-74c5-4bf9-8d15-e15183d27209.jsonl`
-- `/ll:wire-issue` - 2026-06-01T12:20:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/585411f0-eeee-43e3-8cc9-8f74e225aab3.jsonl`
-- `/ll:manage-issue` - 2026-06-01T12:30:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
-- `/ll:refine-issue` - 2026-06-01T12:12:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aadfdde5-7d5b-4950-9b58-a8ebcd82f760.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0686c0da-b3e0-4215-b978-6a0771cae829.jsonl`
+- `/ll:ready-issue` - 2026-06-01T12:24:31 - `6ffe721c-3812-4f8b-a94d-d393292df9eb.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00 - `2a69032c-74c5-4bf9-8d15-e15183d27209.jsonl`
+- `/ll:wire-issue` - 2026-06-01T12:20:12 - `585411f0-eeee-43e3-8cc9-8f74e225aab3.jsonl`
+- `/ll:manage-issue` - 2026-06-01T12:30:23 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:refine-issue` - 2026-06-01T12:12:54 - `aadfdde5-7d5b-4950-9b58-a8ebcd82f760.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00 - `0686c0da-b3e0-4215-b978-6a0771cae829.jsonl`
 
 ---
 

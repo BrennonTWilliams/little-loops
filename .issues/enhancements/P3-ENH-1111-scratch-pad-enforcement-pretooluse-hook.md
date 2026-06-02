@@ -156,11 +156,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Hook contract: `docs/claude-code/hooks-reference.md:807-828` (updatedInput), `:395` (permission_mode), `:712-751` (Bash/Read tool_input schemas)
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-17T03:12:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fc25386-a9f0-4e75-8434-c659db481895.jsonl`
-- `/ll:wire-issue` - 2026-04-17T02:55:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9cf8e5d-d945-479d-bcdd-09d094c9ac7d.jsonl`
-- `/ll:refine-issue` - 2026-04-17T02:33:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0250b1b5-0604-41a3-be90-93a88c6d2fd2.jsonl`
-- `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4e1b2df-844b-44d0-b226-babe74a26efd.jsonl`
-- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fc25386-a9f0-4e75-8434-c659db481895.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-17T03:12:30 - `4fc25386-a9f0-4e75-8434-c659db481895.jsonl`
+- `/ll:wire-issue` - 2026-04-17T02:55:35 - `b9cf8e5d-d945-479d-bcdd-09d094c9ac7d.jsonl`
+- `/ll:refine-issue` - 2026-04-17T02:33:48 - `0250b1b5-0604-41a3-be90-93a88c6d2fd2.jsonl`
+- `/ll:confidence-check` - 2026-04-16T00:00:00 - `b4e1b2df-844b-44d0-b226-babe74a26efd.jsonl`
+- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `4fc25386-a9f0-4e75-8434-c659db481895.jsonl`
 
 ---
 

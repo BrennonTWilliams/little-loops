@@ -303,11 +303,11 @@ Also updated `scripts/tests/test_builtin_loops.py::test_expected_loops_exist` to
 `ll-loop validate context-health-monitor` passes. All 3779 tests pass.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-20T20:00:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d09ee0f3-cb43-4c99-8bef-98547284f6a2.jsonl`
-- `/ll:ready-issue` - 2026-03-21T00:54:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aff8f7bc-86de-4a43-b435-accb0774eb8b.jsonl`
-- `/ll:refine-issue` - 2026-03-21T00:51:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24f32447-0c48-4116-8565-f064477c3067.jsonl`
-- `/ll:verify-issues` - 2026-03-19T23:11:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:refine-issue` - 2026-03-16T23:24:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f41b047-87a9-4dc6-bd79-b70fcba93e87.jsonl`
-- `/ll:format-issue` - 2026-03-16T23:15:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
-- `/ll:capture-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f7bf6f5-8d0a-49aa-a2dc-02169a6d3f97.jsonl`
+- `/ll:manage-issue` - 2026-03-20T20:00:26 - `d09ee0f3-cb43-4c99-8bef-98547284f6a2.jsonl`
+- `/ll:ready-issue` - 2026-03-21T00:54:30 - `aff8f7bc-86de-4a43-b435-accb0774eb8b.jsonl`
+- `/ll:refine-issue` - 2026-03-21T00:51:46 - `24f32447-0c48-4116-8565-f064477c3067.jsonl`
+- `/ll:verify-issues` - 2026-03-19T23:11:33 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:refine-issue` - 2026-03-16T23:24:15 - `2f41b047-87a9-4dc6-bd79-b70fcba93e87.jsonl`
+- `/ll:format-issue` - 2026-03-16T23:15:46 - `03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
+- `/ll:capture-issue` - 2026-03-16T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `8f7bf6f5-8d0a-49aa-a2dc-02169a6d3f97.jsonl`

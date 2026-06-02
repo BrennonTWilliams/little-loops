@@ -228,8 +228,8 @@ Also created `loops/README.md` — a new index of all 19 built-in loops organize
 Updated `scripts/tests/test_builtin_loops.py` to include `rl-coding-agent` in the `test_expected_loops_exist` set. All 18 tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-17T03:28:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2732ce04-38e1-4516-9a18-f6584833f46c.jsonl`
-- `/ll:format-issue` - 2026-03-17T03:26:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2732ce04-38e1-4516-9a18-f6584833f46c.jsonl`
-- `/ll:refine-issue` - 2026-03-17T03:11:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9bf31b0a-cfc9-42ad-a35f-c71298680f5c.jsonl`
-- `/ll:capture-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/732dcab7-eba9-4078-8001-cb11dc975881.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4cbf2733-f9ad-407c-a562-95dd47cb1a51.jsonl`
+- `/ll:ready-issue` - 2026-03-17T03:28:19 - `2732ce04-38e1-4516-9a18-f6584833f46c.jsonl`
+- `/ll:format-issue` - 2026-03-17T03:26:52 - `2732ce04-38e1-4516-9a18-f6584833f46c.jsonl`
+- `/ll:refine-issue` - 2026-03-17T03:11:57 - `9bf31b0a-cfc9-42ad-a35f-c71298680f5c.jsonl`
+- `/ll:capture-issue` - 2026-03-16T00:00:00Z - `732dcab7-eba9-4078-8001-cb11dc975881.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `4cbf2733-f9ad-407c-a562-95dd47cb1a51.jsonl`

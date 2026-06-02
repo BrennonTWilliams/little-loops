@@ -238,14 +238,14 @@ From `fsm/schema.py`: `FSMLoop.states: dict[str, StateConfig]`, `FSMLoop.initial
 - P3-BUG-664: FSM diagram off-path arrows and back-edges broken (completed)
 
 ## Session Log
-- `/ll:confidence-check` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/54edef10-3495-4074-a73f-5fbf089e106e.jsonl`
-- `/ll:capture-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/000d1e34-e885-4aae-83d4-999718fb8e90.jsonl`
+- `/ll:confidence-check` - 2026-03-10T00:00:00Z - `54edef10-3495-4074-a73f-5fbf089e106e.jsonl`
+- `/ll:capture-issue` - 2026-03-10T00:00:00Z - `000d1e34-e885-4aae-83d4-999718fb8e90.jsonl`
 - `/ll:format-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/644cb258-98f9-4276-9d10-660523431e43.jsonl`
-- `/ll:refine-issue` - 2026-03-11T03:23:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fee81fea-8bf1-4d92-a43d-05577978a440.jsonl`
-- `/ll:refine-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53dc25b3-91cb-457d-a0cc-95d8fe9087b3.jsonl`
-- `/ll:ready-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27c058d4-81a2-4f93-b6c1-3154d2afbb85.jsonl`
-- `/ll:ready-issue` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a385813-1230-48e4-9557-8fcd4a2fbd09.jsonl`
-- `/ll:manage-issue implement` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67687020-1e43-4a95-8452-d5336be1e43d.jsonl`
+- `/ll:refine-issue` - 2026-03-11T03:23:00Z - `fee81fea-8bf1-4d92-a43d-05577978a440.jsonl`
+- `/ll:refine-issue` - 2026-03-10T00:00:00Z - `53dc25b3-91cb-457d-a0cc-95d8fe9087b3.jsonl`
+- `/ll:ready-issue` - 2026-03-10T00:00:00Z - `27c058d4-81a2-4f93-b6c1-3154d2afbb85.jsonl`
+- `/ll:ready-issue` - 2026-03-11T00:00:00Z - `8a385813-1230-48e4-9557-8fcd4a2fbd09.jsonl`
+- `/ll:manage-issue implement` - 2026-03-11T00:00:00Z - `67687020-1e43-4a95-8452-d5336be1e43d.jsonl`
 
 ---
 

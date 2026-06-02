@@ -83,4 +83,4 @@ infrastructure.
 
 ## Session Log
 
-- manual review session - 2026-04-27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6004b6bd-98cd-4890-a69a-b3c5136d203f.jsonl`
+- manual review session - 2026-04-27 - `6004b6bd-98cd-4890-a69a-b3c5136d203f.jsonl`

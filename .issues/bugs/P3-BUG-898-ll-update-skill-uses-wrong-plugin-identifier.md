@@ -116,11 +116,11 @@ Also update:
 `bug`, `skills`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-31T04:23:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/271d24d1-a5b7-4840-ab50-bf00b2433d86.jsonl`
-- `/ll:refine-issue` - 2026-03-31T04:03:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eadfffc5-73ef-4cac-96b3-ff9bc033307c.jsonl`
-- `/ll:format-issue` - 2026-03-31T03:59:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eadfffc5-73ef-4cac-96b3-ff9bc033307c.jsonl`
+- `/ll:ready-issue` - 2026-03-31T04:23:29 - `271d24d1-a5b7-4840-ab50-bf00b2433d86.jsonl`
+- `/ll:refine-issue` - 2026-03-31T04:03:54 - `eadfffc5-73ef-4cac-96b3-ff9bc033307c.jsonl`
+- `/ll:format-issue` - 2026-03-31T03:59:40 - `eadfffc5-73ef-4cac-96b3-ff9bc033307c.jsonl`
 - `/ll:capture-issue` - 2026-03-30T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00032768-5efc-466a-aad1-02f0fb698fb3.jsonl`
-- `/ll:confidence-check` - 2026-03-30T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eadfffc5-73ef-4cac-96b3-ff9bc033307c.jsonl`
+- `/ll:confidence-check` - 2026-03-30T00:00:00Z - `eadfffc5-73ef-4cac-96b3-ff9bc033307c.jsonl`
 
 ---
 

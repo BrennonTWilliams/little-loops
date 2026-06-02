@@ -141,7 +141,7 @@ All 13 tests pass. No infrastructure changes needed — `find_issues()`, `parse_
 **Completed** | Created: 2026-04-04 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-05T00:14:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72c02981-19e5-401b-b374-7664d84df03b.jsonl`
-- `/ll:refine-issue` - 2026-04-05T00:09:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae04c79e-46f8-4ca0-b76b-64b7b646d0fc.jsonl`
+- `/ll:ready-issue` - 2026-04-05T00:14:07 - `72c02981-19e5-401b-b374-7664d84df03b.jsonl`
+- `/ll:refine-issue` - 2026-04-05T00:09:42 - `ae04c79e-46f8-4ca0-b76b-64b7b646d0fc.jsonl`
 
 - `/ll:capture-issue` - 2026-04-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4692f047-3b49-42de-a84b-22a59c6686a8.jsonl`

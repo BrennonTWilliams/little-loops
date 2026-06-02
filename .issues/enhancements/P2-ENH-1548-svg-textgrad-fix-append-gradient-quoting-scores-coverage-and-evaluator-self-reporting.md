@@ -251,9 +251,9 @@ loop, svg-textgrad, shell-quoting, convergence-detection, textgrad
 **Open** | Created: 2026-05-17 | Priority: P2
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-17T15:35:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fdbe2e2c-b2da-43ee-80e0-fcc0b6085612.jsonl`
-- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2171d2b8-9351-49fc-8f46-1e676dd33916.jsonl`
-- `/ll:wire-issue` - 2026-05-17T15:32:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6fa716ae-51a1-4c8f-86a6-dd787724da7b.jsonl`
-- `/ll:refine-issue` - 2026-05-17T15:26:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/854172b0-5e33-4d14-bc4a-b22a62501a8e.jsonl`
-- `/ll:format-issue` - 2026-05-17T08:11:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4976d4f8-c206-4101-b4ca-7f83eeb1d1f4.jsonl`
+- `/ll:ready-issue` - 2026-05-17T15:35:56 - `fdbe2e2c-b2da-43ee-80e0-fcc0b6085612.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `2171d2b8-9351-49fc-8f46-1e676dd33916.jsonl`
+- `/ll:wire-issue` - 2026-05-17T15:32:06 - `6fa716ae-51a1-4c8f-86a6-dd787724da7b.jsonl`
+- `/ll:refine-issue` - 2026-05-17T15:26:40 - `854172b0-5e33-4d14-bc4a-b22a62501a8e.jsonl`
+- `/ll:format-issue` - 2026-05-17T08:11:48 - `4976d4f8-c206-4101-b4ca-7f83eeb1d1f4.jsonl`
 - `/ll:capture-issue` - 2026-05-17T08:08:24Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ccc2e272-5433-4234-bd5a-8b2343569a3a.jsonl`

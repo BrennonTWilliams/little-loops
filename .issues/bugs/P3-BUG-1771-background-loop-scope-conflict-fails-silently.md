@@ -150,11 +150,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - [API Reference](../docs/reference/API.md) — LockManager and FSM concurrency docs
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-28T23:31:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dca5f423-069e-45b7-9c52-c9b45e034276.jsonl`
-- `/ll:refine-issue` - 2026-05-28T22:58:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ef33930-afbc-4fc6-97f3-3dddef828d29.jsonl`
-- `/ll:format-issue` - 2026-05-28T22:52:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd427990-f2e8-4af5-a088-fc75387df617.jsonl`
+- `/ll:ready-issue` - 2026-05-28T23:31:00 - `dca5f423-069e-45b7-9c52-c9b45e034276.jsonl`
+- `/ll:refine-issue` - 2026-05-28T22:58:03 - `4ef33930-afbc-4fc6-97f3-3dddef828d29.jsonl`
+- `/ll:format-issue` - 2026-05-28T22:52:22 - `dd427990-f2e8-4af5-a088-fc75387df617.jsonl`
 - `/ll:capture-issue` - 2026-05-28T22:49:27Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/694fe427-3cbd-4daa-82f6-275b1a9363d0.jsonl`
-- `/ll:confidence-check` - 2026-05-28T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5894230-faa5-424a-9205-9417a3ec5259.jsonl`
+- `/ll:confidence-check` - 2026-05-28T23:00:00 - `f5894230-faa5-424a-9205-9417a3ec5259.jsonl`
 - `/ll:manage-issue` - 2026-05-28T23:41:37Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/<current>.jsonl`
 
 ## Resolution

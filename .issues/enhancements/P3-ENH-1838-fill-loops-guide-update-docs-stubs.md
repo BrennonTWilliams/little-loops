@@ -53,7 +53,7 @@ Approximate line numbers at time of audit (2026-05-31):
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T02:39:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3a21d8c-f37e-4427-96a3-e58b86566be2.jsonl`
+- `/ll:ready-issue` - 2026-06-01T02:39:08 - `b3a21d8c-f37e-4427-96a3-e58b86566be2.jsonl`
 
 
 ---

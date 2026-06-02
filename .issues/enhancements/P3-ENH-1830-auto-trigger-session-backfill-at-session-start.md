@@ -190,11 +190,11 @@ def backfill_incremental(db_path: Path, since_ts: float) -> None:
 **Open** | Created: 2026-06-01 | Priority: P3
 
 ## Session Log
-- `/ll:manage-issue` - 2026-06-01T04:57:16Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c038258-5fb6-4884-a0c7-aff569f156b8.jsonl`
-- `/ll:ready-issue` - 2026-06-01T04:45:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21eedb93-d9a3-4c98-b7a0-d0c464f0300f.jsonl`
-- `/ll:confidence-check` - 2026-05-31T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b8be480e-e52e-4ab8-a8c5-3b5902d7ffb7.jsonl`
-- `/ll:wire-issue` - 2026-06-01T04:41:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63c41eaa-7fd8-4ee8-928e-3494f14e0cda.jsonl`
-- `/ll:refine-issue` - 2026-06-01T04:35:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/daf899d9-17da-4a19-8188-be850e758c59.jsonl`
-- `/ll:refine-issue` - 2026-06-01T04:34:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/daf899d9-17da-4a19-8188-be850e758c59.jsonl`
-- `/ll:format-issue` - 2026-06-01T01:16:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b36ecc52-50ca-45d3-a937-1a07c2c7a5ee.jsonl`
-- `/ll:capture-issue` - 2026-06-01T01:10:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:manage-issue` - 2026-06-01T04:57:16Z - `6c038258-5fb6-4884-a0c7-aff569f156b8.jsonl`
+- `/ll:ready-issue` - 2026-06-01T04:45:03 - `21eedb93-d9a3-4c98-b7a0-d0c464f0300f.jsonl`
+- `/ll:confidence-check` - 2026-05-31T00:00:00Z - `b8be480e-e52e-4ab8-a8c5-3b5902d7ffb7.jsonl`
+- `/ll:wire-issue` - 2026-06-01T04:41:12 - `63c41eaa-7fd8-4ee8-928e-3494f14e0cda.jsonl`
+- `/ll:refine-issue` - 2026-06-01T04:35:07 - `daf899d9-17da-4a19-8188-be850e758c59.jsonl`
+- `/ll:refine-issue` - 2026-06-01T04:34:57 - `daf899d9-17da-4a19-8188-be850e758c59.jsonl`
+- `/ll:format-issue` - 2026-06-01T01:16:58 - `b36ecc52-50ca-45d3-a937-1a07c2c7a5ee.jsonl`
+- `/ll:capture-issue` - 2026-06-01T01:10:54Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

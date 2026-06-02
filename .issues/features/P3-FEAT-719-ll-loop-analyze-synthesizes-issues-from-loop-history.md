@@ -233,12 +233,12 @@ Note: No Python module was created (none needed per issue spec — all logic liv
 ---
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1bce590-015a-4862-aabe-11dcbf71a389.jsonl`
-- `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ece248e3-a7ba-4bdc-9a07-c3af61df2fe9.jsonl`
-- `/ll:confidence-check` - 2026-03-13T18:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6989f534-c0f7-4db5-88e8-3b0c841b4cb2.jsonl`
-- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96ed1145-2e6e-4281-9ed9-a09eba03b35d.jsonl`
-- `/ll:ready-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/18d1b634-9acb-408a-ba23-de0415681693.jsonl`
-- `/ll:manage-issue` - 2026-03-13T21:10:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:capture-issue` - 2026-03-13T00:00:00Z - `f1bce590-015a-4862-aabe-11dcbf71a389.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `ece248e3-a7ba-4bdc-9a07-c3af61df2fe9.jsonl`
+- `/ll:confidence-check` - 2026-03-13T18:00:00Z - `6989f534-c0f7-4db5-88e8-3b0c841b4cb2.jsonl`
+- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `96ed1145-2e6e-4281-9ed9-a09eba03b35d.jsonl`
+- `/ll:ready-issue` - 2026-03-13T00:00:00Z - `18d1b634-9acb-408a-ba23-de0415681693.jsonl`
+- `/ll:manage-issue` - 2026-03-13T21:10:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`

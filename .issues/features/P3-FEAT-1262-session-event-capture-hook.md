@@ -125,13 +125,13 @@ FEAT-1116 risk: `session-capture.sh` is a PostToolUse shell script in the layer 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-11): This issue implements `session-capture.sh` as a full-logic PostToolUse shell hook. FEAT-1116 (Hook-Intent Abstraction Layer) will migrate PostToolUse hooks to Python core handlers with thin per-host shell adapters. Implement the shell script as specified here for the MVP, but treat it as temporary: once FEAT-1116's PostToolUse migration scaffolding lands, port the event-capture logic to a Python intent handler (e.g., `scripts/little_loops/hooks/post_tool_use_capture.py`) and replace `session-capture.sh` with a thin Claude Code adapter that delegates to the Python handler. Keep the shell script logic minimal — event parsing, JSONL append, and failure-safe exit — so the Python port is straightforward.
 
 ## Session Log
-- `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-11T21:32:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/521f9c4d-aa09-4ad1-88fe-93826dacaa4a.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
-- `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-04-26T17:22:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83033e3d-e46b-42e3-9b93-f788f6f5fee1.jsonl`
-- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+- `/ll:verify-issues` - 2026-05-14T20:42:05 - `08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-11T21:32:14 - `521f9c4d-aa09-4ad1-88fe-93826dacaa4a.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:21:15 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
+- `/ll:verify-issues` - 2026-04-26T19:34:07 - `316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-04-26T17:22:36 - `83033e3d-e46b-42e3-9b93-f788f6f5fee1.jsonl`
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 
 ## Blocks
 

@@ -210,8 +210,8 @@ _Added by `/ll:verify-issues` — 2026-03-16:_
 - The codebase research note (EnterPlanMode/ExitPlanMode not wired in Python) is confirmed: no usages in `scripts/` — this is a key implementation constraint to resolve before coding.
 
 ## Session Log
-- `/ll:verify-issues` - 2026-03-16T17:32:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
-- `/ll:verify-issues` - 2026-03-16T17:28:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
-- `/ll:refine-issue` - 2026-03-16T17:25:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef6f9fdc-6be2-4332-a31a-ac306dde4386.jsonl`
+- `/ll:verify-issues` - 2026-03-16T17:32:20 - `d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
+- `/ll:verify-issues` - 2026-03-16T17:28:22 - `d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
+- `/ll:refine-issue` - 2026-03-16T17:25:24 - `ef6f9fdc-6be2-4332-a31a-ac306dde4386.jsonl`
 - `/ll:capture-issue` - 2026-03-16T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71056193-bbfc-4baa-8002-42476d663c64.jsonl`

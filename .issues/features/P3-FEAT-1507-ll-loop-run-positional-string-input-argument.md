@@ -200,13 +200,13 @@ All acceptance criteria met:
 - `scripts/little_loops/cli/loop/__init__.py:94` registers only `"loop"` as a positional argument for the `run` subparser — no second positional `input` argument exists. `run.py` has no `args.input` injection logic. `fsm-loop-schema.json` has no `input_key` field. Feature not yet implemented.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-15T03:41:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11de3692-60f2-4dcb-9ce4-756201f6dddb.jsonl`
-- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7a1f56-687d-4b69-9d22-6ec472aa9b1f.jsonl`
-- `/ll:refine-issue` - 2026-03-15T03:26:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf30ff97-a5f9-4719-b28c-ab6580383ecd.jsonl`
-- `/ll:verify-issues` - 2026-03-15T03:23:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6cacfa2-fc65-45e7-9629-01c3fe3df856.jsonl`
-- `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
+- `/ll:ready-issue` - 2026-03-15T03:41:14 - `11de3692-60f2-4dcb-9ce4-756201f6dddb.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `8d7a1f56-687d-4b69-9d22-6ec472aa9b1f.jsonl`
+- `/ll:refine-issue` - 2026-03-15T03:26:54 - `bf30ff97-a5f9-4719-b28c-ab6580383ecd.jsonl`
+- `/ll:verify-issues` - 2026-03-15T03:23:24 - `c6cacfa2-fc65-45e7-9629-01c3fe3df856.jsonl`
+- `/ll:verify-issues` - 2026-03-15T00:11:17 - `623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/582c29ac-d327-46f4-8794-3433874ce5c2.jsonl`
-- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
-- `/ll:format-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
-- `/ll:verify-issues` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
-- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
+- `/ll:format-issue` - 2026-03-14T00:00:00Z - `337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:verify-issues` - 2026-03-14T00:00:00Z - `337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`

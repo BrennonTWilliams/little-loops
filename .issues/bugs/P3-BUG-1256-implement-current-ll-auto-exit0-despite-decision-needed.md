@@ -169,9 +169,9 @@ Tests updated in `test_builtin_loops.py::TestAutodevLoop` (renamed/updated 3 exi
 **Completed** | Created: 2026-04-22 | Completed: 2026-04-22 | Priority: P3
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-22T17:25:18Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/760f9065-07e1-407f-9611-0c6c74f6fbbc.jsonl`
-- `/ll:ready-issue` - 2026-04-22T17:21:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/760f9065-07e1-407f-9611-0c6c74f6fbbc.jsonl`
-- `/ll:confidence-check` - 2026-04-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9e46c0e-46b7-4c8e-9b0a-761f95124db5.jsonl`
-- `/ll:wire-issue` - 2026-04-22T17:17:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b436e4f-c8d6-4c0f-8dc6-dc3de837f393.jsonl`
-- `/ll:refine-issue` - 2026-04-22T17:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/924d8707-3ffc-4c54-9da8-327388aec773.jsonl`
-- `/ll:capture-issue` - 2026-04-22T17:02:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c3dd3b0-98a8-494a-8720-4fa7296292d6.jsonl`
+- `/ll:manage-issue` - 2026-04-22T17:25:18Z - `760f9065-07e1-407f-9611-0c6c74f6fbbc.jsonl`
+- `/ll:ready-issue` - 2026-04-22T17:21:35 - `760f9065-07e1-407f-9611-0c6c74f6fbbc.jsonl`
+- `/ll:confidence-check` - 2026-04-22T00:00:00Z - `f9e46c0e-46b7-4c8e-9b0a-761f95124db5.jsonl`
+- `/ll:wire-issue` - 2026-04-22T17:17:31 - `8b436e4f-c8d6-4c0f-8dc6-dc3de837f393.jsonl`
+- `/ll:refine-issue` - 2026-04-22T17:09:56 - `924d8707-3ffc-4c54-9da8-327388aec773.jsonl`
+- `/ll:capture-issue` - 2026-04-22T17:02:49Z - `8c3dd3b0-98a8-494a-8720-4fa7296292d6.jsonl`

@@ -181,16 +181,16 @@ _Added by `/ll:confidence-check` on 2026-06-01_
 - **Open decision on config-gate implementation**: Implementation Steps 3 & 4 explicitly wire `feature_enabled_for(config, "analytics.capture.skills", ...)` in `record_skill_event()` and the hook block. The Scope Boundary note (added by `/ll:audit-issue-conflicts`) contradicts this: "Ship `record_skill_event()` without a config gate; ENH-1835 will add the analytics.capture.skills glob check." Resolve before implementing by updating Steps 3 & 4 to align with the Scope Boundary decision — the note appears authoritative but the steps haven't been updated to reflect it.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T07:36:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5efdcf76-6192-4dbd-9da2-f8caab8e4345.jsonl`
-- `/ll:confidence-check` - 2026-06-01T08:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6416e06-4afd-4107-8a6a-153a47d898fb.jsonl`
-- `/ll:decide-issue` - 2026-06-01T07:31:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b5ee914-f3aa-48b7-a5c7-01c672a23761.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d6ae5a2-5cb2-4b13-b9c2-4dfc50ceada2.jsonl`
-- `/ll:wire-issue` - 2026-06-01T07:25:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef7ff611-871b-4275-bb3a-7135e10433e8.jsonl`
-- `/ll:refine-issue` - 2026-06-01T07:21:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/058af3ee-7008-4c20-ace5-9dc421e66beb.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-06-01T04:19:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f60c9218-3661-4445-8adb-23f9182491a5.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
-- `/ll:format-issue` - 2026-06-01T01:20:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c78d4399-dc58-4488-ac5a-557b6cd5e073.jsonl`
-- `/ll:capture-issue` - 2026-06-01T01:10:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:ready-issue` - 2026-06-01T07:36:33 - `5efdcf76-6192-4dbd-9da2-f8caab8e4345.jsonl`
+- `/ll:confidence-check` - 2026-06-01T08:00:00 - `b6416e06-4afd-4107-8a6a-153a47d898fb.jsonl`
+- `/ll:decide-issue` - 2026-06-01T07:31:08 - `6b5ee914-f3aa-48b7-a5c7-01c672a23761.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00 - `6d6ae5a2-5cb2-4b13-b9c2-4dfc50ceada2.jsonl`
+- `/ll:wire-issue` - 2026-06-01T07:25:56 - `ef7ff611-871b-4275-bb3a-7135e10433e8.jsonl`
+- `/ll:refine-issue` - 2026-06-01T07:21:02 - `058af3ee-7008-4c20-ace5-9dc421e66beb.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-01T04:19:23 - `f60c9218-3661-4445-8adb-23f9182491a5.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:59 - `5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
+- `/ll:format-issue` - 2026-06-01T01:20:03 - `c78d4399-dc58-4488-ac5a-557b6cd5e073.jsonl`
+- `/ll:capture-issue` - 2026-06-01T01:10:54Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 
 ---
 

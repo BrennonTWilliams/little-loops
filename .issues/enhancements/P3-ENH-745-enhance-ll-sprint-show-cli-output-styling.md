@@ -153,13 +153,13 @@ Applied color styling to `ll-sprint show` output using existing `colorize`, `PRI
 All 3591 tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-17T12:18:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/edd12900-0e7a-411b-8cce-44fc94966bc9.jsonl`
-- `/ll:confidence-check` - 2026-05-17T13:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1721b98c-efe2-4756-b771-ffb5af710a17.jsonl`
-- `/ll:wire-issue` - 2026-05-17T12:14:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97085e98-ba0d-4836-b13e-2d9b7130c673.jsonl`
-- `/ll:ready-issue` - 2026-03-17T03:43:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4bc601fe-3133-4658-ac80-94621748a79b.jsonl`
-- `/ll:refine-issue` - 2026-03-17T03:35:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/532865b2-afcc-4542-a851-1511b776f7cd.jsonl`
-- `/ll:format-issue` - 2026-03-16T01:20:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e105a0a-8129-46b0-9889-ec4f193c35ed.jsonl`
-- `/ll:confidence-check` - 2026-03-15T22:44:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e049f68d-a6fb-4ec9-8c68-b186e19251c7.jsonl`
-- `/ll:refine-issue` - 2026-03-15T22:43:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e049f68d-a6fb-4ec9-8c68-b186e19251c7.jsonl`
-- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ccc2230-6d69-46a3-8836-f6cde953377c.jsonl`
+- `/ll:ready-issue` - 2026-05-17T12:18:42 - `edd12900-0e7a-411b-8cce-44fc94966bc9.jsonl`
+- `/ll:confidence-check` - 2026-05-17T13:00:00 - `1721b98c-efe2-4756-b771-ffb5af710a17.jsonl`
+- `/ll:wire-issue` - 2026-05-17T12:14:18 - `97085e98-ba0d-4836-b13e-2d9b7130c673.jsonl`
+- `/ll:ready-issue` - 2026-03-17T03:43:03 - `4bc601fe-3133-4658-ac80-94621748a79b.jsonl`
+- `/ll:refine-issue` - 2026-03-17T03:35:52 - `532865b2-afcc-4542-a851-1511b776f7cd.jsonl`
+- `/ll:format-issue` - 2026-03-16T01:20:03 - `4e105a0a-8129-46b0-9889-ec4f193c35ed.jsonl`
+- `/ll:confidence-check` - 2026-03-15T22:44:09 - `e049f68d-a6fb-4ec9-8c68-b186e19251c7.jsonl`
+- `/ll:refine-issue` - 2026-03-15T22:43:16 - `e049f68d-a6fb-4ec9-8c68-b186e19251c7.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `4ccc2230-6d69-46a3-8836-f6cde953377c.jsonl`
 - `/ll:capture-issue` - 2026-03-14T22:22:31Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70565b3c-7eae-4789-9be2-378cdc962a48.jsonl`

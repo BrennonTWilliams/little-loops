@@ -73,11 +73,11 @@ Same content with TODO markers removed after verification.
 `enhancement`, `documentation`, `auto-generated`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-26T19:41:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/490f2bf2-4819-4aef-a2b8-bab9dbccb44f.jsonl`
-- `/ll:ready-issue` - 2026-04-26T19:38:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/490f2bf2-4819-4aef-a2b8-bab9dbccb44f.jsonl`
-- `/ll:verify-issues` - 2026-04-26T19:34:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
-- `/ll:format-issue` - 2026-04-26T19:23:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2bb55166-f6aa-4bd2-a6a2-b48cd5de603c.jsonl`
-- `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+- `/ll:manage-issue` - 2026-04-26T19:41:00 - `490f2bf2-4819-4aef-a2b8-bab9dbccb44f.jsonl`
+- `/ll:ready-issue` - 2026-04-26T19:38:42 - `490f2bf2-4819-4aef-a2b8-bab9dbccb44f.jsonl`
+- `/ll:verify-issues` - 2026-04-26T19:34:06 - `316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
+- `/ll:format-issue` - 2026-04-26T19:23:11 - `2bb55166-f6aa-4bd2-a6a2-b48cd5de603c.jsonl`
+- `/ll:verify-issues` - 2026-04-24T03:02:15 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 
 ---
 

@@ -219,14 +219,14 @@ Implemented Option A (ticker stop/start via `window.__pixiApp`):
 
 ## Session Log
 - `/ll:manage-issue` - 2026-06-01T16:57:17Z - this session
-- `/ll:ready-issue` - 2026-06-01T16:51:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2614b32d-713a-4cbc-bfca-54faf6bf005d.jsonl`
-- `/ll:confidence-check` - 2026-06-01T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f03e91a-c329-4afe-a781-e978a91f6da2.jsonl`
-- `/ll:decide-issue` - 2026-06-01T16:46:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52ddc94b-9fa4-4009-b7bb-9b3ebbaa93ed.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b847a03e-89d6-4a61-892d-ecc5a92b0fa2.jsonl`
-- `/ll:wire-issue` - 2026-06-01T16:37:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53fe137e-1768-4b04-961c-6f3bedb719cb.jsonl`
-- `/ll:refine-issue` - 2026-06-01T16:31:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92bcd8b4-38a6-46b1-9488-9de681167c3e.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:format-issue` - 2026-05-31T02:12:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c1090c2-86b4-43c5-9308-02fd0823f906.jsonl`
+- `/ll:ready-issue` - 2026-06-01T16:51:33 - `2614b32d-713a-4cbc-bfca-54faf6bf005d.jsonl`
+- `/ll:confidence-check` - 2026-06-01T17:00:00 - `8f03e91a-c329-4afe-a781-e978a91f6da2.jsonl`
+- `/ll:decide-issue` - 2026-06-01T16:46:31 - `52ddc94b-9fa4-4009-b7bb-9b3ebbaa93ed.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00 - `b847a03e-89d6-4a61-892d-ecc5a92b0fa2.jsonl`
+- `/ll:wire-issue` - 2026-06-01T16:37:48 - `53fe137e-1768-4b04-961c-6f3bedb719cb.jsonl`
+- `/ll:refine-issue` - 2026-06-01T16:31:37 - `92bcd8b4-38a6-46b1-9488-9de681167c3e.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:16 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:17 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:format-issue` - 2026-05-31T02:12:19 - `6c1090c2-86b4-43c5-9308-02fd0823f906.jsonl`
 - `/ll:capture-issue` - 2026-05-30T22:06:48Z - this session
 **Open** | Created: 2026-05-30 | Priority: P3

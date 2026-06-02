@@ -150,10 +150,10 @@ Follow this exact same pattern for `_find_test_file` and `analyze_test_gaps`.
 - Enhancement remains unimplemented
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eae862b4-e4d3-4e7e-8ba4-75dc4b3ddb82.jsonl`
-- `/ll:ready-issue` - 2026-03-21T06:29:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eae862b4-e4d3-4e7e-8ba4-75dc4b3ddb82.jsonl`
-- `/ll:confidence-check` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:refine-issue` - 2026-03-21T05:54:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5b33b4-4f43-4816-926d-91f9358c3ab6.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:verify-issues` - 2026-03-19T23:40:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:manage-issue` - 2026-03-21T00:00:00Z - `eae862b4-e4d3-4e7e-8ba4-75dc4b3ddb82.jsonl`
+- `/ll:ready-issue` - 2026-03-21T06:29:27 - `eae862b4-e4d3-4e7e-8ba4-75dc4b3ddb82.jsonl`
+- `/ll:confidence-check` - 2026-03-21T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:refine-issue` - 2026-03-21T05:54:28 - `8f5b33b4-4f43-4816-926d-91f9358c3ab6.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:verify-issues` - 2026-03-19T23:40:57 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:scan-codebase` - 2026-03-19T22:12:56 - `f1798556-30de-4e10-a591-2da06903a76f.jsonl`

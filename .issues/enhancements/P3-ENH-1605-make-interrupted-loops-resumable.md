@@ -200,11 +200,11 @@ Changes made:
 **Done** | Created: 2026-05-18 | Completed: 2026-05-18 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-18T10:26:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35aa2cdf-82c0-4afe-a7e1-9ac197eb4e1c.jsonl`
-- `/ll:confidence-check` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51846938-a454-4013-b926-e1337eda99a7.jsonl`
-- `/ll:wire-issue` - 2026-05-18T10:21:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/65061985-d2a5-47c2-8a86-4d4faf8aca60.jsonl`
-- `/ll:refine-issue` - 2026-05-18T10:16:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59ae7671-b0eb-46e6-99f8-da6fab58992a.jsonl`
-- `/ll:format-issue` - 2026-05-18T05:38:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3ddc6287-f781-4278-a8a4-03871998cfc3.jsonl`
+- `/ll:ready-issue` - 2026-05-18T10:26:26 - `35aa2cdf-82c0-4afe-a7e1-9ac197eb4e1c.jsonl`
+- `/ll:confidence-check` - 2026-05-18T00:00:00 - `51846938-a454-4013-b926-e1337eda99a7.jsonl`
+- `/ll:wire-issue` - 2026-05-18T10:21:38 - `65061985-d2a5-47c2-8a86-4d4faf8aca60.jsonl`
+- `/ll:refine-issue` - 2026-05-18T10:16:10 - `59ae7671-b0eb-46e6-99f8-da6fab58992a.jsonl`
+- `/ll:format-issue` - 2026-05-18T05:38:09 - `3ddc6287-f781-4278-a8a4-03871998cfc3.jsonl`
 
 - `/ll:capture-issue` - 2026-05-18T05:35:25Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a80e31cf-a675-4c97-bce5-05347c0aadf2.jsonl`
 - `/ll:manage-issue` - 2026-05-18T10:30:28Z - implemented all 15 wiring steps; 180 tests pass

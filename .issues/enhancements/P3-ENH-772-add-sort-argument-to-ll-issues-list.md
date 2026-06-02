@@ -101,8 +101,8 @@ Implemented `--sort`, `--asc`, and `--desc` arguments for `ll-issues list`. Exte
 
 ## Session Log
 - `/ll:manage-issue` - 2026-03-16T00:00:00Z - current session
-- `/ll:ready-issue` - 2026-03-16T17:45:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/215bd8fd-d4ba-434a-81e8-f9dcc6feb4a9.jsonl`
-- `/ll:verify-issues` - 2026-03-16T17:27:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
-- `/ll:refine-issue` - 2026-03-16T17:21:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04f3d100-af21-43e6-8a78-b678385890bf.jsonl`
+- `/ll:ready-issue` - 2026-03-16T17:45:25 - `215bd8fd-d4ba-434a-81e8-f9dcc6feb4a9.jsonl`
+- `/ll:verify-issues` - 2026-03-16T17:27:51 - `d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
+- `/ll:refine-issue` - 2026-03-16T17:21:01 - `04f3d100-af21-43e6-8a78-b678385890bf.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef26d0b4-df23-48b7-b46f-a500ba15fda8.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9a440ea-dc3a-4df6-95fd-943f0b4536ac.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `f9a440ea-dc3a-4df6-95fd-943f0b4536ac.jsonl`

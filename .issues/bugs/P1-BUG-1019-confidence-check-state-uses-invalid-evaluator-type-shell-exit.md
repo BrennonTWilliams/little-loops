@@ -208,8 +208,8 @@ if evaluate.type not in VALID_EVAL_TYPES:
 3. **`scripts/tests/test_builtin_loops.py`**: Updated `TestRefineToReadyIssueSubLoop` tests to reflect new two-state structure (`confidence_check` → `check_scores`).
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-10T19:12:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cc3e29c-a60b-4144-a54e-33e4dd71cd9f.jsonl`
-- `/ll:refine-issue` - 2026-04-10T18:57:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ade57844-f3d8-473c-8de6-84e77f05a160.jsonl`
+- `/ll:ready-issue` - 2026-04-10T19:12:37 - `8cc3e29c-a60b-4144-a54e-33e4dd71cd9f.jsonl`
+- `/ll:refine-issue` - 2026-04-10T18:57:11 - `ade57844-f3d8-473c-8de6-84e77f05a160.jsonl`
 - `/ll:manage-issue` - 2026-04-10T19:30:00 - bug fix BUG-1019
 
 ---

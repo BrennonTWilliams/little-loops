@@ -334,17 +334,17 @@ _Updated by `/ll:confidence-check` on 2026-04-12_
 - **FEAT-1074 partial blocker**: `ParallelStateConfig` and `ParallelResult` do not yet exist in `scripts/little_loops/fsm/schema.py`. Steps 1 (fsm/__init__.py exports) and 5 (smoke test) must wait for FEAT-1074 to ship. Steps 2-4 and 6-9 (config/features.py, config-schema.json, all test_config.py assertions) are fully actionable now — 7 of 9 implementation steps can proceed immediately.
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c25b41ad-2e86-4d04-bea4-6daf251405e7.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb241b55-1d34-432c-a106-7784678fa9e9.jsonl`
-- `/ll:wire-issue` - 2026-04-21T15:39:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/33fbf0c9-abd5-4804-acea-7186e27543a1.jsonl`
-- `/ll:refine-issue` - 2026-04-21T15:33:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40d82980-5a40-467a-afca-9b5a6c642dff.jsonl`
-- `/ll:refine-issue` - 2026-04-12T23:18:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9548464-43de-4404-b392-5f02350675b4.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fff07e3-8175-409d-b80a-4696f20cca93.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9548464-43de-4404-b392-5f02350675b4.jsonl`
-- `/ll:wire-issue` - 2026-04-12T23:14:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfd74bef-7777-40b8-b2c3-4a5efe2d48f4.jsonl`
-- `/ll:refine-issue` - 2026-04-12T23:07:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c3ebdf4-689c-484d-8bd7-e5f4bbfe93b1.jsonl`
-- `/ll:format-issue` - 2026-04-12T23:04:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95ca3cc7-a17d-4286-82ee-08e5166f6ce9.jsonl`
-- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/77a4f6c6-909a-4d66-84d7-1e952b12aed8.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `c25b41ad-2e86-4d04-bea4-6daf251405e7.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `bb241b55-1d34-432c-a106-7784678fa9e9.jsonl`
+- `/ll:wire-issue` - 2026-04-21T15:39:13 - `33fbf0c9-abd5-4804-acea-7186e27543a1.jsonl`
+- `/ll:refine-issue` - 2026-04-21T15:33:13 - `40d82980-5a40-467a-afca-9b5a6c642dff.jsonl`
+- `/ll:refine-issue` - 2026-04-12T23:18:12 - `b9548464-43de-4404-b392-5f02350675b4.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00 - `2fff07e3-8175-409d-b80a-4696f20cca93.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00 - `b9548464-43de-4404-b392-5f02350675b4.jsonl`
+- `/ll:wire-issue` - 2026-04-12T23:14:05 - `cfd74bef-7777-40b8-b2c3-4a5efe2d48f4.jsonl`
+- `/ll:refine-issue` - 2026-04-12T23:07:55 - `1c3ebdf4-689c-484d-8bd7-e5f4bbfe93b1.jsonl`
+- `/ll:format-issue` - 2026-04-12T23:04:14 - `95ca3cc7-a17d-4286-82ee-08e5166f6ce9.jsonl`
+- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `77a4f6c6-909a-4d66-84d7-1e952b12aed8.jsonl`
 
 ---
 

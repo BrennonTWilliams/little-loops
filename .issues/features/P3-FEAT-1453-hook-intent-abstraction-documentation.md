@@ -232,8 +232,8 @@ _Added by `/ll:confidence-check` on 2026-05-11_
 - FEAT-1460: Hook-Intent Documentation — Navigation, Wiring Fixes & Tests
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d988513e-3479-406f-a1d0-1ef8c9b891d7.jsonl`
-- `/ll:wire-issue` - 2026-05-12T04:24:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2bf320b-b12e-4a6d-b429-17b9901b45a0.jsonl`
-- `/ll:refine-issue` - 2026-05-12T04:17:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db8b45cd-427f-4cb7-8a63-6d5af9871153.jsonl`
-- `/ll:issue-size-review` - 2026-05-12T00:20:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cb0dc9a-fd6f-4945-97b0-ad6acec56482.jsonl`
-- `/ll:issue-size-review` - 2026-05-12T04:28:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `d988513e-3479-406f-a1d0-1ef8c9b891d7.jsonl`
+- `/ll:wire-issue` - 2026-05-12T04:24:02 - `d2bf320b-b12e-4a6d-b429-17b9901b45a0.jsonl`
+- `/ll:refine-issue` - 2026-05-12T04:17:30 - `db8b45cd-427f-4cb7-8a63-6d5af9871153.jsonl`
+- `/ll:issue-size-review` - 2026-05-12T00:20:02 - `5cb0dc9a-fd6f-4945-97b0-ad6acec56482.jsonl`
+- `/ll:issue-size-review` - 2026-05-12T04:28:55 - `001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`

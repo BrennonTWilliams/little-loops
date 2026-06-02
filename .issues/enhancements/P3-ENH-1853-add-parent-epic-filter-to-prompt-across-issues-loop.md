@@ -166,14 +166,14 @@ ll-loop run prompt-across-issues "<prompt>" --context type=ENH --context parent=
 `enhancement`, `loops`, `fsm`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T18:31:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08b37632-8612-4103-9d09-928ebcf3d023.jsonl`
-- `/ll:decide-issue` - 2026-06-01T18:27:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ead2516b-025f-48fe-a5f9-3dcf77ecea5d.jsonl`
-- `/ll:wire-issue` - 2026-06-01T18:20:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/188f6aed-9b5a-476d-b0ec-814b0c9ef6c1.jsonl`
-- `/ll:refine-issue` - 2026-06-01T18:16:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82ca77a3-3757-46eb-bd70-4bbff3c8fb0e.jsonl`
-- `/ll:format-issue` - 2026-06-01T17:14:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96043361-acea-4c7e-bf4e-4bf536eb0898.jsonl`
-- `/ll:capture-issue` - 2026-06-01T17:06:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1781e718-7f06-4b5d-95f3-141040199f61.jsonl`
-- `/ll:confidence-check` - 2026-06-01T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/494ad2ed-0ef5-43fe-bde9-a221baa7ae4c.jsonl`
-- `/ll:confidence-check` - 2026-06-01T20:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fcb37dcb-bab8-4c41-bfb1-b4884a0855e9.jsonl`
+- `/ll:ready-issue` - 2026-06-01T18:31:17 - `08b37632-8612-4103-9d09-928ebcf3d023.jsonl`
+- `/ll:decide-issue` - 2026-06-01T18:27:22 - `ead2516b-025f-48fe-a5f9-3dcf77ecea5d.jsonl`
+- `/ll:wire-issue` - 2026-06-01T18:20:06 - `188f6aed-9b5a-476d-b0ec-814b0c9ef6c1.jsonl`
+- `/ll:refine-issue` - 2026-06-01T18:16:07 - `82ca77a3-3757-46eb-bd70-4bbff3c8fb0e.jsonl`
+- `/ll:format-issue` - 2026-06-01T17:14:33 - `96043361-acea-4c7e-bf4e-4bf536eb0898.jsonl`
+- `/ll:capture-issue` - 2026-06-01T17:06:21Z - `1781e718-7f06-4b5d-95f3-141040199f61.jsonl`
+- `/ll:confidence-check` - 2026-06-01T19:00:00Z - `494ad2ed-0ef5-43fe-bde9-a221baa7ae4c.jsonl`
+- `/ll:confidence-check` - 2026-06-01T20:00:00Z - `fcb37dcb-bab8-4c41-bfb1-b4884a0855e9.jsonl`
 
 ---
 

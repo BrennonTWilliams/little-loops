@@ -324,26 +324,26 @@ session DB. See commit `3fb84970`. All acceptance criteria satisfied; FEAT-1112
 closed 2026-05-23.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-22T21:07:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2364d2da-6768-4e03-8b14-140e0435729f.jsonl`
-- `/ll:confidence-check` - 2026-05-22T15:53:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb381959-43ce-4717-9896-81af7b2515ab.jsonl`
-- `/ll:wire-issue` - 2026-05-22T20:25:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc75907b-1654-4afe-bf6b-17ff1d6e640c.jsonl`
-- `/ll:refine-issue` - 2026-05-22T20:19:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/087da16e-8a6a-49c2-a0f5-b53a540fc58f.jsonl`
-- `/ll:confidence-check` - 2026-05-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b727c899-131c-4c1f-9603-f77124583f18.jsonl`
-- `/ll:wire-issue` - 2026-05-22T20:04:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7cc0d272-eceb-4768-b649-752fa3de3905.jsonl`
-- `/ll:refine-issue` - 2026-05-22T19:58:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6c016c0-757a-4c25-9fb0-6b6bf3c10291.jsonl`
-- `/ll:format-issue` - 2026-05-22T19:19:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cbe9c704-5a55-4b97-bd03-bbd831363406.jsonl`
-- `/ll:verify-issues` - 2026-05-22T16:11:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-22T16:01:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bd1623c9-b064-4a18-a889-d90953167101.jsonl`
-- `/ll:verify-issues` - 2026-05-18T04:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2807bd8b-4e79-4b76-994d-e6f6cae14245.jsonl`
-- `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-04-26T19:43:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
-- `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-04-26T17:22:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83033e3d-e46b-42e3-9b93-f788f6f5fee1.jsonl`
-- `/ll:verify-issues` - 2026-04-24T03:02:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-04-22T20:04:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
+- `/ll:ready-issue` - 2026-05-22T21:07:28 - `2364d2da-6768-4e03-8b14-140e0435729f.jsonl`
+- `/ll:confidence-check` - 2026-05-22T15:53:00 - `eb381959-43ce-4717-9896-81af7b2515ab.jsonl`
+- `/ll:wire-issue` - 2026-05-22T20:25:37 - `dc75907b-1654-4afe-bf6b-17ff1d6e640c.jsonl`
+- `/ll:refine-issue` - 2026-05-22T20:19:08 - `087da16e-8a6a-49c2-a0f5-b53a540fc58f.jsonl`
+- `/ll:confidence-check` - 2026-05-22T00:00:00 - `b727c899-131c-4c1f-9603-f77124583f18.jsonl`
+- `/ll:wire-issue` - 2026-05-22T20:04:52 - `7cc0d272-eceb-4768-b649-752fa3de3905.jsonl`
+- `/ll:refine-issue` - 2026-05-22T19:58:39 - `d6c016c0-757a-4c25-9fb0-6b6bf3c10291.jsonl`
+- `/ll:format-issue` - 2026-05-22T19:19:40 - `cbe9c704-5a55-4b97-bd03-bbd831363406.jsonl`
+- `/ll:verify-issues` - 2026-05-22T16:11:37 - `d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-22T16:01:45 - `bd1623c9-b064-4a18-a889-d90953167101.jsonl`
+- `/ll:verify-issues` - 2026-05-18T04:53:51 - `2807bd8b-4e79-4b76-994d-e6f6cae14245.jsonl`
+- `/ll:verify-issues` - 2026-05-14T20:42:05 - `08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:21:16 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-04-26T19:43:56 - `b0a12d96-c315-4bf8-b507-7ba3c926702a.jsonl`
+- `/ll:verify-issues` - 2026-04-26T19:34:07 - `316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-04-26T17:22:36 - `83033e3d-e46b-42e3-9b93-f788f6f5fee1.jsonl`
+- `/ll:verify-issues` - 2026-04-24T03:02:17 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-04-22T20:04:15 - `82d256a6-9a99-40f5-8866-377a208de262.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 
 ---
 

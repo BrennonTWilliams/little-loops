@@ -191,12 +191,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Deferred** | Created: 2026-05-23 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T15:08:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22c72bd4-c8c7-425f-955c-8dbd7eb0f95c.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15abbbf2-6861-413e-8b47-a6ce0228b06a.jsonl`
-- `/ll:wire-issue` - 2026-05-24T14:56:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce94b2e6-4df8-415c-8a59-89a35be91e9c.jsonl`
-- `/ll:refine-issue` - 2026-05-24T14:51:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/328a4c48-a381-4d4a-80fd-aa96016d5660.jsonl`
-- `/ll:format-issue` - 2026-05-24T02:31:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a831c57a-345e-49ef-a2f5-c7cd4051eace.jsonl`
-- `/ll:capture-issue` - 2026-05-24T02:27:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b82659fb-64be-4c97-9770-57964db516aa.jsonl`
+- `/ll:ready-issue` - 2026-05-24T15:08:06 - `22c72bd4-c8c7-425f-955c-8dbd7eb0f95c.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `15abbbf2-6861-413e-8b47-a6ce0228b06a.jsonl`
+- `/ll:wire-issue` - 2026-05-24T14:56:13 - `ce94b2e6-4df8-415c-8a59-89a35be91e9c.jsonl`
+- `/ll:refine-issue` - 2026-05-24T14:51:17 - `328a4c48-a381-4d4a-80fd-aa96016d5660.jsonl`
+- `/ll:format-issue` - 2026-05-24T02:31:10 - `a831c57a-345e-49ef-a2f5-c7cd4051eace.jsonl`
+- `/ll:capture-issue` - 2026-05-24T02:27:32Z - `b82659fb-64be-4c97-9770-57964db516aa.jsonl`
 
 ---
 
@@ -215,4 +215,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ### Rationale
 Staggered vertical headers add significant ANSI rendering complexity (per-character wrapping, stagger offsets, connector rows) with high regression risk for every `refine-status` user. ENH-750's column elision already handles narrow terminals. Re-evaluate if `refine-status` table rendering becomes a priority focus.
-- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`
+- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`

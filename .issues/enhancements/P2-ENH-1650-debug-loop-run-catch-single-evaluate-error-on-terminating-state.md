@@ -228,13 +228,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 Added `BUG — Evaluate error terminated the loop` signal rule to `skills/debug-loop-run/SKILL.md`. The new rule fires on the first occurrence when the last `evaluate` before `loop_complete` has `verdict == "error"`, uses the `error` field (falling back to `reason`), and de-duplicates against FATAL_ERROR when both would fire. Updated FATAL_ERROR rule to clarify it is the non-evaluator catch-all. Extended "Multiple signals on same state" with the FATAL_ERROR/eval_error_termination precedence. Updated `signal_type` enum, Step 5 Fault Signals bucket description, and Step 6b classification table. Propagated `eval_error_termination` to `docs/reference/COMMANDS.md` and `skills/audit-loop-run/SKILL.md`. Added two inline discriminator tests and `eval_error_termination` to the `fault_signals` enumeration in `test_debug_loop_run_synthesis.py`.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T13:41:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fc3a37-e9af-4753-a16b-8ad8164f5f05.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b77b78b1-4efc-4fe8-86cb-a9d75fd27e45.jsonl`
-- `/ll:wire-issue` - 2026-05-24T13:36:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73097563-3366-47c7-ad17-c2ae7263a6e6.jsonl`
-- `/ll:refine-issue` - 2026-05-24T13:31:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a6cb46e-058a-4445-a65f-2a50af9c1288.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
-- `/ll:format-issue` - 2026-05-23T23:24:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fb32199-4c7e-45f4-9a40-75be401d19e7.jsonl`
-- `/ll:capture-issue` - 2026-05-23T23:20:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d302e094-e886-4f1c-9e6a-9cb4dda50f7a.jsonl`
+- `/ll:ready-issue` - 2026-05-24T13:41:02 - `17fc3a37-e9af-4753-a16b-8ad8164f5f05.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `b77b78b1-4efc-4fe8-86cb-a9d75fd27e45.jsonl`
+- `/ll:wire-issue` - 2026-05-24T13:36:00 - `73097563-3366-47c7-ad17-c2ae7263a6e6.jsonl`
+- `/ll:refine-issue` - 2026-05-24T13:31:18 - `0a6cb46e-058a-4445-a65f-2a50af9c1288.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
+- `/ll:format-issue` - 2026-05-23T23:24:02 - `4fb32199-4c7e-45f4-9a40-75be401d19e7.jsonl`
+- `/ll:capture-issue` - 2026-05-23T23:20:27Z - `d302e094-e886-4f1c-9e6a-9cb4dda50f7a.jsonl`
 
 ---
 

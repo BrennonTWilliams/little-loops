@@ -179,8 +179,8 @@ scope:
 - BUG-1359 (done): outer-loop-eval scope conflict with sub-loop — different direction (sub-loop blocked by parent, not two peers)
 
 ## Session Log
-- `/ll:refine-issue` - 2026-05-29T18:39:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f6c0d464-ab61-4de1-ba48-aea405639ba8.jsonl`
-- `/ll:format-issue` - 2026-05-29T18:30:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c853141-e354-40cd-b5da-dc4005c2b086.jsonl`
+- `/ll:refine-issue` - 2026-05-29T18:39:22 - `f6c0d464-ab61-4de1-ba48-aea405639ba8.jsonl`
+- `/ll:format-issue` - 2026-05-29T18:30:34 - `4c853141-e354-40cd-b5da-dc4005c2b086.jsonl`
 - `/ll:capture-issue` - 2026-05-28T00:42:55Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 
 **Cancelled** | Created: 2026-05-28 | Priority: P3

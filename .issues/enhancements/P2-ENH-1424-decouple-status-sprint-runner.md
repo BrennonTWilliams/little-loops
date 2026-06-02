@@ -198,13 +198,13 @@ _Added by `/ll:confidence-check` on 2026-05-10_
 Updated `sprint/run.py` and `sprint/edit.py` to use `parse_frontmatter()` status checks instead of `get_completed_dir()` directory globs. Zero calls to `get_completed_dir()` remain in sprint runner files. Updated 3 unit tests and 3 integration tests to use `status: done` frontmatter fixtures. Updated `SPRINT_GUIDE.md`, `review-sprint.md`, and `create-sprint.md` docs. All 108 sprint tests pass.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-10T18:29:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e210bd0-aa74-498d-8efc-472d4b6cd3e1.jsonl`
-- `/ll:manage-issue` - 2026-05-10T18:29:14Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-05-10T18:21:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f78cfa25-2175-41df-8147-46d63f415fd5.jsonl`
-- `/ll:wire-issue` - 2026-05-10T18:14:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e8c63034-014a-4035-a422-a7ecec966145.jsonl`
-- `/ll:refine-issue` - 2026-05-10T18:08:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86aa4e0d-ce8b-4809-b187-ab9f152feab6.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae77d2b6-af7e-4c58-9e31-c1eb4f75e1c9.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-10T18:29:30 - `5e210bd0-aa74-498d-8efc-472d4b6cd3e1.jsonl`
+- `/ll:manage-issue` - 2026-05-10T18:29:14Z
+- `/ll:ready-issue` - 2026-05-10T18:21:24 - `f78cfa25-2175-41df-8147-46d63f415fd5.jsonl`
+- `/ll:wire-issue` - 2026-05-10T18:14:42 - `e8c63034-014a-4035-a422-a7ecec966145.jsonl`
+- `/ll:refine-issue` - 2026-05-10T18:08:51 - `86aa4e0d-ce8b-4809-b187-ab9f152feab6.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `ae77d2b6-af7e-4c58-9e31-c1eb4f75e1c9.jsonl`
 
 ---
 

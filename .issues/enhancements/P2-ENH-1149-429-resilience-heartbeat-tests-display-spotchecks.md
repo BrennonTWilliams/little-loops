@@ -159,12 +159,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis 2026-04-17:_
 - **Spot-check suite**: All 12 listed files pass (1025 tests); full suite 4934 passed / 5 skipped. Lint clean.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c39b8bbc-0a48-4d3d-a0ec-30def08b84b3.jsonl`
-- `/ll:ready-issue` - 2026-04-17T14:29:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35d1a2fe-5e0e-4ba1-8f9d-c87fcc72462c.jsonl`
-- `/ll:refine-issue` - 2026-04-17T08:31:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f251cbb-bdbf-46f1-9afb-74de9598acdb.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/714a7073-85c4-4a11-87ff-d55b6cd3eeba.jsonl`
-- `/ll:wire-issue` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/767d1ea4-e340-45cf-b84a-5cd330c9af1e.jsonl`
+- `/ll:manage-issue` - 2026-04-17 - `c39b8bbc-0a48-4d3d-a0ec-30def08b84b3.jsonl`
+- `/ll:ready-issue` - 2026-04-17T14:29:18 - `35d1a2fe-5e0e-4ba1-8f9d-c87fcc72462c.jsonl`
+- `/ll:refine-issue` - 2026-04-17T08:31:59 - `1f251cbb-bdbf-46f1-9afb-74de9598acdb.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `714a7073-85c4-4a11-87ff-d55b6cd3eeba.jsonl`
+- `/ll:wire-issue` - 2026-04-17T00:00:00Z - `current.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `767d1ea4-e340-45cf-b84a-5cd330c9af1e.jsonl`
 
 ---
 

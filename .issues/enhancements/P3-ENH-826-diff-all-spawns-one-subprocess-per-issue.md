@@ -105,8 +105,8 @@ _Added by `/ll:confidence-check` on 2026-03-19_
 - `gh issue list` returns open issues only by default. Synced issues that are closed on GitHub will not appear in the batch result. Implementation should add `--state all` to the `gh issue list` call, or fall back to per-issue fetch for numbers missing from the batch result.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:ready-issue` - 2026-03-22T03:25:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e65411c-9bed-4164-a08c-a2c832b47ef4.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
-- `/ll:verify-issues` - 2026-03-19T22:36:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
-- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:manage-issue` - 2026-03-21T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-22T03:25:21 - `9e65411c-9bed-4164-a08c-a2c832b47ef4.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
+- `/ll:verify-issues` - 2026-03-19T22:36:19 - `0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
+- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `f1798556-30de-4e10-a591-2da06903a76f.jsonl`

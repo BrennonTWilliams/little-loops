@@ -161,12 +161,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Next child (eval): FEAT-1544
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-17T06:29:13Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3526a99b-7c49-4c45-a664-5761207b3ac3.jsonl`
-- `/ll:ready-issue` - 2026-05-17T06:24:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9c6bdcc-2612-46ee-ac30-a892519faf1a.jsonl`
-- `/ll:wire-issue` - 2026-05-17T06:20:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3a42f68-91fc-4ab8-acb8-7b61ced8deb7.jsonl`
-- `/ll:refine-issue` - 2026-05-17T06:13:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/828ca570-21ca-4627-9028-02bbc7f9df52.jsonl`
-- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f2aa363-89b4-48fb-b7e2-882be8ac2cc8.jsonl`
-- `/ll:confidence-check` - 2026-05-17T07:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2014a17-48ef-42b3-af50-4be647f7894a.jsonl`
+- `/ll:manage-issue` - 2026-05-17T06:29:13Z - `3526a99b-7c49-4c45-a664-5761207b3ac3.jsonl`
+- `/ll:ready-issue` - 2026-05-17T06:24:47 - `f9c6bdcc-2612-46ee-ac30-a892519faf1a.jsonl`
+- `/ll:wire-issue` - 2026-05-17T06:20:35 - `e3a42f68-91fc-4ab8-acb8-7b61ced8deb7.jsonl`
+- `/ll:refine-issue` - 2026-05-17T06:13:43 - `828ca570-21ca-4627-9028-02bbc7f9df52.jsonl`
+- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `1f2aa363-89b4-48fb-b7e2-882be8ac2cc8.jsonl`
+- `/ll:confidence-check` - 2026-05-17T07:00:00Z - `a2014a17-48ef-42b3-af50-4be647f7894a.jsonl`
 
 ---
 

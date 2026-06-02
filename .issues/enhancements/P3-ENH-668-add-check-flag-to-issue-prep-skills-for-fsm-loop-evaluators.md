@@ -160,12 +160,12 @@ Add a `--check` flag to each affected skill using the existing `--auto` flag as 
 **Completed** | P3 | ENH
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-11T01:40:37Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/534f29dc-9078-4565-b6a5-14cb33271b6f.jsonl`
+- `/ll:capture-issue` - 2026-03-11T01:40:37Z - `534f29dc-9078-4565-b6a5-14cb33271b6f.jsonl`
 - `/ll:format-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/644cb258-98f9-4276-9d10-660523431e43.jsonl`
 - `/ll:refine-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a05aa5fa-4656-46ac-8831-05fd805ad2c0.jsonl`
-- `/ll:confidence-check` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da7809ed-8bca-4fa9-8c31-ca9edfcf4950.jsonl`
+- `/ll:confidence-check` - 2026-03-12T00:00:00Z - `da7809ed-8bca-4fa9-8c31-ca9edfcf4950.jsonl`
 - `/ll:ready-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a8f602b-4ea5-429e-8987-fac60f318de7.jsonl`
-- `/ll:manage-issue` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1936664-5efd-4945-9cf6-1349fc15fb68.jsonl`
+- `/ll:manage-issue` - 2026-03-12T00:00:00Z - `e1936664-5efd-4945-9cf6-1349fc15fb68.jsonl`
 
 ## Blocked By
 

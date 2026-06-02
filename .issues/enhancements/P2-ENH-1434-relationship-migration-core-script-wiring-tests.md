@@ -193,9 +193,9 @@ For `test_migrate_relationships.py`, use equivalent classes: `TestMigrateRelatio
 Implemented `ll-migrate-relationships` CLI that renames `parent_issue:` → `parent:` and `related:` → `relates_to:` in all issue files. Wired into `pyproject.toml` and `cli/__init__.py`. Updated `recursive-refine.yaml` grep pattern and test fixtures. Added 11 tests across 4 test classes.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-11T00:18:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dff0f60b-9452-4723-a1a6-2beb694f0474.jsonl`
-- `/ll:ready-issue` - 2026-05-10T23:35:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46656486-77a1-4ce3-ae49-e9122dd04f28.jsonl`
-- `/ll:wire-issue` - 2026-05-10T23:28:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15a59544-3e5f-40a3-8dad-8425866f4b2a.jsonl`
-- `/ll:refine-issue` - 2026-05-10T23:22:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c08b0f3-1a9e-42f4-821b-e778e9280990.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98a93952-5a1f-4e01-9075-6dbfef3784ef.jsonl`
-- `/ll:confidence-check` - 2026-05-10T23:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d4e40523-1316-42b8-8950-d3f826b7702e.jsonl`
+- `/ll:manage-issue` - 2026-05-11T00:18:00Z - `dff0f60b-9452-4723-a1a6-2beb694f0474.jsonl`
+- `/ll:ready-issue` - 2026-05-10T23:35:40 - `46656486-77a1-4ce3-ae49-e9122dd04f28.jsonl`
+- `/ll:wire-issue` - 2026-05-10T23:28:47 - `15a59544-3e5f-40a3-8dad-8425866f4b2a.jsonl`
+- `/ll:refine-issue` - 2026-05-10T23:22:53 - `6c08b0f3-1a9e-42f4-821b-e778e9280990.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `98a93952-5a1f-4e01-9075-6dbfef3784ef.jsonl`
+- `/ll:confidence-check` - 2026-05-10T23:45:00 - `d4e40523-1316-42b8-8950-d3f826b7702e.jsonl`

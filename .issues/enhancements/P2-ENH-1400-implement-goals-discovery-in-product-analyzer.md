@@ -211,14 +211,14 @@ _Added by `/ll:confidence-check` on 2026-05-11_
 - Minor open question on hook warning treatment — `hooks/scripts/session-start.sh` can have its warning downgraded to an informational notice or removed entirely; the choice should be settled before implementation to avoid downstream test changes
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a400556-76fe-4ad7-9557-40b6a1c32a72.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00c6c86a-51e1-44a2-8bee-e7557e656625.jsonl`
-- `/ll:wire-issue` - 2026-05-11T08:02:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1610ca5d-d284-4153-8290-5ef5dc5360b3.jsonl`
-- `/ll:refine-issue` - 2026-05-11T07:58:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09a01cf5-5aee-4263-8e41-7ec8aecf1104.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-10T19:39:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-10T14:27:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
-- `/ll:format-issue` - 2026-05-09T21:12:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe401f22-7fbb-48c3-8ae7-e1588507294c.jsonl`
+- `/ll:issue-size-review` - 2026-05-11T00:00:00 - `8a400556-76fe-4ad7-9557-40b6a1c32a72.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `00c6c86a-51e1-44a2-8bee-e7557e656625.jsonl`
+- `/ll:wire-issue` - 2026-05-11T08:02:54 - `1610ca5d-d284-4153-8290-5ef5dc5360b3.jsonl`
+- `/ll:refine-issue` - 2026-05-11T07:58:24 - `09a01cf5-5aee-4263-8e41-7ec8aecf1104.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-10T19:39:40 - `6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-10T14:27:59 - `87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:13 - `e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
+- `/ll:format-issue` - 2026-05-09T21:12:12 - `fe401f22-7fbb-48c3-8ae7-e1588507294c.jsonl`
 
 ---
 

@@ -136,8 +136,8 @@ _Added by `/ll:confidence-check` on 2026-06-01_
 - `test_enh1845_doc_wiring.py` does not exist — wiring coverage gap; these tests are co-deliverables of the ENH-1845 implementation and assert `auto_commit` presence in CONFIGURATION.md, areas.md, and ARCHITECTURE.md
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8698e6e-9c45-4d67-8054-c621d3104267.jsonl`
-- `/ll:wire-issue` - 2026-06-01T09:08:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75b96388-8e1f-45e0-9c33-f5b3c8e964f1.jsonl`
-- `/ll:refine-issue` - 2026-06-01T09:02:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/601d045e-eabd-4567-ae43-13dfb443db86.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e2ad9a6-4834-4969-9404-2babd791318d.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0e9800f-e118-4d24-8ad2-495361bb162e.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `c8698e6e-9c45-4d67-8054-c621d3104267.jsonl`
+- `/ll:wire-issue` - 2026-06-01T09:08:02 - `75b96388-8e1f-45e0-9c33-f5b3c8e964f1.jsonl`
+- `/ll:refine-issue` - 2026-06-01T09:02:51 - `601d045e-eabd-4567-ae43-13dfb443db86.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `1e2ad9a6-4834-4969-9404-2babd791318d.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `d0e9800f-e118-4d24-8ad2-495361bb162e.jsonl`

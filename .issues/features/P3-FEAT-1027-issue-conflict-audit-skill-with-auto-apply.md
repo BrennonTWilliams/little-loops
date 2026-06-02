@@ -234,12 +234,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - FEAT-1029: audit-issue-conflicts — Wiring, Docs, and Tests
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-11T04:42:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1583f95-f6e7-426b-b174-369fd745725e.jsonl`
-- `/ll:confidence-check` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5343d85e-56e6-4111-996a-b7d1443c12e2.jsonl`
-- `/ll:issue-size-review` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1583f95-f6e7-426b-b174-369fd745725e.jsonl`
-- `/ll:refine-issue` - 2026-04-11T04:37:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe3dd14d-8803-4c74-9695-d4a8932e669b.jsonl`
-- `/ll:confidence-check` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/061c2263-f209-4533-949a-359e59b364bb.jsonl`
-- `/ll:wire-issue` - 2026-04-11T04:31:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0479a8c9-3760-43ef-9882-a6ccd39a5e03.jsonl`
-- `/ll:refine-issue` - 2026-04-11T04:26:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c85b9aa1-79ab-48d3-84d4-705da5aae834.jsonl`
-- `/ll:format-issue` - 2026-04-11T04:21:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/747b5bd8-c7d1-4db4-9f6c-74f553aeef25.jsonl`
-- `/ll:capture-issue` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f3d0cb5-182d-4d87-9949-f092df0ed97f.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-11T04:42:39 - `f1583f95-f6e7-426b-b174-369fd745725e.jsonl`
+- `/ll:confidence-check` - 2026-04-10T00:00:00Z - `5343d85e-56e6-4111-996a-b7d1443c12e2.jsonl`
+- `/ll:issue-size-review` - 2026-04-10T00:00:00Z - `f1583f95-f6e7-426b-b174-369fd745725e.jsonl`
+- `/ll:refine-issue` - 2026-04-11T04:37:32 - `fe3dd14d-8803-4c74-9695-d4a8932e669b.jsonl`
+- `/ll:confidence-check` - 2026-04-10T00:00:00Z - `061c2263-f209-4533-949a-359e59b364bb.jsonl`
+- `/ll:wire-issue` - 2026-04-11T04:31:14 - `0479a8c9-3760-43ef-9882-a6ccd39a5e03.jsonl`
+- `/ll:refine-issue` - 2026-04-11T04:26:59 - `c85b9aa1-79ab-48d3-84d4-705da5aae834.jsonl`
+- `/ll:format-issue` - 2026-04-11T04:21:07 - `747b5bd8-c7d1-4db4-9f6c-74f553aeef25.jsonl`
+- `/ll:capture-issue` - 2026-04-10T00:00:00Z - `0f3d0cb5-182d-4d87-9949-f092df0ed97f.jsonl`

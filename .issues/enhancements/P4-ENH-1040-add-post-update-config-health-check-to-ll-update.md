@@ -171,10 +171,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - ENH-1047: Add Config Health Check step to `ll:update` skill
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1c66be5-a6d5-41db-b207-85921b3e11c7.jsonl`
-- `/ll:confidence-check` - 2026-04-11T23:50:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8aa6ceaf-d9fb-4c1a-81d0-c2dba07ea652.jsonl`
-- `/ll:wire-issue` - 2026-04-11T23:36:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c38386d1-6762-4fa8-bae4-7e6c7d87a79c.jsonl`
-- `/ll:refine-issue` - 2026-04-11T23:30:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aae91033-bf21-4128-9943-0b0de35d7ab1.jsonl`
-- `/ll:format-issue` - 2026-04-11T23:26:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc26f87f-4d80-4178-9160-efa8588edd13.jsonl`
-- `/ll:verify-issues` - 2026-04-11T23:05:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
-- `/ll:capture-issue` - 2026-04-11T20:12:28Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6eeb90e-db91-4253-be84-397f6e9dfaa1.jsonl`
+- `/ll:issue-size-review` - 2026-04-11T00:00:00 - `d1c66be5-a6d5-41db-b207-85921b3e11c7.jsonl`
+- `/ll:confidence-check` - 2026-04-11T23:50:00 - `8aa6ceaf-d9fb-4c1a-81d0-c2dba07ea652.jsonl`
+- `/ll:wire-issue` - 2026-04-11T23:36:28 - `c38386d1-6762-4fa8-bae4-7e6c7d87a79c.jsonl`
+- `/ll:refine-issue` - 2026-04-11T23:30:58 - `aae91033-bf21-4128-9943-0b0de35d7ab1.jsonl`
+- `/ll:format-issue` - 2026-04-11T23:26:47 - `dc26f87f-4d80-4178-9160-efa8588edd13.jsonl`
+- `/ll:verify-issues` - 2026-04-11T23:05:00 - `5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
+- `/ll:capture-issue` - 2026-04-11T20:12:28Z - `d6eeb90e-db91-4253-be84-397f6e9dfaa1.jsonl`

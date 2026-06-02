@@ -164,9 +164,9 @@ Concrete file:line references and order correction:
 `bug`, `fsm`, `loops`, `captured`
 
 ## Session Log
-- `/ll:confidence-check` - 2026-03-31T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6df5ee0a-f20f-4ab8-a215-3c707d7115cd.jsonl`
-- `/ll:refine-issue` - 2026-04-01T03:03:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6df5ee0a-f20f-4ab8-a215-3c707d7115cd.jsonl`
-- `/ll:format-issue` - 2026-04-01T02:47:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df3e7853-3ef3-4208-af09-bf629e0fa561.jsonl`
+- `/ll:confidence-check` - 2026-03-31T00:00:00Z - `6df5ee0a-f20f-4ab8-a215-3c707d7115cd.jsonl`
+- `/ll:refine-issue` - 2026-04-01T03:03:18 - `6df5ee0a-f20f-4ab8-a215-3c707d7115cd.jsonl`
+- `/ll:format-issue` - 2026-04-01T02:47:27 - `df3e7853-3ef3-4208-af09-bf629e0fa561.jsonl`
 - `/ll:capture-issue` - 2026-03-31T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afd36911-09cb-4a84-a407-9174c8f43270.jsonl`
 
 ---

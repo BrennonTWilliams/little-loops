@@ -138,11 +138,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_issue_history_parsing.py:93` — currently has `test_parse_ignores_captured_at` verifying `captured_at` has no effect; add a parallel test `test_parse_ignores_or_uses_completed_at` to document whether `completed_at` affects `parse_completed_issue` — depends on scope decision for ll-history integration
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d5d1408-2b3a-493b-bfce-1136b56ca074.jsonl`
-- `/ll:wire-issue` - 2026-04-18T20:08:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd8b6f5c-fd92-4855-8bfc-b94b99ff061c.jsonl`
-- `/ll:refine-issue` - 2026-04-18T20:02:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66200d27-8b21-4303-ab54-a40e09cacd02.jsonl`
-- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a53c2eef-b0c1-4768-8f1f-aa378a05c411.jsonl`
-- `/ll:issue-size-review` - 2026-04-18T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f4fec2da-840f-48eb-a5e3-fc86007899b8.jsonl`
+- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `1d5d1408-2b3a-493b-bfce-1136b56ca074.jsonl`
+- `/ll:wire-issue` - 2026-04-18T20:08:38 - `fd8b6f5c-fd92-4855-8bfc-b94b99ff061c.jsonl`
+- `/ll:refine-issue` - 2026-04-18T20:02:40 - `66200d27-8b21-4303-ab54-a40e09cacd02.jsonl`
+- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `a53c2eef-b0c1-4768-8f1f-aa378a05c411.jsonl`
+- `/ll:issue-size-review` - 2026-04-18T21:00:00Z - `f4fec2da-840f-48eb-a5e3-fc86007899b8.jsonl`
 
 ---
 

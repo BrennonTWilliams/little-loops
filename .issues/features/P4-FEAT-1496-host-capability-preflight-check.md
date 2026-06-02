@@ -302,9 +302,9 @@ _Added by `/ll:confidence-check` on 2026-05-16_
 - FEAT-1504: ll-doctor — documentation and wiring touchpoints (depends on FEAT-1523; can run parallel with FEAT-1503)
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-16T15:07:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b57cdb22-126d-4dc6-b12f-a5213e07e705.jsonl`
-- `/ll:confidence-check` - 2026-05-16T15:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d35fc42a-49a3-4b52-b62c-3cacbc47d225.jsonl`
-- `/ll:wire-issue` - 2026-05-16T14:57:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d35fc42a-49a3-4b52-b62c-3cacbc47d225.jsonl`
-- `/ll:refine-issue` - 2026-05-16T14:51:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50ccb0d9-66bf-480e-b5b2-089e3624949a.jsonl`
-- `/ll:format-issue` - 2026-05-16T13:24:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d64e8a75-a28c-4d9e-b390-8a3589494173.jsonl`
-- `/ll:capture-issue` - 2026-05-16T13:04:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f112cdc-ed18-410c-85e1-0d7cc45aa863.jsonl`
+- `/ll:issue-size-review` - 2026-05-16T15:07:07Z - `b57cdb22-126d-4dc6-b12f-a5213e07e705.jsonl`
+- `/ll:confidence-check` - 2026-05-16T15:30:00Z - `d35fc42a-49a3-4b52-b62c-3cacbc47d225.jsonl`
+- `/ll:wire-issue` - 2026-05-16T14:57:12 - `d35fc42a-49a3-4b52-b62c-3cacbc47d225.jsonl`
+- `/ll:refine-issue` - 2026-05-16T14:51:31 - `50ccb0d9-66bf-480e-b5b2-089e3624949a.jsonl`
+- `/ll:format-issue` - 2026-05-16T13:24:02 - `d64e8a75-a28c-4d9e-b390-8a3589494173.jsonl`
+- `/ll:capture-issue` - 2026-05-16T13:04:12Z - `0f112cdc-ed18-410c-85e1-0d7cc45aa863.jsonl`

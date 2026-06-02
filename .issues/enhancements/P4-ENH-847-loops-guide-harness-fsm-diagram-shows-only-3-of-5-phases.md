@@ -66,8 +66,8 @@ Add a "(simplified — omits optional `check_mcp` and `check_skill` phases)" ann
 Added `_(simplified — omits optional \`check_mcp\` and \`check_skill\` phases)_` annotation immediately after the closing code fence of the Harness FSM Structure diagram in `docs/guides/LOOPS_GUIDE.md` (after line 790). This resolves the contradiction between the diagram (3 phases) and the surrounding text ("up to five evaluation phases").
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-20T22:26:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72f8a333-fc89-4278-9493-be6da775ca6f.jsonl`
-- `/ll:verify-issues` - 2026-03-20T22:23:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55186214-ce82-4440-8e14-22b753b56da2.jsonl`
+- `/ll:ready-issue` - 2026-03-20T22:26:45 - `72f8a333-fc89-4278-9493-be6da775ca6f.jsonl`
+- `/ll:verify-issues` - 2026-03-20T22:23:33 - `55186214-ce82-4440-8e14-22b753b56da2.jsonl`
 - `/ll:manage-issue` - 2026-03-20T00:00:00 - improve
 
 ---

@@ -267,12 +267,12 @@ _Added by `/ll:confidence-check` on 2026-05-09_
 All 10 source locations updated (6 `choices=` in `__init__.py`, `buckets`/`type_labels` in `list_cmd.py` and `search.py`, `by_type` in `count_cmd.py`, `choices=` in `history.py`, help string in `cli_args.py`). Shared fixtures updated (`conftest.py` adds `epics/` dir and `epics` category to `sample_config`). 10 new test cases added across 4 test files. 477 tests pass.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-10T00:00:42Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-09T23:55:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26301779-5759-4e6e-aadd-d261c4d18698.jsonl`
-- `/ll:wire-issue` - 2026-05-09T23:49:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0400bf5c-e7b1-45d1-9498-ee4262bc98e8.jsonl`
-- `/ll:refine-issue` - 2026-05-09T23:42:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0665047f-590b-4b6b-af84-2a5dc369d475.jsonl`
-- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62980d84-6316-4d76-811c-87774aefc470.jsonl`
-- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec917a4b-6188-4adc-9920-6c61e1a5e624.jsonl`
+- `/ll:manage-issue` - 2026-05-10T00:00:42Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-09T23:55:30 - `26301779-5759-4e6e-aadd-d261c4d18698.jsonl`
+- `/ll:wire-issue` - 2026-05-09T23:49:12 - `0400bf5c-e7b1-45d1-9498-ee4262bc98e8.jsonl`
+- `/ll:refine-issue` - 2026-05-09T23:42:36 - `0665047f-590b-4b6b-af84-2a5dc369d475.jsonl`
+- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `62980d84-6316-4d76-811c-87774aefc470.jsonl`
+- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `ec917a4b-6188-4adc-9920-6c61e1a5e624.jsonl`
 
 ---
 

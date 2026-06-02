@@ -152,10 +152,10 @@ Remove the current arrow placement that overwrites the pipe at `top_row`, since 
 `bug`, `cli`, `fsm-diagram`
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:format-issue` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/708fe6d3-a6cb-45dd-9b97-7ef486eedbc5.jsonl`
-- `/ll:refine-issue` - 2026-03-11T21:38:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba84e347-69b4-4da4-a0c7-e4e1aebcdcf4.jsonl`
-- `/ll:ready-issue` - 2026-03-11T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f08c54d6-5d2f-49fa-be74-5b3e2575dc08.jsonl`
+- `/ll:capture-issue` - 2026-03-11T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:format-issue` - 2026-03-11T00:00:00Z - `708fe6d3-a6cb-45dd-9b97-7ef486eedbc5.jsonl`
+- `/ll:refine-issue` - 2026-03-11T21:38:00Z - `ba84e347-69b4-4da4-a0c7-e4e1aebcdcf4.jsonl`
+- `/ll:ready-issue` - 2026-03-11T22:00:00Z - `f08c54d6-5d2f-49fa-be74-5b3e2575dc08.jsonl`
 
 ---
 

@@ -149,14 +149,14 @@ _Updated by `/ll:confidence-check` on 2026-04-21_
 - **ParallelStateConfig import assumption**: `SubLoopStateConfig` is NOT a separate class — sub-loop uses fields directly on `StateConfig`. If FEAT-1074 takes the same approach, the `from little_loops.fsm.schema import ParallelStateConfig` import must be dropped and tests rewritten to use `StateConfig` directly.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-21T06:31:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b6f3646-002b-4241-b60d-d6d09e155cee.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7177f923-7f11-42d0-95ca-9b715fe7bee8.jsonl`
-- `/ll:refine-issue` - 2026-04-21T06:25:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dca4cd60-015e-4132-aa53-eea350eb8cac.jsonl`
-- `/ll:wire-issue` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5fcdde7-c7de-41ca-ad67-62169e9eacc7.jsonl`
-- `/ll:refine-issue` - 2026-04-21T06:14:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5fcdde7-c7de-41ca-ad67-62169e9eacc7.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc287f64-ac41-4ff3-967d-f2d38642710b.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d866e943-cc77-406c-8d4d-e66fbb334ef7.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b6f3646-002b-4241-b60d-d6d09e155cee.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-21T06:31:13 - `7b6f3646-002b-4241-b60d-d6d09e155cee.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `7177f923-7f11-42d0-95ca-9b715fe7bee8.jsonl`
+- `/ll:refine-issue` - 2026-04-21T06:25:09 - `dca4cd60-015e-4132-aa53-eea350eb8cac.jsonl`
+- `/ll:wire-issue` - 2026-04-21T00:00:00 - `d5fcdde7-c7de-41ca-ad67-62169e9eacc7.jsonl`
+- `/ll:refine-issue` - 2026-04-21T06:14:19 - `d5fcdde7-c7de-41ca-ad67-62169e9eacc7.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `dc287f64-ac41-4ff3-967d-f2d38642710b.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `d866e943-cc77-406c-8d4d-e66fbb334ef7.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `7b6f3646-002b-4241-b60d-d6d09e155cee.jsonl`
 
 ---
 

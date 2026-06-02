@@ -174,9 +174,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Added `scripts/tests/test_bug1649_doc_wiring.py` asserting `ll-issues list --json` is present in the Step 1.5.1 region and raw type-dir Glob patterns are absent as the primary path.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T08:46:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5233105-9101-4433-89af-4dc5fefd739a.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fcaf8e82-e9b0-459c-b420-b2d6516dcebf.jsonl`
-- `/ll:wire-issue` - 2026-05-24T07:37:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76307c23-ef5c-42f1-98e8-10d70af3ea53.jsonl`
-- `/ll:refine-issue` - 2026-05-24T07:28:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad2cb799-0357-40ae-ae3b-03344aed447c.jsonl`
-- `/ll:format-issue` - 2026-05-23T23:14:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/748c0c41-2378-4021-99b4-82ad38e41ef1.jsonl`
+- `/ll:ready-issue` - 2026-05-24T08:46:59 - `d5233105-9101-4433-89af-4dc5fefd739a.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `fcaf8e82-e9b0-459c-b420-b2d6516dcebf.jsonl`
+- `/ll:wire-issue` - 2026-05-24T07:37:46 - `76307c23-ef5c-42f1-98e8-10d70af3ea53.jsonl`
+- `/ll:refine-issue` - 2026-05-24T07:28:35 - `ad2cb799-0357-40ae-ae3b-03344aed447c.jsonl`
+- `/ll:format-issue` - 2026-05-23T23:14:46 - `748c0c41-2378-4021-99b4-82ad38e41ef1.jsonl`
 - `/ll:capture-issue` - 2026-05-23T23:10:18Z - source: `~/.claude/plans/we-ran-ll-create-sprint-in-purring-hanrahan.md`

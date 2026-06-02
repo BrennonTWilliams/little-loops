@@ -166,12 +166,12 @@ Explicitly **out of scope** for ENH-1152:
 - `python -m pytest scripts/tests/test_enh1138_doc_wiring.py` passes
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-17T09:39:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcc8b6a0-49de-4289-b808-995617cb7c5e.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09a5962f-7509-4701-9f36-3c3386a6db3b.jsonl`
-- `/ll:wire-issue` - 2026-04-17T09:35:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/529266d7-1fa4-49c1-8940-1a6b07e6d9de.jsonl`
-- `/ll:refine-issue` - 2026-04-17T09:28:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1adc9784-cf29-4652-8a48-f355207157a2.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee709210-6491-4684-b5fd-fd33f555658f.jsonl`
-- `/ll:manage-issue` - 2026-04-17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb81c897-3ff8-451f-a2de-0780c83a4339.jsonl`
+- `/ll:ready-issue` - 2026-04-17T09:39:19 - `bcc8b6a0-49de-4289-b808-995617cb7c5e.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `09a5962f-7509-4701-9f36-3c3386a6db3b.jsonl`
+- `/ll:wire-issue` - 2026-04-17T09:35:49 - `529266d7-1fa4-49c1-8940-1a6b07e6d9de.jsonl`
+- `/ll:refine-issue` - 2026-04-17T09:28:10 - `1adc9784-cf29-4652-8a48-f355207157a2.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `ee709210-6491-4684-b5fd-fd33f555658f.jsonl`
+- `/ll:manage-issue` - 2026-04-17 - `eb81c897-3ff8-451f-a2de-0780c83a4339.jsonl`
 
 ---
 

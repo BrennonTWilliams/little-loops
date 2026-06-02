@@ -279,19 +279,19 @@ The "Still missing ✗" claims above are **inaccurate** as of commit `fdf2c2f4`:
 - `docs/reference/API.md:3277` — `### main_logs` IS present, but `**CLI Arguments:**` block (lines 3287-3291) lists four global flags (`-v/--verbose`, `--config`, `-n/--dry-run`, `-q/--quiet`) that do not exist in the actual parser. **Action needed**: Replace those four bullet lines with subcommands format — do not add a new section.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-23T23:55:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/505de9cd-4ca7-4d18-8750-a5c6542f39e5.jsonl`
-- `/ll:confidence-check` - 2026-04-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab8d94a1-ea7c-4a30-9041-a8059b1d8041.jsonl`
-- `/ll:wire-issue` - 2026-04-23T23:52:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a730208-4b84-4f23-9d7c-2df0dba38a12.jsonl`
-- `/ll:refine-issue` - 2026-04-23T23:48:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb0ab28e-5acd-4a08-a244-c1cea97bb0c2.jsonl`
-- `/ll:verify-issues` - 2026-04-23T23:33:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
-- `/ll:verify-issues` - 2026-04-23T23:07:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-04-22T20:04:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d256a6-9a99-40f5-8866-377a208de262.jsonl`
-- `/ll:verify-issues` - 2026-04-11T23:05:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
-- `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
-- `/ll:wire-issue` - 2026-04-08T22:15:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7442f9bc-9ee0-4418-bdc5-0a1d97abfe36.jsonl`
-- `/ll:refine-issue` - 2026-04-08T22:11:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/af0c751e-6fe7-46aa-9bdf-a9083eb40d63.jsonl`
-- `/ll:format-issue` - 2026-04-08T22:07:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7d2deea6-cb0f-420c-b650-c96b5bb4036d.jsonl`
-- `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7158b6b3-d465-4658-9645-8a41be41765d.jsonl`
+- `/ll:ready-issue` - 2026-04-23T23:55:37 - `505de9cd-4ca7-4d18-8750-a5c6542f39e5.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00 - `ab8d94a1-ea7c-4a30-9041-a8059b1d8041.jsonl`
+- `/ll:wire-issue` - 2026-04-23T23:52:25 - `0a730208-4b84-4f23-9d7c-2df0dba38a12.jsonl`
+- `/ll:refine-issue` - 2026-04-23T23:48:09 - `bb0ab28e-5acd-4a08-a244-c1cea97bb0c2.jsonl`
+- `/ll:verify-issues` - 2026-04-23T23:33:42 - `3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
+- `/ll:verify-issues` - 2026-04-23T23:07:20 - `3de88f83-60a8-4b24-a159-032238ca23ed.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-04-22T20:04:16 - `82d256a6-9a99-40f5-8866-377a208de262.jsonl`
+- `/ll:verify-issues` - 2026-04-11T23:05:11 - `5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
+- `/ll:verify-issues` - 2026-04-11T19:37:17 - `74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
+- `/ll:wire-issue` - 2026-04-08T22:15:35 - `7442f9bc-9ee0-4418-bdc5-0a1d97abfe36.jsonl`
+- `/ll:refine-issue` - 2026-04-08T22:11:26 - `af0c751e-6fe7-46aa-9bdf-a9083eb40d63.jsonl`
+- `/ll:format-issue` - 2026-04-08T22:07:35 - `7d2deea6-cb0f-420c-b650-c96b5bb4036d.jsonl`
+- `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `7158b6b3-d465-4658-9645-8a41be41765d.jsonl`
 
 ---
 

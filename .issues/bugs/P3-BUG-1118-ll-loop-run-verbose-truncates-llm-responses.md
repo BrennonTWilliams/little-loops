@@ -236,11 +236,11 @@ Tests added:
 Verified: targeted suites (`TestRunClaudeCommandModelDetection`, `TestDisplayProgressEvents`, all `verbose|stream|action_output|assistant`-keyword tests) pass; full `pytest scripts/tests/` runs 4831 passed (1 unrelated pre-existing failure: `test_expected_loops_exist` missing `autodev` from expected set, present on main without these changes); `ruff check scripts/` clean; `mypy` clean on both modified modules.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-16T13:29:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e8088d28-1441-4c5b-b904-dd061399021d.jsonl`
-- `/ll:ready-issue` - 2026-04-16T18:24:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
-- `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5d0bd034-325a-41e5-8b99-228d276a913d.jsonl`
-- `/ll:refine-issue` - 2026-04-16T18:18:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57cdaad0-2b25-4d7b-bcd0-33867cfa3683.jsonl`
-- `/ll:capture-issue` - 2026-04-16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cbadf88-a8c9-4bb2-bbd8-6c53bfc5e75e.jsonl`
+- `/ll:manage-issue` - 2026-04-16T13:29:00 - `e8088d28-1441-4c5b-b904-dd061399021d.jsonl`
+- `/ll:ready-issue` - 2026-04-16T18:24:37 - `2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
+- `/ll:confidence-check` - 2026-04-16T00:00:00 - `5d0bd034-325a-41e5-8b99-228d276a913d.jsonl`
+- `/ll:refine-issue` - 2026-04-16T18:18:59 - `57cdaad0-2b25-4d7b-bcd0-33867cfa3683.jsonl`
+- `/ll:capture-issue` - 2026-04-16 - `5cbadf88-a8c9-4bb2-bbd8-6c53bfc5e75e.jsonl`
 
 ---
 

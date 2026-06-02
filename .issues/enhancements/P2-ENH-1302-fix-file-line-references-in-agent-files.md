@@ -138,10 +138,10 @@ _Added by `/ll:confidence-check` on 2026-04-27_
 - **Broad caller surface**: 9 files spawn these agents; while output-format changes don't break callers, inconsistent anchor conventions in agent responses could subtly affect downstream issue quality.
 
 ## Session Log
-- `/ll:wire-issue` - 2026-04-27T16:51:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e616bd9b-4432-48b3-b18e-6c0f71f08fcf.jsonl`
-- `/ll:refine-issue` - 2026-04-27T16:47:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87e6eb14-61d0-4dc8-b978-a8a586e5b376.jsonl`
-- `/ll:issue-size-review` - 2026-04-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffb785b8-11a4-4944-a15b-8d407ae45324.jsonl`
-- `/ll:confidence-check` - 2026-04-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f3e56e4-6893-43df-9f38-74cd82af6d81.jsonl`
+- `/ll:wire-issue` - 2026-04-27T16:51:16 - `e616bd9b-4432-48b3-b18e-6c0f71f08fcf.jsonl`
+- `/ll:refine-issue` - 2026-04-27T16:47:04 - `87e6eb14-61d0-4dc8-b978-a8a586e5b376.jsonl`
+- `/ll:issue-size-review` - 2026-04-27T00:00:00Z - `ffb785b8-11a4-4944-a15b-8d407ae45324.jsonl`
+- `/ll:confidence-check` - 2026-04-27T00:00:00Z - `1f3e56e4-6893-43df-9f38-74cd82af6d81.jsonl`
 
 ---
 

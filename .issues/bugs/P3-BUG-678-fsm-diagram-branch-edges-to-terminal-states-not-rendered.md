@@ -153,11 +153,11 @@ Extend the margin calculation at `layout.py:659-661` to account for right-margin
 `diagram`, `rendering`, `captured`
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4cb1a514-1752-4f1f-9c34-c6be12fca682.jsonl`
-- `/ll:ready-issue` - 2026-03-12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99054310-66fb-46ec-8958-729542a8612a.jsonl`
-- `/ll:confidence-check` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad46fd10-a28c-45a0-b135-7e8eb5e6691b.jsonl`
-- `/ll:refine-issue` - 2026-03-12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c12ab473-91e6-418f-9bc2-afa5200c5133.jsonl`
-- `/ll:ready-issue` - 2026-03-12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce22b31f-c86d-405e-81b7-51f36fa9812d.jsonl`
+- `/ll:capture-issue` - 2026-03-12 - `4cb1a514-1752-4f1f-9c34-c6be12fca682.jsonl`
+- `/ll:ready-issue` - 2026-03-12 - `99054310-66fb-46ec-8958-729542a8612a.jsonl`
+- `/ll:confidence-check` - 2026-03-12T00:00:00Z - `ad46fd10-a28c-45a0-b135-7e8eb5e6691b.jsonl`
+- `/ll:refine-issue` - 2026-03-12 - `c12ab473-91e6-418f-9bc2-afa5200c5133.jsonl`
+- `/ll:ready-issue` - 2026-03-12 - `ce22b31f-c86d-405e-81b7-51f36fa9812d.jsonl`
 
 ## Resolution
 

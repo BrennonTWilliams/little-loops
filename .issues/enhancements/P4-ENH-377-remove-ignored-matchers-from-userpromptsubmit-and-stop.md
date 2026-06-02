@@ -116,7 +116,7 @@ This enhancement would:
 
 ## Session Log
 - `/ll:format-issue --all --auto` - 2026-02-13
-- `/ll:manage-issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b84001d-543c-479a-9355-6c74404e57f1.jsonl`
+- `/ll:manage-issue` - 2026-02-13T00:00:00Z - `3b84001d-543c-479a-9355-6c74404e57f1.jsonl`
 
 ---
 

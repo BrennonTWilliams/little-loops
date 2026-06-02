@@ -133,7 +133,7 @@ No changes to `LearningTestRegistry`, `LearningTest`, or any public Python API i
 | `docs/reference/API.md` | May document `ll-learning-tests` CLI; update if so |
 
 ## Session Log
-- `/ll:capture-issue` - 2026-05-31T05:47:13Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7da4f0e0-fdbc-430e-95a5-ae05ed7be793.jsonl`
+- `/ll:capture-issue` - 2026-05-31T05:47:13Z - `7da4f0e0-fdbc-430e-95a5-ae05ed7be793.jsonl`
 
 ---
 

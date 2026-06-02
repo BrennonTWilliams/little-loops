@@ -156,7 +156,7 @@ Implemented in `scripts/little_loops/loops/auto-refine-and-implement.yaml`. Prom
 
 ## Session Log
 - `/ll:manage-issue` - 2026-04-08 - implemented
-- `/ll:refine-issue` - 2026-04-08T05:40:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/854f6e93-e4ac-4f1e-8b05-80b1a030ce8f.jsonl`
+- `/ll:refine-issue` - 2026-04-08T05:40:56 - `854f6e93-e4ac-4f1e-8b05-80b1a030ce8f.jsonl`
 - `/ll:capture-issue` - 2026-04-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76fbeb1f-5361-408b-ba48-b8f1bb2afc2f.jsonl`
 
 ---

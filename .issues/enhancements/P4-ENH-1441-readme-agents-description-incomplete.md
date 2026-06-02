@@ -163,12 +163,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-22T18:50:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5efbefd7-1e7e-4313-93e5-cb518b43d9a0.jsonl`
-- `/ll:confidence-check` - 2026-05-22T18:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c58564f-6b57-4320-9585-5e1198e38eee.jsonl`
-- `/ll:refine-issue` - 2026-05-22T17:54:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/261f5d45-e076-411a-ba2a-36d1d1fe75d1.jsonl`
-- `/ll:format-issue` - 2026-05-22T17:44:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b54d6f76-2311-48be-b480-66a4968220d3.jsonl`
-- `/ll:verify-issues` - 2026-05-22T16:11:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
-- `/ll:verify-issues` - 2026-05-18T04:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2807bd8b-4e79-4b76-994d-e6f6cae14245.jsonl`
-- `/ll:verify-issues` - 2026-05-17T17:04:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/907d2d29-7e38-4120-a77d-deb597ac2df4.jsonl`
-- `/ll:verify-issues` - 2026-05-17T05:54:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9fb51237-8283-40d3-94ce-bda6ff4b1b33.jsonl`
-- `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
+- `/ll:ready-issue` - 2026-05-22T18:50:29 - `5efbefd7-1e7e-4313-93e5-cb518b43d9a0.jsonl`
+- `/ll:confidence-check` - 2026-05-22T18:30:00 - `3c58564f-6b57-4320-9585-5e1198e38eee.jsonl`
+- `/ll:refine-issue` - 2026-05-22T17:54:26 - `261f5d45-e076-411a-ba2a-36d1d1fe75d1.jsonl`
+- `/ll:format-issue` - 2026-05-22T17:44:52 - `b54d6f76-2311-48be-b480-66a4968220d3.jsonl`
+- `/ll:verify-issues` - 2026-05-22T16:11:38 - `d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
+- `/ll:verify-issues` - 2026-05-18T04:53:51 - `2807bd8b-4e79-4b76-994d-e6f6cae14245.jsonl`
+- `/ll:verify-issues` - 2026-05-17T17:04:58 - `907d2d29-7e38-4120-a77d-deb597ac2df4.jsonl`
+- `/ll:verify-issues` - 2026-05-17T05:54:38 - `9fb51237-8283-40d3-94ce-bda6ff4b1b33.jsonl`
+- `/ll:verify-issues` - 2026-05-14T20:42:05 - `08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`

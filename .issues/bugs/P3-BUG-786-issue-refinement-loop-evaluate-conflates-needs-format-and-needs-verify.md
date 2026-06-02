@@ -179,8 +179,8 @@ Issues that are already formatted but lack a verify session log entry now route 
 **Completed** | Created: 2026-03-16 | Resolved: 2026-03-16 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-16T20:59:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/254dbd2b-b3d5-4a4c-be8d-d81c1f13e712.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/846dd31f-a623-4c2c-a94c-fed5d665b7f6.jsonl`
-- `/ll:refine-issue` - 2026-03-16T20:30:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6197d55e-7699-4fd1-8daf-6cfcd67f79f2.jsonl`
-- `/ll:capture-issue` - 2026-03-16T20:08:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:manage-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95df0110-cc70-4df0-89dd-c815f4a10cd0.jsonl`
+- `/ll:ready-issue` - 2026-03-16T20:59:26 - `254dbd2b-b3d5-4a4c-be8d-d81c1f13e712.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `846dd31f-a623-4c2c-a94c-fed5d665b7f6.jsonl`
+- `/ll:refine-issue` - 2026-03-16T20:30:06 - `6197d55e-7699-4fd1-8daf-6cfcd67f79f2.jsonl`
+- `/ll:capture-issue` - 2026-03-16T20:08:11Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:manage-issue` - 2026-03-16T00:00:00Z - `95df0110-cc70-4df0-89dd-c815f4a10cd0.jsonl`

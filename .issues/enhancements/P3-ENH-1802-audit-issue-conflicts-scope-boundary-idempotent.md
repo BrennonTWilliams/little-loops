@@ -169,15 +169,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-31T21:25:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96597c52-680e-4455-b715-f1845a4e8889.jsonl`
-- `/ll:ready-issue` - 2026-05-31T21:23:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dfcabcfb-6151-4ce1-919e-6296517f5b3f.jsonl`
-- `/ll:confidence-check` - 2026-05-31T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aade4da1-60b0-46d7-b294-7d72f9c03e68.jsonl`
-- `/ll:wire-issue` - 2026-05-31T21:20:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/530e032e-6ec4-4e57-b963-0844a5d722fc.jsonl`
-- `/ll:refine-issue` - 2026-05-31T21:16:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed8bf88c-845f-4d06-bbaa-2e9b3f0f286d.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:format-issue` - 2026-05-29T21:12:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d42814df-045f-41ae-b065-5f4d670ef04d.jsonl`
-- `/ll:capture-issue` - 2026-05-29T20:55:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
+- `/ll:manage-issue` - 2026-05-31T21:25:31 - `96597c52-680e-4455-b715-f1845a4e8889.jsonl`
+- `/ll:ready-issue` - 2026-05-31T21:23:38 - `dfcabcfb-6151-4ce1-919e-6296517f5b3f.jsonl`
+- `/ll:confidence-check` - 2026-05-31T22:00:00 - `aade4da1-60b0-46d7-b294-7d72f9c03e68.jsonl`
+- `/ll:wire-issue` - 2026-05-31T21:20:16 - `530e032e-6ec4-4e57-b963-0844a5d722fc.jsonl`
+- `/ll:refine-issue` - 2026-05-31T21:16:28 - `ed8bf88c-845f-4d06-bbaa-2e9b3f0f286d.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:16 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:16 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:format-issue` - 2026-05-29T21:12:47 - `d42814df-045f-41ae-b065-5f4d670ef04d.jsonl`
+- `/ll:capture-issue` - 2026-05-29T20:55:00Z - `53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
 
 ## Status
 

@@ -183,9 +183,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Confidence**: High
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-20T20:50:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1273e8c-f810-4c65-affd-d5a9dd5a9bf1.jsonl`
-- `/ll:refine-issue` - 2026-03-20T20:28:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6dabc1ad-73dc-4904-8dd7-62288dad5555.jsonl`
-- `/ll:verify-issues` - 2026-03-19T23:52:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-20T20:50:44 - `f1273e8c-f810-4c65-affd-d5a9dd5a9bf1.jsonl`
+- `/ll:refine-issue` - 2026-03-20T20:28:18 - `6dabc1ad-73dc-4904-8dd7-62288dad5555.jsonl`
+- `/ll:verify-issues` - 2026-03-19T23:52:50 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`

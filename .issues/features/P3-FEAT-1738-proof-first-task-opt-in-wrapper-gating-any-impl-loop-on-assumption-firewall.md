@@ -223,13 +223,13 @@ _Added by `/ll:confidence-check` on 2026-05-29_
 - **no_external_deps routing ambiguity**: Per fsm/executor.py:587-600, only `final_state == "done"` routes to `on_success`. The Proposed Solution assumes `no_external_deps` → `run_impl` but sub-loop binary routing means it would go to `on_failure` → `blocked`. Implementation Step 3 flags this. Resolve before or during YAML authoring (Approach A: capture + post-gate shell; Approach B: accept limitation).
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-30T03:13:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43c48749-cb46-486e-a602-2111ee564bbc.jsonl`
-- `/ll:confidence-check` - 2026-05-29T21:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/638aa818-bcbd-46e3-90c3-b9639455e91c.jsonl`
-- `/ll:wire-issue` - 2026-05-30T03:07:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62d239ef-cdb9-4e10-91c4-b7e6d7ebb096.jsonl`
-- `/ll:refine-issue` - 2026-05-30T03:01:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10099c1b-8e47-48e1-b15b-3ee2a2da4e58.jsonl`
-- `/ll:format-issue` - 2026-05-29T20:02:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a846596c-487a-4d83-8770-0975057857d0.jsonl`
-- `/ll:capture-issue` - 2026-05-27T18:08:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55979bca-15d7-443c-b4d3-a76d29148106.jsonl`
-- `/ll:manage-issue feature implement FEAT-1738` - 2026-05-30T03:19:04Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43c48749-cb46-486e-a602-2111ee564bbc.jsonl`
+- `/ll:ready-issue` - 2026-05-30T03:13:53 - `43c48749-cb46-486e-a602-2111ee564bbc.jsonl`
+- `/ll:confidence-check` - 2026-05-29T21:30:00Z - `638aa818-bcbd-46e3-90c3-b9639455e91c.jsonl`
+- `/ll:wire-issue` - 2026-05-30T03:07:34 - `62d239ef-cdb9-4e10-91c4-b7e6d7ebb096.jsonl`
+- `/ll:refine-issue` - 2026-05-30T03:01:28 - `10099c1b-8e47-48e1-b15b-3ee2a2da4e58.jsonl`
+- `/ll:format-issue` - 2026-05-29T20:02:17 - `a846596c-487a-4d83-8770-0975057857d0.jsonl`
+- `/ll:capture-issue` - 2026-05-27T18:08:06Z - `55979bca-15d7-443c-b4d3-a76d29148106.jsonl`
+- `/ll:manage-issue feature implement FEAT-1738` - 2026-05-30T03:19:04Z - `43c48749-cb46-486e-a602-2111ee564bbc.jsonl`
 ---
 ---
 ## Resolution

@@ -156,15 +156,15 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `performance`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-06T21:46:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1edc8d3d-445a-4fa8-b108-e2eb949c2fc1.jsonl`
-- `/ll:ready-issue` - 2026-04-06T21:46:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1edc8d3d-445a-4fa8-b108-e2eb949c2fc1.jsonl`
-- `/ll:ready-issue` - 2026-04-06T21:46:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1edc8d3d-445a-4fa8-b108-e2eb949c2fc1.jsonl`
-- `/ll:ready-issue` - 2026-04-06T21:46:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1edc8d3d-445a-4fa8-b108-e2eb949c2fc1.jsonl`
-- `/ll:confidence-check` - 2026-04-06T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1be35860-22ad-4f3a-b0ee-03874711c040.jsonl`
-- `/ll:wire-issue` - 2026-04-06T21:41:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef0de39e-b118-4aa2-93da-289cabc4f132.jsonl`
-- `/ll:refine-issue` - 2026-04-06T21:37:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7819baad-acc7-4d97-a9d2-cc35365503a9.jsonl`
-- `/ll:format-issue` - 2026-04-06T21:34:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d45f0009-410f-4a18-b401-38d77214ff65.jsonl`
-- `/ll:scan-codebase` - 2026-04-06T16:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
+- `/ll:ready-issue` - 2026-04-06T21:46:19 - `1edc8d3d-445a-4fa8-b108-e2eb949c2fc1.jsonl`
+- `/ll:ready-issue` - 2026-04-06T21:46:16 - `1edc8d3d-445a-4fa8-b108-e2eb949c2fc1.jsonl`
+- `/ll:ready-issue` - 2026-04-06T21:46:12 - `1edc8d3d-445a-4fa8-b108-e2eb949c2fc1.jsonl`
+- `/ll:ready-issue` - 2026-04-06T21:46:10 - `1edc8d3d-445a-4fa8-b108-e2eb949c2fc1.jsonl`
+- `/ll:confidence-check` - 2026-04-06T22:00:00Z - `1be35860-22ad-4f3a-b0ee-03874711c040.jsonl`
+- `/ll:wire-issue` - 2026-04-06T21:41:33 - `ef0de39e-b118-4aa2-93da-289cabc4f132.jsonl`
+- `/ll:refine-issue` - 2026-04-06T21:37:50 - `7819baad-acc7-4d97-a9d2-cc35365503a9.jsonl`
+- `/ll:format-issue` - 2026-04-06T21:34:27 - `d45f0009-410f-4a18-b401-38d77214ff65.jsonl`
+- `/ll:scan-codebase` - 2026-04-06T16:12:28 - `c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 
 ## Resolution
 

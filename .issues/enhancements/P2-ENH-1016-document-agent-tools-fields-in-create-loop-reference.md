@@ -167,8 +167,8 @@ These are awareness items only — none require changes; the additive insertion 
 Closed - Already Fixed
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-11T00:55:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a0ad83d-ee85-4fbb-aaef-cdb01ebc3d20.jsonl`
-- `/ll:confidence-check` - 2026-04-09T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82f6692f-8a42-4bea-9dea-30f1102357d9.jsonl`
-- `/ll:refine-issue` - 2026-04-09T16:05:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7afb930-71b8-4aa8-a6de-d80bf985f5f6.jsonl`
-- `/ll:format-issue` - 2026-04-09T16:02:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ece9b7b8-3ce6-4b94-8a9a-6e84b44149d3.jsonl`
-- `/ll:issue-size-review` - 2026-04-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a3e695e-d9fa-4fce-939c-e7bfcc83f05b.jsonl`
+- `/ll:ready-issue` - 2026-04-11T00:55:35 - `3a0ad83d-ee85-4fbb-aaef-cdb01ebc3d20.jsonl`
+- `/ll:confidence-check` - 2026-04-09T17:00:00 - `82f6692f-8a42-4bea-9dea-30f1102357d9.jsonl`
+- `/ll:refine-issue` - 2026-04-09T16:05:39 - `d7afb930-71b8-4aa8-a6de-d80bf985f5f6.jsonl`
+- `/ll:format-issue` - 2026-04-09T16:02:17 - `ece9b7b8-3ce6-4b94-8a9a-6e84b44149d3.jsonl`
+- `/ll:issue-size-review` - 2026-04-09T00:00:00Z - `6a3e695e-d9fa-4fce-939c-e7bfcc83f05b.jsonl`

@@ -211,15 +211,15 @@ Implemented `--gap-analysis` and `--full-rewrite` flags for `/ll:refine-issue`:
 All 19 tests pass.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-06-01T09:37:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2efb830-4854-4151-a0c3-d9a6d059e94b.jsonl`
-- `/ll:ready-issue` - 2026-06-01T09:30:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67704e56-d96b-49a6-9408-6e9b08818cd0.jsonl`
-- `/ll:confidence-check` - 2026-06-01T10:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78783dd6-1522-455b-a408-30d2de12f191.jsonl`
-- `/ll:wire-issue` - 2026-06-01T09:25:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dcbbf1df-4329-4f24-9d74-a7a36f256cda.jsonl`
-- `/ll:refine-issue` - 2026-06-01T09:19:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/213c7e7b-bd87-4beb-a4d4-034a514f707c.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:format-issue` - 2026-05-29T02:28:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e23d1bf-3385-43d7-80c9-602fafbaf867.jsonl`
-- `/ll:capture-issue` - 2026-05-29T02:23:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b24cba6-684e-4420-9519-de98c8b4822b.jsonl`
+- `/ll:manage-issue` - 2026-06-01T09:37:34 - `b2efb830-4854-4151-a0c3-d9a6d059e94b.jsonl`
+- `/ll:ready-issue` - 2026-06-01T09:30:54 - `67704e56-d96b-49a6-9408-6e9b08818cd0.jsonl`
+- `/ll:confidence-check` - 2026-06-01T10:00:00 - `78783dd6-1522-455b-a408-30d2de12f191.jsonl`
+- `/ll:wire-issue` - 2026-06-01T09:25:51 - `dcbbf1df-4329-4f24-9d74-a7a36f256cda.jsonl`
+- `/ll:refine-issue` - 2026-06-01T09:19:30 - `213c7e7b-bd87-4beb-a4d4-034a514f707c.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:15 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:format-issue` - 2026-05-29T02:28:33 - `9e23d1bf-3385-43d7-80c9-602fafbaf867.jsonl`
+- `/ll:capture-issue` - 2026-05-29T02:23:45Z - `8b24cba6-684e-4420-9519-de98c8b4822b.jsonl`
 
 ---
 

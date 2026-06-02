@@ -210,10 +210,10 @@ _Added by `/ll:confidence-check` on 2026-04-20_
 - FEAT-1208: TestParallelRunnerRealThreading — Max Workers Enforcement Test
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d825c2a4-fabd-41df-8994-3e6d74767fc9.jsonl`
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d5312e8-2850-416b-b80a-2620333d3eb1.jsonl`
-- `/ll:refine-issue` - 2026-04-21T03:41:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e4e5054-9031-473c-a890-91507c70a6f4.jsonl`
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9f4ed37-45ee-4710-be1c-b32805d610df.jsonl`
-- `/ll:wire-issue` - 2026-04-21T03:36:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9f4ed37-45ee-4710-be1c-b32805d610df.jsonl`
-- `/ll:refine-issue` - 2026-04-21T03:31:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80d75a46-4607-4b8d-8528-43c8fafd182c.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ed5d9eb-8026-4655-8ff3-63958b109e67.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `d825c2a4-fabd-41df-8994-3e6d74767fc9.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `3d5312e8-2850-416b-b80a-2620333d3eb1.jsonl`
+- `/ll:refine-issue` - 2026-04-21T03:41:06 - `5e4e5054-9031-473c-a890-91507c70a6f4.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `e9f4ed37-45ee-4710-be1c-b32805d610df.jsonl`
+- `/ll:wire-issue` - 2026-04-21T03:36:27 - `e9f4ed37-45ee-4710-be1c-b32805d610df.jsonl`
+- `/ll:refine-issue` - 2026-04-21T03:31:16 - `80d75a46-4607-4b8d-8528-43c8fafd182c.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `2ed5d9eb-8026-4655-8ff3-63958b109e67.jsonl`

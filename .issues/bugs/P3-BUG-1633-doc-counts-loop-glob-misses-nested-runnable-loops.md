@@ -201,8 +201,8 @@ Related: `ll-loop list` also omits nested runnable loops — same root cause but
 **Verification:** `ll-verify-docs` now reports `loops: actual=52` matching README:167; flipping README to `51` produces exit 1 with a `loops: documented=51, actual=52` mismatch (regression guard confirmed). All 508 tests in `scripts/tests/` pass; ruff + mypy clean on changed files.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-23T17:20:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2c2d509-42c3-47ff-8eaa-f3b238996a01.jsonl`
-- `/ll:ready-issue` - 2026-05-23T17:16:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f14bdb2-9ee0-4a6d-94c4-9d1f93093c71.jsonl`
-- `/ll:wire-issue` - 2026-05-23T17:13:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e9ce930-75a4-416e-a121-42fb8b2885f0.jsonl`
-- `/ll:refine-issue` - 2026-05-23T17:08:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/02f5daa7-b3fb-42d7-bc05-1792527d5a72.jsonl`
-- `/ll:format-issue` - 2026-05-23T16:52:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78e7000c-0614-4462-a57a-9dc90750d092.jsonl`
+- `/ll:manage-issue` - 2026-05-23T17:20:53 - `a2c2d509-42c3-47ff-8eaa-f3b238996a01.jsonl`
+- `/ll:ready-issue` - 2026-05-23T17:16:20 - `0f14bdb2-9ee0-4a6d-94c4-9d1f93093c71.jsonl`
+- `/ll:wire-issue` - 2026-05-23T17:13:29 - `1e9ce930-75a4-416e-a121-42fb8b2885f0.jsonl`
+- `/ll:refine-issue` - 2026-05-23T17:08:13 - `02f5daa7-b3fb-42d7-bc05-1792527d5a72.jsonl`
+- `/ll:format-issue` - 2026-05-23T16:52:52 - `78e7000c-0614-4462-a57a-9dc90750d092.jsonl`

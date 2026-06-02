@@ -91,7 +91,7 @@ All 10 documentation issues resolved in `docs/guides/LOOPS_GUIDE.md`:
 **Completed** | Created: 2026-03-17 | Resolved: 2026-03-18 | Priority: P1
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a39b5c75-560c-4c69-82fb-496433339a86.jsonl`
-- `/ll:ready-issue` - 2026-03-18T15:56:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a39b5c75-560c-4c69-82fb-496433339a86.jsonl`
-- `/ll:format-issue` - 2026-03-18T01:51:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6fe969a-a054-43aa-be89-f0f4d50aacab.jsonl`
-- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`
+- `/ll:manage-issue` - 2026-03-18T00:00:00Z - `a39b5c75-560c-4c69-82fb-496433339a86.jsonl`
+- `/ll:ready-issue` - 2026-03-18T15:56:29 - `a39b5c75-560c-4c69-82fb-496433339a86.jsonl`
+- `/ll:format-issue` - 2026-03-18T01:51:07 - `a6fe969a-a054-43aa-be89-f0f4d50aacab.jsonl`
+- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`

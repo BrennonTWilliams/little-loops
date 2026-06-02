@@ -128,13 +128,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `transport`, `logging`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T19:14:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8af4f12b-36ed-46dc-8671-77ac3007a4a0.jsonl`
-- `/ll:refine-issue` - 2026-05-24T15:30:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2e7bf37-f8f2-40f5-a049-b975a301f9c6.jsonl`
-- `/ll:verify-issues` - 2026-05-24T03:55:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86b55377-f187-4e58-9c10-c40043e89408.jsonl`
-- `/ll:format-issue` - 2026-05-23T19:20:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76e6c26b-1969-49d5-91a6-84282f7c1ac2.jsonl`
+- `/ll:ready-issue` - 2026-05-24T19:14:50 - `8af4f12b-36ed-46dc-8671-77ac3007a4a0.jsonl`
+- `/ll:refine-issue` - 2026-05-24T15:30:01 - `f2e7bf37-f8f2-40f5-a049-b975a301f9c6.jsonl`
+- `/ll:verify-issues` - 2026-05-24T03:55:43 - `86b55377-f187-4e58-9c10-c40043e89408.jsonl`
+- `/ll:format-issue` - 2026-05-23T19:20:58 - `76e6c26b-1969-49d5-91a6-84282f7c1ac2.jsonl`
 
 - `/ll:capture-issue` — 2026-05-23T12:00:00Z
-- `/ll:manage-issue` - 2026-05-24T19:22:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:manage-issue` - 2026-05-24T19:22:25Z - `current.jsonl`
 
 ## Resolution
 

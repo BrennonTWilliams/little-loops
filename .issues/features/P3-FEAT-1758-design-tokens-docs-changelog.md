@@ -192,11 +192,11 @@ Each target file gets its own `Path` constant and class; each assertion is a sin
 - Changelog entry should mention FEAT-1756 and FEAT-1757 outcomes; best written last
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-27T23:58:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/112e2a30-c9a6-423b-a8f6-6378ccb07daf.jsonl`
-- `/ll:confidence-check` - 2026-05-27T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b11ecacf-9e2d-4d24-af2b-ff630ba1eb3d.jsonl`
-- `/ll:wire-issue` - 2026-05-27T23:53:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7649778c-9578-4167-b94a-9d44421b6bef.jsonl`
-- `/ll:refine-issue` - 2026-05-27T23:48:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3eb92b60-b471-4c74-afcb-29035af4b912.jsonl`
-- `/ll:issue-size-review` - 2026-05-27T23:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:ready-issue` - 2026-05-27T23:58:49 - `112e2a30-c9a6-423b-a8f6-6378ccb07daf.jsonl`
+- `/ll:confidence-check` - 2026-05-27T00:00:00 - `b11ecacf-9e2d-4d24-af2b-ff630ba1eb3d.jsonl`
+- `/ll:wire-issue` - 2026-05-27T23:53:47 - `7649778c-9578-4167-b94a-9d44421b6bef.jsonl`
+- `/ll:refine-issue` - 2026-05-27T23:48:40 - `3eb92b60-b471-4c74-afcb-29035af4b912.jsonl`
+- `/ll:issue-size-review` - 2026-05-27T23:30:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 
 ---
 

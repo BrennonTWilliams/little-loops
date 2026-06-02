@@ -200,8 +200,8 @@ Deferred (blocked on FEAT-1074):
 - Step 6: `TestParallelStatePublicExports` smoke tests in `test_fsm_schema.py`.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-21T16:05:52Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc77cd46-8794-4705-b388-f7b4ccb9b3e6.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e308cc8e-783d-4af2-a83a-1df1e69af4b0.jsonl`
-- `/ll:wire-issue` - 2026-04-21T15:56:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91c1fdd9-d4ff-46e3-9d24-8708037cba60.jsonl`
-- `/ll:refine-issue` - 2026-04-21T15:49:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3e382f2-c757-4752-b41a-df5e90fcdb13.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c25b41ad-2e86-4d04-bea4-6daf251405e7.jsonl`
+- `/ll:manage-issue` - 2026-04-21T16:05:52Z - `bc77cd46-8794-4705-b388-f7b4ccb9b3e6.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `e308cc8e-783d-4af2-a83a-1df1e69af4b0.jsonl`
+- `/ll:wire-issue` - 2026-04-21T15:56:06 - `91c1fdd9-d4ff-46e3-9d24-8708037cba60.jsonl`
+- `/ll:refine-issue` - 2026-04-21T15:49:48 - `b3e382f2-c757-4752-b41a-df5e90fcdb13.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `c25b41ad-2e86-4d04-bea4-6daf251405e7.jsonl`

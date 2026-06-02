@@ -174,9 +174,9 @@ _Added by `/ll:confidence-check` on 2026-04-20_
 - **Blocked by 3 unresolved critical dependencies**: FEAT-1074 (`ParallelStateConfig`), FEAT-1075 (`parallel_runner.py` + exports), and FEAT-1202 (`test_parallel_runner.py`) are all still active — none present in `completed/`. The test cannot be written and executed until all three land.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e558d48-a582-4752-a117-daef3f975c61.jsonl`
-- `/ll:refine-issue` - 2026-04-21T04:08:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98e4c323-2256-4b73-9e43-83bbb6fd2ed6.jsonl`
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8997c035-370a-4045-9e4b-18d1f35e90f9.jsonl`
-- `/ll:wire-issue` - 2026-04-21T04:05:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3ac3273c-3a62-4f9f-88eb-b82f56245cd4.jsonl`
-- `/ll:refine-issue` - 2026-04-21T04:01:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/671d2c60-d9cc-47d0-ad7a-e85d89e87f68.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d825c2a4-fabd-41df-8994-3e6d74767fc9.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `8e558d48-a582-4752-a117-daef3f975c61.jsonl`
+- `/ll:refine-issue` - 2026-04-21T04:08:12 - `98e4c323-2256-4b73-9e43-83bbb6fd2ed6.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `8997c035-370a-4045-9e4b-18d1f35e90f9.jsonl`
+- `/ll:wire-issue` - 2026-04-21T04:05:16 - `3ac3273c-3a62-4f9f-88eb-b82f56245cd4.jsonl`
+- `/ll:refine-issue` - 2026-04-21T04:01:41 - `671d2c60-d9cc-47d0-ad7a-e85d89e87f68.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `d825c2a4-fabd-41df-8994-3e6d74767fc9.jsonl`

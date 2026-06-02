@@ -347,18 +347,18 @@ _Added by `/ll:confidence-check` on 2026-05-17_
 - FEAT-1544: Write eval YAML + pytest for loop-specialist full behavioral round-trip
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f2aa363-89b4-48fb-b7e2-882be8ac2cc8.jsonl`
-- `/ll:wire-issue` - 2026-05-17T06:01:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38d57e6b-2308-4ce7-84c3-e08b16c8205e.jsonl`
-- `/ll:refine-issue` - 2026-05-17T05:55:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6075fffb-a261-4749-bc91-6a5ccd982e45.jsonl`
-- `/ll:go-no-go` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79ebee4b-bfa2-4125-97d9-5c564585a388.jsonl`
-- `/ll:refine-issue` - 2026-05-17T01:55:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b41cd01e-2f66-4d8a-9569-7533e00b817e.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60ba9ff7-61cd-4a6b-83ff-2a4a1099aaf1.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07f68ba4-062e-4796-966c-af5b799a1fb1.jsonl`
-- `/ll:wire-issue` - 2026-05-17T01:47:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c6e016f-d3b2-4f3e-a2c1-6c7553275998.jsonl`
-- `/ll:format-issue` - 2026-05-17T00:13:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9399e2ff-d506-4e4e-838b-3a1fd8d6d558.jsonl`
+- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `1f2aa363-89b4-48fb-b7e2-882be8ac2cc8.jsonl`
+- `/ll:wire-issue` - 2026-05-17T06:01:21 - `38d57e6b-2308-4ce7-84c3-e08b16c8205e.jsonl`
+- `/ll:refine-issue` - 2026-05-17T05:55:18 - `6075fffb-a261-4749-bc91-6a5ccd982e45.jsonl`
+- `/ll:go-no-go` - 2026-05-16T00:00:00Z - `79ebee4b-bfa2-4125-97d9-5c564585a388.jsonl`
+- `/ll:refine-issue` - 2026-05-17T01:55:41 - `b41cd01e-2f66-4d8a-9569-7533e00b817e.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `60ba9ff7-61cd-4a6b-83ff-2a4a1099aaf1.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `07f68ba4-062e-4796-966c-af5b799a1fb1.jsonl`
+- `/ll:wire-issue` - 2026-05-17T01:47:32 - `9c6e016f-d3b2-4f3e-a2c1-6c7553275998.jsonl`
+- `/ll:format-issue` - 2026-05-17T00:13:16 - `9399e2ff-d506-4e4e-838b-3a1fd8d6d558.jsonl`
 
-- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/89589346-d055-4c50-9998-e16a3d3ff394.jsonl`
-- `/ll:capture-issue` - 2026-05-17T00:04:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff887948-4996-409c-8d0b-4292b9dd69d2.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `89589346-d055-4c50-9998-e16a3d3ff394.jsonl`
+- `/ll:capture-issue` - 2026-05-17T00:04:56Z - `ff887948-4996-409c-8d0b-4292b9dd69d2.jsonl`
 
 ---
 

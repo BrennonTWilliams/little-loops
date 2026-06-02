@@ -325,18 +325,18 @@ _Added by `/ll:confidence-check` on 2026-05-31_
 - ENH-1829: Comparator Evaluator — Baseline Lifecycle CLI
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/328bc3bf-da89-4021-981a-e4291a0ad2e5.jsonl`
-- `/ll:confidence-check` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b490bcf-413e-4fe3-b2ed-61f7df62034d.jsonl`
-- `/ll:wire-issue` - 2026-05-31T22:44:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72a30597-27f7-46c1-abe8-736c98410497.jsonl`
-- `/ll:refine-issue` - 2026-05-31T22:36:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8a69d39-2c55-48c5-8b59-4b25a3eea94c.jsonl`
-- `/ll:confidence-check` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3598727d-c1b2-449b-bcac-1ffd3f832915.jsonl`
-- `/ll:wire-issue` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c77f9c9d-319a-4328-aa81-b007232a7239.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:refine-issue` - 2026-05-31T05:35:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/959041b3-877b-4e0b-bb02-ec35d5072a0a.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-29T20:48:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
-- `/ll:format-issue` - 2026-05-29T19:41:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fbb9c3ab-f0e7-4ee0-b9e9-75aa887611e6.jsonl`
-- `/ll:capture-issue` - 2026-05-29T19:08:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
+- `/ll:issue-size-review` - 2026-05-31T00:00:00 - `328bc3bf-da89-4021-981a-e4291a0ad2e5.jsonl`
+- `/ll:confidence-check` - 2026-05-31T00:00:00 - `3b490bcf-413e-4fe3-b2ed-61f7df62034d.jsonl`
+- `/ll:wire-issue` - 2026-05-31T22:44:21 - `72a30597-27f7-46c1-abe8-736c98410497.jsonl`
+- `/ll:refine-issue` - 2026-05-31T22:36:05 - `f8a69d39-2c55-48c5-8b59-4b25a3eea94c.jsonl`
+- `/ll:confidence-check` - 2026-05-31T00:00:00 - `3598727d-c1b2-449b-bcac-1ffd3f832915.jsonl`
+- `/ll:wire-issue` - 2026-05-31T00:00:00 - `c77f9c9d-319a-4328-aa81-b007232a7239.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:17 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:refine-issue` - 2026-05-31T05:35:34 - `959041b3-877b-4e0b-bb02-ec35d5072a0a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:15 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-29T20:48:41 - `53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
+- `/ll:format-issue` - 2026-05-29T19:41:01 - `fbb9c3ab-f0e7-4ee0-b9e9-75aa887611e6.jsonl`
+- `/ll:capture-issue` - 2026-05-29T19:08:54Z - `5f057c8d-4a84-4a3e-a47b-50580694d9d6.jsonl`
 
 ---
 

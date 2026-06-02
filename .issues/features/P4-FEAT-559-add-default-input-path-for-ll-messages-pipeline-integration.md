@@ -144,8 +144,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feature`, `workflow-analyzer`, `cli`, `pipeline`, `captured`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl` — COMPLETED: Added default --input path, ll-messages hint, 3 new tests
-- `/ll:ready-issue` - 2026-03-21T06:40:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2a2dbb84-00dd-42bb-8951-912a80ae4f38.jsonl`
+- `/ll:manage-issue` - 2026-03-21T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl` — COMPLETED: Added default --input path, ll-messages hint, 3 new tests
+- `/ll:ready-issue` - 2026-03-21T06:40:01 - `2a2dbb84-00dd-42bb-8951-912a80ae4f38.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: --input still required=True with no default
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `--input required=True` confirmed; removed stale Blocked By: BUG-547, FEAT-557, FEAT-558, ENH-552 (all completed); remaining blocker: FEAT-555
 

@@ -349,8 +349,8 @@ _Added by `/ll:confidence-check` on 2026-05-23_
 - **Novel migration pattern** — `ensure_db()` is the codebase's first transparent write-side rename. Existing in-process migrations are read-only fallbacks; rename-style migrations are user-invoked CLIs. Call this out explicitly in the PR description so reviewers understand it's intentional.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/254f6dbe-67d6-4708-98a6-e02c9e7c7d23.jsonl`
-- `/ll:wire-issue` - 2026-05-23T23:36:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b6b8c22-4624-47e4-a6df-c62189c87ec3.jsonl`
-- `/ll:refine-issue` - 2026-05-23T23:27:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/879ef0aa-ab10-4b20-a07d-bc946499c21d.jsonl`
-- `/ll:format-issue` - 2026-05-23T19:14:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0c42e29-d786-4417-87f6-edeb32ecf0f3.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `254f6dbe-67d6-4708-98a6-e02c9e7c7d23.jsonl`
+- `/ll:wire-issue` - 2026-05-23T23:36:49 - `6b6b8c22-4624-47e4-a6df-c62189c87ec3.jsonl`
+- `/ll:refine-issue` - 2026-05-23T23:27:16 - `879ef0aa-ab10-4b20-a07d-bc946499c21d.jsonl`
+- `/ll:format-issue` - 2026-05-23T19:14:07 - `b0c42e29-d786-4417-87f6-edeb32ecf0f3.jsonl`
 - `/ll:capture-issue` - 2026-05-23T19:10:14Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/<current>.jsonl`

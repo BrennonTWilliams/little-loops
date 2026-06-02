@@ -114,5 +114,5 @@ file is grep-friendly.
 **Open** | Created: 2026-05-24 | Priority: P4
 
 ## Session Log
-- `/ll:format-issue` - 2026-05-24T17:49:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0e276a3-13b8-43b1-8581-1cb2cbdbf771.jsonl`
+- `/ll:format-issue` - 2026-05-24T17:49:12 - `a0e276a3-13b8-43b1-8581-1cb2cbdbf771.jsonl`
 - `/ll:capture-issue` - 2026-05-24T17:45:05Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a60b27f-22df-41ea-82fa-1f0c281994dd.jsonl`

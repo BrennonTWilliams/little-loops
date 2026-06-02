@@ -260,9 +260,9 @@ Tests: created `scripts/tests/test_loops_recursive_refine.py` (14 shell-executio
 **Completed** | Created: 2026-05-03 | Completed: 2026-05-03 | Priority: P2
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-03T16:40:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/758e65f0-d85f-4f64-9923-01f4774eca98.jsonl`
-- `/ll:confidence-check` - 2026-05-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/77a563f2-e263-4e8c-83f7-088bad88d5ff.jsonl`
-- `/ll:wire-issue` - 2026-05-03T16:34:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7cf8909d-20a1-44b0-ba53-d2ba5b2712f1.jsonl`
-- `/ll:refine-issue` - 2026-05-03T16:27:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9839f41f-ca15-47f8-ad6b-d3afab2e7508.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbb0e63c-be49-432f-9671-f8f7f8a4d675.jsonl`
-- `/ll:manage-issue` - 2026-05-03T16:51:28Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-03T16:40:04 - `758e65f0-d85f-4f64-9923-01f4774eca98.jsonl`
+- `/ll:confidence-check` - 2026-05-03T00:00:00 - `77a563f2-e263-4e8c-83f7-088bad88d5ff.jsonl`
+- `/ll:wire-issue` - 2026-05-03T16:34:35 - `7cf8909d-20a1-44b0-ba53-d2ba5b2712f1.jsonl`
+- `/ll:refine-issue` - 2026-05-03T16:27:51 - `9839f41f-ca15-47f8-ad6b-d3afab2e7508.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T00:00:00 - `dbb0e63c-be49-432f-9671-f8f7f8a4d675.jsonl`
+- `/ll:manage-issue` - 2026-05-03T16:51:28Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

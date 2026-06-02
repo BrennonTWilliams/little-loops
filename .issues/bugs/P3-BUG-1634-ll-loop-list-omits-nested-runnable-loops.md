@@ -186,8 +186,8 @@ Found during `/ll:audit-docs` (2026-05-23). Shares a root cause with [[BUG-1633]
 
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-23T17:48:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
-- `/ll:wire-issue` - 2026-05-23T17:31:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11747bce-3ff7-459a-9a11-9fe37cce5bed.jsonl`
-- `/ll:refine-issue` - 2026-05-23T17:25:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7788c8e9-e2d4-4246-9d3a-02ad822b537a.jsonl`
-- `/ll:format-issue` - 2026-05-23T16:52:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0c0653a-6b0f-4270-aa05-e54a6f8925dd.jsonl`
-- `/ll:confidence-check` - 2026-05-23T18:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/184bfdae-1f41-4d76-88a3-4daa06dddea2.jsonl`
+- `/ll:manage-issue` - 2026-05-23T17:48:25 - `001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
+- `/ll:wire-issue` - 2026-05-23T17:31:06 - `11747bce-3ff7-459a-9a11-9fe37cce5bed.jsonl`
+- `/ll:refine-issue` - 2026-05-23T17:25:55 - `7788c8e9-e2d4-4246-9d3a-02ad822b537a.jsonl`
+- `/ll:format-issue` - 2026-05-23T16:52:06 - `c0c0653a-6b0f-4270-aa05-e54a6f8925dd.jsonl`
+- `/ll:confidence-check` - 2026-05-23T18:00:00 - `184bfdae-1f41-4d76-88a3-4daa06dddea2.jsonl`

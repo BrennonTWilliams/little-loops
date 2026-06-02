@@ -177,8 +177,8 @@ Apply the same structure: `init` state echoes the created path, `capture: run_di
 `enhancement`, `loops`, `consistency`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-13T17:48:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9350596a-47be-4b63-87f1-375aa26b430c.jsonl`
-- `/ll:refine-issue` - 2026-04-13T17:45:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38b56074-42ba-45c4-a80a-86bf22a62417.jsonl`
+- `/ll:ready-issue` - 2026-04-13T17:48:54 - `9350596a-47be-4b63-87f1-375aa26b430c.jsonl`
+- `/ll:refine-issue` - 2026-04-13T17:45:11 - `38b56074-42ba-45c4-a80a-86bf22a62417.jsonl`
 
 - `/ll:capture-issue` - 2026-04-13T10:52:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ecde5189-5435-44c0-b1ce-c8b3a48ba967.jsonl`
 

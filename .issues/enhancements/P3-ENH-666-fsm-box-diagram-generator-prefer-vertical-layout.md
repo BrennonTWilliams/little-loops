@@ -133,8 +133,8 @@ Arrows connecting vertical states go from the center-bottom of the source box to
 - P4-ENH-654: FSM diagram active state background fill highlight
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:format-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:capture-issue` - 2026-03-10T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:format-issue` - 2026-03-10T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 

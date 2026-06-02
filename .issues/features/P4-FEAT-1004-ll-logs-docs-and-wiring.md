@@ -190,12 +190,12 @@ As of research date 2026-04-08, `scripts/little_loops/cli/logs.py` does not exis
 `feature`, `documentation`, `wiring`, `cli`
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-08T22:06:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7158b6b3-d465-4658-9645-8a41be41765d.jsonl`
-- `/ll:wire-issue` - 2026-04-08T22:00:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c104ad9-d5a6-4341-a4a8-d735256fe8c9.jsonl`
-- `/ll:refine-issue` - 2026-04-08T21:55:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a846d80e-b641-4b2d-aaa9-45449ffd3f8e.jsonl`
-- `/ll:format-issue` - 2026-04-08T21:51:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6059f5bf-463b-4ab0-b91d-c3afce5630fa.jsonl`
-- `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4567c5b-d32d-41b7-b9a6-b02cb4590a4e.jsonl`
-- `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7158b6b3-d465-4658-9645-8a41be41765d.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-08T22:06:02 - `7158b6b3-d465-4658-9645-8a41be41765d.jsonl`
+- `/ll:wire-issue` - 2026-04-08T22:00:52 - `3c104ad9-d5a6-4341-a4a8-d735256fe8c9.jsonl`
+- `/ll:refine-issue` - 2026-04-08T21:55:51 - `a846d80e-b641-4b2d-aaa9-45449ffd3f8e.jsonl`
+- `/ll:format-issue` - 2026-04-08T21:51:41 - `6059f5bf-463b-4ab0-b91d-c3afce5630fa.jsonl`
+- `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `e4567c5b-d32d-41b7-b9a6-b02cb4590a4e.jsonl`
+- `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `7158b6b3-d465-4658-9645-8a41be41765d.jsonl`
 
 ---
 

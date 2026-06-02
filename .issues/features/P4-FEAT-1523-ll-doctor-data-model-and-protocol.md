@@ -280,12 +280,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `.claude/CLAUDE.md` — "Host CLI Abstraction" section describing `resolve_host()` and `LL_HOST_CLI` resolution
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-16T16:58:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ff9319a-c7c4-4bf0-98ef-c2eac9f0b3e9.jsonl`
-- `/ll:confidence-check` - 2026-05-16T17:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cad7c10-6e4d-4a47-b9d1-399aa50d373a.jsonl`
-- `/ll:wire-issue` - 2026-05-16T16:51:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6902f110-9a95-46f3-8783-05f9ce88a53a.jsonl`
-- `/ll:refine-issue` - 2026-05-16T16:45:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c9ec8f0-9a81-4c17-b634-1ee2b2905955.jsonl`
-- `/ll:format-issue` - 2026-05-16T15:15:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51c3d43d-d40e-431c-b47f-33a47f801e9e.jsonl`
-- `/ll:issue-size-review` - 2026-05-16T15:07:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b57cdb22-126d-4dc6-b12f-a5213e07e705.jsonl`
+- `/ll:ready-issue` - 2026-05-16T16:58:02 - `9ff9319a-c7c4-4bf0-98ef-c2eac9f0b3e9.jsonl`
+- `/ll:confidence-check` - 2026-05-16T17:00:00Z - `8cad7c10-6e4d-4a47-b9d1-399aa50d373a.jsonl`
+- `/ll:wire-issue` - 2026-05-16T16:51:40 - `6902f110-9a95-46f3-8783-05f9ce88a53a.jsonl`
+- `/ll:refine-issue` - 2026-05-16T16:45:48 - `7c9ec8f0-9a81-4c17-b634-1ee2b2905955.jsonl`
+- `/ll:format-issue` - 2026-05-16T15:15:04 - `51c3d43d-d40e-431c-b47f-33a47f801e9e.jsonl`
+- `/ll:issue-size-review` - 2026-05-16T15:07:07Z - `b57cdb22-126d-4dc6-b12f-a5213e07e705.jsonl`
 
 ## Status
 

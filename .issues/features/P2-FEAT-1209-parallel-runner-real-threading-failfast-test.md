@@ -133,9 +133,9 @@ _Added by `/ll:confidence-check` on 2026-04-20_
 - The test can be authored now (TDD) but will not pass green until FEAT-1074, FEAT-1075, and FEAT-1202 are implemented.
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-21T04:39:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ede8d582-24be-426f-8a38-144ee1d87f89.jsonl`
-- `/ll:confidence-check` - 2026-04-20T23:41:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7375438a-9732-4d6b-85bc-98eeec9b0490.jsonl`
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bff28984-0248-4c2d-a245-daa9001c7e4e.jsonl`
-- `/ll:wire-issue` - 2026-04-21T04:35:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bff28984-0248-4c2d-a245-daa9001c7e4e.jsonl`
-- `/ll:refine-issue` - 2026-04-21T04:30:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d89e7586-7b6d-4f89-9afa-b0711038479e.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f84bc5fa-3fa1-4822-8f5a-25670ac913a0.jsonl`
+- `/ll:refine-issue` - 2026-04-21T04:39:31 - `ede8d582-24be-426f-8a38-144ee1d87f89.jsonl`
+- `/ll:confidence-check` - 2026-04-20T23:41:00 - `7375438a-9732-4d6b-85bc-98eeec9b0490.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `bff28984-0248-4c2d-a245-daa9001c7e4e.jsonl`
+- `/ll:wire-issue` - 2026-04-21T04:35:50 - `bff28984-0248-4c2d-a245-daa9001c7e4e.jsonl`
+- `/ll:refine-issue` - 2026-04-21T04:30:39 - `d89e7586-7b6d-4f89-9afa-b0711038479e.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `f84bc5fa-3fa1-4822-8f5a-25670ac913a0.jsonl`

@@ -137,9 +137,9 @@ Changes are purely additive — existing prompt content is intact.
 **Completed** | Created: 2026-04-27 | Completed: 2026-04-27 | Priority: P2
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-27T19:02:43Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:ready-issue` - 2026-04-27T19:01:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/108364d6-c0f4-4ae4-bc32-44adeae9df3d.jsonl`
-- `/ll:format-issue` - 2026-04-27T16:59:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ac2537a-c3f4-41a5-bfff-ceabdb529f5c.jsonl`
+- `/ll:manage-issue` - 2026-04-27T19:02:43Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-04-27T19:01:29 - `108364d6-c0f4-4ae4-bc32-44adeae9df3d.jsonl`
+- `/ll:format-issue` - 2026-04-27T16:59:10 - `2ac2537a-c3f4-41a5-bfff-ceabdb529f5c.jsonl`
 
 - `/ll:capture-issue` - 2026-04-27T16:55:56Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:confidence-check` - 2026-04-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7ae65452-a076-486e-8525-07b99c3425ce.jsonl`
+- `/ll:confidence-check` - 2026-04-27T00:00:00Z - `7ae65452-a076-486e-8525-07b99c3425ce.jsonl`

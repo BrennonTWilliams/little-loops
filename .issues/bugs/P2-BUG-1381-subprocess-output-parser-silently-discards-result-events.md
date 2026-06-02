@@ -162,9 +162,9 @@ elif etype == "result":
 - `docs/reference/API.md` — documented `[result]`-prefixed stderr behavior
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-09T17:10:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17942ca2-2a72-4fee-9617-7186ec68032d.jsonl`
-- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73e189c2-e1b8-4ed9-9d39-49351d7af088.jsonl`
-- `/ll:wire-issue` - 2026-05-09T17:06:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99670389-b94b-4da0-92a2-394f540ed26b.jsonl`
-- `/ll:refine-issue` - 2026-05-09T16:59:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d24f0aab-3407-484e-9776-09b8ceba7a15.jsonl`
-- `/ll:format-issue` - 2026-05-09T16:54:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87a2dd4-2942-4324-b2d7-27ac23ef9a20.jsonl`
-- `/ll:capture-issue` - 2026-05-09T01:55:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-09T17:10:05 - `17942ca2-2a72-4fee-9617-7186ec68032d.jsonl`
+- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `73e189c2-e1b8-4ed9-9d39-49351d7af088.jsonl`
+- `/ll:wire-issue` - 2026-05-09T17:06:03 - `99670389-b94b-4da0-92a2-394f540ed26b.jsonl`
+- `/ll:refine-issue` - 2026-05-09T16:59:33 - `d24f0aab-3407-484e-9776-09b8ceba7a15.jsonl`
+- `/ll:format-issue` - 2026-05-09T16:54:11 - `d87a2dd4-2942-4324-b2d7-27ac23ef9a20.jsonl`
+- `/ll:capture-issue` - 2026-05-09T01:55:56Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

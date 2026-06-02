@@ -226,9 +226,9 @@ Added SR-1 through SR-4 semantic flow review checks to `skills/review-loop/SKILL
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-23T01:35:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/77489a07-79fc-4f0a-bec9-1978a232c91a.jsonl`
-- `/ll:confidence-check` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb66d5fa-1e18-4297-b9a0-84c7a6347716.jsonl`
-- `/ll:refine-issue` - 2026-04-23T01:26:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dfab9de-bfbe-4be1-83f9-5e81ba5e7259.jsonl`
-- `/ll:wire-issue` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-04-23T01:35:07 - `77489a07-79fc-4f0a-bec9-1978a232c91a.jsonl`
+- `/ll:confidence-check` - 2026-04-22T00:00:00 - `fb66d5fa-1e18-4297-b9a0-84c7a6347716.jsonl`
+- `/ll:refine-issue` - 2026-04-23T01:26:23 - `0dfab9de-bfbe-4be1-83f9-5e81ba5e7259.jsonl`
+- `/ll:wire-issue` - 2026-04-22T00:00:00
 - `/ll:capture-issue` - 2026-04-23T01:03:13Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf5a7c2d-7f8f-4698-a4df-06642c6487ba.jsonl`
-- `/ll:manage-issue` - 2026-04-23T01:43:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `/ll:manage-issue` - 2026-04-23T01:43:57Z - `fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`

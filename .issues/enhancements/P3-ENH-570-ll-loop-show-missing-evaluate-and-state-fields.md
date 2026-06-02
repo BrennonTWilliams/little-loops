@@ -159,8 +159,8 @@ All acceptance criteria met. Modified `scripts/little_loops/cli/loop/info.py`:
 Added 12 new tests to `scripts/tests/test_ll_loop_commands.py::TestCmdShow`. Updated existing verbose evaluate prompt test to match new `prompt:` format. All 3172 tests pass.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55d7c8e7-ed1c-4f5d-b244-e812f7e7548d.jsonl`
-- `/ll:capture-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d569869-6d78-45db-ae07-4c05f23b46fe.jsonl`
-- `/ll:format-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6597c7fe-9a5f-4855-8b66-52360a144614.jsonl`
-- `/ll:refine-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09e64419-077a-4419-9450-a8d0a45ee28c.jsonl`
-- `/ll:ready-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/89d50802-77c8-4fea-b4d7-e84780aad71a.jsonl`
+- `/ll:confidence-check` - 2026-03-04T00:00:00 - `55d7c8e7-ed1c-4f5d-b244-e812f7e7548d.jsonl`
+- `/ll:capture-issue` - 2026-03-04T00:00:00 - `0d569869-6d78-45db-ae07-4c05f23b46fe.jsonl`
+- `/ll:format-issue` - 2026-03-04T00:00:00 - `6597c7fe-9a5f-4855-8b66-52360a144614.jsonl`
+- `/ll:refine-issue` - 2026-03-04T00:00:00 - `09e64419-077a-4419-9450-a8d0a45ee28c.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00 - `89d50802-77c8-4fea-b4d7-e84780aad71a.jsonl`

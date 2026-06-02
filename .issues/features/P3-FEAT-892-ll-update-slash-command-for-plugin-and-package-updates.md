@@ -175,11 +175,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `feature`, `dx`, `cli`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-26T19:01:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66fb6678-4a38-49ff-8181-66f3bbb18395.jsonl`
-- `/ll:confidence-check` - 2026-03-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08222264-8c10-483b-8297-c8b24653e187.jsonl`
-- `/ll:refine-issue` - 2026-03-26T18:51:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08222264-8c10-483b-8297-c8b24653e187.jsonl`
-- `/ll:refine-issue` - 2026-03-26T18:45:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08222264-8c10-483b-8297-c8b24653e187.jsonl`
-- `/ll:format-issue` - 2026-03-26T18:36:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08222264-8c10-483b-8297-c8b24653e187.jsonl`
+- `/ll:ready-issue` - 2026-03-26T19:01:36 - `66fb6678-4a38-49ff-8181-66f3bbb18395.jsonl`
+- `/ll:confidence-check` - 2026-03-26T00:00:00 - `08222264-8c10-483b-8297-c8b24653e187.jsonl`
+- `/ll:refine-issue` - 2026-03-26T18:51:18 - `08222264-8c10-483b-8297-c8b24653e187.jsonl`
+- `/ll:refine-issue` - 2026-03-26T18:45:07 - `08222264-8c10-483b-8297-c8b24653e187.jsonl`
+- `/ll:format-issue` - 2026-03-26T18:36:49 - `08222264-8c10-483b-8297-c8b24653e187.jsonl`
 
 - `/ll:capture-issue` - 2026-03-26T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d4875f47-078b-4e8b-9057-511b4f156510.jsonl`
 

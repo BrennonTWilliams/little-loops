@@ -168,12 +168,12 @@ Sprint manages curated issue sets with dependency-aware ordering — a distinct 
 
 ## Session Log
 - Direction change: 2026-04-21 — scope narrowed from N×M multiplication warning to ll-parallel deprecation notice; `--loop` argument design discarded
-- `/ll:confidence-check` - 2026-04-21T19:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed37497f-849a-4b7b-be30-d51876e9ed94.jsonl`
-- `/ll:wire-issue` - 2026-04-21T19:09:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36a8767f-2730-435d-ac77-be8642d21476.jsonl`
-- `/ll:refine-issue` - 2026-04-21T19:03:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e249e1c1-8792-41dc-a575-86d270039932.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/644812c0-533a-4e26-96b6-038b38467391.jsonl`
-- `/ll:refine-issue` - 2026-04-21T16:26:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/444f6307-f957-4298-afd7-8110637a61ba.jsonl`
-- `/ll:wire-issue` - 2026-04-21T16:19:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5e62948-0099-497f-bfc8-c00efc10983d.jsonl`
-- `/ll:refine-issue` - 2026-04-21T16:11:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7a2ae01-e999-4e1d-b35a-80cc743b6a7d.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c25b41ad-2e86-4d04-bea4-6daf251405e7.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5e62948-0099-497f-bfc8-c00efc10983d.jsonl`
+- `/ll:confidence-check` - 2026-04-21T19:30:00 - `ed37497f-849a-4b7b-be30-d51876e9ed94.jsonl`
+- `/ll:wire-issue` - 2026-04-21T19:09:23 - `36a8767f-2730-435d-ac77-be8642d21476.jsonl`
+- `/ll:refine-issue` - 2026-04-21T19:03:20 - `e249e1c1-8792-41dc-a575-86d270039932.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `644812c0-533a-4e26-96b6-038b38467391.jsonl`
+- `/ll:refine-issue` - 2026-04-21T16:26:27 - `444f6307-f957-4298-afd7-8110637a61ba.jsonl`
+- `/ll:wire-issue` - 2026-04-21T16:19:32 - `b5e62948-0099-497f-bfc8-c00efc10983d.jsonl`
+- `/ll:refine-issue` - 2026-04-21T16:11:15 - `f7a2ae01-e999-4e1d-b35a-80cc743b6a7d.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `c25b41ad-2e86-4d04-bea4-6daf251405e7.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `b5e62948-0099-497f-bfc8-c00efc10983d.jsonl`

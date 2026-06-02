@@ -172,11 +172,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feature`, `testing`, `history`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-06T19:53:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10a66d29-5307-47ea-8903-f7abe84520b1.jsonl`
-- `/ll:confidence-check` - 2026-04-06T20:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b757c13-9fa6-46d5-adc8-41469f3d50af.jsonl`
-- `/ll:wire-issue` - 2026-04-06T19:47:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/debd6d1f-97c9-4122-a56e-7ef00bfe4414.jsonl`
-- `/ll:refine-issue` - 2026-04-06T19:42:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb9359c5-37f9-4a27-9a64-8ba21767ecda.jsonl`
-- `/ll:scan-codebase` - 2026-04-06T16:12:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
+- `/ll:ready-issue` - 2026-04-06T19:53:35 - `10a66d29-5307-47ea-8903-f7abe84520b1.jsonl`
+- `/ll:confidence-check` - 2026-04-06T20:00:00Z - `3b757c13-9fa6-46d5-adc8-41469f3d50af.jsonl`
+- `/ll:wire-issue` - 2026-04-06T19:47:47 - `debd6d1f-97c9-4122-a56e-7ef00bfe4414.jsonl`
+- `/ll:refine-issue` - 2026-04-06T19:42:55 - `bb9359c5-37f9-4a27-9a64-8ba21767ecda.jsonl`
+- `/ll:scan-codebase` - 2026-04-06T16:12:29 - `c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 
 ## Resolution
 

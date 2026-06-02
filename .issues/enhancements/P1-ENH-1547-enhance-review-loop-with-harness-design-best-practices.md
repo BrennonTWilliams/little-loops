@@ -281,9 +281,9 @@ Open — sourced from `~/.claude/plans/use-the-best-practices-glowing-sparkle.md
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-17T15:11:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78462d3d-d767-435e-b986-6bb5e5a070d9.jsonl`
-- `/ll:confidence-check` - 2026-05-17T16:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cca01b4-c345-44fc-ad43-ed4c1462fdd7.jsonl`
-- `/ll:wire-issue` - 2026-05-17T15:07:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/715ddee7-22a8-42d6-98d5-3cd589ead119.jsonl`
-- `/ll:refine-issue` - 2026-05-17T15:01:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/040a90be-219b-4227-b171-38b8a2382be5.jsonl`
-- `/ll:format-issue` - 2026-05-17T07:46:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aac60a3c-4bb3-4d31-b1a0-08e1bc0000bc.jsonl`
-- `/ll:capture-issue` - 2026-05-17T07:41:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/faeb9229-ba0c-487a-b4e2-34a81c432ad9.jsonl`
+- `/ll:ready-issue` - 2026-05-17T15:11:38 - `78462d3d-d767-435e-b986-6bb5e5a070d9.jsonl`
+- `/ll:confidence-check` - 2026-05-17T16:00:00Z - `3cca01b4-c345-44fc-ad43-ed4c1462fdd7.jsonl`
+- `/ll:wire-issue` - 2026-05-17T15:07:04 - `715ddee7-22a8-42d6-98d5-3cd589ead119.jsonl`
+- `/ll:refine-issue` - 2026-05-17T15:01:20 - `040a90be-219b-4227-b171-38b8a2382be5.jsonl`
+- `/ll:format-issue` - 2026-05-17T07:46:06 - `aac60a3c-4bb3-4d31-b1a0-08e1bc0000bc.jsonl`
+- `/ll:capture-issue` - 2026-05-17T07:41:00Z - `faeb9229-ba0c-487a-b4e2-34a81c432ad9.jsonl`

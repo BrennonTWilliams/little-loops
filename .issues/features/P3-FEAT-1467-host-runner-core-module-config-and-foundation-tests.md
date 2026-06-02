@@ -184,8 +184,8 @@ Strictly within scope: no production call sites of `run_claude_command` migrated
 
 ## Session Log
 - `/ll:manage-issue` - 2026-05-15T13:27:20Z
-- `/ll:ready-issue` - 2026-05-15T13:18:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3668e713-a602-4cbb-81d7-b3d14d634f08.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd508d33-6a51-49ce-9e65-117a04eea2f9.jsonl`
-- `/ll:wire-issue` - 2026-05-15T13:15:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92ff58dc-1aac-46be-a467-8ab3f7cfb61c.jsonl`
-- `/ll:refine-issue` - 2026-05-15T13:07:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6763033d-632a-41bd-ade1-cf6f9e9e8e50.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6024d56a-9aff-4760-9ebc-3ce5b51bb09f.jsonl`
+- `/ll:ready-issue` - 2026-05-15T13:18:22 - `3668e713-a602-4cbb-81d7-b3d14d634f08.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `cd508d33-6a51-49ce-9e65-117a04eea2f9.jsonl`
+- `/ll:wire-issue` - 2026-05-15T13:15:04 - `92ff58dc-1aac-46be-a467-8ab3f7cfb61c.jsonl`
+- `/ll:refine-issue` - 2026-05-15T13:07:18 - `6763033d-632a-41bd-ade1-cf6f9e9e8e50.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `6024d56a-9aff-4760-9ebc-3ce5b51bb09f.jsonl`

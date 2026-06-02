@@ -131,12 +131,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - All 7 unit tests pass using `tmp_path` fixture
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-17T05:19:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38cbbcb1-d247-49c4-847a-b37757a19e54.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac3303c4-deb8-40c5-9253-5f167d6eee83.jsonl`
-- `/ll:wire-issue` - 2026-04-17T05:12:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d83e882e-5419-4470-b2e5-3b9e7be5f775.jsonl`
-- `/ll:refine-issue` - 2026-04-17T05:07:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44aeae3a-978e-42e3-bf20-03a0ecee55bb.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81193e52-67e2-461f-8b12-656dced49eb5.jsonl`
-- `/ll:manage-issue` - 2026-04-17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00032768-5efc-466a-aad1-02f0fb698fb3.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-17T05:19:15 - `38cbbcb1-d247-49c4-847a-b37757a19e54.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00 - `ac3303c4-deb8-40c5-9253-5f167d6eee83.jsonl`
+- `/ll:wire-issue` - 2026-04-17T05:12:14 - `d83e882e-5419-4470-b2e5-3b9e7be5f775.jsonl`
+- `/ll:refine-issue` - 2026-04-17T05:07:52 - `44aeae3a-978e-42e3-bf20-03a0ecee55bb.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `81193e52-67e2-461f-8b12-656dced49eb5.jsonl`
+- `/ll:manage-issue` - 2026-04-17 - `00032768-5efc-466a-aad1-02f0fb698fb3.jsonl`
 
 ---
 

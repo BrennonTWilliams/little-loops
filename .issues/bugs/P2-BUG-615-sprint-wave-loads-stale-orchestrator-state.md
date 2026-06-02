@@ -160,11 +160,11 @@ parallel_config = config.create_parallel_config(
 - `ll-parallel --resume` path unchanged (`clean_start=False` by default)
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dee6f2da-ed36-487d-a39a-cd3d16500656.jsonl`
-- `/ll:format-issue` - 2026-03-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dee6f2da-ed36-487d-a39a-cd3d16500656.jsonl`
-- `/ll:confidence-check` - 2026-03-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ae81154-74a3-486d-a616-b7c6650a18e5.jsonl`
-- `/ll:ready-issue` - 2026-03-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60b97b2a-601d-4e95-914f-ab3dc2e0f96e.jsonl`
-- `/ll:manage-issue` - 2026-03-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:capture-issue` - 2026-03-06T00:00:00 - `dee6f2da-ed36-487d-a39a-cd3d16500656.jsonl`
+- `/ll:format-issue` - 2026-03-06T00:00:00 - `dee6f2da-ed36-487d-a39a-cd3d16500656.jsonl`
+- `/ll:confidence-check` - 2026-03-06T00:00:00 - `8ae81154-74a3-486d-a616-b7c6650a18e5.jsonl`
+- `/ll:ready-issue` - 2026-03-06T00:00:00 - `60b97b2a-601d-4e95-914f-ab3dc2e0f96e.jsonl`
+- `/ll:manage-issue` - 2026-03-06T00:00:00 - `ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
 
 ---
 

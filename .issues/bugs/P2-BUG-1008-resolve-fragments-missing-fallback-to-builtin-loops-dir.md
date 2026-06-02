@@ -173,9 +173,9 @@ FileNotFoundError: Fragment library not found: lib/common.yaml (checked '.loops/
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-09T05:40:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3529d4db-7925-457d-8e73-a8f8d3c8dffc.jsonl`
-- `/ll:confidence-check` - 2026-04-09T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1fba563-25de-457a-8a36-60a62fb88a99.jsonl`
-- `/ll:wire-issue` - 2026-04-09T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/loop-viz-recursive-refine.jsonl`
-- `/ll:refine-issue` - 2026-04-09T05:31:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa2f7fcc-7a9a-4554-8835-7b3ae6bbabe4.jsonl`
-- `/ll:format-issue` - 2026-04-09T05:28:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/856a40eb-26de-4b04-8d33-182ff2ffc08d.jsonl`
+- `/ll:ready-issue` - 2026-04-09T05:40:40 - `3529d4db-7925-457d-8e73-a8f8d3c8dffc.jsonl`
+- `/ll:confidence-check` - 2026-04-09T00:00:00 - `c1fba563-25de-457a-8a36-60a62fb88a99.jsonl`
+- `/ll:wire-issue` - 2026-04-09T00:00:00 - `loop-viz-recursive-refine.jsonl`
+- `/ll:refine-issue` - 2026-04-09T05:31:29 - `fa2f7fcc-7a9a-4554-8835-7b3ae6bbabe4.jsonl`
+- `/ll:format-issue` - 2026-04-09T05:28:50 - `856a40eb-26de-4b04-8d33-182ff2ffc08d.jsonl`
 - `/ll:capture-issue` - 2026-04-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de13387d-dae4-488b-861a-ea1d6bb4a2aa.jsonl`

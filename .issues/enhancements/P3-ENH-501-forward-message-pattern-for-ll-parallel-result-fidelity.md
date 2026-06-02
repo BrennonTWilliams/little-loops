@@ -105,8 +105,8 @@ _Added by `/ll:refine-issue` — Investigation of `merge_coordinator.py` complet
 `enhancement`, `context-engineering`, `ll-parallel`, `multi-agent`, `fidelity`
 
 ## Session Log
-- `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Investigated merge_coordinator.py: no synthesis/paraphrasing found; MergeCoordinator is pure git orchestration. Investigation focus should shift to orchestrator.py reporting methods.
+- `/ll:format-issue` - 2026-02-24 - `cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Investigated merge_coordinator.py: no synthesis/paraphrasing found; MergeCoordinator is pure git orchestration. Investigation focus should shift to orchestrator.py reporting methods.
 
 ---
 

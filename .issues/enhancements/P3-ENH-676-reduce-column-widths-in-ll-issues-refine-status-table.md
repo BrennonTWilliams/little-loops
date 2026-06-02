@@ -76,6 +76,6 @@ Total savings: ~21 chars per row (with 7 dynamic cmd columns), reducing header f
 - `scripts/tests/test_refine_status.py` — updated truncation assertion for new _CMD_WIDTH
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9289d76a-2044-43b5-b290-5c352d5fc6f5.jsonl`
-- `/ll:ready-issue` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e65ee450-b783-4f29-8712-1c173d351b1a.jsonl`
-- `/ll:manage-issue` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bbc52ed1-3c9a-4788-986d-0f9a41297929.jsonl`
+- `/ll:capture-issue` - 2026-03-11T00:00:00Z - `9289d76a-2044-43b5-b290-5c352d5fc6f5.jsonl`
+- `/ll:ready-issue` - 2026-03-12T00:00:00Z - `e65ee450-b783-4f29-8712-1c173d351b1a.jsonl`
+- `/ll:manage-issue` - 2026-03-12T00:00:00Z - `bbc52ed1-3c9a-4788-986d-0f9a41297929.jsonl`

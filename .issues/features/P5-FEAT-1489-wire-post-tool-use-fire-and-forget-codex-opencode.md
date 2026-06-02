@@ -261,7 +261,7 @@ codex, opencode, host-compat, hooks
 **Trust-hash note for PR description**: The added `PostToolUse` entry in `hooks/adapters/codex/hooks.json` changes the file's content, which invalidates the Codex trust hash for `session_start`/`pre_compact`/`user_prompt_submit` for any existing user. Codex will prompt the user to re-trust on their next startup.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-16T06:27:51Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9012eb9-e36e-4c95-8e58-71a5a953e685.jsonl`
+- `/ll:manage-issue` - 2026-05-16T06:27:51Z - `b9012eb9-e36e-4c95-8e58-71a5a953e685.jsonl`
 
 
 ## Confidence Check Notes
@@ -277,10 +277,10 @@ _Added by `/ll:confidence-check` on 2026-05-16_
 - No automated test coverage for TypeScript adapter — `hooks/adapters/opencode/index.ts` changes are not exercised by the Python test suite; breakage surfaces only at runtime
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-16T06:17:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0dfd112-d4c3-400c-934d-b2b2f91b32f5.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:01:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e15ea23-eaff-46ac-a1f4-3ada01deb2f8.jsonl`
-- `/ll:decide-issue` - 2026-05-16T06:12:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2885f877-1bc9-4ec4-90dc-c7c9f9e1cf1b.jsonl`
-- `/ll:wire-issue` - 2026-05-16T06:01:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7731f2c5-6be6-4510-9c5f-71a09e40e110.jsonl`
-- `/ll:refine-issue` - 2026-05-16T05:53:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5d94f18-8928-4b41-87d4-e0de8e798e1f.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3fdac38a-ed6d-429f-a93c-86e523c27b65.jsonl`
-- `/ll:format-issue` - 2026-05-16T03:45:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0311cf7-493f-4a79-bc9d-67419d002020.jsonl`
+- `/ll:ready-issue` - 2026-05-16T06:17:46 - `f0dfd112-d4c3-400c-934d-b2b2f91b32f5.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:01:00Z - `5e15ea23-eaff-46ac-a1f4-3ada01deb2f8.jsonl`
+- `/ll:decide-issue` - 2026-05-16T06:12:03 - `2885f877-1bc9-4ec4-90dc-c7c9f9e1cf1b.jsonl`
+- `/ll:wire-issue` - 2026-05-16T06:01:45 - `7731f2c5-6be6-4510-9c5f-71a09e40e110.jsonl`
+- `/ll:refine-issue` - 2026-05-16T05:53:29 - `c5d94f18-8928-4b41-87d4-e0de8e798e1f.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `3fdac38a-ed6d-429f-a93c-86e523c27b65.jsonl`
+- `/ll:format-issue` - 2026-05-16T03:45:34 - `b0311cf7-493f-4a79-bc9d-67419d002020.jsonl`

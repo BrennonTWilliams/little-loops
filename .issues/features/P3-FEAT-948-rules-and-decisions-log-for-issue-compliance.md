@@ -379,22 +379,22 @@ The existing 11-step plan stands. Affected steps:
 - `scripts/little_loops/sprint.py:142-202` dataclass + YAML pattern confirmed ✓
 
 ## Session Log
-- `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-14T21:23:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75505ad4-6733-4424-b334-3143f412786b.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-11T21:32:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/521f9c4d-aa09-4ad1-88fe-93826dacaa4a.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-10T19:45:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
-- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
-- `/ll:verify-issues` - 2026-04-11T23:05:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
-- `/ll:verify-issues` - 2026-04-11T19:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
-- `/ll:refine-issue` - 2026-04-07T18:30:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a30dea-bcb8-4472-8595-836364d4ab19.jsonl`
-- `/ll:refine-issue` - 2026-04-04T21:54:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2617058-86bb-4762-8daf-c963cd330fc4.jsonl`
-- `/ll:capture-issue` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d50b6641-c597-41dc-894f-47b323d241b9.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:09 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:14 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:verify-issues` - 2026-05-23T00:35:43 - `2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-14T21:23:11 - `75505ad4-6733-4424-b334-3143f412786b.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-11T21:32:14 - `521f9c4d-aa09-4ad1-88fe-93826dacaa4a.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-10T19:45:22 - `6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:21:16 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:verify-issues` - 2026-04-26T19:34:07 - `316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+- `/ll:verify-issues` - 2026-04-11T23:05:11 - `5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
+- `/ll:verify-issues` - 2026-04-11T19:37:17 - `74f31a92-c105-4f9d-96fe-e1197b28ca78.jsonl`
+- `/ll:refine-issue` - 2026-04-07T18:30:23 - `f3a30dea-bcb8-4472-8595-836364d4ab19.jsonl`
+- `/ll:refine-issue` - 2026-04-04T21:54:00 - `a2617058-86bb-4762-8daf-c963cd330fc4.jsonl`
+- `/ll:capture-issue` - 2026-04-04T00:00:00Z - `d50b6641-c597-41dc-894f-47b323d241b9.jsonl`
 
 ---
 

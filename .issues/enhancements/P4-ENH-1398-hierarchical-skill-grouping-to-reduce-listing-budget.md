@@ -199,16 +199,16 @@ _Added by `/ll:confidence-check` on 2026-05-11_
 - Pattern B fanout lacks a verification grep and automated completeness assertion — fanout completeness unproven.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-11T07:52:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74410fc5-0a6e-4493-812b-5832276da15a.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e326117e-0746-47d3-84c2-93f9a0b27108.jsonl`
-- `/ll:decide-issue` - 2026-05-11T07:49:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1575310-6cd5-453c-9aa0-bb8f4b0ba6a6.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e97c98b0-5ab4-4e62-8b46-c727a398629c.jsonl`
-- `/ll:wire-issue` - 2026-05-11T07:42:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb2a48aa-f559-4e82-865b-513513644a6d.jsonl`
-- `/ll:refine-issue` - 2026-05-11T07:38:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f37c974b-82d4-4403-959e-e2dbb76905b3.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-10T14:28:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
-- `/ll:format-issue` - 2026-05-10T14:11:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2742a4a6-4542-41b3-948f-519f214763d4.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
-- `/ll:capture-issue` - 2026-05-09T20:48:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`
+- `/ll:ready-issue` - 2026-05-11T07:52:42 - `74410fc5-0a6e-4493-812b-5832276da15a.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `e326117e-0746-47d3-84c2-93f9a0b27108.jsonl`
+- `/ll:decide-issue` - 2026-05-11T07:49:52 - `e1575310-6cd5-453c-9aa0-bb8f4b0ba6a6.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `e97c98b0-5ab4-4e62-8b46-c727a398629c.jsonl`
+- `/ll:wire-issue` - 2026-05-11T07:42:40 - `cb2a48aa-f559-4e82-865b-513513644a6d.jsonl`
+- `/ll:refine-issue` - 2026-05-11T07:38:23 - `f37c974b-82d4-4403-959e-e2dbb76905b3.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-10T14:28:00 - `87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
+- `/ll:format-issue` - 2026-05-10T14:11:25 - `2742a4a6-4542-41b3-948f-519f214763d4.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
+- `/ll:capture-issue` - 2026-05-09T20:48:12Z - `6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`
 
 ---
 

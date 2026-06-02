@@ -241,12 +241,12 @@ _Added by `/ll:confidence-check` on 2026-05-28_
 - Criterion D (Change Surface 10/25): Broad implementation surface across 7 CLI entry points. Sites are enumerated in the Integration Map with line numbers, but no unified verification command (e.g., a grep proving all data-emitting subcommands now accept `--json`) is provided. Consider adding a `grep -rL '"--json"' scripts/little_loops/cli/` pre-check to the implementation steps.
 
 ## Session Log
-- `/ll:wire-issue` - 2026-05-29T03:37:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4763d9ab-78f7-4cbc-a7ba-c9f1f9d72728.jsonl`
-- `/ll:refine-issue` - 2026-05-29T03:30:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7ef651a-ae75-4505-b006-bd8a014cbbac.jsonl`
-- `/ll:format-issue` - 2026-05-29T02:28:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e23d1bf-3385-43d7-80c9-602fafbaf867.jsonl`
-- `/ll:capture-issue` - 2026-05-29T02:23:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b24cba6-684e-4420-9519-de98c8b4822b.jsonl`
-- `/ll:confidence-check` - 2026-05-28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9d06869-63f1-4278-ad79-ae92c48ce1b9.jsonl`
-- `/ll:issue-size-review` - 2026-05-28T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc1fcf00-8ef7-4a3a-94b4-7099b5095eec.jsonl`
+- `/ll:wire-issue` - 2026-05-29T03:37:47 - `4763d9ab-78f7-4cbc-a7ba-c9f1f9d72728.jsonl`
+- `/ll:refine-issue` - 2026-05-29T03:30:44 - `c7ef651a-ae75-4505-b006-bd8a014cbbac.jsonl`
+- `/ll:format-issue` - 2026-05-29T02:28:33 - `9e23d1bf-3385-43d7-80c9-602fafbaf867.jsonl`
+- `/ll:capture-issue` - 2026-05-29T02:23:45Z - `8b24cba6-684e-4420-9519-de98c8b4822b.jsonl`
+- `/ll:confidence-check` - 2026-05-28 - `f9d06869-63f1-4278-ad79-ae92c48ce1b9.jsonl`
+- `/ll:issue-size-review` - 2026-05-28T00:00:00Z - `dc1fcf00-8ef7-4a3a-94b4-7099b5095eec.jsonl`
 
 ---
 

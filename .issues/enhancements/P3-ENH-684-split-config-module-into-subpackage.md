@@ -93,11 +93,11 @@ Convert `config.py` into a `config/` subpackage with domain-specific modules.
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-14T23:49:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fdd1d8e8-174d-45cc-9ef0-1632be4f0751.jsonl`
+- `/ll:ready-issue` - 2026-03-14T23:49:32 - `fdd1d8e8-174d-45cc-9ef0-1632be4f0751.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
-- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
-- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
-- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 

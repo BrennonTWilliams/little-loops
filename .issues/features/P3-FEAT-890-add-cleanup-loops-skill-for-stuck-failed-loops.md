@@ -192,12 +192,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `.claude/CLAUDE.md` update blocked (protected file); must be updated manually: add `` `cleanup-loops`^ `` to the Automation & Loops line
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-03-26T16:50:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1aa8b9f-1117-46b9-8eb0-95e808a743b7.jsonl`
-- `/ll:refine-issue` - 2026-03-26T16:47:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/733ad6a6-f1d6-41f5-99a9-700614de197e.jsonl`
-- `/ll:confidence-check` - 2026-03-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e645e05-6d7d-40dd-a939-2c506647b0d0.jsonl`
-- `/ll:refine-issue` - 2026-03-26T16:38:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e645e05-6d7d-40dd-a939-2c506647b0d0.jsonl`
-- `/ll:format-issue` - 2026-03-26T16:33:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e645e05-6d7d-40dd-a939-2c506647b0d0.jsonl`
+- `/ll:manage-issue` - 2026-03-26T00:00:00 - `current.jsonl`
+- `/ll:ready-issue` - 2026-03-26T16:50:19 - `e1aa8b9f-1117-46b9-8eb0-95e808a743b7.jsonl`
+- `/ll:refine-issue` - 2026-03-26T16:47:11 - `733ad6a6-f1d6-41f5-99a9-700614de197e.jsonl`
+- `/ll:confidence-check` - 2026-03-26T00:00:00 - `1e645e05-6d7d-40dd-a939-2c506647b0d0.jsonl`
+- `/ll:refine-issue` - 2026-03-26T16:38:19 - `1e645e05-6d7d-40dd-a939-2c506647b0d0.jsonl`
+- `/ll:format-issue` - 2026-03-26T16:33:09 - `1e645e05-6d7d-40dd-a939-2c506647b0d0.jsonl`
 - `/ll:capture-issue` - 2026-03-26T16:27:27Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a00d6993-c1c2-499f-9104-60507f2409e4.jsonl`
 
 ---

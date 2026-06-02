@@ -246,13 +246,13 @@ _Added by `/ll:confidence-check` on 2026-05-17_
 - ENH-1554: harness-optimize State-Mode — State Machine Extension & Docs
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5cf22fe-a508-4b58-ace6-dd0a2c4187a3.jsonl`
-- `/ll:wire-issue` - 2026-05-17T09:39:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/622b6864-3c71-469d-a504-d1afbd23be9e.jsonl`
-- `/ll:refine-issue` - 2026-05-17T09:33:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ca43d-502c-4a2a-8565-2153945c1188.jsonl`
-- `/ll:format-issue` - 2026-05-17T01:46:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c6e016f-d3b2-4f3e-a2c1-6c7553275998.jsonl`
+- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `e5cf22fe-a508-4b58-ace6-dd0a2c4187a3.jsonl`
+- `/ll:wire-issue` - 2026-05-17T09:39:43 - `622b6864-3c71-469d-a504-d1afbd23be9e.jsonl`
+- `/ll:refine-issue` - 2026-05-17T09:33:30 - `4c5ca43d-502c-4a2a-8565-2153945c1188.jsonl`
+- `/ll:format-issue` - 2026-05-17T01:46:58 - `9c6e016f-d3b2-4f3e-a2c1-6c7553275998.jsonl`
 
-- `/ll:capture-issue` - 2026-05-17T01:43:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ff744fb-fd2c-4c52-b59d-5acb13e9557a.jsonl`
-- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5878e1ca-ba39-436b-8cca-4e8f73c71910.jsonl`
+- `/ll:capture-issue` - 2026-05-17T01:43:21Z - `1ff744fb-fd2c-4c52-b59d-5acb13e9557a.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `5878e1ca-ba39-436b-8cca-4e8f73c71910.jsonl`
 
 ---
 

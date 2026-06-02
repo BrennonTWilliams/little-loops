@@ -162,10 +162,10 @@ All 3924 tests pass.
 
 ## Session Log
 - `/ll:manage-issue` - 2026-03-24T00:00:00Z - fix applied: capture/source wired in harness YAMLs and loop-types.md templates
-- `/ll:ready-issue` - 2026-03-25T02:14:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a44b0399-e0ca-4228-b8b1-939bf9f45874.jsonl`
-- `/ll:confidence-check` - 2026-03-24T14:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88391aba-1dba-40f4-b113-08613df7cb9c.jsonl`
-- `/ll:refine-issue` - 2026-03-25T02:09:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dacde480-5f26-48cb-ae84-f2d6f73fd4cf.jsonl`
-- `/ll:format-issue` - 2026-03-25T00:53:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4305bbc5-4892-4b4e-80f3-917b53ab0916.jsonl`
-- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3382032-d4c8-4648-a0b4-57042264a675.jsonl`
-- `/ll:refine-issue` - 2026-03-25T00:44:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84c297f5-2cfd-4de2-a219-ef0c285314b0.jsonl`
-- `/ll:capture-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3df6195-41d1-442e-a5ec-89e21c18fa59.jsonl`
+- `/ll:ready-issue` - 2026-03-25T02:14:41 - `a44b0399-e0ca-4228-b8b1-939bf9f45874.jsonl`
+- `/ll:confidence-check` - 2026-03-24T14:00:00Z - `88391aba-1dba-40f4-b113-08613df7cb9c.jsonl`
+- `/ll:refine-issue` - 2026-03-25T02:09:14 - `dacde480-5f26-48cb-ae84-f2d6f73fd4cf.jsonl`
+- `/ll:format-issue` - 2026-03-25T00:53:21 - `4305bbc5-4892-4b4e-80f3-917b53ab0916.jsonl`
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `b3382032-d4c8-4648-a0b4-57042264a675.jsonl`
+- `/ll:refine-issue` - 2026-03-25T00:44:53 - `84c297f5-2cfd-4de2-a219-ef0c285314b0.jsonl`
+- `/ll:capture-issue` - 2026-03-24T00:00:00Z - `f3df6195-41d1-442e-a5ec-89e21c18fa59.jsonl`

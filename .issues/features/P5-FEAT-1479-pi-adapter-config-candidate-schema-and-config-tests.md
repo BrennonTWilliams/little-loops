@@ -227,21 +227,21 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Partial implementation: schema change landed, code changes (core.py + tests) remain outstanding
 
 ## Session Log
-- `/ll:verify-issues` - 2026-06-01T03:08:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-31T21:48:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
-- `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
-- `/ll:verify-issues` - 2026-05-22T16:11:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
-- `/ll:verify-issues` - 2026-05-22T11:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
-- `/ll:manage-issue` - 2026-05-15T20:23:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a222200-0970-406f-ab67-4aaf8d296ca4.jsonl`
-- `/ll:ready-issue` - 2026-05-15T20:19:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f9a440f-13e7-4f06-9cb4-450f590e4bfe.jsonl`
-- `/ll:wire-issue` - 2026-05-15T20:14:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/283ba605-37bc-48cb-a598-ae75817694a9.jsonl`
-- `/ll:refine-issue` - 2026-05-15T20:08:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf5992b2-5c8e-47de-b8e1-f647db5de5b1.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T20:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e9b11ad-de12-4f82-9761-25c38e59c783.jsonl`
+- `/ll:verify-issues` - 2026-06-01T03:08:52 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-31T21:48:17 - `6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:15 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
+- `/ll:verify-issues` - 2026-05-23T00:35:43 - `2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
+- `/ll:verify-issues` - 2026-05-22T16:11:43 - `d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
+- `/ll:verify-issues` - 2026-05-22T11:10:00 - `d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-18T05:05:17 - `16717e5e-bfe4-4e7f-8d36-177b4b791f2d.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
+- `/ll:manage-issue` - 2026-05-15T20:23:44 - `6a222200-0970-406f-ab67-4aaf8d296ca4.jsonl`
+- `/ll:ready-issue` - 2026-05-15T20:19:22 - `3f9a440f-13e7-4f06-9cb4-450f590e4bfe.jsonl`
+- `/ll:wire-issue` - 2026-05-15T20:14:54 - `283ba605-37bc-48cb-a598-ae75817694a9.jsonl`
+- `/ll:refine-issue` - 2026-05-15T20:08:45 - `bf5992b2-5c8e-47de-b8e1-f647db5de5b1.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T20:30:00 - `3e9b11ad-de12-4f82-9761-25c38e59c783.jsonl`
 
 ---
 

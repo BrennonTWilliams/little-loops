@@ -183,13 +183,13 @@ _Added by `/ll:confidence-check` on 2026-05-17_
 Wrote `scripts/tests/test_enh1557_doc_wiring.py` with two test classes (`TestLoopsGuideStateModeSection`, `TestLoopsRefTrajectorySection`) asserting 12 substrings against the two doc files. All 12 tests pass. Doc content was already present; the test file was the only remaining gap.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-17T23:26:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-17T23:24:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07c2203b-6a06-435c-9577-b5209a8f382f.jsonl`
-- `/ll:confidence-check` - 2026-05-17T23:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7bc106b-f90c-481f-8942-3cb1e8715e53.jsonl`
-- `/ll:wire-issue` - 2026-05-17T23:20:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35d7deee-1a10-4c7b-a19e-13a48385bf38.jsonl`
-- `/ll:refine-issue` - 2026-05-17T23:14:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/14260dfd-c7eb-4cf2-ba1d-ede3a34556dd.jsonl`
-- `/ll:verify-issues` - 2026-05-17T17:04:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/907d2d29-7e38-4120-a77d-deb597ac2df4.jsonl`
-- `/ll:confidence-check` - 2026-05-17T12:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/369fdb2c-e21f-4bc3-a48c-750db77527c7.jsonl`
-- `/ll:wire-issue` - 2026-05-17T12:02:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35b52d52-9151-48b2-9caa-da04b7531187.jsonl`
-- `/ll:refine-issue` - 2026-05-17T11:57:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5557aeab-881f-43e5-b354-2745da83ae98.jsonl`
-- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0eb46b7-c5e1-422c-9f74-c918759ffc2a.jsonl`
+- `/ll:manage-issue` - 2026-05-17T23:26:58 - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-17T23:24:48 - `07c2203b-6a06-435c-9577-b5209a8f382f.jsonl`
+- `/ll:confidence-check` - 2026-05-17T23:30:00 - `f7bc106b-f90c-481f-8942-3cb1e8715e53.jsonl`
+- `/ll:wire-issue` - 2026-05-17T23:20:05 - `35d7deee-1a10-4c7b-a19e-13a48385bf38.jsonl`
+- `/ll:refine-issue` - 2026-05-17T23:14:48 - `14260dfd-c7eb-4cf2-ba1d-ede3a34556dd.jsonl`
+- `/ll:verify-issues` - 2026-05-17T17:04:58 - `907d2d29-7e38-4120-a77d-deb597ac2df4.jsonl`
+- `/ll:confidence-check` - 2026-05-17T12:30:00 - `369fdb2c-e21f-4bc3-a48c-750db77527c7.jsonl`
+- `/ll:wire-issue` - 2026-05-17T12:02:09 - `35b52d52-9151-48b2-9caa-da04b7531187.jsonl`
+- `/ll:refine-issue` - 2026-05-17T11:57:26 - `5557aeab-881f-43e5-b354-2745da83ae98.jsonl`
+- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `f0eb46b7-c5e1-422c-9f74-c918759ffc2a.jsonl`

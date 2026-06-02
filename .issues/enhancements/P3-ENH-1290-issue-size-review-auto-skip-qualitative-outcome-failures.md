@@ -170,12 +170,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Updated `docs/reference/COMMANDS.md`, `docs/guides/ISSUE_MANAGEMENT_GUIDE.md`, and `docs/guides/LOOPS_GUIDE.md` with qualitative-skip documentation
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-26T17:41:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/268c69b1-4803-4c7d-b68d-5fc68a4edc44.jsonl`
-- `/ll:confidence-check` - 2026-04-26T18:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/473de642-9b42-4807-8fcb-2bad07f17f6a.jsonl`
-- `/ll:wire-issue` - 2026-04-26T17:36:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb4b13a6-5683-4348-b991-8d0ddd6907b6.jsonl`
-- `/ll:refine-issue` - 2026-04-26T17:29:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42fabf89-9803-43b2-ae07-b91aa0889500.jsonl`
-- `/ll:format-issue` - 2026-04-26T17:18:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c577867-4c4d-4b90-aa25-5065c70baa3c.jsonl`
-- `/ll:manage-issue` - 2026-04-26T17:44:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/268c69b1-4803-4c7d-b68d-5fc68a4edc44.jsonl`
+- `/ll:ready-issue` - 2026-04-26T17:41:28 - `268c69b1-4803-4c7d-b68d-5fc68a4edc44.jsonl`
+- `/ll:confidence-check` - 2026-04-26T18:00:00 - `473de642-9b42-4807-8fcb-2bad07f17f6a.jsonl`
+- `/ll:wire-issue` - 2026-04-26T17:36:50 - `eb4b13a6-5683-4348-b991-8d0ddd6907b6.jsonl`
+- `/ll:refine-issue` - 2026-04-26T17:29:40 - `42fabf89-9803-43b2-ae07-b91aa0889500.jsonl`
+- `/ll:format-issue` - 2026-04-26T17:18:47 - `2c577867-4c4d-4b90-aa25-5065c70baa3c.jsonl`
+- `/ll:manage-issue` - 2026-04-26T17:44:59Z - `268c69b1-4803-4c7d-b68d-5fc68a4edc44.jsonl`
 - `/ll:capture-issue` - 2026-04-25T19:07:05Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e47d1ef-2bc6-4299-8018-0c5ef506b76e.jsonl`
 
 ---

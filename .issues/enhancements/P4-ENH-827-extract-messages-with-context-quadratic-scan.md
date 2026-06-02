@@ -101,7 +101,7 @@ Replaced the O(n²) nested-loop in `_extract_messages_with_context` with a singl
 - No fix has been applied; issue remains open and accurate
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-21T06:21:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1a13c8e-1bd6-4940-b98d-e1147b5c2a82.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:verify-issues` - 2026-03-19T23:44:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:ready-issue` - 2026-03-21T06:21:51 - `e1a13c8e-1bd6-4940-b98d-e1147b5c2a82.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:verify-issues` - 2026-03-19T23:44:01 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `f1798556-30de-4e10-a591-2da06903a76f.jsonl`

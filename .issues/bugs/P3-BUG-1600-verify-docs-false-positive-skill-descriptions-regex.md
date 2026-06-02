@@ -156,12 +156,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-17): ENH-977 also modifies `scripts/little_loops/doc_counts.py` (adds `check_skill_sizes()` function). Implement this bug fix (narrowing the skills regex at line 108) **before** ENH-977 to avoid a merge conflict on the same file. Alternatively, include this fix directly in ENH-977's PR.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-18T07:20:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27851837-687d-4413-ab7a-bf5b15c516ec.jsonl`
-- `/ll:confidence-check` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/faa98c32-f874-4f71-8717-fd29fd021282.jsonl`
-- `/ll:decide-issue` - 2026-05-18T07:17:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/06767c12-f209-4a28-9786-fea902b59483.jsonl`
-- `/ll:confidence-check` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f4dbfca-d4ff-40ef-a840-91a7ad3c43cb.jsonl`
-- `/ll:wire-issue` - 2026-05-18T07:13:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60d6c813-e04e-431b-b96c-de1547be1411.jsonl`
-- `/ll:refine-issue` - 2026-05-18T07:09:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/65a053f9-a36b-42c5-917a-55a8ed7240ed.jsonl`
-- `/ll:format-issue` - 2026-05-18T05:16:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb7f2fc9-52f4-4d22-8182-c197fa8741c5.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
-- `/ll:verify-issues` - 2026-05-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-18T07:20:44 - `27851837-687d-4413-ab7a-bf5b15c516ec.jsonl`
+- `/ll:confidence-check` - 2026-05-18T00:00:00 - `faa98c32-f874-4f71-8717-fd29fd021282.jsonl`
+- `/ll:decide-issue` - 2026-05-18T07:17:36 - `06767c12-f209-4a28-9786-fea902b59483.jsonl`
+- `/ll:confidence-check` - 2026-05-18T00:00:00 - `4f4dbfca-d4ff-40ef-a840-91a7ad3c43cb.jsonl`
+- `/ll:wire-issue` - 2026-05-18T07:13:14 - `60d6c813-e04e-431b-b96c-de1547be1411.jsonl`
+- `/ll:refine-issue` - 2026-05-18T07:09:39 - `65a053f9-a36b-42c5-917a-55a8ed7240ed.jsonl`
+- `/ll:format-issue` - 2026-05-18T05:16:02 - `fb7f2fc9-52f4-4d22-8182-c197fa8741c5.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-17T18:46:35 - `ebf7abce-1ef1-46c8-8cbc-56d9f857d730.jsonl`
+- `/ll:verify-issues` - 2026-05-17T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

@@ -247,13 +247,13 @@ _Added by `/ll:confidence-check` on 2026-04-17 (updated)_
 - **Partial green path available**: Steps 1 (21→22 count/name bumps in `test_generate_schemas.py`), 3 (`fake_sleep` signature prep), and 6 (`test_ll_loop_display.py` negative-edge assertion) can be authored now — but won't pass until ENH-1144 registers the event in the schema catalog.
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/714a7073-85c4-4a11-87ff-d55b6cd3eeba.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/faeaeb5a-809b-44dc-a863-28110125b5ea.jsonl`
-- `/ll:refine-issue` - 2026-04-17T07:58:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bd7378b1-5c6a-491b-b199-a9b79a40d66f.jsonl`
-- `/ll:wire-issue` - 2026-04-17T07:51:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/02d78f1d-4b44-4cb7-b63a-520183b732f8.jsonl`
-- `/ll:refine-issue` - 2026-04-17T07:34:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ff18843-b017-4e27-8795-63d01109cadb.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a95f7723-f6c7-4abc-9358-01f0d396ef30.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fdf85f78-783b-4c7d-b356-a778f3565d95.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `714a7073-85c4-4a11-87ff-d55b6cd3eeba.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `faeaeb5a-809b-44dc-a863-28110125b5ea.jsonl`
+- `/ll:refine-issue` - 2026-04-17T07:58:45 - `bd7378b1-5c6a-491b-b199-a9b79a40d66f.jsonl`
+- `/ll:wire-issue` - 2026-04-17T07:51:13 - `02d78f1d-4b44-4cb7-b63a-520183b732f8.jsonl`
+- `/ll:refine-issue` - 2026-04-17T07:34:27 - `6ff18843-b017-4e27-8795-63d01109cadb.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `a95f7723-f6c7-4abc-9358-01f0d396ef30.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `fdf85f78-783b-4c7d-b356-a778f3565d95.jsonl`
 
 ---
 

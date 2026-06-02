@@ -333,12 +333,12 @@ _Updated by `/ll:confidence-check` on 2026-05-15_
 - FEAT-1473: Host Runner Docs Sweep + Doc-Wiring Test
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3404bce4-b1e1-4c4a-bdaf-327d629a43da.jsonl`
-- `/ll:confidence-check` - 2026-05-15T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc13a20a-8690-49b7-beff-dc985d70eda3.jsonl`
-- `/ll:decide-issue` - 2026-05-15T15:31:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e037612b-df0c-43c2-951a-3109467668e6.jsonl`
-- `/ll:confidence-check` - 2026-05-15T15:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c07b83d1-d35c-4931-8888-e672f021a1d6.jsonl`
-- `/ll:refine-issue` - 2026-05-15T15:23:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/272ded09-b9af-467d-b5fa-d9a2242a69f0.jsonl`
-- `/ll:wire-issue` - 2026-05-15T15:16:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab38aeee-4797-4ba1-84e8-c0ec73147e0a.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74d0beba-44eb-4fd9-bfb9-4a9202d3f92d.jsonl`
-- `/ll:refine-issue` - 2026-05-15T15:11:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/013359bb-2d12-4756-8ce9-b8b48e4cd6cf.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0a84cca-2574-4c32-8edd-684205b8feb0.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `3404bce4-b1e1-4c4a-bdaf-327d629a43da.jsonl`
+- `/ll:confidence-check` - 2026-05-15T17:00:00 - `dc13a20a-8690-49b7-beff-dc985d70eda3.jsonl`
+- `/ll:decide-issue` - 2026-05-15T15:31:59 - `e037612b-df0c-43c2-951a-3109467668e6.jsonl`
+- `/ll:confidence-check` - 2026-05-15T15:30:00 - `c07b83d1-d35c-4931-8888-e672f021a1d6.jsonl`
+- `/ll:refine-issue` - 2026-05-15T15:23:29 - `272ded09-b9af-467d-b5fa-d9a2242a69f0.jsonl`
+- `/ll:wire-issue` - 2026-05-15T15:16:08 - `ab38aeee-4797-4ba1-84e8-c0ec73147e0a.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `74d0beba-44eb-4fd9-bfb9-4a9202d3f92d.jsonl`
+- `/ll:refine-issue` - 2026-05-15T15:11:05 - `013359bb-2d12-4756-8ce9-b8b48e4cd6cf.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `d0a84cca-2574-4c32-8edd-684205b8feb0.jsonl`

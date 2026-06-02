@@ -171,11 +171,11 @@ SQLite store is absent. Entry point registered in `cli/__init__.py` and
 unrelated failure (`test_feat1287_doc_wiring.py`).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-23T02:10:05Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:wire-issue` - 2026-05-23T01:59:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/227ff552-97da-4235-9dfd-1118f2e84058.jsonl`
-- `/ll:refine-issue` - 2026-05-23T01:54:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fc33475-b1d3-4eef-921f-60c38ed6a611.jsonl`
-- `/ll:issue-size-review` - 2026-05-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:confidence-check` - 2026-05-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10d30c66-69fd-433a-8be8-9968a140a16b.jsonl`
+- `/ll:manage-issue` - 2026-05-23T02:10:05Z
+- `/ll:wire-issue` - 2026-05-23T01:59:56 - `227ff552-97da-4235-9dfd-1118f2e84058.jsonl`
+- `/ll:refine-issue` - 2026-05-23T01:54:13 - `4fc33475-b1d3-4eef-921f-60c38ed6a611.jsonl`
+- `/ll:issue-size-review` - 2026-05-22T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:confidence-check` - 2026-05-22T00:00:00 - `10d30c66-69fd-433a-8be8-9968a140a16b.jsonl`
 
 ---
 

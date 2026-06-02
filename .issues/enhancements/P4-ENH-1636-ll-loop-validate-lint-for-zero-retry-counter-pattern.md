@@ -138,9 +138,9 @@ Findings from `~/.claude/plans/we-are-running-little-loops-glistening-kitten.md`
 **Open** | Created: 2026-05-23 | Priority: P4
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-29T01:52:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cce34f6e-9852-4b12-8623-89d7007cbbe7.jsonl`
-- `/ll:confidence-check` - 2026-05-28T20:44:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/013a1bb3-99f0-42ec-9dbf-77c1b3c719e3.jsonl`
-- `/ll:refine-issue` - 2026-05-29T01:27:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0cd0c8c-d567-4316-be67-67df2787e79f.jsonl`
-- `/ll:format-issue` - 2026-05-23T19:19:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/900e25aa-792d-43a3-87b5-3b2b3c76ada1.jsonl`
+- `/ll:ready-issue` - 2026-05-29T01:52:36 - `cce34f6e-9852-4b12-8623-89d7007cbbe7.jsonl`
+- `/ll:confidence-check` - 2026-05-28T20:44:00 - `013a1bb3-99f0-42ec-9dbf-77c1b3c719e3.jsonl`
+- `/ll:refine-issue` - 2026-05-29T01:27:20 - `b0cd0c8c-d567-4316-be67-67df2787e79f.jsonl`
+- `/ll:format-issue` - 2026-05-23T19:19:09 - `900e25aa-792d-43a3-87b5-3b2b3c76ada1.jsonl`
 
 - `/ll:capture-issue` — 2026-05-23T12:00:00Z

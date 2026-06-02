@@ -260,14 +260,14 @@ _Added by `/ll:confidence-check` on 2026-05-16_
 - FEAT-1523 (data model and Protocol) is still open; `CapabilityReport`, `describe_capabilities`, and `has_critical_gap` don't exist in the codebase yet — implementation cannot begin until FEAT-1523 is merged.
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e46d252d-d6ba-4cf5-9954-c3c6cea402e5.jsonl`
-- `/ll:confidence-check` - 2026-05-16T15:07:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2eba7181-f872-447b-b971-2d9898d5f7d0.jsonl`
-- `/ll:refine-issue` - 2026-05-16T16:17:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed312de9-319e-4f20-b181-75cd7e59a6f3.jsonl`
-- `/ll:confidence-check` - 2026-05-16T16:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da25f3c9-59e2-4a23-b616-e70edb45a186.jsonl`
-- `/ll:wire-issue` - 2026-05-16T16:11:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a248831a-2f44-4396-89d5-fdd0a4c30cbc.jsonl`
-- `/ll:refine-issue` - 2026-05-16T16:07:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01ffccbc-3218-47c8-80de-81cb04de7885.jsonl`
-- `/ll:format-issue` - 2026-05-16T15:15:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d20d20f9-58ee-4faf-9f54-894f4110d03f.jsonl`
-- `/ll:issue-size-review` - 2026-05-16T15:07:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b57cdb22-126d-4dc6-b12f-a5213e07e705.jsonl`
+- `/ll:issue-size-review` - 2026-05-16T00:00:00Z - `e46d252d-d6ba-4cf5-9954-c3c6cea402e5.jsonl`
+- `/ll:confidence-check` - 2026-05-16T15:07:07Z - `2eba7181-f872-447b-b971-2d9898d5f7d0.jsonl`
+- `/ll:refine-issue` - 2026-05-16T16:17:34 - `ed312de9-319e-4f20-b181-75cd7e59a6f3.jsonl`
+- `/ll:confidence-check` - 2026-05-16T16:30:00Z - `da25f3c9-59e2-4a23-b616-e70edb45a186.jsonl`
+- `/ll:wire-issue` - 2026-05-16T16:11:50 - `a248831a-2f44-4396-89d5-fdd0a4c30cbc.jsonl`
+- `/ll:refine-issue` - 2026-05-16T16:07:14 - `01ffccbc-3218-47c8-80de-81cb04de7885.jsonl`
+- `/ll:format-issue` - 2026-05-16T15:15:09 - `d20d20f9-58ee-4faf-9f54-894f4110d03f.jsonl`
+- `/ll:issue-size-review` - 2026-05-16T15:07:07Z - `b57cdb22-126d-4dc6-b12f-a5213e07e705.jsonl`
 
 ---
 

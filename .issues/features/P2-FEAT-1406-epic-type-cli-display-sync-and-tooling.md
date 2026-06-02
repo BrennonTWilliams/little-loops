@@ -250,13 +250,13 @@ _Added by `/ll:confidence-check` on 2026-05-09_
 - `ISSUE_PATTERN` in `workflow_sequence/analysis.py` is imported by 6+ modules (`dependency_mapper/__init__.py`, `operations.py`, `issue_history/__init__.py`, `history.py`, `workflow_sequence/__init__.py`) — the `re.IGNORECASE` flag means the extension is safe, but worth verifying no caller depends on case-sensitive matching
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-09T23:19:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc6cf2a8-dd50-4817-9fa7-649612acf79b.jsonl`
-- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/02774f34-2c4a-488f-b0f8-7452c10aac7c.jsonl`
-- `/ll:wire-issue` - 2026-05-09T23:13:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db074448-0206-4278-9820-40c4b715203c.jsonl`
-- `/ll:refine-issue` - 2026-05-09T23:05:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5ea299e-2cb3-4a1e-b837-cc4bdbabbd71.jsonl`
-- `/ll:format-issue` - 2026-05-09T22:58:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c185e3de-8e61-493a-b17d-4c388fffb4cc.jsonl`
-- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/adfa30cd-8f9d-48b3-9e4b-2a81bf6caa05.jsonl`
-- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc6cf2a8-dd50-4817-9fa7-649612acf79b.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-09T23:19:49 - `bc6cf2a8-dd50-4817-9fa7-649612acf79b.jsonl`
+- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `02774f34-2c4a-488f-b0f8-7452c10aac7c.jsonl`
+- `/ll:wire-issue` - 2026-05-09T23:13:29 - `db074448-0206-4278-9820-40c4b715203c.jsonl`
+- `/ll:refine-issue` - 2026-05-09T23:05:43 - `b5ea299e-2cb3-4a1e-b837-cc4bdbabbd71.jsonl`
+- `/ll:format-issue` - 2026-05-09T22:58:07 - `c185e3de-8e61-493a-b17d-4c388fffb4cc.jsonl`
+- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `adfa30cd-8f9d-48b3-9e4b-2a81bf6caa05.jsonl`
+- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `bc6cf2a8-dd50-4817-9fa7-649612acf79b.jsonl`
 
 ---
 

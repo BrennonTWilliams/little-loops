@@ -226,8 +226,8 @@ Implemented Steps 14, 15, and 16 together in one pass:
 - All 36 tests pass
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-11T00:34:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2dc0bf31-d1cf-4179-938d-2d3c33713f1b.jsonl`
-- `/ll:wire-issue` - 2026-05-11T00:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0d4d572-037b-4532-8e35-dccea4423a93.jsonl`
-- `/ll:refine-issue` - 2026-05-11T00:24:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45131201-1b9b-478e-8183-3c238b1c70f6.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98a93952-5a1f-4e01-9075-6dbfef3784ef.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9bfe60a5-1759-442f-af25-52e19b1521e4.jsonl`
+- `/ll:ready-issue` - 2026-05-11T00:34:24 - `2dc0bf31-d1cf-4179-938d-2d3c33713f1b.jsonl`
+- `/ll:wire-issue` - 2026-05-11T00:30:00 - `f0d4d572-037b-4532-8e35-dccea4423a93.jsonl`
+- `/ll:refine-issue` - 2026-05-11T00:24:11 - `45131201-1b9b-478e-8183-3c238b1c70f6.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `98a93952-5a1f-4e01-9075-6dbfef3784ef.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `9bfe60a5-1759-442f-af25-52e19b1521e4.jsonl`

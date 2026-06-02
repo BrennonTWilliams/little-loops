@@ -211,8 +211,8 @@ Decided by `/ll:decide-issue` on 2026-05-02.
 - FEAT-1330: `/ll:assess-loop` Skill — Documentation & Wiring (Steps 9–14, doc updates + wiring test)
 
 ## Session Log
-- `/ll:decide-issue` - 2026-05-02T19:40:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/086a8ee8-3a17-4e59-8e8e-6617217c02f8.jsonl`
-- `/ll:confidence-check` - 2026-05-02T20:15:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8577a3e4-2b35-418b-bd1f-2875a7606043.jsonl`
-- `/ll:wire-issue` - 2026-05-02T19:31:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f518bac9-1a11-45b6-9edd-4639111fecb7.jsonl`
-- `/ll:refine-issue` - 2026-05-02T19:26:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd19a52d-95ef-4129-baf3-ab21f5925877.jsonl`
-- `/ll:issue-size-review` - 2026-05-02T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:decide-issue` - 2026-05-02T19:40:34 - `086a8ee8-3a17-4e59-8e8e-6617217c02f8.jsonl`
+- `/ll:confidence-check` - 2026-05-02T20:15:00Z - `8577a3e4-2b35-418b-bd1f-2875a7606043.jsonl`
+- `/ll:wire-issue` - 2026-05-02T19:31:01 - `f518bac9-1a11-45b6-9edd-4639111fecb7.jsonl`
+- `/ll:refine-issue` - 2026-05-02T19:26:48 - `cd19a52d-95ef-4129-baf3-ab21f5925877.jsonl`
+- `/ll:issue-size-review` - 2026-05-02T20:30:00Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

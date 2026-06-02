@@ -222,11 +222,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `general-task`, `correctness`, `captured`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-24T00:59:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9eb5fda4-f897-4042-92c3-e6354364ef80.jsonl`
-- `/ll:ready-issue` - 2026-05-24T00:54:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7b11cfe-a1b4-4948-821b-b97329c80ab3.jsonl`
-- `/ll:wire-issue` - 2026-05-24T00:49:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/faf9dae2-569a-4511-ae76-060f74b74f3e.jsonl`
-- `/ll:refine-issue` - 2026-05-24T00:42:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/626ce076-d2b9-4c47-85d1-7ef324b70713.jsonl`
-- `/ll:capture-issue` - 2026-05-23T21:59:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
+- `/ll:manage-issue` - 2026-05-24T00:59:07Z - `9eb5fda4-f897-4042-92c3-e6354364ef80.jsonl`
+- `/ll:ready-issue` - 2026-05-24T00:54:08 - `b7b11cfe-a1b4-4948-821b-b97329c80ab3.jsonl`
+- `/ll:wire-issue` - 2026-05-24T00:49:49 - `faf9dae2-569a-4511-ae76-060f74b74f3e.jsonl`
+- `/ll:refine-issue` - 2026-05-24T00:42:20 - `626ce076-d2b9-4c47-85d1-7ef324b70713.jsonl`
+- `/ll:capture-issue` - 2026-05-23T21:59:53Z - `001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
 
 ---
 

@@ -137,8 +137,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - [ ] `CHANGELOG.md` has a concrete version entry for this feature.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-02T22:06:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fdd4212-fc02-43a9-9e94-752f1aa7978d.jsonl`
-- `/ll:wire-issue` - 2026-05-02T22:00:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27f9da25-a1d2-499c-84b9-e83590563a74.jsonl`
-- `/ll:refine-issue` - 2026-05-02T21:53:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbbd92dc-73ed-4451-aa3a-17cbb48f088e.jsonl`
-- `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3504f81c-8403-4c3e-84f2-f27905b579d2.jsonl`
-- `/ll:confidence-check` - 2026-05-02T22:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c51ea87-f6f1-4bd7-b5b7-ebc3d2b8ed8f.jsonl`
+- `/ll:ready-issue` - 2026-05-02T22:06:32 - `8fdd4212-fc02-43a9-9e94-752f1aa7978d.jsonl`
+- `/ll:wire-issue` - 2026-05-02T22:00:56 - `27f9da25-a1d2-499c-84b9-e83590563a74.jsonl`
+- `/ll:refine-issue` - 2026-05-02T21:53:26 - `dbbd92dc-73ed-4451-aa3a-17cbb48f088e.jsonl`
+- `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `3504f81c-8403-4c3e-84f2-f27905b579d2.jsonl`
+- `/ll:confidence-check` - 2026-05-02T22:15:00 - `5c51ea87-f6f1-4bd7-b5b7-ebc3d2b8ed8f.jsonl`

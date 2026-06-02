@@ -305,8 +305,8 @@ and the existing `test_final_status_timed_out_on_timeout` still passes.
 
 
 ## Session Log
-- `/ll:manage-issue bug fix BUG-1226` - 2026-04-21T15:26:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92c83aba-8a81-42c9-8b48-b8a7811ab67e.jsonl`
-- `/ll:ready-issue` - 2026-04-21T15:13:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07ecd60f-10dd-4826-ba2c-3492aff7b9ce.jsonl`
-- `/ll:wire-issue` - 2026-04-21T15:09:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98e78901-55c8-44ae-a3c5-a92989d93e4a.jsonl`
-- `/ll:refine-issue` - 2026-04-21T15:01:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49b3985b-8519-4ec4-a1cf-c519cd70b905.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59e885ea-0ce0-4161-8979-5315ee0153a5.jsonl`
+- `/ll:manage-issue bug fix BUG-1226` - 2026-04-21T15:26:02 - `92c83aba-8a81-42c9-8b48-b8a7811ab67e.jsonl`
+- `/ll:ready-issue` - 2026-04-21T15:13:24 - `07ecd60f-10dd-4826-ba2c-3492aff7b9ce.jsonl`
+- `/ll:wire-issue` - 2026-04-21T15:09:29 - `98e78901-55c8-44ae-a3c5-a92989d93e4a.jsonl`
+- `/ll:refine-issue` - 2026-04-21T15:01:48 - `49b3985b-8519-4ec4-a1cf-c519cd70b905.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `59e885ea-0ce0-4161-8979-5315ee0153a5.jsonl`

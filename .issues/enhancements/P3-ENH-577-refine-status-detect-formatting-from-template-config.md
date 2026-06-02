@@ -80,7 +80,7 @@ Implemented structural template detection for the `fmt` column in `ll-issues ref
 **Resolved:** 2026-03-04
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c867334-8723-481e-ab0c-6699be487fb7.jsonl`
-- `/ll:format-issue` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7eb1c0c-cf36-4cd9-b49f-3ccc1518217f.jsonl`
-- `/ll:confidence-check` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7d3dc2d-8ea3-48d0-a891-5926ddc9fa04.jsonl`
-- `/ll:manage-issue` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:capture-issue` - 2026-03-04T00:00:00Z - `0c867334-8723-481e-ab0c-6699be487fb7.jsonl`
+- `/ll:format-issue` - 2026-03-04T00:00:00Z - `b7eb1c0c-cf36-4cd9-b49f-3ccc1518217f.jsonl`
+- `/ll:confidence-check` - 2026-03-04T00:00:00Z - `d7d3dc2d-8ea3-48d0-a891-5926ddc9fa04.jsonl`
+- `/ll:manage-issue` - 2026-03-04T00:00:00Z - `current.jsonl`

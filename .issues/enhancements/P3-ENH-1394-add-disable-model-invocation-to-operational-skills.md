@@ -165,7 +165,7 @@ Added `disable-model-invocation: true` to the YAML frontmatter of all 16 operati
 **Done** | Created: 2026-05-09 | Completed: 2026-05-11 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-11T04:42:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8d12a0e-5ca4-4480-917f-2297fc8753ca.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5252305-eff8-4e07-9ef5-ead70b4aad16.jsonl`
-- `/ll:format-issue` - 2026-05-11T04:28:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3ceb5948-bbad-469f-bb99-a8277556d87a.jsonl`
-- `/ll:capture-issue` - 2026-05-09T20:48:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`
+- `/ll:ready-issue` - 2026-05-11T04:42:41 - `d8d12a0e-5ca4-4480-917f-2297fc8753ca.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00 - `a5252305-eff8-4e07-9ef5-ead70b4aad16.jsonl`
+- `/ll:format-issue` - 2026-05-11T04:28:22 - `3ceb5948-bbad-469f-bb99-a8277556d87a.jsonl`
+- `/ll:capture-issue` - 2026-05-09T20:48:12Z - `6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`

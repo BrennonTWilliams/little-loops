@@ -271,13 +271,13 @@ Implemented Option B (extend `ll-issues show --json`):
 - `docs/guides/LOOPS_GUIDE.md` — updated FSM flow diagram to show `decide_current → run_decide` gate on all three score-pass branches
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-22T18:37:15Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
-- `/ll:ready-issue` - 2026-04-22T18:30:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d1afef0-2ad2-480b-929e-eecd285e5996.jsonl`
-- `/ll:decide-issue` - 2026-04-22T18:26:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10304d65-395d-4a6f-91a9-4ef370cc19b9.jsonl`
-- `/ll:ready-issue` - 2026-04-22T18:18:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71ae5b90-f0ea-4333-8a81-7db60405635f.jsonl`
-- `/ll:verify-issues` - 2026-04-22T18:13:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b72ccf9-bc3b-4af0-a50e-d3ff002c1428.jsonl`
-- `/ll:ready-issue` - 2026-04-22T00:19:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24f9e1a8-4114-4c8d-aaaf-ac1ea1c113cf.jsonl`
-- `/ll:confidence-check` - 2026-04-21T23:34:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/478870ac-71bc-41d2-80b3-aa270a1b9eb5.jsonl`
-- `/ll:wire-issue` - 2026-04-22T00:13:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e770ce0-5b30-4d3b-9f04-66af39488a12.jsonl`
-- `/ll:refine-issue` - 2026-04-22T00:08:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ba3ffa8-30aa-45f5-b019-215ca2aa1b61.jsonl`
-- `/ll:capture-issue` - 2026-04-21T23:34:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b62f8c-b061-414c-9935-ffe01637b6ec.jsonl`
+- `/ll:manage-issue` - 2026-04-22T18:37:15Z - `fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `/ll:ready-issue` - 2026-04-22T18:30:47 - `3d1afef0-2ad2-480b-929e-eecd285e5996.jsonl`
+- `/ll:decide-issue` - 2026-04-22T18:26:53 - `10304d65-395d-4a6f-91a9-4ef370cc19b9.jsonl`
+- `/ll:ready-issue` - 2026-04-22T18:18:37 - `71ae5b90-f0ea-4333-8a81-7db60405635f.jsonl`
+- `/ll:verify-issues` - 2026-04-22T18:13:01 - `2b72ccf9-bc3b-4af0-a50e-d3ff002c1428.jsonl`
+- `/ll:ready-issue` - 2026-04-22T00:19:28 - `24f9e1a8-4114-4c8d-aaaf-ac1ea1c113cf.jsonl`
+- `/ll:confidence-check` - 2026-04-21T23:34:57Z - `478870ac-71bc-41d2-80b3-aa270a1b9eb5.jsonl`
+- `/ll:wire-issue` - 2026-04-22T00:13:49 - `3e770ce0-5b30-4d3b-9f04-66af39488a12.jsonl`
+- `/ll:refine-issue` - 2026-04-22T00:08:08 - `5ba3ffa8-30aa-45f5-b019-215ca2aa1b61.jsonl`
+- `/ll:capture-issue` - 2026-04-21T23:34:57Z - `e9b62f8c-b061-414c-9935-ffe01637b6ec.jsonl`

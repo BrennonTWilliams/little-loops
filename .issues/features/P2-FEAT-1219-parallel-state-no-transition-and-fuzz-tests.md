@@ -187,11 +187,11 @@ _Added by `/ll:confidence-check` on 2026-04-21_
 - FEAT-1222: Add Parallel Key to Malformed State Config Fuzz Strategy
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-21T08:09:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98f68405-0917-4592-af11-ba9a9de2ae0c.jsonl`
-- `/ll:confidence-check` - 2026-04-21T08:06:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/33ed9b0f-1167-43a4-850b-b3ea1425d729.jsonl`
-- `/ll:refine-issue` - 2026-04-21T08:04:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f95c32f-351e-411d-8879-140d98abfbcf.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0daebbf5-b603-4a5a-a9ad-268f97be413c.jsonl`
-- `/ll:wire-issue` - 2026-04-21T08:01:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d28c60a-3107-44ef-969e-3bf12e3b0b01.jsonl`
-- `/ll:refine-issue` - 2026-04-21T07:56:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93b68d88-8ad1-4514-8c72-354021bd9311.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e25ed049-cee1-4c7f-a922-d725b2ff5c2f.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98f68405-0917-4592-af11-ba9a9de2ae0c.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-21T08:09:26 - `98f68405-0917-4592-af11-ba9a9de2ae0c.jsonl`
+- `/ll:confidence-check` - 2026-04-21T08:06:27 - `33ed9b0f-1167-43a4-850b-b3ea1425d729.jsonl`
+- `/ll:refine-issue` - 2026-04-21T08:04:38 - `3f95c32f-351e-411d-8879-140d98abfbcf.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `0daebbf5-b603-4a5a-a9ad-268f97be413c.jsonl`
+- `/ll:wire-issue` - 2026-04-21T08:01:09 - `6d28c60a-3107-44ef-969e-3bf12e3b0b01.jsonl`
+- `/ll:refine-issue` - 2026-04-21T07:56:21 - `93b68d88-8ad1-4514-8c72-354021bd9311.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `e25ed049-cee1-4c7f-a922-d725b2ff5c2f.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `98f68405-0917-4592-af11-ba9a9de2ae0c.jsonl`

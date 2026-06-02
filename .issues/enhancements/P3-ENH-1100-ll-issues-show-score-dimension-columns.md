@@ -195,12 +195,12 @@ Implemented in `scripts/little_loops/cli/issues/show.py`:
 - Updated `docs/reference/API.md`, `docs/reference/OUTPUT_STYLING.md`, `docs/reference/CLI.md`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-04-14T04:14:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e610f37-abe7-4494-bd8b-aa14084cda5a.jsonl`
-- `/ll:confidence-check` - 2026-04-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62c384ec-5056-4196-81c6-e365d0f8badc.jsonl`
-- `/ll:wire-issue` - 2026-04-14T04:04:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfa819a3-3434-4473-847e-41c2ad9e17f3.jsonl`
-- `/ll:refine-issue` - 2026-04-14T03:59:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d9e8886a-31c2-46ba-b5b1-6b68e4055cce.jsonl`
-- `/ll:capture-issue` - 2026-04-13T21:24:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43909014-7cf5-4dcd-8cb6-2b74700e6f59.jsonl`
+- `/ll:manage-issue` - 2026-04-13T00:00:00 - `current.jsonl`
+- `/ll:ready-issue` - 2026-04-14T04:14:06 - `5e610f37-abe7-4494-bd8b-aa14084cda5a.jsonl`
+- `/ll:confidence-check` - 2026-04-13T00:00:00 - `62c384ec-5056-4196-81c6-e365d0f8badc.jsonl`
+- `/ll:wire-issue` - 2026-04-14T04:04:57 - `cfa819a3-3434-4473-847e-41c2ad9e17f3.jsonl`
+- `/ll:refine-issue` - 2026-04-14T03:59:43 - `d9e8886a-31c2-46ba-b5b1-6b68e4055cce.jsonl`
+- `/ll:capture-issue` - 2026-04-13T21:24:00Z - `43909014-7cf5-4dcd-8cb6-2b74700e6f59.jsonl`
 
 ---
 

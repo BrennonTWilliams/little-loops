@@ -148,12 +148,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Updated `docs/guides/SPRINT_GUIDE.md` examples to reflect new output format
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-12T16:57:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/438e3f0d-f991-42f5-9769-fbc512663836.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1baa99ba-28c7-4c49-aab6-1470dc4d3ea3.jsonl`
-- `/ll:wire-issue` - 2026-04-12T16:35:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20d241ab-dea8-47f5-9639-98fcb5822594.jsonl`
-- `/ll:refine-issue` - 2026-04-12T16:30:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ad93ba1-3799-4f99-80ea-185dca355ffa.jsonl`
-- `/ll:format-issue` - 2026-04-12T16:27:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a33ea6e0-b58f-416e-afd7-499202f56a45.jsonl`
-- `/ll:capture-issue` - 2026-04-12T17:20:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d397308b-e908-423f-9d30-383270c713d4.jsonl`
+- `/ll:ready-issue` - 2026-04-12T16:57:33 - `438e3f0d-f991-42f5-9769-fbc512663836.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `1baa99ba-28c7-4c49-aab6-1470dc4d3ea3.jsonl`
+- `/ll:wire-issue` - 2026-04-12T16:35:03 - `20d241ab-dea8-47f5-9639-98fcb5822594.jsonl`
+- `/ll:refine-issue` - 2026-04-12T16:30:56 - `6ad93ba1-3799-4f99-80ea-185dca355ffa.jsonl`
+- `/ll:format-issue` - 2026-04-12T16:27:20 - `a33ea6e0-b58f-416e-afd7-499202f56a45.jsonl`
+- `/ll:capture-issue` - 2026-04-12T17:20:00Z - `d397308b-e908-423f-9d30-383270c713d4.jsonl`
 - `/ll:manage-issue` - 2026-04-12T00:00:00Z - (current session)
 
 ## Status

@@ -136,8 +136,8 @@ All 8 target files were already updated (via ENH-1549 PR). This session added:
 All tests pass; linting clean.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-17T08:57:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/abad3125-c8ee-44d0-9e7e-8741bca591a3.jsonl`
-- `/ll:wire-issue` - 2026-05-17T08:54:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c7af1f0-785c-4246-b8f4-e589af74715d.jsonl`
-- `/ll:refine-issue` - 2026-05-17T08:46:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62133301-4ad5-4919-b84e-bd24f7339162.jsonl`
-- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e994b5a7-bd67-4e1b-8e86-ff8daad14873.jsonl`
-- `/ll:confidence-check` - 2026-05-17T09:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63bf52fe-2295-42e9-8150-e3e59380f655.jsonl`
+- `/ll:ready-issue` - 2026-05-17T08:57:36 - `abad3125-c8ee-44d0-9e7e-8741bca591a3.jsonl`
+- `/ll:wire-issue` - 2026-05-17T08:54:13 - `2c7af1f0-785c-4246-b8f4-e589af74715d.jsonl`
+- `/ll:refine-issue` - 2026-05-17T08:46:24 - `62133301-4ad5-4919-b84e-bd24f7339162.jsonl`
+- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `e994b5a7-bd67-4e1b-8e86-ff8daad14873.jsonl`
+- `/ll:confidence-check` - 2026-05-17T09:00:00Z - `63bf52fe-2295-42e9-8150-e3e59380f655.jsonl`

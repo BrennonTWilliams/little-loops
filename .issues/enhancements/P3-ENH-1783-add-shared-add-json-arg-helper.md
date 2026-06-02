@@ -135,8 +135,8 @@ Added `add_json_arg(parser, help_text="Output as JSON")` shared helper to `cli_a
 - All 106 existing tests continue to pass
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-29T03:57:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/689b6b8f-8a07-4e12-a01b-2df918b973af.jsonl`
-- `/ll:refine-issue` - 2026-05-29T03:49:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cf9a760-d942-4d90-9b96-1f25a1b5b03a.jsonl`
-- `/ll:issue-size-review` - 2026-05-28T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc1fcf00-8ef7-4a3a-94b4-7099b5095eec.jsonl`
-- `/ll:wire-issue` - 2026-05-29T04:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3773e754-c995-4ab0-93ae-e6323baabad2.jsonl`
-- `/ll:confidence-check` - 2026-05-29T04:40:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cda5e900-2c06-4d44-abdd-19b40d2da658.jsonl`
+- `/ll:ready-issue` - 2026-05-29T03:57:04 - `689b6b8f-8a07-4e12-a01b-2df918b973af.jsonl`
+- `/ll:refine-issue` - 2026-05-29T03:49:09 - `3cf9a760-d942-4d90-9b96-1f25a1b5b03a.jsonl`
+- `/ll:issue-size-review` - 2026-05-28T00:00:00Z - `dc1fcf00-8ef7-4a3a-94b4-7099b5095eec.jsonl`
+- `/ll:wire-issue` - 2026-05-29T04:30:00Z - `3773e754-c995-4ab0-93ae-e6323baabad2.jsonl`
+- `/ll:confidence-check` - 2026-05-29T04:40:00Z - `cda5e900-2c06-4d44-abdd-19b40d2da658.jsonl`

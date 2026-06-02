@@ -201,8 +201,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-05-10 | Priority: P2
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-11T02:24:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e057bbb2-c08a-407a-b509-825a5527bb66.jsonl`
-- `/ll:wire-issue` - 2026-05-11T02:19:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f49300b-cc50-4516-9631-31f97704f9ef.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99c8c5a2-312b-4736-9bbd-38f6355b06a6.jsonl`
-- `/ll:refine-issue` - 2026-05-11T02:16:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed02f0e3-d7d1-4ccf-8a41-f8076521a4ab.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T23:55:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49b56280-19ff-42e9-bb93-088d6e560fa2.jsonl`
+- `/ll:ready-issue` - 2026-05-11T02:24:30 - `e057bbb2-c08a-407a-b509-825a5527bb66.jsonl`
+- `/ll:wire-issue` - 2026-05-11T02:19:58 - `9f49300b-cc50-4516-9631-31f97704f9ef.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00 - `99c8c5a2-312b-4736-9bbd-38f6355b06a6.jsonl`
+- `/ll:refine-issue` - 2026-05-11T02:16:36 - `ed02f0e3-d7d1-4ccf-8a41-f8076521a4ab.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T23:55:00Z - `49b56280-19ff-42e9-bb93-088d6e560fa2.jsonl`

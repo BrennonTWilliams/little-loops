@@ -158,14 +158,14 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `hooks`, `enhancement`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-23T23:50:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f7fbcea-525d-4652-8284-cea6f618964c.jsonl`
-- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2136e4cf-cc6c-4f72-94b8-567ca85f0bb1.jsonl`
-- `/ll:refine-issue` - 2026-03-23T22:58:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28a4fa2e-a84b-4c4a-a10a-2ed013e02491.jsonl`
-- `/ll:format-issue` - 2026-03-23T22:44:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9850963-0ae2-487e-9014-ade593329bce.jsonl`
+- `/ll:ready-issue` - 2026-03-23T23:50:11 - `1f7fbcea-525d-4652-8284-cea6f618964c.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `2136e4cf-cc6c-4f72-94b8-567ca85f0bb1.jsonl`
+- `/ll:refine-issue` - 2026-03-23T22:58:13 - `28a4fa2e-a84b-4c4a-a10a-2ed013e02491.jsonl`
+- `/ll:format-issue` - 2026-03-23T22:44:24 - `c9850963-0ae2-487e-9014-ade593329bce.jsonl`
 
-- `/ll:capture-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e087610-8d6c-49f4-bacd-b3c561cb7252.jsonl`
+- `/ll:capture-issue` - 2026-03-23T00:00:00Z - `0e087610-8d6c-49f4-bacd-b3c561cb7252.jsonl`
 
-- `/ll:manage-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:manage-issue` - 2026-03-23T00:00:00Z - `current.jsonl`
 
 ---
 

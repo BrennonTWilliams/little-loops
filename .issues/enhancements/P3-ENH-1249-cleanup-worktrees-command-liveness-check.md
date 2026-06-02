@@ -138,11 +138,11 @@ Added `.ll-session-<pid>` liveness probe to both the run-mode and dry-run loops 
 
 ## Session Log
 - `/ll:manage-issue` - 2026-04-22T19:15:25Z - implementation complete
-- `/ll:ready-issue` - 2026-04-22T19:14:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56ba5453-8299-4819-9517-bdad25dacf90.jsonl`
-- `/ll:confidence-check` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6324f09c-71ad-425a-ad2e-a12eab8a9c3d.jsonl`
-- `/ll:wire-issue` - 2026-04-22T19:11:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b0ed8ec-c60d-49ad-8b1c-2515cfc3651e.jsonl`
-- `/ll:refine-issue` - 2026-04-22T19:06:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da246113-514f-44d1-a1e3-e9c81b927749.jsonl`
-- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4392751-fe1e-4762-b307-86db43c577b3.jsonl`
+- `/ll:ready-issue` - 2026-04-22T19:14:31 - `56ba5453-8299-4819-9517-bdad25dacf90.jsonl`
+- `/ll:confidence-check` - 2026-04-22T00:00:00 - `6324f09c-71ad-425a-ad2e-a12eab8a9c3d.jsonl`
+- `/ll:wire-issue` - 2026-04-22T19:11:00 - `3b0ed8ec-c60d-49ad-8b1c-2515cfc3651e.jsonl`
+- `/ll:refine-issue` - 2026-04-22T19:06:59 - `da246113-514f-44d1-a1e3-e9c81b927749.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `a4392751-fe1e-4762-b307-86db43c577b3.jsonl`
 
 ---
 

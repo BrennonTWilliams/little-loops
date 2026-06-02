@@ -145,9 +145,9 @@ Closely related (now closed): BUG-672, BUG-755 — earlier back-edge fixes did n
 - Added `test_back_edge_labels_no_collision_on_shared_midpoint` in `TestRenderFsmDiagram` — 149/149 tests pass.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-17T13:50:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-17T13:42:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e56cd245-0d2f-482a-8131-acf6fe22dda9.jsonl`
-- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34c2b455-ee2b-4f98-9bb6-33fc0c80efb0.jsonl`
-- `/ll:wire-issue` - 2026-05-17T13:39:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70fe2c68-541d-4c01-b532-297806a96cec.jsonl`
-- `/ll:refine-issue` - 2026-05-17T13:32:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/54eb6e1c-0574-4269-a396-569a67d5a08a.jsonl`
-- `/ll:capture-issue` - 2026-05-16T14:12:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f204025d-307a-4f4d-80b2-206dfd3b1de1.jsonl`
+- `/ll:manage-issue` - 2026-05-17T13:50:39Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-17T13:42:37 - `e56cd245-0d2f-482a-8131-acf6fe22dda9.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `34c2b455-ee2b-4f98-9bb6-33fc0c80efb0.jsonl`
+- `/ll:wire-issue` - 2026-05-17T13:39:46 - `70fe2c68-541d-4c01-b532-297806a96cec.jsonl`
+- `/ll:refine-issue` - 2026-05-17T13:32:22 - `54eb6e1c-0574-4269-a396-569a67d5a08a.jsonl`
+- `/ll:capture-issue` - 2026-05-16T14:12:59Z - `f204025d-307a-4f4d-80b2-206dfd3b1de1.jsonl`

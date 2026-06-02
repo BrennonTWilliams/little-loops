@@ -210,12 +210,12 @@ Implemented in a single atomic pass:
 All 29 tests pass; ruff and mypy clean (pre-existing wcwidth stub error unaffected).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-16T18:29:43Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-05-16T18:27:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d0b9e47-0438-4e1a-bf13-271f02560f60.jsonl`
-- `/ll:wire-issue` - 2026-05-16T17:58:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa4d9ca8-62c1-4c40-8c54-f81e3acfa41f.jsonl`
-- `/ll:refine-issue` - 2026-05-16T17:53:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/521cf227-5d1b-4bb2-9f7e-ccbe7e166f81.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea1ee27a-726a-42ef-9081-31c93c65115f.jsonl`
-- `/ll:issue-size-review` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e46d252d-d6ba-4cf5-9954-c3c6cea402e5.jsonl`
+- `/ll:manage-issue` - 2026-05-16T18:29:43Z
+- `/ll:ready-issue` - 2026-05-16T18:27:49 - `4d0b9e47-0438-4e1a-bf13-271f02560f60.jsonl`
+- `/ll:wire-issue` - 2026-05-16T17:58:09 - `fa4d9ca8-62c1-4c40-8c54-f81e3acfa41f.jsonl`
+- `/ll:refine-issue` - 2026-05-16T17:53:27 - `521cf227-5d1b-4bb2-9f7e-ccbe7e166f81.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `ea1ee27a-726a-42ef-9081-31c93c65115f.jsonl`
+- `/ll:issue-size-review` - 2026-05-16T00:00:00Z - `e46d252d-d6ba-4cf5-9954-c3c6cea402e5.jsonl`
 
 ---
 

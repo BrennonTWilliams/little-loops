@@ -65,10 +65,10 @@ Decision required (see Options):
 `enhancement`, `documentation`, `auto-generated`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-14T04:17:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee52f0a2-eca4-41fb-afb5-0b3daae7b6e4.jsonl`
-- `/ll:wire-issue` - 2026-04-14T04:13:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdd82526-543a-44f0-b343-dcd790e5f0b0.jsonl`
-- `/ll:refine-issue` - 2026-04-14T04:06:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1d9eec7-9fed-4a0d-b665-ecc469834e45.jsonl`
-- `/ll:confidence-check` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb32025b-1ca1-4d96-a7ab-c26226a21aaf.jsonl`
+- `/ll:ready-issue` - 2026-04-14T04:17:57 - `ee52f0a2-eca4-41fb-afb5-0b3daae7b6e4.jsonl`
+- `/ll:wire-issue` - 2026-04-14T04:13:24 - `bdd82526-543a-44f0-b343-dcd790e5f0b0.jsonl`
+- `/ll:refine-issue` - 2026-04-14T04:06:23 - `b1d9eec7-9fed-4a0d-b665-ecc469834e45.jsonl`
+- `/ll:confidence-check` - 2026-04-13T00:00:00Z - `fb32025b-1ca1-4d96-a7ab-c26226a21aaf.jsonl`
 - `/ll:manage-issue` - 2026-04-13T00:00:00Z - implemented Option A
 
 ---

@@ -109,7 +109,7 @@ This enhancement would:
 
 ## Session Log
 - /ll:format-issue --all --auto - 2026-02-13
-- `/ll:manage-issue` - 2026-02-13T$(date -u +%H:%M:%SZ) - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2b13850-f9ae-4a64-804e-64400913263a.jsonl`
+- `/ll:manage-issue` - 2026-02-13T$(date -u +%H:%M:%SZ) - `d2b13850-f9ae-4a64-804e-64400913263a.jsonl`
 
 ---
 

@@ -224,15 +224,15 @@ _Added by `/ll:confidence-check` on 2026-05-11_
 - **Discovery algorithm is markdown-only** — the new file-discovery and synthesis logic in `commands/scan-product.md` has no execution-level unit test; correctness depends on doc-wiring assertions plus manual walkthrough
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-11T19:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0abadba2-fa26-422a-8f2e-9ed2d2744c98.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/510b8632-aa30-48aa-84bd-7fbb58b199e9.jsonl`
-- `/ll:wire-issue` - 2026-05-11T19:19:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/58ce4a17-05ac-4da2-a843-1fdb8f6a75a6.jsonl`
-- `/ll:refine-issue` - 2026-05-11T19:13:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3036d514-e8b7-4f4f-bb91-7ecd12913690.jsonl`
-- `/ll:refine-issue` - 2026-05-11T19:13:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3036d514-e8b7-4f4f-bb91-7ecd12913690.jsonl`
-- `/ll:wire-issue` - 2026-05-11T08:20:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d5472e8-2046-416d-aef1-36891c83fc07.jsonl`
-- `/ll:refine-issue` - 2026-05-11T08:13:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a51073a8-32f8-4cb4-b8d7-89559d2abda8.jsonl`
-- `/ll:issue-size-review` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a400556-76fe-4ad7-9557-40b6a1c32a72.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91964bec-3326-48c8-ac3d-4b50f98761b4.jsonl`
+- `/ll:issue-size-review` - 2026-05-11T19:30:00 - `0abadba2-fa26-422a-8f2e-9ed2d2744c98.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `510b8632-aa30-48aa-84bd-7fbb58b199e9.jsonl`
+- `/ll:wire-issue` - 2026-05-11T19:19:04 - `58ce4a17-05ac-4da2-a843-1fdb8f6a75a6.jsonl`
+- `/ll:refine-issue` - 2026-05-11T19:13:42 - `3036d514-e8b7-4f4f-bb91-7ecd12913690.jsonl`
+- `/ll:refine-issue` - 2026-05-11T19:13:38 - `3036d514-e8b7-4f4f-bb91-7ecd12913690.jsonl`
+- `/ll:wire-issue` - 2026-05-11T08:20:28 - `9d5472e8-2046-416d-aef1-36891c83fc07.jsonl`
+- `/ll:refine-issue` - 2026-05-11T08:13:19 - `a51073a8-32f8-4cb4-b8d7-89559d2abda8.jsonl`
+- `/ll:issue-size-review` - 2026-05-11T00:00:00 - `8a400556-76fe-4ad7-9557-40b6a1c32a72.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `91964bec-3326-48c8-ac3d-4b50f98761b4.jsonl`
 
 ---
 

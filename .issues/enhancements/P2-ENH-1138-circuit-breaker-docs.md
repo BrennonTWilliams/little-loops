@@ -117,12 +117,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - No broken cross-references introduced
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-17T05:56:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e6682d5-cb79-4c33-9ce6-ede83cb84a43.jsonl`
-- `/ll:refine-issue` - 2026-04-17T05:45:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/914b84e4-f844-4eb4-8c1a-96b685a19ae2.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81193e52-67e2-461f-8b12-656dced49eb5.jsonl`
-- `/ll:wire-issue` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/914b84e4-f844-4eb4-8c1a-96b685a19ae2.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce3f849e-32b4-4df2-a22a-842c7c640c75.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e6682d5-cb79-4c33-9ce6-ede83cb84a43.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-17T05:56:24 - `2e6682d5-cb79-4c33-9ce6-ede83cb84a43.jsonl`
+- `/ll:refine-issue` - 2026-04-17T05:45:57 - `914b84e4-f844-4eb4-8c1a-96b685a19ae2.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `81193e52-67e2-461f-8b12-656dced49eb5.jsonl`
+- `/ll:wire-issue` - 2026-04-17T00:00:00Z - `914b84e4-f844-4eb4-8c1a-96b685a19ae2.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `ce3f849e-32b4-4df2-a22a-842c7c640c75.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `2e6682d5-cb79-4c33-9ce6-ede83cb84a43.jsonl`
 
 ---
 

@@ -135,11 +135,11 @@ _Updated by `/ll:confidence-check` on 2026-03-20 (prior: 88/100 → 86/100 on 20
 All prior concerns resolved by `/ll:refine-issue` (2026-03-20). No remaining gaps.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-20T18:39:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/650f8cc4-577e-4ec7-8987-ea5add55fc59.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cb37d07-186a-4535-a7d8-8cad23ab3f18.jsonl`
-- `/ll:refine-issue` - 2026-03-20T18:19:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ede48de0-59a6-4de6-b7b5-bbe2ba16255f.jsonl`
+- `/ll:ready-issue` - 2026-03-20T18:39:41 - `650f8cc4-577e-4ec7-8987-ea5add55fc59.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `6cb37d07-186a-4535-a7d8-8cad23ab3f18.jsonl`
+- `/ll:refine-issue` - 2026-03-20T18:19:10 - `ede48de0-59a6-4de6-b7b5-bbe2ba16255f.jsonl`
 
-- `/ll:verify-issues` - 2026-03-19T23:16:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
-- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:verify-issues` - 2026-03-19T23:16:12 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:scan-codebase` - 2026-03-19T22:12:56 - `f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`

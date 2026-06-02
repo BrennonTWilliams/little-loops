@@ -89,8 +89,8 @@ Uses `ll-action` infrastructure or direct Anthropic SDK call.
 **Open** | Created: 2026-05-09 | Priority: P4
 
 ## Session Log
-- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
-- `/ll:capture-issue` - 2026-05-09T20:48:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
+- `/ll:capture-issue` - 2026-05-09T20:48:12Z - `6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`
 
 ---
 

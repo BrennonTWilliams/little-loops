@@ -206,20 +206,20 @@ The `issue_history/` sub-package (introduced to decompose `issue_history/formatt
 - FEAT-707: Scope-Based Concurrency as Worktree Alternative (extends orchestrator/worker classes being refactored here)
 
 ## Session Log
-- `/ll:verify-issues` - 2026-04-11T23:05:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
-- `/ll:verify-issues` - 2026-04-11T19:02:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
-- `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
-- `/ll:verify-issues` - 2026-04-03T02:58:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
-- `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
-- `/ll:tradeoff-review-issues` - 2026-03-22T05:05:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a58662a-8ea7-4c74-bb16-c6d77d559e08.jsonl`
-- `/ll:verify-issues` - 2026-03-22T02:49:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
-- `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
+- `/ll:verify-issues` - 2026-04-11T23:05:00 - `5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
+- `/ll:verify-issues` - 2026-04-11T19:02:02 - `4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
+- `/ll:verify-issues` - 2026-04-02T00:00:00 - `a2482dff-8512-481e-813c-be16a2afb222.jsonl`
+- `/ll:verify-issues` - 2026-04-03T02:58:18 - `7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
+- `/ll:verify-issues` - 2026-04-01T17:45:20 - `712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
+- `/ll:tradeoff-review-issues` - 2026-03-22T05:05:17 - `7a58662a-8ea7-4c74-bb16-c6d77d559e08.jsonl`
+- `/ll:verify-issues` - 2026-03-22T02:49:37 - `45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
+- `/ll:verify-issues` - 2026-03-15T00:11:17 - `623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
 - `/ll:verify-issues` - 2026-02-24 - Corrected merge_coordinator.py line count from 1,218 to 1,226
 - `/ll:verify-issues` - 2026-02-25 - Corrected internal priority from P3 → P4 to match filename (tradeoff review had downgraded priority)
 - `/ll:audit-architecture` - 2026-02-25 - Additional large-file finding: `issue_history/formatting.py` (1,020 lines, 6 very large format functions) shares the same "large single-concern module" pattern. Contains `format_analysis_text` (~436 lines) and `format_analysis_markdown` (~480 lines) as massive monolithic formatters. Consider including this file in scope when planning the refactor, splitting by output format type (text, JSON, YAML, markdown) following the `issue_history/` sub-package pattern that already exists.
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl`
 - `/ll:audit-architecture` - 2026-02-26 - Dependency mapping audit: `parallel/` has 4 cross-package runtime imports from root (issue_parser, logger, subprocess_utils, work_verification) plus bidirectional coupling via issue_manager→parallel.output_parsing. orchestrator.py sits at Layer 3 with 8 internal deps. Recommend extracting output_parsing to root first (ENH-510) to eliminate bidirectional coupling before tackling god class refactor.
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; comprehensive caller/importer list and thread safety notes remain current
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`

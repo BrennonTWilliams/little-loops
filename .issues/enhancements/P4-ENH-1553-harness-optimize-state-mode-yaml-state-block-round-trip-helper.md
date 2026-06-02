@@ -167,9 +167,9 @@ Out of scope for this issue:
 Can be worked in parallel with ENH-1552 (schema + validation foundation). ENH-1554 depends on this child.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-17T10:28:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-17T10:23:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2d82250-3713-411b-9266-ed7f85038ded.jsonl`
-- `/ll:refine-issue` - 2026-05-17T10:14:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0783e89a-8ca1-45e3-8088-edbb380f1e90.jsonl`
-- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5cf22fe-a508-4b58-ace6-dd0a2c4187a3.jsonl`
-- `/ll:wire-issue` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:manage-issue` - 2026-05-17T10:28:56Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-17T10:23:56 - `a2d82250-3713-411b-9266-ed7f85038ded.jsonl`
+- `/ll:refine-issue` - 2026-05-17T10:14:34 - `0783e89a-8ca1-45e3-8088-edbb380f1e90.jsonl`
+- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `e5cf22fe-a508-4b58-ace6-dd0a2c4187a3.jsonl`
+- `/ll:wire-issue` - 2026-05-17T00:00:00Z - `current.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

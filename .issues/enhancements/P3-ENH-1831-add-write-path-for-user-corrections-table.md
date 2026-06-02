@@ -179,10 +179,10 @@ class SessionStore:
 **Open** | Created: 2026-06-01 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T05:39:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8daa84a-d638-4374-bc4f-299e7f02f75a.jsonl`
-- `/ll:confidence-check` - 2026-06-01T06:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23b4d655-f133-4f14-95cf-cd3a9ec650ea.jsonl`
-- `/ll:wire-issue` - 2026-06-01T05:35:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/25d24d41-feb1-4738-984e-38b0f9f355ac.jsonl`
-- `/ll:refine-issue` - 2026-06-01T05:29:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/757bcfad-eb40-4ad8-ae8c-e59ea37ce8e1.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
-- `/ll:format-issue` - 2026-06-01T01:16:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eee9dd1e-f437-4c64-b581-24724e938107.jsonl`
-- `/ll:capture-issue` - 2026-06-01T01:10:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:ready-issue` - 2026-06-01T05:39:03 - `c8daa84a-d638-4374-bc4f-299e7f02f75a.jsonl`
+- `/ll:confidence-check` - 2026-06-01T06:00:00 - `23b4d655-f133-4f14-95cf-cd3a9ec650ea.jsonl`
+- `/ll:wire-issue` - 2026-06-01T05:35:54 - `25d24d41-feb1-4738-984e-38b0f9f355ac.jsonl`
+- `/ll:refine-issue` - 2026-06-01T05:29:59 - `757bcfad-eb40-4ad8-ae8c-e59ea37ce8e1.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:59 - `5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
+- `/ll:format-issue` - 2026-06-01T01:16:53 - `eee9dd1e-f437-4c64-b581-24724e938107.jsonl`
+- `/ll:capture-issue` - 2026-06-01T01:10:54Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

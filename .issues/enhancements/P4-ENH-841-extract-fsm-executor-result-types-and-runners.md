@@ -139,14 +139,14 @@ Implemented 2026-04-02 via `/ll:manage-issue enhancement improve ENH-841`.
 **Result:** `executor.py` reduced from 1,076 → 791 lines. All 385 tests pass. No patch path changes required — `subprocess` and `time` imports remain in `executor.py` (used by `FSMExecutor._run_subprocess`), so existing mock patches continue to work unchanged.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:ready-issue` - 2026-04-03T04:33:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7050a4ed-6549-4a3d-9290-fa562df74c8d.jsonl`
-- `/ll:verify-issues` - 2026-04-03T02:58:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
-- `/ll:verify-issues` - 2026-04-01T17:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
-- `/ll:verify-issues` - 2026-03-23T03:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11c70934-6502-4380-92e1-3f88c099af60.jsonl`
-- `/ll:verify-issues` - 2026-03-19T23:57:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:format-issue` - 2026-03-19T23:57:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:manage-issue` - 2026-04-02T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-04-03T04:33:15 - `7050a4ed-6549-4a3d-9290-fa562df74c8d.jsonl`
+- `/ll:verify-issues` - 2026-04-03T02:58:19 - `7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
+- `/ll:verify-issues` - 2026-04-01T17:45:21 - `712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
+- `/ll:verify-issues` - 2026-03-23T03:43:30 - `11c70934-6502-4380-92e1-3f88c099af60.jsonl`
+- `/ll:verify-issues` - 2026-03-19T23:57:53 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:format-issue` - 2026-03-19T23:57:06 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 
 ---
 

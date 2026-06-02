@@ -223,13 +223,13 @@ Implemented via the `edge_label_colors` precedent pattern:
 All 6 success metrics satisfied. No breaking changes — defaults preserve existing behavior.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-04-01T05:22:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3819f3b7-bc23-4f36-bc14-9a846ee7c2ff.jsonl`
-- `/ll:confidence-check` - 2026-03-31T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c14e750-271b-434b-8be3-344981d3eff2.jsonl`
-- `/ll:refine-issue` - 2026-04-01T03:52:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c14e750-271b-434b-8be3-344981d3eff2.jsonl`
-- `/ll:confidence-check` - 2026-03-31T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c14e750-271b-434b-8be3-344981d3eff2.jsonl`
-- `/ll:refine-issue` - 2026-04-01T03:34:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c14e750-271b-434b-8be3-344981d3eff2.jsonl`
-- `/ll:format-issue` - 2026-04-01T03:21:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3838f86a-9688-4708-8f33-4d8d699d79ac.jsonl`
+- `/ll:manage-issue` - 2026-04-01T00:00:00Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-04-01T05:22:28 - `3819f3b7-bc23-4f36-bc14-9a846ee7c2ff.jsonl`
+- `/ll:confidence-check` - 2026-03-31T00:00:00Z - `3c14e750-271b-434b-8be3-344981d3eff2.jsonl`
+- `/ll:refine-issue` - 2026-04-01T03:52:49 - `3c14e750-271b-434b-8be3-344981d3eff2.jsonl`
+- `/ll:confidence-check` - 2026-03-31T00:00:00Z - `3c14e750-271b-434b-8be3-344981d3eff2.jsonl`
+- `/ll:refine-issue` - 2026-04-01T03:34:59 - `3c14e750-271b-434b-8be3-344981d3eff2.jsonl`
+- `/ll:format-issue` - 2026-04-01T03:21:13 - `3838f86a-9688-4708-8f33-4d8d699d79ac.jsonl`
 - `/ll:capture-issue` - 2026-03-31T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6df5ee0a-f20f-4ab8-a215-3c707d7115cd.jsonl`
 
 ---

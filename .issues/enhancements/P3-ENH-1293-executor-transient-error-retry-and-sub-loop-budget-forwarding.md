@@ -165,11 +165,11 @@ N/A — No public API changes. All modifications are internal to `FSMExecutor` a
 `enhancement`, `loops`, `fsm`, `captured`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-26T16:23:48Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e72e6f55-689c-4446-a282-e790c6de43c5.jsonl`
-- `/ll:ready-issue` - 2026-04-26T16:10:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e72e6f55-689c-4446-a282-e790c6de43c5.jsonl`
-- `/ll:confidence-check` - 2026-04-26T16:10:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19d888fc-9d07-4112-a699-8e85e5e4b1a4.jsonl`
-- `/ll:format-issue` - 2026-04-26T16:01:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/94484366-6d21-45f4-bb1a-79697c996675.jsonl`
-- `/ll:capture-issue` - 2026-04-26T15:55:17Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ffdee53-56db-44d2-9808-6c86e33f5c0f.jsonl`
+- `/ll:manage-issue` - 2026-04-26T16:23:48Z - `e72e6f55-689c-4446-a282-e790c6de43c5.jsonl`
+- `/ll:ready-issue` - 2026-04-26T16:10:52 - `e72e6f55-689c-4446-a282-e790c6de43c5.jsonl`
+- `/ll:confidence-check` - 2026-04-26T16:10:00Z - `19d888fc-9d07-4112-a699-8e85e5e4b1a4.jsonl`
+- `/ll:format-issue` - 2026-04-26T16:01:22 - `94484366-6d21-45f4-bb1a-79697c996675.jsonl`
+- `/ll:capture-issue` - 2026-04-26T15:55:17Z - `1ffdee53-56db-44d2-9808-6c86e33f5c0f.jsonl`
 
 ---
 

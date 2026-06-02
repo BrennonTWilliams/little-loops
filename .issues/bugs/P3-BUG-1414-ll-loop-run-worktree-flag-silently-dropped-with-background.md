@@ -194,10 +194,10 @@ Tests: 140 passed across `test_cli_loop_background.py`, `test_cli_loop_worktree.
 
 ## Session Log
 - `/ll:manage-issue` - 2026-05-16T08:46:10Z - resolved BUG-1414 via Option B (reject combination)
-- `/ll:ready-issue` - 2026-05-16T08:43:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/483764c9-968a-44ac-a956-3d21ad4ead9d.jsonl`
-- `/ll:confidence-check` - 2026-05-16T11:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2aefac76-cd75-4383-bbd3-8354fcb522d7.jsonl`
-- `/ll:decide-issue` - 2026-05-16T08:40:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/65b4feb8-201a-4cef-bda2-c36551a00016.jsonl`
-- `/ll:confidence-check` - 2026-05-16T09:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6116d8f-9414-4607-9c5b-1253f33e88a0.jsonl`
-- `/ll:wire-issue` - 2026-05-16T08:32:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff8003a8-80d8-4987-90ea-fde3f3f9f722.jsonl`
-- `/ll:refine-issue` - 2026-05-16T08:26:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db8d2309-72fd-4aa7-a317-fc82ee72c48f.jsonl`
+- `/ll:ready-issue` - 2026-05-16T08:43:49 - `483764c9-968a-44ac-a956-3d21ad4ead9d.jsonl`
+- `/ll:confidence-check` - 2026-05-16T11:30:00 - `2aefac76-cd75-4383-bbd3-8354fcb522d7.jsonl`
+- `/ll:decide-issue` - 2026-05-16T08:40:58 - `65b4feb8-201a-4cef-bda2-c36551a00016.jsonl`
+- `/ll:confidence-check` - 2026-05-16T09:00:00 - `b6116d8f-9414-4607-9c5b-1253f33e88a0.jsonl`
+- `/ll:wire-issue` - 2026-05-16T08:32:40 - `ff8003a8-80d8-4987-90ea-fde3f3f9f722.jsonl`
+- `/ll:refine-issue` - 2026-05-16T08:26:19 - `db8d2309-72fd-4aa7-a317-fc82ee72c48f.jsonl`
 - `/ll:capture-issue` - 2026-05-10T14:25:47Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b252132-81fd-48fa-abf4-43fc7a785312.jsonl`

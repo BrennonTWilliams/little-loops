@@ -284,9 +284,9 @@ Implemented across six reference docs plus a wiring-test pass:
 All 23 wiring tests pass. Pre-existing unrelated failures in `test_generate_schemas.py` and `test_update_skill.py` are out of scope.
 
 ## Session Log
-- `/ll:manage-issue feature implement FEAT-1459` - 2026-05-12T05:16:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2e9895d-1d2a-42d4-b0bf-56bb7f5ad16f.jsonl`
-- `/ll:ready-issue` - 2026-05-12T05:08:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b99e0889-c675-4bfc-9f42-688812025a20.jsonl`
-- `/ll:confidence-check` - 2026-05-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bfd5b22f-5b5d-4e9f-840f-5f47586fbfd0.jsonl`
-- `/ll:wire-issue` - 2026-05-12T05:02:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60996da8-f8c0-446a-8c72-3e0170e3c5dc.jsonl`
-- `/ll:refine-issue` - 2026-05-12T04:57:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36688df2-2d3e-413f-8f0f-1691ef115fed.jsonl`
-- `/ll:issue-size-review` - 2026-05-12T04:28:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
+- `/ll:manage-issue feature implement FEAT-1459` - 2026-05-12T05:16:27Z - `a2e9895d-1d2a-42d4-b0bf-56bb7f5ad16f.jsonl`
+- `/ll:ready-issue` - 2026-05-12T05:08:10 - `b99e0889-c675-4bfc-9f42-688812025a20.jsonl`
+- `/ll:confidence-check` - 2026-05-12T00:00:00Z - `bfd5b22f-5b5d-4e9f-840f-5f47586fbfd0.jsonl`
+- `/ll:wire-issue` - 2026-05-12T05:02:01 - `60996da8-f8c0-446a-8c72-3e0170e3c5dc.jsonl`
+- `/ll:refine-issue` - 2026-05-12T04:57:08 - `36688df2-2d3e-413f-8f0f-1691ef115fed.jsonl`
+- `/ll:issue-size-review` - 2026-05-12T04:28:55 - `001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`

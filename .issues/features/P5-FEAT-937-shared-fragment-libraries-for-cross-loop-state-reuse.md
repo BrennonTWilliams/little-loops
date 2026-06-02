@@ -249,14 +249,14 @@ Verified 2026-04-03 by `/ll:verify-issues`. All file paths, line numbers, and co
 - `ruff` clean on new files
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4d8b528-7b17-480f-bab7-a681a615332f.jsonl`
-- `/ll:ready-issue` - 2026-04-04T04:41:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4d8b528-7b17-480f-bab7-a681a615332f.jsonl`
-- `/ll:ready-issue` - 2026-04-04T04:41:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4d8b528-7b17-480f-bab7-a681a615332f.jsonl`
-- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a2b8459-47f1-4bd4-befc-c0f4cea78122.jsonl`
-- `/ll:format-issue` - 2026-04-04T04:33:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e17f5c60-c3c8-4649-9669-551706569266.jsonl`
-- `/ll:verify-issues` - 2026-04-04T04:22:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1d17848-e950-4ccb-89e0-b0c8a73d95d2.jsonl`
-- `/ll:refine-issue` - 2026-04-04T04:18:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57941e0f-80a7-42e3-8600-7abe18193082.jsonl`
-- `/ll:refine-issue` - 2026-04-04T04:17:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57941e0f-80a7-42e3-8600-7abe18193082.jsonl`
-- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42c53c22-403e-4bdc-b147-7dae4ff089f6.jsonl`
-- `/ll:refine-issue` - 2026-04-04T04:02:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ddb48b85-b51f-420f-ba05-37e1c4b6810b.jsonl`
-- `/ll:capture-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16657133-9de4-4706-850b-b65f32a1bda2.jsonl`
+- `/ll:manage-issue` - 2026-04-04T00:00:00Z - `a4d8b528-7b17-480f-bab7-a681a615332f.jsonl`
+- `/ll:ready-issue` - 2026-04-04T04:41:45 - `a4d8b528-7b17-480f-bab7-a681a615332f.jsonl`
+- `/ll:ready-issue` - 2026-04-04T04:41:36 - `a4d8b528-7b17-480f-bab7-a681a615332f.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `6a2b8459-47f1-4bd4-befc-c0f4cea78122.jsonl`
+- `/ll:format-issue` - 2026-04-04T04:33:17 - `e17f5c60-c3c8-4649-9669-551706569266.jsonl`
+- `/ll:verify-issues` - 2026-04-04T04:22:54 - `b1d17848-e950-4ccb-89e0-b0c8a73d95d2.jsonl`
+- `/ll:refine-issue` - 2026-04-04T04:18:38 - `57941e0f-80a7-42e3-8600-7abe18193082.jsonl`
+- `/ll:refine-issue` - 2026-04-04T04:17:30 - `57941e0f-80a7-42e3-8600-7abe18193082.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `42c53c22-403e-4bdc-b147-7dae4ff089f6.jsonl`
+- `/ll:refine-issue` - 2026-04-04T04:02:58 - `ddb48b85-b51f-420f-ba05-37e1c4b6810b.jsonl`
+- `/ll:capture-issue` - 2026-04-03T00:00:00Z - `16657133-9de4-4706-850b-b65f32a1bda2.jsonl`

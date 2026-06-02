@@ -113,4 +113,4 @@ Also confirm `_render_cluster_diagram` in `scripts/little_loops/cli/issues/clust
 ---
 
 ## Session Log
-- `/ll:capture-issue` - 2026-05-24T04:15:48Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/deae5e40-09d5-4d75-a993-bc876564ab27.jsonl`
+- `/ll:capture-issue` - 2026-05-24T04:15:48Z - `deae5e40-09d5-4d75-a993-bc876564ab27.jsonl`

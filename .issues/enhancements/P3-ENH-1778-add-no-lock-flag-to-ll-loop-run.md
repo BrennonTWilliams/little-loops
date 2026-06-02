@@ -179,11 +179,11 @@ No breaking changes to existing interfaces. The flag is opt-in; default behavior
 - [API Reference](../docs/reference/API.md) — LockManager and FSM concurrency
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-29T02:25:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d3b5d672-ac76-4b37-9095-765feb661fce.jsonl`
-- `/ll:confidence-check` - 2026-05-29T04:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b4fad39-6878-4996-a2f3-a3aa64c86487.jsonl`
-- `/ll:wire-issue` - 2026-05-29T02:20:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ae9b2f6-c82a-443d-845b-3a7d7dc7c8b4.jsonl`
-- `/ll:refine-issue` - 2026-05-29T02:15:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/519c2695-8cfb-4dfb-b5e9-694f242c8ae5.jsonl`
-- `/ll:format-issue` - 2026-05-29T01:18:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/776acf21-901d-489e-b3d1-e39e35e0f322.jsonl`
+- `/ll:ready-issue` - 2026-05-29T02:25:49 - `d3b5d672-ac76-4b37-9095-765feb661fce.jsonl`
+- `/ll:confidence-check` - 2026-05-29T04:45:00 - `5b4fad39-6878-4996-a2f3-a3aa64c86487.jsonl`
+- `/ll:wire-issue` - 2026-05-29T02:20:27 - `0ae9b2f6-c82a-443d-845b-3a7d7dc7c8b4.jsonl`
+- `/ll:refine-issue` - 2026-05-29T02:15:06 - `519c2695-8cfb-4dfb-b5e9-694f242c8ae5.jsonl`
+- `/ll:format-issue` - 2026-05-29T01:18:45 - `776acf21-901d-489e-b3d1-e39e35e0f322.jsonl`
 - `/ll:capture-issue` - 2026-05-29T01:14:50Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5131387c-db51-4f02-b6ef-9764be2a9d22.jsonl`
 
 ## Labels

@@ -63,7 +63,7 @@ context:
 - ENH-1827 — add `--sft-format` to `ll-messages` CLI (alternate ingest path)
 
 ## Session Log
-- `/ll:capture-issue` - 2026-05-31T22:00:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/109abe71-e47d-4222-b37d-c17fd7d98dee.jsonl`
+- `/ll:capture-issue` - 2026-05-31T22:00:59Z - `109abe71-e47d-4222-b37d-c17fd7d98dee.jsonl`
 
 ---
 ## Status

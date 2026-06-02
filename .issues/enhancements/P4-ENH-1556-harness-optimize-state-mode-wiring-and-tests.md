@@ -245,9 +245,9 @@ Added tests in `test_harness_optimize.py`:
 678 tests pass, lint and mypy clean.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-17T11:51:13Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-17T11:33:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebefbf8f-a798-4b71-950d-9d4c8289f41c.jsonl`
-- `/ll:wire-issue` - 2026-05-17T11:29:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67fc8188-b1f6-47c0-a73e-f2dc7f626272.jsonl`
-- `/ll:refine-issue` - 2026-05-17T11:23:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f518e8a-4ed6-46eb-ab19-27560711154b.jsonl`
-- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0eb46b7-c5e1-422c-9f74-c918759ffc2a.jsonl`
-- `/ll:confidence-check` - 2026-05-17T12:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a9c3a5b8-facc-4dd2-965e-bd9a52c888f4.jsonl`
+- `/ll:manage-issue` - 2026-05-17T11:51:13Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-17T11:33:28 - `ebefbf8f-a798-4b71-950d-9d4c8289f41c.jsonl`
+- `/ll:wire-issue` - 2026-05-17T11:29:02 - `67fc8188-b1f6-47c0-a73e-f2dc7f626272.jsonl`
+- `/ll:refine-issue` - 2026-05-17T11:23:57 - `8f518e8a-4ed6-46eb-ab19-27560711154b.jsonl`
+- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `f0eb46b7-c5e1-422c-9f74-c918759ffc2a.jsonl`
+- `/ll:confidence-check` - 2026-05-17T12:00:00 - `a9c3a5b8-facc-4dd2-965e-bd9a52c888f4.jsonl`

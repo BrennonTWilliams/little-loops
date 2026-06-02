@@ -149,5 +149,5 @@ See [Tests](#tests) above.
 - **Breaking Change**: No
 
 ## Session Log
-- `/ll:format-issue` - 2026-05-29T04:47:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8ce6318-6410-45e6-834c-e802822443bc.jsonl`
-- `/ll:issue-size-review` - 2026-05-28T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc1fcf00-8ef7-4a3a-94b4-7099b5095eec.jsonl`
+- `/ll:format-issue` - 2026-05-29T04:47:30 - `f8ce6318-6410-45e6-834c-e802822443bc.jsonl`
+- `/ll:issue-size-review` - 2026-05-28T00:00:00Z - `dc1fcf00-8ef7-4a3a-94b4-7099b5095eec.jsonl`

@@ -205,10 +205,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `enhancement`, `config`, `confidence-gate`, `auto-generated`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-26T00:11:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6e2ad6a1-fdb3-4820-8aeb-9bcbc36aeac1.jsonl`
-- `/ll:refine-issue` - 2026-03-25T23:42:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
-- `/ll:format-issue` - 2026-03-25T23:37:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
-- `/ll:confidence-check` - 2026-03-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-26T00:11:58 - `6e2ad6a1-fdb3-4820-8aeb-9bcbc36aeac1.jsonl`
+- `/ll:refine-issue` - 2026-03-25T23:42:16 - `8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
+- `/ll:format-issue` - 2026-03-25T23:37:01 - `8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
+- `/ll:confidence-check` - 2026-03-25T00:00:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 

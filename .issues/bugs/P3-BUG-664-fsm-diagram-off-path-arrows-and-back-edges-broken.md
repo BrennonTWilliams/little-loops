@@ -260,14 +260,14 @@ Three targeted fixes applied to `scripts/little_loops/cli/loop/info.py` (`_rende
 Added regression test `test_issue_refinement_git_topology` to `scripts/tests/test_ll_loop_display.py` exercising the 6-state topology. Also updated `test_multiple_off_path_states_same_depth` to reflect that off-path→main-path edges now render as U-routes (not `◄` arrows).
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
-- `/ll:format-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
-- `/ll:verify-issues` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
-- `/ll:confidence-check` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
-- `/ll:confidence-check` - 2026-03-09T12:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0bed9e2-4ea4-433b-ac3a-40c28d5278ee.jsonl`
-- `/ll:ready-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42eb984b-d0b4-43ff-a6f1-33d5fd55e3b6.jsonl`
-- `/ll:refine-issue` - 2026-03-09T13:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e1f6e4e-f38d-45f4-9ef6-5a32d3bbb8d1.jsonl`
-- `/ll:manage-issue` - 2026-03-09T14:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:capture-issue` - 2026-03-09T00:00:00Z - `01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
+- `/ll:format-issue` - 2026-03-09T00:00:00Z - `01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
+- `/ll:verify-issues` - 2026-03-09T00:00:00Z - `01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
+- `/ll:confidence-check` - 2026-03-09T00:00:00Z - `01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
+- `/ll:confidence-check` - 2026-03-09T12:00:00Z - `b0bed9e2-4ea4-433b-ac3a-40c28d5278ee.jsonl`
+- `/ll:ready-issue` - 2026-03-09T00:00:00Z - `42eb984b-d0b4-43ff-a6f1-33d5fd55e3b6.jsonl`
+- `/ll:refine-issue` - 2026-03-09T13:00:00Z - `1e1f6e4e-f38d-45f4-9ef6-5a32d3bbb8d1.jsonl`
+- `/ll:manage-issue` - 2026-03-09T14:00:00Z - `current.jsonl`
 
 ---
 

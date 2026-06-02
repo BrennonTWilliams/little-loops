@@ -152,10 +152,10 @@ Implemented in a single pass. All documentation surfaces were already updated (F
 - All 101 wiring tests pass
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-16T21:58:37Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-16T21:55:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a1e46b4-19c0-4f24-88bd-04540704a7e8.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da2b182d-d2c8-4cd4-b53b-d6cec360dbf1.jsonl`
-- `/ll:wire-issue` - 2026-05-16T21:49:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/688853eb-bacc-482c-8904-6ba0c2c431f0.jsonl`
-- `/ll:refine-issue` - 2026-05-16T21:44:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a639e70b-ef80-4207-a3bb-ddab342a7bf5.jsonl`
-- `/ll:refine-issue` - 2026-05-16T21:44:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a639e70b-ef80-4207-a3bb-ddab342a7bf5.jsonl`
-- `/ll:issue-size-review` - 2026-05-16T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0de5eba4-6630-4b6f-ac14-f65397d900bb.jsonl`
+- `/ll:manage-issue` - 2026-05-16T21:58:37Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-16T21:55:48 - `6a1e46b4-19c0-4f24-88bd-04540704a7e8.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `da2b182d-d2c8-4cd4-b53b-d6cec360dbf1.jsonl`
+- `/ll:wire-issue` - 2026-05-16T21:49:45 - `688853eb-bacc-482c-8904-6ba0c2c431f0.jsonl`
+- `/ll:refine-issue` - 2026-05-16T21:44:29 - `a639e70b-ef80-4207-a3bb-ddab342a7bf5.jsonl`
+- `/ll:refine-issue` - 2026-05-16T21:44:27 - `a639e70b-ef80-4207-a3bb-ddab342a7bf5.jsonl`
+- `/ll:issue-size-review` - 2026-05-16T21:00:00Z - `0de5eba4-6630-4b6f-ac14-f65397d900bb.jsonl`

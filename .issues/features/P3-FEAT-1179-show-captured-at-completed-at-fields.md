@@ -110,8 +110,8 @@ Implemented via TDD:
 All acceptance criteria met. 4981 tests pass, ruff clean, mypy clean.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-18T21:39:47Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cc24735-d02c-4d53-8d6c-30d9400c65a0.jsonl`
-- `/ll:wire-issue` - 2026-04-18T21:33:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5fcc6aa0-2927-43ce-94e3-9ecda4033781.jsonl`
-- `/ll:refine-issue` - 2026-04-18T21:29:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c76b539-4f41-4832-b3d8-38ba6b4521bd.jsonl`
-- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1357a791-c921-47ef-95b7-1d0a7b03979b.jsonl`
-- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26e075f3-7d70-4a4c-a57d-abfa22da5d9b.jsonl`
+- `/ll:manage-issue` - 2026-04-18T21:39:47Z - `2cc24735-d02c-4d53-8d6c-30d9400c65a0.jsonl`
+- `/ll:wire-issue` - 2026-04-18T21:33:02 - `5fcc6aa0-2927-43ce-94e3-9ecda4033781.jsonl`
+- `/ll:refine-issue` - 2026-04-18T21:29:04 - `2c76b539-4f41-4832-b3d8-38ba6b4521bd.jsonl`
+- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `1357a791-c921-47ef-95b7-1d0a7b03979b.jsonl`
+- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `26e075f3-7d70-4a4c-a57d-abfa22da5d9b.jsonl`

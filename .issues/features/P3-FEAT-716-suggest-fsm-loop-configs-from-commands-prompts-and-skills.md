@@ -230,11 +230,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c4727e9-091f-4035-98d1-bd60d48ebc28.jsonl`
-- `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b28391f-b086-4d28-86cb-448201c8b40e.jsonl`
-- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/908c4f0d-4b4c-4d5b-9ca2-700b7dd4a4d9.jsonl`
-- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:capture-issue` - 2026-03-13T00:00:00Z - `2c4727e9-091f-4035-98d1-bd60d48ebc28.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `3b28391f-b086-4d28-86cb-448201c8b40e.jsonl`
+- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `908c4f0d-4b4c-4d5b-9ca2-700b7dd4a4d9.jsonl`
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `current.jsonl`

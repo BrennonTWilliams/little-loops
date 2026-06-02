@@ -178,15 +178,15 @@ N/A — no configuration files affected.
 Moved `_read_pid_file`, `_resolve_live_pid`, and `_reconcile_stale_running` from `cli/loop/lifecycle.py` to `fsm/persistence.py`. Called `_reconcile_stale_running` inside `list_running_loops()` for each state-file entry before appending to results. Updated `lifecycle.py` to import the three helpers from `persistence.py`. Updated 5 patch targets in `TestReconcileStaleRunning` to `little_loops.fsm.persistence._process_alive`. Added 3 unit tests to `test_fsm_persistence.py` and 1 integration test to `test_ll_loop_integration.py`.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-27T01:43:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92894725-51ac-4831-9def-bb3295f53006.jsonl`
-- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/85649679-ddd9-482b-b438-56be54938df4.jsonl`
-- `/ll:decide-issue` - 2026-05-27T01:38:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c18a0f69-7238-487d-83bd-d0561eb8cae9.jsonl`
-- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/496d28d9-55c3-4fec-931f-280dc36878b7.jsonl`
-- `/ll:wire-issue` - 2026-05-27T01:35:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea42eaac-b11c-47e0-92a5-d02d529e4203.jsonl`
-- `/ll:refine-issue` - 2026-05-27T01:28:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6605a432-a7c9-4279-a4b1-8298b0f3f87a.jsonl`
-- `/ll:format-issue` - 2026-05-26T23:52:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8061561c-1f12-4e02-b1e7-6a9314f79f64.jsonl`
+- `/ll:ready-issue` - 2026-05-27T01:43:03 - `92894725-51ac-4831-9def-bb3295f53006.jsonl`
+- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `85649679-ddd9-482b-b438-56be54938df4.jsonl`
+- `/ll:decide-issue` - 2026-05-27T01:38:25 - `c18a0f69-7238-487d-83bd-d0561eb8cae9.jsonl`
+- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `496d28d9-55c3-4fec-931f-280dc36878b7.jsonl`
+- `/ll:wire-issue` - 2026-05-27T01:35:03 - `ea42eaac-b11c-47e0-92a5-d02d529e4203.jsonl`
+- `/ll:refine-issue` - 2026-05-27T01:28:59 - `6605a432-a7c9-4279-a4b1-8298b0f3f87a.jsonl`
+- `/ll:format-issue` - 2026-05-26T23:52:49 - `8061561c-1f12-4e02-b1e7-6a9314f79f64.jsonl`
 
-- `/ll:capture-issue` - 2026-05-26T23:19:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010b6d0-c5ea-42f5-b7da-dacb34c4bb15.jsonl`
+- `/ll:capture-issue` - 2026-05-26T23:19:12Z - `0010b6d0-c5ea-42f5-b7da-dacb34c4bb15.jsonl`
 
 ---
 

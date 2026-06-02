@@ -268,13 +268,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 Implemented `scripts/little_loops/loops/html-anything.yaml` — a 7-state FSM harness (`init`, `plan`, `generate`, `evaluate`, `score`, `done`, `failed`) following the `svg-image-generator.yaml` structural pattern. The `plan` state atomically classifies artifact type and writes both `brief.md` and `rubric.md` in one state; the `score` state reads `rubric.md` dynamically to enforce per-criterion thresholds (not a weighted average). `evaluate` includes `on_error: generate` for Playwright-absent graceful degradation. All wiring touchpoints completed: expected-loops set updated, `TestHtmlAnythingLoop` (22 assertions) added to test suite, LOOPS_GUIDE.md subsection added, AUTOMATIC_HARNESSING_GUIDE.md and README.md counts updated, CHANGELOG.md entry added.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-17T05:47:01Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-17T05:42:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c484c58f-bb93-40df-ab7c-ba54e99cae31.jsonl`
-- `/ll:wire-issue` - 2026-05-17T05:38:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f83462fc-6ed8-4bc4-b54c-c8a7368feb83.jsonl`
-- `/ll:refine-issue` - 2026-05-17T05:34:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0a080d4-34a9-421a-8023-f9695b34ec4b.jsonl`
-- `/ll:format-issue` - 2026-05-17T05:29:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/886b380b-be9d-47e2-babe-28037613cb30.jsonl`
-- `/ll:capture-issue` - 2026-05-17T05:27:26Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1abc7e22-2fd4-490d-8857-c86a64aecaa1.jsonl`
-- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/759d096e-fb8e-41c0-9a34-b8be226c415a.jsonl`
+- `/ll:manage-issue` - 2026-05-17T05:47:01Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-17T05:42:34 - `c484c58f-bb93-40df-ab7c-ba54e99cae31.jsonl`
+- `/ll:wire-issue` - 2026-05-17T05:38:31 - `f83462fc-6ed8-4bc4-b54c-c8a7368feb83.jsonl`
+- `/ll:refine-issue` - 2026-05-17T05:34:05 - `d0a080d4-34a9-421a-8023-f9695b34ec4b.jsonl`
+- `/ll:format-issue` - 2026-05-17T05:29:53 - `886b380b-be9d-47e2-babe-28037613cb30.jsonl`
+- `/ll:capture-issue` - 2026-05-17T05:27:26Z - `1abc7e22-2fd4-490d-8857-c86a64aecaa1.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `759d096e-fb8e-41c0-9a34-b8be226c415a.jsonl`
 
 ---
 

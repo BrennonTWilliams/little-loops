@@ -384,15 +384,15 @@ _Added by `/ll:confidence-check` on 2026-05-31_
 - **Critic prompt location contradiction** — Proposed Solution §3 and an acceptance criterion mention `prompts/adversarial-critic.md`, but Codebase Research Findings correctly establish `prompt_ref` doesn't exist; inline is the right approach (step 2 resolves this). The `prompts/adversarial-critic.md` AC should be treated as cancelled.
 
 ## Session Log
-- `/ll:verify-issues` - 2026-05-31T05:40:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:ready-issue` - 2026-05-31T05:39:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78218aaf-6884-4591-9aff-c393a35359ce.jsonl`
-- `/ll:confidence-check` - 2026-05-31T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/959041b3-877b-4e0b-bb02-ec35d5072a0a.jsonl`
-- `/ll:wire-issue` - 2026-05-31T05:33:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3fc496ef-4ed1-4b4c-ba55-c2bcb81eab1f.jsonl`
-- `/ll:refine-issue` - 2026-05-31T05:29:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32d2e25b-c814-4680-aabc-95d754a64e6a.jsonl`
-- `/ll:format-issue` - 2026-05-31T05:21:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b1bc2bc-fb54-4fce-afcd-31ab48945e74.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:08 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:ready-issue` - 2026-05-31T05:39:23 - `78218aaf-6884-4591-9aff-c393a35359ce.jsonl`
+- `/ll:confidence-check` - 2026-05-31T00:00:00Z - `959041b3-877b-4e0b-bb02-ec35d5072a0a.jsonl`
+- `/ll:wire-issue` - 2026-05-31T05:33:52 - `3fc496ef-4ed1-4b4c-ba55-c2bcb81eab1f.jsonl`
+- `/ll:refine-issue` - 2026-05-31T05:29:23 - `32d2e25b-c814-4680-aabc-95d754a64e6a.jsonl`
+- `/ll:format-issue` - 2026-05-31T05:21:58 - `9b1bc2bc-fb54-4fce-afcd-31ab48945e74.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:14 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 
-- `/ll:capture-issue` — 2026-05-30T05:25:35Z — `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aebb9b72-3342-4acd-a90d-d77948da77a9.jsonl`
+- `/ll:capture-issue` — 2026-05-30T05:25:35Z — `aebb9b72-3342-4acd-a90d-d77948da77a9.jsonl`
 
 ---
 

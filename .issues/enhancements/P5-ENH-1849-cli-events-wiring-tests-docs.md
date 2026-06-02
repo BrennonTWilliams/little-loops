@@ -99,7 +99,7 @@ The counts should match (allowing for `docs.py` having 3 mains in 1 file). Consi
 - **Breaking Change**: No
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0686c0da-b3e0-4215-b978-6a0771cae829.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00 - `0686c0da-b3e0-4215-b978-6a0771cae829.jsonl`
 
 ---
 

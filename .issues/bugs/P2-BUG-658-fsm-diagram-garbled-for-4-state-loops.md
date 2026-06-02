@@ -157,9 +157,9 @@ The single shared `off_grid` (line 801) has no collision detection. `fix` is wri
 `bug`, `fsm`, `diagram`, `rendering`, `captured`
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb375f02-a71a-47c9-ae7a-093f1e745985.jsonl`
-- `/ll:format-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9758ffe9-ca61-495a-8a6e-a093a200b26b.jsonl`
-- `/ll:refine-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c8e431c-a142-441d-87b6-09c026581cf6.jsonl`
+- `/ll:capture-issue` - 2026-03-08T00:00:00Z - `fb375f02-a71a-47c9-ae7a-093f1e745985.jsonl`
+- `/ll:format-issue` - 2026-03-08T00:00:00Z - `9758ffe9-ca61-495a-8a6e-a093a200b26b.jsonl`
+- `/ll:refine-issue` - 2026-03-08T00:00:00Z - `8c8e431c-a142-441d-87b6-09c026581cf6.jsonl`
 
 ---
 

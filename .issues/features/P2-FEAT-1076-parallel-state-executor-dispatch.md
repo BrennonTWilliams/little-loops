@@ -421,17 +421,17 @@ _Updated by `/ll:confidence-check` on 2026-04-20 (supersedes 2026-04-12 entry)_
 - **Novel test infrastructure**: The `threading.get_ident()` shim (branch-ops-on-main-thread test) and `KeyboardInterrupt` mid-executor pattern are both new to this test suite — no existing pattern to copy. Budget extra time for writing these test helpers.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/12e33204-56d1-4038-8776-e8d9f2442372.jsonl`
-- `/ll:refine-issue` - 2026-04-21T02:01:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1dc90cc-dac3-4e0d-a30f-b9e27f7e7775.jsonl`
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cfaa5a5-e8e0-47d0-9b89-97fd288b03e9.jsonl`
-- `/ll:wire-issue` - 2026-04-21T01:55:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/58b40d30-15bb-4829-b285-cf0821b85a5d.jsonl`
-- `/ll:refine-issue` - 2026-04-21T01:48:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c9b58d3-a24a-4a89-ae5d-ef6671209818.jsonl`
-- `/ll:refine-issue` - 2026-04-12T22:06:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d78494ba-e368-4d92-ac07-474ca60ddbb1.jsonl`
-- `/ll:wire-issue` - 2026-04-12T22:00:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bbab3ea7-aba1-4f99-878c-4df082545c74.jsonl`
-- `/ll:refine-issue` - 2026-04-12T21:53:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6227012-241e-4253-adf1-d540b03b8c94.jsonl`
-- `/ll:format-issue` - 2026-04-12T21:50:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e24121c8-614a-47dc-b39d-f7ef139d0a8c.jsonl`
-- `/ll:issue-size-review` - 2026-04-12T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8e4e49c-4e79-4270-9839-915fa38b03f2.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d6467f5-0702-4f04-ae61-18783596ccff.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `12e33204-56d1-4038-8776-e8d9f2442372.jsonl`
+- `/ll:refine-issue` - 2026-04-21T02:01:11 - `c1dc90cc-dac3-4e0d-a30f-b9e27f7e7775.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `6cfaa5a5-e8e0-47d0-9b89-97fd288b03e9.jsonl`
+- `/ll:wire-issue` - 2026-04-21T01:55:34 - `58b40d30-15bb-4829-b285-cf0821b85a5d.jsonl`
+- `/ll:refine-issue` - 2026-04-21T01:48:49 - `9c9b58d3-a24a-4a89-ae5d-ef6671209818.jsonl`
+- `/ll:refine-issue` - 2026-04-12T22:06:23 - `d78494ba-e368-4d92-ac07-474ca60ddbb1.jsonl`
+- `/ll:wire-issue` - 2026-04-12T22:00:28 - `bbab3ea7-aba1-4f99-878c-4df082545c74.jsonl`
+- `/ll:refine-issue` - 2026-04-12T21:53:56 - `b6227012-241e-4253-adf1-d540b03b8c94.jsonl`
+- `/ll:format-issue` - 2026-04-12T21:50:26 - `e24121c8-614a-47dc-b39d-f7ef139d0a8c.jsonl`
+- `/ll:issue-size-review` - 2026-04-12T21:00:00 - `c8e4e49c-4e79-4270-9839-915fa38b03f2.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00 - `9d6467f5-0702-4f04-ae61-18783596ccff.jsonl`
 
 ---
 

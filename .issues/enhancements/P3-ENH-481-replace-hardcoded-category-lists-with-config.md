@@ -104,9 +104,8 @@ All four hardcoded category list sites replaced with config-driven values:
 Tests added for all three locations covering custom-category behavior. Full suite: 2911 passed, 0 failures.
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
-- `/ll:manage-issue enhancement fix ENH-481` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-
+- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:manage-issue enhancement fix ENH-481` - 2026-02-25
 ---
 
 ## Status

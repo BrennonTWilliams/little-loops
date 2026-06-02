@@ -190,7 +190,7 @@ Minor gaps also found (not blockers for FEAT-927):
 **Completed** | Created: 2026-04-02 | Completed: 2026-04-02 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-03T00:49:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17240d9f-c05c-4a95-8d41-67e38cfe53f4.jsonl`
-- `/ll:refine-issue` - 2026-04-03T00:41:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/998ad8f8-102d-4374-80a7-c9a75706c7a7.jsonl`
-- `/ll:capture-issue` - 2026-04-03T00:35:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5913db88-19b3-455b-8448-97664c8c42f8.jsonl`
-- `/ll:confidence-check` - 2026-04-02T19:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59a96965-9adf-4cd8-9c40-8c3a7bb7b986.jsonl`
+- `/ll:ready-issue` - 2026-04-03T00:49:11 - `17240d9f-c05c-4a95-8d41-67e38cfe53f4.jsonl`
+- `/ll:refine-issue` - 2026-04-03T00:41:46 - `998ad8f8-102d-4374-80a7-c9a75706c7a7.jsonl`
+- `/ll:capture-issue` - 2026-04-03T00:35:30 - `5913db88-19b3-455b-8448-97664c8c42f8.jsonl`
+- `/ll:confidence-check` - 2026-04-02T19:45:00 - `59a96965-9adf-4cd8-9c40-8c3a7bb7b986.jsonl`

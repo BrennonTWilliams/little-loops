@@ -171,10 +171,10 @@ _Added by `/ll:confidence-check` on 2026-04-21_
 - FEAT-1218: TestParallelStateConfig Test Class
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59852d6e-fcd5-41f5-b554-577001c3b013.jsonl`
-- `/ll:refine-issue` - 2026-04-21T06:42:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84668414-fc0f-424f-92fc-efc6f07976b3.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e7c40d7-bfd7-48ef-a3bf-2ee5b46f5ff7.jsonl`
-- `/ll:wire-issue` - 2026-04-21T06:39:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad90cf92-c999-44b0-a656-cc334f48100e.jsonl`
-- `/ll:refine-issue` - 2026-04-21T06:33:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4735ac39-1844-4597-bab6-b9a416970e4d.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b6f3646-002b-4241-b60d-d6d09e155cee.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3602700c-68f5-4249-826d-6c2ed2f1d25e.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `59852d6e-fcd5-41f5-b554-577001c3b013.jsonl`
+- `/ll:refine-issue` - 2026-04-21T06:42:53 - `84668414-fc0f-424f-92fc-efc6f07976b3.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `8e7c40d7-bfd7-48ef-a3bf-2ee5b46f5ff7.jsonl`
+- `/ll:wire-issue` - 2026-04-21T06:39:15 - `ad90cf92-c999-44b0-a656-cc334f48100e.jsonl`
+- `/ll:refine-issue` - 2026-04-21T06:33:33 - `4735ac39-1844-4597-bab6-b9a416970e4d.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `7b6f3646-002b-4241-b60d-d6d09e155cee.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `3602700c-68f5-4249-826d-6c2ed2f1d25e.jsonl`

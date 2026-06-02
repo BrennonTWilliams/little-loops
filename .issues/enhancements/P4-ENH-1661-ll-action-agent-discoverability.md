@@ -69,4 +69,4 @@ Recommend starting with #2 — single-file change, zero new surface area, immedi
 
 ### Rationale
 No evidence this gap is causing real friction. ENH-1660 (typed skill schemas) is the prerequisite that makes ll-action discovery actionable — defer until ENH-1660 lands and non-Claude-Code host usage patterns are better understood.
-- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`
+- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`

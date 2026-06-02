@@ -273,12 +273,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - FEAT-1747 must be merged first (loader must exist for the injection sites to call it).
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-27T22:27:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b372a37b-0b66-456e-af99-2cc6e5c0a993.jsonl`
-- `/ll:wire-issue` - 2026-05-27T22:22:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4eb3a107-2ec1-41bd-8a12-54c4a785770a.jsonl`
-- `/ll:refine-issue` - 2026-05-27T22:15:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc6064e1-5abc-4291-80e1-7166397af8e6.jsonl`
-- `/ll:format-issue` - 2026-05-27T20:25:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/652005b7-b7e9-404a-9ee0-b21de41aeefa.jsonl`
-- `/ll:issue-size-review` - 2026-05-27T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f94f108-c36b-4b4d-b486-f41734145a41.jsonl`
-- `/ll:confidence-check` - 2026-05-27T22:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26ce65c9-f604-4d07-ab8b-653b4eb3c1b0.jsonl`
+- `/ll:ready-issue` - 2026-05-27T22:27:52 - `b372a37b-0b66-456e-af99-2cc6e5c0a993.jsonl`
+- `/ll:wire-issue` - 2026-05-27T22:22:27 - `4eb3a107-2ec1-41bd-8a12-54c4a785770a.jsonl`
+- `/ll:refine-issue` - 2026-05-27T22:15:22 - `bc6064e1-5abc-4291-80e1-7166397af8e6.jsonl`
+- `/ll:format-issue` - 2026-05-27T20:25:05 - `652005b7-b7e9-404a-9ee0-b21de41aeefa.jsonl`
+- `/ll:issue-size-review` - 2026-05-27T20:30:00Z - `5f94f108-c36b-4b4d-b486-f41734145a41.jsonl`
+- `/ll:confidence-check` - 2026-05-27T22:45:00 - `26ce65c9-f604-4d07-ab8b-653b4eb3c1b0.jsonl`
 
 ---
 

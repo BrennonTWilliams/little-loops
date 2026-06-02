@@ -208,11 +208,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
   - `docs/reference/CLI.md`: `ll-history` section notes `captured_at` / `completed_at` preference.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-18T22:34:16Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7af998df-c21c-4688-a42d-351d3cbb9b5b.jsonl`
-- `/ll:ready-issue` - 2026-04-18T22:29:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/693f620a-9592-40ea-9092-1faa4ef5a9a4.jsonl`
-- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e58df0f-c3c0-4e98-b115-f2aecae2688f.jsonl`
-- `/ll:refine-issue` - 2026-04-18T22:11:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2fd4193-ac00-45c4-9296-d01de4f293d7.jsonl`
-- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15c98b83-3ad9-479c-a58c-76eec31c24c2.jsonl`
-- `/ll:wire-issue` - 2026-04-18T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/memory/`
-- `/ll:refine-issue` - 2026-04-18T21:59:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cab24eb-3ef5-48d3-8e04-94d390a03882.jsonl`
-- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1357a791-c921-47ef-95b7-1d0a7b03979b.jsonl`
+- `/ll:manage-issue` - 2026-04-18T22:34:16Z - `7af998df-c21c-4688-a42d-351d3cbb9b5b.jsonl`
+- `/ll:ready-issue` - 2026-04-18T22:29:01 - `693f620a-9592-40ea-9092-1faa4ef5a9a4.jsonl`
+- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `1e58df0f-c3c0-4e98-b115-f2aecae2688f.jsonl`
+- `/ll:refine-issue` - 2026-04-18T22:11:18 - `f2fd4193-ac00-45c4-9296-d01de4f293d7.jsonl`
+- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `15c98b83-3ad9-479c-a58c-76eec31c24c2.jsonl`
+- `/ll:wire-issue` - 2026-04-18T22:30:00
+- `/ll:refine-issue` - 2026-04-18T21:59:02 - `0cab24eb-3ef5-48d3-8e04-94d390a03882.jsonl`
+- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `1357a791-c921-47ef-95b7-1d0a7b03979b.jsonl`

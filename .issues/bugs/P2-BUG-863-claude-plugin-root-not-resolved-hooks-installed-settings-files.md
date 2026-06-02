@@ -183,19 +183,19 @@ Removed the hooks installation step entirely from both skill files. The root cau
 ---
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-04-12T21:55:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e49c0347-17ff-4e30-950a-dc1672a9464b.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70494509-dcbf-4a7d-9c33-38b2acf1602c.jsonl`
-- `/ll:wire-issue` - 2026-04-12T21:41:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afe704b8-ebc5-45d8-8fb7-81c53b3abe43.jsonl`
-- `/ll:refine-issue` - 2026-04-12T21:30:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34932e3c-e378-4fd7-9886-68460b918395.jsonl`
-- `hook:posttooluse-git-mv` - 2026-04-12T21:19:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4eedc92-7d36-48db-b6c4-024d421aeb96.jsonl`
-- `/ll:ready-issue` - 2026-03-23T21:06:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/175d1c25-3bc3-4807-a0b7-0511897a7a1a.jsonl`
-- `/ll:refine-issue` - 2026-03-23T21:03:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9347f1dd-86de-45fe-80c1-0777f09e8214.jsonl`
-- `/ll:confidence-check` - 2026-03-23T21:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/866bb962-c943-47d7-87e5-7be36e498342.jsonl`
-- `/ll:refine-issue` - 2026-03-23T20:53:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35b87f24-5f70-4b60-a5a7-ff0addd4adc0.jsonl`
-- `/ll:format-issue` - 2026-03-23T20:48:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6481bfd-325d-45f8-883c-848fa8beaa77.jsonl`
-- `/ll:capture-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/855beb9e-af12-4065-bc95-c436eff3069d.jsonl`
-- `/ll:manage-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-04-12T21:55:14 - `e49c0347-17ff-4e30-950a-dc1672a9464b.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `70494509-dcbf-4a7d-9c33-38b2acf1602c.jsonl`
+- `/ll:wire-issue` - 2026-04-12T21:41:24 - `afe704b8-ebc5-45d8-8fb7-81c53b3abe43.jsonl`
+- `/ll:refine-issue` - 2026-04-12T21:30:13 - `34932e3c-e378-4fd7-9886-68460b918395.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-12T21:19:52 - `a4eedc92-7d36-48db-b6c4-024d421aeb96.jsonl`
+- `/ll:ready-issue` - 2026-03-23T21:06:49 - `175d1c25-3bc3-4807-a0b7-0511897a7a1a.jsonl`
+- `/ll:refine-issue` - 2026-03-23T21:03:40 - `9347f1dd-86de-45fe-80c1-0777f09e8214.jsonl`
+- `/ll:confidence-check` - 2026-03-23T21:30:00 - `866bb962-c943-47d7-87e5-7be36e498342.jsonl`
+- `/ll:refine-issue` - 2026-03-23T20:53:22 - `35b87f24-5f70-4b60-a5a7-ff0addd4adc0.jsonl`
+- `/ll:format-issue` - 2026-03-23T20:48:29 - `d6481bfd-325d-45f8-883c-848fa8beaa77.jsonl`
+- `/ll:capture-issue` - 2026-03-23T00:00:00Z - `855beb9e-af12-4065-bc95-c436eff3069d.jsonl`
+- `/ll:manage-issue` - 2026-03-23T00:00:00Z - `current.jsonl`
 
 ---
 
@@ -219,7 +219,7 @@ The previous resolution added a `${CLAUDE_PLUGIN_ROOT}` → `pwd` substitution s
 2. `skills/configure/areas.md` — Replace the `hooks install` Step 3 merge block with a note that hooks are automatic; direct user to `/ll:configure hooks show` to verify.
 3. Update this issue: `status: open` → `status: completed` with the correct resolution note after implementing.
 
-- `/ll:capture-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff137a9f-150a-48ed-bb35-e478eb4b4fb4.jsonl`
+- `/ll:capture-issue` - 2026-04-12T00:00:00Z - `ff137a9f-150a-48ed-bb35-e478eb4b4fb4.jsonl`
 
 ### Codebase Research Findings
 

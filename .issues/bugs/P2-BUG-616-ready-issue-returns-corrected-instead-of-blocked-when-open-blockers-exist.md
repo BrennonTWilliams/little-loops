@@ -137,12 +137,12 @@ Completed
 - BUG-617
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
-- `/ll:capture-issue` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec3d1ef8-aeec-4ccb-bd08-ffea1f74e5ef.jsonl`
+- `/ll:manage-issue` - 2026-03-06T00:00:00Z - `ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:capture-issue` - 2026-03-06T00:00:00Z - `ec3d1ef8-aeec-4ccb-bd08-ffea1f74e5ef.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID, DEP_ISSUES: circular dep with BUG-617 fixed (changed Blocked By to Related, added Blocks)
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bc080c9-9927-4928-8886-2faf81c31f92.jsonl`
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bc080c9-9927-4928-8886-2faf81c31f92.jsonl`
 - `/ll:refine-issue` - 2026-03-07T03:44:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84d93c18-f729-4cd9-b9c3-7999ecffeae1.jsonl`
 - `/ll:ready-issue` - 2026-03-07T04:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7e9630a-0d1b-4f88-880b-9943a12c5c71.jsonl`
 - `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4b5caf30-71a2-4fbb-ab07-56d5862b8a76.jsonl`
-- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5086416e-eec9-4168-aeef-1b6ab9549a6d.jsonl`
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `5086416e-eec9-4168-aeef-1b6ab9549a6d.jsonl`

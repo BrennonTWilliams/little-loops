@@ -104,10 +104,10 @@ Premature handoffs interrupt long-running sessions unnecessarily, force users to
 bug, context-monitor, hooks, accuracy
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-19T04:20:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c4003e03-570d-4698-b2d1-1b2752853fdb.jsonl`
-- `/ll:refine-issue` - 2026-03-19T04:09:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/577cb407-2c53-42ff-9cc5-923c88fb7a19.jsonl`
-- `/ll:refine-issue` - 2026-03-19T04:09:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28fae77f-f951-4427-bc31-ccdf8679e0c6.jsonl`
-- `/ll:capture-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11790a5c-4ad1-498a-9649-93255e24e9c4.jsonl`
+- `/ll:ready-issue` - 2026-03-19T04:20:11 - `c4003e03-570d-4698-b2d1-1b2752853fdb.jsonl`
+- `/ll:refine-issue` - 2026-03-19T04:09:58 - `577cb407-2c53-42ff-9cc5-923c88fb7a19.jsonl`
+- `/ll:refine-issue` - 2026-03-19T04:09:15 - `28fae77f-f951-4427-bc31-ccdf8679e0c6.jsonl`
+- `/ll:capture-issue` - 2026-03-18T00:00:00Z - `11790a5c-4ad1-498a-9649-93255e24e9c4.jsonl`
 
 ---
 ## Resolution

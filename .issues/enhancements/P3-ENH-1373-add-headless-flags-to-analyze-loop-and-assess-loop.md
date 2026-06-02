@@ -181,9 +181,9 @@ Added `--skip-issue-creation` and `--auto` flags to both `/ll:analyze-loop` (Ste
 **Completed** | Created: 2026-05-06 | Completed: 2026-05-06 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-06T18:11:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/617c17c5-3d4c-49c3-b7de-be5590f6346b.jsonl`
-- `/ll:refine-issue` - 2026-05-06T18:05:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fbc40eb3-e3ca-4350-ba0a-67dedf44a51c.jsonl`
-- `/ll:format-issue` - 2026-05-06T17:59:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81732e05-6dae-4a88-848e-c7f2ab988b76.jsonl`
-- `/ll:capture-issue` - 2026-05-06T17:56:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/484c72e4-5eaa-4465-a207-cc2a1d3e75ea.jsonl`
-- `/ll:confidence-check` - 2026-05-06T18:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f027346-babc-453f-9fe6-f810e69e4a86.jsonl`
-- `/ll:manage-issue` - 2026-05-06T18:14:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/617c17c5-3d4c-49c3-b7de-be5590f6346b.jsonl`
+- `/ll:ready-issue` - 2026-05-06T18:11:56 - `617c17c5-3d4c-49c3-b7de-be5590f6346b.jsonl`
+- `/ll:refine-issue` - 2026-05-06T18:05:30 - `fbc40eb3-e3ca-4350-ba0a-67dedf44a51c.jsonl`
+- `/ll:format-issue` - 2026-05-06T17:59:14 - `81732e05-6dae-4a88-848e-c7f2ab988b76.jsonl`
+- `/ll:capture-issue` - 2026-05-06T17:56:49Z - `484c72e4-5eaa-4465-a207-cc2a1d3e75ea.jsonl`
+- `/ll:confidence-check` - 2026-05-06T18:30:00Z - `1f027346-babc-453f-9fe6-f810e69e4a86.jsonl`
+- `/ll:manage-issue` - 2026-05-06T18:14:54Z - `617c17c5-3d4c-49c3-b7de-be5590f6346b.jsonl`

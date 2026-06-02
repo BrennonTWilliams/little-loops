@@ -314,13 +314,13 @@ Implemented 2026-04-14 via `/ll:manage-issue bug fix BUG-1108`.
 **Verification**: `python -m pytest scripts/tests/ --ignore=scripts/tests/test_update_skill.py` → 4788 passed, 5 skipped. `ruff check scripts/` → all checks passed. `python -m little_loops.generate_schemas docs/reference/schemas` → 21 schemas regenerated. The 2 `test_update_skill.py` failures are pre-existing marketplace version drift unrelated to this change.
 
 ## Session Log
-- `/ll:manage-issue bug fix BUG-1108` - 2026-04-14T14:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0195a231-de18-44e9-9535-5e854b3d3ad1.jsonl`
-- `/ll:ready-issue` - 2026-04-14T18:54:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e398c2f-92ed-4839-9487-4c5d4cf089cc.jsonl`
-- `/ll:refine-issue` - 2026-04-14T18:51:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db9b5fb3-380a-4219-addb-6e5e6ff1435f.jsonl`
-- `/ll:confidence-check` - 2026-04-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:wire-issue` - 2026-04-14T17:45:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9622453-ef85-41be-ba58-37fdc2a25853.jsonl`
-- `/ll:refine-issue` - 2026-04-14T17:28:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a46c6016-f36a-4046-8296-d7eefba32350.jsonl`
-- `/ll:issue-size-review` - 2026-04-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4abdbd46-1b62-4801-9d00-a2569583afde.jsonl`
+- `/ll:manage-issue bug fix BUG-1108` - 2026-04-14T14:30:00Z - `0195a231-de18-44e9-9535-5e854b3d3ad1.jsonl`
+- `/ll:ready-issue` - 2026-04-14T18:54:42 - `7e398c2f-92ed-4839-9487-4c5d4cf089cc.jsonl`
+- `/ll:refine-issue` - 2026-04-14T18:51:30 - `db9b5fb3-380a-4219-addb-6e5e6ff1435f.jsonl`
+- `/ll:confidence-check` - 2026-04-14T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:wire-issue` - 2026-04-14T17:45:55 - `c9622453-ef85-41be-ba58-37fdc2a25853.jsonl`
+- `/ll:refine-issue` - 2026-04-14T17:28:04 - `a46c6016-f36a-4046-8296-d7eefba32350.jsonl`
+- `/ll:issue-size-review` - 2026-04-14T00:00:00Z - `4abdbd46-1b62-4801-9d00-a2569583afde.jsonl`
 
 ---
 

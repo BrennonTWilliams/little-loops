@@ -289,14 +289,14 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 - **Compact-source filtering undecided**: Test case 6 defers the decision to implementation; must be explicitly decided and documented in the script comment.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-02T02:42:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d66dd1b0-da8a-48e4-b8aa-f0a5ca081782.jsonl`
-- `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29f10429-7b81-4ece-9545-cd5da490acdd.jsonl`
-- `/ll:wire-issue` - 2026-05-02T02:36:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1239fb73-74ff-467e-9e81-2b5a1731b3f1.jsonl`
-- `/ll:refine-issue` - 2026-05-02T02:31:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/64ddeff9-9667-44e6-b298-8265e21a21fb.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
-- `/ll:verify-issues` - 2026-04-26T19:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
-- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
-- `/ll:issue-size-review` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29f10429-7b81-4ece-9545-cd5da490acdd.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-02T02:42:20 - `d66dd1b0-da8a-48e4-b8aa-f0a5ca081782.jsonl`
+- `/ll:confidence-check` - 2026-05-01T00:00:00 - `29f10429-7b81-4ece-9545-cd5da490acdd.jsonl`
+- `/ll:wire-issue` - 2026-05-02T02:36:40 - `1239fb73-74ff-467e-9e81-2b5a1731b3f1.jsonl`
+- `/ll:refine-issue` - 2026-05-02T02:31:16 - `64ddeff9-9667-44e6-b298-8265e21a21fb.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
+- `/ll:verify-issues` - 2026-04-26T19:34:07 - `316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+- `/ll:issue-size-review` - 2026-05-01T00:00:00 - `29f10429-7b81-4ece-9545-cd5da490acdd.jsonl`
 
 ---
 

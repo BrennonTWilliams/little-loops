@@ -297,15 +297,15 @@ _Added by `/ll:confidence-check` on 2026-05-30_
 - Change surface spans 6 existing files with varying modification types (set addition, table row, count bump, test class) — verification requires checking every site
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-31T04:26:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee2d1106-3483-4188-b4d2-88a104011060.jsonl`
-- `/ll:wire-issue` - 2026-05-31T03:31:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99584557-a170-433a-8c61-eedd8d845509.jsonl`
-- `/ll:refine-issue` - 2026-05-31T03:23:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cda8a917-6813-4923-ad31-5889e7ef70df.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:confidence-check` - 2026-05-29T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a99f544-bd0d-4ac3-a506-f33ffd4a0bf7.jsonl`
-- `/ll:confidence-check` - 2026-05-30T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2210570a-56ab-4d7f-83a7-9929d3d9d025.jsonl`
-- `/ll:wire-issue` - 2026-05-30T03:35:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a79d03a-934b-4752-a81b-96cb9e93728e.jsonl`
-- `/ll:refine-issue` - 2026-05-30T03:27:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a1d51e1b-fa76-4e37-b9b8-b2f75b1951eb.jsonl`
-- `/ll:capture-issue` - 2026-05-27T18:08:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55979bca-15d7-443c-b4d3-a76d29148106.jsonl`
-- `/ll:refine-issue` - 2026-05-31T02:50:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9109a4b-4e94-4dd5-bb69-010258918170.jsonl`
-- `/ll:wire-issue` - 2026-05-30T04:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9109a4b-4e94-4dd5-bb69-010258918170.jsonl`
-- `/ll:confidence-check` - 2026-05-30T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d644c4c-dc2e-4c46-81ec-295af344b92f.jsonl`
+- `/ll:ready-issue` - 2026-05-31T04:26:22 - `ee2d1106-3483-4188-b4d2-88a104011060.jsonl`
+- `/ll:wire-issue` - 2026-05-31T03:31:18 - `99584557-a170-433a-8c61-eedd8d845509.jsonl`
+- `/ll:refine-issue` - 2026-05-31T03:23:33 - `cda8a917-6813-4923-ad31-5889e7ef70df.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:15 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:confidence-check` - 2026-05-29T19:00:00Z - `6a99f544-bd0d-4ac3-a506-f33ffd4a0bf7.jsonl`
+- `/ll:confidence-check` - 2026-05-30T00:00:00Z - `2210570a-56ab-4d7f-83a7-9929d3d9d025.jsonl`
+- `/ll:wire-issue` - 2026-05-30T03:35:18 - `7a79d03a-934b-4752-a81b-96cb9e93728e.jsonl`
+- `/ll:refine-issue` - 2026-05-30T03:27:54 - `a1d51e1b-fa76-4e37-b9b8-b2f75b1951eb.jsonl`
+- `/ll:capture-issue` - 2026-05-27T18:08:06Z - `55979bca-15d7-443c-b4d3-a76d29148106.jsonl`
+- `/ll:refine-issue` - 2026-05-31T02:50:00Z - `b9109a4b-4e94-4dd5-bb69-010258918170.jsonl`
+- `/ll:wire-issue` - 2026-05-30T04:30:00Z - `b9109a4b-4e94-4dd5-bb69-010258918170.jsonl`
+- `/ll:confidence-check` - 2026-05-30T00:00:00Z - `4d644c4c-dc2e-4c46-81ec-295af344b92f.jsonl`

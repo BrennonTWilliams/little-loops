@@ -223,17 +223,17 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 - `readiness_threshold` in config is 85 — the manage-issue Phase 2.5 gate will flag this score (80); must unblock deps to raise score to 100 before automated pipelines will proceed without a warning.
 
 ## Session Log
-- `/ll:verify-issues` - 2026-05-14T20:42:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-10T19:43:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-10T14:28:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/062ec8c6-6424-4417-9cb0-d25f3f41a8bc.jsonl`
-- `/ll:refine-issue` - 2026-05-02T04:12:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e3297cf-0323-4e90-9d85-590243f90677.jsonl`
-- `/ll:wire-issue` - 2026-05-02T04:07:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19d3bdf4-5f60-472b-9dbc-a3be86bef0ca.jsonl`
-- `/ll:refine-issue` - 2026-05-02T04:00:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/555306d2-cad7-44c8-a701-8d11f2961594.jsonl`
-- `/ll:issue-size-review` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085730b-f073-48ce-bcdd-8508092f06ce.jsonl`
+- `/ll:verify-issues` - 2026-05-14T20:42:06 - `08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-10T19:43:42 - `6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-10T14:28:00 - `87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:21:16 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:confidence-check` - 2026-05-01T00:00:00 - `062ec8c6-6424-4417-9cb0-d25f3f41a8bc.jsonl`
+- `/ll:refine-issue` - 2026-05-02T04:12:09 - `3e3297cf-0323-4e90-9d85-590243f90677.jsonl`
+- `/ll:wire-issue` - 2026-05-02T04:07:14 - `19d3bdf4-5f60-472b-9dbc-a3be86bef0ca.jsonl`
+- `/ll:refine-issue` - 2026-05-02T04:00:14 - `555306d2-cad7-44c8-a701-8d11f2961594.jsonl`
+- `/ll:issue-size-review` - 2026-05-01T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:confidence-check` - 2026-05-01T00:00:00 - `1085730b-f073-48ce-bcdd-8508092f06ce.jsonl`
 
 ---
 

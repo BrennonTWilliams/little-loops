@@ -154,7 +154,7 @@ Add the three optional fields to `hooks/hooks.json`:
 
 ## Session Log
 - /ll:format-issue --all --auto - 2026-02-13
-- /ll:manage-issue - 2026-02-13T18:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0fbcbd8f-a6b8-4235-a420-cb48a1a42320.jsonl`
+- /ll:manage-issue - 2026-02-13T18:00:00Z - `0fbcbd8f-a6b8-4235-a420-cb48a1a42320.jsonl`
 
 ---
 

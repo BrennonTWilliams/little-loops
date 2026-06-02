@@ -140,13 +140,13 @@ N/A - No public API changes (documentation-only enhancement)
 - All referenced code files exist: `scripts/little_loops/fsm/schema.py`, `scripts/little_loops/fsm/executor.py`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-16T20:24:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cfbbc21-6b64-450a-a7fd-588221611c38.jsonl`
-- `/ll:confidence-check` - 2026-03-16T19:26:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:refine-issue` - 2026-03-16T19:25:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:confidence-check` - 2026-03-16T19:21:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:refine-issue` - 2026-03-16T19:20:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:confidence-check` - 2026-03-16T19:16:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:refine-issue` - 2026-03-16T19:15:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:verify-issues` - 2026-03-16T19:09:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:format-issue` - 2026-03-16T19:06:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:ready-issue` - 2026-03-16T20:24:17 - `8cfbbc21-6b64-450a-a7fd-588221611c38.jsonl`
+- `/ll:confidence-check` - 2026-03-16T19:26:51 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:refine-issue` - 2026-03-16T19:25:28 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:confidence-check` - 2026-03-16T19:21:56 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:refine-issue` - 2026-03-16T19:20:11 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:confidence-check` - 2026-03-16T19:16:36 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:refine-issue` - 2026-03-16T19:15:16 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:verify-issues` - 2026-03-16T19:09:05 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:format-issue` - 2026-03-16T19:06:44 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`

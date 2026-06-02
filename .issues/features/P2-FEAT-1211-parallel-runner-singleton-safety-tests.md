@@ -162,9 +162,9 @@ _Added by `/ll:confidence-check` on 2026-04-21_
 - **FEAT-1203 inconsistency**: FEAT-1203 is marked completed in `.issues/completed/`, but its dependency FEAT-1202 is unresolved and the target file doesn't exist — possible premature completion marking worth investigating before scheduling this issue.
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-21T05:32:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de43bbd3-c5b0-4b17-a8f0-697bc6f0cd56.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cedf469-785d-4536-a515-2b08375c03a8.jsonl`
-- `/ll:wire-issue` - 2026-04-21T05:29:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c90b360a-a58f-4344-920a-d57458c97bdd.jsonl`
-- `/ll:refine-issue` - 2026-04-21T05:24:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c00710c-8d98-488e-9704-7ede190bec4f.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dfd96a3-66df-4e02-b30b-139bf75f812f.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1968b1de-1999-4bd4-9f8b-f1ac52011ad8.jsonl`
+- `/ll:refine-issue` - 2026-04-21T05:32:50 - `de43bbd3-c5b0-4b17-a8f0-697bc6f0cd56.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `2cedf469-785d-4536-a515-2b08375c03a8.jsonl`
+- `/ll:wire-issue` - 2026-04-21T05:29:12 - `c90b360a-a58f-4344-920a-d57458c97bdd.jsonl`
+- `/ll:refine-issue` - 2026-04-21T05:24:03 - `3c00710c-8d98-488e-9704-7ede190bec4f.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `0dfd96a3-66df-4e02-b30b-139bf75f812f.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `1968b1de-1999-4bd4-9f8b-f1ac52011ad8.jsonl`

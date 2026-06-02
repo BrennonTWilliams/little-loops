@@ -251,11 +251,11 @@ _Updated by `/ll:confidence-check` on 2026-05-24_
 - **Context variable snapshot format** — API interface shows `var_a=1  var_b=hello` but `state_enter` events carry only `{state, iteration}`; align callback output with `_format_history_event()` rendering (which handles `route`, `evaluate` events) rather than adding custom `executor.fsm.context` reads unless variable snapshots are explicitly desired.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T22:32:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f53c3dee-9e45-497b-a719-45102bcb9083.jsonl`
-- `/ll:confidence-check` - 2026-05-24T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7f2a1ff-6ab8-498b-a8bf-37c6705ab902.jsonl`
-- `/ll:capture-issue` - 2026-05-24T22:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51fa1ae1-7bfb-419b-874a-53047c48bfa8.jsonl`
-- `/ll:confidence-check` - 2026-05-24T22:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51fa1ae1-7bfb-419b-874a-53047c48bfa8.jsonl`
-- `/ll:wire-issue` - 2026-05-24T21:54:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6610c4b9-00d0-4e04-aeda-b66222aa4c9b.jsonl`
-- `/ll:refine-issue` - 2026-05-24T21:43:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa77648f-bc3c-435e-907c-c7c75f43ac5c.jsonl`
-- `/ll:format-issue` - 2026-05-24T21:37:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d35b8392-4d1a-4657-87ba-0bc716fe85cc.jsonl`
+- `/ll:ready-issue` - 2026-05-24T22:32:49 - `f53c3dee-9e45-497b-a719-45102bcb9083.jsonl`
+- `/ll:confidence-check` - 2026-05-24T23:00:00 - `e7f2a1ff-6ab8-498b-a8bf-37c6705ab902.jsonl`
+- `/ll:capture-issue` - 2026-05-24T22:15:00 - `51fa1ae1-7bfb-419b-874a-53047c48bfa8.jsonl`
+- `/ll:confidence-check` - 2026-05-24T22:10:00 - `51fa1ae1-7bfb-419b-874a-53047c48bfa8.jsonl`
+- `/ll:wire-issue` - 2026-05-24T21:54:05 - `6610c4b9-00d0-4e04-aeda-b66222aa4c9b.jsonl`
+- `/ll:refine-issue` - 2026-05-24T21:43:52 - `fa77648f-bc3c-435e-907c-c7c75f43ac5c.jsonl`
+- `/ll:format-issue` - 2026-05-24T21:37:17 - `d35b8392-4d1a-4657-87ba-0bc716fe85cc.jsonl`
 - `/ll:capture-issue` - 2026-05-24T21:32:58Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/844eef49-d6af-471d-b715-a770004ddedf.jsonl`

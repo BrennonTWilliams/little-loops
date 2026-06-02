@@ -267,14 +267,14 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - Recommendation: fix the parser first; option (2) is unnecessary if the parser does its job. The issue's framing ("broken descriptions") should be updated to "parser does not read block-scalar descriptions."
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-23T06:29:52Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/111182d8-94d8-4805-a59e-95797a4cc7e6.jsonl`
-- `/ll:ready-issue` - 2026-05-23T06:22:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee89d3b0-3ebe-456c-beda-8434eb76e869.jsonl`
-- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29031fad-bb1d-4723-8ce9-fd7709708f7a.jsonl`
-- `/ll:wire-issue` - 2026-05-23T05:27:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a25d47f-eb12-4ba8-b0ff-4dec62b2a053.jsonl`
-- `/ll:decide-issue` - 2026-05-23T05:23:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cd9991e-4e31-4055-ae7c-4cb812fac965.jsonl`
-- `/ll:refine-issue` - 2026-05-23T05:10:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/222e4590-5233-47fc-bd93-c624dbea2958.jsonl`
-- `/ll:verify-issues` - 2026-05-23T00:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
-- `/ll:format-issue` - 2026-05-22T22:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da2cdb66-57d9-4b9e-ad13-a2228c32b4d3.jsonl`
+- `/ll:manage-issue` - 2026-05-23T06:29:52Z - `111182d8-94d8-4805-a59e-95797a4cc7e6.jsonl`
+- `/ll:ready-issue` - 2026-05-23T06:22:23 - `ee89d3b0-3ebe-456c-beda-8434eb76e869.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `29031fad-bb1d-4723-8ce9-fd7709708f7a.jsonl`
+- `/ll:wire-issue` - 2026-05-23T05:27:59 - `6a25d47f-eb12-4ba8-b0ff-4dec62b2a053.jsonl`
+- `/ll:decide-issue` - 2026-05-23T05:23:28 - `2cd9991e-4e31-4055-ae7c-4cb812fac965.jsonl`
+- `/ll:refine-issue` - 2026-05-23T05:10:25 - `222e4590-5233-47fc-bd93-c624dbea2958.jsonl`
+- `/ll:verify-issues` - 2026-05-23T00:35:43 - `2955f8fa-d24c-40f9-9d2d-3d46811662f9.jsonl`
+- `/ll:format-issue` - 2026-05-22T22:12:28 - `da2cdb66-57d9-4b9e-ad13-a2228c32b4d3.jsonl`
 - `/ll:capture-issue` - 2026-05-22T19:19:39Z - conversation analysis
 
 ## Status

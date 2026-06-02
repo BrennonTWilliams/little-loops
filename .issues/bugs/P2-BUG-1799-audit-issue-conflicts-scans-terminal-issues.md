@@ -162,13 +162,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Breaking Change**: No — strictly fewer files audited
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-30T04:17:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7949c439-c2bc-449a-800f-259e92e11e55.jsonl`
-- `/ll:decide-issue` - 2026-05-30T04:13:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20913251-e684-466b-a3be-c8bc94f7c706.jsonl`
-- `/ll:confidence-check` - 2026-05-30T04:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e2daf50-26d6-4657-859b-a4e70fd08209.jsonl`
-- `/ll:refine-issue` - 2026-05-30T04:04:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6224dad8-97d7-4fe1-b6d9-3e126ce2aa37.jsonl`
-- `/ll:format-issue` - 2026-05-29T21:11:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d42814df-045f-41ae-b065-5f4d670ef04d.jsonl`
-- `/ll:capture-issue` - 2026-05-29T20:55:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
-- `/ll:confidence-check` - 2026-05-30T04:22:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75253662-ac29-4581-81b8-599f2ab844d4.jsonl`
+- `/ll:ready-issue` - 2026-05-30T04:17:23 - `7949c439-c2bc-449a-800f-259e92e11e55.jsonl`
+- `/ll:decide-issue` - 2026-05-30T04:13:27 - `20913251-e684-466b-a3be-c8bc94f7c706.jsonl`
+- `/ll:confidence-check` - 2026-05-30T04:15:00 - `5e2daf50-26d6-4657-859b-a4e70fd08209.jsonl`
+- `/ll:refine-issue` - 2026-05-30T04:04:26 - `6224dad8-97d7-4fe1-b6d9-3e126ce2aa37.jsonl`
+- `/ll:format-issue` - 2026-05-29T21:11:18 - `d42814df-045f-41ae-b065-5f4d670ef04d.jsonl`
+- `/ll:capture-issue` - 2026-05-29T20:55:00Z - `53b77908-ee0a-4a6c-bdad-0674c8f94335.jsonl`
+- `/ll:confidence-check` - 2026-05-30T04:22:00 - `75253662-ac29-4581-81b8-599f2ab844d4.jsonl`
 
 ## Status
 

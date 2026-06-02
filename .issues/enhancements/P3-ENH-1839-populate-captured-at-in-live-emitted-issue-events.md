@@ -153,12 +153,12 @@ No public API changes. `captured_at` is an existing column in `issue_events`; th
 `session-store`, `issue-lifecycle`, `history-db`, `enhancement`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T11:41:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a286eea1-c41c-4201-bcb4-91cea0e98d65.jsonl`
-- `/ll:confidence-check` - 2026-06-01T12:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c45015c-035b-44de-baea-dddaf95c3385.jsonl`
-- `/ll:wire-issue` - 2026-06-01T11:35:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/13aa779a-fb54-4ecb-a824-b2c6b963f726.jsonl`
-- `/ll:refine-issue` - 2026-06-01T11:28:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7066e3cc-b95f-4bd0-8d3f-82278ee2d580.jsonl`
-- `/ll:format-issue` - 2026-06-01T03:54:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2276f3e0-d626-41d7-ba0a-b79943225ed9.jsonl`
-- `/ll:capture-issue` - 2026-06-01T03:52:30Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43c6ff18-cbc3-4adc-b83d-de514a9863c0.jsonl`
+- `/ll:ready-issue` - 2026-06-01T11:41:08 - `a286eea1-c41c-4201-bcb4-91cea0e98d65.jsonl`
+- `/ll:confidence-check` - 2026-06-01T12:00:00Z - `6c45015c-035b-44de-baea-dddaf95c3385.jsonl`
+- `/ll:wire-issue` - 2026-06-01T11:35:19 - `13aa779a-fb54-4ecb-a824-b2c6b963f726.jsonl`
+- `/ll:refine-issue` - 2026-06-01T11:28:55 - `7066e3cc-b95f-4bd0-8d3f-82278ee2d580.jsonl`
+- `/ll:format-issue` - 2026-06-01T03:54:38 - `2276f3e0-d626-41d7-ba0a-b79943225ed9.jsonl`
+- `/ll:capture-issue` - 2026-06-01T03:52:30Z - `43c6ff18-cbc3-4adc-b83d-de514a9863c0.jsonl`
 
 ## Status
 

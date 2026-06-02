@@ -114,11 +114,11 @@ Fixed by adding `2>/dev/null || echo` fallbacks to all jq calls missing them:
 Verified: `echo "" | bash hooks/scripts/context-monitor.sh` and `echo "" | bash hooks/scripts/issue-completion-log.sh` both exit 0.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-23T23:23:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07eabfc6-8cf9-4a50-b98f-384bafdc2aa3.jsonl`
-- `/ll:confidence-check` - 2026-03-23T22:50:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd58a419-5ad1-4e87-81d3-6a17427e8a74.jsonl`
-- `/ll:verify-issues` - 2026-03-23T22:39:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/152c2182-2d1d-4797-9a20-b5baad497624.jsonl`
-- `/ll:refine-issue` - 2026-03-23T22:32:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/667ecdfb-f85c-42f2-aa72-56e3ee0847e1.jsonl`
-- `/ll:format-issue` - 2026-03-23T22:29:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7cf4d369-abe8-4923-9eda-5c52bf33e224.jsonl`
+- `/ll:ready-issue` - 2026-03-23T23:23:05 - `07eabfc6-8cf9-4a50-b98f-384bafdc2aa3.jsonl`
+- `/ll:confidence-check` - 2026-03-23T22:50:00 - `fd58a419-5ad1-4e87-81d3-6a17427e8a74.jsonl`
+- `/ll:verify-issues` - 2026-03-23T22:39:08 - `152c2182-2d1d-4797-9a20-b5baad497624.jsonl`
+- `/ll:refine-issue` - 2026-03-23T22:32:33 - `667ecdfb-f85c-42f2-aa72-56e3ee0847e1.jsonl`
+- `/ll:format-issue` - 2026-03-23T22:29:29 - `7cf4d369-abe8-4923-9eda-5c52bf33e224.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/520e79f8-0528-4c6d-92c0-e09d2d2aa372.jsonl`
 
 ---

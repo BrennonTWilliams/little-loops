@@ -123,6 +123,22 @@ _Refinement note (2026-05-29): The Playwright screenshot command has two structu
 
 _Both emit `echo "CAPTURED"` and evaluate via `output_contains`. The `playwright_screenshot` fragment must parameterize the file path source (context vs. captured) and the source filename (`index.html` vs. `image.svg`)._
 
+#### Generator-Evaluator Variation Corrections
+
+_Added by `/ll:refine-issue` (2026-06-01) — confirmed from fresh codebase read:_
+
+**Screenshot state name**: `html-website-generator.yaml` names its screenshot state `capture` (not `evaluate`). Implementation Step 4 must remove `generate`, `capture` (not `evaluate`), and `score` from this loop when converting to a thin wrapper.
+
+**Post-generate states**: `html-website-generator.yaml` routes `score.on_yes → smoke_test`; `hitl-md.yaml` routes `score.on_yes → finalize`. These states follow the extracted cycle and must be retained in the parent wrappers (not removed). The thin wrapper's delegating `loop:` state sets `on_yes: smoke_test` or `on_yes: finalize` respectively — the sub-loop's `done` terminal maps to the parent `on_yes`.
+
+**Variation table additions/corrections** (rows missing from or wrong in the existing table above):
+
+| Feature | html-website-generator | svg-image-generator | html-anything | hitl-md | hitl-compare |
+|---------|----------------------|---------------------|---------------|---------|--------------|
+| Screenshot state name | `capture` | `evaluate` | `evaluate` | `evaluate` | `evaluate` |
+| Evaluate `on_error` | `failed` _(was `(unset)`)_ | `generate` | `score` | `generate` | `score` |
+| Score `on_yes` | `smoke_test` | `done` | `done` | `finalize` | `done` |
+
 #### Tagged-JSON Parsing Pattern
 
 All 3 integration loops share an identical algorithm:
@@ -150,6 +166,17 @@ The `incremental-refactor.yaml:34-37` outlier uses `action_type: slash_command` 
 **Test compatibility constraint** (see Tests section for details): `test_all_fragments_are_shell_type:879` and `test_all_fragments_have_exit_code_evaluate:886` in `test_fsm_fragments.py` assert ALL cli.yaml fragments have `action_type: shell` and `evaluate.type: exit_code`. The proposed `action_type: prompt` for `ll_commit` would violate both. Options: (a) use `action_type: shell` invoking `ll-commit` CLI, (b) add an allowlist exemption to the iteration tests, or (c) place `ll_commit` in a separate fragment library.
 
 > **Selected:** Option (c) — separate fragment library (`lib/prompt-fragments.yaml`) — `ll-commit` binary doesn't exist and would need creating from scratch; allowlist exemptions have zero precedent in `test_fsm_fragments.py`; `score-plan-quality.yaml` and `benchmark.yaml` are direct precedents for separate lib files with non-standard contracts.
+
+#### ENH-1854 Completion Status
+
+_Added by `/ll:refine-issue` (2026-06-01) — confirmed on disk:_
+
+ENH-1854 is **complete** (`.issues/completed/`). Both fragments now exist:
+- `scripts/little_loops/loops/lib/common.yaml` — `parse_tagged_json` fragment confirmed present
+- `scripts/little_loops/loops/lib/prompt-fragments.yaml` — `ll_commit` fragment confirmed present
+- `scripts/tests/test_fsm_fragments.py:1300` — `TestLlCommitFragment` class exists
+
+**Skip these Implementation Steps** — ENH-1854 scope, already done: **Step 3** (add `parse_tagged_json` to `common.yaml`), **Step 5** (convert 3 integration loops), **Step 9** (create `ll_commit` fragment), **Step 10** (convert 6 commit loops). Begin with Step 1 and proceed through Steps 2, 4, 6, 7, 8, 11–15.
 
 ### Decision Rationale
 
@@ -221,6 +248,16 @@ _Wiring pass added by `/ll:wire-issue` — tests that will need updating:_
 - `scripts/tests/test_builtin_loops.py` — **5 harness loop test classes will need significant restructuring** when `generate`/`evaluate`/`score` states are deleted and replaced with `loop:` delegation: `TestHtmlWebsiteGeneratorLoop:2783`, `TestSvgImageGeneratorLoop:2718`, `TestHtmlAnythingLoop:3130`, `TestHitlCompareLoop:3302`, `TestHitlMdLoop:3467`
 - `scripts/tests/test_ll_loop_commands.py` — subdirectory loop listing tests (lines 400-485) must include new `oracles/generator-evaluator.yaml`
 - `scripts/tests/test_doc_counts.py` — `test_oracle_capture_issue_is_runnable:122` shows the pattern; may need a corresponding `test_generator_evaluator_is_runnable` assertion
+
+_Test class line numbers updated (2026-06-01) — significant shifts since prior refinement passes:_
+- `TestHtmlWebsiteGeneratorLoop` now at line **2795** (was 2783)
+- `TestSvgImageGeneratorLoop` now at line **2888** (was 2718)
+- `TestHtmlAnythingLoop` now at line **3759** (was 3130)
+- `TestHitlCompareLoop` now at line **3931** (was 3302)
+- `TestHitlMdLoop` now at line **4096** (was 3467)
+- `TestReadyToImplementGateLoop` now at line **4564** (was 4552)
+- `TestAssumptionFirewallLoop` now at line **4611** (was 3826)
+- `TestScorePlanQualityFragment` now at line **1242** in `test_fsm_fragments.py` (was 1199)
 
 _Moved to ENH-1854_: `parse_tagged_json` fragment test, `ll_commit` fragment test class, 6 ll_commit loop structural tests.
 
@@ -346,19 +383,20 @@ _Added by `/ll:verify-issues` on 2026-06-01_
 - _Note (2026-06-01)_: `parse_tagged_json` and `lib/prompt-fragments.yaml` (`ll_commit`) split to ENH-1854
 
 ## Session Log
-- `/ll:confidence-check` - 2026-06-01T18:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2127b7f3-9b8d-4674-be8d-f44f8353a20c.jsonl`
-- `/ll:ready-issue` - 2026-06-01T17:07:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9bed3ff4-fec6-43d8-9a80-5017525d3250.jsonl`
-- `/ll:verify-issues` - 2026-06-01T14:29:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
-- `/ll:decide-issue` - 2026-05-31T21:45:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dce117cd-42e5-4d9f-a853-2edf8f80ce22.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:ready-issue` - 2026-05-29T08:11:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76b633ba-2671-4457-8679-cc688d74ce8c.jsonl`
-- `/ll:refine-issue` - 2026-05-29T06:51:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b19fe53-455f-4868-8b8e-6929aa73c9c6.jsonl`
-- `/ll:confidence-check` - 2026-05-29T19:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad84c1f4-e1cb-4d1e-9db8-e1661e645a49.jsonl`
-- `/ll:refine-issue` - 2026-05-29T06:15:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86848890-e72e-4e0f-b94e-c336729af630.jsonl`
-- `/ll:format-issue` - 2026-05-29T01:15:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29882a14-54b1-4f76-8bb9-fe34f236114f.jsonl`
+- `/ll:refine-issue` - 2026-06-02T02:25:47 - `4c5f61ff-1a8a-4865-8c66-68aa67d70e4c.jsonl`
+- `/ll:confidence-check` - 2026-06-01T18:00:00Z - `2127b7f3-9b8d-4674-be8d-f44f8353a20c.jsonl`
+- `/ll:ready-issue` - 2026-06-01T17:07:50 - `9bed3ff4-fec6-43d8-9a80-5017525d3250.jsonl`
+- `/ll:verify-issues` - 2026-06-01T14:29:19 - `f3a091ba-2869-499e-9de4-7f5c8ca96083.jsonl`
+- `/ll:decide-issue` - 2026-05-31T21:45:13 - `dce117cd-42e5-4d9f-a853-2edf8f80ce22.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:15 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:16 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:ready-issue` - 2026-05-29T08:11:22 - `76b633ba-2671-4457-8679-cc688d74ce8c.jsonl`
+- `/ll:refine-issue` - 2026-05-29T06:51:49 - `3b19fe53-455f-4868-8b8e-6929aa73c9c6.jsonl`
+- `/ll:confidence-check` - 2026-05-29T19:45:00Z - `ad84c1f4-e1cb-4d1e-9db8-e1661e645a49.jsonl`
+- `/ll:refine-issue` - 2026-05-29T06:15:30 - `86848890-e72e-4e0f-b94e-c336729af630.jsonl`
+- `/ll:format-issue` - 2026-05-29T01:15:45 - `29882a14-54b1-4f76-8bb9-fe34f236114f.jsonl`
 - `/ll:capture-issue` - 2026-05-29T01:01:55Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17b05161-9ff0-48f9-baaf-69470f937b48.jsonl`
-- `/ll:wire-issue` - 2026-05-29T19:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/<session>.jsonl`
+- `/ll:wire-issue` - 2026-05-29T19:30:00Z - `<session>.jsonl`
 
 ---
 

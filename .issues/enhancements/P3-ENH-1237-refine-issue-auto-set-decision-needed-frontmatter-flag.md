@@ -142,13 +142,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
   - `scripts/tests/test_refine_issue_command.py` — created with 12 structural assertions (all passing)
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-21T21:19:46Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-04-21T21:13:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57753c10-b893-4d28-9f7d-e3c6a427d797.jsonl`
-- `/ll:confidence-check` - 2026-04-21T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/adcfed5f-e3a2-4e93-8315-ec9f052d880a.jsonl`
-- `/ll:wire-issue` - 2026-04-21T21:06:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f6ce20b-9702-4231-a275-2b8d62b7bb5b.jsonl`
-- `/ll:refine-issue` - 2026-04-21T21:00:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/284a2edd-5323-45eb-a303-182bf4de36f8.jsonl`
+- `/ll:manage-issue` - 2026-04-21T21:19:46Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-04-21T21:13:34 - `57753c10-b893-4d28-9f7d-e3c6a427d797.jsonl`
+- `/ll:confidence-check` - 2026-04-21T22:00:00 - `adcfed5f-e3a2-4e93-8315-ec9f052d880a.jsonl`
+- `/ll:wire-issue` - 2026-04-21T21:06:29 - `5f6ce20b-9702-4231-a275-2b8d62b7bb5b.jsonl`
+- `/ll:refine-issue` - 2026-04-21T21:00:21 - `284a2edd-5323-45eb-a303-182bf4de36f8.jsonl`
 
-- `/ll:capture-issue` - 2026-04-21T20:38:05Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c8873df-f234-41f4-a242-d1cae3dc0002.jsonl`
+- `/ll:capture-issue` - 2026-04-21T20:38:05Z - `6c8873df-f234-41f4-a242-d1cae3dc0002.jsonl`
 
 ---
 

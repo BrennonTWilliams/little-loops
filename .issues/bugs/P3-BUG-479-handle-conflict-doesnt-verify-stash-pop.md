@@ -118,7 +118,7 @@ self._queue.put(request)
 - `scripts/tests/test_merge_coordinator.py`: Added `TestMergeStrategySkipsRebaseRetry::test_stash_pop_failure_after_rebase_marks_failed` to verify the failure path is taken and the request is not re-queued.
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
 - `/ll:manage-issue` - 2026-02-24 - fix BUG-479
 

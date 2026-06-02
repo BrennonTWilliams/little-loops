@@ -99,8 +99,8 @@ Use `_load_issues_with_status` from `search.py` (already implements status filte
 - [x] `--json` output includes the status filter used
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:ready-issue` - 2026-03-20T18:34:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f522464b-f9db-467e-b99b-78cd62f47af6.jsonl`
-- `/ll:verify-issues` - 2026-03-19T23:22:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-20T18:34:33 - `f522464b-f9db-467e-b99b-78cd62f47af6.jsonl`
+- `/ll:verify-issues` - 2026-03-19T23:22:48 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:scan-codebase` - 2026-03-19T22:12:56 - `f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`

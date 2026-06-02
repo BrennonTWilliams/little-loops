@@ -197,9 +197,9 @@ _Updated by `/ll:confidence-check` on 2026-04-21 (score improved 76→86 after r
 - **Nested-parallel test case (1/11) has a deferred API dependency.** `validate_fsm()` currently accepts a single `FSMLoop`; the nested-parallel test requires a cross-loop validation interface that FEAT-1074 must define first. Stub or skip this case until FEAT-1074's API is settled.
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-21T07:32:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6feb5576-8fea-4e0c-8c0c-321bf450c70a.jsonl`
-- `/ll:wire-issue` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e1c12cf-d8f2-462d-9a3e-06276aa95e4c.jsonl`
-- `/ll:refine-issue` - 2026-04-21T07:23:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e1c12cf-d8f2-462d-9a3e-06276aa95e4c.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b6f3646-002b-4241-b60d-d6d09e155cee.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e1c12cf-d8f2-462d-9a3e-06276aa95e4c.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/433437e6-196c-4090-b28d-f3683677a675.jsonl`
+- `/ll:refine-issue` - 2026-04-21T07:32:47 - `6feb5576-8fea-4e0c-8c0c-321bf450c70a.jsonl`
+- `/ll:wire-issue` - 2026-04-21T00:00:00 - `5e1c12cf-d8f2-462d-9a3e-06276aa95e4c.jsonl`
+- `/ll:refine-issue` - 2026-04-21T07:23:55 - `5e1c12cf-d8f2-462d-9a3e-06276aa95e4c.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `7b6f3646-002b-4241-b60d-d6d09e155cee.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `5e1c12cf-d8f2-462d-9a3e-06276aa95e4c.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `433437e6-196c-4090-b28d-f3683677a675.jsonl`

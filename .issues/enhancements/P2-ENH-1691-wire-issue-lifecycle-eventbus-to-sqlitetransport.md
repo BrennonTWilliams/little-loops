@@ -263,14 +263,14 @@ _Updated by `/ll:confidence-check` on 2026-05-26 (re-run after `/ll:wire-issue`;
 - ENH-1734: Documentation Updates for ENH-1691 EventBus Wiring
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f138859-02cf-4887-806e-2fe090003148.jsonl`
-- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1dab2222-8d7f-4ed5-9998-bb5ae8528310.jsonl`
-- `/ll:wire-issue` - 2026-05-27T00:07:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72065e62-8f35-44f0-9c47-2a55b9a150c6.jsonl`
-- `/ll:refine-issue` - 2026-05-26T23:59:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2a9f0d8e-0278-40d0-9635-e8605b3e2210.jsonl`
-- `/ll:format-issue` - 2026-05-26T23:53:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0cbebb1-43c2-434d-b381-1fa90e90d292.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35bbabac-1f2b-42ef-8053-1780201465c4.jsonl`
-- `/ll:decide-issue` - 2026-05-25T01:03:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7745eb24-b502-4f62-a85c-2e699d8c21a0.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0719b6aa-570e-4737-9190-bda2db553e6d.jsonl`
-- `/ll:wire-issue` - 2026-05-25T00:54:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dff803e6-0bfa-4001-a614-6606f8e05671.jsonl`
-- `/ll:refine-issue` - 2026-05-25T00:47:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37d51f7b-b713-4828-844a-8a05ffc3ff75.jsonl`
-- `/ll:issue-size-review` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/898f7f18-27df-4e97-81bc-d975051952e8.jsonl`
+- `/ll:issue-size-review` - 2026-05-26T00:00:00Z - `0f138859-02cf-4887-806e-2fe090003148.jsonl`
+- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `1dab2222-8d7f-4ed5-9998-bb5ae8528310.jsonl`
+- `/ll:wire-issue` - 2026-05-27T00:07:14 - `72065e62-8f35-44f0-9c47-2a55b9a150c6.jsonl`
+- `/ll:refine-issue` - 2026-05-26T23:59:30 - `2a9f0d8e-0278-40d0-9635-e8605b3e2210.jsonl`
+- `/ll:format-issue` - 2026-05-26T23:53:49 - `c0cbebb1-43c2-434d-b381-1fa90e90d292.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `35bbabac-1f2b-42ef-8053-1780201465c4.jsonl`
+- `/ll:decide-issue` - 2026-05-25T01:03:06 - `7745eb24-b502-4f62-a85c-2e699d8c21a0.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `0719b6aa-570e-4737-9190-bda2db553e6d.jsonl`
+- `/ll:wire-issue` - 2026-05-25T00:54:39 - `dff803e6-0bfa-4001-a614-6606f8e05671.jsonl`
+- `/ll:refine-issue` - 2026-05-25T00:47:33 - `37d51f7b-b713-4828-844a-8a05ffc3ff75.jsonl`
+- `/ll:issue-size-review` - 2026-05-24T00:00:00Z - `898f7f18-27df-4e97-81bc-d975051952e8.jsonl`

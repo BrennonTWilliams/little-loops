@@ -303,9 +303,9 @@ Implemented in commit `e352d4a6` (2026-05-26). All implementation steps complete
 
 ## Session Log
 - `/ll:manage-issue` - 2026-05-27T05:21:06Z - already implemented; status marked done
-- `/ll:ready-issue` - 2026-05-27T05:19:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f43bc75e-8b05-46bc-a8f7-1ca01eb0932d.jsonl`
-- `/ll:confidence-check` - 2026-05-26T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1a1f3a0-45d3-40a9-a3c3-825b86f43731.jsonl`
-- `/ll:wire-issue` - 2026-05-27T00:22:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623b3ad3-472e-486a-b0ac-aa05e638d1f5.jsonl`
-- `/ll:refine-issue` - 2026-05-27T00:12:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc1ae0a4-8512-4b9a-97b5-ed439fd238c7.jsonl`
-- `/ll:format-issue` - 2026-05-26T20:29:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47cef901-86e9-4bd2-b772-ff487dd8bdac.jsonl`
+- `/ll:ready-issue` - 2026-05-27T05:19:07 - `f43bc75e-8b05-46bc-a8f7-1ca01eb0932d.jsonl`
+- `/ll:confidence-check` - 2026-05-26T21:00:00 - `b1a1f3a0-45d3-40a9-a3c3-825b86f43731.jsonl`
+- `/ll:wire-issue` - 2026-05-27T00:22:33 - `623b3ad3-472e-486a-b0ac-aa05e638d1f5.jsonl`
+- `/ll:refine-issue` - 2026-05-27T00:12:48 - `fc1ae0a4-8512-4b9a-97b5-ed439fd238c7.jsonl`
+- `/ll:format-issue` - 2026-05-26T20:29:56 - `47cef901-86e9-4bd2-b772-ff487dd8bdac.jsonl`
 - `/ll:capture-issue` - 2026-05-26T20:24:33Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a02e39e-0327-4fde-996c-a64d954c3e35.jsonl`

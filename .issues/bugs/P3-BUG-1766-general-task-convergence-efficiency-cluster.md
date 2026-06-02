@@ -194,7 +194,7 @@ edit restriction).
 `bug`, `captured`, `loops`, `general-task`, `fsm`
 
 ## Session Log
-- `/ll:capture-issue` - 2026-05-28T17:31:20Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d72d4842-d084-41b6-af0f-1adf964926ab.jsonl`
+- `/ll:capture-issue` - 2026-05-28T17:31:20Z - `d72d4842-d084-41b6-af0f-1adf964926ab.jsonl`
 
 ---
 

@@ -491,11 +491,11 @@ If `assemble_guillotine_prompt` raises an exception (disk I/O error, encoding is
 **Verification**: 5940 tests pass; 12 pre-existing failures unchanged (confirmed by testing clean state).
 
 ## Session Log
-- `/ll:manage-issue --resume` - 2026-05-07T01:07:58Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21062892-560c-4809-9cfd-e1b61b833732.jsonl`
-- `/ll:ready-issue` - 2026-05-07T00:40:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21062892-560c-4809-9cfd-e1b61b833732.jsonl`
+- `/ll:manage-issue --resume` - 2026-05-07T01:07:58Z - `21062892-560c-4809-9cfd-e1b61b833732.jsonl`
+- `/ll:ready-issue` - 2026-05-07T00:40:10 - `21062892-560c-4809-9cfd-e1b61b833732.jsonl`
 - `design-spike: Option J` - 2026-05-06T00:00:00 - cleared `decision_needed`; chosen algorithm: structured stdout-tail + inventory; see `## Option J Design Spike` section
-- `/ll:confidence-check` - 2026-05-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8bdc0e06-85ea-43b5-8eeb-b06ffc964981.jsonl`
-- `/ll:wire-issue` - 2026-05-06T21:52:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f52c049f-8ef4-44fc-95ad-687a8ae1df72.jsonl`
-- `/ll:refine-issue` - 2026-05-06T21:39:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63fad009-7663-49aa-ac6a-4ad5eb77b1de.jsonl`
-- `/ll:format-issue` - 2026-05-06T21:10:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/291cabfe-e58a-41a8-a54c-5ae0200e8ef1.jsonl`
-- `/ll:capture-issue` - 2026-05-06T20:59:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/381e1f9c-a749-4e5e-9040-a1d4e3d3e647.jsonl`
+- `/ll:confidence-check` - 2026-05-06T00:00:00 - `8bdc0e06-85ea-43b5-8eeb-b06ffc964981.jsonl`
+- `/ll:wire-issue` - 2026-05-06T21:52:53 - `f52c049f-8ef4-44fc-95ad-687a8ae1df72.jsonl`
+- `/ll:refine-issue` - 2026-05-06T21:39:24 - `63fad009-7663-49aa-ac6a-4ad5eb77b1de.jsonl`
+- `/ll:format-issue` - 2026-05-06T21:10:20 - `291cabfe-e58a-41a8-a54c-5ae0200e8ef1.jsonl`
+- `/ll:capture-issue` - 2026-05-06T20:59:54Z - `381e1f9c-a749-4e5e-9040-a1d4e3d3e647.jsonl`

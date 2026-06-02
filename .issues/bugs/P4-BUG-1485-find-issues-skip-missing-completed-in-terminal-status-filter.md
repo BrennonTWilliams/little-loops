@@ -138,10 +138,10 @@ Added `"completed"` to the terminal-status filter tuples in `find_issues()` (`is
 ---
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-16T06:41:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010190c-509e-453e-bb85-c00575d1e590.jsonl`
-- `/ll:ready-issue` - 2026-05-16T06:40:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/047c7021-1a76-4abe-89a6-612cac74a6af.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ad5d116-4ca4-4f05-b0f8-90970d1a318e.jsonl`
-- `/ll:wire-issue` - 2026-05-16T06:38:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0fa462fb-8f12-4e50-afe0-f85814c87465.jsonl`
-- `/ll:refine-issue` - 2026-05-16T06:32:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87e1a073-7fe2-4ff0-abef-79768331f556.jsonl`
-- `/ll:format-issue` - 2026-05-15T22:31:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee7de6e9-997b-4bb6-a6ae-e81063eeaa11.jsonl`
+- `/ll:manage-issue` - 2026-05-16T06:41:54Z - `0010190c-509e-453e-bb85-c00575d1e590.jsonl`
+- `/ll:ready-issue` - 2026-05-16T06:40:06 - `047c7021-1a76-4abe-89a6-612cac74a6af.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `6ad5d116-4ca4-4f05-b0f8-90970d1a318e.jsonl`
+- `/ll:wire-issue` - 2026-05-16T06:38:01 - `0fa462fb-8f12-4e50-afe0-f85814c87465.jsonl`
+- `/ll:refine-issue` - 2026-05-16T06:32:32 - `87e1a073-7fe2-4ff0-abef-79768331f556.jsonl`
+- `/ll:format-issue` - 2026-05-15T22:31:32 - `ee7de6e9-997b-4bb6-a6ae-e81063eeaa11.jsonl`
 - `/ll:capture-issue` - 2026-05-15T22:28:07Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c83fb486-18e2-416c-9520-e73ea7fb0cda.jsonl`

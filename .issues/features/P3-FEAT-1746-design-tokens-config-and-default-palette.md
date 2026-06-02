@@ -383,12 +383,12 @@ _Added by `/ll:confidence-check` on 2026-05-27_
 - FEAT-1750: Design-tokens init / configure UX and docs integration
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-27T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f94f108-c36b-4b4d-b486-f41734145a41.jsonl`
-- `/ll:confidence-check` - 2026-05-27T20:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd6015c6-5423-4f5a-ab43-a71886585d8e.jsonl`
-- `/ll:wire-issue` - 2026-05-27T20:02:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4eba37b-b3bf-4a96-972f-bbe67dbe0da7.jsonl`
-- `/ll:decide-issue` - 2026-05-27T19:55:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/614e310a-d6fa-4090-87bf-d57cbef9850f.jsonl`
-- `/ll:refine-issue` - 2026-05-27T19:46:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b9a31fa-8f28-4e80-99b7-e50b99d1783d.jsonl`
-- `/ll:format-issue` - 2026-05-27T19:36:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c01056f4-277e-40ac-883a-9aff665c99c3.jsonl`
+- `/ll:issue-size-review` - 2026-05-27T20:30:00Z - `5f94f108-c36b-4b4d-b486-f41734145a41.jsonl`
+- `/ll:confidence-check` - 2026-05-27T20:15:00 - `dd6015c6-5423-4f5a-ab43-a71886585d8e.jsonl`
+- `/ll:wire-issue` - 2026-05-27T20:02:18 - `b4eba37b-b3bf-4a96-972f-bbe67dbe0da7.jsonl`
+- `/ll:decide-issue` - 2026-05-27T19:55:11 - `614e310a-d6fa-4090-87bf-d57cbef9850f.jsonl`
+- `/ll:refine-issue` - 2026-05-27T19:46:55 - `3b9a31fa-8f28-4e80-99b7-e50b99d1783d.jsonl`
+- `/ll:format-issue` - 2026-05-27T19:36:07 - `c01056f4-277e-40ac-883a-9aff665c99c3.jsonl`
 - `/ll:capture-issue` - 2026-05-27T19:33:11Z - (current Claude Code session)
 
 ---

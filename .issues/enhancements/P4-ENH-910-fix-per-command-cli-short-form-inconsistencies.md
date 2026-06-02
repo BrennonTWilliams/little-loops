@@ -125,12 +125,12 @@ For `--since`, use `-S` (uppercase) to avoid conflicts with `-s` which is used f
 `cli`, `consistency`, `ergonomics`, `captured`
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-01T22:28:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e77ca98-076b-466c-bbdf-ed347519633b.jsonl`
-- `/ll:ready-issue` - 2026-04-01T22:18:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f9a6bb2-cff6-406a-8e17-eeadef7dcda2.jsonl`
-- `/ll:ready-issue` - 2026-04-01T22:17:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f9a6bb2-cff6-406a-8e17-eeadef7dcda2.jsonl`
-- `/ll:confidence-check` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71078b2f-884f-4e6b-862f-7993af4077dc.jsonl`
-- `/ll:refine-issue` - 2026-04-01T21:43:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a0ce300-11fd-48ac-b9b1-120178b9b0d0.jsonl`
-- `/ll:format-issue` - 2026-04-01T21:39:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79a7fb0b-5e49-4588-9e2e-64733f42e3db.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-01T22:28:10 - `0e77ca98-076b-466c-bbdf-ed347519633b.jsonl`
+- `/ll:ready-issue` - 2026-04-01T22:18:01 - `1f9a6bb2-cff6-406a-8e17-eeadef7dcda2.jsonl`
+- `/ll:ready-issue` - 2026-04-01T22:17:54 - `1f9a6bb2-cff6-406a-8e17-eeadef7dcda2.jsonl`
+- `/ll:confidence-check` - 2026-04-01T00:00:00 - `71078b2f-884f-4e6b-862f-7993af4077dc.jsonl`
+- `/ll:refine-issue` - 2026-04-01T21:43:45 - `1a0ce300-11fd-48ac-b9b1-120178b9b0d0.jsonl`
+- `/ll:format-issue` - 2026-04-01T21:39:31 - `79a7fb0b-5e49-4588-9e2e-64733f42e3db.jsonl`
 - `/ll:capture-issue` - 2026-04-01 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4505b861-be5c-4195-9079-b2b3bcde3985.jsonl`
 
 ---

@@ -224,16 +224,16 @@ _Added by `/ll:confidence-check` on 2026-05-16_
 - `_print_report()` internals: adapt the exit-code logic per second-pass research — `has_critical_gap()` doesn't exist; use `any(c.status == "unsupported" for c in report.capabilities)` instead (see Integration Map → Codebase Research Findings, Second Pass).
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-16T17:40:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6c43e41-7c77-4927-964a-ec7ed9c2c3a4.jsonl`
-- `/ll:wire-issue` - 2026-05-16T17:36:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a262d39-bb27-474d-8727-1698c67bde4a.jsonl`
-- `/ll:refine-issue` - 2026-05-16T17:31:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cc0d981c-725a-499a-92cc-8c1031ae6285.jsonl`
-- `/ll:refine-issue` - 2026-05-16T16:39:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b95dabac-b2c1-4fa3-838b-0f6d6e632c33.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/308e8709-77ed-477d-9ac7-496e083d3cb5.jsonl`
-- `/ll:refine-issue` - 2026-05-16T16:26:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a77d3232-c9c0-42ec-8932-e269a7236972.jsonl`
-- `/ll:issue-size-review` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e46d252d-d6ba-4cf5-9954-c3c6cea402e5.jsonl`
-- `/ll:wire-issue` - 2026-05-16T17:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/claude_current_session.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7fed5baf-1ed9-4704-8717-3da01b034a44.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28dfbccd-f4e2-4ad4-808a-ab9e4c0cde82.jsonl`
+- `/ll:ready-issue` - 2026-05-16T17:40:37 - `b6c43e41-7c77-4927-964a-ec7ed9c2c3a4.jsonl`
+- `/ll:wire-issue` - 2026-05-16T17:36:21 - `5a262d39-bb27-474d-8727-1698c67bde4a.jsonl`
+- `/ll:refine-issue` - 2026-05-16T17:31:34 - `cc0d981c-725a-499a-92cc-8c1031ae6285.jsonl`
+- `/ll:refine-issue` - 2026-05-16T16:39:44 - `b95dabac-b2c1-4fa3-838b-0f6d6e632c33.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `308e8709-77ed-477d-9ac7-496e083d3cb5.jsonl`
+- `/ll:refine-issue` - 2026-05-16T16:26:40 - `a77d3232-c9c0-42ec-8932-e269a7236972.jsonl`
+- `/ll:issue-size-review` - 2026-05-16T00:00:00Z - `e46d252d-d6ba-4cf5-9954-c3c6cea402e5.jsonl`
+- `/ll:wire-issue` - 2026-05-16T17:00:00Z - `claude_current_session.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `7fed5baf-1ed9-4704-8717-3da01b034a44.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `28dfbccd-f4e2-4ad4-808a-ab9e4c0cde82.jsonl`
 
 ## Resolution
 

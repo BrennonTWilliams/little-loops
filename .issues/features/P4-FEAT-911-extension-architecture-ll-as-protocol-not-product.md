@@ -260,13 +260,13 @@ _Added by `/ll:confidence-check` on 2026-04-01_
 - **`importlib.metadata.entry_points` is novel**: First production use; expect edge cases in test environments where packages aren't installed. Budget time for test harness setup.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-02T18:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:ready-issue` - 2026-04-02T17:49:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6966be3-9748-4703-ac3d-a3d40bced0b7.jsonl`
-- `/ll:confidence-check` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3576f2a-9a9d-4660-bfdd-ec5477ddd565.jsonl`
-- `/ll:refine-issue` - 2026-04-02T04:19:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cefa20fa-827b-4271-aacd-aafe384c904b.jsonl`
-- `/ll:format-issue` - 2026-04-02T04:12:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e78e5bb6-f7d2-4912-8069-79a717fb51a8.jsonl`
-- `/ll:refine-issue` - 2026-04-02T04:07:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21f8e37c-280e-474e-a61c-e518895716c2.jsonl`
-- `/ll:confidence-check` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6efbb42-4e21-4314-8299-c2708eaeefe6.jsonl`
-- `/ll:refine-issue` - 2026-04-02T03:46:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37f1ea52-31f5-4082-b130-54cc49163d35.jsonl`
-- `/ll:refine-issue` - 2026-04-01T23:56:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ee23639-2228-4497-8647-94b597449939.jsonl`
-- `/ll:capture-issue` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1dc851d2-a56a-4f1d-8be1-ae404b7f7f2e.jsonl`
+- `/ll:manage-issue` - 2026-04-02T18:00:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-04-02T17:49:47 - `a6966be3-9748-4703-ac3d-a3d40bced0b7.jsonl`
+- `/ll:confidence-check` - 2026-04-01T00:00:00Z - `f3576f2a-9a9d-4660-bfdd-ec5477ddd565.jsonl`
+- `/ll:refine-issue` - 2026-04-02T04:19:26 - `cefa20fa-827b-4271-aacd-aafe384c904b.jsonl`
+- `/ll:format-issue` - 2026-04-02T04:12:37 - `e78e5bb6-f7d2-4912-8069-79a717fb51a8.jsonl`
+- `/ll:refine-issue` - 2026-04-02T04:07:32 - `21f8e37c-280e-474e-a61c-e518895716c2.jsonl`
+- `/ll:confidence-check` - 2026-04-01T00:00:00Z - `d6efbb42-4e21-4314-8299-c2708eaeefe6.jsonl`
+- `/ll:refine-issue` - 2026-04-02T03:46:16 - `37f1ea52-31f5-4082-b130-54cc49163d35.jsonl`
+- `/ll:refine-issue` - 2026-04-01T23:56:56 - `0ee23639-2228-4497-8647-94b597449939.jsonl`
+- `/ll:capture-issue` - 2026-04-01T00:00:00Z - `1dc851d2-a56a-4f1d-8be1-ae404b7f7f2e.jsonl`

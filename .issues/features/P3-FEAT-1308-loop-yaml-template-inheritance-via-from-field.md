@@ -207,12 +207,12 @@ Implemented `from:` template inheritance for loop YAML files.
 
 ## Session Log
 - `/ll:manage-issue` - 2026-05-02T01:40:26Z - implementation
-- `/ll:ready-issue` - 2026-05-02T01:23:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b5d0503-0ff9-4660-9753-3a6da844502e.jsonl`
-- `/ll:confidence-check` - 2026-05-01T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d63e8ea-5e14-4a5d-8d02-e5160454b094.jsonl`
-- `/ll:refine-issue` - 2026-05-01T20:58:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1a27e94-952b-4a2d-adc7-4cec048a5642.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
-- `/ll:format-issue` - 2026-05-01T17:38:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1483ec77-4cf9-4aca-8312-065f15a52a5f.jsonl`
-- `/ll:capture-issue` - 2026-05-01T17:30:19Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010190c-509e-453e-bb85-c00575d1e590.jsonl`
+- `/ll:ready-issue` - 2026-05-02T01:23:22 - `8b5d0503-0ff9-4660-9753-3a6da844502e.jsonl`
+- `/ll:confidence-check` - 2026-05-01T22:00:00 - `3d63e8ea-5e14-4a5d-8d02-e5160454b094.jsonl`
+- `/ll:refine-issue` - 2026-05-01T20:58:40 - `c1a27e94-952b-4a2d-adc7-4cec048a5642.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-01T18:01:01 - `4d834804-46cc-43b7-960e-ebc6a9a495da.jsonl`
+- `/ll:format-issue` - 2026-05-01T17:38:24 - `1483ec77-4cf9-4aca-8312-065f15a52a5f.jsonl`
+- `/ll:capture-issue` - 2026-05-01T17:30:19Z - `0010190c-509e-453e-bb85-c00575d1e590.jsonl`
 
 ---
 

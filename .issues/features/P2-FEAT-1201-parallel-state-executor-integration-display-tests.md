@@ -187,11 +187,11 @@ _Added by `/ll:confidence-check` on 2026-04-21_
 - FEAT-1225: Parallel Display Badge Test and Constant
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/258256f7-974b-4688-b813-9928466b24ec.jsonl`
-- `/ll:refine-issue` - 2026-04-21T09:06:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/392f0d9f-b4a4-4a07-8a5b-2201bc07ec27.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b69582af-c09a-4784-9b2b-61edf9981586.jsonl`
-- `/ll:wire-issue` - 2026-04-21T09:01:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/796449d9-ea7c-47ad-b328-f4efe87fa8c5.jsonl`
-- `/ll:refine-issue` - 2026-04-21T08:54:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/052df3f9-70bb-4140-baf3-98360b03621c.jsonl`
-- `/ll:refine-issue` - 2026-04-21T08:54:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/052df3f9-70bb-4140-baf3-98360b03621c.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb2a4d4b-681c-4336-8ebc-dacfae9712d8.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f38dfa91-1ac7-4e37-bd21-313943eaeb99.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `258256f7-974b-4688-b813-9928466b24ec.jsonl`
+- `/ll:refine-issue` - 2026-04-21T09:06:50 - `392f0d9f-b4a4-4a07-8a5b-2201bc07ec27.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `b69582af-c09a-4784-9b2b-61edf9981586.jsonl`
+- `/ll:wire-issue` - 2026-04-21T09:01:33 - `796449d9-ea7c-47ad-b328-f4efe87fa8c5.jsonl`
+- `/ll:refine-issue` - 2026-04-21T08:54:55 - `052df3f9-70bb-4140-baf3-98360b03621c.jsonl`
+- `/ll:refine-issue` - 2026-04-21T08:54:42 - `052df3f9-70bb-4140-baf3-98360b03621c.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `eb2a4d4b-681c-4336-8ebc-dacfae9712d8.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `f38dfa91-1ac7-4e37-bd21-313943eaeb99.jsonl`

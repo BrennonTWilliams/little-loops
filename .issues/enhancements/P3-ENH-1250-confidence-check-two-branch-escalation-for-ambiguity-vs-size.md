@@ -108,12 +108,12 @@ Updated `skills/confidence-check/SKILL.md` (line 562) and `skills/issue-workflow
 - `score_ambiguity > 10` → `/ll:issue-size-review` (issue too large or under-researched)
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-22T16:48:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75e3083b-5a97-4782-887e-1f6d865ffbb8.jsonl`
-- `/ll:ready-issue` - 2026-04-22T16:40:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f15ef2af-4066-4740-9504-59ffa39d4d28.jsonl`
-- `/ll:confidence-check` - 2026-04-22T17:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0466ea16-3c78-4f5e-9d5b-d2d5e540cdea.jsonl`
-- `/ll:verify-issues` - 2026-04-22T16:18:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d65bdd0-fed7-4e46-b7c0-85e3adfa65b9.jsonl`
-- `/ll:refine-issue` - 2026-04-22T16:17:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00afba49-6592-47d2-b395-66cdb26ec47d.jsonl`
-- `/ll:capture-issue` - 2026-04-22T15:44:47Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-22T16:48:20 - `75e3083b-5a97-4782-887e-1f6d865ffbb8.jsonl`
+- `/ll:ready-issue` - 2026-04-22T16:40:19 - `f15ef2af-4066-4740-9504-59ffa39d4d28.jsonl`
+- `/ll:confidence-check` - 2026-04-22T17:00:00Z - `0466ea16-3c78-4f5e-9d5b-d2d5e540cdea.jsonl`
+- `/ll:verify-issues` - 2026-04-22T16:18:06 - `0d65bdd0-fed7-4e46-b7c0-85e3adfa65b9.jsonl`
+- `/ll:refine-issue` - 2026-04-22T16:17:13 - `00afba49-6592-47d2-b395-66cdb26ec47d.jsonl`
+- `/ll:capture-issue` - 2026-04-22T15:44:47Z - `fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
 
 ---
 ## Status

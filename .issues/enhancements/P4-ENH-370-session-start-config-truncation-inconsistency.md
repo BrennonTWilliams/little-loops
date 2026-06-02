@@ -83,7 +83,7 @@ Replace `head -50` with `cat` in the non-merge path to match the Python merge pa
 
 ## Session Log
 - `/ll:format-issue --all --auto` - 2026-02-13
-- `/ll:manage-issue` - 2026-02-13T<!-- session --> - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/435eb0b2-be49-4f09-b3d4-728f4a9ecc98.jsonl`
+- `/ll:manage-issue` - 2026-02-13T<!-- session --> - `435eb0b2-be49-4f09-b3d4-728f4a9ecc98.jsonl`
 
 ---
 

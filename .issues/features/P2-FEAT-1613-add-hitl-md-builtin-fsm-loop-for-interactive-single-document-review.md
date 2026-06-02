@@ -387,14 +387,14 @@ _These touchpoints were identified by wiring analysis:_
 | https://github.com/ZiweiGu/GP-TSM | External reference: Grammar-Preserving Text Saliency Modulation algorithm used by the `segment` state |
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-18T21:53:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5a4882c-f5ea-4acf-9356-747cf2cfb33c.jsonl`
-- `/ll:refine-issue` - 2026-05-18T21:10:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/25d86b78-37c7-42e1-a27c-b8b63eb3a079.jsonl`
-- `/ll:confidence-check` - 2026-05-18T22:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/33c2dbfe-fc7c-4ba9-b148-7449686fcd60.jsonl`
-- `/ll:confidence-check` - 2026-05-18T21:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b8d160ae-5eeb-4c7b-8dda-4e2a80d61151.jsonl`
-- `/ll:wire-issue` - 2026-05-18T20:56:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/baa3a248-e429-40a2-a556-b0fb33f9aee4.jsonl`
-- `/ll:refine-issue` - 2026-05-18T20:50:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f33a0302-b372-4124-a428-14d9d3e128b5.jsonl`
-- `/ll:format-issue` - 2026-05-18T20:41:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23af1610-0691-449c-bfbd-b40d40ca1183.jsonl`
-- `/ll:capture-issue` - 2026-05-18T20:37:24Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39518fe4-4d31-4d98-b347-41fe6101efe5.jsonl`
+- `/ll:ready-issue` - 2026-05-18T21:53:51 - `b5a4882c-f5ea-4acf-9356-747cf2cfb33c.jsonl`
+- `/ll:refine-issue` - 2026-05-18T21:10:30 - `25d86b78-37c7-42e1-a27c-b8b63eb3a079.jsonl`
+- `/ll:confidence-check` - 2026-05-18T22:10:00 - `33c2dbfe-fc7c-4ba9-b148-7449686fcd60.jsonl`
+- `/ll:confidence-check` - 2026-05-18T21:30:00 - `b8d160ae-5eeb-4c7b-8dda-4e2a80d61151.jsonl`
+- `/ll:wire-issue` - 2026-05-18T20:56:00 - `baa3a248-e429-40a2-a556-b0fb33f9aee4.jsonl`
+- `/ll:refine-issue` - 2026-05-18T20:50:06 - `f33a0302-b372-4124-a428-14d9d3e128b5.jsonl`
+- `/ll:format-issue` - 2026-05-18T20:41:30 - `23af1610-0691-449c-bfbd-b40d40ca1183.jsonl`
+- `/ll:capture-issue` - 2026-05-18T20:37:24Z - `39518fe4-4d31-4d98-b347-41fe6101efe5.jsonl`
 
 ---
 

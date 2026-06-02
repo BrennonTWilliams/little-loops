@@ -181,11 +181,11 @@ _Added by `/ll:confidence-check` on 2026-05-10_
 - **Minor symbol/location choices to make during implementation**: depends_on edge marker ("`-->`" vs "`==>`") and whether `validate_frontmatter_fields()` goes in `analysis.py` or a new file — both resolvable in-flight
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b6b5119-a8d7-4a04-a179-aa73a8fe69af.jsonl`
-- `/ll:refine-issue` - 2026-05-11T00:43:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f84d544c-8201-4996-88fc-a05e83f88fd0.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T22:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d7aaebe-3f48-42d8-9447-6f3abf7cabd4.jsonl`
-- `/ll:wire-issue` - 2026-05-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T23:55:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49b56280-19ff-42e9-bb93-088d6e560fa2.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00 - `9b6b5119-a8d7-4a04-a179-aa73a8fe69af.jsonl`
+- `/ll:refine-issue` - 2026-05-11T00:43:34 - `f84d544c-8201-4996-88fc-a05e83f88fd0.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T22:45:00Z - `9d7aaebe-3f48-42d8-9447-6f3abf7cabd4.jsonl`
+- `/ll:wire-issue` - 2026-05-10T00:00:00 - `current.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T23:55:00Z - `49b56280-19ff-42e9-bb93-088d6e560fa2.jsonl`
 
 ---
 

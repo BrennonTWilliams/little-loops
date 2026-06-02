@@ -226,9 +226,9 @@ Verification: targeted suite (`scripts/tests/test_extension.py` + `scripts/tests
 Docs updates (CONTRIBUTING.md, ARCHITECTURE.md, API.md, CLI.md, `create_extension.py` scaffold) are owned by sibling FEAT-1457.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-12T03:49:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36bb4e94-10f8-40d3-a238-3621a6453d53.jsonl`
-- `/ll:ready-issue` - 2026-05-12T03:40:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da779f89-519e-4f07-b56b-f079535a15f2.jsonl`
-- `/ll:wire-issue` - 2026-05-12T03:35:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a7ef6d3-1040-417a-868c-594d1ea0b6cc.jsonl`
-- `/ll:refine-issue` - 2026-05-12T03:30:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f62cb1a-4e94-42b7-86ab-0ea4c79220f7.jsonl`
-- `/ll:issue-size-review` - 2026-05-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0b21eb7d-ba29-48d1-a82f-90d0bc6238a5.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9329fed-2fa8-471b-831c-99fd1204e736.jsonl`
+- `/ll:manage-issue` - 2026-05-12T03:49:52 - `36bb4e94-10f8-40d3-a238-3621a6453d53.jsonl`
+- `/ll:ready-issue` - 2026-05-12T03:40:17 - `da779f89-519e-4f07-b56b-f079535a15f2.jsonl`
+- `/ll:wire-issue` - 2026-05-12T03:35:53 - `4a7ef6d3-1040-417a-868c-594d1ea0b6cc.jsonl`
+- `/ll:refine-issue` - 2026-05-12T03:30:25 - `5f62cb1a-4e94-42b7-86ab-0ea4c79220f7.jsonl`
+- `/ll:issue-size-review` - 2026-05-12T00:00:00 - `0b21eb7d-ba29-48d1-a82f-90d0bc6238a5.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `f9329fed-2fa8-471b-831c-99fd1204e736.jsonl`

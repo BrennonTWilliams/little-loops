@@ -129,7 +129,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
   - `scripts/tests/test_issue_manager.py` — Added test for `max_continuations=-1` edge case
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-02-15T02:29:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3135ba2c-6ec1-44c9-ae59-0d6a65c71853.jsonl`
+- `/ll:scan-codebase` - 2026-02-15T02:29:53Z - `3135ba2c-6ec1-44c9-ae59-0d6a65c71853.jsonl`
 - `/ll:manage-issue bug fix BUG-419` - 2026-02-14
 
 ---

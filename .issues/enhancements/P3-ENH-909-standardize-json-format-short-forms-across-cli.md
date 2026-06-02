@@ -160,10 +160,10 @@ _Added by `/ll:refine-issue` — concrete steps with file:line references:_
 `cli`, `consistency`, `ergonomics`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-01T22:07:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5150c9c4-7c61-4179-a619-17b9efe065b3.jsonl`
-- `/ll:confidence-check` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:refine-issue` - 2026-04-01T21:44:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d71985-ba62-4c95-940c-27ba0048b64e.jsonl`
-- `/ll:format-issue` - 2026-04-01T21:39:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c8f9b06-8a34-48b3-ae2b-5e9fcf341116.jsonl`
+- `/ll:ready-issue` - 2026-04-01T22:07:57 - `5150c9c4-7c61-4179-a619-17b9efe065b3.jsonl`
+- `/ll:confidence-check` - 2026-04-01T00:00:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:refine-issue` - 2026-04-01T21:44:00 - `b2d71985-ba62-4c95-940c-27ba0048b64e.jsonl`
+- `/ll:format-issue` - 2026-04-01T21:39:01 - `3c8f9b06-8a34-48b3-ae2b-5e9fcf341116.jsonl`
 - `/ll:capture-issue` - 2026-04-01 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4505b861-be5c-4195-9079-b2b3bcde3985.jsonl`
 
 ---

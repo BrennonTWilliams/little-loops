@@ -205,9 +205,9 @@ Implemented the full rename from `on_success`/`on_failure` (verdict strings `"su
 All 3442+ tests pass. Backwards compatibility maintained via `from_dict` shim for user-authored loops using old `on_success`/`on_failure` keys.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6646689c-65e2-42d9-aa22-7d73408f8c39.jsonl`
-- `/ll:ready-issue` - 2026-03-15T00:51:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c37a3760-8a4a-47c7-b8f8-7c56ed5544de.jsonl`
-- `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `6646689c-65e2-42d9-aa22-7d73408f8c39.jsonl`
+- `/ll:ready-issue` - 2026-03-15T00:51:34 - `c37a3760-8a4a-47c7-b8f8-7c56ed5544de.jsonl`
+- `/ll:verify-issues` - 2026-03-15T00:11:17 - `623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2acb782e-c208-43f1-8534-96bfd95ced6e.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f511c85-9ee7-4764-8b06-753e10552cf2.jsonl`
@@ -219,11 +219,11 @@ All 3442+ tests pass. Backwards compatibility maintained via `from_dict` shim fo
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:refine-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c96e34f-66f6-47a9-8e06-75aea65c7264.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c96e34f-66f6-47a9-8e06-75aea65c7264.jsonl`
-- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
 - `/ll:refine-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad3c78eb-1f87-4a98-8d6f-f869076e256b.jsonl`
 - `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad3c78eb-1f87-4a98-8d6f-f869076e256b.jsonl`
-- `/ll:refine-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
-- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:refine-issue` - 2026-03-14T00:00:00Z - `337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 
 ---
 

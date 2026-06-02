@@ -211,9 +211,9 @@ Implemented in `session_store.py` (2026-05-25):
 - All 7720 tests pass; lint and mypy clean
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-25T00:33:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf859df2-ced2-4fbc-99a8-d11080c94f8d.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ff68644-f610-4773-bcdb-dacc9c11d51c.jsonl`
-- `/ll:wire-issue` - 2026-05-25T00:28:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86f56276-46cd-4119-ba95-4532109f6d87.jsonl`
-- `/ll:refine-issue` - 2026-05-25T00:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/18ee2016-452f-4c6f-9b7f-f3f22047abd0.jsonl`
-- `/ll:issue-size-review` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/898f7f18-27df-4e97-81bc-d975051952e8.jsonl`
-- `/ll:manage-issue` - 2026-05-25T00:41:46Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-05-25T00:33:50 - `bf859df2-ced2-4fbc-99a8-d11080c94f8d.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `6ff68644-f610-4773-bcdb-dacc9c11d51c.jsonl`
+- `/ll:wire-issue` - 2026-05-25T00:28:58 - `86f56276-46cd-4119-ba95-4532109f6d87.jsonl`
+- `/ll:refine-issue` - 2026-05-25T00:21:15 - `18ee2016-452f-4c6f-9b7f-f3f22047abd0.jsonl`
+- `/ll:issue-size-review` - 2026-05-24T00:00:00Z - `898f7f18-27df-4e97-81bc-d975051952e8.jsonl`
+- `/ll:manage-issue` - 2026-05-25T00:41:46Z - `current.jsonl`

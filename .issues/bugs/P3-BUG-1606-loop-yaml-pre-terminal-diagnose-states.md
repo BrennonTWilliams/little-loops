@@ -451,8 +451,8 @@ _Added by `/ll:confidence-check` on 2026-05-18_
 - BUG-1612: Add pre-terminal diagnose states to refine-to-ready-issue, rl-coding-agent, agent-eval-improve loops
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce6ecaf5-b4b2-4ec3-a9a7-df2818f59f71.jsonl`
-- `/ll:wire-issue` - 2026-05-18T08:00:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23282f50-d4af-45e6-a44a-a5363cae806f.jsonl`
-- `/ll:refine-issue` - 2026-05-18T07:53:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6618b988-4a20-41d7-818f-51ea340bea68.jsonl`
-- `/ll:issue-size-review` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fbd13cdc-51a4-41ee-85fe-30c33cc936aa.jsonl`
-- `/ll:issue-size-review` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3772e425-1416-4cc8-baac-8e0f351122fa.jsonl`
+- `/ll:confidence-check` - 2026-05-18T00:00:00 - `ce6ecaf5-b4b2-4ec3-a9a7-df2818f59f71.jsonl`
+- `/ll:wire-issue` - 2026-05-18T08:00:06 - `23282f50-d4af-45e6-a44a-a5363cae806f.jsonl`
+- `/ll:refine-issue` - 2026-05-18T07:53:43 - `6618b988-4a20-41d7-818f-51ea340bea68.jsonl`
+- `/ll:issue-size-review` - 2026-05-18T00:00:00 - `fbd13cdc-51a4-41ee-85fe-30c33cc936aa.jsonl`
+- `/ll:issue-size-review` - 2026-05-18T00:00:00 - `3772e425-1416-4cc8-baac-8e0f351122fa.jsonl`

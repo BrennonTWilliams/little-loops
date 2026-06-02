@@ -181,9 +181,9 @@ All 6 schema inconsistencies fixed in `skills/product-analyzer/SKILL.md`:
 New test file: `scripts/tests/test_enh1402_doc_wiring.py` (10 tests, all passing).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-11T09:23:46Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-05-11T09:20:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44bef13b-8bdc-4f03-9dfc-922b26a07e7b.jsonl`
-- `/ll:wire-issue` - 2026-05-11T09:16:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c92fb3c-1d74-4212-ac94-4410cd334f33.jsonl`
-- `/ll:refine-issue` - 2026-05-11T09:11:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/019fcd74-1050-4fd5-851e-08b328a97d7d.jsonl`
-- `/ll:format-issue` - 2026-05-09T21:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32deefa2-352e-4fa9-a9df-ce9aad495a16.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8554078b-0de3-40fb-98fe-4b27b53363fa.jsonl`
+- `/ll:manage-issue` - 2026-05-11T09:23:46Z
+- `/ll:ready-issue` - 2026-05-11T09:20:51 - `44bef13b-8bdc-4f03-9dfc-922b26a07e7b.jsonl`
+- `/ll:wire-issue` - 2026-05-11T09:16:03 - `4c92fb3c-1d74-4212-ac94-4410cd334f33.jsonl`
+- `/ll:refine-issue` - 2026-05-11T09:11:35 - `019fcd74-1050-4fd5-851e-08b328a97d7d.jsonl`
+- `/ll:format-issue` - 2026-05-09T21:12:28 - `32deefa2-352e-4fa9-a9df-ce9aad495a16.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `8554078b-0de3-40fb-98fe-4b27b53363fa.jsonl`

@@ -371,12 +371,12 @@ _Added by `/ll:confidence-check` on 2026-06-01_
 - tests are co-deliverables — implement decision-pinning tests (`test_shell_action_skipped_from_journal`, `test_usage_journal_not_archived`) alongside core logic to lock in the callback-signature and archive-policy decisions early; deferring them risks scope creep as each decision branches into callers.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T15:22:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c67bd210-6925-420e-ba34-e0e71e9d6693.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb12131c-6afa-4a03-ab11-646596f9a0b3.jsonl`
-- `/ll:wire-issue` - 2026-06-01T15:09:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9d6444b-ae99-4db8-9651-f85fa0072ba3.jsonl`
-- `/ll:refine-issue` - 2026-06-01T14:59:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa8f3c24-5078-4643-8c92-8e40de4d18b7.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:wire-issue` - 2026-05-30T21:49:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cef1c26e-c8c0-44a3-ad97-7b7a90baf186.jsonl`
-- `/ll:refine-issue` - 2026-05-30T21:37:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87dc942-b337-46e9-a574-9cadac23728c.jsonl`
-- `/ll:format-issue` - 2026-05-29T21:14:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf11edc6-7c38-44c6-bc14-9d68aba363ce.jsonl`
-- `/ll:capture-issue` - 2026-05-29T20:37:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2a0c61b-6b34-41d4-98fb-c566ba046de6.jsonl`
+- `/ll:ready-issue` - 2026-06-01T15:22:13 - `c67bd210-6925-420e-ba34-e0e71e9d6693.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00 - `bb12131c-6afa-4a03-ab11-646596f9a0b3.jsonl`
+- `/ll:wire-issue` - 2026-06-01T15:09:49 - `c9d6444b-ae99-4db8-9651-f85fa0072ba3.jsonl`
+- `/ll:refine-issue` - 2026-06-01T14:59:03 - `fa8f3c24-5078-4643-8c92-8e40de4d18b7.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:16 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:wire-issue` - 2026-05-30T21:49:10 - `cef1c26e-c8c0-44a3-ad97-7b7a90baf186.jsonl`
+- `/ll:refine-issue` - 2026-05-30T21:37:13 - `d87dc942-b337-46e9-a574-9cadac23728c.jsonl`
+- `/ll:format-issue` - 2026-05-29T21:14:28 - `cf11edc6-7c38-44c6-bc14-9d68aba363ce.jsonl`
+- `/ll:capture-issue` - 2026-05-29T20:37:23Z - `f2a0c61b-6b34-41d4-98fb-c566ba046de6.jsonl`

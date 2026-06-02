@@ -140,11 +140,11 @@ and `ll-verify-docs` report no regressions introduced by ENH-1139/1140
 (the 3 broken links flagged are pre-existing and unrelated to this issue).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c75d3b3-4717-4739-babf-180962235e0b.jsonl`
-- `/ll:wire-issue` - 2026-04-17T06:53:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39d35ae7-2c23-475d-912b-3429c70ba400.jsonl`
-- `/ll:refine-issue` - 2026-04-17T06:50:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2338b6f7-547d-411e-845b-2dd0d7fed16b.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e6682d5-cb79-4c33-9ce6-ede83cb84a43.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe6c8c43-d29f-4dc0-99d5-1b7f311480cd.jsonl`
+- `/ll:manage-issue` - 2026-04-17T00:00:00Z - `7c75d3b3-4717-4739-babf-180962235e0b.jsonl`
+- `/ll:wire-issue` - 2026-04-17T06:53:31 - `39d35ae7-2c23-475d-912b-3429c70ba400.jsonl`
+- `/ll:refine-issue` - 2026-04-17T06:50:19 - `2338b6f7-547d-411e-845b-2dd0d7fed16b.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `2e6682d5-cb79-4c33-9ce6-ede83cb84a43.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `fe6c8c43-d29f-4dc0-99d5-1b7f311480cd.jsonl`
 
 ---
 

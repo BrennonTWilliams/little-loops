@@ -145,11 +145,11 @@ Implemented as specified. Added worktree detection block in `_run_claude_base()`
 - Enhancement logic and implementation approach are correct; ready for implementation
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-03T23:00:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57c48965-b26a-44a1-8566-d69211f3b424.jsonl`
-- `/ll:verify-issues` - 2026-04-03T06:48:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:confidence-check` - 2026-04-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:refine-issue` - 2026-04-03T06:46:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:format-issue` - 2026-04-03T06:42:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
-- `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
-- `/ll:format-issue` - 2026-04-03T04:47:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f43418ef-b4eb-43f5-b9ea-6b5a4a440f1c.jsonl`
+- `/ll:ready-issue` - 2026-04-03T23:00:14 - `57c48965-b26a-44a1-8566-d69211f3b424.jsonl`
+- `/ll:verify-issues` - 2026-04-03T06:48:54 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:refine-issue` - 2026-04-03T06:46:03 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:format-issue` - 2026-04-03T06:42:40 - `9a96d079-98e3-4f6f-ba3d-66f5e9bbd62d.jsonl`
+- `/ll:verify-issues` - 2026-04-02T00:00:00 - `a2482dff-8512-481e-813c-be16a2afb222.jsonl`
+- `/ll:format-issue` - 2026-04-03T04:47:00 - `f43418ef-b4eb-43f5-b9ea-6b5a4a440f1c.jsonl`
 - `/ll:capture-issue` - 2026-04-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ea0ca77-c1cb-4ae8-865c-0bb7cb7aaee1.jsonl`

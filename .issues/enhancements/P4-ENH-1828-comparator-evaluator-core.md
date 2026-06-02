@@ -203,9 +203,9 @@ Add `"comparator"` to `valid_types` list at line 44.
 Implemented `evaluate_comparator()` as a thin wrapper around `evaluate_blind_comparator()` that reads a baseline from `.loops/baselines/<loop>/output.txt`, runs `min_pairs` blind A/B comparisons, takes a majority vote, and returns `yes`/`no`/`tie`/`no_baseline`. Bootstrap path (no baseline + `auto_promote=True`) promotes the first output and returns `yes`. Extended schema, validation, dispatcher, FSM `__init__`, `_EVALUATE_TYPE_DISPLAY`, and JSON schema. Four test files and four doc files updated. All 35 targeted tests pass; ruff clean.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-31T23:09:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b962a168-f6c5-436e-bdf4-86254ad51309.jsonl`
-- `/ll:wire-issue` - 2026-05-31T23:04:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a13ed93-b8a7-49c2-8baf-bbb2652aa866.jsonl`
-- `/ll:refine-issue` - 2026-05-31T22:56:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36204f50-5197-4f00-8190-750426767650.jsonl`
-- `/ll:issue-size-review` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/328bc3bf-da89-4021-981a-e4291a0ad2e5.jsonl`
-- `/ll:confidence-check` - 2026-05-31T23:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/936a6f6c-c23b-4cea-8c24-915f50c68bb7.jsonl`
-- `/ll:manage-issue` - 2026-05-31T23:20:09Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7352193a-c9c9-481a-ac33-751f341773fe.jsonl`
+- `/ll:ready-issue` - 2026-05-31T23:09:30 - `b962a168-f6c5-436e-bdf4-86254ad51309.jsonl`
+- `/ll:wire-issue` - 2026-05-31T23:04:48 - `1a13ed93-b8a7-49c2-8baf-bbb2652aa866.jsonl`
+- `/ll:refine-issue` - 2026-05-31T22:56:12 - `36204f50-5197-4f00-8190-750426767650.jsonl`
+- `/ll:issue-size-review` - 2026-05-31T00:00:00 - `328bc3bf-da89-4021-981a-e4291a0ad2e5.jsonl`
+- `/ll:confidence-check` - 2026-05-31T23:30:00 - `936a6f6c-c23b-4cea-8c24-915f50c68bb7.jsonl`
+- `/ll:manage-issue` - 2026-05-31T23:20:09Z - `7352193a-c9c9-481a-ac33-751f341773fe.jsonl`

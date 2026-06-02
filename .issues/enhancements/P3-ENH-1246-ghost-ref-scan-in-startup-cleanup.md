@@ -188,15 +188,15 @@ _Verified by `/ll:verify-issues` on 2026-04-22_
 - Dependencies: ENH-1197 (completed), FEAT-1075 and ENH-1176 (both in deferred — exist)
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-22T18:44:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b42c4ba0-d0fb-45e7-9def-c052cefea186.jsonl`
-- `/ll:verify-issues` - 2026-04-22T18:42:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e9d8eb5-75c9-4f58-8e0b-5a6dde9c4d79.jsonl`
-- `/ll:verify-issues` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de9895d8-main.jsonl`
-- `/ll:wire-issue` - 2026-04-22T15:40:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11a69005-bbc9-42b5-9c31-9852ea32b61f.jsonl`
-- `/ll:refine-issue` - 2026-04-22T15:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf01894b-39d7-4244-9afd-b44c404b5bb6.jsonl`
-- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4392751-fe1e-4762-b307-86db43c577b3.jsonl`
-- `/ll:confidence-check` - 2026-04-22T16:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a6a0be4-419d-4e4d-a4a1-d8fe6c62cf21.jsonl`
+- `/ll:ready-issue` - 2026-04-22T18:44:20 - `b42c4ba0-d0fb-45e7-9def-c052cefea186.jsonl`
+- `/ll:verify-issues` - 2026-04-22T18:42:22 - `9e9d8eb5-75c9-4f58-8e0b-5a6dde9c4d79.jsonl`
+- `/ll:verify-issues` - 2026-04-22T00:00:00 - `de9895d8-main.jsonl`
+- `/ll:wire-issue` - 2026-04-22T15:40:35 - `11a69005-bbc9-42b5-9c31-9852ea32b61f.jsonl`
+- `/ll:refine-issue` - 2026-04-22T15:35:43 - `cf01894b-39d7-4244-9afd-b44c404b5bb6.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `a4392751-fe1e-4762-b307-86db43c577b3.jsonl`
+- `/ll:confidence-check` - 2026-04-22T16:00:00 - `5a6a0be4-419d-4e4d-a4a1-d8fe6c62cf21.jsonl`
 
-- `/ll:manage-issue` - 2026-04-22T18:49:46Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:manage-issue` - 2026-04-22T18:49:46Z - `current.jsonl`
 
 ---
 

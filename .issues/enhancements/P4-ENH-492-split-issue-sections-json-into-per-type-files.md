@@ -136,10 +136,10 @@ This is an architectural quality-of-life improvement — no new functionality, j
 ## Session Log
 
 - `/ll:capture-issue` - 2026-02-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/568ba5fc-d209-4c80-bff7-a8c1237be3b5.jsonl`
-- `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Consumer audit complete: 5 skill/command files reference issue-sections.json; no Python code loads it yet; proposed solution TBD replaced with concrete migration plan
-- `/ll:refine-issue` - 2026-03-01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8df6efac-cbed-4ac5-b021-cdbb2749f5d4.jsonl` - Post-ENH-491 research: corrected Integration Map (removed manage-issue, added init/SKILL.md + ARCHITECTURE.md), added Python loader/test changes, resolved shared-data and API decisions
-- `/ll:manage-issue` - 2026-03-01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/061f76fb-6ebe-4bb8-909b-9b7d60324b8a.jsonl` - Full implementation: split issue-sections.json into 3 per-type files, updated Python loader/sync/tests/6 consumers/docs
+- `/ll:format-issue` - 2026-02-24 - `cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Consumer audit complete: 5 skill/command files reference issue-sections.json; no Python code loads it yet; proposed solution TBD replaced with concrete migration plan
+- `/ll:refine-issue` - 2026-03-01 - `8df6efac-cbed-4ac5-b021-cdbb2749f5d4.jsonl` - Post-ENH-491 research: corrected Integration Map (removed manage-issue, added init/SKILL.md + ARCHITECTURE.md), added Python loader/test changes, resolved shared-data and API decisions
+- `/ll:manage-issue` - 2026-03-01 - `061f76fb-6ebe-4bb8-909b-9b7d60324b8a.jsonl` - Full implementation: split issue-sections.json into 3 per-type files, updated Python loader/sync/tests/6 consumers/docs
 
 ## Resolution
 

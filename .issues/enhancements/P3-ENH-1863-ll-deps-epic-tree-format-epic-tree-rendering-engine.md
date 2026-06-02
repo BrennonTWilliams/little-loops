@@ -203,9 +203,9 @@ def format_epic_tree(
 **Open** | Created: 2026-06-01 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T18:55:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb6e93ea-e494-4ca8-8920-3a041bd01f0c.jsonl`
-- `/ll:format-issue` - 2026-06-01T18:51:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7130e47-1d39-4176-b6ac-edaabbcc8f05.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df6f28cb-1291-4dfe-a9e1-7f772da7e3a8.jsonl`
-- `/ll:wire-issue` - 2026-06-01T18:47:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712fbfea-e021-4d7b-8c77-911778494da6.jsonl`
-- `/ll:refine-issue` - 2026-06-01T18:43:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8eeca893-3738-4d07-9997-b5b15ecc0bae.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcaa931c-330d-44e9-b237-2540a93e4fcb.jsonl`
+- `/ll:ready-issue` - 2026-06-01T18:55:02 - `eb6e93ea-e494-4ca8-8920-3a041bd01f0c.jsonl`
+- `/ll:format-issue` - 2026-06-01T18:51:44 - `d7130e47-1d39-4176-b6ac-edaabbcc8f05.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `df6f28cb-1291-4dfe-a9e1-7f772da7e3a8.jsonl`
+- `/ll:wire-issue` - 2026-06-01T18:47:44 - `712fbfea-e021-4d7b-8c77-911778494da6.jsonl`
+- `/ll:refine-issue` - 2026-06-01T18:43:19 - `8eeca893-3738-4d07-9997-b5b15ecc0bae.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `bcaa931c-330d-44e9-b237-2540a93e4fcb.jsonl`

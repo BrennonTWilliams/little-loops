@@ -163,12 +163,12 @@ Implemented all 17 steps from the implementation plan:
 All 287 targeted tests pass. All changes are backward-compatible (`instance_id=None` falls back to `loop_name`).
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-03T19:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3997cebe-d99f-421c-8cd0-f84f10ad032e.jsonl`
-- `/ll:wire-issue` - 2026-05-03T19:40:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19eb8221-9d6c-4f34-842e-7ec481236e2f.jsonl`
-- `/ll:refine-issue` - 2026-05-03T19:30:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a0fd84b-8053-48e5-b209-d00cba50f314.jsonl`
-- `/ll:confidence-check` - 2026-05-03T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed1d4ef5-2706-43f1-84bd-0fa730017e92.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e26d0d3-b923-4ec1-86ac-7959fadea8f7.jsonl`
-- `/ll:manage-issue` - 2026-05-03T19:56:24Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-05-03T19:45:00 - `3997cebe-d99f-421c-8cd0-f84f10ad032e.jsonl`
+- `/ll:wire-issue` - 2026-05-03T19:40:11 - `19eb8221-9d6c-4f34-842e-7ec481236e2f.jsonl`
+- `/ll:refine-issue` - 2026-05-03T19:30:07 - `8a0fd84b-8053-48e5-b209-d00cba50f314.jsonl`
+- `/ll:confidence-check` - 2026-05-03T21:00:00 - `ed1d4ef5-2706-43f1-84bd-0fa730017e92.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T20:30:00Z - `5e26d0d3-b923-4ec1-86ac-7959fadea8f7.jsonl`
+- `/ll:manage-issue` - 2026-05-03T19:56:24Z - `current.jsonl`
 
 ---
 

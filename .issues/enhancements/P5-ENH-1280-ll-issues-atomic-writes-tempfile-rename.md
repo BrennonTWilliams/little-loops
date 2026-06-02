@@ -158,12 +158,12 @@ _Added by `/ll:confidence-check` on 2026-04-26_
 - **Unresolved placement decision**: `atomic_write()` helper placement (new `file_utils.py` vs top of `session_log.py`) is still open. Conditional doc updates (API.md, ARCHITECTURE.md, CONTRIBUTING.md) depend on this choice. Decide at the start of Step 1 to avoid re-work.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-26T19:16:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f710fa0b-5103-4227-b6b5-481b229473ec.jsonl`
-- `/ll:confidence-check` - 2026-04-26T18:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/543e902c-e842-4902-bf7b-20373bd4ee5f.jsonl`
-- `/ll:wire-issue` - 2026-04-26T18:10:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a9dffad-1333-4628-a6b0-01a2936c3e81.jsonl`
-- `/ll:refine-issue` - 2026-04-26T18:04:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea84d70c-d9aa-47c1-90e8-7c4dcc625502.jsonl`
-- `/ll:format-issue` - 2026-04-26T17:53:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70712d29-8a54-4a5c-99f2-80dc1d4864ed.jsonl`
-- `/ll:manage-issue` - 2026-04-26T19:19:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f710fa0b-5103-4227-b6b5-481b229473ec.jsonl`
+- `/ll:ready-issue` - 2026-04-26T19:16:40 - `f710fa0b-5103-4227-b6b5-481b229473ec.jsonl`
+- `/ll:confidence-check` - 2026-04-26T18:30:00 - `543e902c-e842-4902-bf7b-20373bd4ee5f.jsonl`
+- `/ll:wire-issue` - 2026-04-26T18:10:10 - `3a9dffad-1333-4628-a6b0-01a2936c3e81.jsonl`
+- `/ll:refine-issue` - 2026-04-26T18:04:54 - `ea84d70c-d9aa-47c1-90e8-7c4dcc625502.jsonl`
+- `/ll:format-issue` - 2026-04-26T17:53:29 - `70712d29-8a54-4a5c-99f2-80dc1d4864ed.jsonl`
+- `/ll:manage-issue` - 2026-04-26T19:19:29 - `f710fa0b-5103-4227-b6b5-481b229473ec.jsonl`
 
 ## Resolution
 

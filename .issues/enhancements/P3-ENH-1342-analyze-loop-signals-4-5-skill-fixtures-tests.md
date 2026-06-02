@@ -157,9 +157,9 @@ Added 8 new test methods to `TestAnalyzeLoopSynthesis`: 3 fixture-backed for Sig
 All 56 tests pass (44 synthesis + 12 doc-wiring guardrail). Lint clean. Two unrelated pre-existing failures in `test_update_skill.py::TestMarketplaceVersionSync` (marketplace.json 1.92.1 vs plugin.json 1.93.0 — owned by `/ll:publish`).
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-03T05:09:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e8926186-cf89-43f9-8317-8ce90b252bfa.jsonl`
-- `/ll:confidence-check` - 2026-05-03T05:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6517b85c-1988-43ec-a3a4-9ee94e4df566.jsonl`
-- `/ll:wire-issue` - 2026-05-03T05:06:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9eec30ec-fd21-4b25-85fb-9c7ce42f32aa.jsonl`
-- `/ll:refine-issue` - 2026-05-03T05:00:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8e6daf8-43ea-4030-aade-5ecde0a9db23.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T04:56:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8af1a3a1-23af-4c82-98e3-c5e3dde0272f.jsonl`
-- `/ll:manage-issue` - 2026-05-03T05:14:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2eab1476-28be-4970-aae9-e6a5a6e625d7.jsonl`
+- `/ll:ready-issue` - 2026-05-03T05:09:54 - `e8926186-cf89-43f9-8317-8ce90b252bfa.jsonl`
+- `/ll:confidence-check` - 2026-05-03T05:30:00 - `6517b85c-1988-43ec-a3a4-9ee94e4df566.jsonl`
+- `/ll:wire-issue` - 2026-05-03T05:06:30 - `9eec30ec-fd21-4b25-85fb-9c7ce42f32aa.jsonl`
+- `/ll:refine-issue` - 2026-05-03T05:00:49 - `c8e6daf8-43ea-4030-aade-5ecde0a9db23.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T04:56:57 - `8af1a3a1-23af-4c82-98e3-c5e3dde0272f.jsonl`
+- `/ll:manage-issue` - 2026-05-03T05:14:52 - `2eab1476-28be-4970-aae9-e6a5a6e625d7.jsonl`

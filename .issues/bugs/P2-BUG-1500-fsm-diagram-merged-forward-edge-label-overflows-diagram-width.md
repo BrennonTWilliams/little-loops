@@ -180,12 +180,12 @@ Fixed in `scripts/little_loops/cli/loop/layout.py` with two complementary change
 Regression test added in `scripts/tests/test_ll_loop_display.py::TestRenderFsmDiagram::test_fanout_merged_label_truncated_with_ellipsis` — exercises a ≥5-way merged label, asserts `…` appears, full label absent, and no garbled box-border characters.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-17T13:27:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-05-17T13:05:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43f5a50f-8ebf-40e9-9a4b-9c36cd7a4146.jsonl`
-- `/ll:confidence-check` - 2026-05-17T17:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be08bb09-f628-4cdc-a13b-bcc5cd3d0635.jsonl`
-- `/ll:decide-issue` - 2026-05-17T13:01:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87cf1c66-23f6-46ca-b0e5-54b6bd7ec919.jsonl`
-- `/ll:confidence-check` - 2026-05-17T14:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81bff7e6-c514-4851-970c-0e6cc21a2290.jsonl`
-- `/ll:wire-issue` - 2026-05-17T12:53:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed17fe11-2dda-41a7-bceb-a7ce36fa6817.jsonl`
-- `/ll:refine-issue` - 2026-05-17T12:48:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56c7387f-d7b7-4bb7-9b1a-6edb421fdce8.jsonl`
-- `/ll:format-issue` - 2026-05-16T14:38:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f6573c2-17a9-4c6c-8f79-00628f832a5a.jsonl`
-- `/ll:capture-issue` - 2026-05-16T14:12:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f204025d-307a-4f4d-80b2-206dfd3b1de1.jsonl`
+- `/ll:manage-issue` - 2026-05-17T13:27:45Z
+- `/ll:ready-issue` - 2026-05-17T13:05:53 - `43f5a50f-8ebf-40e9-9a4b-9c36cd7a4146.jsonl`
+- `/ll:confidence-check` - 2026-05-17T17:00:00Z - `be08bb09-f628-4cdc-a13b-bcc5cd3d0635.jsonl`
+- `/ll:decide-issue` - 2026-05-17T13:01:05 - `87cf1c66-23f6-46ca-b0e5-54b6bd7ec919.jsonl`
+- `/ll:confidence-check` - 2026-05-17T14:00:00 - `81bff7e6-c514-4851-970c-0e6cc21a2290.jsonl`
+- `/ll:wire-issue` - 2026-05-17T12:53:31 - `ed17fe11-2dda-41a7-bceb-a7ce36fa6817.jsonl`
+- `/ll:refine-issue` - 2026-05-17T12:48:25 - `56c7387f-d7b7-4bb7-9b1a-6edb421fdce8.jsonl`
+- `/ll:format-issue` - 2026-05-16T14:38:56 - `8f6573c2-17a9-4c6c-8f79-00628f832a5a.jsonl`
+- `/ll:capture-issue` - 2026-05-16T14:12:59Z - `f204025d-307a-4f4d-80b2-206dfd3b1de1.jsonl`

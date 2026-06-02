@@ -203,12 +203,12 @@ _Added by `/ll:confidence-check` on 2026-05-25_
 - BUG-1724: Audit and fix missing default_timeout in FSM loop YAMLs to prevent indefinite hangs
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3ec7ab86-eac4-42cb-b06f-00661e557291.jsonl`
-- `/ll:confidence-check` - 2026-05-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9a0ee27-f874-487c-b607-ea72efb6da24.jsonl`
-- `/ll:wire-issue` - 2026-05-26T02:42:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23f61094-2a86-4174-a9e8-1ef35d1be50b.jsonl`
-- `/ll:refine-issue` - 2026-05-26T02:33:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/61a97210-bdd9-4d12-b14a-ccdea70162b4.jsonl`
-- `/ll:format-issue` - 2026-05-26T01:45:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7fa4ab33-784c-4215-956e-0cb379a1456c.jsonl`
-- `/ll:capture-issue` - 2026-05-25T23:53:17Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6beeb46c-ca56-4385-8e86-f1d1ac1a4edf.jsonl`
+- `/ll:issue-size-review` - 2026-05-25T00:00:00Z - `3ec7ab86-eac4-42cb-b06f-00661e557291.jsonl`
+- `/ll:confidence-check` - 2026-05-25T00:00:00Z - `e9a0ee27-f874-487c-b607-ea72efb6da24.jsonl`
+- `/ll:wire-issue` - 2026-05-26T02:42:48 - `23f61094-2a86-4174-a9e8-1ef35d1be50b.jsonl`
+- `/ll:refine-issue` - 2026-05-26T02:33:51 - `61a97210-bdd9-4d12-b14a-ccdea70162b4.jsonl`
+- `/ll:format-issue` - 2026-05-26T01:45:54 - `7fa4ab33-784c-4215-956e-0cb379a1456c.jsonl`
+- `/ll:capture-issue` - 2026-05-25T23:53:17Z - `6beeb46c-ca56-4385-8e86-f1d1ac1a4edf.jsonl`
 
 ---
 

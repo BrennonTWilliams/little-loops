@@ -151,11 +151,11 @@ _Added by `/ll:confidence-check` on 2026-05-24_
 - **LOOPS_GUIDE.md mirror**: The `llm_gate` description at line 2873 will become stale after `lib/common.yaml` edit. Minor open question: update inline now (step 8) vs. rely on `update-docs`. Default to updating inline to keep the implementation self-contained.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T14:09:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b51b5e02-dbda-41ad-818b-5ce6e94b1437.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3785ae3-1506-4a4e-a176-62ea92db57f6.jsonl`
-- `/ll:wire-issue` - 2026-05-24T13:48:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cacb1713-b7ae-4ca0-a57e-5857ee6834c8.jsonl`
-- `/ll:refine-issue` - 2026-05-24T13:41:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f14fda9-d560-46f6-992c-b2274de5ed68.jsonl`
-- `/ll:format-issue` - 2026-05-23T19:21:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e2957f37-1ad6-4175-b382-d8060a7c090f.jsonl`
+- `/ll:ready-issue` - 2026-05-24T14:09:33 - `b51b5e02-dbda-41ad-818b-5ce6e94b1437.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `b3785ae3-1506-4a4e-a176-62ea92db57f6.jsonl`
+- `/ll:wire-issue` - 2026-05-24T13:48:53 - `cacb1713-b7ae-4ca0-a57e-5857ee6834c8.jsonl`
+- `/ll:refine-issue` - 2026-05-24T13:41:42 - `8f14fda9-d560-46f6-992c-b2274de5ed68.jsonl`
+- `/ll:format-issue` - 2026-05-23T19:21:50 - `e2957f37-1ad6-4175-b382-d8060a7c090f.jsonl`
 
 - `/ll:capture-issue` — 2026-05-23T12:00:00Z
 - `/ll:manage-issue` - 2026-05-24T14:13:35Z - implemented all 7 touchpoints; 7/7 doc-wiring tests pass

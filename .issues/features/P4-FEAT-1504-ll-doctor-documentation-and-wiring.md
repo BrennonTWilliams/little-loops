@@ -242,12 +242,12 @@ def test_describe_capabilities_documented(self) -> None:
 - Parent: FEAT-1496 (host-capability preflight); siblings: FEAT-1523, FEAT-1503.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-16T17:23:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a9680c6-2120-4081-a81e-5791f4995480.jsonl`
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2518977a-4e9e-4286-8dc8-8e511a668f16.jsonl`
-- `/ll:wire-issue` - 2026-05-16T17:19:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7fba1b70-3600-48bf-8074-93d926bd2132.jsonl`
-- `/ll:refine-issue` - 2026-05-16T17:13:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f2a8206-a627-4684-bd7e-f021a0e6de2e.jsonl`
-- `/ll:format-issue` - 2026-05-16T15:15:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9fd0d0fa-5b4e-41d5-9893-56163f3cc33e.jsonl`
-- `/ll:issue-size-review` - 2026-05-16T15:07:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b57cdb22-126d-4dc6-b12f-a5213e07e705.jsonl`
+- `/ll:ready-issue` - 2026-05-16T17:23:34 - `4a9680c6-2120-4081-a81e-5791f4995480.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `2518977a-4e9e-4286-8dc8-8e511a668f16.jsonl`
+- `/ll:wire-issue` - 2026-05-16T17:19:38 - `7fba1b70-3600-48bf-8074-93d926bd2132.jsonl`
+- `/ll:refine-issue` - 2026-05-16T17:13:40 - `9f2a8206-a627-4684-bd7e-f021a0e6de2e.jsonl`
+- `/ll:format-issue` - 2026-05-16T15:15:27 - `9fd0d0fa-5b4e-41d5-9893-56163f3cc33e.jsonl`
+- `/ll:issue-size-review` - 2026-05-16T15:07:07Z - `b57cdb22-126d-4dc6-b12f-a5213e07e705.jsonl`
 
 ---
 

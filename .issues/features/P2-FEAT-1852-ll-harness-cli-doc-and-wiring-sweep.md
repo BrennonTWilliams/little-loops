@@ -174,11 +174,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - FEAT-1689 entry present in `CHANGELOG.md`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T16:04:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78d6fbf0-559a-4bea-b86c-53cc66116f46.jsonl`
-- `/ll:refine-issue` - 2026-06-01T15:53:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c2b53b1-0bfa-4803-b7c7-263ddc2ff9bb.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1ebc34f-6a74-4ed8-b570-856978fc59ce.jsonl`
-- `/ll:wire-issue` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1ebc34f-6a74-4ed8-b570-856978fc59ce.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66000302-6aca-4dad-9383-1e0068c604bb.jsonl`
+- `/ll:ready-issue` - 2026-06-01T16:04:28 - `78d6fbf0-559a-4bea-b86c-53cc66116f46.jsonl`
+- `/ll:refine-issue` - 2026-06-01T15:53:42 - `7c2b53b1-0bfa-4803-b7c7-263ddc2ff9bb.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `e1ebc34f-6a74-4ed8-b570-856978fc59ce.jsonl`
+- `/ll:wire-issue` - 2026-06-01T00:00:00Z - `e1ebc34f-6a74-4ed8-b570-856978fc59ce.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `66000302-6aca-4dad-9383-1e0068c604bb.jsonl`
 
 ---
 

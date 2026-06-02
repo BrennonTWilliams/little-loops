@@ -138,4 +138,4 @@ Follow pattern in `scripts/tests/test_improve_claude_md_skill.py`:
 **Open** | Created: 2026-04-12 | Priority: P3
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:issue-size-review` - 2026-04-12T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`

@@ -168,14 +168,14 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `fsm-routing`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-29T22:23:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/13d03593-4544-4171-b680-300ae620d860.jsonl`
-- `/ll:confidence-check` - 2026-05-29T22:17:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd469e18-dee2-4c15-834f-59aaa5311c6d.jsonl`
-- `/ll:wire-issue` - 2026-05-29T22:15:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a35403e4-d8a3-42c9-94dc-7772464196bf.jsonl`
-- `/ll:refine-issue` - 2026-05-29T22:08:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc21010e-a01f-4d69-8946-c34633cb7571.jsonl`
-- `/ll:format-issue` - 2026-05-29T22:00:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e594fda4-804f-47e5-8431-2051fd565d1e.jsonl`
+- `/ll:ready-issue` - 2026-05-29T22:23:03 - `13d03593-4544-4171-b680-300ae620d860.jsonl`
+- `/ll:confidence-check` - 2026-05-29T22:17:00 - `fd469e18-dee2-4c15-834f-59aaa5311c6d.jsonl`
+- `/ll:wire-issue` - 2026-05-29T22:15:22 - `a35403e4-d8a3-42c9-94dc-7772464196bf.jsonl`
+- `/ll:refine-issue` - 2026-05-29T22:08:48 - `dc21010e-a01f-4d69-8946-c34633cb7571.jsonl`
+- `/ll:format-issue` - 2026-05-29T22:00:02 - `e594fda4-804f-47e5-8431-2051fd565d1e.jsonl`
 
 - `/ll:capture-issue` — 2026-05-29T21:57:08Z — `64ba091c-1c65-464a-81b6-237b5a702007.jsonl`
-- `/ll:manage-issue` — 2026-05-29T22:25:47Z — `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e6b8291-2150-4ebb-a43c-cc19c32c002b.jsonl`
+- `/ll:manage-issue` — 2026-05-29T22:25:47Z — `8e6b8291-2150-4ebb-a43c-cc19c32c002b.jsonl`
 
 ---
 

@@ -230,11 +230,11 @@ This follows the same pass/fail interpretation pattern used in Phase 4 (`SKILL.m
 - No new lint issues introduced
 
 ## Session Log
-- `/ll:capture-issue` - 2026-02-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dde3da3f-b9fb-4092-9940-a33135c3b17f.jsonl`
-- `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6952751c-b227-418e-a8d3-d419ea5b0bf6.jsonl`
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with concrete config schema and skill integration points; remaining gap (red-phase verification design) is a design decision per tradeoff review, not a codebase research gap
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/706d5ec0-3b91-4a6f-9224-c258b13baf39.jsonl` - Resolved Red-phase verification design (exit-code + output scan), added 3 missing Integration Map files (to_dict, configure, init), enriched all sections with file:line references
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/268e71aa-e103-4890-965e-ad86820481b2.jsonl` - Verified all 9 line references still accurate; added concrete question YAML for configure/areas.md and init/interactive.md TDD entries
+- `/ll:capture-issue` - 2026-02-18T00:00:00Z - `dde3da3f-b9fb-4092-9940-a33135c3b17f.jsonl`
+- `/ll:format-issue` - 2026-02-22 - `6952751c-b227-418e-a8d3-d419ea5b0bf6.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with concrete config schema and skill integration points; remaining gap (red-phase verification design) is a design decision per tradeoff review, not a codebase research gap
+- `/ll:refine-issue` - 2026-02-25 - `706d5ec0-3b91-4a6f-9224-c258b13baf39.jsonl` - Resolved Red-phase verification design (exit-code + output scan), added 3 missing Integration Map files (to_dict, configure, init), enriched all sections with file:line references
+- `/ll:refine-issue` - 2026-02-25 - `268e71aa-e103-4890-965e-ad86820481b2.jsonl` - Verified all 9 line references still accurate; added concrete question YAML for configure/areas.md and init/interactive.md TDD entries
 
 ---
 

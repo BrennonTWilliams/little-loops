@@ -87,8 +87,8 @@ Dynamic computation is preferred to satisfy the Acceptance Criterion that column
 Replaced the hardcoded `_ID_WIDTH = 8` constant with a dynamic `id_width` computed after loading issues (`max(len(issue.issue_id) for issue in sorted_issues, default=7) + 1`). Updated `_get_col_display_width` and `non_title_sum` to use the dynamic value for the "id" column. Added `test_four_digit_id_not_truncated` to verify 4-digit IDs render without truncation.
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/69a8a736-8424-4274-aa7b-653c573032d9.jsonl`
-- `/ll:format-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/586bf7cd-9211-4392-9982-c36e05d1d906.jsonl`
-- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e340dabc-5139-4758-9790-7ea74b66074f.jsonl`
-- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fca1aa28-f7da-4572-b504-68da169949a5.jsonl`
-- `/ll:manage-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:capture-issue` - 2026-03-07T00:00:00Z - `69a8a736-8424-4274-aa7b-653c573032d9.jsonl`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `586bf7cd-9211-4392-9982-c36e05d1d906.jsonl`
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `e340dabc-5139-4758-9790-7ea74b66074f.jsonl`
+- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `fca1aa28-f7da-4572-b504-68da169949a5.jsonl`
+- `/ll:manage-issue` - 2026-03-07T00:00:00Z - `current.jsonl`

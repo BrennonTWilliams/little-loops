@@ -132,7 +132,7 @@ Add `--json` flag to `ll-verify-skill-budget` (`main_verify_skill_budget()` in `
 - [Host Compatibility](../docs/reference/HOST_COMPATIBILITY.md)
 
 ## Session Log
-- `/ll:format-issue` - 2026-05-29T04:49:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0781965-36ea-4afe-a8e7-7fdc25a47887.jsonl`
-- `/ll:issue-size-review` - 2026-05-28T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc1fcf00-8ef7-4a3a-94b4-7099b5095eec.jsonl`
+- `/ll:format-issue` - 2026-05-29T04:49:14 - `d0781965-36ea-4afe-a8e7-7fdc25a47887.jsonl`
+- `/ll:issue-size-review` - 2026-05-28T00:00:00Z - `dc1fcf00-8ef7-4a3a-94b4-7099b5095eec.jsonl`
 
 **Open** | Created: 2026-05-28 | Priority: P3

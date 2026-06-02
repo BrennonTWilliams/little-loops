@@ -115,11 +115,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `cli`, `usability`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-03T23:14:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9dcf7e0d-8060-4f90-bb1b-cfb3f91264ec.jsonl`
-- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ad79933-6e71-429b-bca6-5b79f40d8a4a.jsonl`
-- `/ll:refine-issue` - 2026-04-03T21:55:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b97f38eb-10b6-49e1-9b95-16bde969e44b.jsonl`
+- `/ll:ready-issue` - 2026-04-03T23:14:44 - `9dcf7e0d-8060-4f90-bb1b-cfb3f91264ec.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `4ad79933-6e71-429b-bca6-5b79f40d8a4a.jsonl`
+- `/ll:refine-issue` - 2026-04-03T21:55:38 - `b97f38eb-10b6-49e1-9b95-16bde969e44b.jsonl`
 
-- `/ll:capture-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d21e2100-9421-4796-91d0-fde897d2aa2b.jsonl`
+- `/ll:capture-issue` - 2026-04-03T00:00:00Z - `d21e2100-9421-4796-91d0-fde897d2aa2b.jsonl`
 
 ---
 

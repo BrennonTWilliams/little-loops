@@ -187,10 +187,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Existing `TestRateLimitRetriesPersistence` tests updated and passing; new migration test passes
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-17T04:23:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/381101e8-8f6f-4391-867a-92e9dfdd3d59.jsonl`
-- `/ll:issue-size-review` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86c5c7e4-236c-46a0-acd9-2124269e76f0.jsonl`
-- `/ll:wire-issue` - 2026-04-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ce365ab-5b19-413d-a2ee-85f0dd55422f.jsonl`
+- `/ll:refine-issue` - 2026-04-17T04:23:04 - `381101e8-8f6f-4391-867a-92e9dfdd3d59.jsonl`
+- `/ll:issue-size-review` - 2026-04-16T00:00:00Z - `86c5c7e4-236c-46a0-acd9-2124269e76f0.jsonl`
+- `/ll:wire-issue` - 2026-04-17T00:00:00
+- `/ll:confidence-check` - 2026-04-16T00:00:00 - `2ce365ab-5b19-413d-a2ee-85f0dd55422f.jsonl`
 - `/ll:manage-issue` - 2026-04-16T23:45:00 - completed
 
 ---

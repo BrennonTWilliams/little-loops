@@ -308,11 +308,11 @@ _Added by `/ll:confidence-check` on 2026-05-15_
 - FEAT-1466: OpenCodeRunner, PiRunner stub, docs sweep, HOST_COMPATIBILITY.md, doc wiring tests
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0a84cca-2574-4c32-8edd-684205b8feb0.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfeb6eaa-4ec1-44a2-8e9b-cc6bfe2f5b09.jsonl`
-- `/ll:wire-issue` - 2026-05-15T12:33:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ac47014-a10c-4639-9aeb-49f711f8b333.jsonl`
-- `/ll:refine-issue` - 2026-05-15T12:28:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f8b027f-820b-4c3e-a9e3-de1673eb0241.jsonl`
-- `/ll:format-issue` - 2026-05-15T12:23:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4689ac73-1c8c-466a-9a6f-710fdc35baef.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `d0a84cca-2574-4c32-8edd-684205b8feb0.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `cfeb6eaa-4ec1-44a2-8e9b-cc6bfe2f5b09.jsonl`
+- `/ll:wire-issue` - 2026-05-15T12:33:11 - `1ac47014-a10c-4639-9aeb-49f711f8b333.jsonl`
+- `/ll:refine-issue` - 2026-05-15T12:28:19 - `7f8b027f-820b-4c3e-a9e3-de1673eb0241.jsonl`
+- `/ll:format-issue` - 2026-05-15T12:23:07 - `4689ac73-1c8c-466a-9a6f-710fdc35baef.jsonl`
 
 - manual-review - 2026-05-15T00:00:00 - Filed during cross-compat readiness review of FEAT-957 / FEAT-992; identified six hard-coded `claude` call sites in scripts/little_loops/ that block real cross-host operation.
 

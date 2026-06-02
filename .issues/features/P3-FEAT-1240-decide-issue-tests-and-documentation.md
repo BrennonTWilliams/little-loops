@@ -244,8 +244,8 @@ Implemented all acceptance criteria:
 - `.claude/CLAUDE.md` update blocked by file permissions — requires manual addition of `decide-issue`^ to Issue Refinement list
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-21T22:36:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43a10134-e6ab-43e1-ac5c-a1f561db0cd0.jsonl`
-- `/ll:wire-issue` - 2026-04-21T22:31:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1fe3f6c6-5218-469a-85e0-c99d45f7980b.jsonl`
-- `/ll:refine-issue` - 2026-04-21T22:27:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/334dbc9e-19a8-43a9-bcb6-3b35525856ba.jsonl`
-- `/ll:confidence-check` - 2026-04-21T22:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ea157c8-aee5-47f5-af69-3a6e8572e83e.jsonl`
-- `/ll:manage-issue` - 2026-04-21T22:43:52Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `/ll:ready-issue` - 2026-04-21T22:36:52 - `43a10134-e6ab-43e1-ac5c-a1f561db0cd0.jsonl`
+- `/ll:wire-issue` - 2026-04-21T22:31:49 - `1fe3f6c6-5218-469a-85e0-c99d45f7980b.jsonl`
+- `/ll:refine-issue` - 2026-04-21T22:27:21 - `334dbc9e-19a8-43a9-bcb6-3b35525856ba.jsonl`
+- `/ll:confidence-check` - 2026-04-21T22:45:00 - `6ea157c8-aee5-47f5-af69-3a6e8572e83e.jsonl`
+- `/ll:manage-issue` - 2026-04-21T22:43:52Z - `fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`

@@ -268,14 +268,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Session Log
 - `/ll:manage-issue` - 2026-04-13T00:00:00Z - current session
-- `/ll:ready-issue` - 2026-04-14T01:49:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/818b13e2-fdc2-4dc3-8847-f1cf51da41a9.jsonl`
-- `/ll:confidence-check` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2a35301-9e9f-472b-891c-b2b8d87d943d.jsonl`
-- `/ll:refine-issue` - 2026-04-14T01:23:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93817ff5-e7c7-47c7-8e1e-21ed9f2139ab.jsonl`
-- `/ll:confidence-check` - 2026-04-13T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b58bc250-37fe-4a3c-aa5d-a5634a8341f0.jsonl`
-- `/ll:wire-issue` - 2026-04-13T22:03:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2129c183-0b70-41f6-8799-9dacd5b5f99e.jsonl`
-- `/ll:refine-issue` - 2026-04-13T21:58:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff5edae9-4701-414b-9704-2fdd2017809d.jsonl`
-- `/ll:format-issue` - 2026-04-13T21:53:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae05ca10-09ef-44cc-86ee-cbf1bf87bce1.jsonl`
-- `/ll:capture-issue` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29031437-93bc-4a95-a6ec-0b6e91b4455e.jsonl`
+- `/ll:ready-issue` - 2026-04-14T01:49:36 - `818b13e2-fdc2-4dc3-8847-f1cf51da41a9.jsonl`
+- `/ll:confidence-check` - 2026-04-13T00:00:00Z - `d2a35301-9e9f-472b-891c-b2b8d87d943d.jsonl`
+- `/ll:refine-issue` - 2026-04-14T01:23:16 - `93817ff5-e7c7-47c7-8e1e-21ed9f2139ab.jsonl`
+- `/ll:confidence-check` - 2026-04-13T22:30:00 - `b58bc250-37fe-4a3c-aa5d-a5634a8341f0.jsonl`
+- `/ll:wire-issue` - 2026-04-13T22:03:00 - `2129c183-0b70-41f6-8799-9dacd5b5f99e.jsonl`
+- `/ll:refine-issue` - 2026-04-13T21:58:15 - `ff5edae9-4701-414b-9704-2fdd2017809d.jsonl`
+- `/ll:format-issue` - 2026-04-13T21:53:03 - `ae05ca10-09ef-44cc-86ee-cbf1bf87bce1.jsonl`
+- `/ll:capture-issue` - 2026-04-13T00:00:00Z - `29031437-93bc-4a95-a6ec-0b6e91b4455e.jsonl`
 
 ---
 

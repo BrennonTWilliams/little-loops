@@ -156,8 +156,8 @@ N/A - No public API changes
 `enhancement`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T16:33:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92bcd8b4-38a6-46b1-9488-9de681167c3e.jsonl`
-- `/ll:format-issue` - 2026-05-29T01:15:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da7cd339-298e-476c-b35d-3d604e671cde.jsonl`
+- `/ll:ready-issue` - 2026-06-01T16:33:57 - `92bcd8b4-38a6-46b1-9488-9de681167c3e.jsonl`
+- `/ll:format-issue` - 2026-05-29T01:15:19 - `da7cd339-298e-476c-b35d-3d604e671cde.jsonl`
 - `/ll:capture-issue` - 2026-05-29T01:01:55Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17b05161-9ff0-48f9-baaf-69470f937b48.jsonl`
 
 ---

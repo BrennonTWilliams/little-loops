@@ -193,10 +193,10 @@ The codebase has zero `psutil` usage. Process scanning is done via `os.kill(pid,
 `enhancement`, `ll-auto`, `process-management`, `orphan-cleanup`
 
 ## Session Log
-- `/ll:verify-issues` - 2026-05-31T05:40:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:refine-issue` - 2026-05-31T03:22:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f72e0d74-36b8-470a-9d86-22b215931362.jsonl`
-- `/ll:format-issue` - 2026-05-31T03:05:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dde5e059-f5e9-4d77-8522-48c6692a972c.jsonl`
-- `/ll:capture-issue` - 2026-05-31T02:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/402d74eb-4a8a-4e98-8242-2b8c5e9efb08.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:16 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:refine-issue` - 2026-05-31T03:22:49 - `f72e0d74-36b8-470a-9d86-22b215931362.jsonl`
+- `/ll:format-issue` - 2026-05-31T03:05:43 - `dde5e059-f5e9-4d77-8522-48c6692a972c.jsonl`
+- `/ll:capture-issue` - 2026-05-31T02:45:00Z - `402d74eb-4a8a-4e98-8242-2b8c5e9efb08.jsonl`
 
 ---
 

@@ -110,9 +110,9 @@ _Added by `/ll:refine-issue` — Current CLI argparse descriptions:_
 `enhancement`, `cli`, `context-engineering`, `ux`, `tooling`
 
 ## Session Log
-- `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Captured actual argparse description strings for 8 CLI tools; noted ll-sprint/ll-loop/ll-workflows need separate audit from their subdirectories
-- `/ll:manage-issue` - 2026-03-01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl` - Completed audit: sharpened descriptions for 4 tools, added CLI TOOLS section to help.md, updated all docs
+- `/ll:format-issue` - 2026-02-24 - `cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Captured actual argparse description strings for 8 CLI tools; noted ll-sprint/ll-loop/ll-workflows need separate audit from their subdirectories
+- `/ll:manage-issue` - 2026-03-01 - `ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl` - Completed audit: sharpened descriptions for 4 tools, added CLI TOOLS section to help.md, updated all docs
 
 ## Resolution
 

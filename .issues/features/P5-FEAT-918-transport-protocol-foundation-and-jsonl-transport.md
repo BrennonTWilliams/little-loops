@@ -254,11 +254,11 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - FEAT-1323: Transport CLI Wiring Pass and Documentation
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-02T15:15:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19344c8e-9db2-4d37-b7f7-d6bf19e299d8.jsonl`
-- `/ll:issue-size-review` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19344c8e-9db2-4d37-b7f7-d6bf19e299d8.jsonl`
-- `/ll:confidence-check` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b4323d2-3288-4647-af6a-f9e525a33439.jsonl`
-- `/ll:wire-issue` - 2026-05-02T15:05:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03a0cb47-21a3-4cf7-ac55-c3efa268b679.jsonl`
-- `/ll:refine-issue` - 2026-05-02T15:00:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81912d11-2135-4a9d-bc8a-708b31263efe.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-02T15:15:42 - `19344c8e-9db2-4d37-b7f7-d6bf19e299d8.jsonl`
+- `/ll:issue-size-review` - 2026-05-02T00:00:00 - `19344c8e-9db2-4d37-b7f7-d6bf19e299d8.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00 - `5b4323d2-3288-4647-af6a-f9e525a33439.jsonl`
+- `/ll:wire-issue` - 2026-05-02T15:05:22 - `03a0cb47-21a3-4cf7-ac55-c3efa268b679.jsonl`
+- `/ll:refine-issue` - 2026-05-02T15:00:21 - `81912d11-2135-4a9d-bc8a-708b31263efe.jsonl`
 
 - Split from original FEAT-918 - 2026-05-01 (webhook/OTel/socket transports moved to FEAT-1314/1312/1313)
 - `/ll:confidence-check` - 2026-05-01 - Outcome confidence 46/100 on the original combined issue triggered the split

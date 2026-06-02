@@ -262,13 +262,13 @@ _Added by `/ll:confidence-check` on 2026-04-20_
 - **items_hash test targets unbuilt behavior**: `test_items_hash_mismatch_warning_is_prominent` tests a WARNING log and summary echo for a feature with zero codebase presence. The exact implementation interface won't be known until FEAT-1075 ships — the test may need adjustment against the real API.
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-21T02:45:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9944c1f0-21a3-4e5b-be98-4546be686b97.jsonl`
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3ffbc4c4-bcb2-4b28-8dfc-80043a1db329.jsonl`
-- `/ll:confidence-check` - 2026-04-21T03:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28c13f99-a607-4a13-a093-5ab45fd793d5.jsonl`
-- `/ll:wire-issue` - 2026-04-21T02:39:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/989a22a0-5990-4db6-99ab-5f00fc036441.jsonl`
-- `/ll:refine-issue` - 2026-04-21T02:34:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a9ba45a4-e650-4b5a-ae29-132e450b4a40.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb2a4d4b-681c-4336-8ebc-dacfae9712d8.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee39c2da-53b6-4990-b649-6f5e43993562.jsonl`
+- `/ll:refine-issue` - 2026-04-21T02:45:02 - `9944c1f0-21a3-4e5b-be98-4546be686b97.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `3ffbc4c4-bcb2-4b28-8dfc-80043a1db329.jsonl`
+- `/ll:confidence-check` - 2026-04-21T03:00:00 - `28c13f99-a607-4a13-a093-5ab45fd793d5.jsonl`
+- `/ll:wire-issue` - 2026-04-21T02:39:48 - `989a22a0-5990-4db6-99ab-5f00fc036441.jsonl`
+- `/ll:refine-issue` - 2026-04-21T02:34:15 - `a9ba45a4-e650-4b5a-ae29-132e450b4a40.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `eb2a4d4b-681c-4336-8ebc-dacfae9712d8.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `ee39c2da-53b6-4990-b649-6f5e43993562.jsonl`
 
 ---
 

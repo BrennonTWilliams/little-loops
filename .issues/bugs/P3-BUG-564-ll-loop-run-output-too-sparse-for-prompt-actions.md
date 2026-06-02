@@ -110,10 +110,9 @@ Users should be able to see:
 
 ## Session Log
 
-- `/ll:capture-issue` - 2026-03-04T09:50:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07dab55f-8142-425b-8507-7a9873d64648.jsonl`
-- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bbc1c475-4122-4160-92ec-f5d55de86681.jsonl`
-- `/ll:manage-issue` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-
+- `/ll:capture-issue` - 2026-03-04T09:50:00Z - `07dab55f-8142-425b-8507-7a9873d64648.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `bbc1c475-4122-4160-92ec-f5d55de86681.jsonl`
+- `/ll:manage-issue` - 2026-03-04T00:00:00Z
 ---
 
 **Completed** | Created: 2026-03-04 | Priority: P3

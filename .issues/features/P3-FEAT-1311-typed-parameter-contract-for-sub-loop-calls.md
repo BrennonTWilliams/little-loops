@@ -267,11 +267,11 @@ The sweep is bigger than the issue suggested but doesn't change the implementati
 feature, loops, fsm, yaml, schema, validation, sub-loops, captured
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-02T14:01:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62b92959-aca2-4dbd-8f5b-e766a8613732.jsonl`
-- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56b05039-8712-4305-aad4-e1ae526db75d.jsonl`
-- `/ll:wire-issue` - 2026-05-02T13:55:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a6c988a-c1d3-4434-a605-8dcf032ca5c7.jsonl`
-- `/ll:refine-issue` - 2026-05-01T21:01:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a85844e-e09f-4359-8f57-686145624246.jsonl`
-- `/ll:format-issue` - 2026-05-01T19:35:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0346db4-b5ff-485c-99bb-b9d802871bf0.jsonl`
+- `/ll:ready-issue` - 2026-05-02T14:01:58 - `62b92959-aca2-4dbd-8f5b-e766a8613732.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `56b05039-8712-4305-aad4-e1ae526db75d.jsonl`
+- `/ll:wire-issue` - 2026-05-02T13:55:48 - `0a6c988a-c1d3-4434-a605-8dcf032ca5c7.jsonl`
+- `/ll:refine-issue` - 2026-05-01T21:01:01 - `6a85844e-e09f-4359-8f57-686145624246.jsonl`
+- `/ll:format-issue` - 2026-05-01T19:35:38 - `f0346db4-b5ff-485c-99bb-b9d802871bf0.jsonl`
 - `/ll:capture-issue` - 2026-05-01T18:15:00Z - captured during review of loop-viz FEAT-553; runtime gap identified (no `with:` block exists today; `context_passthrough` is all-or-nothing)
 
 ---

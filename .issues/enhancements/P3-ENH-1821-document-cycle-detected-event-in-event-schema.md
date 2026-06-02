@@ -52,8 +52,8 @@ Add a `### cycle_detected` section under "Subsystem: FSM Executor" with:
 `enhancement`, `documentation`, `auto-generated`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-31T05:13:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/803b0613-e60e-42c8-b77d-61a3fe02a83c.jsonl`
-- `/ll:manage-issue enhancement fix ENH-1821` - 2026-05-31T05:15:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/570dacae-878d-4005-8418-6e391850d9dd.jsonl`
+- `/ll:ready-issue` - 2026-05-31T05:13:01 - `803b0613-e60e-42c8-b77d-61a3fe02a83c.jsonl`
+- `/ll:manage-issue enhancement fix ENH-1821` - 2026-05-31T05:15:36 - `570dacae-878d-4005-8418-6e391850d9dd.jsonl`
 
 ---
 

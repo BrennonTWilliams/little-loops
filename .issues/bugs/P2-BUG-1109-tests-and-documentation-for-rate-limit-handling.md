@@ -104,10 +104,10 @@ _Added by `/ll:refine-issue` 2026-04-14 — BUG-1107/1108 commits (8dba4536, 95b
 - `skills/create-loop/loop-types.md:789-790,849` — parallel rate-limit note on per-item retry safeguard mentions missing.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-14T19:53:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5812cb7b-7e70-4b6a-abe8-7d2fff73423e.jsonl`
-- `/ll:refine-issue` - 2026-04-14T19:49:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9fca1b06-b8a8-46b6-8419-fea8aba1ead4.jsonl`
-- `/ll:issue-size-review` - 2026-04-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4abdbd46-1b62-4801-9d00-a2569583afde.jsonl`
-- `/ll:manage-issue` - 2026-04-14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c90f42b3-22d4-474b-9b3a-362990c033a4.jsonl`
+- `/ll:ready-issue` - 2026-04-14T19:53:06 - `5812cb7b-7e70-4b6a-abe8-7d2fff73423e.jsonl`
+- `/ll:refine-issue` - 2026-04-14T19:49:17 - `9fca1b06-b8a8-46b6-8419-fea8aba1ead4.jsonl`
+- `/ll:issue-size-review` - 2026-04-14T00:00:00Z - `4abdbd46-1b62-4801-9d00-a2569583afde.jsonl`
+- `/ll:manage-issue` - 2026-04-14 - `c90f42b3-22d4-474b-9b3a-362990c033a4.jsonl`
 
 ## Resolution
 

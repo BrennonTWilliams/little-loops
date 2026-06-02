@@ -219,9 +219,9 @@ Implemented all three write-path gates (ENH-1841):
 - TDD: 6 new tests (2 hook-level × 2 write paths + 2 session-store-level), all pass; full suite green (8552 passed)
 
 ## Session Log
-- `/ll:manage-issue` - 2026-06-01T06:52:16Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-06-01T06:45:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c37ab7c3-de9e-4aef-8f6b-474c7023dd06.jsonl`
-- `/ll:refine-issue` - 2026-06-01T06:34:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19a20223-d604-4118-89e8-42bc4ddf3f59.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1325861-5c8a-40ab-90ee-ac4727f376b5.jsonl`
-- `/ll:wire-issue` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2708ad88-2df1-4118-9ecd-5de04215d25e.jsonl`
+- `/ll:manage-issue` - 2026-06-01T06:52:16Z
+- `/ll:ready-issue` - 2026-06-01T06:45:24 - `c37ab7c3-de9e-4aef-8f6b-474c7023dd06.jsonl`
+- `/ll:refine-issue` - 2026-06-01T06:34:32 - `19a20223-d604-4118-89e8-42bc4ddf3f59.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `c1325861-5c8a-40ab-90ee-ac4727f376b5.jsonl`
+- `/ll:wire-issue` - 2026-06-01T00:00:00Z
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `2708ad88-2df1-4118-9ecd-5de04215d25e.jsonl`

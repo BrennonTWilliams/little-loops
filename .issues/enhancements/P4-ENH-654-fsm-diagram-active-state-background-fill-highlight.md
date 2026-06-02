@@ -187,17 +187,17 @@ Implemented background fill highlight for active state boxes in FSM diagrams:
 - All 177 display tests + 256 fsm_executor/sprint_integration tests pass.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-24T01:09:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb89b759-5a6d-4254-ad99-4e58a219cc17.jsonl`
-- `/ll:ready-issue` - 2026-05-24T01:04:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c4a6baba-3f38-41a5-9767-fd61fc1139fc.jsonl`
-- `/ll:confidence-check` - 2026-05-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/94d3a774-727b-48c4-982b-4324047ede61.jsonl`
-- `/ll:wire-issue` - 2026-05-24T00:45:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8177277-27a8-4514-86b4-2e9d9e6a5787.jsonl`
-- `/ll:refine-issue` - 2026-05-24T00:28:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ba7a251-01eb-435c-ba22-90efa9dacf11.jsonl`
-- `/ll:verify-issues` - 2026-04-11T19:02:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
-- `/ll:verify-issues` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2482dff-8512-481e-813c-be16a2afb222.jsonl`
-- `/ll:verify-issues` - 2026-04-03T02:58:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
-- `/ll:verify-issues` - 2026-04-01T17:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
-- `/ll:tradeoff-review-issues` - 2026-03-22T05:05:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a58662a-8ea7-4c74-bb16-c6d77d559e08.jsonl`
-- `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
+- `/ll:manage-issue` - 2026-05-24T01:09:23Z - `bb89b759-5a6d-4254-ad99-4e58a219cc17.jsonl`
+- `/ll:ready-issue` - 2026-05-24T01:04:29 - `c4a6baba-3f38-41a5-9767-fd61fc1139fc.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:00 - `94d3a774-727b-48c4-982b-4324047ede61.jsonl`
+- `/ll:wire-issue` - 2026-05-24T00:45:40 - `f8177277-27a8-4514-86b4-2e9d9e6a5787.jsonl`
+- `/ll:refine-issue` - 2026-05-24T00:28:09 - `8ba7a251-01eb-435c-ba22-90efa9dacf11.jsonl`
+- `/ll:verify-issues` - 2026-04-11T19:02:03 - `4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
+- `/ll:verify-issues` - 2026-04-02T00:00:00 - `a2482dff-8512-481e-813c-be16a2afb222.jsonl`
+- `/ll:verify-issues` - 2026-04-03T02:58:19 - `7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
+- `/ll:verify-issues` - 2026-04-01T17:45:21 - `712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
+- `/ll:tradeoff-review-issues` - 2026-03-22T05:05:12 - `7a58662a-8ea7-4c74-bb16-c6d77d559e08.jsonl`
+- `/ll:verify-issues` - 2026-03-15T00:11:17 - `623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:capture-issue` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb1dacf-d3dc-4461-88d7-450e60c8640a.jsonl`
 - `/ll:format-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a9e18cb-659a-48f7-9438-2e4c4fdddd25.jsonl`
 - `/ll:confidence-check` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a53c6fa-fc4b-421b-b487-38a43f4dff4a.jsonl`

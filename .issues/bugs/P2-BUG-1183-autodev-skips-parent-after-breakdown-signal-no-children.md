@@ -215,9 +215,9 @@ The BUG-1079 "no double size-review" invariant is preserved: flag=1 AND children
 **Verification:** `5004 passed, 5 skipped` on `python -m pytest scripts/tests/`. Pre-existing ruff UP017 warning in `scripts/little_loops/cli/loop/run.py:166` is unrelated to this change.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-18T23:19:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b8781941-62db-49a8-ac16-472e4090cdf6.jsonl`
-- `/ll:confidence-check` - 2026-04-18T23:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75426ad0-55f6-40b5-bf17-f733e53313c9.jsonl`
-- `/ll:wire-issue` - 2026-04-18T23:16:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/431ae0bc-066d-4318-9b8a-b705369c757f.jsonl`
-- `/ll:refine-issue` - 2026-04-18T23:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d784429a-8e02-4b00-9c77-3ace6ff55f65.jsonl`
-- `/ll:capture-issue` - 2026-04-18T22:20:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ccc8368e-06c9-482f-96d4-4fbb17a0fbbf.jsonl`
-- `/ll:manage-issue` - 2026-04-18T23:23:41Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fce08054-16c4-48b1-a9b3-26191966efde.jsonl`
+- `/ll:ready-issue` - 2026-04-18T23:19:14 - `b8781941-62db-49a8-ac16-472e4090cdf6.jsonl`
+- `/ll:confidence-check` - 2026-04-18T23:30:00Z - `75426ad0-55f6-40b5-bf17-f733e53313c9.jsonl`
+- `/ll:wire-issue` - 2026-04-18T23:16:56 - `431ae0bc-066d-4318-9b8a-b705369c757f.jsonl`
+- `/ll:refine-issue` - 2026-04-18T23:11:17 - `d784429a-8e02-4b00-9c77-3ace6ff55f65.jsonl`
+- `/ll:capture-issue` - 2026-04-18T22:20:25Z - `ccc8368e-06c9-482f-96d4-4fbb17a0fbbf.jsonl`
+- `/ll:manage-issue` - 2026-04-18T23:23:41Z - `fce08054-16c4-48b1-a9b3-26191966efde.jsonl`

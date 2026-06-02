@@ -134,12 +134,12 @@ The issue contains at least one demonstrably incorrect acceptance criterion: AC4
 **Open** | Created: 2026-04-22 | Priority: P3
 
 ## Session Log
-- `ll-auto` - 2026-04-22T20:11:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b845b2b2-cee1-4d01-8790-c3b7599dd1ce.jsonl`
-- `/ll:ready-issue` - 2026-04-22T20:09:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44738150-1e95-485b-b9de-efb28cd3a773.jsonl`
-- `/ll:wire-issue` - 2026-04-22T20:00:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11e2d49e-b581-4771-8622-7d23334f2839.jsonl`
-- `/ll:refine-issue` - 2026-04-22T19:57:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d97b3fc-442b-4215-a0e1-e7e88115a06e.jsonl`
-- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fc25386-a9f0-4e75-8434-c659db481895.jsonl`
-- `/ll:confidence-check` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7d6ff545-eb89-4060-969d-7b25e3f9974e.jsonl`
+- `ll-auto` - 2026-04-22T20:11:55 - `b845b2b2-cee1-4d01-8790-c3b7599dd1ce.jsonl`
+- `/ll:ready-issue` - 2026-04-22T20:09:52 - `44738150-1e95-485b-b9de-efb28cd3a773.jsonl`
+- `/ll:wire-issue` - 2026-04-22T20:00:54 - `11e2d49e-b581-4771-8622-7d23334f2839.jsonl`
+- `/ll:refine-issue` - 2026-04-22T19:57:05 - `2d97b3fc-442b-4215-a0e1-e7e88115a06e.jsonl`
+- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `4fc25386-a9f0-4e75-8434-c659db481895.jsonl`
+- `/ll:confidence-check` - 2026-04-22T00:00:00 - `7d6ff545-eb89-4060-969d-7b25e3f9974e.jsonl`
 
 
 ---

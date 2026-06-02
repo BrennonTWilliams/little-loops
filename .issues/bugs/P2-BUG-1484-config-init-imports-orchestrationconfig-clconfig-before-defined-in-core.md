@@ -197,8 +197,8 @@ config, import-error, broken, pi-adapter
 ---
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/625d3686-d0e2-4e0f-84ef-fb76e68715c7.jsonl`
-- `/ll:decide-issue` - 2026-05-15T21:09:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/078745a5-ea9c-4f51-a51e-f76ca76e5b84.jsonl`
-- `/ll:refine-issue` - 2026-05-15T21:03:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1169a12a-6e8b-4461-bd90-cb7a7c13e359.jsonl`
-- `/ll:capture-issue` - 2026-05-15T20:48:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ac48eaf-913e-40cd-8b15-98d99f2901cc.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00Z - `625d3686-d0e2-4e0f-84ef-fb76e68715c7.jsonl`
+- `/ll:decide-issue` - 2026-05-15T21:09:41 - `078745a5-ea9c-4f51-a51e-f76ca76e5b84.jsonl`
+- `/ll:refine-issue` - 2026-05-15T21:03:19 - `1169a12a-6e8b-4461-bd90-cb7a7c13e359.jsonl`
+- `/ll:capture-issue` - 2026-05-15T20:48:07Z - `5ac48eaf-913e-40cd-8b15-98d99f2901cc.jsonl`
 - `/ll:format-issue` - 2026-05-15T00:00:00Z

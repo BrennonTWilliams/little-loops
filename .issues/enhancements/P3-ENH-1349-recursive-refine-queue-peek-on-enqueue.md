@@ -179,10 +179,10 @@ Added `TestEnqueuePeekLine` class to `scripts/tests/test_loops_recursive_refine.
 **Completed** | Created: 2026-05-03 | Completed: 2026-05-03 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-03T21:42:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d93594b-528f-4f68-9762-ff86f2ab1c75.jsonl`
-- `/ll:confidence-check` - 2026-05-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6631e7df-b0f4-49b5-b188-539aa5e59767.jsonl`
-- `/ll:wire-issue` - 2026-05-03T21:37:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad656149-49c1-4ad1-a76c-25599a57f54c.jsonl`
-- `/ll:refine-issue` - 2026-05-03T21:32:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9be08ced-69e6-4d22-a6da-f48f7091aef9.jsonl`
-- `/ll:format-issue` - 2026-05-03T19:20:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ac7040e-7ed3-4fc9-8eb6-0a927d3649e8.jsonl`
-- `/ll:manage-issue` - 2026-05-03T21:45:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6631e7df-b0f4-49b5-b188-539aa5e59767.jsonl`
-- `/ll:capture-issue` - 2026-05-03T16:43:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81b5153d-e662-4abf-af0e-b3ec54065e0b.jsonl`
+- `/ll:ready-issue` - 2026-05-03T21:42:23 - `1d93594b-528f-4f68-9762-ff86f2ab1c75.jsonl`
+- `/ll:confidence-check` - 2026-05-03T00:00:00Z - `6631e7df-b0f4-49b5-b188-539aa5e59767.jsonl`
+- `/ll:wire-issue` - 2026-05-03T21:37:58 - `ad656149-49c1-4ad1-a76c-25599a57f54c.jsonl`
+- `/ll:refine-issue` - 2026-05-03T21:32:17 - `9be08ced-69e6-4d22-a6da-f48f7091aef9.jsonl`
+- `/ll:format-issue` - 2026-05-03T19:20:27 - `9ac7040e-7ed3-4fc9-8eb6-0a927d3649e8.jsonl`
+- `/ll:manage-issue` - 2026-05-03T21:45:54Z - `6631e7df-b0f4-49b5-b188-539aa5e59767.jsonl`
+- `/ll:capture-issue` - 2026-05-03T16:43:25Z - `81b5153d-e662-4abf-af0e-b3ec54065e0b.jsonl`

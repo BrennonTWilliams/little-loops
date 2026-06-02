@@ -247,12 +247,12 @@ class ParallelResult:
 ---
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d9dab5f-0500-45e4-a7b3-4a342aa59e89.jsonl`
-- `/ll:wire-issue` - 2026-04-12T20:59:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cc4df60-baf3-40fc-bf23-c4a224b1f898.jsonl`
-- `/ll:refine-issue` - 2026-04-12T20:49:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fcb243f-3ce0-4787-a0c2-82ca645cd388.jsonl`
-- `/ll:format-issue` - 2026-04-12T20:45:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/25126069-d8fb-4fac-ae10-8b33af465661.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00 - `8d9dab5f-0500-45e4-a7b3-4a342aa59e89.jsonl`
+- `/ll:wire-issue` - 2026-04-12T20:59:08 - `3cc4df60-baf3-40fc-bf23-c4a224b1f898.jsonl`
+- `/ll:refine-issue` - 2026-04-12T20:49:28 - `4fcb243f-3ce0-4787-a0c2-82ca645cd388.jsonl`
+- `/ll:format-issue` - 2026-04-12T20:45:13 - `25126069-d8fb-4fac-ae10-8b33af465661.jsonl`
 - `/ll:capture-issue` - 2026-04-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c305cac4-c25e-482f-86f7-9adf26df1b0e.jsonl`
-- `/ll:issue-size-review` - 2026-04-12T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8e4e49c-4e79-4270-9839-915fa38b03f2.jsonl`
+- `/ll:issue-size-review` - 2026-04-12T21:00:00 - `c8e4e49c-4e79-4270-9839-915fa38b03f2.jsonl`
 
 ---
 

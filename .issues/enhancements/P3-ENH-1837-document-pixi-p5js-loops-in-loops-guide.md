@@ -51,4 +51,4 @@ Reference sections for shape:
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T02:37:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cbd1e26c-d15a-4985-b164-6a194c6e9171.jsonl`
+- `/ll:ready-issue` - 2026-06-01T02:37:28 - `cbd1e26c-d15a-4985-b164-6a194c6e9171.jsonl`

@@ -83,8 +83,8 @@ Added `--since` and `--until` date range arguments to `ll-history analyze`:
 - All claims accurate; feature gap is real and not yet implemented
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-03-21T21:19:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c41effb-ccb4-4986-b94e-1346cad60324.jsonl`
-- `/ll:verify-issues` - 2026-03-19T23:12:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:manage-issue` - 2026-03-21T00:00:00Z
+- `/ll:ready-issue` - 2026-03-21T21:19:56 - `1c41effb-ccb4-4986-b94e-1346cad60324.jsonl`
+- `/ll:verify-issues` - 2026-03-19T23:12:21 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:scan-codebase` - 2026-03-19T22:12:56 - `f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`

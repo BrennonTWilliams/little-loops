@@ -153,10 +153,10 @@ Fixed by correcting the "Why `echo` as the action?" blockquote in `docs/guides/A
 **Completed** | Created: 2026-03-24 | Resolved: 2026-03-24 | Priority: P3
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-03-25T02:08:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3312899e-fea8-40b9-9b4d-4853684c46c5.jsonl`
-- `/ll:manage-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-03-25T02:05:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b232923-7aab-40cc-95d9-2f5442836380.jsonl`
-- `/ll:format-issue` - 2026-03-25T00:53:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4305bbc5-4892-4b4e-80f3-917b53ab0916.jsonl`
-- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/556f7371-7835-47ca-a34d-204ed0fd9aed.jsonl`
-- `/ll:refine-issue` - 2026-03-25T00:47:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07c03e86-2f17-4650-a7f9-2d45a82edcd4.jsonl`
-- `/ll:capture-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3df6195-41d1-442e-a5ec-89e21c18fa59.jsonl`
+- `hook:posttooluse-git-mv` - 2026-03-25T02:08:37 - `3312899e-fea8-40b9-9b4d-4853684c46c5.jsonl`
+- `/ll:manage-issue` - 2026-03-24T00:00:00Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-03-25T02:05:41 - `7b232923-7aab-40cc-95d9-2f5442836380.jsonl`
+- `/ll:format-issue` - 2026-03-25T00:53:34 - `4305bbc5-4892-4b4e-80f3-917b53ab0916.jsonl`
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `556f7371-7835-47ca-a34d-204ed0fd9aed.jsonl`
+- `/ll:refine-issue` - 2026-03-25T00:47:14 - `07c03e86-2f17-4650-a7f9-2d45a82edcd4.jsonl`
+- `/ll:capture-issue` - 2026-03-24T00:00:00Z - `f3df6195-41d1-442e-a5ec-89e21c18fa59.jsonl`

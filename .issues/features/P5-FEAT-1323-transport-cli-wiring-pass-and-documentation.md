@@ -204,11 +204,11 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - 7 test files require patch additions (`wire_transports` mock); if any are missed, tests fail immediately — the full list is identified in the integration map but implementation must be meticulous
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-02T16:41:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83d74176-84ac-4ea2-9c73-06de95bcdbd2.jsonl`
-- `/ll:manage-issue` - 2026-05-02T16:40:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83d74176-84ac-4ea2-9c73-06de95bcdbd2.jsonl`
-- `/ll:ready-issue` - 2026-05-02T16:30:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d73397d4-b2be-454b-b88f-b82e927e6265.jsonl`
-- `/ll:confidence-check` - 2026-05-02T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/456c0106-3520-4939-a7be-d96adc064527.jsonl`
-- `/ll:wire-issue` - 2026-05-02T16:25:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ab09e3a-7876-4093-acb8-51d064a572a3.jsonl`
-- `/ll:refine-issue` - 2026-05-02T16:19:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60c38c7d-c3d4-476f-947b-a6dac8e2f4ba.jsonl`
-- `/ll:format-issue` - 2026-05-02T15:23:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a3eefc16-896f-481d-8558-b7c6d43c3bbd.jsonl`
-- `/ll:issue-size-review` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19344c8e-9db2-4d37-b7f7-d6bf19e299d8.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-02T16:41:58 - `83d74176-84ac-4ea2-9c73-06de95bcdbd2.jsonl`
+- `/ll:manage-issue` - 2026-05-02T16:40:58 - `83d74176-84ac-4ea2-9c73-06de95bcdbd2.jsonl`
+- `/ll:ready-issue` - 2026-05-02T16:30:22 - `d73397d4-b2be-454b-b88f-b82e927e6265.jsonl`
+- `/ll:confidence-check` - 2026-05-02T17:00:00 - `456c0106-3520-4939-a7be-d96adc064527.jsonl`
+- `/ll:wire-issue` - 2026-05-02T16:25:06 - `6ab09e3a-7876-4093-acb8-51d064a572a3.jsonl`
+- `/ll:refine-issue` - 2026-05-02T16:19:38 - `60c38c7d-c3d4-476f-947b-a6dac8e2f4ba.jsonl`
+- `/ll:format-issue` - 2026-05-02T15:23:55 - `a3eefc16-896f-481d-8558-b7c6d43c3bbd.jsonl`
+- `/ll:issue-size-review` - 2026-05-02T00:00:00 - `19344c8e-9db2-4d37-b7f7-d6bf19e299d8.jsonl`

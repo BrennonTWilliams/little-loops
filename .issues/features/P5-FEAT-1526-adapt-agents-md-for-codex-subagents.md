@@ -323,7 +323,7 @@ _Added by `/ll:confidence-check` on 2026-05-16_
 - FEAT-1528: Documentation and wiring integration for ll-adapt-agents-for-codex
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a1c9c8e0-d04b-464f-b650-e498785322de.jsonl`
-- `/ll:wire-issue` - 2026-05-16T20:56:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a1c9c8e0-d04b-464f-b650-e498785322de.jsonl`
-- `/ll:refine-issue` - 2026-05-16T20:50:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf0e2b8c-4304-4ef6-ba50-b0ba3e4305ce.jsonl`
-- `/ll:issue-size-review` - 2026-05-16T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0de5eba4-6630-4b6f-ac14-f65397d900bb.jsonl`
+- `/ll:confidence-check` - 2026-05-16T00:00:00Z - `a1c9c8e0-d04b-464f-b650-e498785322de.jsonl`
+- `/ll:wire-issue` - 2026-05-16T20:56:26 - `a1c9c8e0-d04b-464f-b650-e498785322de.jsonl`
+- `/ll:refine-issue` - 2026-05-16T20:50:04 - `cf0e2b8c-4304-4ef6-ba50-b0ba3e4305ce.jsonl`
+- `/ll:issue-size-review` - 2026-05-16T21:00:00Z - `0de5eba4-6630-4b6f-ac14-f65397d900bb.jsonl`

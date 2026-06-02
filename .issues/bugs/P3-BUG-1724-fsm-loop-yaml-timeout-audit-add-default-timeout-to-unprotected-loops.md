@@ -157,11 +157,11 @@ This issue deliberately does NOT add `idle_timeout:` fields to any YAML because:
 
 ## Session Log
 - `/ll:manage-issue` - 2026-05-26T03:28:43Z - implementation complete; added default_timeout:1800 to general-task.yaml, per-state timeouts to eval-driven-development.yaml (commit_impl/commit_eval/tradeoff_review), harness-multi-item.yaml (execute), fix-quality-and-tests.yaml (check-quality); added TestBUG1724TimeoutProtection tests; all 68 test_general_task_loop tests pass
-- `/ll:ready-issue` - 2026-05-26T03:25:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f27dea3-21c8-47e0-9f66-299deb8d1cf6.jsonl`
-- `/ll:confidence-check` - 2026-05-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86d6885a-22a8-4cc5-ae13-f709a1a7344a.jsonl`
-- `/ll:wire-issue` - 2026-05-26T03:20:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3ea80e2-0e77-48a5-98fa-97805e4f05b0.jsonl`
-- `/ll:refine-issue` - 2026-05-26T03:14:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10396453-b866-42d2-8d92-2dcc4a5bde80.jsonl`
-- `/ll:issue-size-review` - 2026-05-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3ec7ab86-eac4-42cb-b06f-00661e557291.jsonl`
+- `/ll:ready-issue` - 2026-05-26T03:25:58 - `0f27dea3-21c8-47e0-9f66-299deb8d1cf6.jsonl`
+- `/ll:confidence-check` - 2026-05-25T00:00:00Z - `86d6885a-22a8-4cc5-ae13-f709a1a7344a.jsonl`
+- `/ll:wire-issue` - 2026-05-26T03:20:44 - `f3ea80e2-0e77-48a5-98fa-97805e4f05b0.jsonl`
+- `/ll:refine-issue` - 2026-05-26T03:14:19 - `10396453-b866-42d2-8d92-2dcc4a5bde80.jsonl`
+- `/ll:issue-size-review` - 2026-05-25T00:00:00Z - `3ec7ab86-eac4-42cb-b06f-00661e557291.jsonl`
 
 ---
 

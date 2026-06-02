@@ -240,8 +240,8 @@ Updated `TestResolveHost.test_explicit_override_beats_hook_host` to use the real
 29 host_runner tests pass; ruff and mypy on `host_runner.py` are clean. Codex binary not installed on dev host — the manual smoke step (`LL_HOST_CLI=codex python -m little_loops.cli.action capabilities`) is deferred until the binary is available for validation.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-15T15:03:26Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/31f67c36-6bf8-4761-8505-85b5d934eabe.jsonl`
-- `/ll:wire-issue` - 2026-05-15T14:52:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0da2172-e051-457f-b0f8-7021ec71c498.jsonl`
-- `/ll:refine-issue` - 2026-05-15T14:47:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa72745d-9e6c-4cfa-b332-1e312570af5e.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0a84cca-2574-4c32-8edd-684205b8feb0.jsonl`
-- `/ll:confidence-check` - 2026-05-15T15:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c130538-448f-4a14-b582-00eacc6f40d9.jsonl`
+- `/ll:manage-issue` - 2026-05-15T15:03:26Z - `31f67c36-6bf8-4761-8505-85b5d934eabe.jsonl`
+- `/ll:wire-issue` - 2026-05-15T14:52:04 - `f0da2172-e051-457f-b0f8-7021ec71c498.jsonl`
+- `/ll:refine-issue` - 2026-05-15T14:47:24 - `aa72745d-9e6c-4cfa-b332-1e312570af5e.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `d0a84cca-2574-4c32-8edd-684205b8feb0.jsonl`
+- `/ll:confidence-check` - 2026-05-15T15:30:00 - `8c130538-448f-4a14-b582-00eacc6f40d9.jsonl`

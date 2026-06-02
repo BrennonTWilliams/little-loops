@@ -89,5 +89,5 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-20T19:28:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6274724-364d-4d8e-bce7-5e6142a84f94.jsonl`
-- `/ll:refine-issue` - 2026-03-20T19:23:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eff6b70f-1b02-408c-b33e-25fc3b821c22.jsonl`
+- `/ll:ready-issue` - 2026-03-20T19:28:04 - `c6274724-364d-4d8e-bce7-5e6142a84f94.jsonl`
+- `/ll:refine-issue` - 2026-03-20T19:23:57 - `eff6b70f-1b02-408c-b33e-25fc3b821c22.jsonl`

@@ -148,12 +148,12 @@ def test_stream_output_fallback_still_works(self) -> None:
 `bug`, `config`, `parallel`, `auto-generated`
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-03-25T23:51:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c08a4d1-4815-492c-b395-d3c62c150492.jsonl`
-- `/ll:ready-issue` - 2026-03-25T23:47:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a87eee94-da5c-4b40-8e7a-8e59e29af4a1.jsonl`
-- `/ll:refine-issue` - 2026-03-25T23:08:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
-- `/ll:format-issue` - 2026-03-25T23:05:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
-- `/ll:confidence-check` - 2026-03-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
-- `/ll:manage-issue` - 2026-03-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `hook:posttooluse-git-mv` - 2026-03-25T23:51:00 - `7c08a4d1-4815-492c-b395-d3c62c150492.jsonl`
+- `/ll:ready-issue` - 2026-03-25T23:47:39 - `a87eee94-da5c-4b40-8e7a-8e59e29af4a1.jsonl`
+- `/ll:refine-issue` - 2026-03-25T23:08:54 - `8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
+- `/ll:format-issue` - 2026-03-25T23:05:41 - `8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
+- `/ll:confidence-check` - 2026-03-25T00:00:00 - `8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
+- `/ll:manage-issue` - 2026-03-25T00:00:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 

@@ -72,7 +72,7 @@ else
 fi
 ```
 
-`pip show little-loops` already outputs the absolute path (e.g. `/Users/brennon/AIProjects/brenentech/little-loops/scripts`). Strip the label prefix and use it directly.
+`pip show little-loops` already outputs the absolute path (e.g. `scripts`). Strip the label prefix and use it directly.
 
 ## Integration Map
 
@@ -149,10 +149,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-13T01:52:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9505b531-2954-46c0-b8ad-4121d25162a3.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a11f70cd-766c-4f45-b29e-1c8bed62643d.jsonl`
-- `/ll:wire-issue` - 2026-04-12T20:41:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c305cac4-c25e-482f-86f7-9adf26df1b0e.jsonl`
-- `/ll:refine-issue` - 2026-04-12T20:38:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d44c09c2-55d3-4e29-ae39-b193249296cd.jsonl`
-- `/ll:format-issue` - 2026-04-12T20:34:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d54c0e6-ea63-4ad6-9f8e-a2b042846215.jsonl`
+- `/ll:ready-issue` - 2026-04-13T01:52:47 - `9505b531-2954-46c0-b8ad-4121d25162a3.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `a11f70cd-766c-4f45-b29e-1c8bed62643d.jsonl`
+- `/ll:wire-issue` - 2026-04-12T20:41:55 - `c305cac4-c25e-482f-86f7-9adf26df1b0e.jsonl`
+- `/ll:refine-issue` - 2026-04-12T20:38:08 - `d44c09c2-55d3-4e29-ae39-b193249296cd.jsonl`
+- `/ll:format-issue` - 2026-04-12T20:34:34 - `9d54c0e6-ea63-4ad6-9f8e-a2b042846215.jsonl`
 - `/ll:capture-issue` - 2026-04-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c42196c-bf0e-4df5-b271-139f23c7c2c3.jsonl`
-- `/ll:manage-issue bug fix` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:manage-issue bug fix` - 2026-04-12T00:00:00Z - `current.jsonl`

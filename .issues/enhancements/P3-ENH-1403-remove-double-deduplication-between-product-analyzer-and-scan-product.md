@@ -149,14 +149,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-11T09:41:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/` - Completed: removed Step 5.2 re-dedup from scan-product.md, added goals injection note to Step 2, added conditional GOALS_CONTENT read to SKILL.md Section 2, added canonical-dedup comment to Section 6, created test_enh1403_doc_wiring.py (6 tests pass)
-- `/ll:ready-issue` - 2026-05-11T09:39:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/417a6bbb-b525-4161-bf7a-cdd08dbcfda7.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/643174cb-56d5-45ff-bad8-a68c2d31c54c.jsonl`
-- `/ll:wire-issue` - 2026-05-11T09:35:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c99bc4ca-ca0d-4a98-b81a-1c84c2e97f03.jsonl`
-- `/ll:refine-issue` - 2026-05-11T09:29:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9df8857-98f7-49ee-b55f-03c160edd6ec.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-10T14:27:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
-- `/ll:format-issue` - 2026-05-09T21:13:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9656e0a3-1e1c-475f-af39-bb776aea9268.jsonl`
+- `/ll:manage-issue` - 2026-05-11T09:41:29Z - `` - Completed: removed Step 5.2 re-dedup from scan-product.md, added goals injection note to Step 2, added conditional GOALS_CONTENT read to SKILL.md Section 2, added canonical-dedup comment to Section 6, created test_enh1403_doc_wiring.py (6 tests pass)
+- `/ll:ready-issue` - 2026-05-11T09:39:26 - `417a6bbb-b525-4161-bf7a-cdd08dbcfda7.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `643174cb-56d5-45ff-bad8-a68c2d31c54c.jsonl`
+- `/ll:wire-issue` - 2026-05-11T09:35:12 - `c99bc4ca-ca0d-4a98-b81a-1c84c2e97f03.jsonl`
+- `/ll:refine-issue` - 2026-05-11T09:29:53 - `c9df8857-98f7-49ee-b55f-03c160edd6ec.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-10T14:27:59 - `87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
+- `/ll:format-issue` - 2026-05-09T21:13:57 - `9656e0a3-1e1c-475f-af39-bb776aea9268.jsonl`
 
 ---
 

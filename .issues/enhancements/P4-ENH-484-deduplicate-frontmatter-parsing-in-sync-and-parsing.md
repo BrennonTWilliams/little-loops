@@ -79,10 +79,10 @@ Reduces maintenance surface and eliminates risk of the copies drifting out of sy
 `enhancement`, `refactoring`, `code-duplication`, `auto-generated`
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
 - `/ll:verify-issues` - 2026-02-24 - Updated sync.py line references: 221-225/251-256 → 194-198/224-228
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with verified line references; no knowledge gaps identified
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with verified line references; no knowledge gaps identified
 - `/ll:ready-issue` - 2026-03-02 - Corrected sync.py line refs (194-198→196-199, 224-228→226-229); updated blocker status (3/4 completed)
 - `/ll:ready-issue` - 2026-03-02 - Corrected sync.py line refs (196-199→196-200, 226-229→226-230); marked FEAT-489 completed (4/4 blockers resolved)
 - `/ll:refine-issue` - 2026-03-03 - Verified: sync.py:196-200 and 226-230 frontmatter skip blocks still accurate; parsing.py:74 and 230 parse_frontmatter calls still accurate; all 4 blockers confirmed completed

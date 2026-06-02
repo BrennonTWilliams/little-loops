@@ -240,12 +240,12 @@ Implemented all foundational data model changes per the issue specification:
 - 8 new `TestIssueInfoStatus` tests; deprecation assertions in `TestBRConfig`; Hypothesis roundtrip tests updated; lifecycle and parser tests suppress deprecation warnings
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-10T15:34:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c248d48-1fe8-4886-a6e5-367cab86121e.jsonl`
-- `/ll:wire-issue` - 2026-05-10T15:28:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffbdb77c-d0c6-43e0-a45d-2fb26e8e53b6.jsonl`
-- `/ll:refine-issue` - 2026-05-10T15:21:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ef2c075-8981-478d-a20e-ac74e296f30e.jsonl`
-- `/ll:format-issue` - 2026-05-10T15:17:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a80bb47e-7a06-453e-a016-be6695656fd0.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
-- `/ll:confidence-check` - 2026-05-10T16:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cdd93a3b-a3e2-4f8e-8544-faa16506a581.jsonl`
+- `/ll:ready-issue` - 2026-05-10T15:34:01 - `6c248d48-1fe8-4886-a6e5-367cab86121e.jsonl`
+- `/ll:wire-issue` - 2026-05-10T15:28:25 - `ffbdb77c-d0c6-43e0-a45d-2fb26e8e53b6.jsonl`
+- `/ll:refine-issue` - 2026-05-10T15:21:40 - `9ef2c075-8981-478d-a20e-ac74e296f30e.jsonl`
+- `/ll:format-issue` - 2026-05-10T15:17:16 - `a80bb47e-7a06-453e-a016-be6695656fd0.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
+- `/ll:confidence-check` - 2026-05-10T16:00:00 - `cdd93a3b-a3e2-4f8e-8544-faa16506a581.jsonl`
 - `/ll:manage-issue` - 2026-05-10T15:44:53Z - current session
 
 ---

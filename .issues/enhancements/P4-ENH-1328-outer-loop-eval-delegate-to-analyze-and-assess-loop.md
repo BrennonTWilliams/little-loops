@@ -178,11 +178,11 @@ _Added by `/ll:confidence-check` on 2026-05-06_
 Rewrote all four inline `action_type: prompt` analysis states in `outer-loop-eval.yaml` to `action_type: slash_command` delegating to `/ll:analyze-loop` and `/ll:assess-loop` with `--auto`. Updated tests (`test_analyze_definition_is_slash_command`, `test_analyze_execution_is_slash_command`, updated `test_generate_report_has_llm_structured_evaluator`, updated `test_refine_analysis_loops_to_generate_report`; removed `test_generate_report_sections_in_prompt`). Updated `docs/guides/LOOPS_GUIDE.md` and `scripts/little_loops/loops/README.md`. All 314 tests pass, lint clean.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-06T19:00:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:ready-issue` - 2026-05-06T18:55:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/863f77a8-f087-48b6-abf9-96e4b84b6af7.jsonl`
-- `/ll:confidence-check` - 2026-05-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7b2c6f8-e164-450a-8eee-06915b99a26a.jsonl`
-- `/ll:refine-issue` - 2026-05-06T18:19:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b83f09f-29bf-4f72-b768-87d537225716.jsonl`
-- `/ll:confidence-check` - 2026-05-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/484c72e4-5eaa-4465-a207-cc2a1d3e75ea.jsonl`
-- `/ll:refine-issue` - 2026-05-06T17:42:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae942d93-13fc-4689-a86a-676d13c32c1e.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:20:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:format-issue` - 2026-05-03T13:08:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66b7ef9c-3106-4ab5-9130-c852d0e94984.jsonl`
+- `/ll:manage-issue` - 2026-05-06T19:00:54Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-06T18:55:35 - `863f77a8-f087-48b6-abf9-96e4b84b6af7.jsonl`
+- `/ll:confidence-check` - 2026-05-06T00:00:00Z - `e7b2c6f8-e164-450a-8eee-06915b99a26a.jsonl`
+- `/ll:refine-issue` - 2026-05-06T18:19:36 - `3b83f09f-29bf-4f72-b768-87d537225716.jsonl`
+- `/ll:confidence-check` - 2026-05-06T00:00:00Z - `484c72e4-5eaa-4465-a207-cc2a1d3e75ea.jsonl`
+- `/ll:refine-issue` - 2026-05-06T17:42:34 - `ae942d93-13fc-4689-a86a-676d13c32c1e.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:20:55 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:format-issue` - 2026-05-03T13:08:10 - `66b7ef9c-3106-4ab5-9130-c852d0e94984.jsonl`

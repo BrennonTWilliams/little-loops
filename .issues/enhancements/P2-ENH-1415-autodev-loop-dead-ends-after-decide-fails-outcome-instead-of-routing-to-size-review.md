@@ -196,10 +196,10 @@ Loop termination is preserved: size review either decomposes (children enqueued 
 Verified: `python -m pytest scripts/tests/` (6183 passed, 5 skipped); `ruff check` on modified files passes.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-11T04:23:01Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7076c3c3-e8f9-4573-a533-49645401bd10.jsonl`
-- `/ll:ready-issue` - 2026-05-11T04:14:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/434cd6f1-1c19-47b3-ac79-b4c966da01c9.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3bf36aa9-1036-4dd8-8564-5f14b46a48c1.jsonl`
-- `/ll:wire-issue` - 2026-05-11T04:10:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/442aad7e-8297-428d-b587-e8f1fc9b8799.jsonl`
-- `/ll:refine-issue` - 2026-05-11T04:05:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d73c76b2-ac03-4421-ad2a-ae8303011078.jsonl`
-- `/ll:format-issue` - 2026-05-10T15:10:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd8097a3-3488-4878-8cb6-494af00ec7f4.jsonl`
+- `/ll:manage-issue` - 2026-05-11T04:23:01Z - `7076c3c3-e8f9-4573-a533-49645401bd10.jsonl`
+- `/ll:ready-issue` - 2026-05-11T04:14:34 - `434cd6f1-1c19-47b3-ac79-b4c966da01c9.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `3bf36aa9-1036-4dd8-8564-5f14b46a48c1.jsonl`
+- `/ll:wire-issue` - 2026-05-11T04:10:49 - `442aad7e-8297-428d-b587-e8f1fc9b8799.jsonl`
+- `/ll:refine-issue` - 2026-05-11T04:05:36 - `d73c76b2-ac03-4421-ad2a-ae8303011078.jsonl`
+- `/ll:format-issue` - 2026-05-10T15:10:08 - `fd8097a3-3488-4878-8cb6-494af00ec7f4.jsonl`
 - `/ll:capture-issue` - 2026-05-10T15:06:51Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd8097a3-3488-4878-8cb6-494af00ec7f4.jsonl`

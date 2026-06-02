@@ -332,12 +332,12 @@ _Updated by `/ll:confidence-check` on 2026-05-25 (post-decide-issue)_
 - ENH-1700: ll-loop audit-meta subcommand and agent/doc updates
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-25T22:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1164a851-abd3-4d31-9115-03f9bcd570f7.jsonl`
-- `/ll:confidence-check` - 2026-05-25T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/64b024bf-4308-4b6e-97ef-4392da3c6e4b.jsonl`
-- `/ll:decide-issue` - 2026-05-25T21:37:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80c5af39-76ed-4a8a-84e9-6cb1390adc15.jsonl`
-- `/ll:confidence-check` - 2026-05-25T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c50b6ac-f191-471f-8a88-b1ed4b2085d3.jsonl`
-- `/ll:wire-issue` - 2026-05-25T21:28:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2b0f38f-1202-4a81-abbb-609bdbb19281.jsonl`
-- `/ll:refine-issue` - 2026-05-25T21:22:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/831d2d1d-8035-4d09-8b5b-a55d5a028d08.jsonl`
-- `/ll:format-issue` - 2026-05-25T21:14:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6e75cdee-7491-4a4c-a92d-5434a280d2e5.jsonl`
-- `/ll:verify-issues` - 2026-05-24T07:01:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08ba673b-967b-4af4-a548-692288b5485d.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
+- `/ll:issue-size-review` - 2026-05-25T22:45:00Z - `1164a851-abd3-4d31-9115-03f9bcd570f7.jsonl`
+- `/ll:confidence-check` - 2026-05-25T22:30:00Z - `64b024bf-4308-4b6e-97ef-4392da3c6e4b.jsonl`
+- `/ll:decide-issue` - 2026-05-25T21:37:16 - `80c5af39-76ed-4a8a-84e9-6cb1390adc15.jsonl`
+- `/ll:confidence-check` - 2026-05-25T22:00:00Z - `2c50b6ac-f191-471f-8a88-b1ed4b2085d3.jsonl`
+- `/ll:wire-issue` - 2026-05-25T21:28:59 - `b2b0f38f-1202-4a81-abbb-609bdbb19281.jsonl`
+- `/ll:refine-issue` - 2026-05-25T21:22:07 - `831d2d1d-8035-4d09-8b5b-a55d5a028d08.jsonl`
+- `/ll:format-issue` - 2026-05-25T21:14:59 - `6e75cdee-7491-4a4c-a92d-5434a280d2e5.jsonl`
+- `/ll:verify-issues` - 2026-05-24T07:01:37 - `08ba673b-967b-4af4-a548-692288b5485d.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:46 - `8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`

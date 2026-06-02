@@ -117,7 +117,7 @@ All 9 documented issues resolved in `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md`:
 **Completed** | Created: 2026-03-17 | Resolved: 2026-03-18 | Priority: P2
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-03-18T16:17:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad606484-a786-4b23-b9a9-8c37ed003d85.jsonl`
-- `/ll:format-issue` - 2026-03-18T01:51:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b830ec36-9580-485f-8f7c-92ded037ca03.jsonl`
-- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`
+- `/ll:manage-issue` - 2026-03-18T00:00:00Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-03-18T16:17:23 - `ad606484-a786-4b23-b9a9-8c37ed003d85.jsonl`
+- `/ll:format-issue` - 2026-03-18T01:51:41 - `b830ec36-9580-485f-8f7c-92ded037ca03.jsonl`
+- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`

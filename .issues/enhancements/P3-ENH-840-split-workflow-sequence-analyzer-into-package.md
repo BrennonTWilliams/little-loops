@@ -160,13 +160,13 @@ Convert to a `workflow_sequence/` package (or similar):
 **Verification**: 3,841 tests pass, ruff clean, mypy clean (0 issues in 4 source files).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-03-23T04:22:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1213522d-2cad-4322-af56-638e7b93f2f2.jsonl`
-- `/ll:go-no-go` - 2026-03-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be2c3ceb-8e4a-4973-8a3b-747037b4083f.jsonl`
-- `/ll:verify-issues` - 2026-03-23T03:43:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11c70934-6502-4380-92e1-3f88c099af60.jsonl`
-- `/ll:verify-issues` - 2026-03-19T22:57:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:format-issue` - 2026-03-19T22:53:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:manage-issue` - 2026-03-22T00:00:00Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-03-23T04:22:13 - `1213522d-2cad-4322-af56-638e7b93f2f2.jsonl`
+- `/ll:go-no-go` - 2026-03-22T00:00:00Z - `be2c3ceb-8e4a-4973-8a3b-747037b4083f.jsonl`
+- `/ll:verify-issues` - 2026-03-23T03:43:30 - `11c70934-6502-4380-92e1-3f88c099af60.jsonl`
+- `/ll:verify-issues` - 2026-03-19T22:57:06 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:format-issue` - 2026-03-19T22:53:41 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 
 ---
 

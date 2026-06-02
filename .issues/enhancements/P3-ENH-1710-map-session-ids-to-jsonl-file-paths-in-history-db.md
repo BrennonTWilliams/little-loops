@@ -222,13 +222,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 Implemented Option A (backfill-only) as decided. Added `sessions` table via schema migration v4, `_backfill_sessions()` helper, `ll-session path <session_id>` subcommand, and updated backfill output to include `sessions=N`. All 8 new/updated tests pass.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-06-01T03:29:10Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f14a7706-20ac-420c-8865-404d97381536.jsonl`
-- `/ll:ready-issue` - 2026-06-01T03:22:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ec2c276-2677-410c-87b1-51ca4b43b871.jsonl`
-- `/ll:confidence-check` - 2026-05-31T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56875523-c5bf-4970-9487-416a6100b3b1.jsonl`
-- `/ll:decide-issue` - 2026-06-01T03:17:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d099241-3331-40d2-823a-0f9b8f0d30f6.jsonl`
-- `/ll:confidence-check` - 2026-05-31T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6576658-4b5f-479e-9c7b-d58a456320d2.jsonl`
-- `/ll:wire-issue` - 2026-06-01T03:09:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11bd8b12-b81e-4bd8-8cbc-d01584795db0.jsonl`
-- `/ll:refine-issue` - 2026-06-01T03:02:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aae7b132-127e-4e9c-93e8-316decbbcb6d.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:format-issue` - 2026-05-26T20:18:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f238e1de-2a0d-4c63-94af-3f5bc586be30.jsonl`
+- `/ll:manage-issue` - 2026-06-01T03:29:10Z - `f14a7706-20ac-420c-8865-404d97381536.jsonl`
+- `/ll:ready-issue` - 2026-06-01T03:22:20 - `9ec2c276-2677-410c-87b1-51ca4b43b871.jsonl`
+- `/ll:confidence-check` - 2026-05-31T00:00:00Z - `56875523-c5bf-4970-9487-416a6100b3b1.jsonl`
+- `/ll:decide-issue` - 2026-06-01T03:17:54 - `6d099241-3331-40d2-823a-0f9b8f0d30f6.jsonl`
+- `/ll:confidence-check` - 2026-05-31T00:00:00Z - `b6576658-4b5f-479e-9c7b-d58a456320d2.jsonl`
+- `/ll:wire-issue` - 2026-06-01T03:09:21 - `11bd8b12-b81e-4bd8-8cbc-d01584795db0.jsonl`
+- `/ll:refine-issue` - 2026-06-01T03:02:23 - `aae7b132-127e-4e9c-93e8-316decbbcb6d.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:14 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:format-issue` - 2026-05-26T20:18:36 - `f238e1de-2a0d-4c63-94af-3f5bc586be30.jsonl`
 - `/ll:capture-issue` - 2026-05-26T01:31:23Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5d0765b0-9906-45d9-a15b-8eadbab154a7.jsonl`

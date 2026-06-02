@@ -222,10 +222,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `docs/ARCHITECTURE.md:454–462` — Components table already includes `InterceptorExtension`, `ActionProviderExtension`, `EvaluatorProviderExtension`; add new row for `extensions/` subpackage
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-08T13:29:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/13e4142a-68c9-4fa7-90d6-df1a6786f47d.jsonl`
-- `/ll:confidence-check` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40b51a9d-c96a-476d-8d72-459ce0a30b49.jsonl`
-- `/ll:format-issue` - 2026-04-08T12:52:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1ba72aa-ca56-4f5a-a469-7b8bd7aa2766.jsonl`
-- `/ll:refine-issue` - 2026-04-08T05:24:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6812afe4-4248-451c-bdc8-42131c8cb745.jsonl`
-- `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3cbd267-88d4-421d-8d23-7869adfc91cb.jsonl`
-- `/ll:wire-issue` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
-- `/ll:manage-issue` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
+- `/ll:ready-issue` - 2026-04-08T13:29:20 - `13e4142a-68c9-4fa7-90d6-df1a6786f47d.jsonl`
+- `/ll:confidence-check` - 2026-04-08T00:00:00 - `40b51a9d-c96a-476d-8d72-459ce0a30b49.jsonl`
+- `/ll:format-issue` - 2026-04-08T12:52:58 - `b1ba72aa-ca56-4f5a-a469-7b8bd7aa2766.jsonl`
+- `/ll:refine-issue` - 2026-04-08T05:24:31 - `6812afe4-4248-451c-bdc8-42131c8cb745.jsonl`
+- `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `b3cbd267-88d4-421d-8d23-7869adfc91cb.jsonl`
+- `/ll:wire-issue` - 2026-04-08T00:00:00Z - `current-session.jsonl`
+- `/ll:manage-issue` - 2026-04-08T00:00:00Z - `current-session.jsonl`

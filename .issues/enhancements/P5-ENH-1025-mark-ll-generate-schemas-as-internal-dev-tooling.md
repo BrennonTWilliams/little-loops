@@ -104,10 +104,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Implementation**: Added `# internal: dev tooling` inline comment to the `main_generate_schemas` import (line 31) and `__all__` entry (line 45) in `scripts/little_loops/cli/__init__.py`. Added `(internal: dev tooling)` annotation to the module docstring listing (line 18). Added a TOML comment above the `ll-generate-schemas` entry point in `scripts/pyproject.toml`. All 17 tests passed.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-14T04:34:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d139a92c-4273-4445-936b-ae8d10fb8209.jsonl`
-- `/ll:confidence-check` - 2026-04-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9e338e6-4afc-4e33-ba90-47e23583f970.jsonl`
-- `/ll:refine-issue` - 2026-04-14T04:31:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f2a400e-996d-40e4-b0c9-e7135c284b4f.jsonl`
-- `/ll:verify-issues` - 2026-04-11T23:05:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
-- `/ll:verify-issues` - 2026-04-11T19:02:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
+- `/ll:ready-issue` - 2026-04-14T04:34:13 - `d139a92c-4273-4445-936b-ae8d10fb8209.jsonl`
+- `/ll:confidence-check` - 2026-04-13T00:00:00 - `f9e338e6-4afc-4e33-ba90-47e23583f970.jsonl`
+- `/ll:refine-issue` - 2026-04-14T04:31:08 - `5f2a400e-996d-40e4-b0c9-e7135c284b4f.jsonl`
+- `/ll:verify-issues` - 2026-04-11T23:05:00 - `5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
+- `/ll:verify-issues` - 2026-04-11T19:02:02 - `4aa69027-63ea-4746-aed4-e426ab30885a.jsonl`
 - `/ll:capture-issue` - 2026-04-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eba12ede-7d68-4165-af6c-e13830e98af5.jsonl`
-- `/ll:manage-issue` - 2026-04-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:manage-issue` - 2026-04-13T00:00:00

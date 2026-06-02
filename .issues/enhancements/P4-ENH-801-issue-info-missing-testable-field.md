@@ -132,7 +132,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 Added `testable: bool | None = None` to `IssueInfo` dataclass. Updated `to_dict`, `from_dict`, and `parse_file` to handle the field. `parse_file` coerces the string `"true"`/`"false"` from the custom frontmatter parser to native Python `bool`. Updated `docs/reference/API.md`. Added 8 unit + integration tests (TDD red→green).
 
 ## Session Log
-- `/ll:confidence-check` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bbc1ff18-42ef-4540-b785-bc387c36dac3.jsonl`
-- `/ll:refine-issue` - 2026-03-18T03:32:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5395d74-c078-4139-90ed-8a907702ecaf.jsonl`
-- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0873aba7-6e24-4b9d-bf58-565ee42ebe88.jsonl`
-- `/ll:manage-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bbc1ff18-42ef-4540-b785-bc387c36dac3.jsonl`
+- `/ll:confidence-check` - 2026-03-17T00:00:00Z - `bbc1ff18-42ef-4540-b785-bc387c36dac3.jsonl`
+- `/ll:refine-issue` - 2026-03-18T03:32:20 - `c5395d74-c078-4139-90ed-8a907702ecaf.jsonl`
+- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `0873aba7-6e24-4b9d-bf58-565ee42ebe88.jsonl`
+- `/ll:manage-issue` - 2026-03-17T00:00:00Z - `bbc1ff18-42ef-4540-b785-bc387c36dac3.jsonl`

@@ -236,13 +236,13 @@ _Added by `/ll:confidence-check` on 2026-05-25_
 - Implement test Namespace updates (`log=False`) before or alongside the `run_foreground()` change — ~17 inline `argparse.Namespace()` calls and 4 `_make_args()` helpers across test files will cause `AttributeError` if the flag is read via `args.log` (without `getattr` fallback) before tests are updated
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/641ff968-cf61-463e-b44e-9e775d9964a0.jsonl`
-- `/ll:issue-size-review` - 2026-05-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49c875d1-35f0-42f5-a121-41c0c7663183.jsonl`
-- `/ll:wire-issue` - 2026-05-25T23:22:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/329b3576-60ac-481c-ad67-e1ee496ec829.jsonl`
-- `/ll:refine-issue` - 2026-05-25T23:16:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5e693ba-2b17-4a96-a11e-4fb2d161fd62.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
-- `/ll:format-issue` - 2026-05-24T05:08:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71b13280-abbe-4af9-a47c-adb27bd0900e.jsonl`
-- `/ll:capture-issue` - 2026-05-24T04:52:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f605fdcc-8000-4585-8dc4-835fc0020291.jsonl`
+- `/ll:confidence-check` - 2026-05-25T00:00:00 - `641ff968-cf61-463e-b44e-9e775d9964a0.jsonl`
+- `/ll:issue-size-review` - 2026-05-25T00:00:00Z - `49c875d1-35f0-42f5-a121-41c0c7663183.jsonl`
+- `/ll:wire-issue` - 2026-05-25T23:22:05 - `329b3576-60ac-481c-ad67-e1ee496ec829.jsonl`
+- `/ll:refine-issue` - 2026-05-25T23:16:01 - `b5e693ba-2b17-4a96-a11e-4fb2d161fd62.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
+- `/ll:format-issue` - 2026-05-24T05:08:24 - `71b13280-abbe-4af9-a47c-adb27bd0900e.jsonl`
+- `/ll:capture-issue` - 2026-05-24T04:52:29Z - `f605fdcc-8000-4585-8dc4-835fc0020291.jsonl`
 
 ---
 

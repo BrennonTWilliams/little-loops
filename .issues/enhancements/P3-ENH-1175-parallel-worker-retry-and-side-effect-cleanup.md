@@ -94,7 +94,7 @@ Document and enforce in `ParallelRunner`:
 ---
 
 ## Session Log
-- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
 - `parallel-fsm-review` - 2026-04-18T00:00:00Z - spawned during parallel feature review discussion
 
 ---

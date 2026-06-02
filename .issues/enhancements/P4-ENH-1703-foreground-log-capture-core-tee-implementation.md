@@ -189,10 +189,10 @@ Implemented always-on foreground log capture via `_TeeWriter` in `_helpers.py`:
 - All 7877 tests pass; ruff and mypy clean
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-27T20:58:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/433b1b9b-ce33-437c-9c1f-0ee0bb7c8b8a.jsonl`
-- `/ll:confidence-check` - 2026-05-27T21:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3786d8e-e9c2-4081-b930-0fcc1bd2c80f.jsonl`
-- `/ll:wire-issue` - 2026-05-27T20:51:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72d039de-33dc-4db3-ac4e-00b6406c2c7f.jsonl`
-- `/ll:refine-issue` - 2026-05-27T20:45:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da4cdbba-d276-49c6-8178-d0634377bace.jsonl`
-- `/ll:issue-size-review` - 2026-05-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49c875d1-35f0-42f5-a121-41c0c7663183.jsonl`
+- `/ll:ready-issue` - 2026-05-27T20:58:10 - `433b1b9b-ce33-437c-9c1f-0ee0bb7c8b8a.jsonl`
+- `/ll:confidence-check` - 2026-05-27T21:15:00 - `e3786d8e-e9c2-4081-b930-0fcc1bd2c80f.jsonl`
+- `/ll:wire-issue` - 2026-05-27T20:51:24 - `72d039de-33dc-4db3-ac4e-00b6406c2c7f.jsonl`
+- `/ll:refine-issue` - 2026-05-27T20:45:55 - `da4cdbba-d276-49c6-8178-d0634377bace.jsonl`
+- `/ll:issue-size-review` - 2026-05-25T00:00:00Z - `49c875d1-35f0-42f5-a121-41c0c7663183.jsonl`
 - Design revised to always-on (dropped flag/config) - 2026-05-26
-- `/ll:manage-issue` - 2026-05-27T21:13:47Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/433b1b9b-ce33-437c-9c1f-0ee0bb7c8b8a.jsonl`
+- `/ll:manage-issue` - 2026-05-27T21:13:47Z - `433b1b9b-ce33-437c-9c1f-0ee0bb7c8b8a.jsonl`

@@ -165,10 +165,10 @@ If `context_limit_estimate` is misconfigured (e.g., left at 1M for a 200K model)
 enhancement, context-monitor, accuracy, hooks, jq
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-19T04:40:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c76ff1ee-0e20-46ac-b7b8-1af1a8922ddd.jsonl`
-- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0769f82c-7917-4279-b938-66dfdf42d867.jsonl`
-- `/ll:refine-issue` - 2026-03-19T04:15:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17e62d86-ce17-4688-90e3-90ca6ccc7acc.jsonl`
-- `/ll:capture-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11790a5c-4ad1-498a-9649-93255e24e9c4.jsonl`
+- `/ll:ready-issue` - 2026-03-19T04:40:42 - `c76ff1ee-0e20-46ac-b7b8-1af1a8922ddd.jsonl`
+- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `0769f82c-7917-4279-b938-66dfdf42d867.jsonl`
+- `/ll:refine-issue` - 2026-03-19T04:15:40 - `17e62d86-ce17-4688-90e3-90ca6ccc7acc.jsonl`
+- `/ll:capture-issue` - 2026-03-18T00:00:00Z - `11790a5c-4ad1-498a-9649-93255e24e9c4.jsonl`
 
 ---
 

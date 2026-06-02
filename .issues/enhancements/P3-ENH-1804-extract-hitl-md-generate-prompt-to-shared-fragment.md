@@ -153,11 +153,11 @@ _Added by `/ll:refine-issue` — codebase research confirms implementation is co
 `enhancement`, `loop-fragment`, `captured`
 
 ## Session Log
-- `/ll:format-issue` - 2026-05-29T22:00:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c276e230-d4ed-4934-9b72-d81b4c8c08a1.jsonl`
+- `/ll:format-issue` - 2026-05-29T22:00:03 - `c276e230-d4ed-4934-9b72-d81b4c8c08a1.jsonl`
 
 - `/ll:capture-issue` — 2026-05-29T21:57:08Z — `64ba091c-1c65-464a-81b6-237b5a702007.jsonl`
 - `/ll:manage-issue` — 2026-05-29T22:40:00Z — (implementation)
-- `/ll:confidence-check` - 2026-05-29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/61594731-05cd-4053-a702-bd2146f328e1.jsonl`
+- `/ll:confidence-check` - 2026-05-29 - `61594731-05cd-4053-a702-bd2146f328e1.jsonl`
 
 ---
 

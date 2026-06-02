@@ -199,9 +199,9 @@ after the swap, the full `scripts/tests/` suite passes (4999 passed, 5 skipped).
 **Closed** | Created: 2026-04-18 | Resolved: 2026-04-18 | Priority: P2
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-18T23:04:42Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebf18b86-90e8-419c-85c4-636d7515ec7b.jsonl`
-- `/ll:ready-issue` - 2026-04-18T22:59:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d69ef660-a2a7-485b-9f21-398f4f601b30.jsonl`
-- `/ll:confidence-check` - 2026-04-18T23:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfb3ce3d-2be5-4a39-a8eb-5876065ed811.jsonl`
-- `/ll:wire-issue` - 2026-04-18T22:54:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f6f93f8-12b3-48b0-b846-6ce004eba5dc.jsonl`
-- `/ll:refine-issue` - 2026-04-18T22:48:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/02cd84b4-bd62-4f1c-b16d-d7128c5c8cab.jsonl`
+- `/ll:manage-issue` - 2026-04-18T23:04:42Z - `ebf18b86-90e8-419c-85c4-636d7515ec7b.jsonl`
+- `/ll:ready-issue` - 2026-04-18T22:59:02 - `d69ef660-a2a7-485b-9f21-398f4f601b30.jsonl`
+- `/ll:confidence-check` - 2026-04-18T23:00:00Z - `cfb3ce3d-2be5-4a39-a8eb-5876065ed811.jsonl`
+- `/ll:wire-issue` - 2026-04-18T22:54:08 - `8f6f93f8-12b3-48b0-b846-6ce004eba5dc.jsonl`
+- `/ll:refine-issue` - 2026-04-18T22:48:46 - `02cd84b4-bd62-4f1c-b16d-d7128c5c8cab.jsonl`
 - `/ll:capture-issue` - 2026-04-18T21:39:42Z - user-provided direct mode

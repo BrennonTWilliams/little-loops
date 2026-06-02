@@ -156,11 +156,11 @@ Output shape: JSON array (matching `ll-issues list --json`) — not NDJSON. When
 **Completed** | P3 | ENH
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/534f29dc-9078-4565-b6a5-14cb33271b6f.jsonl`
-- `/ll:format-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:refine-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2d9af7e-2193-4292-8ae7-dc0e052f33b8.jsonl`
-- `/ll:ready-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/85130897-5362-4131-a548-590ccb343ee9.jsonl`
-- `/ll:manage-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c8f8071-e5fb-4ae8-bb16-8e133482ff0f.jsonl`
+- `/ll:capture-issue` - 2026-03-10T00:00:00Z - `534f29dc-9078-4565-b6a5-14cb33271b6f.jsonl`
+- `/ll:format-issue` - 2026-03-10T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:refine-issue` - 2026-03-10T00:00:00Z - `d2d9af7e-2193-4292-8ae7-dc0e052f33b8.jsonl`
+- `/ll:ready-issue` - 2026-03-10T00:00:00Z - `85130897-5362-4131-a548-590ccb343ee9.jsonl`
+- `/ll:manage-issue` - 2026-03-10T00:00:00Z - `8c8f8071-e5fb-4ae8-bb16-8e133482ff0f.jsonl`
 
 ## Blocks
 - FEAT-543

@@ -212,11 +212,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `README.md` — added `ll-issues impact-effort --json` example
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-13T20:49:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad3220fd-9de2-426d-b1a3-53cd1823d326.jsonl`
-- `/ll:ready-issue` - 2026-04-13T20:46:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2922f7a8-d5bf-49f5-888b-305c20519a80.jsonl`
-- `/ll:confidence-check` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a579a36-3283-4cf4-997b-200ed0e4e3ae.jsonl`
-- `/ll:wire-issue` - 2026-04-13T20:40:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36930716-95c2-49f9-94bd-120b2bc412c6.jsonl`
-- `/ll:refine-issue` - 2026-04-13T20:36:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5b8b1ea-7349-43fb-9c79-2c30e427439d.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-13T20:49:49 - `ad3220fd-9de2-426d-b1a3-53cd1823d326.jsonl`
+- `/ll:ready-issue` - 2026-04-13T20:46:25 - `2922f7a8-d5bf-49f5-888b-305c20519a80.jsonl`
+- `/ll:confidence-check` - 2026-04-13T00:00:00Z - `3a579a36-3283-4cf4-997b-200ed0e4e3ae.jsonl`
+- `/ll:wire-issue` - 2026-04-13T20:40:09 - `36930716-95c2-49f9-94bd-120b2bc412c6.jsonl`
+- `/ll:refine-issue` - 2026-04-13T20:36:13 - `a5b8b1ea-7349-43fb-9c79-2c30e427439d.jsonl`
 - `/ll:capture-issue` - 2026-04-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/500f1193-bcd3-4daf-9ad8-0b97b6bb5d4a.jsonl`
 - `/ll:manage-issue` - 2026-04-13T00:00:00Z - implementation complete
 

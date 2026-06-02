@@ -141,8 +141,8 @@ Additionally, update `prompt-across-issues.yaml` `prepare_prompt` to replace `ne
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-03T22:25:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/444b8048-2b40-47fc-b74b-25e2c333d051.jsonl`
-- `/ll:refine-issue` - 2026-04-03T22:16:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a85d9d85-aa09-48cc-87d7-2dd3a055329b.jsonl`
+- `/ll:ready-issue` - 2026-04-03T22:25:49 - `444b8048-2b40-47fc-b74b-25e2c333d051.jsonl`
+- `/ll:refine-issue` - 2026-04-03T22:16:50 - `a85d9d85-aa09-48cc-87d7-2dd3a055329b.jsonl`
 - `/ll:capture-issue` - 2026-04-03T22:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1745900e-c050-4c53-81d7-10a084dba4e9.jsonl`
 
 - `/ll:manage-issue` - 2026-04-03T00:00:00Z - fix applied

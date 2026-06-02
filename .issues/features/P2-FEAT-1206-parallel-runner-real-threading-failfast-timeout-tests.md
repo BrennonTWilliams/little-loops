@@ -178,11 +178,11 @@ _Added by `/ll:confidence-check` on 2026-04-20_
 - FEAT-1210: TestParallelRunnerRealThreading — Timeout Per-Item Test
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-21T04:29:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f84bc5fa-3fa1-4822-8f5a-25670ac913a0.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f84bc5fa-3fa1-4822-8f5a-25670ac913a0.jsonl`
-- `/ll:confidence-check` - 2026-04-21T05:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/69b939e3-2896-4279-b3ea-8328e8e1c023.jsonl`
-- `/ll:refine-issue` - 2026-04-21T04:23:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66364a66-e97f-4af0-a258-69e7737504ed.jsonl`
-- `/ll:wire-issue` - 2026-04-21T04:19:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56c2a151-a828-48a2-859f-a74fb4ffad74.jsonl`
-- `/ll:refine-issue` - 2026-04-21T04:14:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0419d06-3d45-4aed-8539-389c50e1cd76.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ed5d9eb-8026-4655-8ff3-63958b109e67.jsonl`
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa52965-8df7-4476-a2af-96e098002a6a.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-21T04:29:03 - `f84bc5fa-3fa1-4822-8f5a-25670ac913a0.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `f84bc5fa-3fa1-4822-8f5a-25670ac913a0.jsonl`
+- `/ll:confidence-check` - 2026-04-21T05:00:00 - `69b939e3-2896-4279-b3ea-8328e8e1c023.jsonl`
+- `/ll:refine-issue` - 2026-04-21T04:23:46 - `66364a66-e97f-4af0-a258-69e7737504ed.jsonl`
+- `/ll:wire-issue` - 2026-04-21T04:19:21 - `56c2a151-a828-48a2-859f-a74fb4ffad74.jsonl`
+- `/ll:refine-issue` - 2026-04-21T04:14:42 - `d0419d06-3d45-4aed-8539-389c50e1cd76.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `2ed5d9eb-8026-4655-8ff3-63958b109e67.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `ffa52965-8df7-4476-a2af-96e098002a6a.jsonl`

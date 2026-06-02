@@ -143,9 +143,9 @@ Added three tests to `TestWorkerPoolProcessIssue` in `scripts/tests/test_worker_
 **Resolved** | Created: 2026-05-09 | Priority: P2
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-09T17:23:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d91d72ed-401d-4414-889e-b955a460b3f8.jsonl`
-- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4430f73-4aa6-421a-9f76-cc941df7d8e6.jsonl`
-- `/ll:wire-issue` - 2026-05-09T17:20:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bd754f71-66bf-4cd5-b24e-1fd529a9a082.jsonl`
-- `/ll:refine-issue` - 2026-05-09T17:15:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3794cdb6-3983-4b30-b2d5-baa4ddd1beff.jsonl`
-- `/ll:format-issue` - 2026-05-09T16:54:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87a2dd4-2942-4324-b2d7-27ac23ef9a20.jsonl`
-- `/ll:capture-issue` - 2026-05-09T01:55:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-09T17:23:30 - `d91d72ed-401d-4414-889e-b955a460b3f8.jsonl`
+- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `a4430f73-4aa6-421a-9f76-cc941df7d8e6.jsonl`
+- `/ll:wire-issue` - 2026-05-09T17:20:00 - `bd754f71-66bf-4cd5-b24e-1fd529a9a082.jsonl`
+- `/ll:refine-issue` - 2026-05-09T17:15:24 - `3794cdb6-3983-4b30-b2d5-baa4ddd1beff.jsonl`
+- `/ll:format-issue` - 2026-05-09T16:54:11 - `d87a2dd4-2942-4324-b2d7-27ac23ef9a20.jsonl`
+- `/ll:capture-issue` - 2026-05-09T01:55:56Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

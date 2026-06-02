@@ -461,17 +461,17 @@ _Resolved since 2026-04-20: Worktree merge approach decided (direct `git_lock.ru
 _Resolved since 2026-04-12: Test gap (tests moved into this issue from FEAT-1077). Import paths verified (`resolve_loop_path` from `little_loops.cli.loop._helpers`; `load_and_validate` from `little_loops.fsm.validation`)._
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bfc13ef-4b6a-4f7b-b596-5015f6c01579.jsonl`
-- `/ll:refine-issue` - 2026-04-21T01:37:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/168a576e-aa89-4e22-8dcf-751545bca22f.jsonl`
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27bf787d-bd3b-4f68-b9eb-6aa8cbacf2cc.jsonl`
-- `/ll:wire-issue` - 2026-04-21T01:31:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50c8a9ee-e61b-4ea8-bc4a-5270b48faf0b.jsonl`
-- `/ll:refine-issue` - 2026-04-21T01:21:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ccb99a2-08c0-45c2-9034-21590b69788e.jsonl`
-- `/ll:refine-issue` - 2026-04-12T21:44:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba00a202-7579-41c1-8d16-ccc842c9ed69.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/76789ff6-088d-4a98-b81f-58898ce4522f.jsonl`
-- `/ll:wire-issue` - 2026-04-12T21:38:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a7762782-0f79-4152-a3a2-b2f202799611.jsonl`
-- `/ll:refine-issue` - 2026-04-12T21:32:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34932e3c-e378-4fd7-9886-68460b918395.jsonl`
-- `/ll:format-issue` - 2026-04-12T21:28:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80e2b48b-2183-43e6-9b2d-906181c202b3.jsonl`
-- `/ll:issue-size-review` - 2026-04-12T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8e4e49c-4e79-4270-9839-915fa38b03f2.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `5bfc13ef-4b6a-4f7b-b596-5015f6c01579.jsonl`
+- `/ll:refine-issue` - 2026-04-21T01:37:30 - `168a576e-aa89-4e22-8dcf-751545bca22f.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `27bf787d-bd3b-4f68-b9eb-6aa8cbacf2cc.jsonl`
+- `/ll:wire-issue` - 2026-04-21T01:31:16 - `50c8a9ee-e61b-4ea8-bc4a-5270b48faf0b.jsonl`
+- `/ll:refine-issue` - 2026-04-21T01:21:20 - `1ccb99a2-08c0-45c2-9034-21590b69788e.jsonl`
+- `/ll:refine-issue` - 2026-04-12T21:44:45 - `ba00a202-7579-41c1-8d16-ccc842c9ed69.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00 - `76789ff6-088d-4a98-b81f-58898ce4522f.jsonl`
+- `/ll:wire-issue` - 2026-04-12T21:38:53 - `a7762782-0f79-4152-a3a2-b2f202799611.jsonl`
+- `/ll:refine-issue` - 2026-04-12T21:32:29 - `34932e3c-e378-4fd7-9886-68460b918395.jsonl`
+- `/ll:format-issue` - 2026-04-12T21:28:00 - `80e2b48b-2183-43e6-9b2d-906181c202b3.jsonl`
+- `/ll:issue-size-review` - 2026-04-12T21:00:00 - `c8e4e49c-4e79-4270-9839-915fa38b03f2.jsonl`
 
 ---
 

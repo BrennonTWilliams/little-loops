@@ -316,13 +316,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-04-07 | Priority: P4
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-08T02:30:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f3aa3c7-ca33-4c8b-b435-c5b746906130.jsonl`
-- `/ll:confidence-check` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7fe877d-b918-49ec-8638-70727399f5fa.jsonl`
-- `/ll:refine-issue` - 2026-04-08T00:09:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2171263a-aabe-46f3-8311-74a1f594a7c9.jsonl`
-- `/ll:format-issue` - 2026-04-08T00:05:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a84943e-cf1c-448d-b622-db27d098ac1d.jsonl`
-- `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b2501d7-f66b-4a19-80a6-6fecea4283e8.jsonl`
-- `/ll:wire-issue` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/memory/MEMORY.md`
-- `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f3aa3c7-ca33-4c8b-b435-c5b746906130.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-08T02:30:49 - `3f3aa3c7-ca33-4c8b-b435-c5b746906130.jsonl`
+- `/ll:confidence-check` - 2026-04-07T00:00:00Z - `b7fe877d-b918-49ec-8638-70727399f5fa.jsonl`
+- `/ll:refine-issue` - 2026-04-08T00:09:46 - `2171263a-aabe-46f3-8311-74a1f594a7c9.jsonl`
+- `/ll:format-issue` - 2026-04-08T00:05:40 - `8a84943e-cf1c-448d-b622-db27d098ac1d.jsonl`
+- `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `6b2501d7-f66b-4a19-80a6-6fecea4283e8.jsonl`
+- `/ll:wire-issue` - 2026-04-07T00:00:00Z - `MEMORY.md`
+- `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `3f3aa3c7-ca33-4c8b-b435-c5b746906130.jsonl`
 
 ---
 

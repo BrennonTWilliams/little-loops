@@ -97,9 +97,9 @@ content = content.replace(
 - **Fix**: Added `count=1` to `str.replace()` call in `append_session_log_entry` (`scripts/little_loops/session_log.py`). Added `test_duplicate_session_log_headers_only_inserts_once` test.
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
-- `/ll:manage-issue` - 2026-02-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl`
+- `/ll:manage-issue` - 2026-02-24T00:00:00 - `ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl`
 
 ---
 

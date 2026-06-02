@@ -191,12 +191,12 @@ _Added by `/ll:confidence-check` on 2026-04-18_
 _2026-04-18_: Deferred after discovering that headless mode (ll-loop, ll-auto, ll-parallel) already handles handoff automatically via the FSM signal-detection path (`fsm/executor.py:1084`, `subprocess_utils.py:31`). The original issue assumed all modes lacked automatic handoff, but this only applies to interactive sessions. Sub-issues FEAT-1156, FEAT-1157, FEAT-1158 marked `wont_do`. If re-opened, scope to interactive-session gap only.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-18T19:00:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91b72715-a97b-45f0-886e-3a458fc6988e.jsonl`
-- `hook:posttooluse-git-mv` - 2026-04-18T18:52:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/142cccc0-40c0-4e81-9bc5-c7b696233355.jsonl`
-- `/ll:wire-issue` - 2026-04-18T18:47:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03a2b1c7-5059-4611-867d-d0ffd754d04b.jsonl`
-- `/ll:refine-issue` - 2026-04-18T18:40:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39dbbbf8-ebcc-4b8e-9adf-55fc86c3a89d.jsonl`
-- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03a2b1c7-5059-4611-867d-d0ffd754d04b.jsonl`
-- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/142cccc0-40c0-4e81-9bc5-c7b696233355.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-18T19:00:24 - `91b72715-a97b-45f0-886e-3a458fc6988e.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-18T18:52:08 - `142cccc0-40c0-4e81-9bc5-c7b696233355.jsonl`
+- `/ll:wire-issue` - 2026-04-18T18:47:29 - `03a2b1c7-5059-4611-867d-d0ffd754d04b.jsonl`
+- `/ll:refine-issue` - 2026-04-18T18:40:29 - `39dbbbf8-ebcc-4b8e-9adf-55fc86c3a89d.jsonl`
+- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `03a2b1c7-5059-4611-867d-d0ffd754d04b.jsonl`
+- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `142cccc0-40c0-4e81-9bc5-c7b696233355.jsonl`
 
 ---
 

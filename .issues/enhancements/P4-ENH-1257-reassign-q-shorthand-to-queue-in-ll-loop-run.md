@@ -96,7 +96,7 @@ run_parser.add_argument("--queue", "-q", action="store_true", help="Wait for con
 Reassigned `-q` from `--quiet` to `--queue` in `ll-loop run` subparser. Added `--qt` as the new shorthand for `--quiet`. Two-line edit in `scripts/little_loops/cli/loop/__init__.py`; no test updates needed (no existing tests used `-q`). All 5138 tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-22T18:50:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4327f67-d43e-4879-b256-fb2979997e69.jsonl`
-- `/ll:confidence-check` - 2026-04-22T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28a15bfe-9f80-4203-a735-a265f3ec3df9.jsonl`
-- `/ll:format-issue` - 2026-04-22T18:45:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7fbdbe8b-0692-45cd-9da7-60c7a7184dcb.jsonl`
-- `/ll:capture-issue` - 2026-04-22T18:42:46Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b42c4ba0-d0fb-45e7-9def-c052cefea186.jsonl`
+- `/ll:ready-issue` - 2026-04-22T18:50:58 - `e4327f67-d43e-4879-b256-fb2979997e69.jsonl`
+- `/ll:confidence-check` - 2026-04-22T19:00:00Z - `28a15bfe-9f80-4203-a735-a265f3ec3df9.jsonl`
+- `/ll:format-issue` - 2026-04-22T18:45:13 - `7fbdbe8b-0692-45cd-9da7-60c7a7184dcb.jsonl`
+- `/ll:capture-issue` - 2026-04-22T18:42:46Z - `b42c4ba0-d0fb-45e7-9def-c052cefea186.jsonl`

@@ -146,9 +146,9 @@ _Added by `/ll:confidence-check` on 2026-04-21_
 - **Sequencing risk**: Implementing before FEAT-1074 will break CI. Sequence this immediately after FEAT-1074 completes, or gate the test with a skip marker if the fixture lands first.
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-21T06:59:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eda02963-6c6b-479d-ab2b-3b2d62d72735.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f9d86b0-0210-42c0-889d-92931450b358.jsonl`
-- `/ll:wire-issue` - 2026-04-21T06:57:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c74aa34-f5c7-4be6-bd84-4508b58e30f5.jsonl`
-- `/ll:refine-issue` - 2026-04-21T06:50:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52f66d52-c3d2-4b51-99ce-f54524e6a62b.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59852d6e-fcd5-41f5-b554-577001c3b013.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f6ca6793-6b9a-4436-a076-3620e7354261.jsonl`
+- `/ll:refine-issue` - 2026-04-21T06:59:42 - `eda02963-6c6b-479d-ab2b-3b2d62d72735.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `7f9d86b0-0210-42c0-889d-92931450b358.jsonl`
+- `/ll:wire-issue` - 2026-04-21T06:57:01 - `0c74aa34-f5c7-4be6-bd84-4508b58e30f5.jsonl`
+- `/ll:refine-issue` - 2026-04-21T06:50:44 - `52f66d52-c3d2-4b51-99ce-f54524e6a62b.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `59852d6e-fcd5-41f5-b554-577001c3b013.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `f6ca6793-6b9a-4436-a076-3620e7354261.jsonl`

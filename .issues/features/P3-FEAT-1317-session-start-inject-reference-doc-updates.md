@@ -119,16 +119,16 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 - **FEAT-1315 is still open**: `session-start-inject.sh` does not yet exist. Step 1 of the implementation plan explicitly says "Wait for FEAT-1315 to merge." The acceptance criteria reference a file that must exist before docs can be verified.
 
 ## Session Log
-- `/ll:verify-issues` - 2026-05-14T20:42:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-10T14:27:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:refine-issue` - 2026-05-02T03:37:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea9b8888-aee4-4367-aecd-ef628a7ad191.jsonl`
-- `/ll:wire-issue` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:refine-issue` - 2026-05-02T03:29:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d505f23-ba04-4111-b275-b786a56c1538.jsonl`
-- `/ll:issue-size-review` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dba14921-b765-4d41-b830-b8e1511f2654.jsonl`
-- `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a4f54c6-7e68-4068-b26b-79ed42e70c22.jsonl`
+- `/ll:verify-issues` - 2026-05-14T20:42:06 - `08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-10T14:27:59 - `87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:21:16 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:refine-issue` - 2026-05-02T03:37:33 - `ea9b8888-aee4-4367-aecd-ef628a7ad191.jsonl`
+- `/ll:wire-issue` - 2026-05-01T00:00:00 - `current.jsonl`
+- `/ll:refine-issue` - 2026-05-02T03:29:39 - `2d505f23-ba04-4111-b275-b786a56c1538.jsonl`
+- `/ll:issue-size-review` - 2026-05-01T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:confidence-check` - 2026-05-01T00:00:00 - `dba14921-b765-4d41-b830-b8e1511f2654.jsonl`
+- `/ll:confidence-check` - 2026-05-01T00:00:00 - `4a4f54c6-7e68-4068-b26b-79ed42e70c22.jsonl`
 
 ## Blocks
 

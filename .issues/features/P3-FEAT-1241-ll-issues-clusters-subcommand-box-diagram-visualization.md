@@ -291,11 +291,11 @@ Implemented `ll-issues clusters` as a new subcommand in `scripts/little_loops/cl
 All 5126 tests pass.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-21T23:04:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-04-21T22:53:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6922353d-eb89-4086-927b-1df9aa85f4c8.jsonl`
-- `/ll:confidence-check` - 2026-04-21T22:20:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/85f1d22e-4c76-41d4-914d-62974c14c745.jsonl`
-- `/ll:wire-issue` - 2026-04-21T22:06:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f6c47d4-9358-40a4-adfa-83e69673bf40.jsonl`
-- `/ll:refine-issue` - 2026-04-21T21:57:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7deeead-3f29-447a-aac8-b84769c43188.jsonl`
+- `/ll:manage-issue` - 2026-04-21T23:04:53Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-04-21T22:53:15 - `6922353d-eb89-4086-927b-1df9aa85f4c8.jsonl`
+- `/ll:confidence-check` - 2026-04-21T22:20:00 - `85f1d22e-4c76-41d4-914d-62974c14c745.jsonl`
+- `/ll:wire-issue` - 2026-04-21T22:06:29 - `5f6c47d4-9358-40a4-adfa-83e69673bf40.jsonl`
+- `/ll:refine-issue` - 2026-04-21T21:57:59 - `d7deeead-3f29-447a-aac8-b84769c43188.jsonl`
 - `/ll:capture-issue` - 2026-04-21T21:41:58Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17ef1d96-3e92-4f16-8219-a62e2307b979.jsonl`
 
 ---

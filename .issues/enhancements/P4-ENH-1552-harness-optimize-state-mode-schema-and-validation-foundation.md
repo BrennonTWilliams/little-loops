@@ -184,9 +184,9 @@ Implemented all steps from the issue:
 All 653 tests pass, no regressions.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-17T10:02:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ac76456-978a-48e1-90ef-b033a3e9ce27.jsonl`
-- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86e13a1e-d2cd-4438-a454-96945bbb8a82.jsonl`
-- `/ll:wire-issue` - 2026-05-17T09:57:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0f1ba70-d1e9-4509-8d3b-cafbe5231236.jsonl`
-- `/ll:refine-issue` - 2026-05-17T09:51:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a7cb355b-efac-4c30-841e-e88041e81fcc.jsonl`
-- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5cf22fe-a508-4b58-ace6-dd0a2c4187a3.jsonl`
+- `/ll:ready-issue` - 2026-05-17T10:02:42 - `4ac76456-978a-48e1-90ef-b033a3e9ce27.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `86e13a1e-d2cd-4438-a454-96945bbb8a82.jsonl`
+- `/ll:wire-issue` - 2026-05-17T09:57:41 - `f0f1ba70-d1e9-4509-8d3b-cafbe5231236.jsonl`
+- `/ll:refine-issue` - 2026-05-17T09:51:29 - `a7cb355b-efac-4c30-841e-e88041e81fcc.jsonl`
+- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `e5cf22fe-a508-4b58-ace6-dd0a2c4187a3.jsonl`
 - `/ll:manage-issue` - 2026-05-17T10:07:25Z - implementation complete

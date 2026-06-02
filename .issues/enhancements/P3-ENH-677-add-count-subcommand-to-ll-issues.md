@@ -140,9 +140,9 @@ Note: `--priority` accepts a single value (matching `list` sub-command conventio
 `enhancement`, `cli`, `captured`
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17cce4eb-7ba6-4d65-a800-c3c0f2ad0a91.jsonl`
-- `/ll:refine-issue` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/654f36d5-1586-4900-9e28-5609b1f156c7.jsonl`
-- `/ll:ready-issue` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53470d3c-3588-4319-9e16-707a874f8979.jsonl`
+- `/ll:capture-issue` - 2026-03-12 - `17cce4eb-7ba6-4d65-a800-c3c0f2ad0a91.jsonl`
+- `/ll:refine-issue` - 2026-03-12T00:00:00Z - `654f36d5-1586-4900-9e28-5609b1f156c7.jsonl`
+- `/ll:ready-issue` - 2026-03-12T00:00:00Z - `53470d3c-3588-4319-9e16-707a874f8979.jsonl`
 
 ---
 

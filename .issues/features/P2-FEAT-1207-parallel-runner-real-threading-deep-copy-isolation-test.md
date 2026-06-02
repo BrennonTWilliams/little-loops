@@ -172,9 +172,9 @@ _Added by `/ll:confidence-check` on 2026-04-20_
 - All three blocking dependencies are unresolved: FEAT-1074 (`ParallelStateConfig` not in `schema.py`), FEAT-1075 (`parallel_runner.py` absent), FEAT-1202 (`test_parallel_runner.py` absent). Cannot begin implementation until all three land.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24e16d90-d706-4111-b42c-d75eb4381930.jsonl`
-- `/ll:refine-issue` - 2026-04-21T03:55:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/445a2e37-ad29-42d1-a9e4-80733da8b83d.jsonl`
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be83f398-c7a1-4e75-9895-d25d16c13942.jsonl`
-- `/ll:wire-issue` - 2026-04-21T03:51:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d34feae8-08b3-40e8-980d-65151a568b44.jsonl`
-- `/ll:refine-issue` - 2026-04-21T03:47:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb865c69-0af1-4083-a5ce-cea71c5ad79d.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d825c2a4-fabd-41df-8994-3e6d74767fc9.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `24e16d90-d706-4111-b42c-d75eb4381930.jsonl`
+- `/ll:refine-issue` - 2026-04-21T03:55:16 - `445a2e37-ad29-42d1-a9e4-80733da8b83d.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `be83f398-c7a1-4e75-9895-d25d16c13942.jsonl`
+- `/ll:wire-issue` - 2026-04-21T03:51:52 - `d34feae8-08b3-40e8-980d-65151a568b44.jsonl`
+- `/ll:refine-issue` - 2026-04-21T03:47:34 - `bb865c69-0af1-4083-a5ce-cea71c5ad79d.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `d825c2a4-fabd-41df-8994-3e6d74767fc9.jsonl`

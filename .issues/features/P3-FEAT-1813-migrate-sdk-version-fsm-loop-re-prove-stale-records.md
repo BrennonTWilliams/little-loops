@@ -141,6 +141,6 @@ proof machinery.
 **Open** | Created: 2026-05-30 | Priority: P3
 
 ## Session Log
-- `/ll:verify-issues` - 2026-05-31T05:40:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:capture-issue` - 2026-05-30T21:35:04Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3ee23bc-341c-48d2-b09f-f34e658c7031.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:08 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:14 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:capture-issue` - 2026-05-30T21:35:04Z - `f3ee23bc-341c-48d2-b09f-f34e658c7031.jsonl`

@@ -302,12 +302,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **`TestConfigSchema.test_analytics_in_schema`** (`scripts/tests/test_config_schema.py:136`) — schema test template.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-27T21:47:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d93cb966-39e0-4c09-bae4-94a3d9170aac.jsonl`
-- `/ll:confidence-check` - 2026-05-27T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44bd17d7-665a-4c5a-a921-73c4db032c3e.jsonl`
-- `/ll:wire-issue` - 2026-05-27T21:42:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c18ac59-f823-4be7-916e-f317ba96b849.jsonl`
-- `/ll:refine-issue` - 2026-05-27T21:36:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa38874c-af9f-4c14-8800-0dd6b1affa99.jsonl`
-- `/ll:format-issue` - 2026-05-27T20:25:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/652005b7-b7e9-404a-9ee0-b21de41aeefa.jsonl`
-- `/ll:issue-size-review` - 2026-05-27T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f94f108-c36b-4b4d-b486-f41734145a41.jsonl`
+- `/ll:ready-issue` - 2026-05-27T21:47:22 - `d93cb966-39e0-4c09-bae4-94a3d9170aac.jsonl`
+- `/ll:confidence-check` - 2026-05-27T22:00:00 - `44bd17d7-665a-4c5a-a921-73c4db032c3e.jsonl`
+- `/ll:wire-issue` - 2026-05-27T21:42:58 - `2c18ac59-f823-4be7-916e-f317ba96b849.jsonl`
+- `/ll:refine-issue` - 2026-05-27T21:36:51 - `fa38874c-af9f-4c14-8800-0dd6b1affa99.jsonl`
+- `/ll:format-issue` - 2026-05-27T20:25:05 - `652005b7-b7e9-404a-9ee0-b21de41aeefa.jsonl`
+- `/ll:issue-size-review` - 2026-05-27T20:30:00Z - `5f94f108-c36b-4b4d-b486-f41734145a41.jsonl`
 
 ---
 

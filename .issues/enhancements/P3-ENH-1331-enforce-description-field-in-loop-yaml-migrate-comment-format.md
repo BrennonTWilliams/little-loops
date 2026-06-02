@@ -251,9 +251,9 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - **Pre-existing test assertions will break**: `test_load_valid_yaml` (valid-loop.yaml lacks description) and `test_unknown_top_level_keys_warn` (warning count assertion) will fail immediately after adding the warning; these must be patched in the same commit to keep CI green — documented in wiring analysis but requires careful sequencing
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-03T03:44:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f2644eb-fc81-4e02-908e-faf86597a644.jsonl`
-- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87358b2c-9b77-4155-850b-f68fcd6ad7f0.jsonl`
-- `/ll:wire-issue` - 2026-05-03T03:39:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/035378c1-815a-4b96-89c0-1ba3c61fa7dc.jsonl`
-- `/ll:refine-issue` - 2026-05-03T03:32:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6fd1f5c-51a7-4e84-84c1-5a8a613dc5ed.jsonl`
-- `/ll:format-issue` - 2026-05-02T19:54:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c7505b5-ede1-476a-a6b7-a18e3c4c8571.jsonl`
-- `/ll:manage-issue` - 2026-05-03T04:12:28Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cae81b93-4c91-4b4b-a51b-578258d7b392.jsonl`
+- `/ll:ready-issue` - 2026-05-03T03:44:18 - `4f2644eb-fc81-4e02-908e-faf86597a644.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `87358b2c-9b77-4155-850b-f68fcd6ad7f0.jsonl`
+- `/ll:wire-issue` - 2026-05-03T03:39:07 - `035378c1-815a-4b96-89c0-1ba3c61fa7dc.jsonl`
+- `/ll:refine-issue` - 2026-05-03T03:32:56 - `d6fd1f5c-51a7-4e84-84c1-5a8a613dc5ed.jsonl`
+- `/ll:format-issue` - 2026-05-02T19:54:35 - `5c7505b5-ede1-476a-a6b7-a18e3c4c8571.jsonl`
+- `/ll:manage-issue` - 2026-05-03T04:12:28Z - `cae81b93-4c91-4b4b-a51b-578258d7b392.jsonl`

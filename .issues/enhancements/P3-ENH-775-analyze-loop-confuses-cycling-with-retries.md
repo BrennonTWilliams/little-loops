@@ -212,10 +212,10 @@ Verified 2026-03-16. Core bug claims confirmed accurate:
 
 ## Session Log
 - `/ll:manage-issue` - 2026-03-17T00:00:00 - improve ENH-775
-- `/ll:ready-issue` - 2026-03-17T05:23:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/264c7eb5-eeca-4747-b693-1c7447fa1867.jsonl`
-- `/ll:verify-issues` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6845dcb9-5d3d-4e87-aaff-4382e49ef209.jsonl`
-- `/ll:refine-issue` - 2026-03-17T03:54:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5188477-e8ba-44da-8d95-f92aeaf36e0b.jsonl`
-- `/ll:refine-issue` - 2026-03-16T23:41:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0364dd7-6557-4614-a167-51d913f25bbc.jsonl`
-- `/ll:verify-issues` - 2026-03-16T19:31:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:format-issue` - 2026-03-16T19:30:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:ready-issue` - 2026-03-17T05:23:32 - `264c7eb5-eeca-4747-b693-1c7447fa1867.jsonl`
+- `/ll:verify-issues` - 2026-03-16T00:00:00 - `6845dcb9-5d3d-4e87-aaff-4382e49ef209.jsonl`
+- `/ll:refine-issue` - 2026-03-17T03:54:09 - `f5188477-e8ba-44da-8d95-f92aeaf36e0b.jsonl`
+- `/ll:refine-issue` - 2026-03-16T23:41:15 - `a0364dd7-6557-4614-a167-51d913f25bbc.jsonl`
+- `/ll:verify-issues` - 2026-03-16T19:31:09 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:format-issue` - 2026-03-16T19:30:05 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`

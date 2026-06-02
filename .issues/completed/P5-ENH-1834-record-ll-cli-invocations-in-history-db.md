@@ -218,13 +218,13 @@ _Added by `/ll:confidence-check` on 2026-06-01_
 - **Mitigation**: After wrapping all entry points, run a quick count: `grep -rl "cli_event_context" scripts/little_loops/cli/ | wc -l` and compare against `grep "ll-" scripts/pyproject.toml | wc -l`. Consider adding a `test_all_entry_points_wrapped` test in `TestCliEventContext` that introspects pyproject.toml.
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0686c0da-b3e0-4215-b978-6a0771cae829.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90ff1d73-dbfe-4bdb-964a-84b3b2df9205.jsonl`
-- `/ll:wire-issue` - 2026-06-01T12:02:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f11ecb7-7e09-429e-b3ad-966ac0288a36.jsonl`
-- `/ll:refine-issue` - 2026-06-01T11:58:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a34339e-2d82-4143-857a-a0945994b101.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-06-01T04:19:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f60c9218-3661-4445-8adb-23f9182491a5.jsonl`
-- `/ll:format-issue` - 2026-06-01T01:23:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ccce6dd-ca36-49fd-8bf7-a050f93f3840.jsonl`
-- `/ll:capture-issue` - 2026-06-01T01:10:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00 - `0686c0da-b3e0-4215-b978-6a0771cae829.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00 - `90ff1d73-dbfe-4bdb-964a-84b3b2df9205.jsonl`
+- `/ll:wire-issue` - 2026-06-01T12:02:34 - `4f11ecb7-7e09-429e-b3ad-966ac0288a36.jsonl`
+- `/ll:refine-issue` - 2026-06-01T11:58:04 - `3a34339e-2d82-4143-857a-a0945994b101.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-01T04:19:23 - `f60c9218-3661-4445-8adb-23f9182491a5.jsonl`
+- `/ll:format-issue` - 2026-06-01T01:23:29 - `5ccce6dd-ca36-49fd-8bf7-a050f93f3840.jsonl`
+- `/ll:capture-issue` - 2026-06-01T01:10:54Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 
 ---
 

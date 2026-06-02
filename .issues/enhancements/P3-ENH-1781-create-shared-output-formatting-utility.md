@@ -304,20 +304,20 @@ _Added by `/ll:confidence-check` on 2026-05-29_
 - **Logger naming overlap**: `Logger.success()`/`error()`/`warning()`/`info()` exist in `logger.py` — the new helpers must be clearly differentiated in naming and documentation to avoid confusion.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-29T04:34:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bd0959b-eb56-4c78-8696-f768fa1526d0.jsonl`
-- `/ll:ready-issue` - 2026-05-29T04:31:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b559abf7-354c-489b-8008-e056852380f3.jsonl`
-- `/ll:decide-issue` - 2026-05-29T04:26:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de671d7a-96d8-4b3e-86d0-8534a69f8651.jsonl`
-- `/ll:wire-issue` - 2026-05-29T04:18:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99c7c1db-35d5-4a7c-b7dc-b29122ffe376.jsonl`
-- `/ll:refine-issue` - 2026-05-29T04:12:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3c725de-2d7b-44bf-b709-fdf814aae9f0.jsonl`
-- `/ll:refine-issue` - 2026-05-29T04:10:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1fcbddfc-b25b-47de-86e4-c658d5238d68.jsonl`
-- `/ll:format-issue` - 2026-05-29T02:28:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e23d1bf-3385-43d7-80c9-602fafbaf867.jsonl`
-- `/ll:capture-issue` - 2026-05-29T02:23:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b24cba6-684e-4420-9519-de98c8b4822b.jsonl`
-- `/ll:confidence-check` - 2026-05-29T06:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34f618d5-57ea-4064-abe4-6f6f199791bc.jsonl`
-- `/ll:confidence-check` - 2026-05-29T06:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5947ea14-7070-4b6b-8b99-f8662c07901a.jsonl`
-- `/ll:confidence-check` - 2026-05-29T07:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac839f3f-026b-4b53-bdc8-45cc3941db7e.jsonl`
-- `/ll:confidence-check` - 2026-05-29T07:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c4eda6ba-f152-4a9f-af9d-8dad1d8ad478.jsonl`
-- `/ll:ready-issue` - 2026-05-28T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
-- `/ll:manage-issue` - 2026-05-29T04:45:35Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32ec6455-fe59-410e-b50d-9f823d1eb658.jsonl`
+- `/ll:ready-issue` - 2026-05-29T04:34:16 - `7bd0959b-eb56-4c78-8696-f768fa1526d0.jsonl`
+- `/ll:ready-issue` - 2026-05-29T04:31:17 - `b559abf7-354c-489b-8008-e056852380f3.jsonl`
+- `/ll:decide-issue` - 2026-05-29T04:26:44 - `de671d7a-96d8-4b3e-86d0-8534a69f8651.jsonl`
+- `/ll:wire-issue` - 2026-05-29T04:18:35 - `99c7c1db-35d5-4a7c-b7dc-b29122ffe376.jsonl`
+- `/ll:refine-issue` - 2026-05-29T04:12:49 - `e3c725de-2d7b-44bf-b709-fdf814aae9f0.jsonl`
+- `/ll:refine-issue` - 2026-05-29T04:10:39 - `1fcbddfc-b25b-47de-86e4-c658d5238d68.jsonl`
+- `/ll:format-issue` - 2026-05-29T02:28:33 - `9e23d1bf-3385-43d7-80c9-602fafbaf867.jsonl`
+- `/ll:capture-issue` - 2026-05-29T02:23:45Z - `8b24cba6-684e-4420-9519-de98c8b4822b.jsonl`
+- `/ll:confidence-check` - 2026-05-29T06:00:00 - `34f618d5-57ea-4064-abe4-6f6f199791bc.jsonl`
+- `/ll:confidence-check` - 2026-05-29T06:00:00 - `5947ea14-7070-4b6b-8b99-f8662c07901a.jsonl`
+- `/ll:confidence-check` - 2026-05-29T07:00:00 - `ac839f3f-026b-4b53-bdc8-45cc3941db7e.jsonl`
+- `/ll:confidence-check` - 2026-05-29T07:45:00 - `c4eda6ba-f152-4a9f-af9d-8dad1d8ad478.jsonl`
+- `/ll:ready-issue` - 2026-05-28T00:00:00 - `current-session.jsonl`
+- `/ll:manage-issue` - 2026-05-29T04:45:35Z - `32ec6455-fe59-410e-b50d-9f823d1eb658.jsonl`
 
 ## Resolution
 

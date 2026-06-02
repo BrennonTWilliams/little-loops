@@ -187,7 +187,7 @@ All 121 tests pass (`python -m pytest scripts/tests/test_ll_loop_display.py`).
 **Completed** | Created: 2026-03-20 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-20T21:39:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51a33daf-4007-40cc-a0a0-fa27ffa9df00.jsonl`
-- `/ll:refine-issue` - 2026-03-20T21:02:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66287049-8150-4128-9cfd-31f459fc62db.jsonl`
+- `/ll:ready-issue` - 2026-03-20T21:39:57 - `51a33daf-4007-40cc-a0a0-fa27ffa9df00.jsonl`
+- `/ll:refine-issue` - 2026-03-20T21:02:13 - `66287049-8150-4128-9cfd-31f459fc62db.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae4f7fa9-4038-444b-b34c-8c4cea5178e2.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a252f10d-b254-4738-9e2f-e6571da6b831.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `a252f10d-b254-4738-9e2f-e6571da6b831.jsonl`

@@ -150,12 +150,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 After `confidence_check` passes, the sub-loop now runs `/ll:verify-issues` which appends the command to `session_commands`. The `next-action` gate in `next_action.py:38-40` is satisfied, allowing `issue-refinement` to advance to the next issue rather than cycling indefinitely on `NEEDS_VERIFY`.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-02T02:48:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53eb3cb1-f604-4fd9-85f3-fc768c44ed9b.jsonl`
-- `/ll:verify-issues` - 2026-04-02T02:43:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fbde4238-c365-4ed1-af0f-b596132407a8.jsonl`
-- `/ll:confidence-check` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5896a354-c3e5-4bd9-bc1b-afa4b8d6b211.jsonl`
-- `/ll:refine-issue` - 2026-04-02T02:18:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5896a354-c3e5-4bd9-bc1b-afa4b8d6b211.jsonl`
-- `/ll:format-issue` - 2026-04-02T02:14:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5896a354-c3e5-4bd9-bc1b-afa4b8d6b211.jsonl`
-- `/ll:capture-issue` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eaf73d5c-81eb-45a4-a5e6-b157f77ba059.jsonl`
+- `/ll:ready-issue` - 2026-04-02T02:48:46 - `53eb3cb1-f604-4fd9-85f3-fc768c44ed9b.jsonl`
+- `/ll:verify-issues` - 2026-04-02T02:43:43 - `fbde4238-c365-4ed1-af0f-b596132407a8.jsonl`
+- `/ll:confidence-check` - 2026-04-01T00:00:00Z - `5896a354-c3e5-4bd9-bc1b-afa4b8d6b211.jsonl`
+- `/ll:refine-issue` - 2026-04-02T02:18:35 - `5896a354-c3e5-4bd9-bc1b-afa4b8d6b211.jsonl`
+- `/ll:format-issue` - 2026-04-02T02:14:16 - `5896a354-c3e5-4bd9-bc1b-afa4b8d6b211.jsonl`
+- `/ll:capture-issue` - 2026-04-01T00:00:00Z - `eaf73d5c-81eb-45a4-a5e6-b157f77ba059.jsonl`
 
 ---
 

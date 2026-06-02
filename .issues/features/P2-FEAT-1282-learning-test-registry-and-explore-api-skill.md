@@ -244,13 +244,13 @@ def mark_stale(target_slug: str) -> None: ...
 `enhancement`, `autonomy`, `learning-tests`, `captured`
 
 ## Session Log
-- `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
-- `/ll:refine-issue` - 2026-05-16T21:36:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1da9d61-83f1-4718-91ec-4ed0e57454c9.jsonl`
-- `/ll:wire-issue` - 2026-04-25T18:49:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cab145e-64ca-41f6-9cfa-67c06772edcb.jsonl`
-- `/ll:refine-issue` - 2026-04-25T18:42:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3448382b-328e-4cb4-aaea-f22958449e93.jsonl`
-- `/ll:confidence-check` - 2026-04-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/408be939-366d-4ada-a014-a49f41e9c0e9.jsonl`
-- `/ll:capture-issue` — 2026-04-25T18:06:01Z — `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/771faa3d-a5a9-41eb-a550-7a0938c98004.jsonl`
-- `/ll:issue-size-review` - 2026-04-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4dc8248e-f52c-48ec-8099-31b22aeb934f.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
+- `/ll:refine-issue` - 2026-05-16T21:36:45 - `e1da9d61-83f1-4718-91ec-4ed0e57454c9.jsonl`
+- `/ll:wire-issue` - 2026-04-25T18:49:33 - `6cab145e-64ca-41f6-9cfa-67c06772edcb.jsonl`
+- `/ll:refine-issue` - 2026-04-25T18:42:55 - `3448382b-328e-4cb4-aaea-f22958449e93.jsonl`
+- `/ll:confidence-check` - 2026-04-25T00:00:00Z - `408be939-366d-4ada-a014-a49f41e9c0e9.jsonl`
+- `/ll:capture-issue` — 2026-04-25T18:06:01Z — `771faa3d-a5a9-41eb-a550-7a0938c98004.jsonl`
+- `/ll:issue-size-review` - 2026-04-25T00:00:00Z - `4dc8248e-f52c-48ec-8099-31b22aeb934f.jsonl`
 
 ---
 

@@ -111,7 +111,7 @@ if cs >= 85 and rc >= 5:
 `bug`, `loops`, `fsm`, `issue-refinement`
 
 ## Session Log
-- audit + fix — 2026-03-13 — `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ece248e3-a7ba-4bdc-9a07-c3af61df2fe9.jsonl`
+- audit + fix — 2026-03-13 — `ece248e3-a7ba-4bdc-9a07-c3af61df2fe9.jsonl`
 
 ---
 

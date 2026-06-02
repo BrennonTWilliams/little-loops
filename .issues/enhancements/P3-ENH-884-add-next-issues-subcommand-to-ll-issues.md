@@ -165,9 +165,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ---
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-03-25T04:03:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/805fc52b-7d2c-47cc-a3b7-8544d617c513.jsonl`
-- `/ll:manage-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:ready-issue` - 2026-03-25T03:59:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9eae0db-b8f9-4875-b665-76cf8683dd1b.jsonl`
-- `/ll:refine-issue` - 2026-03-25T02:34:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf417607-090b-45cf-9a30-9183f02b6bda.jsonl`
+- `hook:posttooluse-git-mv` - 2026-03-25T04:03:25 - `805fc52b-7d2c-47cc-a3b7-8544d617c513.jsonl`
+- `/ll:manage-issue` - 2026-03-24T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-25T03:59:10 - `e9eae0db-b8f9-4875-b665-76cf8683dd1b.jsonl`
+- `/ll:refine-issue` - 2026-03-25T02:34:58 - `cf417607-090b-45cf-9a30-9183f02b6bda.jsonl`
 - `/ll:capture-issue` - 2026-03-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/260efed5-c346-4a55-ab79-a03e97451fe4.jsonl`
-- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6397182f-baef-4093-8056-e07b0b54b84b.jsonl`
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `6397182f-baef-4093-8056-e07b0b54b84b.jsonl`

@@ -285,10 +285,10 @@ _Updated by `/ll:confidence-check` on 2026-05-11_
 - FEAT-1457: LLHookIntentExtension Authoring Docs and Skills Update
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0b21eb7d-ba29-48d1-a82f-90d0bc6238a5.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82321d7d-e2c4-449b-98a6-72e150abb16e.jsonl`
-- `/ll:decide-issue` - 2026-05-12T03:20:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/94bcac04-f76e-4220-b166-25df7aeb524d.jsonl`
-- `/ll:confidence-check` - 2026-05-11T12:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67e7efb4-ec30-481a-bd3e-f3ef0c5e6daa.jsonl`
-- `/ll:wire-issue` - 2026-05-12T03:12:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bd4c5b26-025a-453f-9fc3-134e15455eaa.jsonl`
-- `/ll:refine-issue` - 2026-05-12T03:06:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a9d0b5e-3dd8-4c75-9cc4-c75e3e21b41c.jsonl`
-- `/ll:issue-size-review` - 2026-05-12T00:20:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cb0dc9a-fd6f-4945-97b0-ad6acec56482.jsonl`
+- `/ll:issue-size-review` - 2026-05-12T00:00:00 - `0b21eb7d-ba29-48d1-a82f-90d0bc6238a5.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `82321d7d-e2c4-449b-98a6-72e150abb16e.jsonl`
+- `/ll:decide-issue` - 2026-05-12T03:20:35 - `94bcac04-f76e-4220-b166-25df7aeb524d.jsonl`
+- `/ll:confidence-check` - 2026-05-11T12:00:00 - `67e7efb4-ec30-481a-bd3e-f3ef0c5e6daa.jsonl`
+- `/ll:wire-issue` - 2026-05-12T03:12:41 - `bd4c5b26-025a-453f-9fc3-134e15455eaa.jsonl`
+- `/ll:refine-issue` - 2026-05-12T03:06:53 - `5a9d0b5e-3dd8-4c75-9cc4-c75e3e21b41c.jsonl`
+- `/ll:issue-size-review` - 2026-05-12T00:20:02 - `5cb0dc9a-fd6f-4945-97b0-ad6acec56482.jsonl`

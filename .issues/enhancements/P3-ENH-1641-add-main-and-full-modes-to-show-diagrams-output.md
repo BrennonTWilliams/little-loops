@@ -334,13 +334,13 @@ Implemented `--show-diagrams[=main|full]` on both `ll-loop run` and `ll-loop res
 **Verification**: `python -m pytest scripts/tests/` → 7398 passed, 5 skipped, 0 failed. `ruff check scripts/` clean. `ruff format scripts/` clean after one reformat. `python -m mypy scripts/little_loops/` clean (only pre-existing `wcwidth` stub note).
 
 ## Session Log
-- `/ll:refine-issue` - 2026-05-23T20:37:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cec224a-5329-4fdc-9cdb-44aa63691a0b.jsonl`
-- `/ll:manage-issue` - 2026-05-23T20:35:02Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7379b14f-1161-411a-88a9-5a21bedf0144.jsonl`
-- `/ll:ready-issue` - 2026-05-23T20:16:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd363937-9ef0-4fed-900a-5e261d42fe40.jsonl`
-- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9148d08-0197-4089-be39-89d58f0c2962.jsonl`
-- `/ll:wire-issue` - 2026-05-23T20:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75642ced-0d2e-4093-9060-f4dda47af138.jsonl`
-- `/ll:refine-issue` - 2026-05-23T20:05:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/02c12a40-e1b4-41aa-9b68-8f8897d8870c.jsonl`
-- `/ll:format-issue` - 2026-05-23T19:38:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fea0e6db-4667-413a-a780-b1a7b539504a.jsonl`
+- `/ll:refine-issue` - 2026-05-23T20:37:41 - `6cec224a-5329-4fdc-9cdb-44aa63691a0b.jsonl`
+- `/ll:manage-issue` - 2026-05-23T20:35:02Z - `7379b14f-1161-411a-88a9-5a21bedf0144.jsonl`
+- `/ll:ready-issue` - 2026-05-23T20:16:17 - `cd363937-9ef0-4fed-900a-5e261d42fe40.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `b9148d08-0197-4089-be39-89d58f0c2962.jsonl`
+- `/ll:wire-issue` - 2026-05-23T20:12:28 - `75642ced-0d2e-4093-9060-f4dda47af138.jsonl`
+- `/ll:refine-issue` - 2026-05-23T20:05:58 - `02c12a40-e1b4-41aa-9b68-8f8897d8870c.jsonl`
+- `/ll:format-issue` - 2026-05-23T19:38:37 - `fea0e6db-4667-413a-a780-b1a7b539504a.jsonl`
 
 - `/ll:capture-issue` - 2026-05-23T19:35:22Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d78e31da-79c0-488b-9c76-e0ed6a110193.jsonl`
 

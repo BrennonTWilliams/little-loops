@@ -338,10 +338,10 @@ Implemented `learning_tests.enabled` master switch across config schema, datacla
 - **test_feat1756_init_wiring.py**: Updated `TOTAL = 9` and `8–9 rounds` assertions for bumped round count
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-29T05:26:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e745131-624d-49cb-98a7-3efb2d40ebc0.jsonl`
-- `/ll:wire-issue` - 2026-05-29T05:21:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff8ff2f7-0c9f-4d20-9728-5e8161811fb0.jsonl`
-- `/ll:refine-issue` - 2026-05-29T05:10:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b69922a-cfcc-4ebf-9ec9-2af756567dc9.jsonl`
-- `/ll:format-issue` - 2026-05-29T02:45:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f33cbf4f-64fd-4485-8964-c58bfa3f4303.jsonl`
-- `/ll:capture-issue` - 2026-05-27T18:24:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5d67c925-b04f-4086-8575-fc25fa08257e.jsonl`
-- `/ll:confidence-check` - 2026-05-29T05:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c770381-3da1-4222-96c6-b14e2da38bfc.jsonl`
-- `/ll:manage-issue feature implement FEAT-1743` - 2026-05-29T05:42:15Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73cb6551-c995-43ba-ab5d-f74023697a2e.jsonl`
+- `/ll:ready-issue` - 2026-05-29T05:26:22 - `8e745131-624d-49cb-98a7-3efb2d40ebc0.jsonl`
+- `/ll:wire-issue` - 2026-05-29T05:21:07 - `ff8ff2f7-0c9f-4d20-9728-5e8161811fb0.jsonl`
+- `/ll:refine-issue` - 2026-05-29T05:10:52 - `6b69922a-cfcc-4ebf-9ec9-2af756567dc9.jsonl`
+- `/ll:format-issue` - 2026-05-29T02:45:14 - `f33cbf4f-64fd-4485-8964-c58bfa3f4303.jsonl`
+- `/ll:capture-issue` - 2026-05-27T18:24:59Z - `5d67c925-b04f-4086-8575-fc25fa08257e.jsonl`
+- `/ll:confidence-check` - 2026-05-29T05:45:00Z - `2c770381-3da1-4222-96c6-b14e2da38bfc.jsonl`
+- `/ll:manage-issue feature implement FEAT-1743` - 2026-05-29T05:42:15Z - `73cb6551-c995-43ba-ab5d-f74023697a2e.jsonl`

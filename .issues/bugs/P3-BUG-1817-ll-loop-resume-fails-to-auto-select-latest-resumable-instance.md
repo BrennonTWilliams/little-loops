@@ -231,13 +231,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-30T23:57:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4467f377-9c28-4ac2-8355-523b121dd444.jsonl`
-- `/ll:decide-issue` - 2026-05-30T23:52:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/036f576f-3522-43ca-985f-04f3a17d8140.jsonl`
-- `/ll:wire-issue` - 2026-05-30T23:47:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9fb81c50-c1ea-4f01-9e99-100cd2d449e0.jsonl`
-- `/ll:confidence-check` - 2026-05-30T23:50:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9d6ca49-3428-421c-b16e-4d42ea05873a.jsonl`
-- `/ll:refine-issue` - 2026-05-30T23:42:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f68438cb-0bf5-4403-b436-89c264cf23d0.jsonl`
-- `/ll:format-issue` - 2026-05-30T22:36:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51e4b8c3-1dc3-44cf-a08b-e4ed121b9e14.jsonl`
+- `/ll:ready-issue` - 2026-05-30T23:57:28 - `4467f377-9c28-4ac2-8355-523b121dd444.jsonl`
+- `/ll:decide-issue` - 2026-05-30T23:52:45 - `036f576f-3522-43ca-985f-04f3a17d8140.jsonl`
+- `/ll:wire-issue` - 2026-05-30T23:47:43 - `9fb81c50-c1ea-4f01-9e99-100cd2d449e0.jsonl`
+- `/ll:confidence-check` - 2026-05-30T23:50:00 - `e9d6ca49-3428-421c-b16e-4d42ea05873a.jsonl`
+- `/ll:refine-issue` - 2026-05-30T23:42:15 - `f68438cb-0bf5-4403-b436-89c264cf23d0.jsonl`
+- `/ll:format-issue` - 2026-05-30T22:36:56 - `51e4b8c3-1dc3-44cf-a08b-e4ed121b9e14.jsonl`
 - `/ll:capture-issue` - 2026-05-30T22:06:48Z - this session
-- `/ll:confidence-check` - 2026-05-30T23:55:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/521d38a9-e54b-4340-a6ec-f4e9418460d9.jsonl`
+- `/ll:confidence-check` - 2026-05-30T23:55:00Z - `521d38a9-e54b-4340-a6ec-f4e9418460d9.jsonl`
 
 **Open** | Created: 2026-05-30 | Priority: P3

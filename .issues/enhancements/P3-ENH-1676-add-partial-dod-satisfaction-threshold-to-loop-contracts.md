@@ -193,11 +193,11 @@ and routes `done` when `.total == 0`. ENH-1676 must split `unchecked_dod` into `
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T20:50:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c45ae03d-5b5b-437f-b1fc-ade691acba64.jsonl`
-- `/ll:wire-issue` - 2026-05-24T20:32:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b92c2500-75a5-45eb-9f0c-cb00ad0d148c.jsonl`
-- `/ll:refine-issue` - 2026-05-24T20:23:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4127329-5a5e-420f-b172-2383e64684bd.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
-- `/ll:format-issue` - 2026-05-24T13:19:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/765fa3c6-1a05-4cb7-8170-c01366684b4e.jsonl`
-- `/ll:capture-issue` - 2026-05-24T13:15:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bfd5e964-4cba-4f63-8354-255b3fbb9f18.jsonl`
-- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`
-- `/ll:confidence-check` - 2026-05-24T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2d625aa-98a6-43f6-8465-069e31302f35.jsonl`
+- `/ll:ready-issue` - 2026-05-24T20:50:19 - `c45ae03d-5b5b-437f-b1fc-ade691acba64.jsonl`
+- `/ll:wire-issue` - 2026-05-24T20:32:16 - `b92c2500-75a5-45eb-9f0c-cb00ad0d148c.jsonl`
+- `/ll:refine-issue` - 2026-05-24T20:23:28 - `b4127329-5a5e-420f-b172-2383e64684bd.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
+- `/ll:format-issue` - 2026-05-24T13:19:47 - `765fa3c6-1a05-4cb7-8170-c01366684b4e.jsonl`
+- `/ll:capture-issue` - 2026-05-24T13:15:53Z - `bfd5e964-4cba-4f63-8354-255b3fbb9f18.jsonl`
+- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`
+- `/ll:confidence-check` - 2026-05-24T21:00:00 - `d2d625aa-98a6-43f6-8465-069e31302f35.jsonl`

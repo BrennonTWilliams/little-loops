@@ -172,10 +172,10 @@ Implemented cycle detection / visited-set guard across all queue-management stat
 - `scripts/tests/test_loops_recursive_refine.py`: Updated `_DONE_SCRIPT` with cycle tracking; fixed existing `TestDoneSummary` tests to create `skipped-cycle.txt`; added `TestParseInputDedup`, `TestVisitedSetAppend`, `TestVisitedSetFilter`, `TestCycleSkipReason`, and two new `TestDoneSummary` cycle methods. All 310 tests pass.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-03T17:47:10Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/` (current session)
-- `/ll:ready-issue` - 2026-05-03T17:37:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/339796a8-14ef-4a6b-a01f-1d0889b22148.jsonl`
-- `/ll:confidence-check` - 2026-05-03T18:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf6dafe2-bae1-437a-bba3-3b9e3937c4d5.jsonl`
-- `/ll:wire-issue` - 2026-05-03T17:33:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf6dafe2-bae1-437a-bba3-3b9e3937c4d5.jsonl`
-- `/ll:refine-issue` - 2026-05-03T17:28:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e3e3565-4753-48d2-9c7f-53a2ce265d6e.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:20:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:format-issue` - 2026-05-03T04:41:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a41e2fe5-b6da-449b-8d60-6b8ddd06d97c.jsonl`
+- `/ll:manage-issue` - 2026-05-03T17:47:10Z - `` (current session)
+- `/ll:ready-issue` - 2026-05-03T17:37:25 - `339796a8-14ef-4a6b-a01f-1d0889b22148.jsonl`
+- `/ll:confidence-check` - 2026-05-03T18:00:00 - `bf6dafe2-bae1-437a-bba3-3b9e3937c4d5.jsonl`
+- `/ll:wire-issue` - 2026-05-03T17:33:14 - `bf6dafe2-bae1-437a-bba3-3b9e3937c4d5.jsonl`
+- `/ll:refine-issue` - 2026-05-03T17:28:06 - `0e3e3565-4753-48d2-9c7f-53a2ce265d6e.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:20:54 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:format-issue` - 2026-05-03T04:41:50 - `a41e2fe5-b6da-449b-8d60-6b8ddd06d97c.jsonl`

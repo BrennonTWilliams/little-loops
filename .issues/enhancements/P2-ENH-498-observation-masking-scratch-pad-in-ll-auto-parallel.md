@@ -124,9 +124,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `enhancement`, `context-engineering`, `ll-auto`, `ll-parallel`, `performance`
 
 ## Session Log
-- `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
-- `/ll:refine-issue` - 2026-02-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl`
-- `/ll:refine-issue` - 2026-02-25T02:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ccd58c2f-afcc-4c02-ad93-b2ea1969bc65.jsonl`
+- `/ll:format-issue` - 2026-02-24 - `cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:refine-issue` - 2026-02-25T00:00:00Z - `ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl`
+- `/ll:refine-issue` - 2026-02-25T02:00:00Z - `ccd58c2f-afcc-4c02-ad93-b2ea1969bc65.jsonl`
 - `/ll:verify-issues` - 2026-02-25 - Corrected line references: `worker_pool.py:241` → `worker_pool.py:525` (copytree call); `config-schema.json:442` → `config-schema.json:441` (additionalProperties: false for context_monitor); `session-cleanup.sh:12–34` → `12–14`
 
 ---

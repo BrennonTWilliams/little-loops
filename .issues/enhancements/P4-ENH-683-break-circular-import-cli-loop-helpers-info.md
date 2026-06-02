@@ -90,11 +90,11 @@ Extract shared utilities/constants into a dedicated module or reorganize so `_he
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-17T01:50:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/107d545b-7908-43db-ab43-583614e6f720.jsonl`
-- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ccc2230-6d69-46a3-8836-f6cde953377c.jsonl`
-- `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
+- `/ll:ready-issue` - 2026-03-17T01:50:12 - `107d545b-7908-43db-ab43-583614e6f720.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `4ccc2230-6d69-46a3-8836-f6cde953377c.jsonl`
+- `/ll:verify-issues` - 2026-03-15T00:11:17 - `623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
-- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

@@ -125,12 +125,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Both ARCHITECTURE.md and CONTRIBUTING.md list `rate_limit_circuit.py` in the fsm/ tree
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-17T06:20:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e20512e-4152-4cfc-9884-2846f71c2341.jsonl`
-- `/ll:wire-issue` - 2026-04-17T06:16:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c3528ae-7717-4fa3-abee-f6ad07546776.jsonl`
-- `/ll:refine-issue` - 2026-04-17T06:12:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eda26ff9-e951-44b6-86e0-56070ccba333.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e6682d5-cb79-4c33-9ce6-ede83cb84a43.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5fa063e0-a03b-43ad-bd68-a49943f3ad8f.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e20512e-4152-4cfc-9884-2846f71c2341.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-17T06:20:59 - `7e20512e-4152-4cfc-9884-2846f71c2341.jsonl`
+- `/ll:wire-issue` - 2026-04-17T06:16:27 - `4c3528ae-7717-4fa3-abee-f6ad07546776.jsonl`
+- `/ll:refine-issue` - 2026-04-17T06:12:42 - `eda26ff9-e951-44b6-86e0-56070ccba333.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `2e6682d5-cb79-4c33-9ce6-ede83cb84a43.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `5fa063e0-a03b-43ad-bd68-a49943f3ad8f.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `7e20512e-4152-4cfc-9884-2846f71c2341.jsonl`
 
 ---
 

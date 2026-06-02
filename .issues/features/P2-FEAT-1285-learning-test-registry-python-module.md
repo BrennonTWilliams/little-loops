@@ -270,10 +270,10 @@ _Added by `/ll:confidence-check` on 2026-04-25_
 - **Wide implementation breadth**: 14 files across 4+ subsystems (new module, config wiring, tests, docs). All changes are additive, but the span means you need to hold more context simultaneously — plan for methodical pass-by-pass execution rather than a single sweep.
 
 ## Session Log
-- `/ll:refine-issue` - 2026-05-16T21:36:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa7e100f-d3a0-49c9-8f55-7899f39e9a53.jsonl`
-- `/ll:manage-issue` - 2026-04-25T19:36:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7f436c4-e846-47c8-8784-9e30750c1037.jsonl`
-- `/ll:ready-issue` - 2026-04-25T19:26:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4976a136-d8c0-4a43-bd93-2067c8e0ea33.jsonl`
-- `/ll:decide-issue` - 2026-04-25T19:23:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e01f4663-cf90-46a5-9bf2-707bcff9ccec.jsonl`
-- `/ll:confidence-check` - 2026-04-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e47d1ef-2bc6-4299-8018-0c5ef506b76e.jsonl`
-- `/ll:wire-issue` - 2026-04-25T19:05:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e58ad7a-a8c3-41cd-9261-6c51bd4412fc.jsonl`
-- `/ll:refine-issue` - 2026-04-25T18:59:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8327f553-dd40-49de-9353-6656cb7f6d56.jsonl`
+- `/ll:refine-issue` - 2026-05-16T21:36:34 - `aa7e100f-d3a0-49c9-8f55-7899f39e9a53.jsonl`
+- `/ll:manage-issue` - 2026-04-25T19:36:39Z - `e7f436c4-e846-47c8-8784-9e30750c1037.jsonl`
+- `/ll:ready-issue` - 2026-04-25T19:26:03 - `4976a136-d8c0-4a43-bd93-2067c8e0ea33.jsonl`
+- `/ll:decide-issue` - 2026-04-25T19:23:05 - `e01f4663-cf90-46a5-9bf2-707bcff9ccec.jsonl`
+- `/ll:confidence-check` - 2026-04-25T00:00:00Z - `3e47d1ef-2bc6-4299-8018-0c5ef506b76e.jsonl`
+- `/ll:wire-issue` - 2026-04-25T19:05:01 - `0e58ad7a-a8c3-41cd-9261-6c51bd4412fc.jsonl`
+- `/ll:refine-issue` - 2026-04-25T18:59:44 - `8327f553-dd40-49de-9353-6656cb7f6d56.jsonl`

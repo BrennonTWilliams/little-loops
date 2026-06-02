@@ -133,13 +133,13 @@ _Updated by `/ll:refine-issue` on 2026-04-01 — added review-loop:_
 `enhancement`, `skills`, `context-engineering`, `ux`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-01T18:03:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/120447ec-f7ea-42c9-a9f4-6a253b54e026.jsonl`
-- `/ll:refine-issue` - 2026-04-01T17:56:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9a59399-86a0-48d0-bc8f-f7823612f52d.jsonl`
-- `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
-- `/ll:verify-issues` - 2026-03-22T02:48:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6354e86b-8019-4171-939d-aba670876e1f.jsonl`
+- `/ll:ready-issue` - 2026-04-01T18:03:15 - `120447ec-f7ea-42c9-a9f4-6a253b54e026.jsonl`
+- `/ll:refine-issue` - 2026-04-01T17:56:05 - `e9a59399-86a0-48d0-bc8f-f7823612f52d.jsonl`
+- `/ll:verify-issues` - 2026-04-01T17:45:20 - `712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
+- `/ll:verify-issues` - 2026-03-22T02:48:15 - `6354e86b-8019-4171-939d-aba670876e1f.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
-- `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Audited all 15 SKILL.md descriptions; identified 8 needing rewrite (summary-style) and 7 already trigger-phrase-oriented
+- `/ll:format-issue` - 2026-02-24 - `cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Audited all 15 SKILL.md descriptions; identified 8 needing rewrite (summary-style) and 7 already trigger-phrase-oriented
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; research findings from 2026-02-25 remain current
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `CONTRIBUTING.md` and `docs/reference/COMMANDS.md` to Related Key Documentation
@@ -151,7 +151,7 @@ _Updated by `/ll:refine-issue` on 2026-04-01 — added review-loop:_
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: 7 skills still need description rewrites
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: 7 skills still use summary-style descriptions
 - `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl` — NEEDS_UPDATE: removed completed ENH-668 from Blocked By; skill count now 16 (was 15)
-- `/ll:manage-issue` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl` — Implemented: rewrote all 21 SKILL.md descriptions as trigger documents, updated CONTRIBUTING.md convention
+- `/ll:manage-issue` - 2026-04-01T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl` — Implemented: rewrote all 21 SKILL.md descriptions as trigger documents, updated CONTRIBUTING.md convention
 
 ---
 

@@ -156,8 +156,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [x] `CLAUDE.md` CLI tools section documents the new subcommand
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-31T23:35:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/54f884d9-0659-4f74-9d15-f17788a9f28a.jsonl`
-- `/ll:wire-issue` - 2026-05-31T23:31:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d05c835-eb6a-4273-be67-32f81b7bcb4e.jsonl`
-- `/ll:refine-issue` - 2026-05-31T23:26:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9517f54a-b743-4279-9d05-e72954fa4c70.jsonl`
-- `/ll:issue-size-review` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/328bc3bf-da89-4021-981a-e4291a0ad2e5.jsonl`
-- `/ll:confidence-check` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d21ebf48-32f8-46af-8ba1-81d294255e78.jsonl`
+- `/ll:ready-issue` - 2026-05-31T23:35:48 - `54f884d9-0659-4f74-9d15-f17788a9f28a.jsonl`
+- `/ll:wire-issue` - 2026-05-31T23:31:47 - `9d05c835-eb6a-4273-be67-32f81b7bcb4e.jsonl`
+- `/ll:refine-issue` - 2026-05-31T23:26:55 - `9517f54a-b743-4279-9d05-e72954fa4c70.jsonl`
+- `/ll:issue-size-review` - 2026-05-31T00:00:00 - `328bc3bf-da89-4021-981a-e4291a0ad2e5.jsonl`
+- `/ll:confidence-check` - 2026-05-31T00:00:00 - `d21ebf48-32f8-46af-8ba1-81d294255e78.jsonl`

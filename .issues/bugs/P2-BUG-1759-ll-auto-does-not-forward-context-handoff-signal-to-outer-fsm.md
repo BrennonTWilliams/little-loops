@@ -235,18 +235,18 @@ _Added by `/ll:confidence-check` on 2026-05-30_
 - **Pre-continuation status guard adds scope**: Checking `status: done` before spawning a continuation is a separate feature from signal forwarding. Consider splitting into its own commit to keep the core fix (signal forward + exit) tight and reviewable.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-31T02:09:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cefa1fb-4e67-481d-955b-885520a4c623.jsonl`
-- `/ll:ready-issue` - 2026-05-31T01:27:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84fb9c7f-e55b-4071-bc1b-63119b40abe4.jsonl`
-- `/ll:wire-issue` - 2026-05-31T01:11:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae9f7939-88ee-4886-909f-5e840b3b5db9.jsonl`
-- `/ll:refine-issue` - 2026-05-31T01:03:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3819cba2-2022-4051-a877-a9dc4080f14d.jsonl`
-- `/ll:format-issue` - 2026-05-30T23:36:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f878fcc-40e2-4d99-8681-841f1031656c.jsonl`
+- `/ll:ready-issue` - 2026-05-31T02:09:07 - `5cefa1fb-4e67-481d-955b-885520a4c623.jsonl`
+- `/ll:ready-issue` - 2026-05-31T01:27:34 - `84fb9c7f-e55b-4071-bc1b-63119b40abe4.jsonl`
+- `/ll:wire-issue` - 2026-05-31T01:11:54 - `ae9f7939-88ee-4886-909f-5e840b3b5db9.jsonl`
+- `/ll:refine-issue` - 2026-05-31T01:03:15 - `3819cba2-2022-4051-a877-a9dc4080f14d.jsonl`
+- `/ll:format-issue` - 2026-05-30T23:36:32 - `1f878fcc-40e2-4d99-8681-841f1031656c.jsonl`
 - `/ll:capture-issue` - 2026-05-28T00:42:55Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:confidence-check` - 2026-05-30 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7aeed193-f1e1-48d1-9772-d62d182ec7ac.jsonl`
 - `/ll:decide-issue` - 2026-05-30T23:45:00Z - Option 1 selected (stdout + exit 0, 10/12 vs 6/12)
 - `/ll:decide-issue` - 2026-05-30 - no-op (decision already annotated, decision_needed already false)
-- `/ll:confidence-check` - 2026-05-31T04:23:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72e4be19-1b35-4aa2-bb5d-3146cbc394d2.jsonl`
-- `/ll:confidence-check` - 2026-05-31T05:01:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7fcee61f-b4a8-4f16-9894-1d0457fe7177.jsonl`
-- `/ll:ready-issue` - 2026-05-31T02:35:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84fb9c7f-e55b-4071-bc1b-63119b40abe4.jsonl`
+- `/ll:confidence-check` - 2026-05-31T04:23:00Z - `72e4be19-1b35-4aa2-bb5d-3146cbc394d2.jsonl`
+- `/ll:confidence-check` - 2026-05-31T05:01:00Z - `7fcee61f-b4a8-4f16-9894-1d0457fe7177.jsonl`
+- `/ll:ready-issue` - 2026-05-31T02:35:00Z - `84fb9c7f-e55b-4071-bc1b-63119b40abe4.jsonl`
 
 
 ---

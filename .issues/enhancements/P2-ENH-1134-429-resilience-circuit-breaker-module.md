@@ -205,11 +205,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Tests pass using `tmp_path` fixture; concurrent-access test uses `threading`
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f96a6fce-cf23-475f-a4bd-8bfd821b8768.jsonl`
-- `/ll:wire-issue` - 2026-04-17T05:00:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4c0c9ee-dfc2-4b75-a440-d5956d8b2831.jsonl`
-- `/ll:refine-issue` - 2026-04-17T04:54:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9450c5f0-bd73-470a-be61-c59ffbb52be2.jsonl`
-- `/ll:issue-size-review` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86c5c7e4-236c-46a0-acd9-2124269e76f0.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81193e52-67e2-461f-8b12-656dced49eb5.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00 - `f96a6fce-cf23-475f-a4bd-8bfd821b8768.jsonl`
+- `/ll:wire-issue` - 2026-04-17T05:00:40 - `a4c0c9ee-dfc2-4b75-a440-d5956d8b2831.jsonl`
+- `/ll:refine-issue` - 2026-04-17T04:54:40 - `9450c5f0-bd73-470a-be61-c59ffbb52be2.jsonl`
+- `/ll:issue-size-review` - 2026-04-16T00:00:00Z - `86c5c7e4-236c-46a0-acd9-2124269e76f0.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `81193e52-67e2-461f-8b12-656dced49eb5.jsonl`
 
 ---
 

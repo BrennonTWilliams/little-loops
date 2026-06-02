@@ -167,13 +167,13 @@ N/A - No public API changes (loop-internal state addition only)
 `loop-refinement`, `harness`, `captured`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-31T00:27:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/662dff29-eba0-4da7-a26d-d3806b0f2630.jsonl`
-- `/ll:ready-issue` - 2026-05-31T00:23:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26f3ac82-3b0b-4510-bab6-71b9d6d07f0d.jsonl`
-- `/ll:wire-issue` - 2026-05-31T00:17:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1fcd27a7-fe20-47b8-9821-a80e9338e768.jsonl`
-- `/ll:refine-issue` - 2026-05-31T00:13:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e73e9f8-d1ee-47ab-8ed9-a2af90a69a5e.jsonl`
-- `/ll:format-issue` - 2026-05-30T22:46:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fabe793e-a48c-46ba-8f98-a5684209ca60.jsonl`
-- `/ll:capture-issue` - 2026-05-30T22:43:51Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a21d14e7-ea27-437a-b7be-dfdc28dd7d84.jsonl`
-- `/ll:confidence-check` - 2026-05-30T23:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfd01907-a230-402f-920c-2f7c5c0d48dc.jsonl`
+- `/ll:manage-issue` - 2026-05-31T00:27:39Z - `662dff29-eba0-4da7-a26d-d3806b0f2630.jsonl`
+- `/ll:ready-issue` - 2026-05-31T00:23:12 - `26f3ac82-3b0b-4510-bab6-71b9d6d07f0d.jsonl`
+- `/ll:wire-issue` - 2026-05-31T00:17:08 - `1fcd27a7-fe20-47b8-9821-a80e9338e768.jsonl`
+- `/ll:refine-issue` - 2026-05-31T00:13:14 - `4e73e9f8-d1ee-47ab-8ed9-a2af90a69a5e.jsonl`
+- `/ll:format-issue` - 2026-05-30T22:46:44 - `fabe793e-a48c-46ba-8f98-a5684209ca60.jsonl`
+- `/ll:capture-issue` - 2026-05-30T22:43:51Z - `a21d14e7-ea27-437a-b7be-dfdc28dd7d84.jsonl`
+- `/ll:confidence-check` - 2026-05-30T23:45:00Z - `cfd01907-a230-402f-920c-2f7c5c0d48dc.jsonl`
 
 ---
 

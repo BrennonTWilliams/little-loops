@@ -200,11 +200,11 @@ _Added by `/ll:confidence-check` on 2026-05-03_
 - `cmd_list` deduplication approach is slightly open ("group or deduplicate") — implementor should choose a display strategy (e.g., show `loop_name:instance_id` in multi-instance rows) before writing tests to avoid rework.
 
 ## Session Log
-- `/ll:wire-issue` - 2026-05-03T20:07:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cbb3f20-7b82-47b5-b9c1-7fb3636aa30c.jsonl`
-- `/ll:refine-issue` - 2026-05-03T20:01:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5789665c-c933-4922-be7b-65434de9886a.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e26d0d3-b923-4ec1-86ac-7959fadea8f7.jsonl`
-- `/ll:confidence-check` - 2026-05-03T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74ac2a19-bdf8-4b16-af08-be759563c93b.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T21:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/995ae302-a902-4497-a747-428e14fa83da.jsonl`
+- `/ll:wire-issue` - 2026-05-03T20:07:45 - `5cbb3f20-7b82-47b5-b9c1-7fb3636aa30c.jsonl`
+- `/ll:refine-issue` - 2026-05-03T20:01:08 - `5789665c-c933-4922-be7b-65434de9886a.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T20:30:00Z - `5e26d0d3-b923-4ec1-86ac-7959fadea8f7.jsonl`
+- `/ll:confidence-check` - 2026-05-03T21:00:00Z - `74ac2a19-bdf8-4b16-af08-be759563c93b.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T21:45:00Z - `995ae302-a902-4497-a747-428e14fa83da.jsonl`
 
 ---
 

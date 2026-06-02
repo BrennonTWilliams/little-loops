@@ -215,10 +215,10 @@ ls.add_argument("--flat", action="store_true", help="Output flat list (current f
 - Type-check clean (`mypy`)
 
 ## Session Log
-- `/ll:capture-issue` - 2026-02-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c897290c-f61e-463d-8d24-8a80f1c64fb2.jsonl`
-- `/ll:format-issue` - 2026-02-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a606bda7-f113-4f3b-8c19-e6d153438758.jsonl`
-- `/ll:refine-issue` - 2026-02-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb239519-7377-476c-aab7-df27933ff082.jsonl`
-- `/ll:manage-issue` - 2026-02-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c897290c-f61e-463d-8d24-8a80f1c64fb2.jsonl`
+- `/ll:capture-issue` - 2026-02-26T00:00:00Z - `c897290c-f61e-463d-8d24-8a80f1c64fb2.jsonl`
+- `/ll:format-issue` - 2026-02-26T00:00:00Z - `a606bda7-f113-4f3b-8c19-e6d153438758.jsonl`
+- `/ll:refine-issue` - 2026-02-26T00:00:00Z - `bb239519-7377-476c-aab7-df27933ff082.jsonl`
+- `/ll:manage-issue` - 2026-02-26T00:00:00Z - `c897290c-f61e-463d-8d24-8a80f1c64fb2.jsonl`
 
 ---
 

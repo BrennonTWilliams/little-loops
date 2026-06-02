@@ -128,13 +128,13 @@ Implemented 2026-04-10. Four targeted edits — no behavioral changes:
 4. `.claude/settings.local.json:24` — `"Bash(ll-gitignore:*)"` added to live permissions block
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-11T03:58:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a06a74f-24df-42e9-bd65-e3ce402c9e15.jsonl`
-- `/ll:ready-issue` - 2026-04-11T03:58:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a06a74f-24df-42e9-bd65-e3ce402c9e15.jsonl`
-- `/ll:ready-issue` - 2026-04-11T03:58:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a06a74f-24df-42e9-bd65-e3ce402c9e15.jsonl`
-- `/ll:ready-issue` - 2026-04-11T03:58:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a06a74f-24df-42e9-bd65-e3ce402c9e15.jsonl`
-- `/ll:ready-issue` - 2026-04-11T03:57:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a06a74f-24df-42e9-bd65-e3ce402c9e15.jsonl`
-- `/ll:ready-issue` - 2026-04-11T03:57:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a06a74f-24df-42e9-bd65-e3ce402c9e15.jsonl`
-- `/ll:confidence-check` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56b0e02d-f361-4e35-b50c-1f5dfb058991.jsonl`
-- `/ll:wire-issue` - 2026-04-11T03:53:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e51bea29-2b9d-4728-8f88-7c6d58f54681.jsonl`
-- `/ll:refine-issue` - 2026-04-11T03:48:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5662d17-af99-45da-a0a1-f0553c452c17.jsonl`
+- `/ll:ready-issue` - 2026-04-11T03:58:11 - `3a06a74f-24df-42e9-bd65-e3ce402c9e15.jsonl`
+- `/ll:ready-issue` - 2026-04-11T03:58:07 - `3a06a74f-24df-42e9-bd65-e3ce402c9e15.jsonl`
+- `/ll:ready-issue` - 2026-04-11T03:58:03 - `3a06a74f-24df-42e9-bd65-e3ce402c9e15.jsonl`
+- `/ll:ready-issue` - 2026-04-11T03:58:00 - `3a06a74f-24df-42e9-bd65-e3ce402c9e15.jsonl`
+- `/ll:ready-issue` - 2026-04-11T03:57:56 - `3a06a74f-24df-42e9-bd65-e3ce402c9e15.jsonl`
+- `/ll:ready-issue` - 2026-04-11T03:57:53 - `3a06a74f-24df-42e9-bd65-e3ce402c9e15.jsonl`
+- `/ll:confidence-check` - 2026-04-10T00:00:00Z - `56b0e02d-f361-4e35-b50c-1f5dfb058991.jsonl`
+- `/ll:wire-issue` - 2026-04-11T03:53:36 - `e51bea29-2b9d-4728-8f88-7c6d58f54681.jsonl`
+- `/ll:refine-issue` - 2026-04-11T03:48:12 - `a5662d17-af99-45da-a0a1-f0553c452c17.jsonl`
 - `/ll:capture-issue` - 2026-04-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eba12ede-7d68-4165-af6c-e13830e98af5.jsonl`

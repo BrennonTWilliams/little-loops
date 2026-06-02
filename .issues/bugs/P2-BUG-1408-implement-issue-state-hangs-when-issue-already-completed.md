@@ -153,11 +153,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Completed** | Created: 2026-05-09 | Closed: 2026-05-09 | Priority: P2
 
 ## Session Log
-- `/ll:audit-issue-conflicts` - 2026-05-17T06:18:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2014a17-48ef-42b3-af50-4be647f7894a.jsonl`
-- `/ll:manage-issue` - 2026-05-09T22:57:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:ready-issue` - 2026-05-09T22:51:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de4c5b4a-06c0-43a4-9d1e-6b87f562eac4.jsonl`
-- `/ll:confidence-check` - 2026-05-09T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed8c7dae-b8ca-4e7d-b2dc-1671f93fa9c2.jsonl`
-- `/ll:wire-issue` - 2026-05-09T22:47:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/012eddcb-ecda-4387-b9dd-73a65f9c3355.jsonl`
-- `/ll:refine-issue` - 2026-05-09T22:42:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed8c7dae-b8ca-4e7d-b2dc-1671f93fa9c2.jsonl`
-- `/ll:format-issue` - 2026-05-09T22:33:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43665bb5-b08a-4083-80d6-5bfcdabc4d8c.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-17T06:18:42 - `a2014a17-48ef-42b3-af50-4be647f7894a.jsonl`
+- `/ll:manage-issue` - 2026-05-09T22:57:33Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-09T22:51:05 - `de4c5b4a-06c0-43a4-9d1e-6b87f562eac4.jsonl`
+- `/ll:confidence-check` - 2026-05-09T23:00:00 - `ed8c7dae-b8ca-4e7d-b2dc-1671f93fa9c2.jsonl`
+- `/ll:wire-issue` - 2026-05-09T22:47:05 - `012eddcb-ecda-4387-b9dd-73a65f9c3355.jsonl`
+- `/ll:refine-issue` - 2026-05-09T22:42:36 - `ed8c7dae-b8ca-4e7d-b2dc-1671f93fa9c2.jsonl`
+- `/ll:format-issue` - 2026-05-09T22:33:05 - `43665bb5-b08a-4083-80d6-5bfcdabc4d8c.jsonl`
 - `/ll:capture-issue` - 2026-05-09T22:24:13Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/efbb9709-7a24-4905-85fd-8a5a0825d700.jsonl`

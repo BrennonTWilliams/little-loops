@@ -158,11 +158,11 @@ Modify the sprint `show` subcommand and its helper renderers. The sprint CLI is 
 `enhancement`, `cli`, `sprint`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-02T22:42:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed4764c5-977f-4cca-9681-2df71aee1e7d.jsonl`
-- `/ll:confidence-check` - 2026-04-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:refine-issue` - 2026-04-02T22:09:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
-- `/ll:capture-issue` - 2026-04-02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2d0784e-0b23-40cf-bd8f-79c2a103fa18.jsonl`
-- `/ll:manage-issue` - 2026-04-02T17:51:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d4183b3d-5fb3-4b58-8ac8-41d906ee2fa0.jsonl`
+- `/ll:ready-issue` - 2026-04-02T22:42:28 - `ed4764c5-977f-4cca-9681-2df71aee1e7d.jsonl`
+- `/ll:confidence-check` - 2026-04-02T00:00:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:refine-issue` - 2026-04-02T22:09:55 - `290105ed-73d3-4d92-b9c4-5473c65fa704.jsonl`
+- `/ll:capture-issue` - 2026-04-02 - `a2d0784e-0b23-40cf-bd8f-79c2a103fa18.jsonl`
+- `/ll:manage-issue` - 2026-04-02T17:51:00 - `d4183b3d-5fb3-4b58-8ac8-41d906ee2fa0.jsonl`
 
 ---
 

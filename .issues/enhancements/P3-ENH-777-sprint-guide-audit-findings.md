@@ -144,6 +144,6 @@ All 8 findings resolved in `docs/guides/SPRINT_GUIDE.md`:
 **Completed** | Created: 2026-03-16 | Resolved: 2026-03-16 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-16T20:30:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/400f9675-d92a-409d-9e57-9a61a1134490.jsonl`
-- `/ll:verify-issues` - 2026-03-16T20:15:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2f8fb9f-5760-41e6-b718-11e29dd2cd54.jsonl`
-- `/ll:manage-issue` - 2026-03-16T20:36:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-16T20:30:35 - `400f9675-d92a-409d-9e57-9a61a1134490.jsonl`
+- `/ll:verify-issues` - 2026-03-16T20:15:53 - `b2f8fb9f-5760-41e6-b718-11e29dd2cd54.jsonl`
+- `/ll:manage-issue` - 2026-03-16T20:36:14 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`

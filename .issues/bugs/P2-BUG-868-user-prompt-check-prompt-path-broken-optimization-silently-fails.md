@@ -108,12 +108,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - Added regression test `test_optimization_template_injected_when_claude_plugin_root_set` to `TestUserPromptCheck` in `scripts/tests/test_hooks_integration.py`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-23T23:28:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74ed0a05-427c-4cde-be9e-c27bca1af60d.jsonl`
-- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11d3fbe6-350d-468f-8c22-27df726df3ea.jsonl`
-- `/ll:refine-issue` - 2026-03-23T22:57:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8abe37ac-d35f-4eda-a4e9-ca0e44b84ecc.jsonl`
-- `/ll:format-issue` - 2026-03-23T22:42:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd58a419-5ad1-4e87-81d3-6a17427e8a74.jsonl`
+- `/ll:ready-issue` - 2026-03-23T23:28:31 - `74ed0a05-427c-4cde-be9e-c27bca1af60d.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `11d3fbe6-350d-468f-8c22-27df726df3ea.jsonl`
+- `/ll:refine-issue` - 2026-03-23T22:57:52 - `8abe37ac-d35f-4eda-a4e9-ca0e44b84ecc.jsonl`
+- `/ll:format-issue` - 2026-03-23T22:42:41 - `fd58a419-5ad1-4e87-81d3-6a17427e8a74.jsonl`
 
-- `/ll:capture-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e087610-8d6c-49f4-bacd-b3c561cb7252.jsonl`
+- `/ll:capture-issue` - 2026-03-23T00:00:00Z - `0e087610-8d6c-49f4-bacd-b3c561cb7252.jsonl`
 
 ---
 

@@ -185,8 +185,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Result**: Added `## little_loops.events` and `## little_loops.extension` sections to `docs/reference/API.md` documenting `LLEvent`, `EventBus`, `EventCallback`, `LLExtension` Protocol, `NoopLoggerExtension`, `ExtensionLoader`, configuration format, entry point registration, and a custom extension example. Added module overview table rows for both modules.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e8f8c7c-82fc-4408-a963-218fe8d78eea.jsonl`
-- `/ll:refine-issue` - 2026-04-02T18:54:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bfc51b4f-d97b-423d-a709-58690d5b4d91.jsonl`
-- `/ll:format-issue` - 2026-04-02T18:47:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96cb2a22-5b05-4227-a2ab-5a4a047efa2e.jsonl`
-- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ec33f5e-0af1-4604-bdc4-0c4331282e3e.jsonl`
-- `/ll:ready-issue` - 2026-04-02T20:48:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4bda8160-2032-44ba-98ff-2c78bc74395e.jsonl`
+- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `2e8f8c7c-82fc-4408-a963-218fe8d78eea.jsonl`
+- `/ll:refine-issue` - 2026-04-02T18:54:38 - `bfc51b4f-d97b-423d-a709-58690d5b4d91.jsonl`
+- `/ll:format-issue` - 2026-04-02T18:47:16 - `96cb2a22-5b05-4227-a2ab-5a4a047efa2e.jsonl`
+- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `4ec33f5e-0af1-4604-bdc4-0c4331282e3e.jsonl`
+- `/ll:ready-issue` - 2026-04-02T20:48:38 - `4bda8160-2032-44ba-98ff-2c78bc74395e.jsonl`

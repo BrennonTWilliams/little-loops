@@ -152,9 +152,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 8. Remove `import shutil` from `cli/action.py` — `shutil` has no remaining uses after `shutil.which("claude")` is replaced in Step 2; `ruff check` (CI) will flag it as an unused import if left in.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-15T14:18:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/280f9133-381f-4455-93b8-227118f1c415.jsonl`
-- `/ll:ready-issue` - 2026-05-15T14:15:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e0f7b6b-b579-42ce-903d-740d3dee3298.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca04b8f0-231f-48d8-aced-f992137c9225.jsonl`
-- `/ll:wire-issue` - 2026-05-15T14:11:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8bdc9bf1-f1d5-4040-81f0-8b364a120d6f.jsonl`
-- `/ll:refine-issue` - 2026-05-15T14:06:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43dbf466-d4c4-4415-9506-a054212d031b.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:manage-issue` - 2026-05-15T14:18:48 - `280f9133-381f-4455-93b8-227118f1c415.jsonl`
+- `/ll:ready-issue` - 2026-05-15T14:15:57 - `2e0f7b6b-b579-42ce-903d-740d3dee3298.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `ca04b8f0-231f-48d8-aced-f992137c9225.jsonl`
+- `/ll:wire-issue` - 2026-05-15T14:11:24 - `8bdc9bf1-f1d5-4040-81f0-8b364a120d6f.jsonl`
+- `/ll:refine-issue` - 2026-05-15T14:06:15 - `43dbf466-d4c4-4415-9506-a054212d031b.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

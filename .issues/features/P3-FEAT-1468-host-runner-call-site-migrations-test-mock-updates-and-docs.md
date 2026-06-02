@@ -203,8 +203,8 @@ _Added by `/ll:confidence-check` on 2026-05-15_
 **Note**: The aggregate grep AC (`grep -rn '"claude"' scripts/little_loops/` returns no hard-coded binary literals) is only satisfied after all three children merge.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ad225cd-959b-4311-ba00-306f545ffa94.jsonl`
-- `/ll:wire-issue` - 2026-05-15T13:40:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22ed95d3-9f16-4fce-967a-36500c0ab8a2.jsonl`
-- `/ll:refine-issue` - 2026-05-15T13:33:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5dc5ec06-7910-40b9-98d5-2ffad9f17471.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6024d56a-9aff-4760-9ebc-3ce5b51bb09f.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `5ad225cd-959b-4311-ba00-306f545ffa94.jsonl`
+- `/ll:wire-issue` - 2026-05-15T13:40:27 - `22ed95d3-9f16-4fce-967a-36500c0ab8a2.jsonl`
+- `/ll:refine-issue` - 2026-05-15T13:33:48 - `5dc5ec06-7910-40b9-98d5-2ffad9f17471.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `6024d56a-9aff-4760-9ebc-3ce5b51bb09f.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

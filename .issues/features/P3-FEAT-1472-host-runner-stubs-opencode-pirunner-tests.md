@@ -175,9 +175,9 @@ Added `TestOpenCodeRunner` (8 tests) and `TestPiRunner` (8 tests including a pro
 Verification: 180/180 host_runner + fsm_evaluators tests pass; ruff check clean; full suite shows 4 pre-existing unrelated failures (README pillar structure, marketplace version sync) confirmed via baseline stash check.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-15T15:55:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-05-15T15:50:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8deac8af-c5de-4807-817f-1b9912d1023b.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/375f80ed-3900-4806-8b03-4306d0c74628.jsonl`
-- `/ll:wire-issue` - 2026-05-15T15:47:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1cd4a684-4816-432f-9db3-7807637be7d8.jsonl`
-- `/ll:refine-issue` - 2026-05-15T15:43:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/493efa0f-c223-4f2e-a5b0-f39c3316eb4e.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3404bce4-b1e1-4c4a-bdaf-327d629a43da.jsonl`
+- `/ll:manage-issue` - 2026-05-15T15:55:33Z
+- `/ll:ready-issue` - 2026-05-15T15:50:53 - `8deac8af-c5de-4807-817f-1b9912d1023b.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `375f80ed-3900-4806-8b03-4306d0c74628.jsonl`
+- `/ll:wire-issue` - 2026-05-15T15:47:13 - `1cd4a684-4816-432f-9db3-7807637be7d8.jsonl`
+- `/ll:refine-issue` - 2026-05-15T15:43:11 - `493efa0f-c223-4f2e-a5b0-f39c3316eb4e.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `3404bce4-b1e1-4c4a-bdaf-327d629a43da.jsonl`

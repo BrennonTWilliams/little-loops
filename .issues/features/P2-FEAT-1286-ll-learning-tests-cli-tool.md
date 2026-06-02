@@ -295,19 +295,19 @@ _Updated by `/ll:confidence-check` on 2026-05-11_
 _(Scope TBD for areas.md/init ownership — resolved 2026-05-11: both owned by FEAT-1286.)_
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-11T21:08:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e415bd9-ddb5-4ea6-ae06-b4bb95085cc9.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7fd95d5-1e14-4e16-a7b4-1011718915cc.jsonl`
-- `/ll:refine-issue` - 2026-05-11T20:38:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e0e03e2a-39f4-49de-8637-407748f778a5.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
-- `/ll:confidence-check` - 2026-05-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66fedda1-ffa8-4033-891f-bc6637778822.jsonl`
-- `/ll:wire-issue` - 2026-05-08T00:05:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00ae4f34-19a1-41bc-a2ee-c2457df0be7a.jsonl`
-- `/ll:wire-issue` - 2026-05-07T23:55:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e50c3a4-d3cc-4388-b3d9-ee92668c57b0.jsonl`
-- `/ll:refine-issue` - 2026-05-07T23:49:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32f32bff-bc8b-4f34-ace6-57b3de5f60bd.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:verify-issues` - 2026-04-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf03929d-b936-46f6-9fc6-0edf5cab2290.jsonl`
-- `/ll:format-issue` - 2026-04-25T20:15:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2dda3ac-5cb0-428a-8411-98d575600c2c.jsonl`
+- `/ll:ready-issue` - 2026-05-11T21:08:43 - `3e415bd9-ddb5-4ea6-ae06-b4bb95085cc9.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `e7fd95d5-1e14-4e16-a7b4-1011718915cc.jsonl`
+- `/ll:refine-issue` - 2026-05-11T20:38:12 - `e0e03e2a-39f4-49de-8637-407748f778a5.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
+- `/ll:confidence-check` - 2026-05-07T00:00:00 - `66fedda1-ffa8-4033-891f-bc6637778822.jsonl`
+- `/ll:wire-issue` - 2026-05-08T00:05:36 - `00ae4f34-19a1-41bc-a2ee-c2457df0be7a.jsonl`
+- `/ll:wire-issue` - 2026-05-07T23:55:17 - `8e50c3a4-d3cc-4388-b3d9-ee92668c57b0.jsonl`
+- `/ll:refine-issue` - 2026-05-07T23:49:07 - `32f32bff-bc8b-4f34-ace6-57b3de5f60bd.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:21:15 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:verify-issues` - 2026-04-26T00:00:00 - `cf03929d-b936-46f6-9fc6-0edf5cab2290.jsonl`
+- `/ll:format-issue` - 2026-04-25T20:15:37 - `c2dda3ac-5cb0-428a-8411-98d575600c2c.jsonl`
 
 ---
 

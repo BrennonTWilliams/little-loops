@@ -164,11 +164,11 @@ Changed `--resume` to `--continue` in `subprocess_utils.run_claude_command()`. T
 **Files changed**: `subprocess_utils.py`, `issue_manager.py`, `parallel/worker_pool.py`, `tests/test_subprocess_utils.py`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-09T18:51:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/317120a0-9102-442b-8320-06956d7930ca.jsonl`
-- `/ll:wire-issue` - 2026-05-09T18:45:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfcc9fa3-c4a8-4876-ba04-ec1062fd5a98.jsonl`
-- `/ll:refine-issue` - 2026-05-09T18:41:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5e8908f-e25e-4e7b-b3aa-483b256549a6.jsonl`
-- `/ll:confidence-check` - 2026-05-09T19:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:manage-issue` - 2026-05-09T19:01:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-09T18:51:13 - `317120a0-9102-442b-8320-06956d7930ca.jsonl`
+- `/ll:wire-issue` - 2026-05-09T18:45:39 - `cfcc9fa3-c4a8-4876-ba04-ec1062fd5a98.jsonl`
+- `/ll:refine-issue` - 2026-05-09T18:41:04 - `f5e8908f-e25e-4e7b-b3aa-483b256549a6.jsonl`
+- `/ll:confidence-check` - 2026-05-09T19:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:manage-issue` - 2026-05-09T19:01:12 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 
 ---
 

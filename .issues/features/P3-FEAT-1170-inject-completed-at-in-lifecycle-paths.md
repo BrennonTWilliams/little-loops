@@ -139,10 +139,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Verification: `pytest scripts/tests/` → 4966 passed; `ruff check` → clean; `mypy issue_lifecycle.py` → clean.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-18T20:42:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a75fe13-432f-44a5-b549-c98802511776.jsonl`
-- `/ll:manage-issue feature implement FEAT-1170` - 2026-04-18T15:42:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a75fe13-432f-44a5-b549-c98802511776.jsonl`
-- `/ll:ready-issue` - 2026-04-18T20:38:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ed9e6fc-2d18-420f-a807-31f739df2b00.jsonl`
-- `/ll:wire-issue` - 2026-04-18T20:35:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab781961-a8c6-4915-8190-7c4fd3723052.jsonl`
-- `/ll:refine-issue` - 2026-04-18T20:29:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1b5a7a59-b5d5-44a8-af5a-690d44a1c6ff.jsonl`
-- `/ll:issue-size-review` - 2026-04-18T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f4fec2da-840f-48eb-a5e3-fc86007899b8.jsonl`
-- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f11142c9-e79d-4054-a925-d11c083c2885.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-18T20:42:16 - `9a75fe13-432f-44a5-b549-c98802511776.jsonl`
+- `/ll:manage-issue feature implement FEAT-1170` - 2026-04-18T15:42:00Z - `9a75fe13-432f-44a5-b549-c98802511776.jsonl`
+- `/ll:ready-issue` - 2026-04-18T20:38:03 - `4ed9e6fc-2d18-420f-a807-31f739df2b00.jsonl`
+- `/ll:wire-issue` - 2026-04-18T20:35:21 - `ab781961-a8c6-4915-8190-7c4fd3723052.jsonl`
+- `/ll:refine-issue` - 2026-04-18T20:29:20 - `1b5a7a59-b5d5-44a8-af5a-690d44a1c6ff.jsonl`
+- `/ll:issue-size-review` - 2026-04-18T21:00:00Z - `f4fec2da-840f-48eb-a5e3-fc86007899b8.jsonl`
+- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `f11142c9-e79d-4054-a925-d11c083c2885.jsonl`

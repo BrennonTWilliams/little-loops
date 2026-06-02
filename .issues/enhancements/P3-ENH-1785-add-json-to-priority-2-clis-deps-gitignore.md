@@ -123,5 +123,5 @@ N/A — No new public API changes. Adds `--json` / `-j` CLI flags to existing su
 - **Breaking Change**: No
 
 ## Session Log
-- `/ll:format-issue` - 2026-05-29T04:48:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0b5cfe53-7b19-494a-9182-134b022182d9.jsonl`
-- `/ll:issue-size-review` - 2026-05-28T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc1fcf00-8ef7-4a3a-94b4-7099b5095eec.jsonl`
+- `/ll:format-issue` - 2026-05-29T04:48:12 - `0b5cfe53-7b19-494a-9182-134b022182d9.jsonl`
+- `/ll:issue-size-review` - 2026-05-28T00:00:00Z - `dc1fcf00-8ef7-4a3a-94b4-7099b5095eec.jsonl`

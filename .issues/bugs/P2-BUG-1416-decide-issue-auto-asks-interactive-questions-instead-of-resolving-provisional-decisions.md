@@ -162,11 +162,11 @@ Fixed in `skills/decide-issue/SKILL.md` by adding Phase 3b — an inline provisi
 Completed
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-10T17:56:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fb749c7-2b66-49d3-9aa3-b2f60fb27509.jsonl`
-- `/ll:manage-issue` - 2026-05-10T17:56:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fb749c7-2b66-49d3-9aa3-b2f60fb27509.jsonl`
-- `/ll:ready-issue` - 2026-05-10T17:48:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c94e8a9-aa8e-4703-b2bd-c9c8fded7b56.jsonl`
-- `/ll:confidence-check` - 2026-05-10T17:44:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5934faa-d742-411a-abba-c8d29afc864b.jsonl`
-- `/ll:wire-issue` - 2026-05-10T17:31:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff4254f7-df99-4fc7-838e-192f8779492e.jsonl`
-- `/ll:refine-issue` - 2026-05-10T15:16:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
-- `/ll:format-issue` - 2026-05-10T15:11:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7801123-27a3-4b5b-aa78-0beb3e563702.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-10T17:56:58 - `8fb749c7-2b66-49d3-9aa3-b2f60fb27509.jsonl`
+- `/ll:manage-issue` - 2026-05-10T17:56:54 - `8fb749c7-2b66-49d3-9aa3-b2f60fb27509.jsonl`
+- `/ll:ready-issue` - 2026-05-10T17:48:07 - `7c94e8a9-aa8e-4703-b2bd-c9c8fded7b56.jsonl`
+- `/ll:confidence-check` - 2026-05-10T17:44:33 - `a5934faa-d742-411a-abba-c8d29afc864b.jsonl`
+- `/ll:wire-issue` - 2026-05-10T17:31:26 - `ff4254f7-df99-4fc7-838e-192f8779492e.jsonl`
+- `/ll:refine-issue` - 2026-05-10T15:16:41 - `0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
+- `/ll:format-issue` - 2026-05-10T15:11:05 - `b7801123-27a3-4b5b-aa78-0beb3e563702.jsonl`
 - `/ll:capture-issue` - 2026-05-10T15:06:51Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd8097a3-3488-4878-8cb6-494af00ec7f4.jsonl`

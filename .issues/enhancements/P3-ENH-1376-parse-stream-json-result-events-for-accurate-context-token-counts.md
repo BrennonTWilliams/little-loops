@@ -314,15 +314,15 @@ _Added by `/ll:confidence-check` on 2026-05-06_
 - 13 pre-existing failures in unrelated test files unchanged
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-06T23:25:04Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:ready-issue` - 2026-05-06T23:13:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1df9f73a-9000-4c7a-9115-d1b1a8f89d7f.jsonl`
-- `/ll:wire-issue` - 2026-05-06T23:08:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b152adf3-75b2-4d05-a817-c6c634d04240.jsonl`
-- `/ll:refine-issue` - 2026-05-06T23:03:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/382a2462-7c10-4181-a09d-86f96f1095a0.jsonl`
-- `/ll:decide-issue` - 2026-05-06T22:32:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23e24604-d565-4cff-b89b-b443ba6c4696.jsonl`
-- `/ll:confidence-check` - 2026-05-06T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd74b3c8-c143-4831-b4b4-71e4cef6f2e4.jsonl`
-- `/ll:confidence-check` - 2026-05-06T23:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfc4f28e-b755-4d83-ace1-9eddcfa8d764.jsonl`
-- `/ll:confidence-check` - 2026-05-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d6242ac-c5ae-4ff3-ac0b-457b1639efbb.jsonl`
-- `/ll:wire-issue` - 2026-05-06T22:25:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91041a04-0374-439e-b9b5-45e3a0298f4f.jsonl`
-- `/ll:refine-issue` - 2026-05-06T22:19:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c625de0-671d-4449-bde2-9d2787c568ff.jsonl`
-- `/ll:format-issue` - 2026-05-06T21:09:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d5f24f2c-c15a-45a5-bd06-fac0ecb8d960.jsonl`
-- `/ll:capture-issue` - 2026-05-06T20:59:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/381e1f9c-a749-4e5e-9040-a1d4e3d3e647.jsonl`
+- `/ll:manage-issue` - 2026-05-06T23:25:04Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-06T23:13:44 - `1df9f73a-9000-4c7a-9115-d1b1a8f89d7f.jsonl`
+- `/ll:wire-issue` - 2026-05-06T23:08:27 - `b152adf3-75b2-4d05-a817-c6c634d04240.jsonl`
+- `/ll:refine-issue` - 2026-05-06T23:03:29 - `382a2462-7c10-4181-a09d-86f96f1095a0.jsonl`
+- `/ll:decide-issue` - 2026-05-06T22:32:44 - `23e24604-d565-4cff-b89b-b443ba6c4696.jsonl`
+- `/ll:confidence-check` - 2026-05-06T23:00:00 - `cd74b3c8-c143-4831-b4b4-71e4cef6f2e4.jsonl`
+- `/ll:confidence-check` - 2026-05-06T23:10:00 - `cfc4f28e-b755-4d83-ace1-9eddcfa8d764.jsonl`
+- `/ll:confidence-check` - 2026-05-06T00:00:00 - `0d6242ac-c5ae-4ff3-ac0b-457b1639efbb.jsonl`
+- `/ll:wire-issue` - 2026-05-06T22:25:32 - `91041a04-0374-439e-b9b5-45e3a0298f4f.jsonl`
+- `/ll:refine-issue` - 2026-05-06T22:19:33 - `4c625de0-671d-4449-bde2-9d2787c568ff.jsonl`
+- `/ll:format-issue` - 2026-05-06T21:09:16 - `d5f24f2c-c15a-45a5-bd06-fac0ecb8d960.jsonl`
+- `/ll:capture-issue` - 2026-05-06T20:59:54Z - `381e1f9c-a749-4e5e-9040-a1d4e3d3e647.jsonl`

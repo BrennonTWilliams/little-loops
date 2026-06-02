@@ -59,7 +59,7 @@ Reference: `ll-logs --help` and `docs/ARCHITECTURE.md` (logs.py section).
 `enhancement`, `documentation`, `auto-generated`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-23T22:54:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d270dc34-50a0-47b1-95d9-d6f518f16644.jsonl`
+- `/ll:ready-issue` - 2026-04-23T22:54:46 - `d270dc34-50a0-47b1-95d9-d6f518f16644.jsonl`
 
 ---
 

@@ -132,10 +132,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 `enhancement`, `autodev`, `confidence-gate`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-25T20:02:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d91172b8-863e-4769-93e7-a021faef4012.jsonl`
-- `/ll:confidence-check` - 2026-04-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b7d7390-3c8f-4a78-93f8-76c1fb641f32.jsonl`
-- `/ll:wire-issue` - 2026-04-25T19:57:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad8fab7d-0083-4716-8dda-143a2383efe9.jsonl`
-- `/ll:refine-issue` - 2026-04-25T19:52:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/efe031ff-e7e7-4a96-bddc-f126892b5254.jsonl`
+- `/ll:ready-issue` - 2026-04-25T20:02:47 - `d91172b8-863e-4769-93e7-a021faef4012.jsonl`
+- `/ll:confidence-check` - 2026-04-25T00:00:00Z - `6b7d7390-3c8f-4a78-93f8-76c1fb641f32.jsonl`
+- `/ll:wire-issue` - 2026-04-25T19:57:00 - `ad8fab7d-0083-4716-8dda-143a2383efe9.jsonl`
+- `/ll:refine-issue` - 2026-04-25T19:52:32 - `efe031ff-e7e7-4a96-bddc-f126892b5254.jsonl`
 - `/ll:capture-issue` - 2026-04-25T19:07:05Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e47d1ef-2bc6-4299-8018-0c5ef506b76e.jsonl`
 
 ---

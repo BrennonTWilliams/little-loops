@@ -212,11 +212,11 @@ New short-form CLI options (additive — existing long forms preserved):
 `cli`, `ergonomics`, `ll-issues`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-01T22:01:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c509a9e3-f1f9-4a0d-aea8-18ad4562dea2.jsonl`
-- `/ll:refine-issue` - 2026-04-01T21:43:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b4eae71-f640-463f-b8dc-e190ea206a9d.jsonl`
-- `/ll:format-issue` - 2026-04-01T21:39:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/674284e2-26fb-4e5f-8988-b52f3854ef01.jsonl`
+- `/ll:ready-issue` - 2026-04-01T22:01:39 - `c509a9e3-f1f9-4a0d-aea8-18ad4562dea2.jsonl`
+- `/ll:refine-issue` - 2026-04-01T21:43:37 - `3b4eae71-f640-463f-b8dc-e190ea206a9d.jsonl`
+- `/ll:format-issue` - 2026-04-01T21:39:07 - `674284e2-26fb-4e5f-8988-b52f3854ef01.jsonl`
 - `/ll:capture-issue` - 2026-04-01 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4505b861-be5c-4195-9079-b2b3bcde3985.jsonl`
-- `/ll:confidence-check` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99a98fe8-6dc1-4507-bb32-fba2edc2d681.jsonl`
+- `/ll:confidence-check` - 2026-04-01T00:00:00 - `99a98fe8-6dc1-4507-bb32-fba2edc2d681.jsonl`
 
 ---
 
@@ -235,8 +235,8 @@ New short-form CLI options (additive — existing long forms preserved):
 Added 10 short-form tests in `scripts/tests/test_issues_cli.py` (`TestIssuesCLIShortForms`). All 125 tests pass.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-01T22:05:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc7893d1-dd13-4e96-94d9-4598fb9fa5b5.jsonl`
-- `/ll:manage-issue` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c509a9e3-f1f9-4a0d-aea8-18ad4562dea2.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-01T22:05:19 - `fc7893d1-dd13-4e96-94d9-4598fb9fa5b5.jsonl`
+- `/ll:manage-issue` - 2026-04-01T00:00:00 - `c509a9e3-f1f9-4a0d-aea8-18ad4562dea2.jsonl`
 
 ## Status
 

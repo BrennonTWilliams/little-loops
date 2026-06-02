@@ -156,8 +156,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 Added `diagnose` pre-terminal state to `rn-plan` and `rn-refine` loops. All `on_error` transitions now route to `diagnose` instead of directly to `failed`. Updated `test_rn_plan.py` assertions and added `TestDiagnoseRouting` to `test_rn_refine.py`. Updated `docs/generalized-fsm-loop.md` to document the two-state split pattern.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-18T08:20:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/796e3931-2c23-4720-bcb5-65cf0fd448c6.jsonl`
-- `/ll:wire-issue` - 2026-05-18T08:15:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4cc4dffa-9f8f-4f62-88c5-761913898880.jsonl`
-- `/ll:confidence-check` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e6746de-9af3-417e-811f-66de387d51c7.jsonl`
-- `/ll:refine-issue` - 2026-05-18T08:10:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e6b2734-8873-49d8-8fa8-492ffcacc300.jsonl`
-- `/ll:issue-size-review` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3772e425-1416-4cc8-baac-8e0f351122fa.jsonl`
+- `/ll:ready-issue` - 2026-05-18T08:20:10 - `796e3931-2c23-4720-bcb5-65cf0fd448c6.jsonl`
+- `/ll:wire-issue` - 2026-05-18T08:15:50 - `4cc4dffa-9f8f-4f62-88c5-761913898880.jsonl`
+- `/ll:confidence-check` - 2026-05-18T00:00:00 - `2e6746de-9af3-417e-811f-66de387d51c7.jsonl`
+- `/ll:refine-issue` - 2026-05-18T08:10:51 - `3e6b2734-8873-49d8-8fa8-492ffcacc300.jsonl`
+- `/ll:issue-size-review` - 2026-05-18T00:00:00 - `3772e425-1416-4cc8-baac-8e0f351122fa.jsonl`

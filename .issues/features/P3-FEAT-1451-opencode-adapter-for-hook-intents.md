@@ -270,11 +270,11 @@ Implemented the OpenCode TypeScript plugin adapter at `hooks/adapters/opencode/`
 **FEAT-961 coordination**: confirmed satisfied — FEAT-961 is closed-superseded in `completed/` with no merged code under `opencode-plugin/`. No coordination action needed.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-12T03:01:19Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010190c-509e-453e-bb85-c00575d1e590.jsonl`
-- `/ll:ready-issue` - 2026-05-12T02:53:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32543bcd-a253-4ee9-87ee-301403e10e71.jsonl`
-- `/ll:confidence-check` - 2026-05-11T13:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5b2f42b-04f0-4341-9723-efefed356cb7.jsonl`
-- `/ll:decide-issue` - 2026-05-12T02:50:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98d73f4b-834a-4108-9319-530bb8656795.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b61d370-da92-44ed-abfb-762382787185.jsonl`
-- `/ll:wire-issue` - 2026-05-12T02:43:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a767877-9515-44f2-9f9a-b6c52f44c6fd.jsonl`
-- `/ll:refine-issue` - 2026-05-12T02:37:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55ea351a-2d37-481a-9c15-9798006684c9.jsonl`
-- `/ll:issue-size-review` - 2026-05-12T00:20:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cb0dc9a-fd6f-4945-97b0-ad6acec56482.jsonl`
+- `/ll:manage-issue` - 2026-05-12T03:01:19Z - `0010190c-509e-453e-bb85-c00575d1e590.jsonl`
+- `/ll:ready-issue` - 2026-05-12T02:53:38 - `32543bcd-a253-4ee9-87ee-301403e10e71.jsonl`
+- `/ll:confidence-check` - 2026-05-11T13:00:00Z - `b5b2f42b-04f0-4341-9723-efefed356cb7.jsonl`
+- `/ll:decide-issue` - 2026-05-12T02:50:07 - `98d73f4b-834a-4108-9319-530bb8656795.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `7b61d370-da92-44ed-abfb-762382787185.jsonl`
+- `/ll:wire-issue` - 2026-05-12T02:43:59 - `8a767877-9515-44f2-9f9a-b6c52f44c6fd.jsonl`
+- `/ll:refine-issue` - 2026-05-12T02:37:22 - `55ea351a-2d37-481a-9c15-9798006684c9.jsonl`
+- `/ll:issue-size-review` - 2026-05-12T00:20:02 - `5cb0dc9a-fd6f-4945-97b0-ad6acec56482.jsonl`

@@ -187,8 +187,8 @@ Implemented depth-annotated event forwarding from child FSM executors to the par
 All 3734 tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-20T18:09:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/346bcd11-2121-427d-87da-c8c172089341.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b913cdb-30ae-4f85-948f-0a1ee629b59a.jsonl`
-- `/ll:refine-issue` - 2026-03-20T18:04:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7180749-0a2c-4750-bf04-c0450201c88c.jsonl`
-- `/ll:capture-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/707beb95-6757-467e-96fe-ecc041ee03ed.jsonl`
-- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-03-20T18:09:52 - `346bcd11-2121-427d-87da-c8c172089341.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `9b913cdb-30ae-4f85-948f-0a1ee629b59a.jsonl`
+- `/ll:refine-issue` - 2026-03-20T18:04:40 - `e7180749-0a2c-4750-bf04-c0450201c88c.jsonl`
+- `/ll:capture-issue` - 2026-03-20T00:00:00Z - `707beb95-6757-467e-96fe-ecc041ee03ed.jsonl`
+- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `current.jsonl`

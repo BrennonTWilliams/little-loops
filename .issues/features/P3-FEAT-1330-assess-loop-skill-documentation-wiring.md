@@ -111,8 +111,8 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - Most of the work is already done (6/7 files updated, all 8 tests passing, ll-verify-docs clean) — the only remaining task is adding `assess-loop` to help.md's AUTOMATION & LOOPS section and Quick Reference table.
 
 ## Session Log
-- `/ll:refine-issue` - 2026-05-02T20:49:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ece67b08-ecde-47d7-90ed-14cbb27f7072.jsonl`
-- `/ll:issue-size-review` - 2026-05-02T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:wire-issue` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:confidence-check` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a96ca59-02c3-488f-8fa0-1dafdef72208.jsonl`
-- `/ll:manage-issue` - 2026-05-03T03:22:26Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffee9af8-8893-41bb-833f-5dc61ab71466.jsonl`
+- `/ll:refine-issue` - 2026-05-02T20:49:17 - `ece67b08-ecde-47d7-90ed-14cbb27f7072.jsonl`
+- `/ll:issue-size-review` - 2026-05-02T20:30:00Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:wire-issue` - 2026-05-02T00:00:00
+- `/ll:confidence-check` - 2026-05-02T00:00:00 - `9a96ca59-02c3-488f-8fa0-1dafdef72208.jsonl`
+- `/ll:manage-issue` - 2026-05-03T03:22:26Z - `ffee9af8-8893-41bb-833f-5dc61ab71466.jsonl`

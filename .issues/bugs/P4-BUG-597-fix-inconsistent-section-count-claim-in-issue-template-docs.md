@@ -82,5 +82,5 @@ The Quick Reference table lists 11 common sections + type-specific sections (5 B
 Changed `docs/reference/ISSUE_TEMPLATE.md` line 11 from `21 sections → 20 sections (-5%)` to `21 sections → 17 sections (-19%)`. The math 21 - 8 + 4 = 17 is now consistent with the stated "removing 8 / adding 4" operation.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f275d2ce-2845-4a08-8893-1f0ad46695b3.jsonl`
-- `/ll:manage-issue bug fix BUG-597` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f275d2ce-2845-4a08-8893-1f0ad46695b3.jsonl`
+- `/ll:ready-issue` - 2026-03-05T00:00:00Z - `f275d2ce-2845-4a08-8893-1f0ad46695b3.jsonl`
+- `/ll:manage-issue bug fix BUG-597` - 2026-03-05T00:00:00Z - `f275d2ce-2845-4a08-8893-1f0ad46695b3.jsonl`

@@ -172,12 +172,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 Fixed by replacing the hardcoded `outcome_confidence < 60` threshold in Phase 4.5 and Phase 4.6 of `skills/confidence-check/SKILL.md` with `config.commands.confidence_gate.outcome_threshold` (default: 75). Phase 4.6 inherits the fix automatically since it depends on Phase 4.5 having emitted Outcome Risk Factors. Added `TestPhase45OutcomeThreshold` test class with 3 new tests to `scripts/tests/test_confidence_check_skill.py` to prevent regression.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-25T19:48:04Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/108d4a10-0e89-4c33-b67d-c715cd39fd6e.jsonl`
-- `/ll:ready-issue` - 2026-04-25T19:38:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8773f369-1b55-4807-a306-62c43b644158.jsonl`
-- `/ll:decide-issue` - 2026-04-25T19:33:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4da1c7d0-ca07-471f-a273-72684f564dab.jsonl`
-- `/ll:confidence-check` - 2026-04-25T20:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/678ce4e2-2d4a-4e51-9c09-4bc6e9dc83cd.jsonl`
-- `/ll:wire-issue` - 2026-04-25T19:27:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e062038-fdf7-4d52-8f99-e3db06cb9745.jsonl`
-- `/ll:refine-issue` - 2026-04-25T19:22:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e01f4663-cf90-46a5-9bf2-707bcff9ccec.jsonl`
+- `/ll:manage-issue` - 2026-04-25T19:48:04Z - `108d4a10-0e89-4c33-b67d-c715cd39fd6e.jsonl`
+- `/ll:ready-issue` - 2026-04-25T19:38:58 - `8773f369-1b55-4807-a306-62c43b644158.jsonl`
+- `/ll:decide-issue` - 2026-04-25T19:33:43 - `4da1c7d0-ca07-471f-a273-72684f564dab.jsonl`
+- `/ll:confidence-check` - 2026-04-25T20:00:00Z - `678ce4e2-2d4a-4e51-9c09-4bc6e9dc83cd.jsonl`
+- `/ll:wire-issue` - 2026-04-25T19:27:43 - `7e062038-fdf7-4d52-8f99-e3db06cb9745.jsonl`
+- `/ll:refine-issue` - 2026-04-25T19:22:51 - `e01f4663-cf90-46a5-9bf2-707bcff9ccec.jsonl`
 - `/ll:capture-issue` - 2026-04-25T19:07:05Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e47d1ef-2bc6-4299-8018-0c5ef506b76e.jsonl`
 
 ---

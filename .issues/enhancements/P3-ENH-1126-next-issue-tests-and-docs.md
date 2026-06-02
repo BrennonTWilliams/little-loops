@@ -233,14 +233,14 @@ _Added by `/ll:confidence-check` on 2026-04-16_
 - **Verification**: `python -m pytest scripts/tests/` → 4949 passed, 5 skipped; `ruff check scripts/` → All checks passed.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-17T19:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9dea2f7-a026-41f0-8819-fee1d6b41b64.jsonl`
-- `/ll:ready-issue` - 2026-04-17T18:47:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3524e92-3759-4e68-9b5a-0d8957383583.jsonl`
-- `/ll:refine-issue` - 2026-04-16T20:22:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e18081d-8068-4ea1-96f9-98b4dd8ce46c.jsonl`
-- `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/418956b8-6e25-4bef-a5bf-3bbf5a213336.jsonl`
-- `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/360a9ca9-1f29-487b-ada1-c4e4af3801ba.jsonl`
-- `/ll:wire-issue` - 2026-04-16T20:16:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8280dfb9-0ddb-4195-8bf5-f7bc2d5e0fe1.jsonl`
-- `/ll:refine-issue` - 2026-04-16T20:11:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4793dc2b-5be1-4184-9eca-bb2c45f10d62.jsonl`
-- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed68bd1a-5a6f-4d92-94fd-8ff3a80f7d09.jsonl`
+- `/ll:manage-issue` - 2026-04-17T19:30:00 - `f9dea2f7-a026-41f0-8819-fee1d6b41b64.jsonl`
+- `/ll:ready-issue` - 2026-04-17T18:47:42 - `e3524e92-3759-4e68-9b5a-0d8957383583.jsonl`
+- `/ll:refine-issue` - 2026-04-16T20:22:30 - `0e18081d-8068-4ea1-96f9-98b4dd8ce46c.jsonl`
+- `/ll:confidence-check` - 2026-04-16T00:00:00 - `418956b8-6e25-4bef-a5bf-3bbf5a213336.jsonl`
+- `/ll:confidence-check` - 2026-04-16T00:00:00 - `360a9ca9-1f29-487b-ada1-c4e4af3801ba.jsonl`
+- `/ll:wire-issue` - 2026-04-16T20:16:55 - `8280dfb9-0ddb-4195-8bf5-f7bc2d5e0fe1.jsonl`
+- `/ll:refine-issue` - 2026-04-16T20:11:13 - `4793dc2b-5be1-4184-9eca-bb2c45f10d62.jsonl`
+- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `ed68bd1a-5a6f-4d92-94fd-8ff3a80f7d09.jsonl`
 
 ---
 

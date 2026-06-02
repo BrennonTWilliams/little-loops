@@ -171,9 +171,9 @@ All 6 implementation steps completed:
 6. `scripts/tests/test_review_loop.py`: Added `test_qc3_unknown_action_type_warns_not_errors` to `TestReviewLoopQualityChecks` — asserts `webhook` is not in the built-in set and documents expected Warning severity
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-08T04:15:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/89440067-8c9e-4bf6-8a22-c4a45deb96db.jsonl`
-- `/ll:confidence-check` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ec0a998-d31f-417c-bb86-14e5d81ef7e4.jsonl`
-- `/ll:wire-issue` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/memory/MEMORY.md`
-- `/ll:refine-issue` - 2026-04-08T04:02:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2f57d33-23e4-4e0b-82c9-e4dc648d0215.jsonl`
-- `/ll:format-issue` - 2026-04-08T03:57:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b491a50e-c2ec-405d-8a6a-8a0de63369ff.jsonl`
-- `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0b5b8fb2-d663-482d-be59-6aa37de8e735.jsonl`
+- `/ll:ready-issue` - 2026-04-08T04:15:31 - `89440067-8c9e-4bf6-8a22-c4a45deb96db.jsonl`
+- `/ll:confidence-check` - 2026-04-07T00:00:00Z - `8ec0a998-d31f-417c-bb86-14e5d81ef7e4.jsonl`
+- `/ll:wire-issue` - 2026-04-07T00:00:00Z - `MEMORY.md`
+- `/ll:refine-issue` - 2026-04-08T04:02:09 - `b2f57d33-23e4-4e0b-82c9-e4dc648d0215.jsonl`
+- `/ll:format-issue` - 2026-04-08T03:57:02 - `b491a50e-c2ec-405d-8a6a-8a0de63369ff.jsonl`
+- `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `0b5b8fb2-d663-482d-be59-6aa37de8e735.jsonl`

@@ -116,7 +116,7 @@ else:
 - Added regression test `test_sprint_failed_wave_not_in_completed_allows_resume_retry`
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:verify-issues` - 2026-02-24 - Corrected: multi-issue path (lines 1290-1293) has same bug, not a correct reference pattern. Fix scope expanded to both code paths.
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
 - `/ll:manage-issue` - 2026-02-24 - Fixed bug in both code paths, added regression test

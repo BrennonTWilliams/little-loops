@@ -165,14 +165,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Verification**: 4934 tests pass (`python -m pytest scripts/tests/`), ruff clean, mypy clean.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-17T19:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-04-17T18:42:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9167bb39-d550-4147-9ba4-1c4c18f4332e.jsonl`
-- `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5dd383c-269e-4293-be55-d331c7b17127.jsonl`
-- `/ll:refine-issue` - 2026-04-16T20:03:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/23d47188-3676-49de-b1f7-a5cbc4800ff9.jsonl`
-- `/ll:wire-issue` - 2026-04-16T19:59:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c4a1c636-06bb-43fb-a1e0-0981651dd6e7.jsonl`
-- `/ll:refine-issue` - 2026-04-16T19:55:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45c11175-fab0-451f-b9eb-c8d6dfff4d21.jsonl`
-- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed68bd1a-5a6f-4d92-94fd-8ff3a80f7d09.jsonl`
-- `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d999d664-e1fc-4ade-87dc-7332cf0ca773.jsonl`
+- `/ll:manage-issue` - 2026-04-17T19:00:00
+- `/ll:ready-issue` - 2026-04-17T18:42:22 - `9167bb39-d550-4147-9ba4-1c4c18f4332e.jsonl`
+- `/ll:confidence-check` - 2026-04-16T00:00:00 - `b5dd383c-269e-4293-be55-d331c7b17127.jsonl`
+- `/ll:refine-issue` - 2026-04-16T20:03:27 - `23d47188-3676-49de-b1f7-a5cbc4800ff9.jsonl`
+- `/ll:wire-issue` - 2026-04-16T19:59:48 - `c4a1c636-06bb-43fb-a1e0-0981651dd6e7.jsonl`
+- `/ll:refine-issue` - 2026-04-16T19:55:28 - `45c11175-fab0-451f-b9eb-c8d6dfff4d21.jsonl`
+- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `ed68bd1a-5a6f-4d92-94fd-8ff3a80f7d09.jsonl`
+- `/ll:confidence-check` - 2026-04-16T00:00:00 - `d999d664-e1fc-4ade-87dc-7332cf0ca773.jsonl`
 
 ---
 

@@ -191,12 +191,12 @@ Implemented 2026-04-11. Applied four targeted edits:
 **Completed** | Created: 2026-04-11 | Priority: P4
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-12T04:40:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7faee20e-6c5a-4951-a56b-58251453df61.jsonl`
-- `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/58450691-c82a-4e9b-bd15-9e895c4cb4ae.jsonl`
-- `/ll:refine-issue` - 2026-04-12T04:35:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/367828aa-ee3b-49bd-8229-2185efdc807e.jsonl`
-- `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b31ab27-dd0b-4234-b84f-a3ce2c230248.jsonl`
-- `/ll:refine-issue` - 2026-04-12T03:42:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1492d40c-e557-4d15-9905-5486157b0414.jsonl`
-- `/ll:wire-issue` - 2026-04-12T03:26:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d67326fc-67ca-4141-a32a-78e3d068216f.jsonl`
-- `/ll:refine-issue` - 2026-04-12T03:20:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/636ffdeb-1965-4412-b783-a2735eedd643.jsonl`
-- `/ll:format-issue` - 2026-04-12T03:17:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/583c0fb7-c66b-4b73-ac75-21056880b737.jsonl`
-- `/ll:issue-size-review` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/641c5bf7-b7c1-42cd-b701-507df2a51df9.jsonl`
+- `/ll:ready-issue` - 2026-04-12T04:40:56 - `7faee20e-6c5a-4951-a56b-58251453df61.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00 - `58450691-c82a-4e9b-bd15-9e895c4cb4ae.jsonl`
+- `/ll:refine-issue` - 2026-04-12T04:35:03 - `367828aa-ee3b-49bd-8229-2185efdc807e.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00 - `3b31ab27-dd0b-4234-b84f-a3ce2c230248.jsonl`
+- `/ll:refine-issue` - 2026-04-12T03:42:22 - `1492d40c-e557-4d15-9905-5486157b0414.jsonl`
+- `/ll:wire-issue` - 2026-04-12T03:26:06 - `d67326fc-67ca-4141-a32a-78e3d068216f.jsonl`
+- `/ll:refine-issue` - 2026-04-12T03:20:41 - `636ffdeb-1965-4412-b783-a2735eedd643.jsonl`
+- `/ll:format-issue` - 2026-04-12T03:17:21 - `583c0fb7-c66b-4b73-ac75-21056880b737.jsonl`
+- `/ll:issue-size-review` - 2026-04-11T00:00:00 - `641c5bf7-b7c1-42cd-b701-507df2a51df9.jsonl`

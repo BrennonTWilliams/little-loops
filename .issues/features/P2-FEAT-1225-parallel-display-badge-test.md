@@ -92,4 +92,4 @@ No `pytest.mark.skipif` / `pytest.importorskip` — these are not precedented in
 `fsm`, `parallel`, `tests`, `display`
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/258256f7-974b-4688-b813-9928466b24ec.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `258256f7-974b-4688-b813-9928466b24ec.jsonl`

@@ -100,6 +100,6 @@ bug, config, sprints
 completed
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82c79651-563d-4a71-9c05-13a21c920832.jsonl`
-- `/ll:format-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32aac736-5519-48ec-95de-0a16ae0781d8.jsonl`
-- `/ll:ready-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/772ec29a-9616-4bc7-99c6-c3a84e53e53a.jsonl`
+- `/ll:capture-issue` - 2026-03-08T00:00:00Z - `82c79651-563d-4a71-9c05-13a21c920832.jsonl`
+- `/ll:format-issue` - 2026-03-08T00:00:00Z - `32aac736-5519-48ec-95de-0a16ae0781d8.jsonl`
+- `/ll:ready-issue` - 2026-03-08T00:00:00Z - `772ec29a-9616-4bc7-99c6-c3a84e53e53a.jsonl`

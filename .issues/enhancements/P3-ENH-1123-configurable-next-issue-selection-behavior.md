@@ -184,12 +184,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 `enhancement`, `cli`, `config`, `captured`
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7213c75-e1e1-4c35-8db2-872a26ac38fa.jsonl`
-- `/ll:wire-issue` - 2026-04-16T19:37:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c53b4020-26e9-40f9-9abd-fd8badbf9710.jsonl`
-- `/ll:refine-issue` - 2026-04-16T19:30:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a159601-ac7d-423a-a061-b791ecee841c.jsonl`
+- `/ll:confidence-check` - 2026-04-16T00:00:00 - `e7213c75-e1e1-4c35-8db2-872a26ac38fa.jsonl`
+- `/ll:wire-issue` - 2026-04-16T19:37:26 - `c53b4020-26e9-40f9-9abd-fd8badbf9710.jsonl`
+- `/ll:refine-issue` - 2026-04-16T19:30:48 - `8a159601-ac7d-423a-a061-b791ecee841c.jsonl`
 
-- `/ll:capture-issue` - 2026-04-16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/783ff1cd-1bba-41de-abf8-cb667d74e9da.jsonl`
-- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed68bd1a-5a6f-4d92-94fd-8ff3a80f7d09.jsonl`
+- `/ll:capture-issue` - 2026-04-16 - `783ff1cd-1bba-41de-abf8-cb667d74e9da.jsonl`
+- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `ed68bd1a-5a6f-4d92-94fd-8ff3a80f7d09.jsonl`
 
 ---
 

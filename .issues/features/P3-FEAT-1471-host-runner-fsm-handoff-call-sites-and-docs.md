@@ -203,8 +203,8 @@ Aggregate grep AC (`grep -rn '"claude"' scripts/little_loops/`) remains satisfie
 
 ## Session Log
 - `/ll:manage-issue feature implement FEAT-1471` - 2026-05-15T14:41:27Z
-- `/ll:ready-issue` - 2026-05-15T14:35:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42348a6f-1582-4ae6-9850-43eb257fcb67.jsonl`
-- `/ll:wire-issue` - 2026-05-15T14:31:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f11841c0-d015-41cf-b164-e5b96e94593d.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60593b93-04f4-4e69-9fa9-c7751c826027.jsonl`
-- `/ll:refine-issue` - 2026-05-15T14:25:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0687a4f9-2d43-43a4-9e5d-07b77cd3280a.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-15T14:35:05 - `42348a6f-1582-4ae6-9850-43eb257fcb67.jsonl`
+- `/ll:wire-issue` - 2026-05-15T14:31:19 - `f11841c0-d015-41cf-b164-e5b96e94593d.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `60593b93-04f4-4e69-9fa9-c7751c826027.jsonl`
+- `/ll:refine-issue` - 2026-05-15T14:25:36 - `0687a4f9-2d43-43a4-9e5d-07b77cd3280a.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

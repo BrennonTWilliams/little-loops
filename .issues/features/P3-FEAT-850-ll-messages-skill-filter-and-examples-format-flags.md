@@ -186,11 +186,11 @@ Tests: 15 new tests across `TestBuildExamples`, `TestMessagesArgumentParsingWith
 `feat`, `ll-messages`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-21T02:35:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/081843aa-211e-4511-9ed7-f459a1863fa3.jsonl`
-- `/ll:refine-issue` - 2026-03-21T02:33:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/77fad3d4-4cd4-49d2-8703-5d4df8de3550.jsonl`
-- `/ll:refine-issue` - 2026-03-21T02:16:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ef00304-0425-4493-86d1-986e0f3bbb29.jsonl`
-- `/ll:capture-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0633f118-65ef-4b3d-9507-feb81b97f8cd.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/514a367b-5049-4476-a069-2e6e1f01d027.jsonl`
+- `/ll:ready-issue` - 2026-03-21T02:35:16 - `081843aa-211e-4511-9ed7-f459a1863fa3.jsonl`
+- `/ll:refine-issue` - 2026-03-21T02:33:03 - `77fad3d4-4cd4-49d2-8703-5d4df8de3550.jsonl`
+- `/ll:refine-issue` - 2026-03-21T02:16:15 - `2ef00304-0425-4493-86d1-986e0f3bbb29.jsonl`
+- `/ll:capture-issue` - 2026-03-20T00:00:00Z - `0633f118-65ef-4b3d-9507-feb81b97f8cd.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `514a367b-5049-4476-a069-2e6e1f01d027.jsonl`
 
 ---
 ## Status

@@ -233,11 +233,11 @@ Three paths listed under "Files to Modify" do not exist at the stated locations:
 All other referenced files exist at their stated paths.
 
 ## Session Log
-- `/ll:capture-issue` - 2026-02-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28564d89-65ed-40b1-b496-7da3bcf0a373.jsonl`
+- `/ll:capture-issue` - 2026-02-18T00:00:00Z - `28564d89-65ed-40b1-b496-7da3bcf0a373.jsonl`
 - `/ll:verify-issues` - 2026-02-22 - verification pass
-- `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl`
-- `/ll:refine-issue` - 2026-02-25T22:34:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf1e5cf2-abf0-465a-9c17-15531b269901.jsonl`
+- `/ll:format-issue` - 2026-02-22 - `38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl`
+- `/ll:refine-issue` - 2026-02-25T22:34:00Z - `cf1e5cf2-abf0-465a-9c17-15531b269901.jsonl`
 - `/ll:manage-issue` - 2026-02-25 - implementation
 
 ## Resolution

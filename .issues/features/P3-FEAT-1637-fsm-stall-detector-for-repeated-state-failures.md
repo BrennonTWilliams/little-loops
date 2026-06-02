@@ -364,12 +364,12 @@ Implemented the `StallDetector` helper, wired it into the FSM executor between `
 - BUG-1640 (timeout verdict semantics) — covered by `test_stall_treats_124_error_as_stall`: `(state, exit_code=124, verdict="error")` triples stall just like `verdict="no"` triples.
 
 ## Session Log
-- `/ll:manage-issue feature implement FEAT-1637 --resume` - 2026-05-23T22:39:01Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/019c6728-1f5c-40fd-a5eb-c311bb6e4993.jsonl`
-- `/ll:ready-issue` - 2026-05-23T22:13:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc1fd6ed-dcdc-4bc4-b6c1-4c76f8056fd9.jsonl`
-- `/ll:wire-issue` - 2026-05-23T21:19:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc521ac6-d09c-4bdf-99b3-7717c84f17cb.jsonl`
-- `/ll:refine-issue` - 2026-05-23T21:05:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0bc685a1-bf49-4496-bb13-d08766b82371.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-23T20:59:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
-- `/ll:format-issue` - 2026-05-23T19:53:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1435261b-96be-4e92-b607-0920af54ab06.jsonl`
+- `/ll:manage-issue feature implement FEAT-1637 --resume` - 2026-05-23T22:39:01Z - `019c6728-1f5c-40fd-a5eb-c311bb6e4993.jsonl`
+- `/ll:ready-issue` - 2026-05-23T22:13:26 - `bc1fd6ed-dcdc-4bc4-b6c1-4c76f8056fd9.jsonl`
+- `/ll:wire-issue` - 2026-05-23T21:19:43 - `bc521ac6-d09c-4bdf-99b3-7717c84f17cb.jsonl`
+- `/ll:refine-issue` - 2026-05-23T21:05:55 - `0bc685a1-bf49-4496-bb13-d08766b82371.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-23T20:59:16 - `48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
+- `/ll:format-issue` - 2026-05-23T19:53:17 - `1435261b-96be-4e92-b607-0920af54ab06.jsonl`
 
 - `/ll:capture-issue` — 2026-05-23T12:00:00Z
 

@@ -98,9 +98,9 @@ Add `add_idle_timeout_arg(parser)` to `cli_args.py` following the `add_timeout_a
 - **2026-03-06** — VALID with corrections. Two line numbers in "Current Behavior" were stale: `config.py:181` corrected to `config.py:193`; `worker_pool.py:688` corrected to `worker_pool.py:713`. All other facts confirmed: `idle_timeout_seconds` at config.py:193, `idle_timeout_per_issue` at parallel/types.py:320, `issue_manager.py:317` usage, no `--idle-timeout` flag in cli/auto.py or cli/parallel.py, `add_timeout_arg` at cli_args.py:96. result: VALID (corrections applied)
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
-- `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified; add_timeout_arg pattern in cli_args.py confirmed as the model to follow; no knowledge gaps identified
+- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-25 - `6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified; add_timeout_arg pattern in cli_args.py confirmed as the model to follow; no knowledge gaps identified
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by FEAT-490, FEAT-441, ENH-459
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/ARCHITECTURE.md` (line 508) and `docs/reference/CONFIGURATION.md` to Related Key Documentation
@@ -109,7 +109,7 @@ Add `add_idle_timeout_arg(parser)` to `cli_args.py` following the `add_timeout_a
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
 - `/ll:confidence-check` - 2026-03-06 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — confidence_score=90, outcome_confidence=85
 - `/ll:verify-issues` - 2026-03-06 - Corrected two stale line numbers: config.py:181→193, worker_pool.py:688→713. All other facts valid. result: VALID
-- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/905734ff-ad8b-4a71-9f6f-99ce62be19d7.jsonl`
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `905734ff-ad8b-4a71-9f6f-99ce62be19d7.jsonl`
 
 ---
 

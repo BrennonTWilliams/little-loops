@@ -192,13 +192,13 @@ After all edits, run `python -m pytest scripts/tests/test_feat1504_doc_wiring.py
 `feature`, `documentation`, `wiring`, `config-schema`, `ctx-stats`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-23T04:31:16Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
-- `/ll:ready-issue` - 2026-05-23T04:23:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa901c73-8efc-47cf-b03e-fd087f3ebfcc.jsonl`
-- `/ll:confidence-check` - 2026-05-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fdda758a-3d91-4a1a-addc-2b1e3900fe07.jsonl`
-- `/ll:wire-issue` - 2026-05-23T04:20:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56db5cd8-df7b-4e18-8560-530a021ab1b9.jsonl`
-- `/ll:refine-issue` - 2026-05-23T04:14:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a08c39dd-7ac9-4941-ae83-00e2a448c148.jsonl`
-- `/ll:format-issue` - 2026-05-23T03:58:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9455bcda-9d57-49a9-9450-15ca75ba28f1.jsonl`
-- `/ll:issue-size-review` - 2026-05-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:manage-issue` - 2026-05-23T04:31:16Z - `001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
+- `/ll:ready-issue` - 2026-05-23T04:23:30 - `aa901c73-8efc-47cf-b03e-fd087f3ebfcc.jsonl`
+- `/ll:confidence-check` - 2026-05-22T00:00:00 - `fdda758a-3d91-4a1a-addc-2b1e3900fe07.jsonl`
+- `/ll:wire-issue` - 2026-05-23T04:20:28 - `56db5cd8-df7b-4e18-8560-530a021ab1b9.jsonl`
+- `/ll:refine-issue` - 2026-05-23T04:14:16 - `a08c39dd-7ac9-4941-ae83-00e2a448c148.jsonl`
+- `/ll:format-issue` - 2026-05-23T03:58:36 - `9455bcda-9d57-49a9-9450-15ca75ba28f1.jsonl`
+- `/ll:issue-size-review` - 2026-05-22T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 
 ---
 

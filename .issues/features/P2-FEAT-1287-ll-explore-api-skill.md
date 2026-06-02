@@ -258,15 +258,15 @@ Closes FEAT-1287
 - Feature not yet implemented ✓
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-11T22:12:36Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/692f5e04-dfe2-4a5c-91ed-d3238a84db6e.jsonl`
-- `/ll:ready-issue` - 2026-05-11T22:04:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e482f432-46d0-4b91-a742-72fb3143034c.jsonl`
-- `/ll:confidence-check` - 2026-05-11T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/589c0299-e4b4-41b5-824c-35261e2d556d.jsonl`
-- `/ll:wire-issue` - 2026-05-11T21:59:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cc33feb4-8058-4666-850c-46bdc4c5cf79.jsonl`
-- `/ll:refine-issue` - 2026-05-11T21:52:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c040503b-8c26-457b-8005-3919a14f60e7.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:21:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:verify-issues` - 2026-04-26T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf03929d-b936-46f6-9fc6-0edf5cab2290.jsonl`
-- `/ll:format-issue` - 2026-04-25T20:14:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e97fb3c-4c81-4d9a-b8ce-a2bcf181afa8.jsonl`
+- `/ll:manage-issue` - 2026-05-11T22:12:36Z - `692f5e04-dfe2-4a5c-91ed-d3238a84db6e.jsonl`
+- `/ll:ready-issue` - 2026-05-11T22:04:02 - `e482f432-46d0-4b91-a742-72fb3143034c.jsonl`
+- `/ll:confidence-check` - 2026-05-11T22:00:00 - `589c0299-e4b4-41b5-824c-35261e2d556d.jsonl`
+- `/ll:wire-issue` - 2026-05-11T21:59:46 - `cc33feb4-8058-4666-850c-46bdc4c5cf79.jsonl`
+- `/ll:refine-issue` - 2026-05-11T21:52:35 - `c040503b-8c26-457b-8005-3919a14f60e7.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:21:15 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:verify-issues` - 2026-04-26T00:00:00 - `cf03929d-b936-46f6-9fc6-0edf5cab2290.jsonl`
+- `/ll:format-issue` - 2026-04-25T20:14:31 - `9e97fb3c-4c81-4d9a-b8ce-a2bcf181afa8.jsonl`
 
 ---
 

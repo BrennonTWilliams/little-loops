@@ -195,14 +195,14 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - Action: ENH-1752 dependency is satisfied; update `depends_on` field and proceed with documentation
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T11:11:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5747c773-27f3-4bb6-ba7d-ee09995d5504.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f83f795-ddd9-4a6d-8c23-142bff64a6f8.jsonl`
-- `/ll:wire-issue` - 2026-06-01T11:06:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f4aab65-d5c9-452a-97af-1aec7cc9daa3.jsonl`
-- `/ll:refine-issue` - 2026-06-01T10:59:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f80ab83-ead5-408e-a07e-f0983da571c9.jsonl`
-- `/ll:verify-issues` - 2026-06-01T03:08:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:ready-issue` - 2026-06-01T11:11:46 - `5747c773-27f3-4bb6-ba7d-ee09995d5504.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `7f83f795-ddd9-4a6d-8c23-142bff64a6f8.jsonl`
+- `/ll:wire-issue` - 2026-06-01T11:06:43 - `6f4aab65-d5c9-452a-97af-1aec7cc9daa3.jsonl`
+- `/ll:refine-issue` - 2026-06-01T10:59:01 - `5f80ab83-ead5-408e-a07e-f0983da571c9.jsonl`
+- `/ll:verify-issues` - 2026-06-01T03:08:51 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:15 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:17 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 
 - `/ll:capture-issue` - 2026-05-27T20:37:30Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b49625e3-8e47-4c6d-9fa3-75d4dde31106.jsonl`
 

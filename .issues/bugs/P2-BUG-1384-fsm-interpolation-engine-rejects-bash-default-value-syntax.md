@@ -260,14 +260,14 @@ _Added by `/ll:confidence-check` on 2026-05-09 · re-run 2026-05-09_
 - `interpolate()` has 18+ call sites — a targeted fix to escape or guard logic needs careful regression testing across `TestInterpolate`, `TestInterpolateEdgeCases`, `test_fsm_executor.py:2666` (guard behavior), and `test_fsm_interpolation.py:228` (nested form must still raise)
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-09T19:45:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c692082b-781f-4e2e-977f-a76a603c7136.jsonl`
-- `/ll:ready-issue` - 2026-05-09T19:41:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b297ddb7-801f-4ba1-aabc-68f533f30384.jsonl`
-- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e2d94c2-4dd3-4a1c-9d22-1d89481f32c1.jsonl`
-- `/ll:wire-issue` - 2026-05-09T19:35:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d9b2232-9acc-446c-ba6e-040d61cb879c.jsonl`
-- `/ll:refine-issue` - 2026-05-09T19:28:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/241564ad-4686-4af0-b01b-75d414420fcd.jsonl`
-- `/ll:confidence-check` - 2026-05-09T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df9ff0e5-b8c7-4575-a5de-ff01bba6e261.jsonl`
-- `/ll:confidence-check` - 2026-05-09T18:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de5d1e40-6a58-4476-a0ee-823619a2a018.jsonl`
-- `/ll:wire-issue` - 2026-05-09T17:59:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/14997ce5-cb0a-45bf-942d-b61965bfaf30.jsonl`
-- `/ll:refine-issue` - 2026-05-09T17:54:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/035279af-5fb1-40ab-8a05-e6bb424273eb.jsonl`
-- `/ll:format-issue` - 2026-05-09T16:53:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19555582-4ac3-4961-9f72-7680d5a59791.jsonl`
-- `/ll:capture-issue` - 2026-05-09T01:55:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:manage-issue` - 2026-05-09T19:45:06Z - `c692082b-781f-4e2e-977f-a76a603c7136.jsonl`
+- `/ll:ready-issue` - 2026-05-09T19:41:55 - `b297ddb7-801f-4ba1-aabc-68f533f30384.jsonl`
+- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `5e2d94c2-4dd3-4a1c-9d22-1d89481f32c1.jsonl`
+- `/ll:wire-issue` - 2026-05-09T19:35:26 - `0d9b2232-9acc-446c-ba6e-040d61cb879c.jsonl`
+- `/ll:refine-issue` - 2026-05-09T19:28:16 - `241564ad-4686-4af0-b01b-75d414420fcd.jsonl`
+- `/ll:confidence-check` - 2026-05-09T19:00:00Z - `df9ff0e5-b8c7-4575-a5de-ff01bba6e261.jsonl`
+- `/ll:confidence-check` - 2026-05-09T18:30:00Z - `de5d1e40-6a58-4476-a0ee-823619a2a018.jsonl`
+- `/ll:wire-issue` - 2026-05-09T17:59:46 - `14997ce5-cb0a-45bf-942d-b61965bfaf30.jsonl`
+- `/ll:refine-issue` - 2026-05-09T17:54:18 - `035279af-5fb1-40ab-8a05-e6bb424273eb.jsonl`
+- `/ll:format-issue` - 2026-05-09T16:53:06 - `19555582-4ac3-4961-9f72-7680d5a59791.jsonl`
+- `/ll:capture-issue` - 2026-05-09T01:55:56Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

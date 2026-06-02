@@ -206,14 +206,14 @@ _Added by `/ll:confidence-check` on 2026-05-11_
 - **Skill markdown has no automated unit test path** — SKILL.md logic errors in AC extraction instructions or state-wiring template will only surface via `ll-loop validate` on generated output; no unit-level guard exists. Plan a manual trial run as part of acceptance.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-11T23:37:44Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010190c-509e-453e-bb85-c00575d1e590.jsonl`
-- `/ll:ready-issue` - 2026-05-11T23:31:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51603bf2-bd9e-4041-ab9b-526ee32c757d.jsonl`
-- `/ll:confidence-check` - 2026-05-11T23:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d3aeece8-8901-48e9-a34b-03dc3708fc2f.jsonl`
-- `/ll:decide-issue` - 2026-05-11T23:28:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d5860c5-be18-42f4-af78-becc0b286f63.jsonl`
-- `/ll:wire-issue` - 2026-05-11T23:21:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a42072e-b27a-4b35-adec-dc671315063a.jsonl`
-- `/ll:refine-issue` - 2026-05-11T23:17:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d17dc8fc-73c0-4fc8-8a5f-b5831ed2b3d2.jsonl`
-- `/ll:issue-size-review` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03785380-ad15-4700-be73-f3d5f0c746ce.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b19cf837-b335-4341-b153-e605d94bca56.jsonl`
+- `/ll:manage-issue` - 2026-05-11T23:37:44Z - `0010190c-509e-453e-bb85-c00575d1e590.jsonl`
+- `/ll:ready-issue` - 2026-05-11T23:31:27 - `51603bf2-bd9e-4041-ab9b-526ee32c757d.jsonl`
+- `/ll:confidence-check` - 2026-05-11T23:45:00 - `d3aeece8-8901-48e9-a34b-03dc3708fc2f.jsonl`
+- `/ll:decide-issue` - 2026-05-11T23:28:17 - `9d5860c5-be18-42f4-af78-becc0b286f63.jsonl`
+- `/ll:wire-issue` - 2026-05-11T23:21:55 - `7a42072e-b27a-4b35-adec-dc671315063a.jsonl`
+- `/ll:refine-issue` - 2026-05-11T23:17:30 - `d17dc8fc-73c0-4fc8-8a5f-b5831ed2b3d2.jsonl`
+- `/ll:issue-size-review` - 2026-05-11T00:00:00Z - `03785380-ad15-4700-be73-f3d5f0c746ce.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `b19cf837-b335-4341-b153-e605d94bca56.jsonl`
 
 ---
 

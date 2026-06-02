@@ -276,15 +276,15 @@ _Added by `/ll:confidence-check` on 2026-05-09_
 - **IssueInfo change surface (21+ importers)**: Adding `epic: str | None = None` is backward-compatible, but `to_dict()` (~line 263) and `from_dict()` (~line 300) are explicit field-by-field maps — verify both are updated before running any parser tests. Use the pre-written `test_epic_roundtrip` as your integration signal.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-09T22:52:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed8c7dae-b8ca-4e7d-b2dc-1671f93fa9c2.jsonl`
-- `/ll:ready-issue` - 2026-05-09T22:38:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/556bec38-41e8-423e-be05-a8efa32eee62.jsonl`
-- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a11adf41-8e63-4023-93fa-bc93379326a7.jsonl`
-- `/ll:confidence-check` - 2026-05-09T23:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43665bb5-b08a-4083-80d6-5bfcdabc4d8c.jsonl`
-- `/ll:refine-issue` - 2026-05-09T22:26:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/efbb9709-7a24-4905-85fd-8a5a0825d700.jsonl`
-- `/ll:wire-issue` - 2026-05-09T22:17:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc3e84b1-c81c-4b29-8f56-73dba03552dc.jsonl`
-- `/ll:refine-issue` - 2026-05-09T22:09:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/139c849b-af93-4a61-b279-7b129b6ed004.jsonl`
-- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/adfa30cd-8f9d-48b3-9e4b-2a81bf6caa05.jsonl`
-- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/262d7f0c-fdf5-444e-8731-71e5edbeb646.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-09T22:52:17 - `ed8c7dae-b8ca-4e7d-b2dc-1671f93fa9c2.jsonl`
+- `/ll:ready-issue` - 2026-05-09T22:38:53 - `556bec38-41e8-423e-be05-a8efa32eee62.jsonl`
+- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `a11adf41-8e63-4023-93fa-bc93379326a7.jsonl`
+- `/ll:confidence-check` - 2026-05-09T23:30:00Z - `43665bb5-b08a-4083-80d6-5bfcdabc4d8c.jsonl`
+- `/ll:refine-issue` - 2026-05-09T22:26:47 - `efbb9709-7a24-4905-85fd-8a5a0825d700.jsonl`
+- `/ll:wire-issue` - 2026-05-09T22:17:51 - `fc3e84b1-c81c-4b29-8f56-73dba03552dc.jsonl`
+- `/ll:refine-issue` - 2026-05-09T22:09:58 - `139c849b-af93-4a61-b279-7b129b6ed004.jsonl`
+- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `adfa30cd-8f9d-48b3-9e4b-2a81bf6caa05.jsonl`
+- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `262d7f0c-fdf5-444e-8731-71e5edbeb646.jsonl`
 
 ---
 

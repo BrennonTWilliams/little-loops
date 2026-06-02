@@ -144,7 +144,7 @@ Recommended approach: B + C — make `InterpolationError` produce a user-friendl
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-16T04:45:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6c21f3e-13a6-40d9-872c-cb220c332833.jsonl`
-- `/ll:refine-issue` - 2026-03-16T04:43:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db11b97a-99ed-44d5-8074-688319230a2d.jsonl`
-- `/ll:refine-issue` - 2026-03-16T04:32:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0bcdd99a-efd4-491b-a30d-9c016b3f4d8b.jsonl`
-- `/ll:confidence-check` - 2026-03-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/003dda2e-ca3f-4e2f-90a7-91ad21760958.jsonl`
+- `/ll:ready-issue` - 2026-03-16T04:45:28 - `a6c21f3e-13a6-40d9-872c-cb220c332833.jsonl`
+- `/ll:refine-issue` - 2026-03-16T04:43:23 - `db11b97a-99ed-44d5-8074-688319230a2d.jsonl`
+- `/ll:refine-issue` - 2026-03-16T04:32:36 - `0bcdd99a-efd4-491b-a30d-9c016b3f4d8b.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00 - `003dda2e-ca3f-4e2f-90a7-91ad21760958.jsonl`

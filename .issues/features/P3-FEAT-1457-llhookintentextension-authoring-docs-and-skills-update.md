@@ -172,9 +172,9 @@ Completed 2026-05-12. All 12 doc/skill/source locations updated to reference `LL
 Pre-existing test failures on `main` (`test_generate_schemas.py`, `test_update_skill.py::TestMarketplaceVersionSync`) are unrelated to this change — confirmed via `git stash` comparison.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-12T04:10:19Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7cba4ea4-18a2-41ce-a895-b0396b466ef3.jsonl`
-- `/ll:ready-issue` - 2026-05-12T04:04:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fcb76f03-a51f-4e9c-82e4-acc7d900e197.jsonl`
-- `/ll:wire-issue` - 2026-05-12T04:01:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87381695-a823-4020-9ce9-37ec468aefab.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d5c46ae-96e4-467e-8fd3-f9f3cfc2ae88.jsonl`
-- `/ll:refine-issue` - 2026-05-12T03:53:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/967b791f-d483-49a1-b837-4ae3f38b184b.jsonl`
-- `/ll:issue-size-review` - 2026-05-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0b21eb7d-ba29-48d1-a82f-90d0bc6238a5.jsonl`
+- `/ll:manage-issue` - 2026-05-12T04:10:19Z - `7cba4ea4-18a2-41ce-a895-b0396b466ef3.jsonl`
+- `/ll:ready-issue` - 2026-05-12T04:04:51 - `fcb76f03-a51f-4e9c-82e4-acc7d900e197.jsonl`
+- `/ll:wire-issue` - 2026-05-12T04:01:17 - `87381695-a823-4020-9ce9-37ec468aefab.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `6d5c46ae-96e4-467e-8fd3-f9f3cfc2ae88.jsonl`
+- `/ll:refine-issue` - 2026-05-12T03:53:32 - `967b791f-d483-49a1-b837-4ae3f38b184b.jsonl`
+- `/ll:issue-size-review` - 2026-05-12T00:00:00 - `0b21eb7d-ba29-48d1-a82f-90d0bc6238a5.jsonl`

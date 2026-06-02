@@ -267,11 +267,11 @@ _Added by `/ll:confidence-check` on 2026-04-11_
 - FEAT-1031: audit-issue-conflicts — Structural Tests
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-11T05:19:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/502be2da-c708-44be-93ab-a5693b2c18e1.jsonl`
-- `/ll:issue-size-review` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05d0324c-611c-469d-8af1-b4e42644c47d.jsonl`
-- `/ll:refine-issue` - 2026-04-11T05:13:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98cc2915-f99b-40c4-872b-99d0ab8d13b6.jsonl`
-- `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9e9e621-2fe5-49ab-a375-f7eb546e2244.jsonl`
-- `/ll:wire-issue` - 2026-04-11T05:08:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c18a2cf-6ce9-466b-8f19-3016436ecd9d.jsonl`
-- `/ll:refine-issue` - 2026-04-11T05:05:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68098040-1f88-46a0-b16a-7451614f377b.jsonl`
-- `/ll:format-issue` - 2026-04-11T05:00:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9aecef0c-ff24-4be0-8fdf-2ff69523276c.jsonl`
-- `/ll:issue-size-review` - 2026-04-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1583f95-f6e7-426b-b174-369fd745725e.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-11T05:19:01 - `502be2da-c708-44be-93ab-a5693b2c18e1.jsonl`
+- `/ll:issue-size-review` - 2026-04-11T00:00:00Z - `05d0324c-611c-469d-8af1-b4e42644c47d.jsonl`
+- `/ll:refine-issue` - 2026-04-11T05:13:33 - `98cc2915-f99b-40c4-872b-99d0ab8d13b6.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00 - `c9e9e621-2fe5-49ab-a375-f7eb546e2244.jsonl`
+- `/ll:wire-issue` - 2026-04-11T05:08:58 - `9c18a2cf-6ce9-466b-8f19-3016436ecd9d.jsonl`
+- `/ll:refine-issue` - 2026-04-11T05:05:06 - `68098040-1f88-46a0-b16a-7451614f377b.jsonl`
+- `/ll:format-issue` - 2026-04-11T05:00:50 - `9aecef0c-ff24-4be0-8fdf-2ff69523276c.jsonl`
+- `/ll:issue-size-review` - 2026-04-10T00:00:00Z - `f1583f95-f6e7-426b-b174-369fd745725e.jsonl`

@@ -103,5 +103,5 @@ Added `/ll:wire-issue [ID]` as the first bullet in the `## NEXT STEPS` section o
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-07T18:36:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aff59e17-bf42-492e-855a-73322684e41f.jsonl`
+- `/ll:ready-issue` - 2026-04-07T18:36:19 - `aff59e17-bf42-492e-855a-73322684e41f.jsonl`
 - `/ll:capture-issue` - 2026-04-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a14635ac-d01b-4670-8032-74bc9a150bc1.jsonl`

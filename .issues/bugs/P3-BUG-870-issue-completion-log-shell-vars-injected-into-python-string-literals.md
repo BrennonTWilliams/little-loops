@@ -164,13 +164,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 Pass `$DEST_PATH` and `$TRANSCRIPT_PATH` via environment variables instead of interpolating them into Python string literals. Replaced the `python3 -c "...dest = Path('$DEST_PATH')..."` block with `DEST_PATH="$DEST_PATH" TRANSCRIPT_PATH="$TRANSCRIPT_PATH" python3 -c "...dest = Path(os.environ['DEST_PATH'])..."`. Added `TestIssueCompletionLog` integration tests covering normal paths and single-quote paths (`O'Brien-transcript.jsonl`, `it's-fixed.jsonl`).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:ready-issue` - 2026-03-23T23:42:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/036ebce9-d5c5-4017-aae4-d45329680116.jsonl`
-- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1b17f620-f2da-44e2-8f69-81831236e135.jsonl`
-- `/ll:refine-issue` - 2026-03-23T23:00:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8abe37ac-d35f-4eda-a4e9-ca0e44b84ecc.jsonl`
-- `/ll:format-issue` - 2026-03-23T22:43:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9850963-0ae2-487e-9014-ade593329bce.jsonl`
+- `/ll:manage-issue` - 2026-03-23T00:00:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-23T23:42:33 - `036ebce9-d5c5-4017-aae4-d45329680116.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `1b17f620-f2da-44e2-8f69-81831236e135.jsonl`
+- `/ll:refine-issue` - 2026-03-23T23:00:25 - `8abe37ac-d35f-4eda-a4e9-ca0e44b84ecc.jsonl`
+- `/ll:format-issue` - 2026-03-23T22:43:55 - `c9850963-0ae2-487e-9014-ade593329bce.jsonl`
 
-- `/ll:capture-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e087610-8d6c-49f4-bacd-b3c561cb7252.jsonl`
+- `/ll:capture-issue` - 2026-03-23T00:00:00Z - `0e087610-8d6c-49f4-bacd-b3c561cb7252.jsonl`
 
 ---
 

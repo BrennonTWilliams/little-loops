@@ -109,11 +109,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 ---
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-06T05:24:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/355e833e-00ff-4c02-b74a-e32eb7c366c6.jsonl`
-- `/ll:ready-issue` - 2026-04-06T05:23:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52e725d0-991c-4e1a-9a0a-48fea1976285.jsonl`
-- `/ll:wire-issue` - 2026-04-06T04:55:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29393bcc-663e-4c28-a557-5e66cac854a2.jsonl`
-- `/ll:refine-issue` - 2026-04-06T04:49:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c769f1ff-fff7-4e6f-9950-bab87fe646ba.jsonl`
-- `/ll:capture-issue` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f81b809e-fe37-4e61-92be-ecdf125880d9.jsonl`
+- `/ll:manage-issue` - 2026-04-06T05:24:56 - `355e833e-00ff-4c02-b74a-e32eb7c366c6.jsonl`
+- `/ll:ready-issue` - 2026-04-06T05:23:09 - `52e725d0-991c-4e1a-9a0a-48fea1976285.jsonl`
+- `/ll:wire-issue` - 2026-04-06T04:55:37 - `29393bcc-663e-4c28-a557-5e66cac854a2.jsonl`
+- `/ll:refine-issue` - 2026-04-06T04:49:34 - `c769f1ff-fff7-4e6f-9950-bab87fe646ba.jsonl`
+- `/ll:capture-issue` - 2026-04-05T00:00:00Z - `f81b809e-fe37-4e61-92be-ecdf125880d9.jsonl`
 
 ---
 

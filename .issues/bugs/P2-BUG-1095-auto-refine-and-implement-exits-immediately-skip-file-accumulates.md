@@ -152,12 +152,12 @@ Added `init` state to `auto-refine-and-implement.yaml` that truncates both temp 
 - `docs/guides/LOOPS_GUIDE.md` — updated FSM diagram to prepend `init →`, updated skip-tracking paragraph
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-13T20:31:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010190c-509e-453e-bb85-c00575d1e590.jsonl`
-- `/ll:confidence-check` - 2026-04-13T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:wire-issue` - 2026-04-13T20:18:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/380433f9-aa5c-461b-919e-c5a4226b42c9.jsonl`
-- `/ll:refine-issue` - 2026-04-13T20:12:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7573101-1e4a-4e97-80cd-2130b1c40d72.jsonl`
-- `/ll:capture-issue` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6681d3d-2446-482f-83ae-c425d516d2ac.jsonl`
-- `/ll:manage-issue` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-13T20:31:03 - `0010190c-509e-453e-bb85-c00575d1e590.jsonl`
+- `/ll:confidence-check` - 2026-04-13T21:00:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:wire-issue` - 2026-04-13T20:18:55 - `380433f9-aa5c-461b-919e-c5a4226b42c9.jsonl`
+- `/ll:refine-issue` - 2026-04-13T20:12:02 - `d7573101-1e4a-4e97-80cd-2130b1c40d72.jsonl`
+- `/ll:capture-issue` - 2026-04-13T00:00:00Z - `c6681d3d-2446-482f-83ae-c425d516d2ac.jsonl`
+- `/ll:manage-issue` - 2026-04-13T00:00:00Z - `current.jsonl`
 
 ---
 

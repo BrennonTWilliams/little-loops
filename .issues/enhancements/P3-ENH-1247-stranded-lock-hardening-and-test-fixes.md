@@ -185,12 +185,12 @@ _Added by `/ll:confidence-check` on 2026-04-22_
 - **merge_coordinator approach not chosen**: Step 2 offers delegation vs. inline unlock with "(Preferred)" noted but not decided. The delegation path requires adapting the `branch_name` parameter difference.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-22T16:01:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d28f812d-9c9f-4c1d-9132-8d4f61f6064c.jsonl`
-- `/ll:confidence-check` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/028ea34b-57e7-4d93-b629-3d0ba739f75b.jsonl`
-- `/ll:wire-issue` - 2026-04-22T15:54:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/028ea34b-57e7-4d93-b629-3d0ba739f75b.jsonl`
-- `/ll:refine-issue` - 2026-04-22T15:48:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04dfc0ce-b9e2-4f0a-a081-7ccda5b93d64.jsonl`
-- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4392751-fe1e-4762-b307-86db43c577b3.jsonl`
-- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d28f812d-9c9f-4c1d-9132-8d4f61f6064c.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-22T16:01:09 - `d28f812d-9c9f-4c1d-9132-8d4f61f6064c.jsonl`
+- `/ll:confidence-check` - 2026-04-22T00:00:00 - `028ea34b-57e7-4d93-b629-3d0ba739f75b.jsonl`
+- `/ll:wire-issue` - 2026-04-22T15:54:35 - `028ea34b-57e7-4d93-b629-3d0ba739f75b.jsonl`
+- `/ll:refine-issue` - 2026-04-22T15:48:51 - `04dfc0ce-b9e2-4f0a-a081-7ccda5b93d64.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `a4392751-fe1e-4762-b307-86db43c577b3.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `d28f812d-9c9f-4c1d-9132-8d4f61f6064c.jsonl`
 
 ---
 

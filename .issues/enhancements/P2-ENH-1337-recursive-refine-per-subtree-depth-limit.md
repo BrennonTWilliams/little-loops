@@ -264,10 +264,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - ENH-1345: Document `max_depth` parameter in guides and reference (docs only, depends on ENH-1344)
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-03T15:44:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f5908fa-e7cf-482b-a91b-52624eb2a99c.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f5908fa-e7cf-482b-a91b-52624eb2a99c.jsonl`
-- `/ll:confidence-check` - 2026-05-03T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b01ba85-e44e-43fc-a0a9-22d8ec116b3c.jsonl`
-- `/ll:wire-issue` - 2026-05-03T15:36:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2bfe7ba9-90e4-4b2f-909d-e4508c1b4461.jsonl`
-- `/ll:refine-issue` - 2026-05-03T15:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1e1f2e2-5a68-43cc-a7e0-9ee4146c15bd.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:20:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:format-issue` - 2026-05-03T04:41:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a41e2fe5-b6da-449b-8d60-6b8ddd06d97c.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-03T15:44:10 - `9f5908fa-e7cf-482b-a91b-52624eb2a99c.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T00:00:00 - `9f5908fa-e7cf-482b-a91b-52624eb2a99c.jsonl`
+- `/ll:confidence-check` - 2026-05-03T17:00:00 - `8b01ba85-e44e-43fc-a0a9-22d8ec116b3c.jsonl`
+- `/ll:wire-issue` - 2026-05-03T15:36:56 - `2bfe7ba9-90e4-4b2f-909d-e4508c1b4461.jsonl`
+- `/ll:refine-issue` - 2026-05-03T15:30:00 - `d1e1f2e2-5a68-43cc-a7e0-9ee4146c15bd.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:20:54 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:format-issue` - 2026-05-03T04:41:50 - `a41e2fe5-b6da-449b-8d60-6b8ddd06d97c.jsonl`

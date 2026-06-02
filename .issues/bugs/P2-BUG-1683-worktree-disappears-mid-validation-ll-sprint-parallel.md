@@ -187,10 +187,10 @@ Added per-worktree `.ll-session-<pid>` liveness check to `hooks/scripts/session-
 **Done** | Created: 2026-05-24 | Completed: 2026-05-24 | Priority: P2
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T18:42:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cd1ea99-2823-484b-b85e-8f3b4510c87a.jsonl`
-- `/ll:confidence-check` - 2026-05-24T20:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a81d6ad-24b7-4dad-bf14-3d71a58d887a.jsonl`
-- `/ll:wire-issue` - 2026-05-24T18:38:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ad45c05-bad9-4ebc-b977-9b171de94333.jsonl`
-- `/ll:refine-issue` - 2026-05-24T18:33:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35b81809-b274-4166-94fd-a3eed014891c.jsonl`
-- `/ll:capture-issue` (root cause update from investigation plan) - 2026-05-24T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d101d16a-5b2a-4404-abe1-a8952f35ab27.jsonl`
-- `/ll:format-issue` - 2026-05-24T18:14:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d101d16a-5b2a-4404-abe1-a8952f35ab27.jsonl`
+- `/ll:ready-issue` - 2026-05-24T18:42:35 - `3cd1ea99-2823-484b-b85e-8f3b4510c87a.jsonl`
+- `/ll:confidence-check` - 2026-05-24T20:00:00Z - `1a81d6ad-24b7-4dad-bf14-3d71a58d887a.jsonl`
+- `/ll:wire-issue` - 2026-05-24T18:38:33 - `6ad45c05-bad9-4ebc-b977-9b171de94333.jsonl`
+- `/ll:refine-issue` - 2026-05-24T18:33:45 - `35b81809-b274-4166-94fd-a3eed014891c.jsonl`
+- `/ll:capture-issue` (root cause update from investigation plan) - 2026-05-24T19:00:00Z - `d101d16a-5b2a-4404-abe1-a8952f35ab27.jsonl`
+- `/ll:format-issue` - 2026-05-24T18:14:59 - `d101d16a-5b2a-4404-abe1-a8952f35ab27.jsonl`
 - `/ll:capture-issue` - 2026-05-24T18:10:20Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a47fb14-5706-4306-941e-98961a5295b3.jsonl`

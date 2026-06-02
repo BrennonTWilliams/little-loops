@@ -425,24 +425,24 @@ _Updated by `/ll:confidence-check` on 2026-05-23_
 - **Test coverage gap**: `TestGeneralTaskLoop` (15 structural methods) and the 5 `detect_stall` test methods do not yet exist; tests are co-deliverables — implement the test class alongside the YAML changes so correctness is verified immediately.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T01:16:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/897682a8-bbee-44fb-9379-0ee071707036.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-23T20:59:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
-- `/ll:confidence-check` - 2026-05-23T21:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
-- `/ll:decide-issue` - 2026-05-23T20:54:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e496b789-31d6-4e58-a1bc-5765b13f971b.jsonl`
-- `/ll:confidence-check` - 2026-05-23T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb2aacf2-aaf0-4d77-a561-a081f97a838b.jsonl`
-- `/ll:wire-issue` - 2026-05-23T20:46:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95fbcd20-11f6-45b3-adc8-6b5415125ece.jsonl`
-- `/ll:refine-issue` - 2026-05-23T20:40:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00425d15-8b49-4846-b201-0340b69a4111.jsonl`
-- `/ll:confidence-check` - 2026-05-23T20:01:52Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:wire-issue` - 2026-05-23T19:59:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88533aff-edf2-4543-a36c-52bada8aa103.jsonl`
-- `/ll:refine-issue` - 2026-05-23T19:51:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1435261b-96be-4e92-b607-0920af54ab06.jsonl`
-- `/ll:confidence-check` - 2026-05-23T17:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd804a36-d506-4eb1-be15-81cdac8d8557.jsonl`
-- `/ll:wire-issue` - 2026-05-23T16:57:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a9c6d1a1-0ff3-429d-82ba-98b024c1337c.jsonl`
-- `/ll:refine-issue` - 2026-05-23T16:51:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/988ce1b9-ae0c-46fd-b2cc-0a27156d1f90.jsonl`
-- `/ll:confidence-check` - 2026-05-23T15:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/752986eb-711c-40a1-bf4b-92ad94c15422.jsonl`
-- `/ll:wire-issue` - 2026-05-23T14:48:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/acaa1cf9-023b-4a6f-812b-1aff9e159557.jsonl`
-- `/ll:refine-issue` - 2026-05-23T14:41:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f96d4d4e-a2df-4d4a-bdb3-9ac4b817f2fc.jsonl`
-- `/ll:format-issue` - 2026-05-23T14:23:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/325b9afa-47d8-41ad-a5f5-b5612d9d212f.jsonl`
-- `/ll:capture-issue` - 2026-05-23T14:20:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/18994ed6-18a9-447d-ac59-78ca7aa796c3.jsonl`
+- `/ll:ready-issue` - 2026-05-24T01:16:22 - `897682a8-bbee-44fb-9379-0ee071707036.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-23T20:59:16 - `48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
+- `/ll:confidence-check` - 2026-05-23T21:30:00Z - `48fbbd10-48f2-4312-a798-ccffa2afa082.jsonl`
+- `/ll:decide-issue` - 2026-05-23T20:54:11 - `e496b789-31d6-4e58-a1bc-5765b13f971b.jsonl`
+- `/ll:confidence-check` - 2026-05-23T21:00:00Z - `fb2aacf2-aaf0-4d77-a561-a081f97a838b.jsonl`
+- `/ll:wire-issue` - 2026-05-23T20:46:45 - `95fbcd20-11f6-45b3-adc8-6b5415125ece.jsonl`
+- `/ll:refine-issue` - 2026-05-23T20:40:04 - `00425d15-8b49-4846-b201-0340b69a4111.jsonl`
+- `/ll:confidence-check` - 2026-05-23T20:01:52Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:wire-issue` - 2026-05-23T19:59:03 - `88533aff-edf2-4543-a36c-52bada8aa103.jsonl`
+- `/ll:refine-issue` - 2026-05-23T19:51:21 - `1435261b-96be-4e92-b607-0920af54ab06.jsonl`
+- `/ll:confidence-check` - 2026-05-23T17:30:00 - `fd804a36-d506-4eb1-be15-81cdac8d8557.jsonl`
+- `/ll:wire-issue` - 2026-05-23T16:57:15 - `a9c6d1a1-0ff3-429d-82ba-98b024c1337c.jsonl`
+- `/ll:refine-issue` - 2026-05-23T16:51:23 - `988ce1b9-ae0c-46fd-b2cc-0a27156d1f90.jsonl`
+- `/ll:confidence-check` - 2026-05-23T15:00:00 - `752986eb-711c-40a1-bf4b-92ad94c15422.jsonl`
+- `/ll:wire-issue` - 2026-05-23T14:48:14 - `acaa1cf9-023b-4a6f-812b-1aff9e159557.jsonl`
+- `/ll:refine-issue` - 2026-05-23T14:41:36 - `f96d4d4e-a2df-4d4a-bdb3-9ac4b817f2fc.jsonl`
+- `/ll:format-issue` - 2026-05-23T14:23:52 - `325b9afa-47d8-41ad-a5f5-b5612d9d212f.jsonl`
+- `/ll:capture-issue` - 2026-05-23T14:20:49Z - `18994ed6-18a9-447d-ac59-78ca7aa796c3.jsonl`
 
 ---
 

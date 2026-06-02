@@ -257,12 +257,12 @@ _Added by `/ll:confidence-check` on 2026-04-17_
 - **Heartbeat test isolation**: existing rate-limit tests asserting exact event stream length/order require filtering or short-ladder rungs to avoid heartbeat noise — audit the ~190-line rate-limit suite (lines 4318-4509) carefully.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-17T07:16:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a95f7723-f6c7-4abc-9358-01f0d396ef30.jsonl`
-- `/ll:refine-issue` - 2026-04-17T07:03:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0244746-544d-4d51-b805-0c54a1e0dab0.jsonl`
-- `/ll:issue-size-review` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86c5c7e4-236c-46a0-acd9-2124269e76f0.jsonl`
-- `/ll:wire-issue` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0244746-544d-4d51-b805-0c54a1e0dab0.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0244746-544d-4d51-b805-0c54a1e0dab0.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a95f7723-f6c7-4abc-9358-01f0d396ef30.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-17T07:16:40 - `a95f7723-f6c7-4abc-9358-01f0d396ef30.jsonl`
+- `/ll:refine-issue` - 2026-04-17T07:03:09 - `d0244746-544d-4d51-b805-0c54a1e0dab0.jsonl`
+- `/ll:issue-size-review` - 2026-04-16T00:00:00Z - `86c5c7e4-236c-46a0-acd9-2124269e76f0.jsonl`
+- `/ll:wire-issue` - 2026-04-17T00:00:00Z - `d0244746-544d-4d51-b805-0c54a1e0dab0.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `d0244746-544d-4d51-b805-0c54a1e0dab0.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `a95f7723-f6c7-4abc-9358-01f0d396ef30.jsonl`
 
 ---
 

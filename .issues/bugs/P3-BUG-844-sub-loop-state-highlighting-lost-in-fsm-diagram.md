@@ -161,7 +161,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Completed** | Created: 2026-03-20 | Resolved: 2026-03-20 | Priority: P3
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-03-20T21:21:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c36d8d5-c74f-40f7-ba5e-174db436832e.jsonl`
-- `/ll:refine-issue` - 2026-03-20T21:16:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3303c29-3790-45d8-bfd8-d2eed0c1be4f.jsonl`
+- `/ll:manage-issue` - 2026-03-20T00:00:00Z
+- `/ll:ready-issue` - 2026-03-20T21:21:11 - `8c36d8d5-c74f-40f7-ba5e-174db436832e.jsonl`
+- `/ll:refine-issue` - 2026-03-20T21:16:29 - `f3303c29-3790-45d8-bfd8-d2eed0c1be4f.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1bf4f47d-175f-43a1-a162-27f1c4d41801.jsonl`

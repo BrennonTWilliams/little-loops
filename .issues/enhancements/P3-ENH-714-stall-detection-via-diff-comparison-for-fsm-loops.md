@@ -176,11 +176,11 @@ New schema fields would be validated in `schema.py` and `validation.py`.
 - 2026-03-13 (`/ll:verify-issues --auto`): **VALID** — All file references confirmed to exist. `evaluate_convergence()` verified in `scripts/little_loops/fsm/evaluators.py`. No `diff_stall` evaluator exists in `evaluators.py`, `schema.py`, or `validation.py`. `check_commit` state confirmed in `loops/issue-refinement.yaml`. `skills/create-loop/loop-types.md` covers only numeric `convergence` evaluator — diff-based stall detection gap is real and unimplemented.
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b28391f-b086-4d28-86cb-448201c8b40e.jsonl`
-- `/ll:format-issue` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:verify-issues` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:confidence-check` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
-- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/13cbf42e-fac3-467d-b775-6936f04a3727.jsonl`
+- `/ll:capture-issue` - 2026-03-12 - `3b28391f-b086-4d28-86cb-448201c8b40e.jsonl`
+- `/ll:format-issue` - 2026-03-13 - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:verify-issues` - 2026-03-13 - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:confidence-check` - 2026-03-13 - `979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `13cbf42e-fac3-467d-b775-6936f04a3727.jsonl`
 
 ---
 

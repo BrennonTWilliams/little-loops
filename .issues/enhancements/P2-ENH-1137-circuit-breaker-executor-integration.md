@@ -170,13 +170,13 @@ Resolved 2026-04-17 via `/ll:manage-issue`.
 - Plan: `thoughts/shared/plans/2026-04-17-ENH-1137-management.md`.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-17T05:44:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e803071-550e-4546-bc58-d0c2cba8fd53.jsonl`
-- `/ll:manage-issue` - 2026-04-17T06:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-04-17T05:35:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d4714e4c-45b9-48ee-a533-8361fe72c130.jsonl`
-- `/ll:wire-issue` - 2026-04-17T05:30:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d3b2c022-5f3e-4aec-86f8-a52503804cc4.jsonl`
-- `/ll:refine-issue` - 2026-04-17T05:22:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5c36e83-54fa-44b3-8c2a-31d4f4e1c445.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81193e52-67e2-451f-8b12-656dced49eb5.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6e6a606-f95f-4c8c-a010-a9bc9b589bad.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-17T05:44:06 - `1e803071-550e-4546-bc58-d0c2cba8fd53.jsonl`
+- `/ll:manage-issue` - 2026-04-17T06:00:00
+- `/ll:ready-issue` - 2026-04-17T05:35:23 - `d4714e4c-45b9-48ee-a533-8361fe72c130.jsonl`
+- `/ll:wire-issue` - 2026-04-17T05:30:25 - `d3b2c022-5f3e-4aec-86f8-a52503804cc4.jsonl`
+- `/ll:refine-issue` - 2026-04-17T05:22:49 - `e5c36e83-54fa-44b3-8c2a-31d4f4e1c445.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `81193e52-67e2-451f-8b12-656dced49eb5.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `b6e6a606-f95f-4c8c-a010-a9bc9b589bad.jsonl`
 
 ---
 

@@ -60,12 +60,12 @@ Simplify line 114 to `scatter_score = len(dirs) / total_dirs` and add a test doc
 `enhancement`, `code-quality`, `issue-history`
 
 ## Session Log
-- `/ll:verify-issues` - 2026-03-23T00:58:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a5c131f-cda7-4559-9788-d72a050aa303.jsonl`
+- `/ll:verify-issues` - 2026-03-23T00:58:57 - `9a5c131f-cda7-4559-9788-d72a050aa303.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
-- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
-- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:go-no-go` - 2026-03-23T01:12:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/549037f1-6950-4dc0-bedf-64c616932404.jsonl`
+- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:go-no-go` - 2026-03-23T01:12:00Z - `549037f1-6950-4dc0-bedf-64c616932404.jsonl`
 
 ---
 

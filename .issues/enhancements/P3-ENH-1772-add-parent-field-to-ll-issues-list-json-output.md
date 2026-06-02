@@ -142,8 +142,8 @@ _Wiring pass added by `/ll:wire-issue` — non-blocking, implementation already 
 - **Breaking Change**: No
 
 ## Session Log
-- `/ll:wire-issue` - 2026-05-29T00:45:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9758e744-69de-430a-84f0-b232214070a2.jsonl`
-- `/ll:refine-issue` - 2026-05-29T00:39:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1cd2a48-09ca-45a0-a6fb-8f62f61cdc82.jsonl`
-- `/ll:format-issue` - 2026-05-29T00:32:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9caaa3f7-2224-4d38-a67a-774a4a2bb3b0.jsonl`
+- `/ll:wire-issue` - 2026-05-29T00:45:58 - `9758e744-69de-430a-84f0-b232214070a2.jsonl`
+- `/ll:refine-issue` - 2026-05-29T00:39:42 - `f1cd2a48-09ca-45a0-a6fb-8f62f61cdc82.jsonl`
+- `/ll:format-issue` - 2026-05-29T00:32:41 - `9caaa3f7-2224-4d38-a67a-774a4a2bb3b0.jsonl`
 
 - `/ll:capture-issue` - 2026-05-28T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

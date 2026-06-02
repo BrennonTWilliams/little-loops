@@ -124,13 +124,13 @@ Option A is the minimum fix: make the one runtime import in `config/core.py:298`
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-17T01:37:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c399e5bd-6472-4e06-8720-32dfae8e3918.jsonl`
-- `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/448e425d-1d33-4ffb-af9e-6a174dd68514.jsonl`
+- `/ll:ready-issue` - 2026-03-17T01:37:16 - `c399e5bd-6472-4e06-8720-32dfae8e3918.jsonl`
+- `/ll:verify-issues` - 2026-03-15T00:11:17 - `448e425d-1d33-4ffb-af9e-6a174dd68514.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
-- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
-- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:refine-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
-- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:refine-issue` - 2026-03-14T00:00:00Z - `337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 
 ---
 
@@ -148,7 +148,7 @@ Option A is the minimum fix: make the one runtime import in `config/core.py:298`
 - **Verification**: `python -c "import little_loops.config; import little_loops.parallel.types; import little_loops.issue_parser"` passed; 221 tests passed.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:manage-issue` - 2026-03-16T00:00:00Z - `current.jsonl`
 
 ## Status
 

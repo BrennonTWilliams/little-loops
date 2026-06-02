@@ -202,16 +202,15 @@ Related (all `done`): BUG-1297 (skip-level edges in rendering + one-sided `block
 `bug`, `ll-issues`, `clusters`, `dependency-graph`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T08:58:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6e17c926-18e1-4f26-bebc-158795ce2275.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c3f102e7-8b1c-40a0-92c7-9fea7bc9a310.jsonl`
-- `/ll:wire-issue` - 2026-05-24T07:41:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2345830b-0a2d-4cf9-8ce2-c8909925173d.jsonl`
-- `/ll:refine-issue` - 2026-05-24T07:32:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/995aa695-3c58-4826-8afa-21cb7bcdc032.jsonl`
-- `/ll:verify-issues` - 2026-05-24T03:55:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86b55377-f187-4e58-9c10-c40043e89408.jsonl`
-- `/ll:format-issue` - 2026-05-23T23:06:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b11d6a79-dbf6-4df8-88d4-640a18cdec70.jsonl`
+- `/ll:ready-issue` - 2026-05-24T08:58:30 - `6e17c926-18e1-4f26-bebc-158795ce2275.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `c3f102e7-8b1c-40a0-92c7-9fea7bc9a310.jsonl`
+- `/ll:wire-issue` - 2026-05-24T07:41:21 - `2345830b-0a2d-4cf9-8ce2-c8909925173d.jsonl`
+- `/ll:refine-issue` - 2026-05-24T07:32:59 - `995aa695-3c58-4826-8afa-21cb7bcdc032.jsonl`
+- `/ll:verify-issues` - 2026-05-24T03:55:43 - `86b55377-f187-4e58-9c10-c40043e89408.jsonl`
+- `/ll:format-issue` - 2026-05-23T23:06:58 - `b11d6a79-dbf6-4df8-88d4-640a18cdec70.jsonl`
 
-- `/ll:capture-issue` - 2026-05-23T22:59:14Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97f3f20e-c2e8-4f2d-bf70-a8aa3f33ad7b.jsonl`
-- `/ll:manage-issue` - 2026-05-24T09:09:36Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-
+- `/ll:capture-issue` - 2026-05-23T22:59:14Z - `97f3f20e-c2e8-4f2d-bf70-a8aa3f33ad7b.jsonl`
+- `/ll:manage-issue` - 2026-05-24T09:09:36Z
 ## Resolution
 
 Fixed in three coordinated changes:

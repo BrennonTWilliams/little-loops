@@ -193,10 +193,10 @@ _Added by `/ll:confidence-check` on 2026-05-05_
 Added `input_key: sprint_name`, `context.sprint_name: ""`, and a new `route_input` initial state to `sprint-build-and-validate.yaml`. The `route_input` state uses `evaluate: type: exit_code` to route: exit 0 (name given + file found) → `extract_sprint_issues`, exit 1 (no name) → `create_sprint` (preserves existing behavior), exit 2 (file not found) → `failed` terminal state. Updated `TestSprintBuildAndValidateLoop` tests to assert `initial == "route_input"`, added `route_input` and `failed` to required state set, fixed pre-existing test/YAML drift (removed stale state references), and updated loop descriptions in README and LOOPS_GUIDE.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-05T21:32:08Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab5e89e1-5853-4654-b13f-5d58acd203a4.jsonl`
-- `/ll:ready-issue` - 2026-05-05T21:23:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab5e89e1-5853-4654-b13f-5d58acd203a4.jsonl`
-- `/ll:confidence-check` - 2026-05-05T21:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84969341-13cd-4486-ba6a-5e60750a842c.jsonl`
-- `/ll:confidence-check` - 2026-05-05T20:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07dbaa29-225f-4efb-92e9-3c17af906708.jsonl`
-- `/ll:refine-issue` - 2026-05-05T20:30:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d73ca33-0b7c-4851-85e4-fdeced627833.jsonl`
-- `/ll:format-issue` - 2026-05-05T20:21:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0fffda96-17f2-4710-a1ed-5d239041848c.jsonl`
+- `/ll:manage-issue` - 2026-05-05T21:32:08Z - `ab5e89e1-5853-4654-b13f-5d58acd203a4.jsonl`
+- `/ll:ready-issue` - 2026-05-05T21:23:19 - `ab5e89e1-5853-4654-b13f-5d58acd203a4.jsonl`
+- `/ll:confidence-check` - 2026-05-05T21:15:00 - `84969341-13cd-4486-ba6a-5e60750a842c.jsonl`
+- `/ll:confidence-check` - 2026-05-05T20:45:00 - `07dbaa29-225f-4efb-92e9-3c17af906708.jsonl`
+- `/ll:refine-issue` - 2026-05-05T20:30:51 - `1d73ca33-0b7c-4851-85e4-fdeced627833.jsonl`
+- `/ll:format-issue` - 2026-05-05T20:21:18 - `0fffda96-17f2-4710-a1ed-5d239041848c.jsonl`
 - `/ll:capture-issue` - 2026-05-05T20:18:41Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/efb1cdd9-77e3-40bc-8666-cdf782b20d6c.jsonl`

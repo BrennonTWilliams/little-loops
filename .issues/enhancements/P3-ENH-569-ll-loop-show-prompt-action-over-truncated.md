@@ -162,8 +162,8 @@ Files modified:
 - `scripts/tests/test_ll_loop_display.py` — added companion dry-run prompt test
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d569869-6d78-45db-ae07-4c05f23b46fe.jsonl`
-- `/ll:format-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4468f93a-677c-4cfe-9445-cc1a243211e3.jsonl`
-- `/ll:refine-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e696e00-4453-4689-9b15-ff56c9d9b686.jsonl`
-- `/ll:ready-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4bd39923-a65f-4d88-ab73-47f4169b654e.jsonl`
-- `/ll:manage-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:capture-issue` - 2026-03-04T00:00:00 - `0d569869-6d78-45db-ae07-4c05f23b46fe.jsonl`
+- `/ll:format-issue` - 2026-03-04T00:00:00 - `4468f93a-677c-4cfe-9445-cc1a243211e3.jsonl`
+- `/ll:refine-issue` - 2026-03-04T00:00:00 - `3e696e00-4453-4689-9b15-ff56c9d9b686.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00 - `4bd39923-a65f-4d88-ab73-47f4169b654e.jsonl`
+- `/ll:manage-issue` - 2026-03-04T00:00:00 - `current.jsonl`

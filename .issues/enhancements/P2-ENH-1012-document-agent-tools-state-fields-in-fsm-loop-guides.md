@@ -216,10 +216,10 @@ validate:
 Active
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-09T15:20:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40c29be0-4e98-4828-a76b-5f21269ed7a5.jsonl`
-- `/ll:confidence-check` - 2026-04-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a11aabf-f903-47e7-b3ea-a42ab7ba537a.jsonl`
-- `/ll:wire-issue` - 2026-04-09T15:15:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52dab5ee-45a0-4c56-8819-98801126cfc8.jsonl`
-- `/ll:refine-issue` - 2026-04-09T15:10:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/885bf5e8-0537-43ff-8bd8-ea01f8521c19.jsonl`
-- `/ll:format-issue` - 2026-04-09T15:05:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/016808f5-a357-4d5a-bfbd-271f3cf90ec1.jsonl`
-- `/ll:issue-size-review` - 2026-04-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4b4a844-219d-40e6-8201-677dabfe574c.jsonl`
-- `/ll:issue-size-review` - 2026-04-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40c29be0-4e98-4828-a76b-5f21269ed7a5.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-09T15:20:46 - `40c29be0-4e98-4828-a76b-5f21269ed7a5.jsonl`
+- `/ll:confidence-check` - 2026-04-09T00:00:00Z - `7a11aabf-f903-47e7-b3ea-a42ab7ba537a.jsonl`
+- `/ll:wire-issue` - 2026-04-09T15:15:54 - `52dab5ee-45a0-4c56-8819-98801126cfc8.jsonl`
+- `/ll:refine-issue` - 2026-04-09T15:10:33 - `885bf5e8-0537-43ff-8bd8-ea01f8521c19.jsonl`
+- `/ll:format-issue` - 2026-04-09T15:05:26 - `016808f5-a357-4d5a-bfbd-271f3cf90ec1.jsonl`
+- `/ll:issue-size-review` - 2026-04-09T00:00:00Z - `b4b4a844-219d-40e6-8201-677dabfe574c.jsonl`
+- `/ll:issue-size-review` - 2026-04-09T00:00:00Z - `40c29be0-4e98-4828-a76b-5f21269ed7a5.jsonl`

@@ -207,12 +207,12 @@ _Added by `/ll:confidence-check` on 2026-04-22_
 - **`commands/cleanup-worktrees.md` `sed` rewrite** (decision=yes): `sed 's/^worker-//'` for branch name derivation has no direct equivalent for loop worktree naming — likely needs a conditional branch in the script.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-22T16:48:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79aadd9e-32c2-44ea-be52-e9ec9bcff212.jsonl`
-- `/ll:confidence-check` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38129e4c-36a0-4f26-8372-94c74c5d520d.jsonl`
-- `/ll:wire-issue` - 2026-04-22T16:43:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad23f624-a3c7-4b2d-af9f-9177a61c7d00.jsonl`
-- `/ll:refine-issue` - 2026-04-22T16:37:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fdea6d06-afca-4b59-bf37-4de8c4f35cbe.jsonl`
-- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4392751-fe1e-4762-b307-86db43c577b3.jsonl`
-- `/ll:issue-size-review` - 2026-04-22T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79aadd9e-32c2-44ea-be52-e9ec9bcff212.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-22T16:48:52 - `79aadd9e-32c2-44ea-be52-e9ec9bcff212.jsonl`
+- `/ll:confidence-check` - 2026-04-22T00:00:00 - `38129e4c-36a0-4f26-8372-94c74c5d520d.jsonl`
+- `/ll:wire-issue` - 2026-04-22T16:43:42 - `ad23f624-a3c7-4b2d-af9f-9177a61c7d00.jsonl`
+- `/ll:refine-issue` - 2026-04-22T16:37:25 - `fdea6d06-afca-4b59-bf37-4de8c4f35cbe.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `a4392751-fe1e-4762-b307-86db43c577b3.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T17:00:00 - `79aadd9e-32c2-44ea-be52-e9ec9bcff212.jsonl`
 
 ---
 

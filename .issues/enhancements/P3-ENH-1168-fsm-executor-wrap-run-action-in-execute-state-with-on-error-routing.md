@@ -211,9 +211,9 @@ Wrapped the two `_run_action` call sites in `_execute_state` (Branch B at line 4
 - Skipped optional wiring items 10 (ARCHITECTURE.md / API.md / LOOPS_GUIDE.md polish) and 11 (CLI renderers) — these are additive docs/UX and not on the correctness path.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-18T20:51:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c5bb8fb-3ecb-45f7-9cd0-f674b644124e.jsonl`
-- `/ll:confidence-check` - 2026-04-18T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bda158c4-d7b8-4d82-9b6a-d835faf6e66e.jsonl`
-- `/ll:wire-issue` - 2026-04-18T20:29:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab781961-a8c6-4915-8190-7c4fd3723052.jsonl`
-- `/ll:refine-issue` - 2026-04-18T20:16:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc00f492-dc6a-41a8-aaba-c4d008a3652e.jsonl`
+- `/ll:ready-issue` - 2026-04-18T20:51:32 - `5c5bb8fb-3ecb-45f7-9cd0-f674b644124e.jsonl`
+- `/ll:confidence-check` - 2026-04-18T21:00:00Z - `bda158c4-d7b8-4d82-9b6a-d835faf6e66e.jsonl`
+- `/ll:wire-issue` - 2026-04-18T20:29:46 - `ab781961-a8c6-4915-8190-7c4fd3723052.jsonl`
+- `/ll:refine-issue` - 2026-04-18T20:16:20 - `bc00f492-dc6a-41a8-aaba-c4d008a3652e.jsonl`
 - `/ll:capture-issue` - 2026-04-18T19:59:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4165baeb-7bcd-4b9f-99ed-2cf4c171d21e.jsonl`
-- `/ll:manage-issue` - 2026-04-18T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0acc05ca-0e56-4d0d-b243-afd1e09ac0f8.jsonl`
+- `/ll:manage-issue` - 2026-04-18T22:00:00Z - `0acc05ca-0e56-4d0d-b243-afd1e09ac0f8.jsonl`

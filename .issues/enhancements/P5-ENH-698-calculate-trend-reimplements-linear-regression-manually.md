@@ -76,11 +76,11 @@ Delegate slope computation to `statistics.linear_regression(range(n), values).sl
 `enhancement`, `code-quality`, `issue-history`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-18T02:05:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6618b8a4-13a3-47ea-9b53-ed66c3a5df37.jsonl`
-- `/ll:refine-issue` - 2026-03-18T01:39:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad925013-dacd-4dcc-85ed-4adc51ee8ed9.jsonl`
+- `/ll:ready-issue` - 2026-03-18T02:05:58 - `6618b8a4-13a3-47ea-9b53-ed66c3a5df37.jsonl`
+- `/ll:refine-issue` - 2026-03-18T01:39:58 - `ad925013-dacd-4dcc-85ed-4adc51ee8ed9.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
-- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
-- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ## Resolution
 

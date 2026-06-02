@@ -113,13 +113,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `hooks`, `bug`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-23T23:35:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/893efa4a-09c9-483d-9d94-69848cadde3e.jsonl`
-- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07aaa052-b8a9-4322-8503-8071eb36b3dd.jsonl`
-- `/ll:refine-issue` - 2026-03-23T22:58:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07aaa052-b8a9-4322-8503-8071eb36b3dd.jsonl`
-- `/ll:format-issue` - 2026-03-23T22:42:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9850963-0ae2-487e-9014-ade593329bce.jsonl`
+- `/ll:ready-issue` - 2026-03-23T23:35:43 - `893efa4a-09c9-483d-9d94-69848cadde3e.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `07aaa052-b8a9-4322-8503-8071eb36b3dd.jsonl`
+- `/ll:refine-issue` - 2026-03-23T22:58:23 - `07aaa052-b8a9-4322-8503-8071eb36b3dd.jsonl`
+- `/ll:format-issue` - 2026-03-23T22:42:21 - `c9850963-0ae2-487e-9014-ade593329bce.jsonl`
 
-- `/ll:capture-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e087610-8d6c-49f4-bacd-b3c561cb7252.jsonl`
-- `/ll:manage-issue` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:capture-issue` - 2026-03-23T00:00:00Z - `0e087610-8d6c-49f4-bacd-b3c561cb7252.jsonl`
+- `/ll:manage-issue` - 2026-03-23T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 

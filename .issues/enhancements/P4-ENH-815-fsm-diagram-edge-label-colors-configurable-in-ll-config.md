@@ -123,8 +123,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Updated 2 existing tests in `test_ll_loop_display.py` to include the new `edge_label_colors=None` kwarg
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-19T17:19:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e76feec2-af0b-4c9d-91eb-f940c2fac08f.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05c0fd42-591b-4a8e-b3b7-08165c6c2477.jsonl`
-- `/ll:refine-issue` - 2026-03-19T16:54:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c179030-87aa-47bd-98f0-dbd231f6dfc2.jsonl`
+- `/ll:ready-issue` - 2026-03-19T17:19:47 - `e76feec2-af0b-4c9d-91eb-f940c2fac08f.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `05c0fd42-591b-4a8e-b3b7-08165c6c2477.jsonl`
+- `/ll:refine-issue` - 2026-03-19T16:54:36 - `6c179030-87aa-47bd-98f0-dbd231f6dfc2.jsonl`
 - `/ll:capture-issue` - 2026-03-19T16:50:05Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e76feec2-af0b-4c9d-91eb-f940c2fac08f.jsonl`
+- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `e76feec2-af0b-4c9d-91eb-f940c2fac08f.jsonl`

@@ -177,10 +177,10 @@ Implemented `--handoff-threshold` CLI flag across `ll-auto`, `ll-parallel`, and 
 **Open** | Created: 2026-03-14 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-15T17:41:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22fff2b8-f15c-419e-923c-60ee873f1116.jsonl`
-- `/ll:refine-issue` - 2026-03-15T17:36:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b847e6a7-cb2f-485f-85b5-ecf0ee74077a.jsonl`
-- `/ll:confidence-check` - 2026-03-15T18:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75ab76d5-fcb5-4a04-bb61-499b62742b41.jsonl`
-- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f844b24a-2a77-4b56-8f27-99f2552bca01.jsonl`
-- `/ll:verify-issues` - 2026-03-15T17:27:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/12de81ba-1a5b-40f3-b61a-85f37645e9af.jsonl`
-- `/ll:format-issue` - 2026-03-15T16:11:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cc316fcb-f8d1-4845-aab1-5e94c57b6ed3.jsonl`
+- `/ll:ready-issue` - 2026-03-15T17:41:03 - `22fff2b8-f15c-419e-923c-60ee873f1116.jsonl`
+- `/ll:refine-issue` - 2026-03-15T17:36:11 - `b847e6a7-cb2f-485f-85b5-ecf0ee74077a.jsonl`
+- `/ll:confidence-check` - 2026-03-15T18:00:00Z - `75ab76d5-fcb5-4a04-bb61-499b62742b41.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `f844b24a-2a77-4b56-8f27-99f2552bca01.jsonl`
+- `/ll:verify-issues` - 2026-03-15T17:27:15 - `12de81ba-1a5b-40f3-b61a-85f37645e9af.jsonl`
+- `/ll:format-issue` - 2026-03-15T16:11:36 - `cc316fcb-f8d1-4845-aab1-5e94c57b6ed3.jsonl`
 - `/ll:capture-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55d3be20-340e-4a9d-9286-575d7dc448df.jsonl`

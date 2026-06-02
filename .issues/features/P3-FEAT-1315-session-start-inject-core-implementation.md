@@ -265,18 +265,18 @@ _Added by `/ll:confidence-check` on 2026-05-01_
 - **Source-field decision still open** (`decision_needed: true`): choose one of the 3 documented options (inject-all / compact-only / all-except-clear) before writing test case 6; document the chosen behavior as a script header comment
 
 ## Session Log
-- `/ll:verify-issues` - 2026-05-14T20:42:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-11T21:32:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/521f9c4d-aa09-4ad1-88fe-93826dacaa4a.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-05T02:27:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d743dae1-3278-4abd-a763-b23632abd3cb.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:decide-issue` - 2026-05-02T03:06:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6ed7bfa-f06a-46a2-b3b0-31a947ceaf0a.jsonl`
-- `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9dc6be6f-9ae9-42eb-8b36-2a19186357ee.jsonl`
-- `/ll:refine-issue` - 2026-05-02T02:58:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/af0b6a0d-8f6c-4311-b5e4-babea0309bc4.jsonl`
-- `/ll:wire-issue` - 2026-05-02T02:51:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9bfc87dc-2252-4640-b95c-d480acced029.jsonl`
-- `/ll:refine-issue` - 2026-05-02T02:46:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f78dca6-c355-4116-98b4-8735e5ca4fc8.jsonl`
-- `/ll:issue-size-review` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29f10429-7b81-4ece-9545-cd5da490acdd.jsonl`
-- `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9bfc87dc-2252-4640-b95c-d480acced029.jsonl`
+- `/ll:verify-issues` - 2026-05-14T20:42:05 - `08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-11T21:32:14 - `521f9c4d-aa09-4ad1-88fe-93826dacaa4a.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-05T02:27:43 - `d743dae1-3278-4abd-a763-b23632abd3cb.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:57 - `1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:21:16 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:decide-issue` - 2026-05-02T03:06:50 - `a6ed7bfa-f06a-46a2-b3b0-31a947ceaf0a.jsonl`
+- `/ll:confidence-check` - 2026-05-01T00:00:00 - `9dc6be6f-9ae9-42eb-8b36-2a19186357ee.jsonl`
+- `/ll:refine-issue` - 2026-05-02T02:58:02 - `af0b6a0d-8f6c-4311-b5e4-babea0309bc4.jsonl`
+- `/ll:wire-issue` - 2026-05-02T02:51:40 - `9bfc87dc-2252-4640-b95c-d480acced029.jsonl`
+- `/ll:refine-issue` - 2026-05-02T02:46:34 - `8f78dca6-c355-4116-98b4-8735e5ca4fc8.jsonl`
+- `/ll:issue-size-review` - 2026-05-01T00:00:00 - `29f10429-7b81-4ece-9545-cd5da490acdd.jsonl`
+- `/ll:confidence-check` - 2026-05-01T00:00:00 - `9bfc87dc-2252-4640-b95c-d480acced029.jsonl`
 
 ## Blocks
 

@@ -613,25 +613,25 @@ Related: FEAT-1121 (program.md convention) — nice-to-have entry point; not a h
 Related: ENH-1122 (frozen-boundary markers) — guardrail that becomes useful once this loop exists.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-24T20:46:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0fba88a-2c81-43e6-a5ae-62db66bcbacf.jsonl`
-- `/ll:ready-issue` - 2026-04-24T20:37:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/acf4b7da-c497-4830-86b1-7e9c5a8f857f.jsonl`
-- `/ll:confidence-check` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00728f59-db70-4cfa-8e4f-777d3b228f0d.jsonl`
-- `/ll:refine-issue` - 2026-04-24T20:28:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7ed6f36-d7d3-48ef-81c1-7f05910e63b1.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-24T20:46:37 - `f0fba88a-2c81-43e6-a5ae-62db66bcbacf.jsonl`
+- `/ll:ready-issue` - 2026-04-24T20:37:34 - `acf4b7da-c497-4830-86b1-7e9c5a8f857f.jsonl`
+- `/ll:confidence-check` - 2026-04-24T00:00:00 - `00728f59-db70-4cfa-8e4f-777d3b228f0d.jsonl`
+- `/ll:refine-issue` - 2026-04-24T20:28:39 - `e7ed6f36-d7d3-48ef-81c1-7f05910e63b1.jsonl`
 - `manual design review` - 2026-04-24T00:00:00 - Pass 3 corrections: `apply` state, `init_prev`, two trajectory states, `context:` defaults, `baseline_score` routing, stop-on-first-stall decision, `tolerance` on gate, Step 1 naming fix
-- `/ll:ready-issue` - 2026-04-24T19:52:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fd6b77b-30ba-416d-9b65-f83eb1c8f249.jsonl`
-- `/ll:confidence-check` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b62e23ea-a883-4713-8d17-abc2c3993dec.jsonl`
-- `/ll:refine-issue` - 2026-04-24T19:42:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/178c621a-952b-461d-8ff0-0d865bd6d928.jsonl`
-- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
-- `/ll:ready-issue` - 2026-04-22T02:14:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ed16b00-515e-4758-a2d9-74c23897b796.jsonl`
-- `/ll:ready-issue` - 2026-04-22T01:59:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ce1718d-d54e-4865-8898-1a6b65a7f382.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/338c071f-3b53-4a00-b600-f0c19c9a42ba.jsonl`
-- `/ll:refine-issue` - 2026-04-22T01:33:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdc49cbb-e9c2-4adc-a9db-bbbc98cdb724.jsonl`
-- `/ll:ready-issue` - 2026-04-21T23:26:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c3c7599-51fd-4437-8dcc-1843715b82b7.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca7bea0a-41dc-42cd-8f16-e1a5bb35f04b.jsonl`
-- `/ll:wire-issue` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:refine-issue` - 2026-04-21T23:15:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17a43e35-c912-41c4-b189-d47f33dc1242.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
-- `/ll:capture-issue` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
+- `/ll:ready-issue` - 2026-04-24T19:52:50 - `8fd6b77b-30ba-416d-9b65-f83eb1c8f249.jsonl`
+- `/ll:confidence-check` - 2026-04-24T00:00:00 - `b62e23ea-a883-4713-8d17-abc2c3993dec.jsonl`
+- `/ll:refine-issue` - 2026-04-24T19:42:31 - `178c621a-952b-461d-8ff0-0d865bd6d928.jsonl`
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+- `/ll:ready-issue` - 2026-04-22T02:14:27 - `2ed16b00-515e-4758-a2d9-74c23897b796.jsonl`
+- `/ll:ready-issue` - 2026-04-22T01:59:25 - `1ce1718d-d54e-4865-8898-1a6b65a7f382.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `338c071f-3b53-4a00-b600-f0c19c9a42ba.jsonl`
+- `/ll:refine-issue` - 2026-04-22T01:33:06 - `bdc49cbb-e9c2-4adc-a9db-bbbc98cdb724.jsonl`
+- `/ll:ready-issue` - 2026-04-21T23:26:54 - `7c3c7599-51fd-4437-8dcc-1843715b82b7.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `ca7bea0a-41dc-42cd-8f16-e1a5bb35f04b.jsonl`
+- `/ll:wire-issue` - 2026-04-21T00:00:00 - `current.jsonl`
+- `/ll:refine-issue` - 2026-04-21T23:15:07 - `17a43e35-c912-41c4-b189-d47f33dc1242.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-04-19T01:16:14 - `9c7ed14d-9621-459d-9f93-384968b2e6f6.jsonl`
+- `/ll:capture-issue` - 2026-04-16T00:00:00Z - `2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
 
 ---
 

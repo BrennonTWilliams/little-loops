@@ -232,12 +232,12 @@ Files changed:
 - `docs/reference/CONFIGURATION.md`, `docs/reference/API.md`, `docs/ARCHITECTURE.md`, `docs/reference/EVENT-SCHEMA.md`, `CHANGELOG.md` — documentation
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-05T04:46:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa034e27-eebe-4824-b0ae-28522438cc48.jsonl`
-- `/ll:confidence-check` - 2026-05-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d356e53-934a-463f-a7f9-4f1e12929b26.jsonl`
-- `/ll:wire-issue` - 2026-05-05T04:41:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e55127d-9324-4b9e-a00b-c05dfaa028d3.jsonl`
-- `/ll:refine-issue` - 2026-05-05T04:36:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bd43be8a-d81e-4636-b354-4bdb18137e72.jsonl`
-- `/ll:format-issue` - 2026-05-05T04:33:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9108e3ec-477f-44e6-a619-df7f8e94ace4.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:ready-issue` - 2026-05-05T04:46:22 - `fa034e27-eebe-4824-b0ae-28522438cc48.jsonl`
+- `/ll:confidence-check` - 2026-05-04T00:00:00 - `8d356e53-934a-463f-a7f9-4f1e12929b26.jsonl`
+- `/ll:wire-issue` - 2026-05-05T04:41:27 - `1e55127d-9324-4b9e-a00b-c05dfaa028d3.jsonl`
+- `/ll:refine-issue` - 2026-05-05T04:36:39 - `bd43be8a-d81e-4636-b354-4bdb18137e72.jsonl`
+- `/ll:format-issue` - 2026-05-05T04:33:11 - `9108e3ec-477f-44e6-a619-df7f8e94ace4.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:21:16 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
 
 - Split from FEAT-918 - 2026-05-01
-- `/ll:manage-issue` - 2026-05-05T05:01:40Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:manage-issue` - 2026-05-05T05:01:40Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

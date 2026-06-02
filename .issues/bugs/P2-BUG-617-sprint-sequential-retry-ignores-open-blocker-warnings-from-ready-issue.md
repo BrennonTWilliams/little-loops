@@ -185,10 +185,10 @@ Completed
 - ~~BUG-616~~ ✓ RESOLVED — BUG-616 (`ready-issue` BLOCKED verdict) is now in completed/
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec3d1ef8-aeec-4ccb-bd08-ffee1f74e5ef.jsonl`
+- `/ll:capture-issue` - 2026-03-06T00:00:00Z - `ec3d1ef8-aeec-4ccb-bd08-ffee1f74e5ef.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID, DEP_ISSUES: added missing Blocks backlink for BUG-616
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd27d8a7-ef12-4ceb-87ee-8fff7613ffb7.jsonl`
-- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
 - `/ll:refine-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84d93c18-f729-4cd9-b9c3-7999ecffeae1.jsonl`
-- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5de8f91-24b0-4c35-b012-62e09852b76f.jsonl`
-- `/ll:manage-issue` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec3d1ef8-aeec-4ccb-bd08-ffee1f74e5ef.jsonl`
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `f5de8f91-24b0-4c35-b012-62e09852b76f.jsonl`
+- `/ll:manage-issue` - 2026-03-06T00:00:00Z - `ec3d1ef8-aeec-4ccb-bd08-ffee1f74e5ef.jsonl`

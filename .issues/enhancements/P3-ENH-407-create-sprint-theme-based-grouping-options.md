@@ -126,8 +126,8 @@ TBD - requires investigation
 - Lint: PASS
 
 ## Session Log
-- `/ll:capture-issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc5517c3-2785-4593-a080-7f98d0e59836.jsonl`
-- `/ll:manage-issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ea9ac4f-8c05-4d6f-98c3-8e1abe0a4fd8.jsonl`
+- `/ll:capture-issue` - 2026-02-13T00:00:00Z - `dc5517c3-2785-4593-a080-7f98d0e59836.jsonl`
+- `/ll:manage-issue` - 2026-02-13T00:00:00Z - `0ea9ac4f-8c05-4d6f-98c3-8e1abe0a4fd8.jsonl`
 
 ---
 

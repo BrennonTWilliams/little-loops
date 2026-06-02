@@ -294,14 +294,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 `bug`, `fsm`, `evaluator`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-30T23:10:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37dc0fa2-69de-4c73-8606-df616796b8d7.jsonl`
-- `/ll:decide-issue` - 2026-05-30T23:06:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbda27d0-eb96-41bf-84ef-12db76d68753.jsonl`
-- `/ll:format-issue` - 2026-05-30T22:38:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb689b57-45bf-4714-8ea8-266ad6b30908.jsonl`
+- `/ll:ready-issue` - 2026-05-30T23:10:15 - `37dc0fa2-69de-4c73-8606-df616796b8d7.jsonl`
+- `/ll:decide-issue` - 2026-05-30T23:06:03 - `dbda27d0-eb96-41bf-84ef-12db76d68753.jsonl`
+- `/ll:format-issue` - 2026-05-30T22:38:46 - `fb689b57-45bf-4714-8ea8-266ad6b30908.jsonl`
 - `/ll:capture-issue` - 2026-05-30T22:06:48Z - this session
-- `/ll:refine-issue` - 2026-05-30T22:52:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e8a5f881-12a5-4d61-b54a-da5f2e99c84f.jsonl`
-- `/ll:confidence-check` - 2026-05-30T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0614b9f-d2aa-497b-beeb-c56b629c3c48.jsonl`
-- `/ll:confidence-check` - 2026-05-30T23:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9adc7ab4-a19f-48cf-b379-93ab04f802a5.jsonl`
-- `/ll:manage-issue` - 2026-05-30T23:18:03Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5ae2df2-a9c3-4666-9be2-38ba725cda75.jsonl`
+- `/ll:refine-issue` - 2026-05-30T22:52:00 - `e8a5f881-12a5-4d61-b54a-da5f2e99c84f.jsonl`
+- `/ll:confidence-check` - 2026-05-30T23:00:00 - `c0614b9f-d2aa-497b-beeb-c56b629c3c48.jsonl`
+- `/ll:confidence-check` - 2026-05-30T23:10:00 - `9adc7ab4-a19f-48cf-b379-93ab04f802a5.jsonl`
+- `/ll:manage-issue` - 2026-05-30T23:18:03Z - `f5ae2df2-a9c3-4666-9be2-38ba725cda75.jsonl`
 
 ## Resolution
 

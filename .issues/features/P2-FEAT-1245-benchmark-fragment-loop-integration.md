@@ -167,13 +167,13 @@ Depends on: FEAT-1244 (benchmark fragment core) — must be merged first.
 Enables: FEAT-1120 (harness-optimize loop) — provides the scoring primitive that loop needs.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-24T19:03:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de822c98-36ae-41a8-bc64-a71ac2da3d81.jsonl`
-- `/ll:confidence-check` - 2026-04-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:wire-issue` - 2026-04-24T18:49:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e40ac57-7a53-41ed-8096-65a22b4710a4.jsonl`
-- `/ll:verify-issues` - 2026-04-24T03:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
-- `/ll:refine-issue` - 2026-04-23T16:29:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e16f5a4-2bb7-48c1-999f-ab6d54465258.jsonl`
-- `/ll:format-issue` - 2026-04-23T16:19:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7c42afa-de19-4417-8d4e-005c53340f64.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/acc1b9ba-37ad-4355-95fb-ff7907feebf3.jsonl`
+- `/ll:ready-issue` - 2026-04-24T19:03:21 - `de822c98-36ae-41a8-bc64-a71ac2da3d81.jsonl`
+- `/ll:confidence-check` - 2026-04-24T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:wire-issue` - 2026-04-24T18:49:50 - `5e40ac57-7a53-41ed-8096-65a22b4710a4.jsonl`
+- `/ll:verify-issues` - 2026-04-24T03:02:16 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+- `/ll:refine-issue` - 2026-04-23T16:29:29 - `7e16f5a4-2bb7-48c1-999f-ab6d54465258.jsonl`
+- `/ll:format-issue` - 2026-04-23T16:19:51 - `e7c42afa-de19-4417-8d4e-005c53340f64.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00Z - `acc1b9ba-37ad-4355-95fb-ff7907feebf3.jsonl`
 
 ---
 

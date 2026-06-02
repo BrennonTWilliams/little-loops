@@ -195,9 +195,9 @@ Implemented all steps:
 - Added two new `TestMainDoctor` tests (all_enabled, file_events_disabled); all 8554 tests pass
 
 ## Session Log
-- `/ll:manage-issue` - 2026-06-01T07:15:09Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53293d84-c2d0-44c2-bd40-9387a21b4f56.jsonl`
-- `/ll:ready-issue` - 2026-06-01T07:07:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f496ef9f-9121-4abd-a242-6dad047d86c2.jsonl`
-- `/ll:wire-issue` - 2026-06-01T07:03:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5dcfb3ab-ceb2-47de-9a9b-ae04e00f6492.jsonl`
-- `/ll:refine-issue` - 2026-06-01T06:57:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9851cae-ee57-46f2-9816-321c3b81e6ee.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1325861-5c8a-40ab-90ee-ac4727f376b5.jsonl`
-- `/ll:confidence-check` - 2026-06-01T08:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c9e9161-3ff2-499f-87e7-06318cd1ec80.jsonl`
+- `/ll:manage-issue` - 2026-06-01T07:15:09Z - `53293d84-c2d0-44c2-bd40-9387a21b4f56.jsonl`
+- `/ll:ready-issue` - 2026-06-01T07:07:15 - `f496ef9f-9121-4abd-a242-6dad047d86c2.jsonl`
+- `/ll:wire-issue` - 2026-06-01T07:03:02 - `5dcfb3ab-ceb2-47de-9a9b-ae04e00f6492.jsonl`
+- `/ll:refine-issue` - 2026-06-01T06:57:07 - `e9851cae-ee57-46f2-9816-321c3b81e6ee.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `c1325861-5c8a-40ab-90ee-ac4727f376b5.jsonl`
+- `/ll:confidence-check` - 2026-06-01T08:00:00 - `6c9e9161-3ff2-499f-87e7-06318cd1ec80.jsonl`

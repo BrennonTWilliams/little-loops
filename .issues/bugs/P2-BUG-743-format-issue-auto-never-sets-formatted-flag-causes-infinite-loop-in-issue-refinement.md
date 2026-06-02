@@ -147,12 +147,12 @@ A new `ll-issues append-session-log` CLI subcommand is **not** needed; a `python
 Regression test added: `TestRefineStatusFormatColumn::test_fmt_checkmark_after_append_session_log_entry` in `scripts/tests/test_refine_status.py`.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-14T00:00:00+00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86422cd6-ac6a-4b1c-b13b-fae2af2adb05.jsonl`
-- `/ll:confidence-check` - 2026-03-14T20:03:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f16e4a20-5873-4d7d-9a4a-82d5a5d37c9a.jsonl`
-- `/ll:ready-issue` - 2026-03-14T00:00:00+00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f16e4a20-5873-4d7d-9a4a-82d5a5d37c9a.jsonl`
+- `/ll:ready-issue` - 2026-03-14T00:00:00+00:00 - `86422cd6-ac6a-4b1c-b13b-fae2af2adb05.jsonl`
+- `/ll:confidence-check` - 2026-03-14T20:03:00 - `f16e4a20-5873-4d7d-9a4a-82d5a5d37c9a.jsonl`
+- `/ll:ready-issue` - 2026-03-14T00:00:00+00:00 - `f16e4a20-5873-4d7d-9a4a-82d5a5d37c9a.jsonl`
 - `/ll:format-issue` - 2026-03-14T00:00:00+00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0663da45-6636-4175-96f3-89f820bfc0cb.jsonl`
 - `/ll:refine-issue` - 2026-03-14T00:00:00+00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:manage-issue` - 2026-03-14T00:00:00+00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:manage-issue` - 2026-03-14T00:00:00+00:00 - `current.jsonl`
 
 ## Status
 

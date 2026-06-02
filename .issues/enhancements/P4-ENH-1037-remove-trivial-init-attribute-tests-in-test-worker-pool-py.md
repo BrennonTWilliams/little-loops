@@ -143,10 +143,10 @@ Remaining 90 tests in `test_worker_pool.py` all pass.
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-11T21:34:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74ff6ca2-a24a-4301-99f9-c55c2d41b3ac.jsonl`
-- `/ll:wire-issue` - 2026-04-11T20:12:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a526cc2e-06c1-44e3-add0-5ba3cb7b1190.jsonl`
-- `/ll:refine-issue` - 2026-04-11T20:08:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2f0bc40-5233-4c1b-a17d-6bd5566483a9.jsonl`
-- `/ll:format-issue` - 2026-04-11T20:03:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da64ad23-684f-4724-8a57-4063931ce01c.jsonl`
+- `/ll:ready-issue` - 2026-04-11T21:34:45 - `74ff6ca2-a24a-4301-99f9-c55c2d41b3ac.jsonl`
+- `/ll:wire-issue` - 2026-04-11T20:12:25 - `a526cc2e-06c1-44e3-add0-5ba3cb7b1190.jsonl`
+- `/ll:refine-issue` - 2026-04-11T20:08:05 - `d2f0bc40-5233-4c1b-a17d-6bd5566483a9.jsonl`
+- `/ll:format-issue` - 2026-04-11T20:03:16 - `da64ad23-684f-4724-8a57-4063931ce01c.jsonl`
 - `/ll:capture-issue` - 2026-04-11T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9439fb7-57cc-417c-9114-6eea87ed8705.jsonl`
-- `/ll:confidence-check` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c5c369e-95b9-4fe0-a53f-b4bd65093912.jsonl`
-- `/ll:manage-issue` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00Z - `0c5c369e-95b9-4fe0-a53f-b4bd65093912.jsonl`
+- `/ll:manage-issue` - 2026-04-11T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`

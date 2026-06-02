@@ -210,9 +210,9 @@ _Added by `/ll:confidence-check` on 2026-05-27_
 - FEAT-1764: `ll-loop monitor` — Implement `cmd_monitor` subcommand with state polling and log tail
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-27T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d019e6bc-bb14-4867-a8ae-4b748fc8e055.jsonl`
-- `/ll:confidence-check` - 2026-05-27T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad4714ef-b93d-4988-81dd-ef19e6fce315.jsonl`
-- `/ll:wire-issue` - 2026-05-28T04:10:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe8ebcef-7f9f-46d0-8e30-6d14cdc93e1d.jsonl`
-- `/ll:refine-issue` - 2026-05-28T04:04:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e4c4580-ff53-491f-b559-91a0d8e16e9f.jsonl`
-- `/ll:format-issue` - 2026-05-28T03:58:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34d7caed-10b0-415b-91c0-c8c95443f1f9.jsonl`
+- `/ll:issue-size-review` - 2026-05-27T00:00:00 - `d019e6bc-bb14-4867-a8ae-4b748fc8e055.jsonl`
+- `/ll:confidence-check` - 2026-05-27T00:00:00 - `ad4714ef-b93d-4988-81dd-ef19e6fce315.jsonl`
+- `/ll:wire-issue` - 2026-05-28T04:10:11 - `fe8ebcef-7f9f-46d0-8e30-6d14cdc93e1d.jsonl`
+- `/ll:refine-issue` - 2026-05-28T04:04:33 - `9e4c4580-ff53-491f-b559-91a0d8e16e9f.jsonl`
+- `/ll:format-issue` - 2026-05-28T03:58:13 - `34d7caed-10b0-415b-91c0-c8c95443f1f9.jsonl`
 - `/ll:capture-issue` - 2026-05-28T03:46:53Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2bcb218-a171-4a8f-92ee-aeaf8000e6a2.jsonl`

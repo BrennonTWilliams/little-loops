@@ -216,11 +216,11 @@ Add the single-issue filter **between line 247 and line 249** (after `find_issue
 `feature`, `cli`, `ll-issues`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-24T18:24:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ace4e01f-4c8d-4421-be0c-70020100086c.jsonl`
-- `/ll:refine-issue` - 2026-03-24T18:13:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee327176-76a1-4c19-ab0a-e4d93de266c2.jsonl`
-- `/ll:capture-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/61ffe931-e9d1-47a8-a026-62fbb9ca756f.jsonl`
-- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/134f1b03-a3a9-4307-be17-0dfb2df69a25.jsonl`
-- `/ll:manage-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-24T18:24:10 - `ace4e01f-4c8d-4421-be0c-70020100086c.jsonl`
+- `/ll:refine-issue` - 2026-03-24T18:13:59 - `ee327176-76a1-4c19-ab0a-e4d93de266c2.jsonl`
+- `/ll:capture-issue` - 2026-03-24T00:00:00Z - `61ffe931-e9d1-47a8-a026-62fbb9ca756f.jsonl`
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `134f1b03-a3a9-4307-be17-0dfb2df69a25.jsonl`
+- `/ll:manage-issue` - 2026-03-24T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 

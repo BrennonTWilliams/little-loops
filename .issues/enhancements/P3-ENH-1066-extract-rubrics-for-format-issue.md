@@ -114,4 +114,4 @@ Read `rubric.md` (this companion file) now — or `.ll/rubrics/format-issue.md` 
 **Open** | Created: 2026-04-12 | Priority: P3
 
 ## Session Log
-- `/ll:capture-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8e3e6bb-79d7-4b14-9468-7b82778befaa.jsonl`
+- `/ll:capture-issue` - 2026-04-12T00:00:00Z - `c8e3e6bb-79d7-4b14-9468-7b82778befaa.jsonl`

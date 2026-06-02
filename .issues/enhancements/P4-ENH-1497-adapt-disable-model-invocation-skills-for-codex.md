@@ -339,12 +339,12 @@ _Added by `/ll:confidence-check` on 2026-05-16_
 - No code changes to `adapt_skills_for_codex.py` (adapter behavior already correct).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-16T13:43:24Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-16T13:39:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bd499936-ee53-457e-84de-a278dc0c82f9.jsonl`
-- `/ll:confidence-check` - 2026-05-16T14:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bd8fb329-50e2-41f7-8c2e-066d0838e232.jsonl`
-- `/ll:decide-issue` - 2026-05-16T13:34:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/138ab84a-9284-4e10-9591-472e1e132e88.jsonl`
-- `/ll:confidence-check` - 2026-05-16T13:30:24Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b02f1089-a7f9-4b74-9715-8b0939c267e6.jsonl`
-- `/ll:wire-issue` - 2026-05-16T13:26:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/027bd325-a58f-4ab8-9b27-c48523dba115.jsonl`
-- `/ll:refine-issue` - 2026-05-16T13:21:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d491efd-1e9f-48e7-91e7-1d0390a23fbc.jsonl`
-- `/ll:format-issue` - 2026-05-16T13:15:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01820f79-a48a-417c-8b0a-1fede13c09b1.jsonl`
-- `/ll:capture-issue` - 2026-05-16T13:04:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f112cdc-ed18-410c-85e1-0d7cc45aa863.jsonl`
+- `/ll:manage-issue` - 2026-05-16T13:43:24Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-16T13:39:44 - `bd499936-ee53-457e-84de-a278dc0c82f9.jsonl`
+- `/ll:confidence-check` - 2026-05-16T14:00:00Z - `bd8fb329-50e2-41f7-8c2e-066d0838e232.jsonl`
+- `/ll:decide-issue` - 2026-05-16T13:34:18 - `138ab84a-9284-4e10-9591-472e1e132e88.jsonl`
+- `/ll:confidence-check` - 2026-05-16T13:30:24Z - `b02f1089-a7f9-4b74-9715-8b0939c267e6.jsonl`
+- `/ll:wire-issue` - 2026-05-16T13:26:17 - `027bd325-a58f-4ab8-9b27-c48523dba115.jsonl`
+- `/ll:refine-issue` - 2026-05-16T13:21:45 - `9d491efd-1e9f-48e7-91e7-1d0390a23fbc.jsonl`
+- `/ll:format-issue` - 2026-05-16T13:15:33 - `01820f79-a48a-417c-8b0a-1fede13c09b1.jsonl`
+- `/ll:capture-issue` - 2026-05-16T13:04:12Z - `0f112cdc-ed18-410c-85e1-0d7cc45aa863.jsonl`

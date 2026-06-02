@@ -65,6 +65,6 @@ Removed the Paradigm Compilation section from `docs/generalized-fsm-loop.md`:
 - Renumbered Testing Strategy subsections 2→1, 3→2, 4→3, 5→4
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-21T20:55:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cbe56b19-9356-41bb-9eae-5ef143a22109.jsonl`
+- `/ll:ready-issue` - 2026-03-21T20:55:54 - `cbe56b19-9356-41bb-9eae-5ef143a22109.jsonl`
 - `/ll:manage-issue bug fix BUG-854` - 2026-03-21
 

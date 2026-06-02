@@ -106,8 +106,8 @@ This is the same pattern already used by `capture-issue` when creating issues.
 - **Date**: 2026-03-11
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f09a701-d8cd-451a-aa37-9972ec066ddc.jsonl`
-- `/ll:verify-issues` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e2050bf-957a-4055-a5ee-c894a143d00a.jsonl`
+- `/ll:capture-issue` - 2026-03-11 - `6f09a701-d8cd-451a-aa37-9972ec066ddc.jsonl`
+- `/ll:verify-issues` - 2026-03-11T00:00:00Z - `3e2050bf-957a-4055-a5ee-c894a143d00a.jsonl`
 
 ---
 ## Status

@@ -180,11 +180,11 @@ N/A - no public API changes; new `_validate_harness_multimodal_evaluator_blind_s
 `validation`, `loop-authoring`, `harness`, `captured`
 
 ## Session Log
-- `/ll:wire-issue` - 2026-05-31T00:43:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a4c5ef3-be36-467b-b9a4-1a846642f59b.jsonl`
-- `/ll:format-issue` - 2026-05-30T22:47:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/161b9a00-98fc-4a06-9eec-25494c352734.jsonl`
-- `/ll:capture-issue` - 2026-05-30T22:43:51Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a21d14e7-ea27-437a-b7be-dfdc28dd7d84.jsonl`
-- `/ll:refine-issue` - 2026-05-30T19:35:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df621d71-875d-43c5-95c3-21b12295b16b.jsonl`
-- `/ll:manage-issue` - 2026-05-31T00:52:16Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b230c9dd-59f7-4047-ad66-3eb247b8ffa4.jsonl`
+- `/ll:wire-issue` - 2026-05-31T00:43:18 - `9a4c5ef3-be36-467b-b9a4-1a846642f59b.jsonl`
+- `/ll:format-issue` - 2026-05-30T22:47:06 - `161b9a00-98fc-4a06-9eec-25494c352734.jsonl`
+- `/ll:capture-issue` - 2026-05-30T22:43:51Z - `a21d14e7-ea27-437a-b7be-dfdc28dd7d84.jsonl`
+- `/ll:refine-issue` - 2026-05-30T19:35:00 - `df621d71-875d-43c5-95c3-21b12295b16b.jsonl`
+- `/ll:manage-issue` - 2026-05-31T00:52:16Z - `b230c9dd-59f7-4047-ad66-3eb247b8ffa4.jsonl`
 
 ## Resolution
 

@@ -124,12 +124,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `feature`, `cli`, `ll-loop`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-15T16:04:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7756d1b-485d-458f-b460-d73ffbb35470.jsonl`
-- `/ll:verify-issues` - 2026-03-15T15:13:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eaa8d229-0594-4366-bff7-6d5160769e5e.jsonl`
-- `/ll:refine-issue` - 2026-03-15T15:11:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47847ab1-3690-456f-8bbd-e8c2d6719032.jsonl`
+- `/ll:ready-issue` - 2026-03-15T16:04:09 - `b7756d1b-485d-458f-b460-d73ffbb35470.jsonl`
+- `/ll:verify-issues` - 2026-03-15T15:13:29 - `eaa8d229-0594-4366-bff7-6d5160769e5e.jsonl`
+- `/ll:refine-issue` - 2026-03-15T15:11:54 - `47847ab1-3690-456f-8bbd-e8c2d6719032.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
-- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
-- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

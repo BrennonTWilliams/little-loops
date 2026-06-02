@@ -247,9 +247,9 @@ Implemented all type definitions as specified. Three Protocol classes (`Intercep
 
 ## Session Log
 - `/ll:manage-issue` - 2026-04-07T00:00:00 - implemented FEAT-983 — extension protocol and type definitions
-- `/ll:ready-issue` - 2026-04-08T02:16:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de2f2afe-3578-4944-87f3-ea4946505e3f.jsonl`
-- `/ll:confidence-check` - 2026-04-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fed4a5e7-1236-4d5f-b7d7-a7de0154ff53.jsonl`
-- `/ll:wire-issue` - 2026-04-07T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/memory/MEMORY.md`
-- `/ll:refine-issue` - 2026-04-07T23:49:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f7a07ce-ed95-46ff-8782-94f65304e6aa.jsonl`
-- `/ll:format-issue` - 2026-04-07T23:46:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b13c9144-bc31-4872-936b-dae656e662c4.jsonl`
-- `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b2501d7-f66b-4a19-80a6-6fecea4283e8.jsonl`
+- `/ll:ready-issue` - 2026-04-08T02:16:01 - `de2f2afe-3578-4944-87f3-ea4946505e3f.jsonl`
+- `/ll:confidence-check` - 2026-04-07T00:00:00 - `fed4a5e7-1236-4d5f-b7d7-a7de0154ff53.jsonl`
+- `/ll:wire-issue` - 2026-04-07T00:00:00 - `MEMORY.md`
+- `/ll:refine-issue` - 2026-04-07T23:49:42 - `8f7a07ce-ed95-46ff-8782-94f65304e6aa.jsonl`
+- `/ll:format-issue` - 2026-04-07T23:46:09 - `b13c9144-bc31-4872-936b-dae656e662c4.jsonl`
+- `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `6b2501d7-f66b-4a19-80a6-6fecea4283e8.jsonl`

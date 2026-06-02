@@ -139,7 +139,7 @@ for dir_path in self.parallel_config.worktree_link_dirs:
 `bug`, `parallel`, `worktree`, `captured`
 
 ## Session Log
-- `/ll:capture-issue` - 2026-02-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a259c9d-a95d-43c9-b74a-d743f4341654.jsonl`
+- `/ll:capture-issue` - 2026-02-15T00:00:00Z - `3a259c9d-a95d-43c9-b74a-d743f4341654.jsonl`
 
 ---
 

@@ -226,10 +226,10 @@ _Updated by `/ll:confidence-check` on 2026-05-24 (re-run after refine + wire pas
 - ENH-1691: Wire Issue Lifecycle EventBus to SQLiteTransport
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/898f7f18-27df-4e97-81bc-d975051952e8.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d9dd53cb-1947-49f3-931d-c84cd8f105dc.jsonl`
-- `/ll:confidence-check` - 2026-05-24T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f9a6182-6d7f-455d-b3ae-341b705fa79b.jsonl`
-- `/ll:wire-issue` - 2026-05-25T00:03:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08c5063a-9c10-4456-8e64-60f69ee7a67b.jsonl`
-- `/ll:refine-issue` - 2026-05-24T23:57:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3421ff4b-05fc-4e80-bb1d-cb7ee266a185.jsonl`
-- `/ll:format-issue` - 2026-05-24T22:15:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7f2a1ff-6ab8-498b-a8bf-37c6705ab902.jsonl`
-- `/ll:capture-issue` - 2026-05-24T22:13:08Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a11f6dae-ce13-409d-bf3c-b60b0ed7aabe.jsonl`
+- `/ll:issue-size-review` - 2026-05-24T00:00:00Z - `898f7f18-27df-4e97-81bc-d975051952e8.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `d9dd53cb-1947-49f3-931d-c84cd8f105dc.jsonl`
+- `/ll:confidence-check` - 2026-05-24T22:30:00Z - `9f9a6182-6d7f-455d-b3ae-341b705fa79b.jsonl`
+- `/ll:wire-issue` - 2026-05-25T00:03:45 - `08c5063a-9c10-4456-8e64-60f69ee7a67b.jsonl`
+- `/ll:refine-issue` - 2026-05-24T23:57:44 - `3421ff4b-05fc-4e80-bb1d-cb7ee266a185.jsonl`
+- `/ll:format-issue` - 2026-05-24T22:15:49 - `e7f2a1ff-6ab8-498b-a8bf-37c6705ab902.jsonl`
+- `/ll:capture-issue` - 2026-05-24T22:13:08Z - `a11f6dae-ce13-409d-bf3c-b60b0ed7aabe.jsonl`

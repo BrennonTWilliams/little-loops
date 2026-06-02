@@ -119,7 +119,7 @@ All 10 documented issues resolved:
 **Completed** | Created: 2026-03-17 | Resolved: 2026-03-18 | Priority: P1
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:ready-issue` - 2026-03-18T15:47:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/25dfcda4-185b-4a88-90c8-6899e0f2e16f.jsonl`
-- `/ll:format-issue` - 2026-03-18T01:50:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b830ec36-9580-485f-8f7c-92ded037ca03.jsonl`
-- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`
+- `/ll:manage-issue` - 2026-03-18T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-18T15:47:16 - `25dfcda4-185b-4a88-90c8-6899e0f2e16f.jsonl`
+- `/ll:format-issue` - 2026-03-18T01:50:57 - `b830ec36-9580-485f-8f7c-92ded037ca03.jsonl`
+- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`

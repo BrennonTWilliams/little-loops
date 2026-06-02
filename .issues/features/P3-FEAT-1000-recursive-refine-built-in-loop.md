@@ -266,10 +266,10 @@ Implemented `scripts/little_loops/loops/recursive-refine.yaml` as a new built-in
 - No CLI changes required — auto-discovered by `get_builtin_loops_dir()`.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-08T19:10:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d012fa2a-7ea6-482a-b4ef-e4db28d0394a.jsonl`
-- `/ll:confidence-check` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aac519d4-dcc3-4649-920c-575683041b44.jsonl`
-- `/ll:wire-issue` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:refine-issue` - 2026-04-08T18:55:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/451177be-c4b4-4a6a-8b1e-a1c3c0bc05ec.jsonl`
-- `/ll:format-issue` - 2026-04-08T18:47:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/02736c69-81a6-4e9d-b322-20da085cbdcf.jsonl`
+- `/ll:ready-issue` - 2026-04-08T19:10:01 - `d012fa2a-7ea6-482a-b4ef-e4db28d0394a.jsonl`
+- `/ll:confidence-check` - 2026-04-08T00:00:00 - `aac519d4-dcc3-4649-920c-575683041b44.jsonl`
+- `/ll:wire-issue` - 2026-04-08T00:00:00
+- `/ll:refine-issue` - 2026-04-08T18:55:17 - `451177be-c4b4-4a6a-8b1e-a1c3c0bc05ec.jsonl`
+- `/ll:format-issue` - 2026-04-08T18:47:13 - `02736c69-81a6-4e9d-b322-20da085cbdcf.jsonl`
 - `/ll:capture-issue` - 2026-04-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/77c66dec-3548-4e36-88fe-129cc8627555.jsonl`
-- `/ll:manage-issue` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:manage-issue` - 2026-04-08T00:00:00

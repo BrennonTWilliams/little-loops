@@ -255,11 +255,11 @@ _Added by `/ll:refine-issue` — concrete implementation references:_
 
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-24T20:52:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
-- `/ll:ready-issue` - 2026-05-24T20:49:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e16c4fca-3245-4039-9073-2b4646700758.jsonl`
-- `/ll:confidence-check` - 2026-05-24T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e418c46-c569-4a21-b915-a182722191d8.jsonl`
-- `/ll:decide-issue` - 2026-05-24T20:44:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ebfda8b1-7c6f-4402-a680-0e45fdae0827.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/30e56638-d3ca-460d-97df-a2c95bf21e50.jsonl`
-- `/ll:wire-issue` - 2026-05-24T20:35:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c49ced8-0239-42af-aa72-2f4ee1072abd.jsonl`
-- `/ll:refine-issue` - 2026-05-24T20:29:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/054e1e86-e3ce-4820-80f3-5777ba9724b7.jsonl`
-- `/ll:format-issue` - 2026-05-24T20:20:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a3f52d53-d0d2-4bb3-977c-f1151d93ac50.jsonl`
+- `/ll:manage-issue` - 2026-05-24T20:52:39 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:ready-issue` - 2026-05-24T20:49:31 - `e16c4fca-3245-4039-9073-2b4646700758.jsonl`
+- `/ll:confidence-check` - 2026-05-24T21:00:00 - `2e418c46-c569-4a21-b915-a182722191d8.jsonl`
+- `/ll:decide-issue` - 2026-05-24T20:44:09 - `ebfda8b1-7c6f-4402-a680-0e45fdae0827.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `30e56638-d3ca-460d-97df-a2c95bf21e50.jsonl`
+- `/ll:wire-issue` - 2026-05-24T20:35:48 - `6c49ced8-0239-42af-aa72-2f4ee1072abd.jsonl`
+- `/ll:refine-issue` - 2026-05-24T20:29:43 - `054e1e86-e3ce-4820-80f3-5777ba9724b7.jsonl`
+- `/ll:format-issue` - 2026-05-24T20:20:52 - `a3f52d53-d0d2-4bb3-977c-f1151d93ac50.jsonl`

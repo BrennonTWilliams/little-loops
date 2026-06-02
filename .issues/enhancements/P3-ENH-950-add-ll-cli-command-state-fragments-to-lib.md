@@ -284,11 +284,11 @@ N/A — no Python API or CLI argument changes; new behavior is YAML-configuratio
 **Completed** | Created: 2026-04-04 | Priority: P3
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-05T02:48:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5017ef73-cf52-4dec-b281-0a8ba2920433.jsonl`
-- `/ll:manage-issue` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-04-05T02:45:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4be041a8-dfd8-474c-a023-85d8144368d7.jsonl`
-- `/ll:verify-issues` - 2026-04-05T02:38:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49da5993-75c6-4b4d-93c4-ba9bc4ef448c.jsonl`
-- `/ll:confidence-check` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7bc55c4-b62b-4d59-8a1c-6a95345cac75.jsonl`
-- `/ll:refine-issue` - 2026-04-05T02:35:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95ce988b-f206-41ae-85d4-9555453395d7.jsonl`
-- `/ll:format-issue` - 2026-04-05T02:31:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/640c5857-8f87-4989-9daa-c473686be6fc.jsonl`
-- `/ll:capture-issue` - 2026-04-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e9b42f4-37e6-4e91-aec1-c44dae744686.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-05T02:48:50 - `5017ef73-cf52-4dec-b281-0a8ba2920433.jsonl`
+- `/ll:manage-issue` - 2026-04-04T00:00:00Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-04-05T02:45:03 - `4be041a8-dfd8-474c-a023-85d8144368d7.jsonl`
+- `/ll:verify-issues` - 2026-04-05T02:38:31 - `49da5993-75c6-4b4d-93c4-ba9bc4ef448c.jsonl`
+- `/ll:confidence-check` - 2026-04-04T00:00:00Z - `d7bc55c4-b62b-4d59-8a1c-6a95345cac75.jsonl`
+- `/ll:refine-issue` - 2026-04-05T02:35:08 - `95ce988b-f206-41ae-85d4-9555453395d7.jsonl`
+- `/ll:format-issue` - 2026-04-05T02:31:30 - `640c5857-8f87-4989-9daa-c473686be6fc.jsonl`
+- `/ll:capture-issue` - 2026-04-04T00:00:00Z - `8e9b42f4-37e6-4e91-aec1-c44dae744686.jsonl`

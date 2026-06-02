@@ -231,9 +231,9 @@ seven.
 Implemented `ll-loop audit-meta <name>` subcommand that reads `meta-eval.jsonl` from archived runs and prints a summary table (agreement rate, mean diff size per verdict, divergence flags). Added `evaluator-trivial` as the seventh failure mode in `agents/loop-specialist.md`. Updated CLI and API documentation. Regenerated `.codex/agents/loop-specialist.toml`.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-25T22:35:26Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-25T22:27:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44ef8395-31bf-4c6e-9d6a-7d1cda7b6263.jsonl`
-- `/ll:wire-issue` - 2026-05-25T22:23:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87e60316-bc4e-40aa-9f1d-972dd256302e.jsonl`
-- `/ll:refine-issue` - 2026-05-25T22:18:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/935bd66b-c084-4890-a4fd-4cf3ddc57793.jsonl`
-- `/ll:issue-size-review` - 2026-05-25T22:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1164a851-abd3-4d31-9115-03f9bcd570f7.jsonl`
-- `/ll:confidence-check` - 2026-05-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8dde9478-d2ec-413d-80de-5b32086b7f9a.jsonl`
+- `/ll:manage-issue` - 2026-05-25T22:35:26Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-25T22:27:54 - `44ef8395-31bf-4c6e-9d6a-7d1cda7b6263.jsonl`
+- `/ll:wire-issue` - 2026-05-25T22:23:46 - `87e60316-bc4e-40aa-9f1d-972dd256302e.jsonl`
+- `/ll:refine-issue` - 2026-05-25T22:18:33 - `935bd66b-c084-4890-a4fd-4cf3ddc57793.jsonl`
+- `/ll:issue-size-review` - 2026-05-25T22:45:00Z - `1164a851-abd3-4d31-9115-03f9bcd570f7.jsonl`
+- `/ll:confidence-check` - 2026-05-25T00:00:00Z - `8dde9478-d2ec-413d-80de-5b32086b7f9a.jsonl`

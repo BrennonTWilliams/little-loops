@@ -159,11 +159,11 @@ Updated `confidence_check.next` from `check_scores` → `check_readiness`. Updat
 **Completed** | Created: 2026-04-11 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-11T17:02:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1dc5b7fe-1bf2-4be6-ac9e-ea464991f7ca.jsonl`
-- `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3bab1e73-bdcf-4ff6-9eb3-8a7dca3a0202.jsonl`
-- `/ll:wire-issue` - 2026-04-11T16:58:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4d91bb8-3a33-4482-ba55-6f11c0e0c72d.jsonl`
-- `/ll:refine-issue` - 2026-04-11T16:54:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc5911d7-0392-43a1-9e13-6e488a7951cb.jsonl`
-- `/ll:format-issue` - 2026-04-11T16:49:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20e57717-455c-4ff2-a806-8a83232025d2.jsonl`
-- `/ll:verify-issues` - 2026-04-11T16:33:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe163fab-25f0-47a9-b5d3-57cef164c232.jsonl`
+- `/ll:ready-issue` - 2026-04-11T17:02:41 - `1dc5b7fe-1bf2-4be6-ac9e-ea464991f7ca.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00 - `3bab1e73-bdcf-4ff6-9eb3-8a7dca3a0202.jsonl`
+- `/ll:wire-issue` - 2026-04-11T16:58:31 - `b4d91bb8-3a33-4482-ba55-6f11c0e0c72d.jsonl`
+- `/ll:refine-issue` - 2026-04-11T16:54:10 - `fc5911d7-0392-43a1-9e13-6e488a7951cb.jsonl`
+- `/ll:format-issue` - 2026-04-11T16:49:25 - `20e57717-455c-4ff2-a806-8a83232025d2.jsonl`
+- `/ll:verify-issues` - 2026-04-11T16:33:31 - `fe163fab-25f0-47a9-b5d3-57cef164c232.jsonl`
 - `/ll:capture-issue` - 2026-04-11T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05d0324c-611c-469d-8af1-b4e42644c47d.jsonl`
-- `/ll:manage-issue` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:manage-issue` - 2026-04-11T00:00:00Z - `current.jsonl`

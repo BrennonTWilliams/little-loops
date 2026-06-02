@@ -100,9 +100,9 @@ Precomputed a `_box_occ` dict (row → set of occupied columns) after the box-dr
 ---
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-13T21:34:30Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
-- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
-- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
-- `/ll:ready-issue` - 2026-03-13T19:53:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
-- `/ll:manage-issue` - 2026-03-13T19:53:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
+- `/ll:capture-issue` - 2026-03-13T21:34:30Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
+- `/ll:ready-issue` - 2026-03-13T19:53:27Z - `6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
+- `/ll:manage-issue` - 2026-03-13T19:53:27Z - `6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`

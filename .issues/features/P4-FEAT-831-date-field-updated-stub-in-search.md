@@ -128,11 +128,11 @@ Add `_parse_updated_date(content: str, file_path: Path) -> date | None` to `sear
 - **Minor inaccuracy**: Anchor says `in function _load_issues_with_status` but the code lives in `cmd_search` (line 149). Does not affect validity.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-20T18:30:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6da57837-b581-4462-8eff-4aa7e1e27830.jsonl`
-- `/ll:ready-issue` - 2026-03-20T18:30:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6da57837-b581-4462-8eff-4aa7e1e27830.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2af7f4f8-73af-4315-81b7-60727567c63e.jsonl`
-- `/ll:refine-issue` - 2026-03-20T18:19:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4b6ef1b-b89b-45e2-a89f-d803b08bf7d7.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:verify-issues` - 2026-03-19T23:26:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:ready-issue` - 2026-03-20T18:30:11 - `6da57837-b581-4462-8eff-4aa7e1e27830.jsonl`
+- `/ll:ready-issue` - 2026-03-20T18:30:07 - `6da57837-b581-4462-8eff-4aa7e1e27830.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00 - `2af7f4f8-73af-4315-81b7-60727567c63e.jsonl`
+- `/ll:refine-issue` - 2026-03-20T18:19:12 - `e4b6ef1b-b89b-45e2-a89f-d803b08bf7d7.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:verify-issues` - 2026-03-19T23:26:12 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
 
-- `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:scan-codebase` - 2026-03-19T22:12:56 - `f1798556-30de-4e10-a591-2da06903a76f.jsonl`

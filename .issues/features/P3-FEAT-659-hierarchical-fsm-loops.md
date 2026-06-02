@@ -266,21 +266,21 @@ Minor line drift (non-blocking, updated 2026-03-17):
 - `LoopState` dataclass: `@dataclass` at line **52** (not 46)
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-17T20:04:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/741272d2-8a23-49a3-aac6-618f5b74ba4f.jsonl`
-- `/ll:ready-issue` - 2026-03-17T19:58:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9663a5b3-0971-4d43-8fa8-dbdcd9452032.jsonl`
-- `/ll:ready-issue` - 2026-03-17T19:58:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9663a5b3-0971-4d43-8fa8-dbdcd9452032.jsonl`
-- `/ll:ready-issue` - 2026-03-17T19:58:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9663a5b3-0971-4d43-8fa8-dbdcd9452032.jsonl`
-- `/ll:verify-issues` - 2026-03-17T19:45:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc11ec3f-4b71-416b-8963-f0733a58292b.jsonl`
-- `/ll:confidence-check` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb534bc2-8eec-461a-a01b-1b47c95c56b3.jsonl`
-- `/ll:refine-issue` - 2026-03-17T19:27:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04b0cb69-e6dd-4800-983c-6c18d715a1e5.jsonl`
-- `/ll:refine-issue` - 2026-03-16T00:29:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/961c4d46-e6e4-4045-b778-27f4dac0fb62.jsonl`
-- `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
-- `/ll:capture-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/676e5b84-4af9-4667-8d7e-99c72a1adfe0.jsonl`
-- `/ll:format-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39efb4b0-1abf-4d76-b4be-ab46e1cf469e.jsonl`
-- `/ll:confidence-check` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d679cf53-9ecc-49cd-83db-5c6e64b94944.jsonl`
-- `/ll:format-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db6fef1c-59c1-4668-b211-889ca671a572.jsonl`
-- `/ll:refine-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ed4f286-d86e-4514-aa2e-31ef719a6e8b.jsonl`
-- `/ll:verify-issues` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
+- `/ll:ready-issue` - 2026-03-17T20:04:42 - `741272d2-8a23-49a3-aac6-618f5b74ba4f.jsonl`
+- `/ll:ready-issue` - 2026-03-17T19:58:59 - `9663a5b3-0971-4d43-8fa8-dbdcd9452032.jsonl`
+- `/ll:ready-issue` - 2026-03-17T19:58:41 - `9663a5b3-0971-4d43-8fa8-dbdcd9452032.jsonl`
+- `/ll:ready-issue` - 2026-03-17T19:58:25 - `9663a5b3-0971-4d43-8fa8-dbdcd9452032.jsonl`
+- `/ll:verify-issues` - 2026-03-17T19:45:10 - `bc11ec3f-4b71-416b-8963-f0733a58292b.jsonl`
+- `/ll:confidence-check` - 2026-03-17T00:00:00Z - `bb534bc2-8eec-461a-a01b-1b47c95c56b3.jsonl`
+- `/ll:refine-issue` - 2026-03-17T19:27:24 - `04b0cb69-e6dd-4800-983c-6c18d715a1e5.jsonl`
+- `/ll:refine-issue` - 2026-03-16T00:29:42 - `961c4d46-e6e4-4045-b778-27f4dac0fb62.jsonl`
+- `/ll:verify-issues` - 2026-03-15T00:11:17 - `623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
+- `/ll:capture-issue` - 2026-03-09T00:00:00Z - `676e5b84-4af9-4667-8d7e-99c72a1adfe0.jsonl`
+- `/ll:format-issue` - 2026-03-09T00:00:00Z - `39efb4b0-1abf-4d76-b4be-ab46e1cf469e.jsonl`
+- `/ll:confidence-check` - 2026-03-09T00:00:00Z - `d679cf53-9ecc-49cd-83db-5c6e64b94944.jsonl`
+- `/ll:format-issue` - 2026-03-09T00:00:00Z - `db6fef1c-59c1-4668-b211-889ca671a572.jsonl`
+- `/ll:refine-issue` - 2026-03-09T00:00:00Z - `0ed4f286-d86e-4514-aa2e-31ef719a6e8b.jsonl`
+- `/ll:verify-issues` - 2026-03-09T00:00:00Z - `01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
 
 ## Resolution
 

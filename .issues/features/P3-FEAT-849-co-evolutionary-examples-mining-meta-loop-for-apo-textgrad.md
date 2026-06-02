@@ -318,14 +318,14 @@ Implemented `loops/examples-miner.yaml` — a 12-state FSM outer loop that wraps
 **Completed** | Created: 2026-03-20 | Completed: 2026-03-21 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-21T22:21:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/361c2c3a-bd3c-417b-9d69-cfd541e136fc.jsonl`
-- `/ll:confidence-check` - 2026-03-21T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1eac459c-1c68-4bf6-b2ef-87583a85dec3.jsonl`
-- `/ll:confidence-check` - 2026-03-21T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4323075c-a536-4375-b649-525fbfdd6bf7.jsonl`
-- `/ll:confidence-check` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/546d021c-f4c2-487a-b4ec-147443a5ce85.jsonl`
-- `/ll:refine-issue` - 2026-03-21T21:22:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/349449a7-2c6b-4cd5-9168-7b45a4a09364.jsonl`
-- `/ll:refine-issue` - 2026-03-21T05:53:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5b33b4-4f43-4816-926d-91f9358c3ab6.jsonl`
-- `/ll:format-issue` - 2026-03-21T05:50:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29becafe-e61b-4664-a177-52d37aba9ad2.jsonl`
-- `/ll:refine-issue` - 2026-03-21T02:26:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ef00304-0425-4493-86d1-986e0f3bbb29.jsonl`
-- `/ll:refine-issue` - 2026-03-21T02:03:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37aaa01c-fc9c-49b3-a00c-669bbb0655ed.jsonl`
-- `/ll:refine-issue` - 2026-03-21T01:28:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f97b7680-1084-46aa-9586-4d4827393f96.jsonl`
-- `/ll:capture-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2dab8d3-f1a2-4974-84ba-68f20250569c.jsonl`
+- `/ll:ready-issue` - 2026-03-21T22:21:36 - `361c2c3a-bd3c-417b-9d69-cfd541e136fc.jsonl`
+- `/ll:confidence-check` - 2026-03-21T22:30:00Z - `1eac459c-1c68-4bf6-b2ef-87583a85dec3.jsonl`
+- `/ll:confidence-check` - 2026-03-21T22:00:00Z - `4323075c-a536-4375-b649-525fbfdd6bf7.jsonl`
+- `/ll:confidence-check` - 2026-03-21T00:00:00Z - `546d021c-f4c2-487a-b4ec-147443a5ce85.jsonl`
+- `/ll:refine-issue` - 2026-03-21T21:22:51 - `349449a7-2c6b-4cd5-9168-7b45a4a09364.jsonl`
+- `/ll:refine-issue` - 2026-03-21T05:53:44 - `8f5b33b4-4f43-4816-926d-91f9358c3ab6.jsonl`
+- `/ll:format-issue` - 2026-03-21T05:50:55 - `29becafe-e61b-4664-a177-52d37aba9ad2.jsonl`
+- `/ll:refine-issue` - 2026-03-21T02:26:36 - `2ef00304-0425-4493-86d1-986e0f3bbb29.jsonl`
+- `/ll:refine-issue` - 2026-03-21T02:03:00 - `37aaa01c-fc9c-49b3-a00c-669bbb0655ed.jsonl`
+- `/ll:refine-issue` - 2026-03-21T01:28:26 - `f97b7680-1084-46aa-9586-4d4827393f96.jsonl`
+- `/ll:capture-issue` - 2026-03-20T00:00:00Z - `a2dab8d3-f1a2-4974-84ba-68f20250569c.jsonl`

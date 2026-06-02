@@ -120,7 +120,7 @@ Fixed by introducing `current_list_key` state variable in `parse_frontmatter`. W
 **Completed** | Created: 2026-03-20 | Resolved: 2026-03-20 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-20T17:54:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/83af9c4c-754d-49e8-af51-d8124f16f863.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b277321d-2fab-414d-9422-c0873b999ccc.jsonl`
-- `/ll:refine-issue` - 2026-03-20T17:46:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5d7af86b-c6f6-4ca8-94f0-8b4d69221737.jsonl`
+- `/ll:ready-issue` - 2026-03-20T17:54:14 - `83af9c4c-754d-49e8-af51-d8124f16f863.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `b277321d-2fab-414d-9422-c0873b999ccc.jsonl`
+- `/ll:refine-issue` - 2026-03-20T17:46:53 - `5d7af86b-c6f6-4ca8-94f0-8b4d69221737.jsonl`
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3395f6a8-0340-4e10-98a3-d300e80733c1.jsonl`

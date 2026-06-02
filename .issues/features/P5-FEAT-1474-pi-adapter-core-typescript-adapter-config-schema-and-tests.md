@@ -245,8 +245,8 @@ _Added by `/ll:confidence-check` on 2026-05-15_
 Note: Step 7 (documentation) is already covered by sibling issue FEAT-1476 (Pi Adapter Documentation), intentionally out of scope for both children.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/053074c0-5fd9-49d9-98ac-aa095139a02e.jsonl`
-- `/ll:wire-issue` - 2026-05-15T19:42:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/61670883-6417-4cac-ab8f-ed56648a4270.jsonl`
-- `/ll:refine-issue` - 2026-05-15T19:36:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3d981b6-3175-434b-95bb-c4779b895642.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59179ce1-13d5-40c7-bdca-8b3c6117c43e.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T20:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f91d7b90-f81d-4224-83bd-e6b959badcd1.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `053074c0-5fd9-49d9-98ac-aa095139a02e.jsonl`
+- `/ll:wire-issue` - 2026-05-15T19:42:45 - `61670883-6417-4cac-ab8f-ed56648a4270.jsonl`
+- `/ll:refine-issue` - 2026-05-15T19:36:25 - `b3d981b6-3175-434b-95bb-c4779b895642.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `59179ce1-13d5-40c7-bdca-8b3c6117c43e.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T20:10:00 - `f91d7b90-f81d-4224-83bd-e6b959badcd1.jsonl`

@@ -122,12 +122,12 @@ PyYAML (Option A) is deferred — only warranted if a future frontmatter field n
 - Added 3 new test cases using `caplog` pattern; all 23 tests pass
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-18T01:50:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5c9b2e2-f90b-4762-b9b5-4c147e1ae30d.jsonl`
-- `/ll:refine-issue` - 2026-03-18T01:38:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ca63274-28df-4554-ae7c-5366e4614ee5.jsonl`
-- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
-- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:ready-issue` - 2026-03-18T01:50:19 - `e5c9b2e2-f90b-4762-b9b5-4c147e1ae30d.jsonl`
+- `/ll:refine-issue` - 2026-03-18T01:38:01 - `5ca63274-28df-4554-ae7c-5366e4614ee5.jsonl`
+- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 - `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl`
-- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 
 ---
 

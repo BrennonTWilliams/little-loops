@@ -217,13 +217,13 @@ _Added by `/ll:confidence-check` on 2026-04-27_
 - ENH-1304: Fix `file:line` references in commands/refine-issue.md and add verification test
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-27T16:43:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffb785b8-11a4-4944-a15b-8d407ae45324.jsonl`
-- `/ll:issue-size-review` - 2026-04-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffb785b8-11a4-4944-a15b-8d407ae45324.jsonl`
-- `/ll:wire-issue` - 2026-04-27T16:36:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb17a9e1-1757-445b-a0d0-e017660b091f.jsonl`
-- `/ll:refine-issue` - 2026-04-27T16:31:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53865c02-ff65-4dff-937f-c70478af84a7.jsonl`
-- `/ll:format-issue` - 2026-04-27T16:24:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55b2ae6b-cfb7-490c-a90a-55c58082ceb5.jsonl`
-- `/ll:issue-size-review` - 2026-04-27T17:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:confidence-check` - 2026-04-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/300897f1-2940-4fd4-853f-e9037c0ea665.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-27T16:43:10 - `ffb785b8-11a4-4944-a15b-8d407ae45324.jsonl`
+- `/ll:issue-size-review` - 2026-04-27T00:00:00Z - `ffb785b8-11a4-4944-a15b-8d407ae45324.jsonl`
+- `/ll:wire-issue` - 2026-04-27T16:36:03 - `eb17a9e1-1757-445b-a0d0-e017660b091f.jsonl`
+- `/ll:refine-issue` - 2026-04-27T16:31:32 - `53865c02-ff65-4dff-937f-c70478af84a7.jsonl`
+- `/ll:format-issue` - 2026-04-27T16:24:32 - `55b2ae6b-cfb7-490c-a90a-55c58082ceb5.jsonl`
+- `/ll:issue-size-review` - 2026-04-27T17:30:00Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:confidence-check` - 2026-04-27T00:00:00Z - `300897f1-2940-4fd4-853f-e9037c0ea665.jsonl`
 
 ---
 

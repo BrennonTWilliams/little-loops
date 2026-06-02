@@ -183,9 +183,9 @@ host-runner, codex, validation
 ---
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-15T22:11:18Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:ready-issue` - 2026-05-15T22:09:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c45a74f-bbc0-4345-9149-bcaccc39976d.jsonl`
-- `/ll:confidence-check` - 2026-05-15T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e951eea-b429-4afc-a87a-f9b0a4c74d8c.jsonl`
-- `/ll:wire-issue` - 2026-05-15T22:05:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b456ff6-f764-4bf8-814b-d72f02697c46.jsonl`
-- `/ll:refine-issue` - 2026-05-15T22:00:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90114ade-06a1-4cda-9397-15a4b59c4a90.jsonl`
-- `/ll:capture-issue` - 2026-05-15T20:37:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ac48eaf-913e-40cd-8b15-98d99f2901cc.jsonl`
+- `/ll:manage-issue` - 2026-05-15T22:11:18Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-15T22:09:17 - `5c45a74f-bbc0-4345-9149-bcaccc39976d.jsonl`
+- `/ll:confidence-check` - 2026-05-15T22:30:00Z - `9e951eea-b429-4afc-a87a-f9b0a4c74d8c.jsonl`
+- `/ll:wire-issue` - 2026-05-15T22:05:07 - `5b456ff6-f764-4bf8-814b-d72f02697c46.jsonl`
+- `/ll:refine-issue` - 2026-05-15T22:00:52 - `90114ade-06a1-4cda-9397-15a4b59c4a90.jsonl`
+- `/ll:capture-issue` - 2026-05-15T20:37:29Z - `5ac48eaf-913e-40cd-8b15-98d99f2901cc.jsonl`

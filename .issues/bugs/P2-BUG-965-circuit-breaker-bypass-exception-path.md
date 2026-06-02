@@ -156,15 +156,15 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `parallel`, `reliability`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-06T17:37:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/556f2ed7-f8af-4731-aea1-c83aabb0a610.jsonl`
-- `/ll:ready-issue` - 2026-04-06T17:37:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/556f2ed7-f8af-4731-aea1-c83aabb0a610.jsonl`
-- `/ll:ready-issue` - 2026-04-06T17:37:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/556f2ed7-f8af-4731-aea1-c83aabb0a610.jsonl`
-- `/ll:ready-issue` - 2026-04-06T17:37:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/556f2ed7-f8af-4731-aea1-c83aabb0a610.jsonl`
-- `/ll:ready-issue` - 2026-04-06T17:37:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/556f2ed7-f8af-4731-aea1-c83aabb0a610.jsonl`
-- `/ll:confidence-check` - 2026-04-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59e5c06a-2ede-499d-b3a7-3cceccb1614bf.jsonl`
-- `/ll:refine-issue` - 2026-04-06T17:33:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ecf9351-60e9-414c-8c23-e5c1c8e02d2c.jsonl`
-- `/ll:format-issue` - 2026-04-06T17:29:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2bcd3e63-63c7-4bc7-8c82-0283d9fb46c5.jsonl`
-- `/ll:scan-codebase` - 2026-04-06T16:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
+- `/ll:ready-issue` - 2026-04-06T17:37:45 - `556f2ed7-f8af-4731-aea1-c83aabb0a610.jsonl`
+- `/ll:ready-issue` - 2026-04-06T17:37:34 - `556f2ed7-f8af-4731-aea1-c83aabb0a610.jsonl`
+- `/ll:ready-issue` - 2026-04-06T17:37:31 - `556f2ed7-f8af-4731-aea1-c83aabb0a610.jsonl`
+- `/ll:ready-issue` - 2026-04-06T17:37:28 - `556f2ed7-f8af-4731-aea1-c83aabb0a610.jsonl`
+- `/ll:ready-issue` - 2026-04-06T17:37:25 - `556f2ed7-f8af-4731-aea1-c83aabb0a610.jsonl`
+- `/ll:confidence-check` - 2026-04-06T00:00:00Z - `59e5c06a-2ede-499d-b3a7-3cceccb1614bf.jsonl`
+- `/ll:refine-issue` - 2026-04-06T17:33:35 - `9ecf9351-60e9-414c-8c23-e5c1c8e02d2c.jsonl`
+- `/ll:format-issue` - 2026-04-06T17:29:56 - `2bcd3e63-63c7-4bc7-8c82-0283d9fb46c5.jsonl`
+- `/ll:scan-codebase` - 2026-04-06T16:12:28 - `c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 
 ## Resolution
 
@@ -174,7 +174,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 3. Added `test_exception_path_trips_circuit_breaker` to `TestCircuitBreaker` in `test_merge_coordinator.py`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-06T18:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:manage-issue` - 2026-04-06T18:00:00Z - `current.jsonl`
 
 ## Status
 

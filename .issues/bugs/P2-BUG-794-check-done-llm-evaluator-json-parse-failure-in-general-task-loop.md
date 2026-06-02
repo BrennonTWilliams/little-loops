@@ -147,7 +147,7 @@ Updated `TestEvaluateDispatcherLLM._cli_stdout()` and `TestLLMStructuredEvaluato
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-17T22:15:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72c3a8c0-bd26-4f7f-a2c3-fb10c63e244f.jsonl`
-- `/ll:refine-issue` - 2026-03-17T22:06:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afa67fca-1937-4256-ac87-131272065740.jsonl`
-- `/ll:refine-issue` - 2026-03-17T21:45:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34031d6c-5edf-4e1a-8019-bb589774481d.jsonl`
-- `/ll:confidence-check` - 2026-03-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66a5e83c-4e85-42e9-944b-a6509b83a605.jsonl`
+- `/ll:ready-issue` - 2026-03-17T22:15:51 - `72c3a8c0-bd26-4f7f-a2c3-fb10c63e244f.jsonl`
+- `/ll:refine-issue` - 2026-03-17T22:06:55 - `afa67fca-1937-4256-ac87-131272065740.jsonl`
+- `/ll:refine-issue` - 2026-03-17T21:45:24 - `34031d6c-5edf-4e1a-8019-bb589774481d.jsonl`
+- `/ll:confidence-check` - 2026-03-17T00:00:00 - `66a5e83c-4e85-42e9-944b-a6509b83a605.jsonl`

@@ -85,7 +85,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Session Log
 
-- `/ll:capture-issue` - 2026-04-14T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a263f05-aa5d-4905-a222-87dc5d6e568b.jsonl`
+- `/ll:capture-issue` - 2026-04-14T00:00:00 - `9a263f05-aa5d-4905-a222-87dc5d6e568b.jsonl`
 
 ---
 

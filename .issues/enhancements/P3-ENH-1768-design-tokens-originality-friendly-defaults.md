@@ -325,6 +325,6 @@ The manual step-9 witness check (running `html-website-generator` against each p
 
 ## Session Log
 - `/ll:manage-issue` - 2026-05-28T20:11:43Z - manage-issue session
-- `/ll:decide-issue` - 2026-05-28T19:58:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6938ab1-fd59-4062-9b77-150da2247838.jsonl`
-- `/ll:ready-issue` - 2026-05-28T19:56:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48672b3d-8007-4e81-85e5-56ce5cf17dc1.jsonl`
-- `/ll:capture-issue` - 2026-05-28T19:48:44Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74b05beb-27ad-4237-9e64-a76221b1fb65.jsonl`
+- `/ll:decide-issue` - 2026-05-28T19:58:58 - `b6938ab1-fd59-4062-9b77-150da2247838.jsonl`
+- `/ll:ready-issue` - 2026-05-28T19:56:14 - `48672b3d-8007-4e81-85e5-56ce5cf17dc1.jsonl`
+- `/ll:capture-issue` - 2026-05-28T19:48:44Z - `74b05beb-27ad-4237-9e64-a76221b1fb65.jsonl`

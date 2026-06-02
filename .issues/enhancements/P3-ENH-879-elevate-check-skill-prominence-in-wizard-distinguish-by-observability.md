@@ -145,7 +145,7 @@ _Added by `/ll:confidence-check` on 2026-03-24_
 Completed — 2026-03-24. All prescribed changes applied to `skills/create-loop/loop-types.md`: observability table added, `check_skill` relabeled and elevated to 2nd position, LLM-as-judge distinguished as self-report/bias-prone, default note strengthened.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:refine-issue` - 2026-03-25T02:04:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9d20766-f11c-4f34-906a-8e749b37605d.jsonl`
-- `/ll:format-issue` - 2026-03-25T01:57:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cecd92d-7688-41c8-8c77-72f94f04500c.jsonl`
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z
+- `/ll:refine-issue` - 2026-03-25T02:04:32 - `e9d20766-f11c-4f34-906a-8e749b37605d.jsonl`
+- `/ll:format-issue` - 2026-03-25T01:57:22 - `2cecd92d-7688-41c8-8c77-72f94f04500c.jsonl`
 - `/ll:capture-issue` - 2026-03-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee142cb2-b955-483a-a13b-7ca611c8d2cf.jsonl`

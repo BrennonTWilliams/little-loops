@@ -210,7 +210,7 @@ ll-loop show apo-textgrad
 
 ## Session Log
 - `/ll:manage-issue` - 2026-03-15T00:00:00Z - conversation
-- `/ll:ready-issue` - 2026-03-16T03:36:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a3fca7b-5ab5-4aba-a7c9-e1f341e85e89.jsonl`
-- `/ll:refine-issue` - 2026-03-16T02:10:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55097244-61de-41f8-ab8e-e7217e1b3e90.jsonl`
+- `/ll:ready-issue` - 2026-03-16T03:36:46 - `1a3fca7b-5ab5-4aba-a7c9-e1f341e85e89.jsonl`
+- `/ll:refine-issue` - 2026-03-16T02:10:31 - `55097244-61de-41f8-ab8e-e7217e1b3e90.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - conversation
-- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55097244-61de-41f8-ab8e-e7217e1b3e90.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `55097244-61de-41f8-ab8e-e7217e1b3e90.jsonl`

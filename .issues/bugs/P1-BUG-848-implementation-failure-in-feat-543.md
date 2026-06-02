@@ -39,7 +39,7 @@ Updated three test files to match the new expected command signature:
 - `scripts/tests/test_subprocess_mocks.py`
 
 ## Related Issues
-- [FEAT-543](/Users/brennon/AIProjects/brenentech/little-loops/.issues/features/P4-FEAT-543-ll-loop-history-filtering.md)
+- [FEAT-543](.issues/features/P4-FEAT-543-ll-loop-history-filtering.md)
 
 ---
 

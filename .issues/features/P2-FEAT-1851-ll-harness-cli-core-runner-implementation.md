@@ -215,11 +215,11 @@ Follow `test_action.py` which patches `"little_loops.cli.action.resolve_host"`.
 - `cli/doctor.py:97` — `main_doctor()` initialization pattern
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T15:30:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/13122f11-0ee8-4710-a336-a7937a2b62fe.jsonl`
-- `/ll:wire-issue` - 2026-06-01T15:24:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a031dcc2-52b8-4984-967d-57ec61735487.jsonl`
-- `/ll:refine-issue` - 2026-06-01T15:19:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a576143-16f9-4d6e-b5ab-6ae3bcc9684f.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1ebc34f-6a74-4ed8-b570-856978fc59ce.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7aa651d3-f8bd-4692-b1ba-bb391584ca95.jsonl`
+- `/ll:ready-issue` - 2026-06-01T15:30:39 - `13122f11-0ee8-4710-a336-a7937a2b62fe.jsonl`
+- `/ll:wire-issue` - 2026-06-01T15:24:39 - `a031dcc2-52b8-4984-967d-57ec61735487.jsonl`
+- `/ll:refine-issue` - 2026-06-01T15:19:11 - `8a576143-16f9-4d6e-b5ab-6ae3bcc9684f.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `e1ebc34f-6a74-4ed8-b570-856978fc59ce.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `7aa651d3-f8bd-4692-b1ba-bb391584ca95.jsonl`
 
 ---
 

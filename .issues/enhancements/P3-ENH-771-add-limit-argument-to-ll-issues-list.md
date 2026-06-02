@@ -99,8 +99,8 @@ Implemented `--limit`/`-n` argument on `ll-issues list`:
 
 ## Session Log
 - `/ll:manage-issue` - 2026-03-16T00:00:00Z - implementation complete
-- `/ll:ready-issue` - 2026-03-16T17:36:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/025322be-da35-4532-9ce7-4b88c2d8fa99.jsonl`
-- `/ll:verify-issues` - 2026-03-16T17:27:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
-- `/ll:refine-issue` - 2026-03-16T17:20:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef6f9fdc-6be2-4332-a31a-ac306dde4386.jsonl`
+- `/ll:ready-issue` - 2026-03-16T17:36:15 - `025322be-da35-4532-9ce7-4b88c2d8fa99.jsonl`
+- `/ll:verify-issues` - 2026-03-16T17:27:46 - `d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
+- `/ll:refine-issue` - 2026-03-16T17:20:51 - `ef6f9fdc-6be2-4332-a31a-ac306dde4386.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - captured from user description
-- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef6f9fdc-6be2-4332-a31a-ac306dde4386.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `ef6f9fdc-6be2-4332-a31a-ac306dde4386.jsonl`

@@ -160,9 +160,9 @@ New module: `scripts/little_loops/issue_history/doc_synthesis.py`
 
 ## Session Log
 - `/ll:capture-issue` - 2026-02-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81df3c59-9dd6-4928-bbf8-ba4b14bd0d12.jsonl`
-- `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is comprehensive; cli/history.py integration point confirmed; issue_history/analysis.py confirmed as similar pattern source; no knowledge gaps identified
-- `/ll:refine-issue` - 2026-03-02T21:18:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aeb88b26-e26a-40a3-b4a8-c9ce8bafe847.jsonl` - Enriched Integration Map with 4 files-to-modify, concrete dependent file details, specific similar patterns with file:line refs, and test pattern guidance; added text_utils.py promotion step to Implementation Steps; user chose: promote helpers to text_utils.py, keep high-level step descriptions
+- `/ll:format-issue` - 2026-02-24 - `cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is comprehensive; cli/history.py integration point confirmed; issue_history/analysis.py confirmed as similar pattern source; no knowledge gaps identified
+- `/ll:refine-issue` - 2026-03-02T21:18:00Z - `aeb88b26-e26a-40a3-b4a8-c9ce8bafe847.jsonl` - Enriched Integration Map with 4 files-to-modify, concrete dependent file details, specific similar patterns with file:line refs, and test pattern guidance; added text_utils.py promotion step to Implementation Steps; user chose: promote helpers to text_utils.py, keep high-level step descriptions
 
 ---
 

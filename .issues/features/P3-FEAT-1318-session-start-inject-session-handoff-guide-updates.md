@@ -196,17 +196,17 @@ _Updated by `/ll:confidence-check` on 2026-05-01_
 - **config-schema.json description ownership is unscoped.** `config-schema.json:493-496` `auto_detect_on_session_start` description contradicts the rewritten guide. The issue flags FEAT-1317 as the likely owner but treats this as a fallback for FEAT-1318. Coordinate with FEAT-1317 before closing to avoid the contradiction landing unfixed.
 
 ## Session Log
-- `/ll:verify-issues` - 2026-05-14T20:42:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-10T19:43:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-10T14:28:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:21:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9065566b-c476-4052-ae1c-d075d76f3b33.jsonl`
-- `/ll:refine-issue` - 2026-05-02T03:53:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72289cba-9611-4ef4-9b76-f0d5e2e83663.jsonl`
-- `/ll:confidence-check` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/173908f9-660e-433b-b4c1-8c6c6cf614fd.jsonl`
-- `/ll:wire-issue` - 2026-05-02T03:48:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91286acc-2865-4339-97ae-a8b386be8836.jsonl`
-- `/ll:refine-issue` - 2026-05-02T03:43:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d452ceb7-8597-43d6-8d48-8dd672aecffc.jsonl`
-- `/ll:issue-size-review` - 2026-05-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:verify-issues` - 2026-05-14T20:42:06 - `08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-10T19:43:42 - `6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-10T14:28:00 - `87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-04T18:09:56 - `1085382e-e35c-414b-9e28-de9b9772a1d0.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:21:16 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:confidence-check` - 2026-05-01T00:00:00 - `9065566b-c476-4052-ae1c-d075d76f3b33.jsonl`
+- `/ll:refine-issue` - 2026-05-02T03:53:42 - `72289cba-9611-4ef4-9b76-f0d5e2e83663.jsonl`
+- `/ll:confidence-check` - 2026-05-01T00:00:00 - `173908f9-660e-433b-b4c1-8c6c6cf614fd.jsonl`
+- `/ll:wire-issue` - 2026-05-02T03:48:22 - `91286acc-2865-4339-97ae-a8b386be8836.jsonl`
+- `/ll:refine-issue` - 2026-05-02T03:43:32 - `d452ceb7-8597-43d6-8d48-8dd672aecffc.jsonl`
+- `/ll:issue-size-review` - 2026-05-01T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 
 ## Blocks
 

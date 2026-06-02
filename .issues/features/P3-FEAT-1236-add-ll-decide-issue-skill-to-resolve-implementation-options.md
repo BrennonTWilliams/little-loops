@@ -177,11 +177,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `feature`, `pipeline`, `automation`, `captured`
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-21T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bd492a7-b7a8-4c17-ae89-d8d259f2fbbc.jsonl`
-- `/ll:wire-issue` - 2026-04-21T21:34:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/850e678a-e77e-4d8b-a5c7-8cdbdc0ea507.jsonl`
-- `/ll:refine-issue` - 2026-04-21T21:29:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5bee7df-fa35-4a40-857e-d8f91d13f83a.jsonl`
-- `/ll:capture-issue` - 2026-04-21T20:38:05Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c8873df-f234-41f4-a242-d1cae3dc0002.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/237a06a8-dd6b-467a-b0ce-032255c420b6.jsonl`
+- `/ll:confidence-check` - 2026-04-21T22:00:00Z - `7bd492a7-b7a8-4c17-ae89-d8d259f2fbbc.jsonl`
+- `/ll:wire-issue` - 2026-04-21T21:34:22 - `850e678a-e77e-4d8b-a5c7-8cdbdc0ea507.jsonl`
+- `/ll:refine-issue` - 2026-04-21T21:29:27 - `a5bee7df-fa35-4a40-857e-d8f91d13f83a.jsonl`
+- `/ll:capture-issue` - 2026-04-21T20:38:05Z - `6c8873df-f234-41f4-a242-d1cae3dc0002.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00Z - `237a06a8-dd6b-467a-b0ce-032255c420b6.jsonl`
 
 ---
 

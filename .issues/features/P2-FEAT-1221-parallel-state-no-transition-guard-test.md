@@ -142,9 +142,9 @@ _Added by `/ll:confidence-check` on 2026-04-21_
 - **FEAT-1074 unmerged**: `ParallelStateConfig` does not exist in `schema.py` and the `has_parallel` guard does not exist in `validation.py`. Adding the import before FEAT-1074 ships causes an `ImportError` at pytest collection time, silently breaking all 12 existing tests. Implement FEAT-1221 only after FEAT-1074 is merged.
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-21T08:19:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac81633f-8dd4-4c59-b4e1-39b1c9bb4c42.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d5b214e-7d4b-4f96-9dba-46554e3858ed.jsonl`
-- `/ll:wire-issue` - 2026-04-21T08:16:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f4e120d3-8b95-4146-b649-3e4aac714e9a.jsonl`
-- `/ll:refine-issue` - 2026-04-21T08:11:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/efd4be50-b8ce-4404-8ce2-235d9bf2aede.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98f68405-0917-4592-af11-ba9a9de2ae0c.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d71efca-20a3-4b26-b77d-e5c5e5ba00ca.jsonl`
+- `/ll:refine-issue` - 2026-04-21T08:19:15 - `ac81633f-8dd4-4c59-b4e1-39b1c9bb4c42.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `9d5b214e-7d4b-4f96-9dba-46554e3858ed.jsonl`
+- `/ll:wire-issue` - 2026-04-21T08:16:53 - `f4e120d3-8b95-4146-b649-3e4aac714e9a.jsonl`
+- `/ll:refine-issue` - 2026-04-21T08:11:55 - `efd4be50-b8ce-4404-8ce2-235d9bf2aede.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `98f68405-0917-4592-af11-ba9a9de2ae0c.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `4d71efca-20a3-4b26-b77d-e5c5e5ba00ca.jsonl`

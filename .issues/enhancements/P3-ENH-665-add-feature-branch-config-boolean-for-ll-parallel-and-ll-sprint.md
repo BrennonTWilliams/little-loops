@@ -170,8 +170,8 @@ enhancement, config, ll-parallel, ll-sprint
 Active
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-24T02:56:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e44ebfe-f83d-445a-a181-9ab066a50540.jsonl`
-- `/ll:refine-issue` - 2026-03-24T02:45:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f55ddb5-9f42-4fd3-81cb-591c4d42d468.jsonl`
+- `/ll:ready-issue` - 2026-03-24T02:56:44 - `3e44ebfe-f83d-445a-a181-9ab066a50540.jsonl`
+- `/ll:refine-issue` - 2026-03-24T02:45:23 - `4f55ddb5-9f42-4fd3-81cb-591c4d42d468.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:capture-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eec31a4c-27c6-4b78-bafd-8496b3a68d4a.jsonl`
 - `/ll:format-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/644cb258-98f9-4276-9d10-660523431e43.jsonl`

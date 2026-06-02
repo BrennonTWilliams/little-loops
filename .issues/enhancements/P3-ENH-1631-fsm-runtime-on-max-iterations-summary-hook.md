@@ -242,16 +242,16 @@ _Added by `/ll:confidence-check` on 2026-05-24_
 - **Skill and doc changes have no automated validation**: The verdict-table row in `skills/audit-loop-run/SKILL.md`, the event-payload row in `skills/debug-loop-run/SKILL.md`, and the three doc edits are prose changes with no automated test coverage. Plan a manual smoke-check against a real partial run to confirm the audit skill verdict logic is correct.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T21:54:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6610c4b9-00d0-4e04-aeda-b66222aa4c9b.jsonl`
-- `/ll:wire-issue` - 2026-05-24T21:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba5b7ded-8a4a-4c0f-95e1-c82128f42267.jsonl`
-- `/ll:refine-issue` - 2026-05-24T21:24:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2d89ce4-36c3-4dc3-a3b0-5dfc218f3013.jsonl`
-- `/ll:confidence-check` - 2026-05-24T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a45116c-f236-4734-b55a-0639c7ec21af.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0bd96a50-4995-4205-8ae4-3dc620bd44ac.jsonl`
-- `/ll:wire-issue` - 2026-05-24T21:14:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbcaf171-9096-4859-8fb1-49a4841f3b48.jsonl`
-- `/ll:refine-issue` - 2026-05-24T21:07:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/791044ce-19d8-46a1-8d91-36e6cb0a39c9.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53f5ce8a-8802-4e4f-a82f-cb8f836c6b67.jsonl`
-- `/ll:format-issue` - 2026-05-23T16:43:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b5c3569-1967-4199-ba4f-ccf461e65ff0.jsonl`
-- `/ll:capture-issue` - 2026-05-23T16:40:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
+- `/ll:ready-issue` - 2026-05-24T21:54:05 - `6610c4b9-00d0-4e04-aeda-b66222aa4c9b.jsonl`
+- `/ll:wire-issue` - 2026-05-24T21:37:49 - `ba5b7ded-8a4a-4c0f-95e1-c82128f42267.jsonl`
+- `/ll:refine-issue` - 2026-05-24T21:24:29 - `a2d89ce4-36c3-4dc3-a3b0-5dfc218f3013.jsonl`
+- `/ll:confidence-check` - 2026-05-24T22:00:00Z - `3a45116c-f236-4734-b55a-0639c7ec21af.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `0bd96a50-4995-4205-8ae4-3dc620bd44ac.jsonl`
+- `/ll:wire-issue` - 2026-05-24T21:14:24 - `dbcaf171-9096-4859-8fb1-49a4841f3b48.jsonl`
+- `/ll:refine-issue` - 2026-05-24T21:07:02 - `791044ce-19d8-46a1-8d91-36e6cb0a39c9.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-23T20:59:17 - `53f5ce8a-8802-4e4f-a82f-cb8f836c6b67.jsonl`
+- `/ll:format-issue` - 2026-05-23T16:43:14 - `3b5c3569-1967-4199-ba4f-ccf461e65ff0.jsonl`
+- `/ll:capture-issue` - 2026-05-23T16:40:11Z - `001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
 
 ---
 

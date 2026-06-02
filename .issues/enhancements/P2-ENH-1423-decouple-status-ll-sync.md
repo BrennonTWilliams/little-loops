@@ -155,12 +155,12 @@ Implemented all 10 steps from the issue plan:
 Zero `get_completed_dir()` or `get_deferred_dir()` calls remain in `sync.py`. All 252 tests pass.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-10T18:01:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce241dac-979a-45b3-9fe3-99f7de889379.jsonl`
-- `/ll:ready-issue` - 2026-05-10T17:51:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f3593ae-6212-4462-8aa4-340ec46773e5.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c94e8a9-aa8e-4703-b2bd-c9c8fded7b56.jsonl`
-- `/ll:wire-issue` - 2026-05-10T17:47:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4394f412-f674-4bd5-a857-951ceede64a5.jsonl`
-- `/ll:refine-issue` - 2026-05-10T17:41:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80589cd9-0071-4d69-8045-5fbc3b9a2e61.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-10T18:01:31 - `ce241dac-979a-45b3-9fe3-99f7de889379.jsonl`
+- `/ll:ready-issue` - 2026-05-10T17:51:51 - `5f3593ae-6212-4462-8aa4-340ec46773e5.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `7c94e8a9-aa8e-4703-b2bd-c9c8fded7b56.jsonl`
+- `/ll:wire-issue` - 2026-05-10T17:47:13 - `4394f412-f674-4bd5-a857-951ceede64a5.jsonl`
+- `/ll:refine-issue` - 2026-05-10T17:41:43 - `80589cd9-0071-4d69-8045-5fbc3b9a2e61.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
 
 ---
 

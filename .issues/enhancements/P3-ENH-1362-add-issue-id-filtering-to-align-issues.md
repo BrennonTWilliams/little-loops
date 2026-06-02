@@ -148,15 +148,15 @@ _Added by `/ll:confidence-check` on 2026-05-04_
 - Minor variable naming inconsistency: issue body uses `FILTER_IDS` but reference uses `ISSUES_ARG`/`IDS`; resolve by following the reference (tradeoff-review-issues.md) verbatim
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-04T22:26:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb09f315-36be-4088-ab88-df9bd9d8efcd.jsonl`
-- `/ll:ready-issue` - 2026-05-04T22:22:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4aa4525b-9d52-4b07-a0e0-8b3e2ab19f5e.jsonl`
-- `/ll:refine-issue` - 2026-05-04T22:09:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99bf23d1-7f7c-4d86-815f-b73d3e9f84d7.jsonl`
-- `/ll:confidence-check` - 2026-05-04T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0bc09efe-4dd1-4f13-94b7-adc41eb07732.jsonl`
-- `/ll:wire-issue` - 2026-05-04T22:02:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7a43605-61dd-447c-93e0-90f02f729ba7.jsonl`
-- `/ll:refine-issue` - 2026-05-04T21:58:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdc712fd-a65a-4aed-9dad-38ccc93799c9.jsonl`
-- `/ll:format-issue` - 2026-05-04T21:08:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2cacbb2-3baa-47a6-8310-3720c7e6ca3e.jsonl`
+- `/ll:manage-issue` - 2026-05-04T22:26:50 - `bb09f315-36be-4088-ab88-df9bd9d8efcd.jsonl`
+- `/ll:ready-issue` - 2026-05-04T22:22:58 - `4aa4525b-9d52-4b07-a0e0-8b3e2ab19f5e.jsonl`
+- `/ll:refine-issue` - 2026-05-04T22:09:09 - `99bf23d1-7f7c-4d86-815f-b73d3e9f84d7.jsonl`
+- `/ll:confidence-check` - 2026-05-04T22:30:00Z - `0bc09efe-4dd1-4f13-94b7-adc41eb07732.jsonl`
+- `/ll:wire-issue` - 2026-05-04T22:02:05 - `b7a43605-61dd-447c-93e0-90f02f729ba7.jsonl`
+- `/ll:refine-issue` - 2026-05-04T21:58:52 - `bdc712fd-a65a-4aed-9dad-38ccc93799c9.jsonl`
+- `/ll:format-issue` - 2026-05-04T21:08:43 - `b2cacbb2-3baa-47a6-8310-3720c7e6ca3e.jsonl`
 
-- `/ll:capture-issue` - 2026-05-04T20:29:24Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db5648f7-6175-41b6-9af0-89d734f66fea.jsonl`
+- `/ll:capture-issue` - 2026-05-04T20:29:24Z - `db5648f7-6175-41b6-9af0-89d734f66fea.jsonl`
 
 ---
 

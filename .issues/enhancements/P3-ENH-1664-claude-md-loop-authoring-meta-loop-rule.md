@@ -162,5 +162,5 @@ with links to `ll-loop validate` / ENH-1665 and `agents/loop-specialist.md`.
 Added cross-reference in `docs/guides/LOOPS_GUIDE.md` § Harness Loops.
 
 ## Session Log
-- `/ll:format-issue` - 2026-05-24T14:34:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1059057c-13a6-4720-80b4-71820ae99092.jsonl`
+- `/ll:format-issue` - 2026-05-24T14:34:08 - `1059057c-13a6-4720-80b4-71820ae99092.jsonl`
 - `manage-issue` completed - 2026-05-24

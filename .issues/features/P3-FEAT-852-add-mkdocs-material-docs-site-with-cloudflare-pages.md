@@ -206,8 +206,8 @@ All acceptance criteria met:
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-21T04:11:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e37a6960-52ec-4c3b-b022-5aafaa393fa4.jsonl`
-- `/ll:refine-issue` - 2026-03-21T04:08:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cbae5bbf-d60a-42bf-8f2b-1fa80ffa40c1.jsonl`
-- `/ll:refine-issue` - 2026-03-21T04:04:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/988301b2-39e4-4d2e-8ff7-5e4ba30e9a28.jsonl`
-- `/ll:manage-issue` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-03-21T04:11:10 - `e37a6960-52ec-4c3b-b022-5aafaa393fa4.jsonl`
+- `/ll:refine-issue` - 2026-03-21T04:08:15 - `cbae5bbf-d60a-42bf-8f2b-1fa80ffa40c1.jsonl`
+- `/ll:refine-issue` - 2026-03-21T04:04:11 - `988301b2-39e4-4d2e-8ff7-5e4ba30e9a28.jsonl`
+- `/ll:manage-issue` - 2026-03-20T00:00:00Z
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b316669-a54e-4b0e-bf7c-7cdcb231cb87.jsonl`

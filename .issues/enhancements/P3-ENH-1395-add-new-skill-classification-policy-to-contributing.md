@@ -114,13 +114,13 @@ _Updated by `/ll:confidence-check` on 2026-05-11_
 - **New CLI file does not exist**: `scripts/little_loops/cli/generate_skill_descriptions.py` must be created from scratch — ensure it is registered in `pyproject.toml` and installed before testing
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-11T05:30:26Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:ready-issue` - 2026-05-11T05:23:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b41ab03-b510-443f-b7e6-9b080476758a.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05b43bc1-4bad-4cee-aaf6-69179c4dd816.jsonl`
-- `/ll:decide-issue` - 2026-05-11T05:14:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44ebe857-57a3-4a0b-8ab5-0e68ff9a9869.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db4b4e79-bda6-447b-aee5-e3e1b6b6a142.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
-- `/ll:capture-issue` - 2026-05-09T20:48:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`
+- `/ll:manage-issue` - 2026-05-11T05:30:26Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-11T05:23:31 - `7b41ab03-b510-443f-b7e6-9b080476758a.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `05b43bc1-4bad-4cee-aaf6-69179c4dd816.jsonl`
+- `/ll:decide-issue` - 2026-05-11T05:14:06 - `44ebe857-57a3-4a0b-8ab5-0e68ff9a9869.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `db4b4e79-bda6-447b-aee5-e3e1b6b6a142.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
+- `/ll:capture-issue` - 2026-05-09T20:48:12Z - `6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`
 
 ---
 

@@ -169,11 +169,11 @@ _Added by `/ll:confidence-check` on 2026-05-26_
 - **Tests are co-deliverables**: `scripts/tests/test_link_epics_skill.py` doesn't exist yet — implement test file alongside the skill to validate orphan detection, Jaccard scoring, and write-back round-trip
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-26T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2480abd-758c-47ca-aa87-454ae8a76200.jsonl`
-- `/ll:confidence-check` - 2026-05-26T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e7f375b-aa7e-40e4-a08a-dc68993ce43d.jsonl`
-- `/ll:wire-issue` - 2026-05-26T21:49:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f1d0a8b-d785-46af-9c9e-524304f1c1a9.jsonl`
-- `/ll:refine-issue` - 2026-05-26T21:44:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/06dde0bf-4d88-452e-bb84-dad578cf427a.jsonl`
-- `/ll:format-issue` - 2026-05-26T21:02:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ed30089-38b6-4a6b-aabb-647e6b346ac3.jsonl`
+- `/ll:issue-size-review` - 2026-05-26T22:30:00Z - `d2480abd-758c-47ca-aa87-454ae8a76200.jsonl`
+- `/ll:confidence-check` - 2026-05-26T22:00:00Z - `7e7f375b-aa7e-40e4-a08a-dc68993ce43d.jsonl`
+- `/ll:wire-issue` - 2026-05-26T21:49:31 - `6f1d0a8b-d785-46af-9c9e-524304f1c1a9.jsonl`
+- `/ll:refine-issue` - 2026-05-26T21:44:30 - `06dde0bf-4d88-452e-bb84-dad578cf427a.jsonl`
+- `/ll:format-issue` - 2026-05-26T21:02:44 - `2ed30089-38b6-4a6b-aabb-647e6b346ac3.jsonl`
 
 - `/ll:capture-issue` - 2026-05-26T21:00:19Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b930ee27-2d55-47e0-828a-6533b49e3b89.jsonl`
 

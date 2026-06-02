@@ -216,9 +216,9 @@ Four regression test cases added to `TestClassifyFailure.test_classify_failure_p
 - BUG (to be filed): PostToolUse hook exit 2 feedback unreliable in -p mode
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-06T21:41:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/63fad009-7663-49aa-ac6a-4ad5eb77b1de.jsonl`
-- `/ll:confidence-check` - 2026-05-06T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c4d0565c-f405-43f9-a3a8-094dac6c0ee8.jsonl`
-- `/ll:decide-issue` - 2026-05-06T21:37:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b538b8cd-7293-4e35-8d90-f2fef6cc5e19.jsonl`
-- `/ll:refine-issue` - 2026-05-06T21:24:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f57123e2-1986-44c4-ab9f-027c29ad190c.jsonl`
-- `/ll:format-issue` - 2026-05-06T21:10:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/291cabfe-e58a-41a8-a54c-5ae0200e8ef1.jsonl`
-- `/ll:capture-issue` - 2026-05-06T20:59:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/381e1f9c-a749-4e5e-9040-a1d4e3d3e647.jsonl`
+- `/ll:ready-issue` - 2026-05-06T21:41:39 - `63fad009-7663-49aa-ac6a-4ad5eb77b1de.jsonl`
+- `/ll:confidence-check` - 2026-05-06T22:00:00 - `c4d0565c-f405-43f9-a3a8-094dac6c0ee8.jsonl`
+- `/ll:decide-issue` - 2026-05-06T21:37:14 - `b538b8cd-7293-4e35-8d90-f2fef6cc5e19.jsonl`
+- `/ll:refine-issue` - 2026-05-06T21:24:03 - `f57123e2-1986-44c4-ab9f-027c29ad190c.jsonl`
+- `/ll:format-issue` - 2026-05-06T21:10:19 - `291cabfe-e58a-41a8-a54c-5ae0200e8ef1.jsonl`
+- `/ll:capture-issue` - 2026-05-06T20:59:54Z - `381e1f9c-a749-4e5e-9040-a1d4e3d3e647.jsonl`

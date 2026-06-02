@@ -154,12 +154,12 @@ Exit non-zero only on hard errors; partial success exits zero with summary.
 **Active** | P3 | ENH
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-11T01:40:37Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/534f29dc-9078-4565-b6a5-14cb33271b6f.jsonl`
+- `/ll:capture-issue` - 2026-03-11T01:40:37Z - `534f29dc-9078-4565-b6a5-14cb33271b6f.jsonl`
 - `/ll:format-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/644cb258-98f9-4276-9d10-660523431e43.jsonl`
 - `/ll:refine-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10685d70-4d1f-420f-be75-81a4b4fefe36.jsonl`
 - `/ll:ready-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4915946-638f-4f1b-8cd6-6502108d230b.jsonl`
-- `/ll:confidence-check` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4915946-638f-4f1b-8cd6-6502108d230b.jsonl`
-- `/ll:manage-issue` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45358110-356e-4957-9ed5-e2169fe080ed.jsonl`
+- `/ll:confidence-check` - 2026-03-12T00:00:00Z - `b4915946-638f-4f1b-8cd6-6502108d230b.jsonl`
+- `/ll:manage-issue` - 2026-03-12T00:00:00Z - `45358110-356e-4957-9ed5-e2169fe080ed.jsonl`
 
 
 ---

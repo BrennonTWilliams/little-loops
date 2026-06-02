@@ -377,9 +377,9 @@ Generated YAML uses `diagnose` initial state and `convergence` gate — satisfie
 **Done** | Created: 2026-05-23 | Completed: 2026-05-24 | Priority: P2
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T14:41:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/696066f1-0b02-4d1f-bd15-1e5d834b3edf.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c74fe13-a75b-4713-911f-502cf9b5e015.jsonl`
-- `/ll:refine-issue` - 2026-05-24T13:49:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28bd77b9-9805-4ea8-8f7b-b71214070553.jsonl`
-- `/ll:verify-issues` - 2026-05-24T07:01:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08ba673b-967b-4af4-a548-692288b5485d.jsonl`
-- `/ll:confidence-check` - 2026-05-24T14:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68308df8-d2af-4e2a-9ef6-be8a8320ae61.jsonl`
-- `/ll:manage-issue` - 2026-05-24T14:48:17Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-05-24T14:41:28 - `696066f1-0b02-4d1f-bd15-1e5d834b3edf.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `5c74fe13-a75b-4713-911f-502cf9b5e015.jsonl`
+- `/ll:refine-issue` - 2026-05-24T13:49:11 - `28bd77b9-9805-4ea8-8f7b-b71214070553.jsonl`
+- `/ll:verify-issues` - 2026-05-24T07:01:37 - `08ba673b-967b-4af4-a548-692288b5485d.jsonl`
+- `/ll:confidence-check` - 2026-05-24T14:00:00Z - `68308df8-d2af-4e2a-9ef6-be8a8320ae61.jsonl`
+- `/ll:manage-issue` - 2026-05-24T14:48:17Z - `current.jsonl`

@@ -56,7 +56,7 @@ The evaluate prompt should at minimum check plan step completeness (condition 2)
 
 
 ## Session Log
-- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
 
 ---
 
@@ -75,4 +75,4 @@ The evaluate prompt should at minimum check plan step completeness (condition 2)
 
 ### Rationale
 ENH-1658 (replace the LLM evaluator with a shell counter) is open and would make this bug structurally moot — the `check_done` evaluate prompt won't exist after that change. Fixing the prompt divergence now risks being immediately thrown away.
-- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`
+- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`

@@ -226,7 +226,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 _(FEAT-557 and ENH-552 removed from Blocks — both completed)_
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-17T01:05:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7084c6d0-5594-450c-ac22-eff538eb9c12.jsonl`
+- `/ll:ready-issue` - 2026-03-17T01:05:52 - `7084c6d0-5594-450c-ac22-eff538eb9c12.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: fields declared but always None
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `EntityCluster.span` and `inferred_workflow` still always None; removed stale Blocks: FEAT-557, ENH-552 (both completed)
 

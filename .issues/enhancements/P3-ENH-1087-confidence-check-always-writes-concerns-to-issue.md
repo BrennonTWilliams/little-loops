@@ -132,13 +132,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Solution**: Removed `AskUserQuestion` interactive block from Phase 4.5 of `skills/confidence-check/SKILL.md`. Write-back is now unconditional when `HAS_FINDINGS` is true and `CHECK_MODE` is false. Added structural test in `scripts/tests/test_confidence_check_skill.py` to enforce this invariant.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:ready-issue` - 2026-04-13T01:00:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90984138-30d2-411d-a35b-e7b980602eb0.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0b40f01-0f45-4840-a5cb-6aa6c3c11276.jsonl`
-- `/ll:wire-issue` - 2026-04-13T00:51:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1bcc4d81-5ad2-4708-a587-c3bd0b7e8834.jsonl`
-- `/ll:refine-issue` - 2026-04-13T00:46:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/640676ed-f4a8-4ca1-89b3-8d7f9a65d2ce.jsonl`
-- `/ll:format-issue` - 2026-04-13T00:42:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/511e9704-cc49-4046-a1d4-8f1bd694450b.jsonl`
-- `/ll:capture-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cdeb08e4-632d-4ce8-a9b9-858290db380b.jsonl`
+- `/ll:manage-issue` - 2026-04-12T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-04-13T01:00:39 - `90984138-30d2-411d-a35b-e7b980602eb0.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `f0b40f01-0f45-4840-a5cb-6aa6c3c11276.jsonl`
+- `/ll:wire-issue` - 2026-04-13T00:51:29 - `1bcc4d81-5ad2-4708-a587-c3bd0b7e8834.jsonl`
+- `/ll:refine-issue` - 2026-04-13T00:46:26 - `640676ed-f4a8-4ca1-89b3-8d7f9a65d2ce.jsonl`
+- `/ll:format-issue` - 2026-04-13T00:42:34 - `511e9704-cc49-4046-a1d4-8f1bd694450b.jsonl`
+- `/ll:capture-issue` - 2026-04-12T00:00:00Z - `cdeb08e4-632d-4ce8-a9b9-858290db380b.jsonl`
 
 ---
 

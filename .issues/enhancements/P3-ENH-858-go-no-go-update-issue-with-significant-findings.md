@@ -134,11 +134,11 @@ Implemented by `/ll:manage-issue` on 2026-03-22.
 - `skills/go-no-go/SKILL.md`: Added Phase 3f (Go/No-Go Findings Write-Back) after Step 3e — implements novelty heuristic, interactive/auto mode gating, and `## Go/No-Go Findings` section write-back
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-23T02:19:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/54ad326d-246f-4fab-9297-e3498f587df3.jsonl`
-- `/ll:refine-issue` - 2026-03-23T01:55:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9359449-731d-43e3-ba00-6082cc3bba84.jsonl`
+- `/ll:ready-issue` - 2026-03-23T02:19:37 - `54ad326d-246f-4fab-9297-e3498f587df3.jsonl`
+- `/ll:refine-issue` - 2026-03-23T01:55:30 - `b9359449-731d-43e3-ba00-6082cc3bba84.jsonl`
 - `/ll:capture-issue` - 2026-03-22T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b57f667-bbed-4765-ac10-65a94b63e0d9.jsonl`
-- `/ll:confidence-check` - 2026-03-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26736631-f9f6-4a51-9124-5b5503a68625.jsonl`
-- `/ll:manage-issue` - 2026-03-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a675b2b4-23de-4f29-88aa-2fb2faf7e761.jsonl`
+- `/ll:confidence-check` - 2026-03-22T00:00:00Z - `26736631-f9f6-4a51-9124-5b5503a68625.jsonl`
+- `/ll:manage-issue` - 2026-03-22T00:00:00Z - `a675b2b4-23de-4f29-88aa-2fb2faf7e761.jsonl`
 
 ---
 

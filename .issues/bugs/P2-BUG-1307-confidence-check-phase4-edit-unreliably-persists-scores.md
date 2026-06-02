@@ -224,13 +224,13 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - Updated `docs/reference/CLI.md`, `docs/guides/LOOPS_GUIDE.md`, and `README.md` to document `set-scores` and the new three-stage threshold check.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-02T15:39:46Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a9c71c0-adf7-40bc-837d-16a2416a35a6.jsonl`
-- `/ll:ready-issue` - 2026-05-02T15:33:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a9c71c0-adf7-40bc-837d-16a2416a35a6.jsonl`
-- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34a9360e-afb7-429d-aa82-7d4cf5507f1f.jsonl`
-- `/ll:wire-issue` - 2026-05-02T15:26:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57e217c9-cb8e-4ba6-a96b-511c103754a7.jsonl`
-- `/ll:refine-issue` - 2026-05-02T15:15:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d52d5c5-7c63-4dc9-9749-7c3748e3066a.jsonl`
-- `/ll:format-issue` - 2026-05-01T17:38:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1483ec77-4cf9-4aca-8312-065f15a52a5f.jsonl`
-- `/ll:capture-issue` - 2026-04-30T17:48:28Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ef26bc-40e0-42b3-b405-4e9de6b8db77.jsonl`
+- `/ll:manage-issue` - 2026-05-02T15:39:46Z - `1a9c71c0-adf7-40bc-837d-16a2416a35a6.jsonl`
+- `/ll:ready-issue` - 2026-05-02T15:33:49 - `1a9c71c0-adf7-40bc-837d-16a2416a35a6.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `34a9360e-afb7-429d-aa82-7d4cf5507f1f.jsonl`
+- `/ll:wire-issue` - 2026-05-02T15:26:47 - `57e217c9-cb8e-4ba6-a96b-511c103754a7.jsonl`
+- `/ll:refine-issue` - 2026-05-02T15:15:39 - `0d52d5c5-7c63-4dc9-9749-7c3748e3066a.jsonl`
+- `/ll:format-issue` - 2026-05-01T17:38:24 - `1483ec77-4cf9-4aca-8312-065f15a52a5f.jsonl`
+- `/ll:capture-issue` - 2026-04-30T17:48:28Z - `27ef26bc-40e0-42b3-b405-4e9de6b8db77.jsonl`
 
 ---
 

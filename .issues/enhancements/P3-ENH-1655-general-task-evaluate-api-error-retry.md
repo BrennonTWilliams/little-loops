@@ -133,9 +133,9 @@ If implemented as a harness default, no per-state YAML changes are required for 
 Superseded by **ENH-1677** (apply existing `max_retries`/`on_retry_exhausted` mechanism to `execute` and `continue_work` in `general-task.yaml`) and **ENH-1678** (add `retryable_exit_codes` filter to the runner). The `retry_on_api_error` flag proposed here does not exist in the harness and is not needed — the `on_error: self` + `max_retries` pattern (ENH-713) covers the same failure mode. ENH-1677 delivers the concrete YAML fix; ENH-1678 adds exit-code precision. Nothing in this issue's scope is left uncovered.
 
 ## Session Log
-- `/ll:format-issue` - 2026-05-24T17:25:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5267084-551d-4f30-8319-d02e8535f537.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
+- `/ll:format-issue` - 2026-05-24T17:25:35 - `a5267084-551d-4f30-8319-d02e8535f537.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:45 - `8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
 
 ---
 
@@ -154,4 +154,4 @@ Superseded by **ENH-1677** (apply existing `max_retries`/`on_retry_exhausted` me
 
 ### Recommendation
 Update first — retarget after ENH-1658 lands. The current scope targets the `llm_structured` evaluator in `check_done`, which ENH-1658 will replace with a shell counter. Implementing as-written would immediately become dead code. After ENH-1658 lands, retarget the retry mechanism to remaining LLM-evaluated states (e.g. `diagnose`).
-- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`
+- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`

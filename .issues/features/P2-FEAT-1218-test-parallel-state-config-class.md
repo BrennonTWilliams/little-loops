@@ -152,9 +152,9 @@ _Added by `/ll:confidence-check` on 2026-04-21_
 - **Import fork still conditional.** Whether to import `ParallelStateConfig` at lines 16–24 depends on FEAT-1074's final shape. FEAT-1074's refined spec plans a standalone class — but must verify against the actual merged code before writing the import line.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1554da04-572b-4bf9-a121-be07971caad4.jsonl`
-- `/ll:refine-issue` - 2026-04-21T07:15:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/64eaa783-714e-4a4f-b22f-bcde3ef44812.jsonl`
-- `/ll:refine-issue` - 2026-04-21T07:06:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a31fb29-38a6-4223-a9a1-03c3b65527be.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59852d6e-fcd5-41f5-b554-577001c3b013.jsonl`
-- `/ll:wire-issue` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c60073c-f9ca-498b-a623-c06b69297269.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `1554da04-572b-4bf9-a121-be07971caad4.jsonl`
+- `/ll:refine-issue` - 2026-04-21T07:15:49 - `64eaa783-714e-4a4f-b22f-bcde3ef44812.jsonl`
+- `/ll:refine-issue` - 2026-04-21T07:06:32 - `9a31fb29-38a6-4223-a9a1-03c3b65527be.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `59852d6e-fcd5-41f5-b554-577001c3b013.jsonl`
+- `/ll:wire-issue` - 2026-04-21T00:00:00 - `current.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `1c60073c-f9ca-498b-a623-c06b69297269.jsonl`

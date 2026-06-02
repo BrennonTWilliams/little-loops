@@ -217,13 +217,13 @@ Fixed by routing `cmd_resume` through `run_foreground(..., mode="resume")`, the 
 **Verification**: `python -m pytest scripts/tests/` → 7476 passed, 5 skipped (was 7472 before; +4 new tests). `ruff check scripts/` → clean. `mypy scripts/little_loops/cli/loop/` → 2 pre-existing errors unchanged (wcwidth stub + LoopState variance; not introduced by this change).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-24T02:43:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
-- `/ll:ready-issue` - 2026-05-24T02:31:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a831c57a-345e-49ef-a2f5-c7cd4051eace.jsonl`
-- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a831c57a-345e-49ef-a2f5-c7cd4051eace.jsonl`
-- `/ll:wire-issue` - 2026-05-24T02:28:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/427c3817-f696-4b84-826d-de8a9874c08a.jsonl`
-- `/ll:refine-issue` - 2026-05-24T02:23:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cc45a1c4-242b-4e80-bbab-25524451ce36.jsonl`
-- `/ll:format-issue` - 2026-05-23T22:10:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
-- `/ll:capture-issue` - 2026-05-23T22:07:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91194a18-41a9-4ea2-aeb1-1b9a20014452.jsonl`
+- `/ll:manage-issue` - 2026-05-24T02:43:12Z - `001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
+- `/ll:ready-issue` - 2026-05-24T02:31:31 - `a831c57a-345e-49ef-a2f5-c7cd4051eace.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `a831c57a-345e-49ef-a2f5-c7cd4051eace.jsonl`
+- `/ll:wire-issue` - 2026-05-24T02:28:09 - `427c3817-f696-4b84-826d-de8a9874c08a.jsonl`
+- `/ll:refine-issue` - 2026-05-24T02:23:05 - `cc45a1c4-242b-4e80-bbab-25524451ce36.jsonl`
+- `/ll:format-issue` - 2026-05-23T22:10:57 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:capture-issue` - 2026-05-23T22:07:11Z - `91194a18-41a9-4ea2-aeb1-1b9a20014452.jsonl`
 
 ---
 

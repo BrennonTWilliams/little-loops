@@ -198,11 +198,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 All 5719 existing tests pass; no regressions.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-03T19:06:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:ready-issue` - 2026-05-03T18:55:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7da1944d-01d6-4fca-b44a-5775f0f10d9c.jsonl`
-- `/ll:confidence-check` - 2026-05-03T19:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b878886c-4bc9-4c7f-95d3-69139a14c562.jsonl`
-- `/ll:wire-issue` - 2026-05-03T18:51:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d6eb746-1937-4f45-bb7f-14d33480c49e.jsonl`
-- `/ll:refine-issue` - 2026-05-03T18:44:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43e7aad3-fda0-46c1-a704-aaadd35a6011.jsonl`
-- `/ll:decide-issue` - 2026-05-03T15:27:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46210245-3b62-4920-b3d0-c0a713e429eb.jsonl`
-- `/ll:verify-issues` - 2026-05-03T15:20:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
-- `/ll:format-issue` - 2026-05-03T04:41:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a41e2fe5-b6da-449b-8d60-6b8ddd06d97c.jsonl`
+- `/ll:manage-issue` - 2026-05-03T19:06:45Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-03T18:55:39 - `7da1944d-01d6-4fca-b44a-5775f0f10d9c.jsonl`
+- `/ll:confidence-check` - 2026-05-03T19:00:00 - `b878886c-4bc9-4c7f-95d3-69139a14c562.jsonl`
+- `/ll:wire-issue` - 2026-05-03T18:51:01 - `8d6eb746-1937-4f45-bb7f-14d33480c49e.jsonl`
+- `/ll:refine-issue` - 2026-05-03T18:44:11 - `43e7aad3-fda0-46c1-a704-aaadd35a6011.jsonl`
+- `/ll:decide-issue` - 2026-05-03T15:27:53 - `46210245-3b62-4920-b3d0-c0a713e429eb.jsonl`
+- `/ll:verify-issues` - 2026-05-03T15:20:54 - `8fe967ae-751c-4941-ab43-61b0cce639c5.jsonl`
+- `/ll:format-issue` - 2026-05-03T04:41:51 - `a41e2fe5-b6da-449b-8d60-6b8ddd06d97c.jsonl`

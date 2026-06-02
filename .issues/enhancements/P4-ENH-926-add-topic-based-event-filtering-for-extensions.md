@@ -203,8 +203,8 @@ Implemented topic-based event filtering for `EventBus` and the `LLExtension` Pro
 - ruff lint: clean, mypy: clean
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-03T01:29:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/674000f4-3c4b-4a7c-a50c-1de8dcc7434b.jsonl`
-- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb0c5f9d-1037-4e99-9314-fed616595469.jsonl`
-- `/ll:refine-issue` - 2026-04-03T01:21:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e1d3e02-18f1-4c88-9691-b73ab942451c.jsonl`
-- `/ll:refine-issue` - 2026-04-03T00:31:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5913db88-19b3-455b-8448-97664c8c42f8.jsonl`
-- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/997b167f-013b-46d4-a03f-9ff27d26a2a1.jsonl`
+- `/ll:ready-issue` - 2026-04-03T01:29:40 - `674000f4-3c4b-4a7c-a50c-1de8dcc7434b.jsonl`
+- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `eb0c5f9d-1037-4e99-9314-fed616595469.jsonl`
+- `/ll:refine-issue` - 2026-04-03T01:21:42 - `7e1d3e02-18f1-4c88-9691-b73ab942451c.jsonl`
+- `/ll:refine-issue` - 2026-04-03T00:31:27 - `5913db88-19b3-455b-8448-97664c8c42f8.jsonl`
+- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `997b167f-013b-46d4-a03f-9ff27d26a2a1.jsonl`

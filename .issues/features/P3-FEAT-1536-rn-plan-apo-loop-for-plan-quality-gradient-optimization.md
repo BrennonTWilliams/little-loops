@@ -336,17 +336,17 @@ fragments:
 - **FEAT-1534** (`rn-plan` built-in loop) must ship first — `rn-plan-apo` has no artifact to optimize until then.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-17T07:18:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f28a43ba-dd64-429a-8074-add6cf202fce.jsonl`
-- `/ll:confidence-check` - 2026-05-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6dd09366-ca88-452f-87df-e7e23ed6a020.jsonl`
-- `/ll:wire-issue` - 2026-05-17T07:14:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50200190-a30f-43aa-ae48-7a74b10ee7e2.jsonl`
-- `/ll:refine-issue` - 2026-05-17T07:06:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e962b8a1-d20a-43df-a232-15a54426f6a1.jsonl`
-- `/ll:refine-issue` - 2026-05-17T01:54:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21a23601-8801-4478-b899-816a89ded470.jsonl`
-- `/ll:format-issue` - 2026-05-17T01:46:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1772a9c9-375e-4635-9d23-f8a61e7e3c7f.jsonl`
+- `/ll:ready-issue` - 2026-05-17T07:18:40 - `f28a43ba-dd64-429a-8074-add6cf202fce.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00 - `6dd09366-ca88-452f-87df-e7e23ed6a020.jsonl`
+- `/ll:wire-issue` - 2026-05-17T07:14:07 - `50200190-a30f-43aa-ae48-7a74b10ee7e2.jsonl`
+- `/ll:refine-issue` - 2026-05-17T07:06:25 - `e962b8a1-d20a-43df-a232-15a54426f6a1.jsonl`
+- `/ll:refine-issue` - 2026-05-17T01:54:36 - `21a23601-8801-4478-b899-816a89ded470.jsonl`
+- `/ll:format-issue` - 2026-05-17T01:46:46 - `1772a9c9-375e-4635-9d23-f8a61e7e3c7f.jsonl`
 
-- `/ll:capture-issue` - 2026-05-17T01:43:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ff744fb-fd2c-4c52-b59d-5acb13e9557a.jsonl`
+- `/ll:capture-issue` - 2026-05-17T01:43:21Z - `1ff744fb-fd2c-4c52-b59d-5acb13e9557a.jsonl`
 
-- `/ll:refine-issue` - 2026-05-17T02:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b9595aa-5604-4993-8970-761fc7eda533.jsonl`
-- `/ll:manage-issue` - 2026-05-17T07:29:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
+- `/ll:refine-issue` - 2026-05-17T02:15:00 - `7b9595aa-5604-4993-8970-761fc7eda533.jsonl`
+- `/ll:manage-issue` - 2026-05-17T07:29:05 - `001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
 
 ## Resolution
 

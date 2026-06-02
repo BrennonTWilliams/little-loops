@@ -161,11 +161,11 @@ _Added by `/ll:confidence-check` on 2026-05-15_
 - **Auto-activation via `_PROBE_ORDER`**: Unlike `CodexRunner` (which is gated), `("pi", "pi")` is already active. Wiring `build_*` turns on Pi routing for any machine with `pi` on PATH. Run the full test suite with `pi` absent from PATH to confirm no inadvertent routing regressions.
 
 ## Session Log
-- `/ll:wire-issue` - 2026-05-15T19:58:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5cd5504-1a49-4471-b701-2ccee2cd4de1.jsonl`
-- `/ll:refine-issue` - 2026-05-15T19:53:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/153f9861-caa4-4423-b4ac-99f08867d6bc.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T20:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f91d7b90-f81d-4224-83bd-e6b959badcd1.jsonl`
-- `/ll:confidence-check` - 2026-05-15T20:25:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5cd5504-1a49-4471-b701-2ccee2cd4de1.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T20:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e9b11ad-de12-4f82-9761-25c38e59c783.jsonl`
+- `/ll:wire-issue` - 2026-05-15T19:58:16 - `c5cd5504-1a49-4471-b701-2ccee2cd4de1.jsonl`
+- `/ll:refine-issue` - 2026-05-15T19:53:54 - `153f9861-caa4-4423-b4ac-99f08867d6bc.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T20:10:00 - `f91d7b90-f81d-4224-83bd-e6b959badcd1.jsonl`
+- `/ll:confidence-check` - 2026-05-15T20:25:00 - `c5cd5504-1a49-4471-b701-2ccee2cd4de1.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T20:30:00 - `3e9b11ad-de12-4f82-9761-25c38e59c783.jsonl`
 
 ---
 

@@ -146,9 +146,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - Full suite: 5538 passed, 3 pre-existing failures unrelated to this change (verified via `git stash` baseline)
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-02T16:05:50Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010190c-509e-453e-bb85-c00575d1e590.jsonl`
-- `/ll:ready-issue` - 2026-05-02T16:01:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ba61d8e-debe-4a2d-a46f-8b2226966482.jsonl`
-- `/ll:confidence-check` - 2026-05-02T16:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b593866a-d3e5-4a59-9fd9-49e3382dda71.jsonl`
-- `/ll:refine-issue` - 2026-05-02T15:55:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9d0bba-4725-41a7-ae23-5a56e421a1d3.jsonl`
-- `/ll:format-issue` - 2026-05-02T15:17:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d52d5c5-7c63-4dc9-9749-7c3748e3066a.jsonl`
-- `/ll:capture-issue` - 2026-05-02T15:14:39Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19344c8e-9db2-4d37-b7f7-d6bf19e299d8.jsonl`
+- `/ll:manage-issue` - 2026-05-02T16:05:50Z - `0010190c-509e-453e-bb85-c00575d1e590.jsonl`
+- `/ll:ready-issue` - 2026-05-02T16:01:39 - `0ba61d8e-debe-4a2d-a46f-8b2226966482.jsonl`
+- `/ll:confidence-check` - 2026-05-02T16:30:00 - `b593866a-d3e5-4a59-9fd9-49e3382dda71.jsonl`
+- `/ll:refine-issue` - 2026-05-02T15:55:52 - `fa9d0bba-4725-41a7-ae23-5a56e421a1d3.jsonl`
+- `/ll:format-issue` - 2026-05-02T15:17:21 - `0d52d5c5-7c63-4dc9-9749-7c3748e3066a.jsonl`
+- `/ll:capture-issue` - 2026-05-02T15:14:39Z - `19344c8e-9db2-4d37-b7f7-d6bf19e299d8.jsonl`

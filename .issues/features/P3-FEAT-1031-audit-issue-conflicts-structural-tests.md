@@ -174,9 +174,9 @@ class TestAuditIssueConflictsSkillExists:
 - All 7 assertions pass: `python -m pytest scripts/tests/test_audit_issue_conflicts_skill.py` → 7 passed in 0.18s
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-11T17:49:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eddb8c60-f0c6-4d79-9ab2-8953d368624d.jsonl`
-- `/ll:confidence-check` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a87c1420-a83d-43ba-b59a-1acbfc8d4f78.jsonl`
-- `/ll:wire-issue` - 2026-04-11T17:46:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f7e2183-b845-49f7-9c98-af22e8f0d287.jsonl`
-- `/ll:refine-issue` - 2026-04-11T17:37:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36b4e078-b3a3-4a8e-ba65-369011fd2841.jsonl`
-- `/ll:format-issue` - 2026-04-11T05:35:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09f5ad48-02b2-4a2b-98cf-6d1da7ce2e95.jsonl`
-- `/ll:issue-size-review` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05d0324c-611c-469d-8af1-b4e42644c47d.jsonl`
+- `/ll:ready-issue` - 2026-04-11T17:49:57 - `eddb8c60-f0c6-4d79-9ab2-8953d368624d.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00Z - `a87c1420-a83d-43ba-b59a-1acbfc8d4f78.jsonl`
+- `/ll:wire-issue` - 2026-04-11T17:46:51 - `6f7e2183-b845-49f7-9c98-af22e8f0d287.jsonl`
+- `/ll:refine-issue` - 2026-04-11T17:37:25 - `36b4e078-b3a3-4a8e-ba65-369011fd2841.jsonl`
+- `/ll:format-issue` - 2026-04-11T05:35:44 - `09f5ad48-02b2-4a2b-98cf-6d1da7ce2e95.jsonl`
+- `/ll:issue-size-review` - 2026-04-11T00:00:00Z - `05d0324c-611c-469d-8af1-b4e42644c47d.jsonl`

@@ -178,10 +178,10 @@ _Added by `/ll:confidence-check` on 2026-04-18_
 - FEAT-1163: Analytics & Display — Read timestamps in show, search, and history
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-18T19:38:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a53c2eef-b0c1-4768-8f1f-aa378a05c411.jsonl`
-- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19fa4cfd-169f-4f79-9261-a8cecb509292.jsonl`
-- `/ll:wire-issue` - 2026-04-18T19:23:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8883fc0-edee-48bf-ae7c-015e4f8b3dfc.jsonl`
-- `/ll:refine-issue` - 2026-04-18T19:16:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d435ac64-5de4-4a7e-9c83-24b048229468.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-18T19:38:39 - `a53c2eef-b0c1-4768-8f1f-aa378a05c411.jsonl`
+- `/ll:confidence-check` - 2026-04-18T00:00:00Z - `19fa4cfd-169f-4f79-9261-a8cecb509292.jsonl`
+- `/ll:wire-issue` - 2026-04-18T19:23:35 - `c8883fc0-edee-48bf-ae7c-015e4f8b3dfc.jsonl`
+- `/ll:refine-issue` - 2026-04-18T19:16:33 - `d435ac64-5de4-4a7e-9c83-24b048229468.jsonl`
 - `/ll:capture-issue` - 2026-04-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a073fd14-d01d-4031-914c-a939a2a2d07d.jsonl`
-- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f6ae308f-90dc-4b4e-8527-5207880ea6dd.jsonl`
-- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a53c2eef-b0c1-4768-8f1f-aa378a05c411.jsonl`
+- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `f6ae308f-90dc-4b4e-8527-5207880ea6dd.jsonl`
+- `/ll:issue-size-review` - 2026-04-18T00:00:00Z - `a53c2eef-b0c1-4768-8f1f-aa378a05c411.jsonl`

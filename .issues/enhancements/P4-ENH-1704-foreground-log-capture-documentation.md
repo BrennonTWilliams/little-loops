@@ -156,10 +156,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Priority: P4
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-27T21:30:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d76ad14b-9daf-42a1-a0e1-3f7d7a571e2a.jsonl`
-- `/ll:wire-issue` - 2026-05-27T21:23:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb0eb7e3-a579-42e8-8503-8ab1e51fb567.jsonl`
-- `/ll:refine-issue` - 2026-05-27T21:19:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6dd079ac-525a-42b9-a559-9e8370efa495.jsonl`
-- `/ll:issue-size-review` - 2026-05-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49c875d1-35f0-42f5-a121-41c0c7663183.jsonl`
+- `/ll:ready-issue` - 2026-05-27T21:30:19 - `d76ad14b-9daf-42a1-a0e1-3f7d7a571e2a.jsonl`
+- `/ll:wire-issue` - 2026-05-27T21:23:53 - `bb0eb7e3-a579-42e8-8503-8ab1e51fb567.jsonl`
+- `/ll:refine-issue` - 2026-05-27T21:19:01 - `6dd079ac-525a-42b9-a559-9e8370efa495.jsonl`
+- `/ll:issue-size-review` - 2026-05-25T00:00:00Z - `49c875d1-35f0-42f5-a121-41c0c7663183.jsonl`
 - Design revised to always-on (dropped config schema and CONFIGURATION.md changes) - 2026-05-26
-- `/ll:confidence-check` - 2026-05-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0274acbe-25d8-4b5b-ac18-6570e5bbdc88.jsonl`
-- `/ll:ready-issue` - 2026-05-27T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d76ad14b-9daf-42a1-a0e1-3f7d7a571e2a.jsonl`
+- `/ll:confidence-check` - 2026-05-27T00:00:00Z - `0274acbe-25d8-4b5b-ac18-6570e5bbdc88.jsonl`
+- `/ll:ready-issue` - 2026-05-27T00:00:00 - `d76ad14b-9daf-42a1-a0e1-3f7d7a571e2a.jsonl`

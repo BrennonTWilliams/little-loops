@@ -88,7 +88,7 @@ The init wizard is the first interaction new users have with little-loops. Poor 
 `enhancement`, `init`, `interactive-wizard`, `ux`, `onboarding`
 
 ## Session Log
-- `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
+- `/ll:format-issue` - 2026-02-22 - `38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
 
 ## Blocked By
 

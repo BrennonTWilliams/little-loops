@@ -200,10 +200,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 Fixed by adding **Phase 4.6: Decision-Needed Flag** to `skills/confidence-check/SKILL.md` immediately after Phase 4.5. The new phase scans the Outcome Risk Factors content written by Phase 4.5 for signal phrases ("open decision", "unresolved decision", "resolve before implementing", "decision point") and sets `decision_needed: true` in the issue frontmatter when any are found. Guards: CHECK_MODE skip, idempotency (no-op if already `true`). Documentation updated in `docs/reference/API.md`, `docs/reference/COMMANDS.md`, and `docs/guides/ISSUE_MANAGEMENT_GUIDE.md`. Six structural tests added to `scripts/tests/test_confidence_check_skill.py`.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-24T23:11:47Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a59f955d-1476-46b6-86c4-9ebfbfd80b60.jsonl`
-- `/ll:ready-issue` - 2026-04-24T23:05:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8aef0887-aa9d-46f7-97dd-71ef2dc9ab95.jsonl`
-- `/ll:decide-issue` - 2026-04-24T23:02:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c07b93f-0220-43db-b622-3f5b2c40f07a.jsonl`
-- `/ll:confidence-check` - 2026-04-24T23:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0515c411-1a42-422d-8af5-9d3a19f5d03c.jsonl`
-- `/ll:wire-issue` - 2026-04-24T22:55:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27c8ab24-3531-40ba-b883-80ca4b272ff6.jsonl`
-- `/ll:refine-issue` - 2026-04-24T22:50:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27826087-82cc-4bce-924a-d8383ccdcf0e.jsonl`
-- `/ll:capture-issue` - 2026-04-24T21:18:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82f88b14-6ac1-4d64-a028-6d67f78c0498.jsonl`
+- `/ll:manage-issue` - 2026-04-24T23:11:47Z - `a59f955d-1476-46b6-86c4-9ebfbfd80b60.jsonl`
+- `/ll:ready-issue` - 2026-04-24T23:05:23 - `8aef0887-aa9d-46f7-97dd-71ef2dc9ab95.jsonl`
+- `/ll:decide-issue` - 2026-04-24T23:02:45 - `1c07b93f-0220-43db-b622-3f5b2c40f07a.jsonl`
+- `/ll:confidence-check` - 2026-04-24T23:00:00Z - `0515c411-1a42-422d-8af5-9d3a19f5d03c.jsonl`
+- `/ll:wire-issue` - 2026-04-24T22:55:27 - `27c8ab24-3531-40ba-b883-80ca4b272ff6.jsonl`
+- `/ll:refine-issue` - 2026-04-24T22:50:17 - `27826087-82cc-4bce-924a-d8383ccdcf0e.jsonl`
+- `/ll:capture-issue` - 2026-04-24T21:18:45Z - `82f88b14-6ac1-4d64-a028-6d67f78c0498.jsonl`

@@ -148,13 +148,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - All 3 new tests pass; 4006 pre-existing tests pass; lint and mypy clean
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:ready-issue` - 2026-04-02T04:26:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90944be6-c0ae-40b1-a19e-9351fa308847.jsonl`
-- `/ll:confidence-check` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb231202-0547-4549-a812-a70ba1e322b5.jsonl`
-- `/ll:refine-issue` - 2026-04-01T20:55:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb231202-0547-4549-a812-a70ba1e322b5.jsonl`
-- `/ll:format-issue` - 2026-04-01T20:50:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb231202-0547-4549-a812-a70ba1e322b5.jsonl`
-- `/ll:verify-issues` - 2026-04-01T17:45:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
-- `/ll:capture-issue` - 2026-03-30T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c781d736-a85e-47b1-9ef5-625122a2c2ae.jsonl`
+- `/ll:manage-issue` - 2026-04-01T00:00:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-04-02T04:26:26 - `90944be6-c0ae-40b1-a19e-9351fa308847.jsonl`
+- `/ll:confidence-check` - 2026-04-01T00:00:00 - `fb231202-0547-4549-a812-a70ba1e322b5.jsonl`
+- `/ll:refine-issue` - 2026-04-01T20:55:52 - `fb231202-0547-4549-a812-a70ba1e322b5.jsonl`
+- `/ll:format-issue` - 2026-04-01T20:50:42 - `fb231202-0547-4549-a812-a70ba1e322b5.jsonl`
+- `/ll:verify-issues` - 2026-04-01T17:45:20 - `712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
+- `/ll:capture-issue` - 2026-03-30T00:00:00Z - `c781d736-a85e-47b1-9ef5-625122a2c2ae.jsonl`
 
 ---
 

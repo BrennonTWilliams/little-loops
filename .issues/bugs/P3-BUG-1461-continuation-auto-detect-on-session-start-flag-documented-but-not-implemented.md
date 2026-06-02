@@ -167,11 +167,11 @@ _Added by `/ll:verify-issues` on 2026-05-30_
 - Issue still needs a decision (implement or remove) — no progress since 2026-05-14 discovery ✓
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T19:48:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34f84fcf-43f5-4359-b8a7-255b2b1e5f21.jsonl`
-- `/ll:decide-issue` - 2026-06-01T19:47:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a55d1f6-d02f-419b-9e9c-78a18b1ba60c.jsonl`
-- `/ll:refine-issue` - 2026-06-01T19:41:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34f84fcf-43f5-4359-b8a7-255b2b1e5f21.jsonl`
-- `/ll:verify-issues` - 2026-05-31T20:34:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52d78c58-d750-467e-9092-de587a96595e.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:format-issue` - 2026-05-23T16:51:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a9c6d1a1-0ff3-429d-82ba-98b024c1337c.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-14T21:23:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75505ad4-6733-4424-b334-3143f412786b.jsonl`
-- `/ll:verify-issues` - 2026-05-14T20:42:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`
+- `/ll:ready-issue` - 2026-06-01T19:48:56 - `34f84fcf-43f5-4359-b8a7-255b2b1e5f21.jsonl`
+- `/ll:decide-issue` - 2026-06-01T19:47:28 - `9a55d1f6-d02f-419b-9e9c-78a18b1ba60c.jsonl`
+- `/ll:refine-issue` - 2026-06-01T19:41:47 - `34f84fcf-43f5-4359-b8a7-255b2b1e5f21.jsonl`
+- `/ll:verify-issues` - 2026-05-31T20:34:10 - `52d78c58-d750-467e-9092-de587a96595e.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:03 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:format-issue` - 2026-05-23T16:51:53 - `a9c6d1a1-0ff3-429d-82ba-98b024c1337c.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-14T21:23:11 - `75505ad4-6733-4424-b334-3143f412786b.jsonl`
+- `/ll:verify-issues` - 2026-05-14T20:42:06 - `08e4ebf6-4da6-445a-91f6-ae578f565978.jsonl`

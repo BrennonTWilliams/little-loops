@@ -195,13 +195,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `ll-loop`, `concurrency`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-03T22:24:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cf85333-8644-4f07-91ec-82f34aa1df7b.jsonl`
-- `/ll:confidence-check` - 2026-05-03T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cc408e7-c90c-40dd-af56-67e3959ef6e8.jsonl`
-- `/ll:wire-issue` - 2026-05-03T22:20:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59b21eda-ece5-4df3-a5a3-d7d8032c40d7.jsonl`
-- `/ll:refine-issue` - 2026-05-03T22:15:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f73a849-e051-4a90-8a64-60e7f615bdca.jsonl`
-- `/ll:format-issue` - 2026-05-03T21:54:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0105a40-4f11-453e-842b-a9855e8ac301.jsonl`
+- `/ll:ready-issue` - 2026-05-03T22:24:31 - `2cf85333-8644-4f07-91ec-82f34aa1df7b.jsonl`
+- `/ll:confidence-check` - 2026-05-03T23:00:00 - `8cc408e7-c90c-40dd-af56-67e3959ef6e8.jsonl`
+- `/ll:wire-issue` - 2026-05-03T22:20:42 - `59b21eda-ece5-4df3-a5a3-d7d8032c40d7.jsonl`
+- `/ll:refine-issue` - 2026-05-03T22:15:18 - `9f73a849-e051-4a90-8a64-60e7f615bdca.jsonl`
+- `/ll:format-issue` - 2026-05-03T21:54:04 - `c0105a40-4f11-453e-842b-a9855e8ac301.jsonl`
 
-- `/ll:capture-issue` - 2026-05-03T18:44:03Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d6eb746-1937-4f45-bb7f-14d33480c49e.jsonl`
+- `/ll:capture-issue` - 2026-05-03T18:44:03Z - `8d6eb746-1937-4f45-bb7f-14d33480c49e.jsonl`
 
 ---
 
@@ -220,6 +220,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Closed**: 2026-05-03T22:29:56Z
 
-- `/ll:manage-issue` - 2026-05-03T22:29:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/acb1b5bd-8908-467d-b149-60c63c6ffb36.jsonl`
+- `/ll:manage-issue` - 2026-05-03T22:29:56Z - `acb1b5bd-8908-467d-b149-60c63c6ffb36.jsonl`
 
 **Resolved** | Created: 2026-05-03 | Priority: P2

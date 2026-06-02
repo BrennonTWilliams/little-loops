@@ -122,11 +122,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Session Log
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
-- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
-- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
-- `/ll:format-issue` - 2026-03-13T03:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01fe4a89-e3a7-4642-aa87-40682ae1517c.jsonl`
-- `/ll:verify-issues` - 2026-03-13T03:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01fe4a89-e3a7-4642-aa87-40682ae1517c.jsonl`
-- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/611a4ae6-c639-4f26-8bd4-6c9cc190fff8.jsonl`
+- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:format-issue` - 2026-03-13T03:00:00Z - `01fe4a89-e3a7-4642-aa87-40682ae1517c.jsonl`
+- `/ll:verify-issues` - 2026-03-13T03:00:00Z - `01fe4a89-e3a7-4642-aa87-40682ae1517c.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `611a4ae6-c639-4f26-8bd4-6c9cc190fff8.jsonl`
 - `/ll:ready-issue` - 2026-03-13T19:29:22Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-bug-685-20260313-192922/a4d54f34-f7fc-4cd6-be30-20d55521fc27.jsonl`
 - `/ll:manage-issue` - 2026-03-13T19:29:22Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-bug-685-20260313-192922/current.jsonl`
 

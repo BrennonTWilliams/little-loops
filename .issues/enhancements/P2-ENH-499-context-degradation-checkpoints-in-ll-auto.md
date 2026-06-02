@@ -90,7 +90,7 @@ This is especially important for ll-sprint, which was designed to handle multipl
 `enhancement`, `context-engineering`, `ll-auto`, `ll-sprint`, `reliability`, `error-handling`
 
 ## Session Log
-- `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:format-issue` - 2026-02-24 - `cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 
 ---
 

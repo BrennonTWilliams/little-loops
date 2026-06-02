@@ -172,10 +172,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `loops`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-13T01:45:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/579bfd95-9ed4-4bec-8204-290aa9e0bfbe.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99711cfa-c6a8-4520-8e2f-6622a3224ca6.jsonl`
-- `/ll:wire-issue` - 2026-04-12T23:03:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3cd62e7-0dae-42cb-bbc9-f72e7d7cff7b.jsonl`
-- `/ll:refine-issue` - 2026-04-12T22:40:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7c9802d-2089-4939-b342-91f160e169da.jsonl`
+- `/ll:ready-issue` - 2026-04-13T01:45:18 - `579bfd95-9ed4-4bec-8204-290aa9e0bfbe.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00 - `99711cfa-c6a8-4520-8e2f-6622a3224ca6.jsonl`
+- `/ll:wire-issue` - 2026-04-12T23:03:07 - `e3cd62e7-0dae-42cb-bbc9-f72e7d7cff7b.jsonl`
+- `/ll:refine-issue` - 2026-04-12T22:40:53 - `c7c9802d-2089-4939-b342-91f160e169da.jsonl`
 
 - `/ll:capture-issue` - 2026-04-12T22:33:28+00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9da6eb97-069e-44c5-91dc-b06213bbdb44.jsonl`
 

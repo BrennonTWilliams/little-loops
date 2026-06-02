@@ -226,9 +226,9 @@ Completed 2026-06-01T19:32:27Z.
 - Created `scripts/tests/test_enh1866_doc_wiring.py` with 6 passing wiring tests
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T19:26:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/393dcf8d-0e5a-4ff6-ba4d-fb43986db4b5.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/393dcf8d-0e5a-4ff6-ba4d-fb43986db4b5.jsonl`
-- `/ll:wire-issue` - 2026-06-01T19:20:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36158ddf-75a7-400d-9f98-59ebf44c44b6.jsonl`
-- `/ll:refine-issue` - 2026-06-01T19:15:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d1e555b-f2c7-4df6-b812-792f05bcbe18.jsonl`
-- `/ll:format-issue` - 2026-06-01T18:50:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c41ca909-db8c-449b-9875-0d6bc9aa84fa.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcaa931c-330d-44e9-b237-2540a93e4fcb.jsonl`
+- `/ll:ready-issue` - 2026-06-01T19:26:00 - `393dcf8d-0e5a-4ff6-ba4d-fb43986db4b5.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `393dcf8d-0e5a-4ff6-ba4d-fb43986db4b5.jsonl`
+- `/ll:wire-issue` - 2026-06-01T19:20:58 - `36158ddf-75a7-400d-9f98-59ebf44c44b6.jsonl`
+- `/ll:refine-issue` - 2026-06-01T19:15:40 - `1d1e555b-f2c7-4df6-b812-792f05bcbe18.jsonl`
+- `/ll:format-issue` - 2026-06-01T18:50:49 - `c41ca909-db8c-449b-9875-0d6bc9aa84fa.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `bcaa931c-330d-44e9-b237-2540a93e4fcb.jsonl`

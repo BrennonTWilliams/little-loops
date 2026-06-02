@@ -245,9 +245,9 @@ Implemented Signals 1, 2, 3 as prose directives in `skills/analyze-loop/SKILL.md
 **Completed** | Created: 2026-05-02 | Completed: 2026-05-03 | Priority: P3
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-03T04:57:18Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8af1a3a1-23af-4c82-98e3-c5e3dde0272f.jsonl`
-- `/ll:ready-issue` - 2026-05-03T04:44:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4217de01-e6a0-4956-b983-ddbac6e33cd5.jsonl`
-- `/ll:wire-issue` - 2026-05-03T04:36:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae2d04cb-8b7e-427b-8b4d-eb46dd7e7963.jsonl`
-- `/ll:refine-issue` - 2026-05-03T04:30:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72d1a6da-5f0e-44c1-99c9-d038fb2c92e5.jsonl`
-- `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17077eeb-0a80-4927-8736-7cffe26a726a.jsonl`
-- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae2d04cb-8b7e-427b-8b4d-eb46dd7e7963.jsonl`
+- `/ll:manage-issue` - 2026-05-03T04:57:18Z - `8af1a3a1-23af-4c82-98e3-c5e3dde0272f.jsonl`
+- `/ll:ready-issue` - 2026-05-03T04:44:04 - `4217de01-e6a0-4956-b983-ddbac6e33cd5.jsonl`
+- `/ll:wire-issue` - 2026-05-03T04:36:45 - `ae2d04cb-8b7e-427b-8b4d-eb46dd7e7963.jsonl`
+- `/ll:refine-issue` - 2026-05-03T04:30:38 - `72d1a6da-5f0e-44c1-99c9-d038fb2c92e5.jsonl`
+- `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `17077eeb-0a80-4927-8736-7cffe26a726a.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `ae2d04cb-8b7e-427b-8b4d-eb46dd7e7963.jsonl`

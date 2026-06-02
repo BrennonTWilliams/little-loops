@@ -155,9 +155,9 @@ _New tests to write (add to `test_ll_loop_display.py`, follow `_make_args` + `Mo
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-08T18:00:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90fdf28d-56ff-429a-8d93-3f335dd8c8fb.jsonl`
-- `/ll:confidence-check` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef7b723c-c390-4334-9fd7-55a84a05e0a7.jsonl`
-- `/ll:wire-issue` - 2026-04-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/memory/`
-- `/ll:refine-issue` - 2026-04-08T17:49:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee0b01ff-f8a6-41e9-8b8b-e90bc50cd8f2.jsonl`
-- `/ll:format-issue` - 2026-04-08T17:45:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37027bb9-1fa6-406a-80cc-0e6d8670eb16.jsonl`
+- `/ll:ready-issue` - 2026-04-08T18:00:54 - `90fdf28d-56ff-429a-8d93-3f335dd8c8fb.jsonl`
+- `/ll:confidence-check` - 2026-04-08T00:00:00 - `ef7b723c-c390-4334-9fd7-55a84a05e0a7.jsonl`
+- `/ll:wire-issue` - 2026-04-08T00:00:00
+- `/ll:refine-issue` - 2026-04-08T17:49:29 - `ee0b01ff-f8a6-41e9-8b8b-e90bc50cd8f2.jsonl`
+- `/ll:format-issue` - 2026-04-08T17:45:55 - `37027bb9-1fa6-406a-80cc-0e6d8670eb16.jsonl`
 - `/ll:capture-issue` - 2026-04-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ad0cbea-3b2e-43a7-b77a-e86e33d332e2.jsonl`

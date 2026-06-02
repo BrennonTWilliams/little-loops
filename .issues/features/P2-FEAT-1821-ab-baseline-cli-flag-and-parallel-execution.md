@@ -211,8 +211,8 @@ _Wiring pass added by `/ll:wire-issue`: adding `on_usage` to `ActionRunner.run()
 - Documentation updates (FEAT-1822)
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-31T04:04:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2c0b1b1-7043-4750-bbb0-196b75de50e7.jsonl`
-- `/ll:wire-issue` - 2026-05-31T03:59:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0a36fc6-c399-49cb-b38e-dd741555ad08.jsonl`
-- `/ll:refine-issue` - 2026-05-31T03:52:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fde387ed-4d7c-4ef0-8836-2a5a3430dc78.jsonl`
-- `/ll:issue-size-review` - 2026-05-30T23:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
-- `/ll:confidence-check` - 2026-05-31T04:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/56585d9e-8e09-4953-a428-4cf755864d91.jsonl`
+- `/ll:ready-issue` - 2026-05-31T04:04:43 - `a2c0b1b1-7043-4750-bbb0-196b75de50e7.jsonl`
+- `/ll:wire-issue` - 2026-05-31T03:59:16 - `f0a36fc6-c399-49cb-b38e-dd741555ad08.jsonl`
+- `/ll:refine-issue` - 2026-05-31T03:52:08 - `fde387ed-4d7c-4ef0-8836-2a5a3430dc78.jsonl`
+- `/ll:issue-size-review` - 2026-05-30T23:00:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:confidence-check` - 2026-05-31T04:00:00Z - `56585d9e-8e09-4953-a428-4cf755864d91.jsonl`

@@ -218,12 +218,12 @@ _(ENH-539 removed — completed as duplicate of ENH-626)_
 Update first — HIGH utility (debugging 200+ event logs is a real pain point), but the `--since` duration parser is a non-trivial utility that will also be needed by `ll-messages` and `ll-history`. Before implementing, extract the duration string parser (`"1h"` → seconds, `"30m"` → seconds, `"2d"` → seconds) as a shared utility in `little_loops/text_utils.py` or a new `time_utils.py`. This reduces maintenance overhead (one implementation vs three) and makes the feature scope cleaner. Once that utility exists, the filtering implementation is straightforward.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-21T05:12:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6094f1ed-fc91-436b-b28b-8b1cc75631f6.jsonl`
-- `/ll:verify-issues` - 2026-03-21T05:10:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1082d080-3f73-4dbb-aa8e-13649c83fe55.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:refine-issue` - 2026-03-21T00:21:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5299772f-969e-4905-ae98-f9ec59c250bf.jsonl`
-- `/ll:verify-issues` - 2026-03-15T17:23:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c4b6f16-1629-4fbe-91ed-e715b7a19026.jsonl`
-- `/ll:verify-issues` - 2026-03-15T00:11:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
+- `/ll:ready-issue` - 2026-03-21T05:12:01 - `6094f1ed-fc91-436b-b28b-8b1cc75631f6.jsonl`
+- `/ll:verify-issues` - 2026-03-21T05:10:38 - `1082d080-3f73-4dbb-aa8e-13649c83fe55.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:refine-issue` - 2026-03-21T00:21:44 - `5299772f-969e-4905-ae98-f9ec59c250bf.jsonl`
+- `/ll:verify-issues` - 2026-03-15T17:23:15 - `7c4b6f16-1629-4fbe-91ed-e715b7a19026.jsonl`
+- `/ll:verify-issues` - 2026-03-15T00:11:18 - `623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: no --event, --state, --json, --since flags
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: filters still absent; removed stale Blocked By ENH-539 (completed as duplicate of ENH-626)
 - `/ll:ready-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bc8b254-8ac0-409d-b79d-9795de6dc39e.jsonl` — BLOCKED: ENH-537 and ENH-538 still active; corrected line numbers (info.py 62-84→215-237, __init__.py 127-131→189-197, test classes 135/182→251/298)
@@ -262,7 +262,7 @@ Update first — HIGH utility (debugging 200+ event logs is a real pain point), 
 - `mypy` — no issues found in 3 source files
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-21T05:18:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1483dac-eb16-416c-b40a-40b278600abf.jsonl`
+- `/ll:manage-issue` - 2026-03-21T05:18:57 - `d1483dac-eb16-416c-b40a-40b278600abf.jsonl`
 
 ## Status
 

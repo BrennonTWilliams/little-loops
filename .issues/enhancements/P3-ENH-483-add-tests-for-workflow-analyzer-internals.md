@@ -75,7 +75,7 @@ Add test classes `TestLinkSessions`, `TestClusterByEntities`, `TestComputeBounda
 `enhancement`, `testing`, `workflow-analyzer`, `auto-generated`
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 
 ---
 

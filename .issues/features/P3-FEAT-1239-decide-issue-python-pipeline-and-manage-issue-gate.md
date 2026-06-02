@@ -215,8 +215,8 @@ Implemented all acceptance criteria:
 - 18 new tests added across `test_issue_parser.py`, `test_parallel_types.py`, `test_issue_manager.py`, `test_worker_pool.py`; full suite: 5087 passed
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-21T22:12:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/02ab6d71-d9eb-4e8f-9d67-3dbb5174a9f5.jsonl`
-- `/ll:wire-issue` - 2026-04-21T22:08:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a7b6286-0e67-451f-8360-2e4e3d0cc0b4.jsonl`
-- `/ll:refine-issue` - 2026-04-21T22:02:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68101119-8e6e-4ea9-89c9-399845bad1cf.jsonl`
-- `/ll:confidence-check` - 2026-04-21T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f6228541-5875-4fde-b8dd-a8e77e8985fd.jsonl`
-- `/ll:manage-issue` - 2026-04-21T22:22:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-04-21T22:12:23 - `02ab6d71-d9eb-4e8f-9d67-3dbb5174a9f5.jsonl`
+- `/ll:wire-issue` - 2026-04-21T22:08:38 - `9a7b6286-0e67-451f-8360-2e4e3d0cc0b4.jsonl`
+- `/ll:refine-issue` - 2026-04-21T22:02:12 - `68101119-8e6e-4ea9-89c9-399845bad1cf.jsonl`
+- `/ll:confidence-check` - 2026-04-21T22:30:00 - `f6228541-5875-4fde-b8dd-a8e77e8985fd.jsonl`
+- `/ll:manage-issue` - 2026-04-21T22:22:45Z - `current.jsonl`

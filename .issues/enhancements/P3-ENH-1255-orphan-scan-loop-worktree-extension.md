@@ -282,20 +282,20 @@ _Added by `/ll:confidence-check` on 2026-04-26_
 - ~~**Branch-name derivation for loop worktrees in `_inspect_worktree` is unspecified**~~: **RESOLVED 2026-05-02** — for loop worktrees, dir name == branch name (`cli/loop/run.py:289-292`), so the existing `replace("worker-", "parallel/")` no-op already produces the correct result; no code change needed at lines 388 or 392
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-02T19:55:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f796fee3-8b88-4699-bb0b-8ba376b85aea.jsonl`
-- `/ll:confidence-check` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3dc73644-56ce-485c-9743-074873fcaa8f.jsonl`
-- `/ll:wire-issue` - 2026-05-02T19:50:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b1fee64-5798-4b35-82d5-d17a1e52d8d4.jsonl`
-- `/ll:refine-issue` - 2026-05-02T19:44:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22b8f0dd-e355-4cc0-93b5-3fa545866dec.jsonl`
-- `/ll:confidence-check` - 2026-05-02T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00db13ea-6bab-4b46-be19-afae31f720a7.jsonl`
-- `/ll:refine-issue` - 2026-05-02T18:52:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab38a044-b629-4607-845e-54c5a6ef505d.jsonl`
-- `/ll:verify-issues` - 2026-04-26T19:34:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
-- `/ll:confidence-check` - 2026-04-26T19:35:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf03929d-b936-46f6-9fc6-0edf5cab2290.jsonl`
-- `/ll:decide-issue` - 2026-04-26T19:26:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ae825d2a-b598-42e3-8f2e-583ed68c3209.jsonl`
-- `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
-- `/ll:wire-issue` - 2026-04-22T17:09:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/509cc566-db9f-4e7a-a3c5-21f738bb3a0b.jsonl`
-- `/ll:refine-issue` - 2026-04-22T17:04:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c3dd3b0-98a8-494a-8720-4fa7296292d6.jsonl`
+- `/ll:ready-issue` - 2026-05-02T19:55:33 - `f796fee3-8b88-4699-bb0b-8ba376b85aea.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00 - `3dc73644-56ce-485c-9743-074873fcaa8f.jsonl`
+- `/ll:wire-issue` - 2026-05-02T19:50:31 - `9b1fee64-5798-4b35-82d5-d17a1e52d8d4.jsonl`
+- `/ll:refine-issue` - 2026-05-02T19:44:55 - `22b8f0dd-e355-4cc0-93b5-3fa545866dec.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00 - `00db13ea-6bab-4b46-be19-afae31f720a7.jsonl`
+- `/ll:refine-issue` - 2026-05-02T18:52:27 - `ab38a044-b629-4607-845e-54c5a6ef505d.jsonl`
+- `/ll:verify-issues` - 2026-04-26T19:34:08 - `316256f6-01c2-468b-8efc-2db79aff6b29.jsonl`
+- `/ll:confidence-check` - 2026-04-26T19:35:00 - `cf03929d-b936-46f6-9fc6-0edf5cab2290.jsonl`
+- `/ll:decide-issue` - 2026-04-26T19:26:20 - `ae825d2a-b598-42e3-8f2e-583ed68c3209.jsonl`
+- `/ll:verify-issues` - 2026-04-24T03:02:15 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+- `/ll:wire-issue` - 2026-04-22T17:09:46 - `509cc566-db9f-4e7a-a3c5-21f738bb3a0b.jsonl`
+- `/ll:refine-issue` - 2026-04-22T17:04:38 - `8c3dd3b0-98a8-494a-8720-4fa7296292d6.jsonl`
 
-- `/ll:issue-size-review` - 2026-04-22T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79aadd9e-32c2-44ea-be52-e9ec9bcff212.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T17:00:00 - `79aadd9e-32c2-44ea-be52-e9ec9bcff212.jsonl`
 
 ---
 

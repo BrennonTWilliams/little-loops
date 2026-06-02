@@ -162,12 +162,12 @@ CLI argument short forms added (backward-compatible — existing long forms rema
 **Verification**: All 212 tests pass; lint and mypy clean; `ll-auto --help` shows all 4 short forms.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-01T21:56:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f917633e-ae5f-42bc-93e3-c4dbb5873058.jsonl`
-- `/ll:refine-issue` - 2026-04-01T21:48:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a5166e6-7937-4565-82dc-5d79146cbc1f.jsonl`
-- `/ll:format-issue` - 2026-04-01T21:45:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d71985-ba62-4c95-940c-27ba0048b64e.jsonl`
+- `/ll:ready-issue` - 2026-04-01T21:56:07 - `f917633e-ae5f-42bc-93e3-c4dbb5873058.jsonl`
+- `/ll:refine-issue` - 2026-04-01T21:48:49 - `8a5166e6-7937-4565-82dc-5d79146cbc1f.jsonl`
+- `/ll:format-issue` - 2026-04-01T21:45:07 - `b2d71985-ba62-4c95-940c-27ba0048b64e.jsonl`
 - `/ll:capture-issue` - 2026-04-01 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4505b861-be5c-4195-9079-b2b3bcde3985.jsonl`
-- `/ll:confidence-check` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bd663ffc-6e9a-4b4c-897e-5f22c749b3c0.jsonl`
-- `/ll:manage-issue` - 2026-04-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:confidence-check` - 2026-04-01T00:00:00 - `bd663ffc-6e9a-4b4c-897e-5f22c749b3c0.jsonl`
+- `/ll:manage-issue` - 2026-04-01T00:00:00 - `current.jsonl`
 
 ---
 

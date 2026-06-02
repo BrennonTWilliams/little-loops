@@ -179,13 +179,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `automation`, `fsm`, `autodev`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-21T16:58:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40a31a98-3e00-4d84-8027-117ae4b9e3c2.jsonl`
-- `/ll:confidence-check` - 2026-04-21T17:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2155dd42-ebcd-49ce-8574-83d280807475.jsonl`
-- `/ll:wire-issue` - 2026-04-21T16:51:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d581d6a5-d731-4e65-99a4-4272affef8b4.jsonl`
-- `/ll:refine-issue` - 2026-04-21T16:42:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/737eff25-6b1e-4b65-81b1-dc9954bf803e.jsonl`
-- `/ll:format-issue` - 2026-04-21T16:36:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/64f366b3-49e5-473b-b710-925e21463a2f.jsonl`
+- `/ll:ready-issue` - 2026-04-21T16:58:20 - `40a31a98-3e00-4d84-8027-117ae4b9e3c2.jsonl`
+- `/ll:confidence-check` - 2026-04-21T17:00:00Z - `2155dd42-ebcd-49ce-8574-83d280807475.jsonl`
+- `/ll:wire-issue` - 2026-04-21T16:51:52 - `d581d6a5-d731-4e65-99a4-4272affef8b4.jsonl`
+- `/ll:refine-issue` - 2026-04-21T16:42:48 - `737eff25-6b1e-4b65-81b1-dc9954bf803e.jsonl`
+- `/ll:format-issue` - 2026-04-21T16:36:54 - `64f366b3-49e5-473b-b710-925e21463a2f.jsonl`
 
-- `/ll:capture-issue` - 2026-04-21T16:34:42Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24aea90c-410b-44e1-8768-f887bdf017e4.jsonl`
+- `/ll:capture-issue` - 2026-04-21T16:34:42Z - `24aea90c-410b-44e1-8768-f887bdf017e4.jsonl`
 
 ---
 

@@ -101,11 +101,11 @@ N/A
 `diagram`, `fsm`, `visualization`, `ux`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-19T17:14:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8885b6c6-b523-4aca-887d-d1c1d2e74574.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0e1709cc-3da4-40dd-ac67-c9dfe86a860b.jsonl`
-- `/ll:refine-issue` - 2026-03-19T16:49:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e80258f6-4af5-48f4-ac62-be9934b1952f.jsonl`
+- `/ll:ready-issue` - 2026-03-19T17:14:29 - `8885b6c6-b523-4aca-887d-d1c1d2e74574.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `0e1709cc-3da4-40dd-ac67-c9dfe86a860b.jsonl`
+- `/ll:refine-issue` - 2026-03-19T16:49:54 - `e80258f6-4af5-48f4-ac62-be9934b1952f.jsonl`
 - `/ll:capture-issue` - 2026-03-19T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e80258f6-4af5-48f4-ac62-be9934b1952f.jsonl`
-- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 

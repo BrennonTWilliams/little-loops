@@ -322,9 +322,9 @@ Implemented 2026-05-15. All acceptance criteria met:
 - `ruff check` + `mypy` on the new test file — clean.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-15T16:17:24Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74989793-8902-46f0-8ede-54024c676c0d.jsonl`
-- `/ll:ready-issue` - 2026-05-15T16:10:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/209f2886-399d-46b4-8ff2-ab8828434471.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c46e81e8-7919-42c6-9c3d-c06c3317134a.jsonl`
-- `/ll:wire-issue` - 2026-05-15T16:06:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc0dd184-e030-4410-a4ee-0cb7dce96a23.jsonl`
-- `/ll:refine-issue` - 2026-05-15T16:00:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9dd271a-e4aa-48c2-a86f-d0b6134ac1cb.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3404bce4-b1e1-4c4a-bdaf-327d629a43da.jsonl`
+- `/ll:manage-issue` - 2026-05-15T16:17:24Z - `74989793-8902-46f0-8ede-54024c676c0d.jsonl`
+- `/ll:ready-issue` - 2026-05-15T16:10:20 - `209f2886-399d-46b4-8ff2-ab8828434471.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `c46e81e8-7919-42c6-9c3d-c06c3317134a.jsonl`
+- `/ll:wire-issue` - 2026-05-15T16:06:33 - `bc0dd184-e030-4410-a4ee-0cb7dce96a23.jsonl`
+- `/ll:refine-issue` - 2026-05-15T16:00:57 - `f9dd271a-e4aa-48c2-a86f-d0b6134ac1cb.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `3404bce4-b1e1-4c4a-bdaf-327d629a43da.jsonl`

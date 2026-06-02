@@ -272,9 +272,9 @@ Implemented all steps (3–8, 14–15, 16–19) from the issue specification:
 - Docs updated: `API.md` (ValidationResult table + `validate_frontmatter_fields` entry), `OUTPUT_STYLING.md` (new `-->` arrow row), `skills/map-dependencies/SKILL.md` (new validation bullets)
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-11T01:37:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/056c07a7-25fa-45fa-882b-bf254f412bf4.jsonl`
-- `/ll:refine-issue` - 2026-05-11T01:22:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a23cd4a-172a-4bc4-bdec-31781fb6813a.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T23:55:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49b56280-19ff-42e9-bb93-088d6e560fa2.jsonl`
-- `/ll:wire-issue` - 2026-05-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3056e4af-db90-4852-aa0f-e61167d2053e.jsonl`
-- `/ll:manage-issue` - 2026-05-11T02:11:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-05-11T01:37:51 - `056c07a7-25fa-45fa-882b-bf254f412bf4.jsonl`
+- `/ll:refine-issue` - 2026-05-11T01:22:35 - `3a23cd4a-172a-4bc4-bdec-31781fb6813a.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T23:55:00Z - `49b56280-19ff-42e9-bb93-088d6e560fa2.jsonl`
+- `/ll:wire-issue` - 2026-05-10T00:00:00 - `current.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00 - `3056e4af-db90-4852-aa0f-e61167d2053e.jsonl`
+- `/ll:manage-issue` - 2026-05-11T02:11:07Z - `current.jsonl`

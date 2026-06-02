@@ -66,7 +66,7 @@ Optionally also add `--status` with a note about valid values.
 `enhancement`, `documentation`, `auto-generated`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-01T00:14:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/449aebc1-b302-4e74-a376-4bf455aa3aae.jsonl`
+- `/ll:ready-issue` - 2026-04-01T00:14:12 - `449aebc1-b302-4e74-a376-4bf455aa3aae.jsonl`
 
 ---
 

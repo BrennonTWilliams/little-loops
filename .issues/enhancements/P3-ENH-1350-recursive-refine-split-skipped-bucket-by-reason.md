@@ -273,10 +273,10 @@ Implemented in full. `parse_input` now initializes `skipped-decomposed.txt` and 
 **Completed** | Created: 2026-05-03 | Priority: P3
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-03T22:10:02Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8034eeda-8cb2-4af8-8438-79fcc58aa76c.jsonl`
-- `/ll:ready-issue` - 2026-05-03T21:59:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8034eeda-8cb2-4af8-8438-79fcc58aa76c.jsonl`
-- `/ll:confidence-check` - 2026-05-03T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca097e64-15bc-43c4-9e59-8813fa5986ca.jsonl`
-- `/ll:wire-issue` - 2026-05-03T21:55:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee908308-1c25-4a99-aeca-3c787c3838d9.jsonl`
-- `/ll:refine-issue` - 2026-05-03T21:50:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1873aa88-61fd-4251-9283-38981a2c0599.jsonl`
-- `/ll:format-issue` - 2026-05-03T19:20:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16a69f6f-62b6-4282-8d76-179c33de8c88.jsonl`
-- `/ll:capture-issue` - 2026-05-03T16:43:25Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81b5153d-e662-4abf-af0e-b3ec54065e0b.jsonl`
+- `/ll:manage-issue` - 2026-05-03T22:10:02Z - `8034eeda-8cb2-4af8-8438-79fcc58aa76c.jsonl`
+- `/ll:ready-issue` - 2026-05-03T21:59:41 - `8034eeda-8cb2-4af8-8438-79fcc58aa76c.jsonl`
+- `/ll:confidence-check` - 2026-05-03T22:00:00Z - `ca097e64-15bc-43c4-9e59-8813fa5986ca.jsonl`
+- `/ll:wire-issue` - 2026-05-03T21:55:34 - `ee908308-1c25-4a99-aeca-3c787c3838d9.jsonl`
+- `/ll:refine-issue` - 2026-05-03T21:50:14 - `1873aa88-61fd-4251-9283-38981a2c0599.jsonl`
+- `/ll:format-issue` - 2026-05-03T19:20:51 - `16a69f6f-62b6-4282-8d76-179c33de8c88.jsonl`
+- `/ll:capture-issue` - 2026-05-03T16:43:25Z - `81b5153d-e662-4abf-af0e-b3ec54065e0b.jsonl`

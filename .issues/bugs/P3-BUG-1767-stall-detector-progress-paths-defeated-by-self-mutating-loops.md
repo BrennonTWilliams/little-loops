@@ -299,15 +299,15 @@ _Added by `/ll:verify-issues` on 2026-05-30_
 **Fixed** via Option A (`exclude_paths` field). Added `exclude_paths: list[str]` to `RepeatedFailureConfig` (`schema.py`). The executor (`executor.py:_compute_progress_fingerprint()`) now resolves and filters out `exclude_paths` entries before building the fingerprint tuple. `general-task.yaml` moves its bookkeeping files from `progress_paths` to `exclude_paths`. `validation.py` gains `_validate_progress_paths_isolation()` warning when state actions reference an unexcluded `progress_paths` file. `fsm-loop-schema.json` updated. Tests added for all layers.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T17:20:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2127b7f3-9b8d-4674-be8d-f44f8353a20c.jsonl`
-- `/ll:confidence-check` - 2026-06-01T18:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f4fdf57-3369-4a0a-a654-a539b5b275a9.jsonl`
-- `/ll:wire-issue` - 2026-06-01T17:12:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1781e718-7f06-4b5d-95f3-141040199f61.jsonl`
-- `/ll:decide-issue` - 2026-06-01T16:43:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/997f450b-5b8a-445c-92b5-d4f26bfcec0b.jsonl`
-- `/ll:refine-issue` - 2026-06-01T16:37:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d0453b81-1553-443e-b691-17734560a9e0.jsonl`
-- `/ll:format-issue` - 2026-06-01T16:29:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92bcd8b4-38a6-46b1-9488-9de681167c3e.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:verify-issues` - 2026-05-28T23:48:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0efd786b-4b4c-43ee-9e8e-268bad2cc8a5.jsonl`
-- `/ll:capture-issue` - 2026-05-28T17:31:20Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d72d4842-d084-41b6-af0f-1adf964926ab.jsonl`
+- `/ll:ready-issue` - 2026-06-01T17:20:23 - `2127b7f3-9b8d-4674-be8d-f44f8353a20c.jsonl`
+- `/ll:confidence-check` - 2026-06-01T18:00:00 - `0f4fdf57-3369-4a0a-a654-a539b5b275a9.jsonl`
+- `/ll:wire-issue` - 2026-06-01T17:12:49 - `1781e718-7f06-4b5d-95f3-141040199f61.jsonl`
+- `/ll:decide-issue` - 2026-06-01T16:43:52 - `997f450b-5b8a-445c-92b5-d4f26bfcec0b.jsonl`
+- `/ll:refine-issue` - 2026-06-01T16:37:41 - `d0453b81-1553-443e-b691-17734560a9e0.jsonl`
+- `/ll:format-issue` - 2026-06-01T16:29:31 - `92bcd8b4-38a6-46b1-9488-9de681167c3e.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:03 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:verify-issues` - 2026-05-28T23:48:16 - `0efd786b-4b4c-43ee-9e8e-268bad2cc8a5.jsonl`
+- `/ll:capture-issue` - 2026-05-28T17:31:20Z - `d72d4842-d084-41b6-af0f-1adf964926ab.jsonl`
 
 ---
 

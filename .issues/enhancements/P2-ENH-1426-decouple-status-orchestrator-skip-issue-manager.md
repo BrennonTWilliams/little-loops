@@ -189,10 +189,10 @@ No `completed_dir`, `get_completed_dir`, or `.issues/completed` references. Dele
 `enhancement`, `refactoring`, `status-decoupling`
 
 ## Session Log
-- `/ll:complete` - 2026-05-10T20:42:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5979e5a-9809-4880-a299-ec7eb5129b4c.jsonl`
-- `/ll:refine-issue` - 2026-05-10T20:40:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5979e5a-9809-4880-a299-ec7eb5129b4c.jsonl`
-- `/ll:format-issue` - 2026-05-10T20:35:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a41b29ce-483f-4fdd-acc3-ac8cc4c756d4.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
+- `/ll:complete` - 2026-05-10T20:42:10 - `c5979e5a-9809-4880-a299-ec7eb5129b4c.jsonl`
+- `/ll:refine-issue` - 2026-05-10T20:40:37 - `c5979e5a-9809-4880-a299-ec7eb5129b4c.jsonl`
+- `/ll:format-issue` - 2026-05-10T20:35:57 - `a41b29ce-483f-4fdd-acc3-ac8cc4c756d4.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
 
 ---
 

@@ -187,11 +187,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Can run in parallel with FEAT-1756 (init round) and FEAT-1758 (docs)
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-27T23:36:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdf71221-6071-432b-bbc4-72085ee3754e.jsonl`
-- `/ll:confidence-check` - 2026-05-27T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a3bf84b-0618-4238-b6f3-19ba2f11ad0f.jsonl`
-- `/ll:wire-issue` - 2026-05-27T23:31:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/abbb0cb3-8584-4f07-b7ef-bf61d783adb6.jsonl`
-- `/ll:refine-issue` - 2026-05-27T23:26:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04d2ea8a-a459-4950-b030-01540e95e237.jsonl`
-- `/ll:issue-size-review` - 2026-05-27T23:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:ready-issue` - 2026-05-27T23:36:05 - `bdf71221-6071-432b-bbc4-72085ee3754e.jsonl`
+- `/ll:confidence-check` - 2026-05-27T00:00:00 - `0a3bf84b-0618-4238-b6f3-19ba2f11ad0f.jsonl`
+- `/ll:wire-issue` - 2026-05-27T23:31:42 - `abbb0cb3-8584-4f07-b7ef-bf61d783adb6.jsonl`
+- `/ll:refine-issue` - 2026-05-27T23:26:52 - `04d2ea8a-a459-4950-b030-01540e95e237.jsonl`
+- `/ll:issue-size-review` - 2026-05-27T23:30:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 
 ---
 

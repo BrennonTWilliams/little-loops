@@ -137,4 +137,4 @@ Pattern: `scripts/tests/test_improve_claude_md_skill.py`
 **Open** | Created: 2026-04-12 | Priority: P3
 
 ## Session Log
-- `/ll:capture-issue` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/559a575d-8887-4985-8698-12bfda0c5f88.jsonl`
+- `/ll:capture-issue` - 2026-04-12T00:00:00Z - `559a575d-8887-4985-8698-12bfda0c5f88.jsonl`

@@ -194,11 +194,11 @@ _Added by `/ll:confidence-check` on 2026-04-21_
 - FEAT-1220: Update TESTING.md Fixture Count
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-21T07:54:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e25ed049-cee1-4c7f-a922-d725b2ff5c2f.jsonl`
-- `/ll:refine-issue` - 2026-04-21T07:49:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d202033-3783-448c-ae64-14b44a059d6a.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/602b7591-5779-4c5a-855e-643bcb13015e.jsonl`
-- `/ll:wire-issue` - 2026-04-21T07:46:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ceed0c55-0d9f-42fd-bcaf-cbed6a6d4aba.jsonl`
-- `/ll:refine-issue` - 2026-04-21T07:39:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce17ca14-afc4-4f56-a7e9-cb0ae0a60adb.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc287f64-ac41-4ff3-967d-f2d38642710b.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/380dd82a-3df4-4ad4-a4df-7f6a43e31339.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e25ed049-cee1-4c7f-a922-d725b2ff5c2f.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-21T07:54:59 - `e25ed049-cee1-4c7f-a922-d725b2ff5c2f.jsonl`
+- `/ll:refine-issue` - 2026-04-21T07:49:04 - `0d202033-3783-448c-ae64-14b44a059d6a.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `602b7591-5779-4c5a-855e-643bcb13015e.jsonl`
+- `/ll:wire-issue` - 2026-04-21T07:46:00 - `ceed0c55-0d9f-42fd-bcaf-cbed6a6d4aba.jsonl`
+- `/ll:refine-issue` - 2026-04-21T07:39:57 - `ce17ca14-afc4-4f56-a7e9-cb0ae0a60adb.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `dc287f64-ac41-4ff3-967d-f2d38642710b.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `380dd82a-3df4-4ad4-a4df-7f6a43e31339.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `e25ed049-cee1-4c7f-a922-d725b2ff5c2f.jsonl`

@@ -132,12 +132,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Breaking Change**: No
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-11T23:56:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c68c3c3a-b624-4f70-a5a0-b69ed4de962c.jsonl`
-- `/ll:ready-issue` - 2026-05-11T23:49:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/548f2518-e860-4fc5-b4e4-5adf74b19e8e.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6fbd4c8-ff6c-4c9d-82fd-2417bede4ffa.jsonl`
-- `/ll:wire-issue` - 2026-05-11T23:45:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/046d7355-7a57-46cc-b2a7-69260e6df370.jsonl`
-- `/ll:refine-issue` - 2026-05-11T23:41:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34d8a666-5ea7-481a-9ce9-bff27bd8aae5.jsonl`
-- `/ll:issue-size-review` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03785380-ad15-4700-be73-f3d5f0c746ce.jsonl`
+- `/ll:manage-issue` - 2026-05-11T23:56:06Z - `c68c3c3a-b624-4f70-a5a0-b69ed4de962c.jsonl`
+- `/ll:ready-issue` - 2026-05-11T23:49:05 - `548f2518-e860-4fc5-b4e4-5adf74b19e8e.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `d6fbd4c8-ff6c-4c9d-82fd-2417bede4ffa.jsonl`
+- `/ll:wire-issue` - 2026-05-11T23:45:50 - `046d7355-7a57-46cc-b2a7-69260e6df370.jsonl`
+- `/ll:refine-issue` - 2026-05-11T23:41:12 - `34d8a666-5ea7-481a-9ce9-bff27bd8aae5.jsonl`
+- `/ll:issue-size-review` - 2026-05-11T00:00:00Z - `03785380-ad15-4700-be73-f3d5f0c746ce.jsonl`
 
 ---
 

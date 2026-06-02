@@ -212,13 +212,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 - FEAT-1160 parent PRD
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-23T01:47:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1bbe0f9c-730d-428b-b6c7-f9f337347998.jsonl`
-- `/ll:ready-issue` - 2026-05-23T01:37:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea74cc3d-653e-4942-b13e-d6e30bbd9568.jsonl`
-- `/ll:confidence-check` - 2026-05-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46973b91-6719-4152-a643-065f9dac6728.jsonl`
-- `/ll:wire-issue` - 2026-05-23T01:33:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c6575ad-08c8-4239-bb34-3c01d8c91783.jsonl`
-- `/ll:refine-issue` - 2026-05-23T01:27:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ca96194-8e2a-43cf-a4d7-65ffa2188f54.jsonl`
-- `/ll:format-issue` - 2026-05-23T01:16:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8da292ce-0772-4768-ab92-9c4bc7efe216.jsonl`
-- `/ll:issue-size-review` - 2026-05-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:manage-issue` - 2026-05-23T01:47:53 - `1bbe0f9c-730d-428b-b6c7-f9f337347998.jsonl`
+- `/ll:ready-issue` - 2026-05-23T01:37:35 - `ea74cc3d-653e-4942-b13e-d6e30bbd9568.jsonl`
+- `/ll:confidence-check` - 2026-05-22T00:00:00 - `46973b91-6719-4152-a643-065f9dac6728.jsonl`
+- `/ll:wire-issue` - 2026-05-23T01:33:50 - `5c6575ad-08c8-4239-bb34-3c01d8c91783.jsonl`
+- `/ll:refine-issue` - 2026-05-23T01:27:27 - `6ca96194-8e2a-43cf-a4d7-65ffa2188f54.jsonl`
+- `/ll:format-issue` - 2026-05-23T01:16:11 - `8da292ce-0772-4768-ab92-9c4bc7efe216.jsonl`
+- `/ll:issue-size-review` - 2026-05-22T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 
 ---
 

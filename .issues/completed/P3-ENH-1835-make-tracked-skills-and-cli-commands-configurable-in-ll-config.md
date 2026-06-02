@@ -196,9 +196,9 @@ _Added by `/ll:confidence-check` on 2026-06-01_
 - ENH-1842: Analytics capture surface layer — ll-doctor reporting and documentation
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1325861-5c8a-40ab-90ee-ac4727f376b5.jsonl`
-- `/ll:confidence-check` - 2026-06-01T07:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e04b82c5-934a-429c-97f3-c8f3204410f7.jsonl`
-- `/ll:wire-issue` - 2026-06-01T06:01:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e6056b8-0c65-47b1-98fe-5221eaca62e7.jsonl`
-- `/ll:refine-issue` - 2026-06-01T05:55:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d5eaf95-ffe3-48a2-8e4c-da2b559177cc.jsonl`
-- `/ll:format-issue` - 2026-06-01T01:23:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a513f1d-2fed-4b43-8002-f50ed0ac51fd.jsonl`
-- `/ll:capture-issue` - 2026-06-01T01:10:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `c1325861-5c8a-40ab-90ee-ac4727f376b5.jsonl`
+- `/ll:confidence-check` - 2026-06-01T07:00:00 - `e04b82c5-934a-429c-97f3-c8f3204410f7.jsonl`
+- `/ll:wire-issue` - 2026-06-01T06:01:08 - `3e6056b8-0c65-47b1-98fe-5221eaca62e7.jsonl`
+- `/ll:refine-issue` - 2026-06-01T05:55:14 - `1d5eaf95-ffe3-48a2-8e4c-da2b559177cc.jsonl`
+- `/ll:format-issue` - 2026-06-01T01:23:11 - `8a513f1d-2fed-4b43-8002-f50ed0ac51fd.jsonl`
+- `/ll:capture-issue` - 2026-06-01T01:10:54Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

@@ -134,10 +134,10 @@ Update `skills/analyze-loop/SKILL.md`, Signal Rules, "BUG — Action failure (ex
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-17T00:01:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c108eca6-a84b-4ace-9850-a9485ab9bdfb.jsonl`
-- `/ll:ready-issue` - 2026-03-17T00:01:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c108eca6-a84b-4ace-9850-a9485ab9bdfb.jsonl`
-- `/ll:confidence-check` - 2026-03-16T18:49:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:refine-issue` - 2026-03-16T18:47:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:verify-issues` - 2026-03-16T18:40:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:format-issue` - 2026-03-16T18:39:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:ready-issue` - 2026-03-17T00:01:36 - `c108eca6-a84b-4ace-9850-a9485ab9bdfb.jsonl`
+- `/ll:ready-issue` - 2026-03-17T00:01:21 - `c108eca6-a84b-4ace-9850-a9485ab9bdfb.jsonl`
+- `/ll:confidence-check` - 2026-03-16T18:49:22 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:refine-issue` - 2026-03-16T18:47:43 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:verify-issues` - 2026-03-16T18:40:28 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:format-issue` - 2026-03-16T18:39:02 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`

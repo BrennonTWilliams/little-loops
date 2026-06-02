@@ -243,8 +243,8 @@ Implemented all 11 steps from the issue spec:
 - Updated `docs/guides/LOOPS_GUIDE.md` and `scripts/little_loops/loops/README.md`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-06T18:56:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/299df6f7-7611-4247-b449-bb79bb5d4793.jsonl`
-- `/ll:wire-issue` - 2026-04-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c19e4f3-adca-4de2-89ad-68e21cdbc39d.jsonl`
-- `/ll:refine-issue` - 2026-04-06T18:18:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c19e4f3-adca-4de2-89ad-68e21cdbc39d.jsonl`
+- `/ll:ready-issue` - 2026-04-06T18:56:56 - `299df6f7-7611-4247-b449-bb79bb5d4793.jsonl`
+- `/ll:wire-issue` - 2026-04-06T00:00:00Z - `0c19e4f3-adca-4de2-89ad-68e21cdbc39d.jsonl`
+- `/ll:refine-issue` - 2026-04-06T18:18:45 - `0c19e4f3-adca-4de2-89ad-68e21cdbc39d.jsonl`
 - `/ll:capture-issue` - 2026-04-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ada54d0e-7627-4ccc-942e-94e1829287a7.jsonl`
-- `/ll:confidence-check` - 2026-04-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/52229709-d6f8-4bc6-9022-96e777fdd226.jsonl`
+- `/ll:confidence-check` - 2026-04-06T00:00:00Z - `52229709-d6f8-4bc6-9022-96e777fdd226.jsonl`

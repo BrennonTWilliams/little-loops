@@ -245,8 +245,8 @@ Implemented as specified. Changed `action_complete` gate in `_helpers.py` from `
 Completed
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-12T05:24:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef4c199f-aa79-4592-90b3-b66b18e185a4.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/edc93ae2-94de-4f41-8e9d-da6398b38296.jsonl`
-- `/ll:wire-issue` - 2026-04-12T05:04:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a85d1e55-862d-4918-9fa4-361cea909a58.jsonl`
-- `/ll:refine-issue` - 2026-04-12T04:57:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0152ccce-218b-4988-9c5c-e983140da495.jsonl`
-- `/ll:capture-issue` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1437654-cf08-44ef-b694-93b1f1d22897.jsonl`
+- `/ll:ready-issue` - 2026-04-12T05:24:41 - `ef4c199f-aa79-4592-90b3-b66b18e185a4.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `edc93ae2-94de-4f41-8e9d-da6398b38296.jsonl`
+- `/ll:wire-issue` - 2026-04-12T05:04:25 - `a85d1e55-862d-4918-9fa4-361cea909a58.jsonl`
+- `/ll:refine-issue` - 2026-04-12T04:57:29 - `0152ccce-218b-4988-9c5c-e983140da495.jsonl`
+- `/ll:capture-issue` - 2026-04-11T00:00:00Z - `d1437654-cf08-44ef-b694-93b1f1d22897.jsonl`

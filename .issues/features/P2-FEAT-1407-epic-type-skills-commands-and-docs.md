@@ -366,16 +366,16 @@ _Added by `/ll:confidence-check` on 2026-05-09; re-confirmed 2026-05-09_
 - **Test coverage is post-implementation**: `test_feat1407_doc_wiring.py` will catch misses but only after it's written; write it early and run it incrementally.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-10T03:57:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7976ca7b-d514-438d-82f3-244e955401a6.jsonl`
-- `/ll:ready-issue` - 2026-05-10T00:30:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c43beac8-bd79-4b68-905a-853d64991190.jsonl`
-- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3b84938-07de-47b8-b9ad-5293b008ac32.jsonl`
-- `/ll:refine-issue` - 2026-05-10T00:24:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a40250de-47d0-4467-868b-1f06fd02da59.jsonl`
-- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c262b73-6b33-437f-a273-e367811f5b3b.jsonl`
-- `/ll:wire-issue` - 2026-05-10T00:07:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b3a8486-5a08-451e-8be4-9c4b483297e5.jsonl`
-- `/ll:refine-issue` - 2026-05-09T23:59:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a9ca0d07-7cd0-4bb4-a1eb-809c460b7e5c.jsonl`
-- `/ll:format-issue` - 2026-05-09T23:01:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fee7c6fa-dd24-4633-b895-fd894d07e7e2.jsonl`
-- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/adfa30cd-8f9d-48b3-9e4b-2a81bf6caa05.jsonl`
-- `/ll:manage-issue` - 2026-05-10T03:57:02Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7976ca7b-d514-438d-82f3-244e955401a6.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-10T03:57:36 - `7976ca7b-d514-438d-82f3-244e955401a6.jsonl`
+- `/ll:ready-issue` - 2026-05-10T00:30:40 - `c43beac8-bd79-4b68-905a-853d64991190.jsonl`
+- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `f3b84938-07de-47b8-b9ad-5293b008ac32.jsonl`
+- `/ll:refine-issue` - 2026-05-10T00:24:01 - `a40250de-47d0-4467-868b-1f06fd02da59.jsonl`
+- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `7c262b73-6b33-437f-a273-e367811f5b3b.jsonl`
+- `/ll:wire-issue` - 2026-05-10T00:07:38 - `7b3a8486-5a08-451e-8be4-9c4b483297e5.jsonl`
+- `/ll:refine-issue` - 2026-05-09T23:59:43 - `a9ca0d07-7cd0-4bb4-a1eb-809c460b7e5c.jsonl`
+- `/ll:format-issue` - 2026-05-09T23:01:30 - `fee7c6fa-dd24-4633-b895-fd894d07e7e2.jsonl`
+- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `adfa30cd-8f9d-48b3-9e4b-2a81bf6caa05.jsonl`
+- `/ll:manage-issue` - 2026-05-10T03:57:02Z - `7976ca7b-d514-438d-82f3-244e955401a6.jsonl`
 
 ## Resolution
 

@@ -365,10 +365,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-05-25 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-27T06:30:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f51b3be-f04b-431b-a48d-86d79a52239d.jsonl`
-- `/ll:confidence-check` - 2026-05-27T13:22:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/540d9d58-9859-451e-a1a9-6f40ea21c360.jsonl`
-- `/ll:wire-issue` - 2026-05-27T06:22:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a5cf255-802c-4a93-983b-a058df40ad59.jsonl`
-- `/ll:refine-issue` - 2026-05-27T06:15:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a21261b4-cb01-4c3d-99db-c1129c637920.jsonl`
-- `/ll:format-issue` - 2026-05-25T20:44:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10e5eccd-bc85-4eab-9876-27a2c27b8c25.jsonl`
-- `/ll:capture-issue` - 2026-05-25T20:34:52Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:capture-issue` - 2026-05-25T20:53:43Z - retrofitted as child of EPIC-1694 (4-loop LT stack) - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/810cf8d1-477c-42da-bb20-b577b2ee3ad9.jsonl`
+- `/ll:ready-issue` - 2026-05-27T06:30:27 - `4f51b3be-f04b-431b-a48d-86d79a52239d.jsonl`
+- `/ll:confidence-check` - 2026-05-27T13:22:00 - `540d9d58-9859-451e-a1a9-6f40ea21c360.jsonl`
+- `/ll:wire-issue` - 2026-05-27T06:22:05 - `5a5cf255-802c-4a93-983b-a058df40ad59.jsonl`
+- `/ll:refine-issue` - 2026-05-27T06:15:09 - `a21261b4-cb01-4c3d-99db-c1129c637920.jsonl`
+- `/ll:format-issue` - 2026-05-25T20:44:43 - `10e5eccd-bc85-4eab-9876-27a2c27b8c25.jsonl`
+- `/ll:capture-issue` - 2026-05-25T20:34:52Z
+- `/ll:capture-issue` - 2026-05-25T20:53:43Z - retrofitted as child of EPIC-1694 (4-loop LT stack) - `810cf8d1-477c-42da-bb20-b577b2ee3ad9.jsonl`

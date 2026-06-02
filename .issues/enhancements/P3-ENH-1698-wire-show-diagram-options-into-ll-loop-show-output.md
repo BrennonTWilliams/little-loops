@@ -205,10 +205,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-05-25 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-25T22:07:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/432171fe-0cc8-40cb-a835-f0fb1286db77.jsonl`
-- `/ll:confidence-check` - 2026-05-25T22:02:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f360a7f8-c817-4ae2-95db-0b84dfdf3ee6.jsonl`
-- `/ll:refine-issue` - 2026-05-25T22:00:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40f247a8-f03d-401e-b7ae-d40b0149d9df.jsonl`
-- `/ll:format-issue` - 2026-05-25T21:46:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a01038c-21a2-488f-9f60-e918f0e642d0.jsonl`
+- `/ll:ready-issue` - 2026-05-25T22:07:31 - `432171fe-0cc8-40cb-a835-f0fb1286db77.jsonl`
+- `/ll:confidence-check` - 2026-05-25T22:02:05 - `f360a7f8-c817-4ae2-95db-0b84dfdf3ee6.jsonl`
+- `/ll:refine-issue` - 2026-05-25T22:00:13 - `40f247a8-f03d-401e-b7ae-d40b0149d9df.jsonl`
+- `/ll:format-issue` - 2026-05-25T21:46:36 - `3a01038c-21a2-488f-9f60-e918f0e642d0.jsonl`
 
 - `/ll:capture-issue` - 2026-05-25T21:37:44Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/64b024bf-4308-4b6e-97ef-4392da3c6e4b.jsonl`
-- `/ll:manage-issue` - 2026-05-25T22:13:46Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:manage-issue` - 2026-05-25T22:13:46Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

@@ -224,15 +224,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-09T21:25:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a7b1665c-5a8e-4b4b-aa58-2cc6cb788d0d.jsonl`
-- `/ll:decide-issue` - 2026-05-09T21:21:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad8d078c-4725-48f5-8f8d-ed3affa348bb.jsonl`
-- `/ll:wire-issue` - 2026-05-09T21:14:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32deefa2-352e-4fa9-a9df-ce9aad495a16.jsonl`
-- `/ll:refine-issue` - 2026-05-09T21:05:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cdd7083-bfd0-4397-96f9-480af7252983.jsonl`
-- `/ll:format-issue` - 2026-05-09T20:59:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/be5fe9b0-f172-4370-b9f7-304173c44475.jsonl`
-- `/ll:capture-issue` - 2026-05-09T20:55:45Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7db205e9-01e7-4bfd-9c7c-5fce9c641172.jsonl`
-- `/ll:confidence-check` - 2026-05-09T21:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49c941b9-f63f-4121-94e3-efd1fcee3927.jsonl`
-- `/ll:confidence-check` - 2026-05-09T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/afb5da80-f902-4378-938f-5726e515f0b6.jsonl`
-- `/ll:manage-issue` - 2026-05-09T21:36:13Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
+- `/ll:ready-issue` - 2026-05-09T21:25:17 - `a7b1665c-5a8e-4b4b-aa58-2cc6cb788d0d.jsonl`
+- `/ll:decide-issue` - 2026-05-09T21:21:50 - `ad8d078c-4725-48f5-8f8d-ed3affa348bb.jsonl`
+- `/ll:wire-issue` - 2026-05-09T21:14:03 - `32deefa2-352e-4fa9-a9df-ce9aad495a16.jsonl`
+- `/ll:refine-issue` - 2026-05-09T21:05:27 - `0cdd7083-bfd0-4397-96f9-480af7252983.jsonl`
+- `/ll:format-issue` - 2026-05-09T20:59:55 - `be5fe9b0-f172-4370-b9f7-304173c44475.jsonl`
+- `/ll:capture-issue` - 2026-05-09T20:55:45Z - `7db205e9-01e7-4bfd-9c7c-5fce9c641172.jsonl`
+- `/ll:confidence-check` - 2026-05-09T21:30:00Z - `49c941b9-f63f-4121-94e3-efd1fcee3927.jsonl`
+- `/ll:confidence-check` - 2026-05-09T22:00:00Z - `afb5da80-f902-4378-938f-5726e515f0b6.jsonl`
+- `/ll:manage-issue` - 2026-05-09T21:36:13Z - `current-session.jsonl`
 
 ---
 

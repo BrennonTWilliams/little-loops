@@ -166,10 +166,10 @@ _Added by `/ll:confidence-check` on 2026-04-07_
 - Root Cause 2 description is slightly inaccurate: the 9 project templates do NOT currently contain a `context_monitor` section at all — they inherit the schema default of `false`. Fix 2 should **add** `"context_monitor": { "enabled": true }` to each template (not change an existing `false` to `true`). Only `config-schema.json` needs its `default` changed from `false` to `true`.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/abe81a48-a273-4e2f-a3a9-b810a4e39861.jsonl`
-- `/ll:ready-issue` - 2026-04-07T19:35:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf8f51e0-e38e-4de5-9384-4face842c9bd.jsonl`
-- `/ll:ready-issue` - 2026-04-07T19:35:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf8f51e0-e38e-4de5-9384-4face842c9bd.jsonl`
-- `/ll:refine-issue` - 2026-04-07T19:30:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c9a2724-b9e4-42d4-b1b4-4bc2c2c47b3f.jsonl`
-- `/ll:verify-issues` - 2026-04-07T19:17:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/653d74f3-fee7-47f3-a22d-96f6bc8e8e29.jsonl`
+- `/ll:manage-issue` - 2026-04-07T00:00:00Z - `abe81a48-a273-4e2f-a3a9-b810a4e39861.jsonl`
+- `/ll:ready-issue` - 2026-04-07T19:35:27 - `bf8f51e0-e38e-4de5-9384-4face842c9bd.jsonl`
+- `/ll:ready-issue` - 2026-04-07T19:35:22 - `bf8f51e0-e38e-4de5-9384-4face842c9bd.jsonl`
+- `/ll:refine-issue` - 2026-04-07T19:30:08 - `5c9a2724-b9e4-42d4-b1b4-4bc2c2c47b3f.jsonl`
+- `/ll:verify-issues` - 2026-04-07T19:17:56 - `653d74f3-fee7-47f3-a22d-96f6bc8e8e29.jsonl`
 - `/ll:capture-issue` - 2026-04-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c6be417-02b7-4fc4-ae0c-cb10fe731c0a.jsonl`
 - `/ll:confidence-check` - 2026-04-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1b0e46d1-c897-4b85-b262-b49829bd8c4f.jsonl`

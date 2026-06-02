@@ -156,9 +156,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 Added `ll-issues append-log <issue-path> <command>` CLI subcommand that calls `append_session_log_entry()` to write correctly-formatted session log entries. Updated all 5 affected commands to use the Bash call instead of prose instructions, with a fallback format reminder. All acceptance criteria met and existing tests pass.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-14T23:01:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e5c627d-e423-4c1f-a8cd-744f74433d0a.jsonl`
-- `/ll:ready-issue` - 2026-03-14T13:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d28749d-5035-43a2-9e52-bb9032eaedf5.jsonl`
-- `/ll:ready-issue` - 2026-03-14T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/33fcb067-47f1-425b-a171-05818ef871c0.jsonl`
-- `/ll:refine-issue` - 2026-03-14T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d24d5545-ed0e-442c-bda6-db81c236d356.jsonl`
-- `/ll:capture-issue` - 2026-03-14T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aabfef22-628c-4e03-8fa8-e47f786c142f.jsonl`
-- `/ll:confidence-check` - 2026-03-14T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7e0a0db-64e6-4879-b6c8-794f0df9eb0b.jsonl`
+- `/ll:manage-issue` - 2026-03-14T23:01:41 - `7e5c627d-e423-4c1f-a8cd-744f74433d0a.jsonl`
+- `/ll:ready-issue` - 2026-03-14T13:30:00 - `1d28749d-5035-43a2-9e52-bb9032eaedf5.jsonl`
+- `/ll:ready-issue` - 2026-03-14T00:00:00 - `33fcb067-47f1-425b-a171-05818ef871c0.jsonl`
+- `/ll:refine-issue` - 2026-03-14T00:00:00 - `d24d5545-ed0e-442c-bda6-db81c236d356.jsonl`
+- `/ll:capture-issue` - 2026-03-14T00:00:00 - `aabfef22-628c-4e03-8fa8-e47f786c142f.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00 - `d7e0a0db-64e6-4879-b6c8-794f0df9eb0b.jsonl`

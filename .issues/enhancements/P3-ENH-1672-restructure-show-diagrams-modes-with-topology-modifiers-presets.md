@@ -426,17 +426,17 @@ _Added by `/ll:confidence-check` on 2026-05-24_
 - Namespace factory updates required in 6 additional test files alongside the main change — the wire-issue pass has enumerated all 6 (lifecycle, background, commands, program_md, worktree, queue); missing any one will cause `AttributeError` at test time.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T22:13:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1265e3e-ec44-402f-b392-84a53ecc4c86.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ceb512a0-0fa2-4aec-afc4-02a1e78ad108.jsonl`
-- `/ll:refine-issue` - 2026-05-24T22:01:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ceb512a0-0fa2-4aec-afc4-02a1e78ad108.jsonl`
-- `/ll:refine-issue` - 2026-05-24T21:57:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/91a0ef70-685e-4909-a396-2d9a3ea31d5f.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f20bb894-da96-47c8-9052-e4eb484495b1.jsonl`
-- `/ll:wire-issue` - 2026-05-24T21:43:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0c7cf1b-4752-4dcb-a8c8-db15f836c539.jsonl`
-- `/ll:refine-issue` - 2026-05-24T21:29:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7ca89f4a-4af7-4703-a6e0-ea8057ea3364.jsonl`
-- `/ll:format-issue` - 2026-05-24T07:12:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0356f6a-4e5b-45ac-bc51-6d6bd837e3ee.jsonl`
+- `/ll:ready-issue` - 2026-05-24T22:13:07 - `f1265e3e-ec44-402f-b392-84a53ecc4c86.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `ceb512a0-0fa2-4aec-afc4-02a1e78ad108.jsonl`
+- `/ll:refine-issue` - 2026-05-24T22:01:08 - `ceb512a0-0fa2-4aec-afc4-02a1e78ad108.jsonl`
+- `/ll:refine-issue` - 2026-05-24T21:57:39 - `91a0ef70-685e-4909-a396-2d9a3ea31d5f.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `f20bb894-da96-47c8-9052-e4eb484495b1.jsonl`
+- `/ll:wire-issue` - 2026-05-24T21:43:56 - `b0c7cf1b-4752-4dcb-a8c8-db15f836c539.jsonl`
+- `/ll:refine-issue` - 2026-05-24T21:29:58 - `7ca89f4a-4af7-4703-a6e0-ea8057ea3364.jsonl`
+- `/ll:format-issue` - 2026-05-24T07:12:53 - `c0356f6a-4e5b-45ac-bc51-6d6bd837e3ee.jsonl`
 
 - `implementation` - 2026-05-24T22:54:47Z - All 7700 tests pass; implementation complete (diagram_modes.py, __init__.py, _helpers.py, layout.py, next_loop.py, display tests, 5 Namespace test files, LOOPS_GUIDE.md, CLI.md)
-- `/ll:capture-issue` - 2026-05-24T07:08:02Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36dab78b-8ea5-4759-9747-53b92e93a9f7.jsonl`
+- `/ll:capture-issue` - 2026-05-24T07:08:02Z - `36dab78b-8ea5-4759-9747-53b92e93a9f7.jsonl`
 
 ---
 

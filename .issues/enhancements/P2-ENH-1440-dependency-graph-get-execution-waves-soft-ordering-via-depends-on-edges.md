@@ -138,5 +138,5 @@ Requires ENH-1439's extended `make_issue()` helper (with `depends_on` kwarg) to 
 
 ## Session Log
 - `/ll:manage-issue` - 2026-05-11T04:00:00 - implementation complete; 70/70 tests pass; 26/26 sprint integration tests pass
-- `/ll:format-issue` - 2026-05-11T03:08:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb251496-34dc-4e1c-8e97-be3d12f1a4a5.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:format-issue` - 2026-05-11T03:08:59 - `eb251496-34dc-4e1c-8e97-be3d12f1a4a5.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

@@ -123,8 +123,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Out of scope**: SKILL.md changes (ENH-1342); Signals 1-3 implementation (ENH-1335); `--json` flag; fixtures.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/496da408-31c6-46ba-9a87-5e3336048b94.jsonl`
-- `/ll:wire-issue` - 2026-05-03T05:23:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f50de2fe-7597-4306-8d07-ecbda1841ebb.jsonl`
-- `/ll:refine-issue` - 2026-05-03T05:18:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b44fda6f-3ef7-4991-982e-3d97f2453588.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T04:56:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8af1a3a1-23af-4c82-98e3-c5e3dde0272f.jsonl`
-- `/ll:manage-issue` - 2026-05-03T05:31:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44b9e848-feff-4e5f-bb71-12f173ddc2a0.jsonl`
+- `/ll:confidence-check` - 2026-05-03T00:00:00 - `496da408-31c6-46ba-9a87-5e3336048b94.jsonl`
+- `/ll:wire-issue` - 2026-05-03T05:23:57 - `f50de2fe-7597-4306-8d07-ecbda1841ebb.jsonl`
+- `/ll:refine-issue` - 2026-05-03T05:18:15 - `b44fda6f-3ef7-4991-982e-3d97f2453588.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T04:56:57 - `8af1a3a1-23af-4c82-98e3-c5e3dde0272f.jsonl`
+- `/ll:manage-issue` - 2026-05-03T05:31:31 - `44b9e848-feff-4e5f-bb71-12f173ddc2a0.jsonl`

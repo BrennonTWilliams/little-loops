@@ -115,8 +115,8 @@ The same pattern should be applied to `_save_state` in `orchestrator.py`.
 All 36 `test_state.py` tests pass (3 new). `ruff check` and `mypy` report no issues.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-20T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:ready-issue` - 2026-03-20T20:40:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55f29a66-da73-4d4a-a5f4-8f6a20c5efe5.jsonl`
-- `/ll:verify-issues` - 2026-03-19T22:41:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
-- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
-- `/ll:confidence-check` - 2026-03-19T23:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
+- `/ll:manage-issue` - 2026-03-20T21:00:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-20T20:40:48 - `55f29a66-da73-4d4a-a5f4-8f6a20c5efe5.jsonl`
+- `/ll:verify-issues` - 2026-03-19T22:41:34 - `0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`
+- `/ll:scan-codebase` - 2026-03-19T22:12:55 - `f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:confidence-check` - 2026-03-19T23:00:00 - `0dc051ae-f218-443d-ad6a-bad1a1757fb1.jsonl`

@@ -206,12 +206,12 @@ _Added by `/ll:confidence-check` on 2026-05-10_
 - Mitigation: the Integration Map is exhaustive and every call site is mapped with file:function:line — actual implementation risk is lower than score suggests, but budget extra time for test updates across 12+ test files
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f185f31e-2a67-40df-940b-3d6f65f158ab.jsonl`
-- `/ll:refine-issue` - 2026-05-10T16:17:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c4155a89-3d63-45f3-aaf4-bfaf4cf33cf7.jsonl`
-- `/ll:format-issue` - 2026-05-10T15:18:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa41123a-15d8-4c8c-adaa-e1f58a46abea.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
-- `/ll:wire-issue` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `f185f31e-2a67-40df-940b-3d6f65f158ab.jsonl`
+- `/ll:refine-issue` - 2026-05-10T16:17:05 - `c4155a89-3d63-45f3-aaf4-bfaf4cf33cf7.jsonl`
+- `/ll:format-issue` - 2026-05-10T15:18:45 - `aa41123a-15d8-4c8c-adaa-e1f58a46abea.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
+- `/ll:wire-issue` - 2026-05-10T00:00:00Z
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `c6b1dd20-403d-4bd6-8144-216e44129420.jsonl`
 
 ---
 

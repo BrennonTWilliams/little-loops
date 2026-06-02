@@ -260,11 +260,11 @@ Completed 2026-05-12. Ported `hooks/scripts/session-start.sh` to a pure-function
 **Docs updated**: `docs/ARCHITECTURE.md` (adapter tree), `skills/configure/areas.md` (hook table path), `skills/init/SKILL.md` (python3 / pyyaml dependency rationale).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-12T02:31:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0010190c-509e-453e-bb85-c00575d1e590.jsonl`
-- `/ll:ready-issue` - 2026-05-12T02:24:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d334d897-a25a-43eb-964d-3983f97998d7.jsonl`
-- `/ll:confidence-check` - 2026-05-11T15:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/388f0ef8-d5cb-4aa4-8dbe-4243d54dbdb5.jsonl`
-- `/ll:decide-issue` - 2026-05-12T02:19:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f80183b-2254-47e2-96a0-a4b9ca736075.jsonl`
-- `/ll:refine-issue` - 2026-05-12T02:07:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37a5d13f-e094-4f3d-8469-cad52d5bc78e.jsonl`
-- `/ll:issue-size-review` - 2026-05-12T00:20:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cb0dc9a-fd6f-4945-97b0-ad6acec56482.jsonl`
-- `/ll:wire-issue` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a12547f-98e1-416e-bb10-97088aa61253.jsonl`
+- `/ll:manage-issue` - 2026-05-12T02:31:24 - `0010190c-509e-453e-bb85-c00575d1e590.jsonl`
+- `/ll:ready-issue` - 2026-05-12T02:24:50 - `d334d897-a25a-43eb-964d-3983f97998d7.jsonl`
+- `/ll:confidence-check` - 2026-05-11T15:00:00 - `388f0ef8-d5cb-4aa4-8dbe-4243d54dbdb5.jsonl`
+- `/ll:decide-issue` - 2026-05-12T02:19:59 - `5f80183b-2254-47e2-96a0-a4b9ca736075.jsonl`
+- `/ll:refine-issue` - 2026-05-12T02:07:09 - `37a5d13f-e094-4f3d-8469-cad52d5bc78e.jsonl`
+- `/ll:issue-size-review` - 2026-05-12T00:20:02 - `5cb0dc9a-fd6f-4945-97b0-ad6acec56482.jsonl`
+- `/ll:wire-issue` - 2026-05-11T00:00:00
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `6a12547f-98e1-416e-bb10-97088aa61253.jsonl`

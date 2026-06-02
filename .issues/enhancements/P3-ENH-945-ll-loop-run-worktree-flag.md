@@ -172,8 +172,8 @@ Implemented via `scripts/little_loops/worktree_utils.py` (new shared module) + t
 **Completed** | Created: 2026-04-03 | Resolved: 2026-04-03 | Priority: P3
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-04T04:08:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8882ce91-3f5e-414e-a856-613945bc80d6.jsonl`
-- `/ll:manage-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-04-04T03:59:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9407c329-07e8-4ca7-972a-c2b00f652f3f.jsonl`
-- `/ll:refine-issue` - 2026-04-04T03:46:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/565f959b-61a4-42f3-bdb8-695305671cbd.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-04T04:08:56 - `8882ce91-3f5e-414e-a856-613945bc80d6.jsonl`
+- `/ll:manage-issue` - 2026-04-03T00:00:00Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-04-04T03:59:02 - `9407c329-07e8-4ca7-972a-c2b00f652f3f.jsonl`
+- `/ll:refine-issue` - 2026-04-04T03:46:39 - `565f959b-61a4-42f3-bdb8-695305671cbd.jsonl`
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/acae55c4-3efa-4b99-aa19-26b81fc88701.jsonl`

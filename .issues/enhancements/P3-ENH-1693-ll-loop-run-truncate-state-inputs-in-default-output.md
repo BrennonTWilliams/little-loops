@@ -131,14 +131,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 8. Review `docs/guides/LOOPS_GUIDE.md` line 2561 — confirm `--verbose` description remains accurate after the change
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-25T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40b9e85f-3df3-4dbe-9eca-4660b1f63bad.jsonl`
-- `/ll:wire-issue` - 2026-05-26T02:13:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dcc3802e-2828-4704-a30b-3db7ca529d8f.jsonl`
-- `/ll:refine-issue` - 2026-05-26T02:07:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3eaac8be-eba9-48b8-a2d9-322df5114921.jsonl`
-- `/ll:ready-issue` - 2026-05-26T01:56:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/390ae9e1-a32b-4da7-b395-03f2137e1b1f.jsonl`
-- `/ll:confidence-check` - 2026-05-25T21:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2b1b983-d9ad-4fe0-ae43-26bbbe98524d.jsonl`
-- `/ll:wire-issue` - 2026-05-26T01:52:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef26377f-1811-47ab-854e-40635e78ae61.jsonl`
-- `/ll:refine-issue` - 2026-05-26T01:47:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2047892-4db7-4e3b-823a-5c1f57ef6384.jsonl`
-- `/ll:format-issue` - 2026-05-25T20:54:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98c0c55a-a905-432a-936c-1fdaa0a11afd.jsonl`
+- `/ll:confidence-check` - 2026-05-25T22:00:00Z - `40b9e85f-3df3-4dbe-9eca-4660b1f63bad.jsonl`
+- `/ll:wire-issue` - 2026-05-26T02:13:36 - `dcc3802e-2828-4704-a30b-3db7ca529d8f.jsonl`
+- `/ll:refine-issue` - 2026-05-26T02:07:57 - `3eaac8be-eba9-48b8-a2d9-322df5114921.jsonl`
+- `/ll:ready-issue` - 2026-05-26T01:56:52 - `390ae9e1-a32b-4da7-b395-03f2137e1b1f.jsonl`
+- `/ll:confidence-check` - 2026-05-25T21:00:00Z - `b2b1b983-d9ad-4fe0-ae43-26bbbe98524d.jsonl`
+- `/ll:wire-issue` - 2026-05-26T01:52:25 - `ef26377f-1811-47ab-854e-40635e78ae61.jsonl`
+- `/ll:refine-issue` - 2026-05-26T01:47:46 - `c2047892-4db7-4e3b-823a-5c1f57ef6384.jsonl`
+- `/ll:format-issue` - 2026-05-25T20:54:45 - `98c0c55a-a905-432a-936c-1fdaa0a11afd.jsonl`
 - `/ll:capture-issue` - 2026-05-25T20:51:20Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/389c4de8-bd09-42af-b2cc-f8421b2bd729.jsonl`
 
 ---

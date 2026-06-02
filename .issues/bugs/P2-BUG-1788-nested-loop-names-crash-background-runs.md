@@ -236,12 +236,12 @@ None of these require changes for this fix (purely additive `mkdir`, no signatur
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-29T18:42:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b79d26c2-7bdd-48ba-bfdc-61a0c2766408.jsonl`
-- `/ll:format-issue` - 2026-05-29T18:18:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f127c13f-f3ae-42e3-9336-412b5a4bae5c.jsonl`
+- `/ll:ready-issue` - 2026-05-29T18:42:10 - `b79d26c2-7bdd-48ba-bfdc-61a0c2766408.jsonl`
+- `/ll:format-issue` - 2026-05-29T18:18:45 - `f127c13f-f3ae-42e3-9336-412b5a4bae5c.jsonl`
 - `/ll:capture-issue` - 2026-05-29T18:15:43Z - `d35a26a9-3177-4d2e-8170-e362468eca30.jsonl`
-- `/ll:refine-issue` - 2026-05-29T18:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d31db26-f673-42e7-b06f-c352e7f3e83d.jsonl`
-- `/ll:wire-issue` - 2026-05-29T18:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d31db26-f673-42e7-b06f-c352e7f3e83d.jsonl`
-- `/ll:confidence-check` - 2026-05-29T13:35:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d6ccc1e-b9ff-4db2-8494-fead3e4fd7cb.jsonl`
+- `/ll:refine-issue` - 2026-05-29T18:30:00 - `0d31db26-f673-42e7-b06f-c352e7f3e83d.jsonl`
+- `/ll:wire-issue` - 2026-05-29T18:45:00 - `0d31db26-f673-42e7-b06f-c352e7f3e83d.jsonl`
+- `/ll:confidence-check` - 2026-05-29T13:35:00 - `1d6ccc1e-b9ff-4db2-8494-fead3e4fd7cb.jsonl`
 - `/ll:manage-issue` - 2026-05-29T18:47:42Z - `a6f64bc4-e378-4918-9646-7c5a63fec7f0.jsonl`
 
 ---

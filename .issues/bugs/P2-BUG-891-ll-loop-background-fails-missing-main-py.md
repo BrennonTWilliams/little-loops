@@ -168,9 +168,9 @@ All 68 tests pass. Lint and type checks clean.
 **Completed** | Created: 2026-03-26 | Priority: P2
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-26T17:35:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/388e753a-2095-4bd6-a688-bc38d51c7b91.jsonl`
-- `/ll:confidence-check` - 2026-03-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/961f8551-1a09-493f-acd5-962c63fdf919.jsonl`
-- `/ll:refine-issue` - 2026-03-26T17:29:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/961f8551-1a09-493f-acd5-962c63fdf919.jsonl`
-- `/ll:format-issue` - 2026-03-26T17:25:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/961f8551-1a09-493f-acd5-962c63fdf919.jsonl`
-- `/ll:capture-issue` - 2026-03-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/961f8551-1a09-493f-acd5-962c63fdf919.jsonl`
-- `/ll:manage-issue` - 2026-03-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-26T17:35:16 - `388e753a-2095-4bd6-a688-bc38d51c7b91.jsonl`
+- `/ll:confidence-check` - 2026-03-26T00:00:00Z - `961f8551-1a09-493f-acd5-962c63fdf919.jsonl`
+- `/ll:refine-issue` - 2026-03-26T17:29:36 - `961f8551-1a09-493f-acd5-962c63fdf919.jsonl`
+- `/ll:format-issue` - 2026-03-26T17:25:33 - `961f8551-1a09-493f-acd5-962c63fdf919.jsonl`
+- `/ll:capture-issue` - 2026-03-26T00:00:00Z - `961f8551-1a09-493f-acd5-962c63fdf919.jsonl`
+- `/ll:manage-issue` - 2026-03-26T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`

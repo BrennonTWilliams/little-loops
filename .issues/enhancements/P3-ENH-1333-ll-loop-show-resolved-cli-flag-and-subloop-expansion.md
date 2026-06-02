@@ -159,9 +159,9 @@ Implemented all 7 touchpoints as specified:
 All 5 new/updated tests pass; full suite passes (pre-existing marketplace version mismatch unrelated).
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-02T21:42:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4022dd56-dbec-4f0e-9f39-bc62efc12c5b.jsonl`
-- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1d0f0a1e-fe3f-4de8-8df5-7352ca00ba12.jsonl`
-- `/ll:wire-issue` - 2026-05-02T21:37:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/618354dc-0253-4ebe-894a-92b0731f4a6f.jsonl`
-- `/ll:refine-issue` - 2026-05-02T21:32:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0bf8418-8c88-439e-a4be-eb189fcfd156.jsonl`
-- `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3504f81c-8403-4c3e-84f2-f27905b579d2.jsonl`
-- `/ll:manage-issue` - 2026-05-02T21:48:36Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4022dd56-dbec-4f0e-9f39-bc62efc12c5b.jsonl`
+- `/ll:ready-issue` - 2026-05-02T21:42:21 - `4022dd56-dbec-4f0e-9f39-bc62efc12c5b.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `1d0f0a1e-fe3f-4de8-8df5-7352ca00ba12.jsonl`
+- `/ll:wire-issue` - 2026-05-02T21:37:41 - `618354dc-0253-4ebe-894a-92b0731f4a6f.jsonl`
+- `/ll:refine-issue` - 2026-05-02T21:32:44 - `b0bf8418-8c88-439e-a4be-eb189fcfd156.jsonl`
+- `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `3504f81c-8403-4c3e-84f2-f27905b579d2.jsonl`
+- `/ll:manage-issue` - 2026-05-02T21:48:36Z - `4022dd56-dbec-4f0e-9f39-bc62efc12c5b.jsonl`

@@ -98,9 +98,9 @@ _Added by `/ll:confidence-check` on 2026-04-21_
 - Do not update TESTING.md to `(10 files)` until FEAT-1217 is completed and `scripts/tests/fixtures/fsm/parallel-loop.yaml` exists on disk.
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-21T08:48:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93a6abff-9eef-42d5-906a-16129e2312ed.jsonl`
-- `/ll:refine-issue` - 2026-04-21T08:41:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24deddc4-b3ab-46e0-a086-402c756f420c.jsonl`
-- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e25ed049-cee1-4c7f-a922-d725b2ff5c2f.jsonl`
-- `/ll:wire-issue` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
-- `/ll:confidence-check` - 2026-04-21T09:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1476711d-e434-42d7-959c-f6e895b60775.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c93a99ef-f7be-473a-af0d-5ec933e75111.jsonl`
+- `/ll:refine-issue` - 2026-04-21T08:48:31 - `93a6abff-9eef-42d5-906a-16129e2312ed.jsonl`
+- `/ll:refine-issue` - 2026-04-21T08:41:22 - `24deddc4-b3ab-46e0-a086-402c756f420c.jsonl`
+- `/ll:issue-size-review` - 2026-04-21T00:00:00 - `e25ed049-cee1-4c7f-a922-d725b2ff5c2f.jsonl`
+- `/ll:wire-issue` - 2026-04-21T00:00:00 - `current-session.jsonl`
+- `/ll:confidence-check` - 2026-04-21T09:00:00 - `1476711d-e434-42d7-959c-f6e895b60775.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `c93a99ef-f7be-473a-af0d-5ec933e75111.jsonl`

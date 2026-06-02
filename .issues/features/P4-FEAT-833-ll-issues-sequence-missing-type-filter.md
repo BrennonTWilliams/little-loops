@@ -83,8 +83,8 @@ Added `--type` argument to the `sequence` subparser in `__init__.py` (same patte
 - `list`, `count`, `impact-effort`, `refine-status` all expose `--type` — confirmed
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-21T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2f8a4f6-3ee2-4a2d-836e-a1e6fa1a16fe.jsonl`
-- `/ll:ready-issue` - 2026-03-21T21:09:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2f8a4f6-3ee2-4a2d-836e-a1e6fa1a16fe.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:verify-issues` - 2026-03-19T23:19:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
-- `/ll:scan-codebase` - 2026-03-19T22:12:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1798556-30de-4e10-a591-2da06903a76f.jsonl`
+- `/ll:manage-issue` - 2026-03-21T00:00:00Z - `c2f8a4f6-3ee2-4a2d-836e-a1e6fa1a16fe.jsonl`
+- `/ll:ready-issue` - 2026-03-21T21:09:36 - `c2f8a4f6-3ee2-4a2d-836e-a1e6fa1a16fe.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:verify-issues` - 2026-03-19T23:19:32 - `518e3b13-53f5-4aa8-8b52-4d7a72cacfa5.jsonl`
+- `/ll:scan-codebase` - 2026-03-19T22:12:56 - `f1798556-30de-4e10-a591-2da06903a76f.jsonl`

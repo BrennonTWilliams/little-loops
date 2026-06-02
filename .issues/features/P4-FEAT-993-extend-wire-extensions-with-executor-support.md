@@ -189,6 +189,6 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `cli/parallel.py:228` — call site; bare `EventBus()` at line 225, no executor in scope
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-08T05:31:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6d41dbb-b21b-4f1c-b728-d1dcee68c12d.jsonl`
-- `/ll:refine-issue` - 2026-04-08T05:24:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6812afe4-4248-451c-bdc8-42131c8cb745.jsonl`
-- `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3cbd267-88d4-421d-8d23-7869adfc91cb.jsonl`
+- `/ll:ready-issue` - 2026-04-08T05:31:47 - `b6d41dbb-b21b-4f1c-b728-d1dcee68c12d.jsonl`
+- `/ll:refine-issue` - 2026-04-08T05:24:31 - `6812afe4-4248-451c-bdc8-42131c8cb745.jsonl`
+- `/ll:issue-size-review` - 2026-04-08T00:00:00Z - `b3cbd267-88d4-421d-8d23-7869adfc91cb.jsonl`

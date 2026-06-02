@@ -175,14 +175,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 **Done** | Completed: 2026-06-01 | Priority: P4
 
 ## Session Log
-- `/ll:manage-issue` - 2026-06-01T05:23:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-06-01T05:12:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c75d9a1f-96fe-46f0-a149-329161e01f6c.jsonl`
-- `/ll:confidence-check` - 2026-06-01T06:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7c73638-1dd9-4405-b0f3-9e427938de09.jsonl`
-- `/ll:wire-issue` - 2026-06-01T05:09:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/080ad113-1a44-449a-a452-5a8ff905c5dc.jsonl`
-- `/ll:refine-issue` - 2026-06-01T05:01:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e95db2d6-551c-48ea-abbd-e148791d8b78.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-06-01T04:19:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f60c9218-3661-4445-8adb-23f9182491a5.jsonl`
-- `/ll:format-issue` - 2026-06-01T01:20:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c78d4399-dc58-4488-ac5a-557b6cd5e073.jsonl`
-- `/ll:capture-issue` - 2026-06-01T01:10:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:manage-issue` - 2026-06-01T05:23:49Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-06-01T05:12:59 - `c75d9a1f-96fe-46f0-a149-329161e01f6c.jsonl`
+- `/ll:confidence-check` - 2026-06-01T06:00:00Z - `f7c73638-1dd9-4405-b0f3-9e427938de09.jsonl`
+- `/ll:wire-issue` - 2026-06-01T05:09:21 - `080ad113-1a44-449a-a452-5a8ff905c5dc.jsonl`
+- `/ll:refine-issue` - 2026-06-01T05:01:46 - `e95db2d6-551c-48ea-abbd-e148791d8b78.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-01T04:19:23 - `f60c9218-3661-4445-8adb-23f9182491a5.jsonl`
+- `/ll:format-issue` - 2026-06-01T01:20:09 - `c78d4399-dc58-4488-ac5a-557b6cd5e073.jsonl`
+- `/ll:capture-issue` - 2026-06-01T01:10:54Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 
 ---
 

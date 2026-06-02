@@ -194,11 +194,11 @@ Added regression tests in `scripts/tests/test_ll_loop_display.py`:
 All 4956 tests pass. No changes to persisted event shapes; `ll-loop history` / `ll-loop show` unaffected.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f3fa003-a377-4486-9734-6ee2f5acca1f.jsonl`
-- `/ll:ready-issue` - 2026-04-18T18:05:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b59b8421-bd86-4e4a-a3dd-2dfb9f29800f.jsonl`
-- `/ll:confidence-check` - 2026-04-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/30b9263f-a97f-427e-a6e7-e47caf4667a9.jsonl`
-- `/ll:wire-issue` - 2026-04-18T18:03:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/694a46f6-7043-48a8-82f3-07ab5276f421.jsonl`
-- `/ll:refine-issue` - 2026-04-18T17:57:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0affc59b-ae07-4860-8e7a-6a5cd61312a2.jsonl`
+- `/ll:manage-issue` - 2026-04-18T00:00:00 - `1f3fa003-a377-4486-9734-6ee2f5acca1f.jsonl`
+- `/ll:ready-issue` - 2026-04-18T18:05:10 - `b59b8421-bd86-4e4a-a3dd-2dfb9f29800f.jsonl`
+- `/ll:confidence-check` - 2026-04-18T00:00:00 - `30b9263f-a97f-427e-a6e7-e47caf4667a9.jsonl`
+- `/ll:wire-issue` - 2026-04-18T18:03:08 - `694a46f6-7043-48a8-82f3-07ab5276f421.jsonl`
+- `/ll:refine-issue` - 2026-04-18T17:57:46 - `0affc59b-ae07-4860-8e7a-6a5cd61312a2.jsonl`
 
 - `/ll:capture-issue` - 2026-04-17 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00032768-5efc-466a-aad1-02f0fb698fb3.jsonl`
 

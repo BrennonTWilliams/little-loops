@@ -235,12 +235,12 @@ Out of scope:
 `documentation`, `rate-limits`, `observability`, `enh`, `captured`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53dc8b4f-7e4a-42e8-85be-ba83c469faf5.jsonl`
-- `/ll:ready-issue` - 2026-04-17T09:07:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/89dc1663-7a45-4bd7-ba02-baa5a06f7344.jsonl`
-- `/ll:wire-issue` - 2026-04-17T09:03:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0af5b5de-c80f-4fc3-9d7b-cedf43719307.jsonl`
-- `/ll:refine-issue` - 2026-04-17T08:58:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f6cd2c8-d35f-4d0e-872a-45b1e75854b5.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cdbdbf5d-1514-44d9-a8b7-7ce3308a82dc.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ffc3179-29ef-4f5d-ac8b-5c4c7d151d9e.jsonl`
+- `/ll:manage-issue` - 2026-04-17 - `53dc8b4f-7e4a-42e8-85be-ba83c469faf5.jsonl`
+- `/ll:ready-issue` - 2026-04-17T09:07:17 - `89dc1663-7a45-4bd7-ba02-baa5a06f7344.jsonl`
+- `/ll:wire-issue` - 2026-04-17T09:03:55 - `0af5b5de-c80f-4fc3-9d7b-cedf43719307.jsonl`
+- `/ll:refine-issue` - 2026-04-17T08:58:13 - `5f6cd2c8-d35f-4d0e-872a-45b1e75854b5.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `cdbdbf5d-1514-44d9-a8b7-7ce3308a82dc.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `9ffc3179-29ef-4f5d-ac8b-5c4c7d151d9e.jsonl`
 
 ---
 

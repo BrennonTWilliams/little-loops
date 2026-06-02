@@ -116,8 +116,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Completed** | Created: 2026-03-19 | Resolved: 2026-03-19 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-19T21:08:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20af4924-3de9-4fd2-a974-571b3ec52e86.jsonl`
-- `/ll:refine-issue` - 2026-03-19T20:57:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe506d9d-2172-487c-8370-e42c14c33014.jsonl`
-- `/ll:capture-issue` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff0e595f-a48d-4d2e-85f9-57323060acb1.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f6767ff-6b4b-4285-a0f3-44b2dfb9e9ee.jsonl`
-- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-19T21:08:30 - `20af4924-3de9-4fd2-a974-571b3ec52e86.jsonl`
+- `/ll:refine-issue` - 2026-03-19T20:57:45 - `fe506d9d-2172-487c-8370-e42c14c33014.jsonl`
+- `/ll:capture-issue` - 2026-03-19T00:00:00Z - `ff0e595f-a48d-4d2e-85f9-57323060acb1.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `6f6767ff-6b4b-4285-a0f3-44b2dfb9e9ee.jsonl`
+- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`

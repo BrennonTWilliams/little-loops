@@ -186,13 +186,13 @@ _Added by `/ll:confidence-check` on 2026-04-17_
 - **Remaining scope has shrunk**: Step 3 (fake_sleep signatures) is already done; Steps 5/6 (package-import tests) are already satisfied at `:4505-4515`. The only net-new work is **Step 4** — adding `TestRateLimitHeartbeat` with the cadence test `test_rate_limit_waiting_events_emitted_at_cadence`.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-17T14:20:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/024ac8a1-d9a1-4dc5-9242-769d3acfac30.jsonl`
-- `/ll:refine-issue` - 2026-04-17T08:26:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5c96713-3899-4dcf-98ee-038f7e93041a.jsonl`
-- `/ll:wire-issue` - 2026-04-17T08:23:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43715745-a98d-450d-b9e5-d3f6adb74cdf.jsonl`
-- `/ll:refine-issue` - 2026-04-17T08:17:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c02a7ed-1490-42fb-8832-5cffd4e1b2d8.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/714a7073-85c4-4a11-87ff-d55b6cd3eeba.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/43715745-a98d-450d-b9e5-d3f6adb74cdf.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9c07c85-7a12-40a0-9e1f-d2073d5d2025.jsonl`
+- `/ll:ready-issue` - 2026-04-17T14:20:43 - `024ac8a1-d9a1-4dc5-9242-769d3acfac30.jsonl`
+- `/ll:refine-issue` - 2026-04-17T08:26:48 - `f5c96713-3899-4dcf-98ee-038f7e93041a.jsonl`
+- `/ll:wire-issue` - 2026-04-17T08:23:27 - `43715745-a98d-450d-b9e5-d3f6adb74cdf.jsonl`
+- `/ll:refine-issue` - 2026-04-17T08:17:51 - `0c02a7ed-1490-42fb-8832-5cffd4e1b2d8.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `714a7073-85c4-4a11-87ff-d55b6cd3eeba.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `43715745-a98d-450d-b9e5-d3f6adb74cdf.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `f9c07c85-7a12-40a0-9e1f-d2073d5d2025.jsonl`
 
 ---
 

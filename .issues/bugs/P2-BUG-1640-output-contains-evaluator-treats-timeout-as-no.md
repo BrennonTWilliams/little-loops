@@ -403,14 +403,14 @@ Implemented Option A (per `/ll:decide-issue` 2026-05-23). Added a short-circuit 
 - Docs updated: `docs/guides/LOOPS_GUIDE.md` (action-level timeout note in Evaluators section) and `docs/reference/API.md` (`evaluate()` docstring).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-23T21:32:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6b7bf8f2-ed0e-41b0-9a32-f47a955af816.jsonl`
-- `/ll:ready-issue` - 2026-05-23T21:24:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f2e32ed-99b8-40d1-827b-5060a1f84e94.jsonl`
-- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/077320c2-7a5e-4e29-a61a-50f11710e86e.jsonl`
-- `/ll:decide-issue` - 2026-05-23T21:20:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/943c1eac-c9ff-40af-a694-b0deef52999a.jsonl`
-- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc521ac6-d09c-4bdf-99b3-7717c84f17cb.jsonl`
-- `/ll:wire-issue` - 2026-05-23T21:11:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57f88c46-f1fa-48e9-89ec-3eea2493d247.jsonl`
-- `/ll:refine-issue` - 2026-05-23T21:03:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/825ffa4a-0821-4278-a095-ef689f365fce.jsonl`
-- `/ll:format-issue` - 2026-05-23T19:20:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e47d6fd-2e6f-44ec-8c88-b058fa9f9b22.jsonl`
+- `/ll:manage-issue` - 2026-05-23T21:32:06Z - `6b7bf8f2-ed0e-41b0-9a32-f47a955af816.jsonl`
+- `/ll:ready-issue` - 2026-05-23T21:24:25 - `8f2e32ed-99b8-40d1-827b-5060a1f84e94.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `077320c2-7a5e-4e29-a61a-50f11710e86e.jsonl`
+- `/ll:decide-issue` - 2026-05-23T21:20:31 - `943c1eac-c9ff-40af-a694-b0deef52999a.jsonl`
+- `/ll:confidence-check` - 2026-05-23T00:00:00Z - `bc521ac6-d09c-4bdf-99b3-7717c84f17cb.jsonl`
+- `/ll:wire-issue` - 2026-05-23T21:11:48 - `57f88c46-f1fa-48e9-89ec-3eea2493d247.jsonl`
+- `/ll:refine-issue` - 2026-05-23T21:03:31 - `825ffa4a-0821-4278-a095-ef689f365fce.jsonl`
+- `/ll:format-issue` - 2026-05-23T19:20:29 - `8e47d6fd-2e6f-44ec-8c88-b058fa9f9b22.jsonl`
 
 - `/ll:capture-issue` — 2026-05-23T12:00:00Z
 

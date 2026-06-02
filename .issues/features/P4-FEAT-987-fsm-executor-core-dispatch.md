@@ -311,9 +311,9 @@ Added 27 new tests across `TestContributedActionDispatch`, `TestContributedEvalu
 **Completed** | Created: 2026-04-07 | Resolved: 2026-04-07 | Priority: P4
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-08T03:05:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e2eceb3f-1e12-4ebd-be7b-b82613b2c751.jsonl`
-- `/ll:wire-issue` - 2026-04-08T02:44:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f501fbe-c8b1-423a-afe0-0db40d370b5b.jsonl`
-- `/ll:refine-issue` - 2026-04-08T02:39:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99ccfc8b-d45d-41ce-bc44-dbb43c9bb507.jsonl`
-- `/ll:format-issue` - 2026-04-08T02:35:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fcc3b663-4002-4345-93fd-f9fde61a5879.jsonl`
-- `/ll:manage-issue` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e2eceb3f-1e12-4ebd-be7b-b82613b2c751.jsonl`
-- `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f3aa3c7-ca33-4c8b-b435-c5b746906130.jsonl`
+- `/ll:ready-issue` - 2026-04-08T03:05:21 - `e2eceb3f-1e12-4ebd-be7b-b82613b2c751.jsonl`
+- `/ll:wire-issue` - 2026-04-08T02:44:42 - `2f501fbe-c8b1-423a-afe0-0db40d370b5b.jsonl`
+- `/ll:refine-issue` - 2026-04-08T02:39:17 - `99ccfc8b-d45d-41ce-bc44-dbb43c9bb507.jsonl`
+- `/ll:format-issue` - 2026-04-08T02:35:10 - `fcc3b663-4002-4345-93fd-f9fde61a5879.jsonl`
+- `/ll:manage-issue` - 2026-04-07T00:00:00Z - `e2eceb3f-1e12-4ebd-be7b-b82613b2c751.jsonl`
+- `/ll:issue-size-review` - 2026-04-07T00:00:00Z - `3f3aa3c7-ca33-4c8b-b435-c5b746906130.jsonl`

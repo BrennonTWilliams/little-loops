@@ -157,13 +157,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-26T20:34:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9add640f-7a17-4157-9018-185efd7ddc81.jsonl`
-- `/ll:confidence-check` - 2026-05-26T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a2e6f38-a0eb-41d9-820e-6ac6a48415f5.jsonl`
-- `/ll:wire-issue` - 2026-05-26T20:31:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47cef901-86e9-4bd2-b772-ff487dd8bdac.jsonl`
-- `/ll:refine-issue` - 2026-05-26T20:25:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a02e39e-0327-4fde-996c-a64d954c3e35.jsonl`
-- `/ll:format-issue` - 2026-05-26T20:16:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f238e1de-2a0d-4c63-94af-3f5bc586be30.jsonl`
+- `/ll:ready-issue` - 2026-05-26T20:34:07 - `9add640f-7a17-4157-9018-185efd7ddc81.jsonl`
+- `/ll:confidence-check` - 2026-05-26T21:00:00 - `0a2e6f38-a0eb-41d9-820e-6ac6a48415f5.jsonl`
+- `/ll:wire-issue` - 2026-05-26T20:31:00 - `47cef901-86e9-4bd2-b772-ff487dd8bdac.jsonl`
+- `/ll:refine-issue` - 2026-05-26T20:25:55 - `0a02e39e-0327-4fde-996c-a64d954c3e35.jsonl`
+- `/ll:format-issue` - 2026-05-26T20:16:24 - `f238e1de-2a0d-4c63-94af-3f5bc586be30.jsonl`
 
-- `/ll:capture-issue` - 2026-05-25T23:40:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a35eda6f-f9c7-4896-b583-29b513842fa6.jsonl`
+- `/ll:capture-issue` - 2026-05-25T23:40:11Z - `a35eda6f-f9c7-4896-b583-29b513842fa6.jsonl`
 
 ---
 

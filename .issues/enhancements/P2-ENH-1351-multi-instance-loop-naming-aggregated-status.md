@@ -357,16 +357,16 @@ _Added by `/ll:confidence-check` on 2026-05-03_
 ---
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-03T19:26:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e26d0d3-b923-4ec1-86ac-7959fadea8f7.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e26d0d3-b923-4ec1-86ac-7959fadea8f7.jsonl`
-- `/ll:confidence-check` - 2026-05-03T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1710d27d-e7e6-41eb-bdb2-221618751457.jsonl`
-- `/ll:wire-issue` - 2026-05-03T19:18:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2a9ee3ef-3cc6-4159-9524-6a2a2ffaf0b5.jsonl`
-- `/ll:refine-issue` - 2026-05-03T19:11:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6df60d0-1c78-4851-b324-323ef58d2758.jsonl`
-- `/ll:wire-issue` - 2026-05-03T18:02:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/075b3abf-eb8a-4b05-91fe-ab01841deab1.jsonl`
-- `/ll:refine-issue` - 2026-05-03T17:54:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c82c3b7-5d03-4f7e-ad8c-05324d8acd14.jsonl`
-- `/ll:format-issue` - 2026-05-03T17:47:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c397985-bbb0-4895-8d56-7d1468247afa.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-03T19:26:49 - `5e26d0d3-b923-4ec1-86ac-7959fadea8f7.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T20:30:00Z - `5e26d0d3-b923-4ec1-86ac-7959fadea8f7.jsonl`
+- `/ll:confidence-check` - 2026-05-03T20:00:00 - `1710d27d-e7e6-41eb-bdb2-221618751457.jsonl`
+- `/ll:wire-issue` - 2026-05-03T19:18:54 - `2a9ee3ef-3cc6-4159-9524-6a2a2ffaf0b5.jsonl`
+- `/ll:refine-issue` - 2026-05-03T19:11:49 - `b6df60d0-1c78-4851-b324-323ef58d2758.jsonl`
+- `/ll:wire-issue` - 2026-05-03T18:02:41 - `075b3abf-eb8a-4b05-91fe-ab01841deab1.jsonl`
+- `/ll:refine-issue` - 2026-05-03T17:54:20 - `0c82c3b7-5d03-4f7e-ad8c-05324d8acd14.jsonl`
+- `/ll:format-issue` - 2026-05-03T17:47:34 - `1c397985-bbb0-4895-8d56-7d1468247afa.jsonl`
 
-- `/ll:capture-issue` - 2026-05-03T17:41:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/483c54db-a329-4b0d-92ed-ebfb1be65160.jsonl`
+- `/ll:capture-issue` - 2026-05-03T17:41:57Z - `483c54db-a329-4b0d-92ed-ebfb1be65160.jsonl`
 
 ---
 

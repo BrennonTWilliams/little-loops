@@ -103,12 +103,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `feature`, `cli`, `gitignore`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-17T00:24:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d5f50f8-5dc0-463b-a7bd-4a42a1d5d9ab.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a861ad7-7c18-4f5c-a573-f74f2666d6d0.jsonl`
-- `/ll:refine-issue` - 2026-03-16T23:40:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c37a65c3-7517-4674-9a0e-89b6d6a8bc27.jsonl`
+- `/ll:ready-issue` - 2026-03-17T00:24:23 - `4d5f50f8-5dc0-463b-a7bd-4a42a1d5d9ab.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `5a861ad7-7c18-4f5c-a573-f74f2666d6d0.jsonl`
+- `/ll:refine-issue` - 2026-03-16T23:40:27 - `c37a65c3-7517-4674-9a0e-89b6d6a8bc27.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
-- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
-- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

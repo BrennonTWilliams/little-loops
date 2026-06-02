@@ -107,9 +107,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `loops`, `dx`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-21T02:59:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b414242a-7c10-49f7-aa41-bdbd5cdf4644.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a45f8274-0823-4329-a446-ba23ffbf5ad8.jsonl`
-- `/ll:refine-issue` - 2026-03-21T02:52:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b97e6f95-4e3d-4b42-9409-9b35dfe09ebe.jsonl`
+- `/ll:ready-issue` - 2026-03-21T02:59:20 - `b414242a-7c10-49f7-aa41-bdbd5cdf4644.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `a45f8274-0823-4329-a446-ba23ffbf5ad8.jsonl`
+- `/ll:refine-issue` - 2026-03-21T02:52:16 - `b97e6f95-4e3d-4b42-9409-9b35dfe09ebe.jsonl`
 
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ae8a776-9a67-47c4-9196-89c5316f5812.jsonl`
 

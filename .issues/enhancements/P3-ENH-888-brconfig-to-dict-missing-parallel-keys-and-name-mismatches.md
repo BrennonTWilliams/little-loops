@@ -196,10 +196,10 @@ Internal use only within little-loops; no public API surface affected.
 `enhancement`, `config`, `template-substitution`, `auto-generated`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-26T00:05:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe164423-7552-47e3-ad03-c3c2b19f008e.jsonl`
-- `/ll:refine-issue` - 2026-03-25T23:31:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
-- `/ll:format-issue` - 2026-03-25T23:26:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
-- `/ll:confidence-check` - 2026-03-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
+- `/ll:ready-issue` - 2026-03-26T00:05:25 - `fe164423-7552-47e3-ad03-c3c2b19f008e.jsonl`
+- `/ll:refine-issue` - 2026-03-25T23:31:41 - `8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
+- `/ll:format-issue` - 2026-03-25T23:26:59 - `8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
+- `/ll:confidence-check` - 2026-03-25T00:00:00Z - `8de7944a-158f-4f7f-be38-172cfa9404eb.jsonl`
 
 ---
 

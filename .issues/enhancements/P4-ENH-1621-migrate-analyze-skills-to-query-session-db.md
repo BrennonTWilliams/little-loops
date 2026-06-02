@@ -244,9 +244,9 @@ failure, no regressions). Ruff + mypy clean on touched files.
 
 ## Session Log
 - `/ll:manage-issue` - 2026-05-22T23:55:33 - implement (Closes ENH-1621)
-- `/ll:ready-issue` - 2026-05-22T23:40:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d98bd8d-bc02-44ca-9aa5-a004a05cb375.jsonl`
-- `/ll:ready-issue` - 2026-05-22T22:57:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/faa9dab7-6876-4951-b2f8-9267c4b0e418.jsonl`
-- `/ll:confidence-check` - 2026-05-22T22:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98972a97-ec58-4e0e-ae5f-61ff1633250e.jsonl`
-- `/ll:refine-issue` - 2026-05-22T22:18:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3766e10f-e0ce-4f0a-afd6-a5771f735963.jsonl`
-- `/ll:refine-issue` - 2026-05-22T22:13:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da2cdb66-57d9-4b9e-ad13-a2228c32b4d3.jsonl`
-- `/ll:format-issue` - 2026-05-22T22:06:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01b1eb09-75fc-443b-88ad-6641283eca0a.jsonl`
+- `/ll:ready-issue` - 2026-05-22T23:40:54 - `2d98bd8d-bc02-44ca-9aa5-a004a05cb375.jsonl`
+- `/ll:ready-issue` - 2026-05-22T22:57:56 - `faa9dab7-6876-4951-b2f8-9267c4b0e418.jsonl`
+- `/ll:confidence-check` - 2026-05-22T22:30:00 - `98972a97-ec58-4e0e-ae5f-61ff1633250e.jsonl`
+- `/ll:refine-issue` - 2026-05-22T22:18:20 - `3766e10f-e0ce-4f0a-afd6-a5771f735963.jsonl`
+- `/ll:refine-issue` - 2026-05-22T22:13:08 - `da2cdb66-57d9-4b9e-ad13-a2228c32b4d3.jsonl`
+- `/ll:format-issue` - 2026-05-22T22:06:12 - `01b1eb09-75fc-443b-88ad-6641283eca0a.jsonl`

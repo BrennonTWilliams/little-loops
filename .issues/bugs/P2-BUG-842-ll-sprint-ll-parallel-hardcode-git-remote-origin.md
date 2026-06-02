@@ -194,12 +194,12 @@ rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
 - `test_subprocess_mocks.py` — Updated pull `--rebase` mock to use `config.remote_name` instead of hardcoded `"origin"`.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-20T20:59:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c57795c-b90c-4deb-82f5-643b24c29331.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36183605-dd79-41a4-9e6a-73bd76c04600.jsonl`
-- `/ll:refine-issue` - 2026-03-20T20:25:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4b67db3c-3212-4208-a849-0257b4b7d161.jsonl`
-- `/ll:format-issue` - 2026-03-20T20:13:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04d10017-26b1-49e5-af25-cfb58245ab95.jsonl`
-- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/594d1b83-cf85-4943-8fc1-ffa883e482c8.jsonl`
-- `/ll:refine-issue` - 2026-03-20T19:30:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e8b60e0-04d0-42b9-8fe6-3dfdc7801672.jsonl`
+- `/ll:ready-issue` - 2026-03-20T20:59:43 - `4c57795c-b90c-4deb-82f5-643b24c29331.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `36183605-dd79-41a4-9e6a-73bd76c04600.jsonl`
+- `/ll:refine-issue` - 2026-03-20T20:25:18 - `4b67db3c-3212-4208-a849-0257b4b7d161.jsonl`
+- `/ll:format-issue` - 2026-03-20T20:13:49 - `04d10017-26b1-49e5-af25-cfb58245ab95.jsonl`
+- `/ll:confidence-check` - 2026-03-20T00:00:00Z - `594d1b83-cf85-4943-8fc1-ffa883e482c8.jsonl`
+- `/ll:refine-issue` - 2026-03-20T19:30:53 - `2e8b60e0-04d0-42b9-8fe6-3dfdc7801672.jsonl`
 
 - `/ll:capture-issue` - 2026-03-20T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b275638-5179-4c71-9525-1b50451e1ba7.jsonl`
 

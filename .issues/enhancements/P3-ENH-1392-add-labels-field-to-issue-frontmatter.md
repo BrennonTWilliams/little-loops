@@ -279,13 +279,13 @@ _Updated by `/ll:confidence-check` on 2026-05-10_
 - **New file scope**: `cli/migrate_labels.py` and `test_migrate_labels.py` do not yet exist and must be created from scratch; `migrate_relationships.py` is an exact pattern guide, but this adds volume beyond code-only edits.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-11T03:18:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d6b35a-8155-48a3-8d78-66be4e2069b8.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfb07734-959c-4a53-9fae-e51a41074ba4.jsonl`
-- `/ll:decide-issue` - 2026-05-11T03:12:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe60117f-d096-4a7d-b5b5-6280dd0dffb5.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:wire-issue` - 2026-05-11T03:05:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfa1ff52-c092-4166-8c6a-c31118c28f8a.jsonl`
-- `/ll:refine-issue` - 2026-05-11T02:57:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc0fc370-4b82-4dde-a68c-03a3ef65226d.jsonl`
-- `/ll:format-issue` - 2026-05-09T20:38:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe6a87fd-be36-4a41-80cb-e4a8262d6fa1.jsonl`
+- `/ll:ready-issue` - 2026-05-11T03:18:20 - `82d6b35a-8155-48a3-8d78-66be4e2069b8.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `cfb07734-959c-4a53-9fae-e51a41074ba4.jsonl`
+- `/ll:decide-issue` - 2026-05-11T03:12:03 - `fe60117f-d096-4a7d-b5b5-6280dd0dffb5.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:wire-issue` - 2026-05-11T03:05:04 - `cfa1ff52-c092-4166-8c6a-c31118c28f8a.jsonl`
+- `/ll:refine-issue` - 2026-05-11T02:57:22 - `fc0fc370-4b82-4dde-a68c-03a3ef65226d.jsonl`
+- `/ll:format-issue` - 2026-05-09T20:38:42 - `fe6a87fd-be36-4a41-80cb-e4a8262d6fa1.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:26:09Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e536be3e-1c62-4dcb-81f6-419c8b29e71f.jsonl`
 
 ---

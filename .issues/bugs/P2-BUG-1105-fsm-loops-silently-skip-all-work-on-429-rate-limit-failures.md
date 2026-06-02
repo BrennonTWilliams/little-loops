@@ -234,11 +234,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 `bug`, `fsm`, `rate-limit`, `executor`, `reliability`, `captured`
 
 ## Session Log
-- `/ll:wire-issue` - 2026-04-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50dc0377-0fe3-4e41-ab44-2e09d1e2b197.jsonl`
-- `/ll:refine-issue` - 2026-04-14T15:36:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50dc0377-0fe3-4e41-ab44-2e09d1e2b197.jsonl`
-- `/ll:confidence-check` - 2026-04-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48e37646-1fa6-41c1-b624-9b5f6b0c635f.jsonl`
-- `/ll:capture-issue` - 2026-04-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfe2ed92-588d-4d5f-8160-dba65d8166e5.jsonl`
-- `/ll:issue-size-review` - 2026-04-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4abdbd46-1b62-4801-9d00-a2569583afde.jsonl`
+- `/ll:wire-issue` - 2026-04-14T00:00:00Z - `50dc0377-0fe3-4e41-ab44-2e09d1e2b197.jsonl`
+- `/ll:refine-issue` - 2026-04-14T15:36:31 - `50dc0377-0fe3-4e41-ab44-2e09d1e2b197.jsonl`
+- `/ll:confidence-check` - 2026-04-14T00:00:00Z - `48e37646-1fa6-41c1-b624-9b5f6b0c635f.jsonl`
+- `/ll:capture-issue` - 2026-04-14T00:00:00Z - `cfe2ed92-588d-4d5f-8160-dba65d8166e5.jsonl`
+- `/ll:issue-size-review` - 2026-04-14T00:00:00Z - `4abdbd46-1b62-4801-9d00-a2569583afde.jsonl`
 
 ---
 

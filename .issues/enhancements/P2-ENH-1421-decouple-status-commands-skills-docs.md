@@ -283,17 +283,17 @@ _Updated by `/ll:confidence-check` on 2026-05-10 (levers applied: test file writ
 - **Hook update requires dual-trigger**: issue-completion-log.sh must support both `git mv → completed/` (Python CLI path, until ENH-1419 lands) and `status: done` frontmatter write (skill path). Implement dual-trigger; update test_hooks_integration.py accordingly.
 
 ## Session Log
-- `/ll:manage-issue enh implement ENH-1421` - 2026-05-10T21:02:24Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0101930c-df19-4f81-9d12-75e7fa7087b2.jsonl`
-- `/ll:ready-issue` - 2026-05-10T20:47:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb1d2fd0-4726-47a2-b646-495d2a6783f5.jsonl`
-- `/ll:confidence-check` (levers: test file + frozen scope) - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a41b29ce-483f-4fdd-acc3-ac8cc4c756d4.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a41b29ce-483f-4fdd-acc3-ac8cc4c756d4.jsonl`
-- `/ll:refine-issue` - 2026-05-10T19:57:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cad08df-f749-4472-a03d-b9e1388f620c.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-10T19:43:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
-- `/ll:confidence-check` - 2026-05-10T20:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:wire-issue` - 2026-05-10T19:25:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed9a9795-a7b0-47a3-97cf-548f6a30ffc0.jsonl`
-- `/ll:refine-issue` - 2026-05-10T19:18:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d50dc5b-3010-4dbf-b8c8-0d07870901cd.jsonl`
-- `/ll:format-issue` - 2026-05-10T15:21:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/293739bc-9ebc-4dac-a29c-99529166ae17.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
+- `/ll:manage-issue enh implement ENH-1421` - 2026-05-10T21:02:24Z - `0101930c-df19-4f81-9d12-75e7fa7087b2.jsonl`
+- `/ll:ready-issue` - 2026-05-10T20:47:49 - `bb1d2fd0-4726-47a2-b646-495d2a6783f5.jsonl`
+- `/ll:confidence-check` (levers: test file + frozen scope) - 2026-05-10T00:00:00Z - `a41b29ce-483f-4fdd-acc3-ac8cc4c756d4.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `a41b29ce-483f-4fdd-acc3-ac8cc4c756d4.jsonl`
+- `/ll:refine-issue` - 2026-05-10T19:57:32 - `0cad08df-f749-4472-a03d-b9e1388f620c.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-10T19:43:42 - `6d630f0d-2126-4eb0-8da2-2057ea37658f.jsonl`
+- `/ll:confidence-check` - 2026-05-10T20:00:00Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:wire-issue` - 2026-05-10T19:25:52 - `ed9a9795-a7b0-47a3-97cf-548f6a30ffc0.jsonl`
+- `/ll:refine-issue` - 2026-05-10T19:18:51 - `9d50dc5b-3010-4dbf-b8c8-0d07870901cd.jsonl`
+- `/ll:format-issue` - 2026-05-10T15:21:43 - `293739bc-9ebc-4dac-a29c-99529166ae17.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `0cc6049e-f9fc-4387-9af6-418507182087.jsonl`
 
 ---
 

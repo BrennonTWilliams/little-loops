@@ -165,7 +165,7 @@ Mutual exclusions: `parallel` + `action`, `parallel` + `loop` field, `parallel` 
 ---
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/847acfcb-8aba-4124-8dc8-a98c7902e550.jsonl`
+- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `847acfcb-8aba-4124-8dc8-a98c7902e550.jsonl`
 
 ---
 

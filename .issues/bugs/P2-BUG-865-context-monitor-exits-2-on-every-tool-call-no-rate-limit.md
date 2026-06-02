@@ -151,14 +151,14 @@ BUG-865 is a valid, well-scoped P2 issue with a mechanical ~10-line fix that fol
 **Verification**: 3866 tests pass; all 11 `TestContextMonitor` tests pass including 3 new rate-limiting tests.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-23T23:11:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:ready-issue` - 2026-03-23T23:07:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe663ea5-f115-4a0c-b4fe-602c5e25dbfc.jsonl`
-- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/487809cc-1022-4d6d-8f9a-60e6bf5a5ff3.jsonl`
-- `/ll:verify-issues` - 2026-03-23T22:39:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/152c2182-2d1d-4797-9a20-b5baad497624.jsonl`
-- `/ll:refine-issue` - 2026-03-23T22:33:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19fd35ab-9270-4420-96ba-b9bf29365721.jsonl`
-- `/ll:format-issue` - 2026-03-23T22:29:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8e2d522-d473-46a2-8169-228e476ec976.jsonl`
+- `/ll:manage-issue` - 2026-03-23T23:11:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-23T23:07:06 - `fe663ea5-f115-4a0c-b4fe-602c5e25dbfc.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `487809cc-1022-4d6d-8f9a-60e6bf5a5ff3.jsonl`
+- `/ll:verify-issues` - 2026-03-23T22:39:08 - `152c2182-2d1d-4797-9a20-b5baad497624.jsonl`
+- `/ll:refine-issue` - 2026-03-23T22:33:16 - `19fd35ab-9270-4420-96ba-b9bf29365721.jsonl`
+- `/ll:format-issue` - 2026-03-23T22:29:26 - `a8e2d522-d473-46a2-8169-228e476ec976.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/520e79f8-0528-4c6d-92c0-e09d2d2aa372.jsonl`
-- `/ll:go-no-go` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1b17f620-f2da-44e2-8f69-81831236e135.jsonl`
+- `/ll:go-no-go` - 2026-03-23T00:00:00Z - `1b17f620-f2da-44e2-8f69-81831236e135.jsonl`
 
 ---
 

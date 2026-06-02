@@ -90,4 +90,4 @@ Applied all four fixes to `loops/issue-refinement.yaml` in a single edit:
 `ll-loop validate` confirmed no schema errors. All 10 states present: `init`, `evaluate`, `route_format`, `route_score`, `format_issues`, `score_issues`, `refine_issues`, `check_commit`, `commit`, `done`.
 
 ## Session Log
-- Audit & fix - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/405e3b7b-9162-4cd6-b556-4ce959c0924a.jsonl`
+- Audit & fix - 2026-03-13 - `405e3b7b-9162-4cd6-b556-4ce959c0924a.jsonl`

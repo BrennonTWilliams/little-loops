@@ -99,6 +99,6 @@ execute:
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-24): ENH-1677 (retry hardening for `continue_work` + `execute`) and ENH-1655 (retry hardening for `check_done` evaluate step) are complementary halves of a complete general-task retry-hardening effort — they target different states but the same class of infra failures in the same loop. Both should land together in a single sprint for full coverage. ENH-1677 explicitly acknowledges ENH-1678 (`retryable_exit_codes` filter) as a follow-up; ENH-1655 addresses the evaluate-specific path that ENH-1677 does not touch.
 
 ## Session Log
-- `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
-- `/ll:format-issue` - 2026-05-24T13:19:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5566ccd-518b-4732-b99c-7c2788c9b64d.jsonl`
-- `/ll:capture-issue` - 2026-05-24T13:15:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bfd5e964-4cba-4f63-8354-255b3fbb9f18.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
+- `/ll:format-issue` - 2026-05-24T13:19:19 - `b5566ccd-518b-4732-b99c-7c2788c9b64d.jsonl`
+- `/ll:capture-issue` - 2026-05-24T13:15:53Z - `bfd5e964-4cba-4f63-8354-255b3fbb9f18.jsonl`

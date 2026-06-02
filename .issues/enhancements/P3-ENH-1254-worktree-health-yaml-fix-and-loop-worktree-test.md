@@ -177,11 +177,11 @@ All 279 tests in `test_cli_loop_worktree.py` and `test_builtin_loops.py` pass.
 
 ## Session Log
 - `/ll:manage-issue enh fix ENH-1254` - 2026-04-22T20:27:41Z
-- `/ll:ready-issue` - 2026-04-22T20:22:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21fe4b82-7e78-43be-96c8-169403280da0.jsonl`
-- `/ll:wire-issue` - 2026-04-22T16:59:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f322d82-007d-436b-91a4-e8fd47be4ac7.jsonl`
-- `/ll:refine-issue` - 2026-04-22T16:53:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46ebe1e5-629b-43e5-ab61-64f4014d103c.jsonl`
-- `/ll:issue-size-review` - 2026-04-22T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79aadd9e-32c2-44ea-be52-e9ec9bcff212.jsonl`
-- `/ll:confidence-check` - 2026-04-22T17:20:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f5ba111-1be8-4bc7-b6d6-c29345a8285a.jsonl`
+- `/ll:ready-issue` - 2026-04-22T20:22:14 - `21fe4b82-7e78-43be-96c8-169403280da0.jsonl`
+- `/ll:wire-issue` - 2026-04-22T16:59:03 - `3f322d82-007d-436b-91a4-e8fd47be4ac7.jsonl`
+- `/ll:refine-issue` - 2026-04-22T16:53:23 - `46ebe1e5-629b-43e5-ab61-64f4014d103c.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T17:00:00 - `79aadd9e-32c2-44ea-be52-e9ec9bcff212.jsonl`
+- `/ll:confidence-check` - 2026-04-22T17:20:00 - `7f5ba111-1be8-4bc7-b6d6-c29345a8285a.jsonl`
 
 ---
 

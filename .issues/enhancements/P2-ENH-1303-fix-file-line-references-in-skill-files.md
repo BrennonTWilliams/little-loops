@@ -148,14 +148,14 @@ Fixed all 8 `file:line`-style references in `skills/wire-issue/SKILL.md` and all
 Verification: `grep -n "file:line\|\.[a-z]*:[0-9]" skills/wire-issue/SKILL.md skills/manage-issue/templates.md` returns zero matches.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-27T18:26:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7fb744a8-b2be-4d39-8257-09822848481b.jsonl`
-- `/ll:manage-issue` - 2026-04-27T18:26:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:ready-issue` - 2026-04-27T18:23:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de4fdc2b-6d52-4b83-bb5c-58243af7b0e0.jsonl`
-- `/ll:wire-issue` - 2026-04-27T17:13:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70909210-c44c-42bd-b735-0b69ffacb590.jsonl`
-- `/ll:refine-issue` - 2026-04-27T17:08:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/41cff0a5-6278-4376-b590-c89c125b07be.jsonl`
-- `/ll:issue-size-review` - 2026-04-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffb785b8-11a4-4944-a15b-8d407ae45324.jsonl`
-- `/ll:confidence-check` - 2026-04-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09e0236c-552d-443a-b7cc-ca1f237e6953.jsonl`
-- `/ll:confidence-check` - 2026-04-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e600d60-a7e4-40c6-9cdc-c101988d3673.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-27T18:26:54 - `7fb744a8-b2be-4d39-8257-09822848481b.jsonl`
+- `/ll:manage-issue` - 2026-04-27T18:26:29Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-04-27T18:23:40 - `de4fdc2b-6d52-4b83-bb5c-58243af7b0e0.jsonl`
+- `/ll:wire-issue` - 2026-04-27T17:13:07 - `70909210-c44c-42bd-b735-0b69ffacb590.jsonl`
+- `/ll:refine-issue` - 2026-04-27T17:08:36 - `41cff0a5-6278-4376-b590-c89c125b07be.jsonl`
+- `/ll:issue-size-review` - 2026-04-27T00:00:00Z - `ffb785b8-11a4-4944-a15b-8d407ae45324.jsonl`
+- `/ll:confidence-check` - 2026-04-27T00:00:00Z - `09e0236c-552d-443a-b7cc-ca1f237e6953.jsonl`
+- `/ll:confidence-check` - 2026-04-27T00:00:00Z - `5e600d60-a7e4-40c6-9cdc-c101988d3673.jsonl`
 
 ---
 

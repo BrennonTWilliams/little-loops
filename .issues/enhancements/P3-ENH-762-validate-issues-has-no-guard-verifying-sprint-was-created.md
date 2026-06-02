@@ -154,6 +154,6 @@ Added `route_create` evaluate state between `create_sprint` and `validate_issues
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-15T23:28:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22bc43da-1aa2-4923-9deb-40561dd4b042.jsonl`
-- `/ll:refine-issue` - 2026-03-15T23:06:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e607ee0-ad85-4e70-ba70-ec2a6350e59a.jsonl`
+- `/ll:ready-issue` - 2026-03-15T23:28:37 - `22bc43da-1aa2-4923-9deb-40561dd4b042.jsonl`
+- `/ll:refine-issue` - 2026-03-15T23:06:05 - `3e607ee0-ad85-4e70-ba70-ec2a6350e59a.jsonl`
 - `/ll:manage-issue` - 2026-03-15T00:00:00 - improve ENH-762: added route_create guard state

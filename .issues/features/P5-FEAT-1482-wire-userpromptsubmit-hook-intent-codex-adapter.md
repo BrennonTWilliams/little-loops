@@ -286,11 +286,11 @@ _Added by `/ll:confidence-check` on 2026-05-15_
 - Payload field `.prompt` is unverified against Codex CLI; silent failure risk if the field name differs
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-15T22:43:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:ready-issue` - 2026-05-15T22:37:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46d366b8-67d8-408e-baa5-1f470fe2dccd.jsonl`
-- `/ll:confidence-check` - 2026-05-15T23:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee7de6e9-997b-4bb6-a6ae-e81063eeaa11.jsonl`
-- `/ll:decide-issue` - 2026-05-15T22:31:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c83fb486-18e2-416c-9520-e73ea7fb0cda.jsonl`
-- `/ll:confidence-check` - 2026-05-15T22:45:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d397b69c-45f5-4133-a09f-ea94689a1f66.jsonl`
-- `/ll:wire-issue` - 2026-05-15T22:25:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d981d92-9139-4c22-b492-04043e84a3a9.jsonl`
-- `/ll:refine-issue` - 2026-05-15T22:20:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66e53879-c16f-4ee7-82b3-c7d6b199900c.jsonl`
-- `/ll:capture-issue` - 2026-05-15T20:37:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ac48eaf-913e-40cd-8b15-98d99f2901cc.jsonl`
+- `/ll:manage-issue` - 2026-05-15T22:43:21Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-15T22:37:16 - `46d366b8-67d8-408e-baa5-1f470fe2dccd.jsonl`
+- `/ll:confidence-check` - 2026-05-15T23:15:00 - `ee7de6e9-997b-4bb6-a6ae-e81063eeaa11.jsonl`
+- `/ll:decide-issue` - 2026-05-15T22:31:11 - `c83fb486-18e2-416c-9520-e73ea7fb0cda.jsonl`
+- `/ll:confidence-check` - 2026-05-15T22:45:00 - `d397b69c-45f5-4133-a09f-ea94689a1f66.jsonl`
+- `/ll:wire-issue` - 2026-05-15T22:25:06 - `0d981d92-9139-4c22-b492-04043e84a3a9.jsonl`
+- `/ll:refine-issue` - 2026-05-15T22:20:04 - `66e53879-c16f-4ee7-82b3-c7d6b199900c.jsonl`
+- `/ll:capture-issue` - 2026-05-15T20:37:29Z - `5ac48eaf-913e-40cd-8b15-98d99f2901cc.jsonl`

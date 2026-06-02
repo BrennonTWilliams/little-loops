@@ -221,12 +221,12 @@ Implemented in `scripts/little_loops/loops/general-task.yaml`: changed `count_do
 
 ## Session Log
 - `/ll:manage-issue` - 2026-05-24T21:42:46Z - active session
-- `/ll:ready-issue` - 2026-05-24T21:39:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50341109-15ff-4471-88eb-e57b32140fc3.jsonl`
-- `/ll:confidence-check` - 2026-05-24T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba5b7ded-8a4a-4c0f-95e1-c82128f42267.jsonl`
-- `/ll:wire-issue` - 2026-05-24T21:36:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b7b6432-0e31-4d2b-af37-875c0d05728f.jsonl`
-- `/ll:refine-issue` - 2026-05-24T21:29:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2d89ce4-36c3-4dc3-a3b0-5dfc218f3013.jsonl`
-- `/ll:format-issue` - 2026-05-24T17:35:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea088c92-461b-4afc-98b8-32abc1e0bf8d.jsonl`
-- `/ll:capture-issue` - 2026-05-24T17:30:41Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49190dcc-d6e4-4353-bf0c-cce367d61a96.jsonl`
+- `/ll:ready-issue` - 2026-05-24T21:39:28 - `50341109-15ff-4471-88eb-e57b32140fc3.jsonl`
+- `/ll:confidence-check` - 2026-05-24T22:00:00Z - `ba5b7ded-8a4a-4c0f-95e1-c82128f42267.jsonl`
+- `/ll:wire-issue` - 2026-05-24T21:36:03 - `5b7b6432-0e31-4d2b-af37-875c0d05728f.jsonl`
+- `/ll:refine-issue` - 2026-05-24T21:29:26 - `a2d89ce4-36c3-4dc3-a3b0-5dfc218f3013.jsonl`
+- `/ll:format-issue` - 2026-05-24T17:35:51 - `ea088c92-461b-4afc-98b8-32abc1e0bf8d.jsonl`
+- `/ll:capture-issue` - 2026-05-24T17:30:41Z - `49190dcc-d6e4-4353-bf0c-cce367d61a96.jsonl`
 
 ---
 

@@ -214,12 +214,12 @@ Out of scope:
 Closes ENH-1132. Unblocks ENH-1133 (executor), ENH-1134 (circuit breaker), ENH-1135 (heartbeat/docs).
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbc863d0-453e-4e8c-8a7d-fee07dbd9489.jsonl`
-- `/ll:ready-issue` - 2026-04-17T04:08:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5adda0e0-3b22-46b8-a2f1-2f5f0121aad1.jsonl`
-- `/ll:confidence-check` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16c833e3-4e3d-41af-aec2-156ee4006474.jsonl`
-- `/ll:wire-issue` - 2026-04-17T04:02:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72f46a20-d0c1-4c76-a4db-d81ab93752ae.jsonl`
-- `/ll:refine-issue` - 2026-04-17T03:55:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f33b31a-139a-47fa-81c7-8b4f76e5a7b8.jsonl`
-- `/ll:issue-size-review` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86c5c7e4-236c-46a0-acd9-2124269e76f0.jsonl`
+- `/ll:manage-issue` - 2026-04-16T00:00:00Z - `dbc863d0-453e-4e8c-8a7d-fee07dbd9489.jsonl`
+- `/ll:ready-issue` - 2026-04-17T04:08:25 - `5adda0e0-3b22-46b8-a2f1-2f5f0121aad1.jsonl`
+- `/ll:confidence-check` - 2026-04-16T00:00:00Z - `16c833e3-4e3d-41af-aec2-156ee4006474.jsonl`
+- `/ll:wire-issue` - 2026-04-17T04:02:33 - `72f46a20-d0c1-4c76-a4db-d81ab93752ae.jsonl`
+- `/ll:refine-issue` - 2026-04-17T03:55:57 - `6f33b31a-139a-47fa-81c7-8b4f76e5a7b8.jsonl`
+- `/ll:issue-size-review` - 2026-04-16T00:00:00Z - `86c5c7e4-236c-46a0-acd9-2124269e76f0.jsonl`
 
 ---
 

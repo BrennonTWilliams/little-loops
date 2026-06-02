@@ -89,7 +89,7 @@ Also add `parallel:` to the "State type quick reference" table if one exists, al
 ---
 
 ## Session Log
-- `/ll:capture-issue` - 2026-04-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ff9cd96-1544-4ffa-b28c-15aab5e9f3e8.jsonl`
+- `/ll:capture-issue` - 2026-04-18T00:00:00Z - `8ff9cd96-1544-4ffa-b28c-15aab5e9f3e8.jsonl`
 
 ---
 

@@ -116,4 +116,4 @@ Work through each stub in document order:
 
 
 ## Session Log
-- `/ll:verify-issues` - 2026-05-31T06:12:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f18e015-8096-4bee-9b5a-4f1fdb6cf02c.jsonl`
+- `/ll:verify-issues` - 2026-05-31T06:12:16 - `8f18e015-8096-4bee-9b5a-4f1fdb6cf02c.jsonl`

@@ -99,8 +99,8 @@ Show `on_handoff` whenever it is set (always show it, or at minimum when non-def
 - All 4 `TestCmdShow` tests pass
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d569869-6d78-45db-ae07-4c05f23b46fe.jsonl`
-- `/ll:format-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ee51b92-5622-4ca1-90d3-5475832955c3.jsonl`
-- `/ll:refine-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e696e00-4453-4689-9b15-ff56c9d9b686.jsonl`
-- `/ll:ready-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/441e7cc1-edbf-48d6-8b4a-39df8dd356bd.jsonl`
-- `/ll:manage-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:capture-issue` - 2026-03-04T00:00:00 - `0d569869-6d78-45db-ae07-4c05f23b46fe.jsonl`
+- `/ll:format-issue` - 2026-03-04T00:00:00 - `2ee51b92-5622-4ca1-90d3-5475832955c3.jsonl`
+- `/ll:refine-issue` - 2026-03-04T00:00:00 - `3e696e00-4453-4689-9b15-ff56c9d9b686.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00 - `441e7cc1-edbf-48d6-8b4a-39df8dd356bd.jsonl`
+- `/ll:manage-issue` - 2026-03-04T00:00:00 - `current.jsonl`

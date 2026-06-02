@@ -270,8 +270,8 @@ Implemented in this session:
 Verification: `python -m pytest scripts/tests/test_pre_compact.py scripts/tests/test_hook_intents.py scripts/tests/test_hooks_integration.py -v` → 99 passed. `python -m mypy scripts/little_loops/hooks/` → success. End-to-end adapter smoke test in `/tmp` produced the expected exit 2 + state file. Full-suite pytest shows 7 unrelated pre-existing failures (`test_generate_schemas.py`, `test_update_skill.py`) verified to fail on baseline before my changes.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15c3bdc5-0e46-4393-8af1-1aeee63a95a5.jsonl`
-- `/ll:wire-issue` - 2026-05-12T01:43:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c136dd57-fddc-4b3e-832e-be413bb882fd.jsonl`
-- `/ll:refine-issue` - 2026-05-12T01:37:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d0396bd-965c-48cc-8504-566ce6869c22.jsonl`
-- `/ll:issue-size-review` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c5f319b-68fa-4ac3-990a-9ace13bbeaea.jsonl`
-- `/ll:manage-issue` - 2026-05-12T02:03:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f22057c-6347-4485-a795-f6dc07951014.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `15c3bdc5-0e46-4393-8af1-1aeee63a95a5.jsonl`
+- `/ll:wire-issue` - 2026-05-12T01:43:46 - `c136dd57-fddc-4b3e-832e-be413bb882fd.jsonl`
+- `/ll:refine-issue` - 2026-05-12T01:37:55 - `2d0396bd-965c-48cc-8504-566ce6869c22.jsonl`
+- `/ll:issue-size-review` - 2026-05-11T00:00:00Z - `3c5f319b-68fa-4ac3-990a-9ace13bbeaea.jsonl`
+- `/ll:manage-issue` - 2026-05-12T02:03:00Z - `1f22057c-6347-4485-a795-f6dc07951014.jsonl`

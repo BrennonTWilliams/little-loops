@@ -332,15 +332,15 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 ---
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e1ebc34f-6a74-4ed8-b570-856978fc59ce.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c9d6444b-ae99-4db8-9651-f85fa0072ba3.jsonl`
-- `/ll:wire-issue` - 2026-06-01T15:07:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1863742e-c8f8-4be4-b311-7846314b933b.jsonl`
-- `/ll:refine-issue` - 2026-06-01T15:00:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa8f3c24-5078-4643-8c92-8e40de4d18b7.jsonl`
-- `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `e1ebc34f-6a74-4ed8-b570-856978fc59ce.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `c9d6444b-ae99-4db8-9651-f85fa0072ba3.jsonl`
+- `/ll:wire-issue` - 2026-06-01T15:07:25 - `1863742e-c8f8-4be4-b311-7846314b933b.jsonl`
+- `/ll:refine-issue` - 2026-06-01T15:00:03 - `fa8f3c24-5078-4643-8c92-8e40de4d18b7.jsonl`
+- `/ll:verify-issues` - 2026-05-31T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:confidence-check` - 2026-05-29 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/<current-session>.jsonl`
-- `/ll:confidence-check` - 2026-05-30T00:04:37Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4163028-cdde-4009-bd1a-333f94a89225.jsonl`
-- `/ll:wire-issue` - 2026-05-29T23:59:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c48c4a24-7429-4435-9ebf-a7001106b920.jsonl`
-- `/ll:format-issue` - 2026-05-25T00:03:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/416c5fec-1865-4920-b2f5-18bbcefc1861.jsonl`
+- `/ll:confidence-check` - 2026-05-30T00:04:37Z - `b4163028-cdde-4009-bd1a-333f94a89225.jsonl`
+- `/ll:wire-issue` - 2026-05-29T23:59:01 - `c48c4a24-7429-4435-9ebf-a7001106b920.jsonl`
+- `/ll:format-issue` - 2026-05-25T00:03:16 - `416c5fec-1865-4920-b2f5-18bbcefc1861.jsonl`
 - `/ll:capture-issue` - 2026-05-25T00:00:03Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1c5270a-50e9-4065-961e-edfcb5f51b85.jsonl`
 - `/ll:refine-issue` - 2026-05-29T00:00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/<current-session>.jsonl`
 

@@ -173,8 +173,8 @@ _Updated by `/ll:confidence-check` on 2026-04-20_
 - **FEAT-1205 confirmed as ticket-management action**: FEAT-1205 is in `completed/` but `TestParallelRunnerRealThreading` has zero occurrences in `scripts/`. The class must come from FEAT-1209 landing first, or FEAT-1210 must scaffold the class itself.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e066c90-09b5-4d1f-b6ae-3c26d51cc081.jsonl`
-- `/ll:refine-issue` - 2026-04-21T04:56:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6d6f0fc-f735-4c80-9fa4-b4b947a300cf.jsonl`
-- `/ll:confidence-check` - 2026-04-20T23:52:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88e30b52-0950-4979-a375-c6ca932af59b.jsonl`
-- `/ll:refine-issue` - 2026-04-21T04:46:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c0e60b3-d013-442e-8b68-cfccc9e32f96.jsonl`
-- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f84bc5fa-3fa1-4822-8f5a-25670ac913a0.jsonl`
+- `/ll:confidence-check` - 2026-04-20T00:00:00 - `1e066c90-09b5-4d1f-b6ae-3c26d51cc081.jsonl`
+- `/ll:refine-issue` - 2026-04-21T04:56:34 - `b6d6f0fc-f735-4c80-9fa4-b4b947a300cf.jsonl`
+- `/ll:confidence-check` - 2026-04-20T23:52:00 - `88e30b52-0950-4979-a375-c6ca932af59b.jsonl`
+- `/ll:refine-issue` - 2026-04-21T04:46:10 - `8c0e60b3-d013-442e-8b68-cfccc9e32f96.jsonl`
+- `/ll:issue-size-review` - 2026-04-20T00:00:00 - `f84bc5fa-3fa1-4822-8f5a-25670ac913a0.jsonl`

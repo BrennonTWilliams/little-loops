@@ -218,13 +218,13 @@ Implemented all regex extensions (`BUG|FEAT|ENH` → `BUG|FEAT|ENH|EPIC`) across
 `regex`, `testing`, `epic-type`, `child-issue`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-10T14:30:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/924aad7a-19a6-4969-a1ac-995eb95f6db8.jsonl`
-- `/ll:confidence-check` - 2026-05-10T15:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
-- `/ll:wire-issue` - 2026-05-10T14:25:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b252132-81fd-48fa-abf4-43fc7a785312.jsonl`
-- `/ll:refine-issue` - 2026-05-10T14:17:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc6b66f-7fdc-4662-b3d3-ddd2f4692bcc.jsonl`
-- `/ll:format-issue` - 2026-05-10T14:09:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd3c0207-e3c2-4002-af23-af19329e8f2e.jsonl`
+- `/ll:ready-issue` - 2026-05-10T14:30:22 - `924aad7a-19a6-4969-a1ac-995eb95f6db8.jsonl`
+- `/ll:confidence-check` - 2026-05-10T15:00:00 - `87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
+- `/ll:wire-issue` - 2026-05-10T14:25:52 - `7b252132-81fd-48fa-abf4-43fc7a785312.jsonl`
+- `/ll:refine-issue` - 2026-05-10T14:17:45 - `0dc6b66f-7fdc-4662-b3d3-ddd2f4692bcc.jsonl`
+- `/ll:format-issue` - 2026-05-10T14:09:26 - `dd3c0207-e3c2-4002-af23-af19329e8f2e.jsonl`
 
-- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62980d84-6316-4d76-811c-87774aefc470.jsonl`
+- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `62980d84-6316-4d76-811c-87774aefc470.jsonl`
 
 ---
 

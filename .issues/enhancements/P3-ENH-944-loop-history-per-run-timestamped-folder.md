@@ -273,9 +273,9 @@ _Added by `/ll:confidence-check` on 2026-04-03_
 - Module docstring in `persistence.py`: Updated directory layout diagram.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-04-04T03:22:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50cb4515-1983-4e26-8067-5cb3cb330ae4.jsonl`
-- `/ll:refine-issue` - 2026-04-04T03:19:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5732e705-6919-4555-ae9d-5c904b677c29.jsonl`
-- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/822c0254-1b23-4911-b834-f9fb8a3a70da.jsonl`
-- `/ll:refine-issue` - 2026-04-04T03:14:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c71751b5-4e08-4ee8-8ca6-6632b7bb4d7d.jsonl`
+- `/ll:manage-issue` - 2026-04-03T00:00:00Z
+- `/ll:ready-issue` - 2026-04-04T03:22:32 - `50cb4515-1983-4e26-8067-5cb3cb330ae4.jsonl`
+- `/ll:refine-issue` - 2026-04-04T03:19:58 - `5732e705-6919-4555-ae9d-5c904b677c29.jsonl`
+- `/ll:confidence-check` - 2026-04-03T00:00:00Z - `822c0254-1b23-4911-b834-f9fb8a3a70da.jsonl`
+- `/ll:refine-issue` - 2026-04-04T03:14:19 - `c71751b5-4e08-4ee8-8ca6-6632b7bb4d7d.jsonl`
 - `/ll:capture-issue` - 2026-04-03T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`

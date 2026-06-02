@@ -223,11 +223,11 @@ N/A — No public API changes. Additive display-only changes to `ll-loop info` C
 ---
 
 ## Session Log
-- `/ll:refine-issue` - 2026-04-12T23:38:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf2f981e-ade4-4780-ad4a-df80e6d7758b.jsonl`
-- `/ll:wire-issue` - 2026-04-12T23:32:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95d1ff17-2cf5-44eb-9ddf-ca62cea8eb23.jsonl`
-- `/ll:refine-issue` - 2026-04-12T23:26:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cc9f3810-fa02-48ac-953a-596f1e67f193.jsonl`
-- `/ll:format-issue` - 2026-04-12T23:21:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/817edd26-3090-46ed-b2e9-d8d618d579d7.jsonl`
-- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/77a4f6c6-909a-4d66-84d7-1e952b12aed8.jsonl`
+- `/ll:refine-issue` - 2026-04-12T23:38:37 - `bf2f981e-ade4-4780-ad4a-df80e6d7758b.jsonl`
+- `/ll:wire-issue` - 2026-04-12T23:32:22 - `95d1ff17-2cf5-44eb-9ddf-ca62cea8eb23.jsonl`
+- `/ll:refine-issue` - 2026-04-12T23:26:08 - `cc9f3810-fa02-48ac-953a-596f1e67f193.jsonl`
+- `/ll:format-issue` - 2026-04-12T23:21:49 - `817edd26-3090-46ed-b2e9-d8d618d579d7.jsonl`
+- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `77a4f6c6-909a-4d66-84d7-1e952b12aed8.jsonl`
 
 ---
 

@@ -91,7 +91,8 @@ def append_session_log_entry(
     """Append a session log entry to an issue file.
 
     Creates or appends to the ``## Session Log`` section with command name,
-    ISO timestamp, and absolute path to the session JSONL file.
+    ISO timestamp, and the session JSONL filename (the session id; not the
+    absolute path, which is machine-specific).
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -107,7 +108,11 @@ def append_session_log_entry(
         return False
 
     timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
-    entry = f"- `{command}` - {timestamp} - `{session_jsonl}`"
+    # Record only the session JSONL filename (the session id), not the absolute
+    # path: the home-directory prefix is machine-specific and leaks the user's
+    # local layout into committed issue files. The session id maps back to a
+    # full path via .ll/history.db when needed.
+    entry = f"- `{command}` - {timestamp} - `{session_jsonl.name}`"
 
     content = issue_path.read_text()
 

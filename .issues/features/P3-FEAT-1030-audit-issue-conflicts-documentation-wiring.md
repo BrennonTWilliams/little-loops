@@ -276,11 +276,11 @@ All 7 documentation surfaces updated. Skill count bumped 25→26 (skills) and 28
 **Verdict: NEEDS_UPDATE** — Issue is valid and ready to implement; line reference corrected.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-11T17:42:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ff2c2a3-5115-419d-8315-a5a391f92917.jsonl`
-- `/ll:ready-issue` - 2026-04-11T17:35:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f3acdb61-aaca-4e66-97ee-0aedd9f20528.jsonl`
-- `/ll:verify-issues` - 2026-04-11T17:28:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32fb8723-9b14-4815-8d38-257b8797e711.jsonl`
-- `/ll:refine-issue` - 2026-04-11T05:33:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/662113a3-6b97-409a-b517-fd8a66d0944f.jsonl`
-- `/ll:format-issue` - 2026-04-11T05:28:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b982ec8-95f6-4b13-b508-3b8cbabc3437.jsonl`
-- `/ll:refine-issue` - 2026-04-11T05:26:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4511a1b9-2134-43ca-95d4-393029988442.jsonl`
-- `/ll:issue-size-review` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05d0324c-611c-469d-8af1-b4e42644c47d.jsonl`
-- `/ll:wire-issue` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4511a1b9-2134-43ca-95d4-393029988442.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-11T17:42:22 - `0ff2c2a3-5115-419d-8315-a5a391f92917.jsonl`
+- `/ll:ready-issue` - 2026-04-11T17:35:15 - `f3acdb61-aaca-4e66-97ee-0aedd9f20528.jsonl`
+- `/ll:verify-issues` - 2026-04-11T17:28:09 - `32fb8723-9b14-4815-8d38-257b8797e711.jsonl`
+- `/ll:refine-issue` - 2026-04-11T05:33:44 - `662113a3-6b97-409a-b517-fd8a66d0944f.jsonl`
+- `/ll:format-issue` - 2026-04-11T05:28:49 - `9b982ec8-95f6-4b13-b508-3b8cbabc3437.jsonl`
+- `/ll:refine-issue` - 2026-04-11T05:26:42 - `4511a1b9-2134-43ca-95d4-393029988442.jsonl`
+- `/ll:issue-size-review` - 2026-04-11T00:00:00Z - `05d0324c-611c-469d-8af1-b4e42644c47d.jsonl`
+- `/ll:wire-issue` - 2026-04-11T00:00:00Z - `4511a1b9-2134-43ca-95d4-393029988442.jsonl`

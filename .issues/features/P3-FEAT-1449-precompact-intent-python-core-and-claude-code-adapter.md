@@ -288,10 +288,10 @@ _Updated by `/ll:confidence-check` on 2026-05-11 (re-run after `/ll:decide-issue
 - FEAT-1455: PreCompact — Handler, Adapter, Dispatcher, and Test Migration
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c5f319b-68fa-4ac3-990a-9ace13bbeaea.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5d17799b-927a-42c6-8ac0-8696d4065cc4.jsonl`
-- `/ll:decide-issue` - 2026-05-12T01:04:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f37f61c-dbf6-408b-a3ef-afe93e14f879.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f25984e6-3fdf-45b9-bd49-5b2d1085eb4f.jsonl`
-- `/ll:wire-issue` - 2026-05-12T00:57:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba6dca18-b972-49a3-8947-4965a13110cd.jsonl`
-- `/ll:refine-issue` - 2026-05-12T00:51:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0310090e-383d-4bb5-9502-3fc349335e9b.jsonl`
-- `/ll:issue-size-review` - 2026-05-12T00:20:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cb0dc9a-fd6f-4945-97b0-ad6acec56482.jsonl`
+- `/ll:issue-size-review` - 2026-05-11T00:00:00Z - `3c5f319b-68fa-4ac3-990a-9ace13bbeaea.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `5d17799b-927a-42c6-8ac0-8696d4065cc4.jsonl`
+- `/ll:decide-issue` - 2026-05-12T01:04:17 - `8f37f61c-dbf6-408b-a3ef-afe93e14f879.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `f25984e6-3fdf-45b9-bd49-5b2d1085eb4f.jsonl`
+- `/ll:wire-issue` - 2026-05-12T00:57:42 - `ba6dca18-b972-49a3-8947-4965a13110cd.jsonl`
+- `/ll:refine-issue` - 2026-05-12T00:51:02 - `0310090e-383d-4bb5-9502-3fc349335e9b.jsonl`
+- `/ll:issue-size-review` - 2026-05-12T00:20:02 - `5cb0dc9a-fd6f-4945-97b0-ad6acec56482.jsonl`

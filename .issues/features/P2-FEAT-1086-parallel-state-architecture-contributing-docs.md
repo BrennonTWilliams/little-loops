@@ -132,7 +132,7 @@ The `fsm/` directory tree is at lines 231–243. The last entry is `└── ha
 ---
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6db3cacd-18d3-4b5b-9ee4-3154dcc307d7.jsonl`
+- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `6db3cacd-18d3-4b5b-9ee4-3154dcc307d7.jsonl`
 
 ---
 

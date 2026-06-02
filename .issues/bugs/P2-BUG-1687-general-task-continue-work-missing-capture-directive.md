@@ -213,13 +213,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 `bug`, `captured`, `general-task`, `fsm-loop`, `stale-capture`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-25T01:24:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bad241f5-ea52-4a30-8eea-f8130567f56b.jsonl`
-- `/ll:ready-issue` - 2026-05-25T01:22:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc4af044-51b8-4531-9236-c902ec2a706e.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c4298e6-aea0-4a59-b135-36570bb11394.jsonl`
-- `/ll:wire-issue` - 2026-05-25T01:19:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/779600d2-a095-4582-b268-4bc77de7f312.jsonl`
-- `/ll:refine-issue` - 2026-05-25T01:12:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1241a0cb-721c-46ef-a789-21d2ae204723.jsonl`
-- `/ll:format-issue` - 2026-05-24T23:53:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3421ff4b-05fc-4e80-bb1d-cb7ee266a185.jsonl`
-- `/ll:capture-issue` - 2026-05-24T22:52:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b11535be-d77b-46f8-a622-5a6525775721.jsonl`
+- `/ll:manage-issue` - 2026-05-25T01:24:00Z - `bad241f5-ea52-4a30-8eea-f8130567f56b.jsonl`
+- `/ll:ready-issue` - 2026-05-25T01:22:34 - `dc4af044-51b8-4531-9236-c902ec2a706e.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `3c4298e6-aea0-4a59-b135-36570bb11394.jsonl`
+- `/ll:wire-issue` - 2026-05-25T01:19:30 - `779600d2-a095-4582-b268-4bc77de7f312.jsonl`
+- `/ll:refine-issue` - 2026-05-25T01:12:46 - `1241a0cb-721c-46ef-a789-21d2ae204723.jsonl`
+- `/ll:format-issue` - 2026-05-24T23:53:40 - `3421ff4b-05fc-4e80-bb1d-cb7ee266a185.jsonl`
+- `/ll:capture-issue` - 2026-05-24T22:52:33Z - `b11535be-d77b-46f8-a622-5a6525775721.jsonl`
 
 ---
 

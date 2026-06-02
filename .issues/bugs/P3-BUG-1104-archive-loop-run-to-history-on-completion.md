@@ -178,14 +178,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Verification**: `python -m pytest scripts/tests/test_fsm_persistence.py` — 83 passed
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-14T01:21:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84dc902b-402a-43d6-a374-4025a88e2ad6.jsonl`
-- `/ll:manage-issue` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84dc902b-402a-43d6-a374-4025a88e2ad6.jsonl`
-- `/ll:ready-issue` - 2026-04-14T01:16:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a31971bd-2eea-42a3-a276-0d2248db490b.jsonl`
-- `/ll:confidence-check` - 2026-04-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6025c90-d732-4cf7-b6fd-1111edb0a5ba.jsonl`
-- `/ll:wire-issue` - 2026-04-13T22:55:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/498e9917-9a07-457d-803c-2e36b312d26c.jsonl`
-- `/ll:refine-issue` - 2026-04-13T22:50:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce8d4e76-d3a9-4651-bf27-c7e9ba762147.jsonl`
-- `/ll:format-issue` - 2026-04-13T22:47:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b03462f-ca2d-4a13-bcdc-c2792cb789a5.jsonl`
-- `/ll:capture-issue` - 2026-04-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-14T01:21:04 - `84dc902b-402a-43d6-a374-4025a88e2ad6.jsonl`
+- `/ll:manage-issue` - 2026-04-13T00:00:00Z - `84dc902b-402a-43d6-a374-4025a88e2ad6.jsonl`
+- `/ll:ready-issue` - 2026-04-14T01:16:48 - `a31971bd-2eea-42a3-a276-0d2248db490b.jsonl`
+- `/ll:confidence-check` - 2026-04-13T00:00:00 - `c6025c90-d732-4cf7-b6fd-1111edb0a5ba.jsonl`
+- `/ll:wire-issue` - 2026-04-13T22:55:31 - `498e9917-9a07-457d-803c-2e36b312d26c.jsonl`
+- `/ll:refine-issue` - 2026-04-13T22:50:47 - `ce8d4e76-d3a9-4651-bf27-c7e9ba762147.jsonl`
+- `/ll:format-issue` - 2026-04-13T22:47:23 - `5b03462f-ca2d-4a13-bcdc-c2792cb789a5.jsonl`
+- `/ll:capture-issue` - 2026-04-13T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 

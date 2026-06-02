@@ -118,5 +118,5 @@ Added documentation for all three loops to `docs/guides/LOOPS_GUIDE.md`:
 - Three `### <name>` detail sections after `### svg-textgrad` — each with Technique, When to use, Usage, Context variables table, FSM flow, and Notes blocks (including evaluation criteria tables for p5js and pixi-generative-art, and per-criterion threshold table for pixi-data-viz)
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-31T20:27:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f77e782-e0ff-45fd-9f5a-a537a30487d3.jsonl`
-- `/ll:verify-issues` - 2026-05-31T06:12:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f18e015-8096-4bee-9b5a-4f1fdb6cf02c.jsonl`
+- `/ll:ready-issue` - 2026-05-31T20:27:57 - `8f77e782-e0ff-45fd-9f5a-a537a30487d3.jsonl`
+- `/ll:verify-issues` - 2026-05-31T06:12:16 - `8f18e015-8096-4bee-9b5a-4f1fdb6cf02c.jsonl`

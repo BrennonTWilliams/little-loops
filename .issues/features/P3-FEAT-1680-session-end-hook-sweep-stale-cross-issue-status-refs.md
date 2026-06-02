@@ -289,13 +289,13 @@ The Stop hook wire format payload received by the adapter (Claude Code injects):
 **Open** | Created: 2026-05-24 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T14:00:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97825a43-1502-449e-a519-9fff2717e285.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e6c6100d-8d0a-4a4d-8316-2fe6eef235c0.jsonl`
-- `/ll:wire-issue` - 2026-06-01T13:55:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78af0d26-ea86-4156-b799-4668c991ef85.jsonl`
-- `/ll:refine-issue` - 2026-06-01T13:49:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/424ba3b0-46e9-434c-b57f-a44b4cda057b.jsonl`
-- `/ll:refine-issue` - 2026-06-01T00:00:00 - ``
-- `/ll:verify-issues` - 2026-05-31T05:40:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:format-issue` - 2026-05-24T17:28:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20c144e8-2658-4919-b9a3-e1bfd4e0786b.jsonl`
+- `/ll:ready-issue` - 2026-06-01T14:00:42 - `97825a43-1502-449e-a519-9fff2717e285.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00 - `e6c6100d-8d0a-4a4d-8316-2fe6eef235c0.jsonl`
+- `/ll:wire-issue` - 2026-06-01T13:55:59 - `78af0d26-ea86-4156-b799-4668c991ef85.jsonl`
+- `/ll:refine-issue` - 2026-06-01T13:49:17 - `424ba3b0-46e9-434c-b57f-a44b4cda057b.jsonl`
+- `/ll:refine-issue` - 2026-06-01T00:00:00
+- `/ll:verify-issues` - 2026-05-31T05:40:07 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:15 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:format-issue` - 2026-05-24T17:28:21 - `20c144e8-2658-4919-b9a3-e1bfd4e0786b.jsonl`
 
 - `/ll:capture-issue` - 2026-05-24T17:21:20Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a638383a-aa90-4ed6-80c0-1913cf58a71c.jsonl`

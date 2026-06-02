@@ -140,8 +140,8 @@ Note: `ll-parallel` was intentionally left using `parse_issue_ids` (set) as para
 **Completed** | Created: 2026-03-16 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-17T00:09:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bb09ebe-c7cc-4096-90dd-091384e81465.jsonl`
-- `/ll:refine-issue` - 2026-03-16T23:24:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f41b047-87a9-4dc6-bd79-b70fcba93e87.jsonl`
-- `/ll:format-issue` - 2026-03-16T23:15:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
-- `/ll:capture-issue` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f7bf6f5-8d0a-49aa-a2dc-02169a6d3f97.jsonl`
+- `/ll:ready-issue` - 2026-03-17T00:09:07 - `7bb09ebe-c7cc-4096-90dd-091384e81465.jsonl`
+- `/ll:refine-issue` - 2026-03-16T23:24:15 - `2f41b047-87a9-4dc6-bd79-b70fcba93e87.jsonl`
+- `/ll:format-issue` - 2026-03-16T23:15:46 - `03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
+- `/ll:capture-issue` - 2026-03-16T00:00:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `8f7bf6f5-8d0a-49aa-a2dc-02169a6d3f97.jsonl`

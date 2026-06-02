@@ -110,14 +110,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `skills/confidence-check/SKILL.md:191-218` — `| Finding | Score |` per-criterion lookup table pattern
 
 ### Session Log
-- `/ll:wire-issue` - 2026-04-21T21:49:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4b71009e-1245-442e-8210-a12a28e421cb.jsonl`
-- `/ll:refine-issue` - 2026-04-21T21:44:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2df8ac52-83e1-4537-b68b-63c1c9cf06c6.jsonl`
+- `/ll:wire-issue` - 2026-04-21T21:49:55 - `4b71009e-1245-442e-8210-a12a28e421cb.jsonl`
+- `/ll:refine-issue` - 2026-04-21T21:44:59 - `2df8ac52-83e1-4537-b68b-63c1c9cf06c6.jsonl`
 - `skills/wire-issue/SKILL.md:367` — canonical `ll-issues append-log <path> /ll:decide-issue` invocation pattern
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-21T21:58:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78577e96-20d7-452e-b860-d6aa41e5a790.jsonl`
-- `/ll:ready-issue` - 2026-04-21T21:53:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4eb56bac-9901-4808-9ce3-1ce85ecc5f08.jsonl`
-- `/ll:confidence-check` - 2026-04-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1901ce73-231e-40a8-9a01-102702314b6c.jsonl`
+- `/ll:manage-issue` - 2026-04-21T21:58:42 - `78577e96-20d7-452e-b860-d6aa41e5a790.jsonl`
+- `/ll:ready-issue` - 2026-04-21T21:53:42 - `4eb56bac-9901-4808-9ce3-1ce85ecc5f08.jsonl`
+- `/ll:confidence-check` - 2026-04-21T00:00:00 - `1901ce73-231e-40a8-9a01-102702314b6c.jsonl`
 
 ## Files to Create/Modify
 

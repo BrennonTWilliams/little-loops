@@ -223,10 +223,10 @@ All 7 documentation files updated in a single pass:
 **Completed** | Created: 2026-04-11 | Closed: 2026-04-12 | Priority: P4
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-12T16:18:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d082d17-d895-4266-a5dd-6916d61eeda0.jsonl`
-- `/ll:ready-issue` - 2026-04-12T16:11:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/388c35ae-4c5c-4460-87fb-eccb1507565e.jsonl`
-- `/ll:confidence-check` - 2026-04-12T17:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc0ab9f5-bd9c-4c21-a2d2-8a159bb1ea23.jsonl`
-- `/ll:wire-issue` - 2026-04-12T16:06:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5e1862d-1ce2-4fd0-b6cf-ed246f5c9bff.jsonl`
-- `/ll:refine-issue` - 2026-04-12T16:01:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c65d2b05-89e3-4873-bc5a-57a30f09d366.jsonl`
-- `/ll:verify-issues` - 2026-04-11T23:05:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
-- `/ll:issue-size-review` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8463ec2-3356-49c3-888b-ccb8aab90cb6.jsonl`
+- `/ll:manage-issue` - 2026-04-12T16:18:32 - `6d082d17-d895-4266-a5dd-6916d61eeda0.jsonl`
+- `/ll:ready-issue` - 2026-04-12T16:11:58 - `388c35ae-4c5c-4460-87fb-eccb1507565e.jsonl`
+- `/ll:confidence-check` - 2026-04-12T17:00:00 - `fc0ab9f5-bd9c-4c21-a2d2-8a159bb1ea23.jsonl`
+- `/ll:wire-issue` - 2026-04-12T16:06:45 - `b5e1862d-1ce2-4fd0-b6cf-ed246f5c9bff.jsonl`
+- `/ll:refine-issue` - 2026-04-12T16:01:03 - `c65d2b05-89e3-4873-bc5a-57a30f09d366.jsonl`
+- `/ll:verify-issues` - 2026-04-11T23:05:12 - `5ab1a39d-e4de-4312-8d11-b171e15cc5ae.jsonl`
+- `/ll:issue-size-review` - 2026-04-11T00:00:00 - `c8463ec2-3356-49c3-888b-ccb8aab90cb6.jsonl`

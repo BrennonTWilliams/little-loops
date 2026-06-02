@@ -203,14 +203,14 @@ _Added by `/ll:confidence-check` on 2026-04-23_
 _Updated 2026-04-23 (`/ll:refine-issue` pass 2)_: Both concerns are resolved. `logs.py` exists (331 lines), `test_ll_logs.py` exists (689 lines), and `ll-logs` is registered in `cli/__init__.py:31` and `pyproject.toml:64`. This issue is unblocked and ready for implementation.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-23T22:01:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce3fdce1-b748-424c-9a92-653033dd133f.jsonl`
-- `/ll:ready-issue` - 2026-04-23T21:56:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/816bb8d3-6bdf-4745-a786-f7fbcc55fb91.jsonl`
-- `/ll:refine-issue` - 2026-04-23T21:46:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e46e8afa-f342-484a-a4ee-c3ede25dc01f.jsonl`
-- `/ll:format-issue` - 2026-04-23T21:04:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/30650d70-0663-4ee5-a9e8-3cd0089e06c9.jsonl`
-- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7bd7f20-2f58-4e9f-b4e6-e50990bfbd10.jsonl`
-- `/ll:wire-issue` - 2026-04-23T16:30:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7bd7f20-2f58-4e9f-b4e6-e50990bfbd10.jsonl`
-- `/ll:refine-issue` - 2026-04-23T16:26:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1447f80b-a52b-410a-bd33-db465a58f851.jsonl`
-- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/965334bc-43d3-43d2-add7-d5f59631e49a.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-23T22:01:25 - `ce3fdce1-b748-424c-9a92-653033dd133f.jsonl`
+- `/ll:ready-issue` - 2026-04-23T21:56:30 - `816bb8d3-6bdf-4745-a786-f7fbcc55fb91.jsonl`
+- `/ll:refine-issue` - 2026-04-23T21:46:11 - `e46e8afa-f342-484a-a4ee-c3ede25dc01f.jsonl`
+- `/ll:format-issue` - 2026-04-23T21:04:34 - `30650d70-0663-4ee5-a9e8-3cd0089e06c9.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `f7bd7f20-2f58-4e9f-b4e6-e50990bfbd10.jsonl`
+- `/ll:wire-issue` - 2026-04-23T16:30:47 - `f7bd7f20-2f58-4e9f-b4e6-e50990bfbd10.jsonl`
+- `/ll:refine-issue` - 2026-04-23T16:26:21 - `1447f80b-a52b-410a-bd33-db465a58f851.jsonl`
+- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `965334bc-43d3-43d2-add7-d5f59631e49a.jsonl`
 
 ---
 

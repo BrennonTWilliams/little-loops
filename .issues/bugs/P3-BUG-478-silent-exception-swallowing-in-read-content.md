@@ -93,7 +93,7 @@ def _read_content(self, issue_path: Path) -> str:
 `bug`, `error-handling`, `logging`, `auto-generated`
 
 ## Session Log
-- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
 - `/ll:manage-issue` - 2026-02-24 - Fixed: added `import logging`, `logger = logging.getLogger(__name__)`, and `logger.warning` call in `_read_content`; added test `test_read_content_unreadable_file_logs_warning`
 

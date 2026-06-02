@@ -176,12 +176,12 @@ enhancement, issue-management, normalize-issues
 - [x] `--auto` mode applies reclassifications without prompting
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-03-17T03:54:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/112cf93b-8dec-4f77-973b-60efdcd93689.jsonl`
-- `/ll:ready-issue` - 2026-03-17T03:54:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/112cf93b-8dec-4f77-973b-60efdcd93689.jsonl`
-- `/ll:refine-issue` - 2026-03-17T03:31:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d69eb77-324d-4fd6-bf7c-1a2adec7fe53.jsonl`
-- `/ll:format-issue` - 2026-03-17T03:28:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/087addd7-5cf0-461a-b862-113d6f2a30cd.jsonl`
-- `/ll:refine-issue` - 2026-03-17T03:07:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9bf31b0a-cfc9-42ad-a35f-c71298680f5c.jsonl`
-- `/ll:capture-issue` - 2026-03-17T02:38:35Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/532865b2-afcc-4542-a851-1511b776f7cd.jsonl`
+- `/ll:manage-issue` - 2026-03-16T00:00:00Z
+- `/ll:ready-issue` - 2026-03-17T03:54:48 - `112cf93b-8dec-4f77-973b-60efdcd93689.jsonl`
+- `/ll:ready-issue` - 2026-03-17T03:54:34 - `112cf93b-8dec-4f77-973b-60efdcd93689.jsonl`
+- `/ll:refine-issue` - 2026-03-17T03:31:32 - `9d69eb77-324d-4fd6-bf7c-1a2adec7fe53.jsonl`
+- `/ll:format-issue` - 2026-03-17T03:28:43 - `087addd7-5cf0-461a-b862-113d6f2a30cd.jsonl`
+- `/ll:refine-issue` - 2026-03-17T03:07:01 - `9bf31b0a-cfc9-42ad-a35f-c71298680f5c.jsonl`
+- `/ll:capture-issue` - 2026-03-17T02:38:35Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00Z
+- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `532865b2-afcc-4542-a851-1511b776f7cd.jsonl`

@@ -165,9 +165,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - All 28 docs tests pass; 12 wiring tests (new + ENH-1146) pass; no regressions.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-23T03:41:44Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
-- `/ll:ready-issue` - 2026-04-23T03:37:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a53b947-2c26-4dc0-b5d1-9cc0a67928f9.jsonl`
-- `/ll:confidence-check` - 2026-04-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a8c1da1-6ee7-42ca-a6e4-506e86f131b6.jsonl`
-- `/ll:wire-issue` - 2026-04-23T03:33:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e0888112-5c9e-4ad6-a302-2eff35f47007.jsonl`
-- `/ll:refine-issue` - 2026-04-23T03:28:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb1c89da-9bb1-4b10-8647-213dc311ba3e.jsonl`
-- `/ll:issue-size-review` - 2026-04-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac265e54-5386-49fe-bf5b-6e6f9305772d.jsonl`
+- `/ll:manage-issue` - 2026-04-23T03:41:44Z - `fff12b2b-2ed2-40bc-9248-ba889878465e.jsonl`
+- `/ll:ready-issue` - 2026-04-23T03:37:57 - `8a53b947-2c26-4dc0-b5d1-9cc0a67928f9.jsonl`
+- `/ll:confidence-check` - 2026-04-22T00:00:00Z - `0a8c1da1-6ee7-42ca-a6e4-506e86f131b6.jsonl`
+- `/ll:wire-issue` - 2026-04-23T03:33:51 - `e0888112-5c9e-4ad6-a302-2eff35f47007.jsonl`
+- `/ll:refine-issue` - 2026-04-23T03:28:44 - `eb1c89da-9bb1-4b10-8647-213dc311ba3e.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T00:00:00Z - `ac265e54-5386-49fe-bf5b-6e6f9305772d.jsonl`

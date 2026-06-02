@@ -234,14 +234,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 **Verification**: 38/38 tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-10T15:10:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3df7078e-72a1-4ab2-b539-bb557bb199d9.jsonl`
-- `/ll:confidence-check` - 2026-05-10T16:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/02d9be03-0bf7-45dc-a4c1-c4c909b96c8d.jsonl`
-- `/ll:wire-issue` - 2026-05-10T15:05:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5f599406-cbb2-481e-9eb7-64801ff604df.jsonl`
-- `/ll:refine-issue` - 2026-05-10T14:58:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87b169e7-5eaf-4702-a6c2-f5adc1a32387.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-10T14:27:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
-- `/ll:format-issue` - 2026-05-10T03:40:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf5df682-07d1-4a83-a25a-95d380fbd8ca.jsonl`
+- `/ll:ready-issue` - 2026-05-10T15:10:28 - `3df7078e-72a1-4ab2-b539-bb557bb199d9.jsonl`
+- `/ll:confidence-check` - 2026-05-10T16:00:00Z - `02d9be03-0bf7-45dc-a4c1-c4c909b96c8d.jsonl`
+- `/ll:wire-issue` - 2026-05-10T15:05:58 - `5f599406-cbb2-481e-9eb7-64801ff604df.jsonl`
+- `/ll:refine-issue` - 2026-05-10T14:58:04 - `87b169e7-5eaf-4702-a6c2-f5adc1a32387.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-10T14:27:59 - `87aa3665-7b97-4854-8ebd-2e34e4875ba6.jsonl`
+- `/ll:format-issue` - 2026-05-10T03:40:44 - `bf5df682-07d1-4a83-a25a-95d380fbd8ca.jsonl`
 - `/ll:capture-issue` - 2026-05-09T00:00:00Z - captured from refinement discussion on ENH-1412
-- `/ll:manage-issue` - 2026-05-10T15:12:20Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3df7078e-72a1-4ab2-b539-bb557bb199d9.jsonl`
+- `/ll:manage-issue` - 2026-05-10T15:12:20Z - `3df7078e-72a1-4ab2-b539-bb557bb199d9.jsonl`
 
 ---
 

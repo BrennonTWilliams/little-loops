@@ -81,7 +81,7 @@ All five issues fixed in `docs/guides/SPRINT_GUIDE.md`:
 5. Replaced the "Full Plan a Feature Sprint Pipeline" recipe body with a cross-reference to `ISSUE_MANAGEMENT_GUIDE.md`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-18T16:28:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/30af44e4-3cf2-42df-b1d5-93804fd2e2fa.jsonl`
-- `/ll:format-issue` - 2026-03-18T01:52:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0b5a688-4ca6-4171-a6bb-f5be121354ad.jsonl`
-- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`
-- `/ll:manage-issue` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-03-18T16:28:27 - `30af44e4-3cf2-42df-b1d5-93804fd2e2fa.jsonl`
+- `/ll:format-issue` - 2026-03-18T01:52:56 - `c0b5a688-4ca6-4171-a6bb-f5be121354ad.jsonl`
+- `/ll:capture-issue` - 2026-03-17T00:00:00Z - `ca8a2338-e3dd-4309-8117-478c418261ea.jsonl`
+- `/ll:manage-issue` - 2026-03-18T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`

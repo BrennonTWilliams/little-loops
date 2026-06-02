@@ -85,7 +85,7 @@ Added `recheck_after_decide` state to `scripts/little_loops/loops/autodev.yaml` 
 
 ## Session Log
 
-- session-review - 2026-04-26T22:00:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b59879f8-0f62-4897-ad7b-972b175ceecb.jsonl`
+- session-review - 2026-04-26T22:00:27Z - `b59879f8-0f62-4897-ad7b-972b175ceecb.jsonl`
 
 ## Status
 

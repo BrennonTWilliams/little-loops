@@ -188,11 +188,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 | `.claude/CLAUDE.md` | CLI tool conventions and `ll-*` entry-point pattern |
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-17T15:53:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e731980-ce6f-43fb-ae38-e4b5aaeea8ef.jsonl`
-- `/ll:confidence-check` - 2026-05-17T15:51:28Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4dd26516-8037-4dcd-9076-330b857b2aa5.jsonl`
-- `/ll:wire-issue` - 2026-05-17T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:refine-issue` - 2026-05-17T15:44:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/572ddb22-a72f-4507-bb72-1e4d1be296c4.jsonl`
-- `/ll:capture-issue` - 2026-05-17T07:28:10Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dce8ab13-a2bf-4753-b7b8-76c3a497a18f.jsonl`
+- `/ll:ready-issue` - 2026-05-17T15:53:02 - `5e731980-ce6f-43fb-ae38-e4b5aaeea8ef.jsonl`
+- `/ll:confidence-check` - 2026-05-17T15:51:28Z - `4dd26516-8037-4dcd-9076-330b857b2aa5.jsonl`
+- `/ll:wire-issue` - 2026-05-17T00:00:00 - `current.jsonl`
+- `/ll:refine-issue` - 2026-05-17T15:44:27 - `572ddb22-a72f-4507-bb72-1e4d1be296c4.jsonl`
+- `/ll:capture-issue` - 2026-05-17T07:28:10Z - `dce8ab13-a2bf-4753-b7b8-76c3a497a18f.jsonl`
 
 ---
 

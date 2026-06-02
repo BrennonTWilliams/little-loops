@@ -186,8 +186,8 @@ refine_issues:
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-17T05:29:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cbdbefe5-25d1-4f5a-a87a-d4decf344135.jsonl`
-- `/ll:verify-issues` - 2026-03-17T04:15:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/983dc391-e19c-4ee6-8d7a-e750bfb2e72b.jsonl`
-- `/ll:verify-issues` - 2026-03-16T18:57:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:format-issue` - 2026-03-16T18:53:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:ready-issue` - 2026-03-17T05:29:04 - `cbdbefe5-25d1-4f5a-a87a-d4decf344135.jsonl`
+- `/ll:verify-issues` - 2026-03-17T04:15:49 - `983dc391-e19c-4ee6-8d7a-e750bfb2e72b.jsonl`
+- `/ll:verify-issues` - 2026-03-16T18:57:59 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:format-issue` - 2026-03-16T18:53:58 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`

@@ -180,12 +180,12 @@ apply_parser.add_argument("--sprint", type=str, default=None, help="Restrict to 
 Implemented `ll-deps apply` subcommand in `scripts/little_loops/cli/deps.py`. Added `apply` subparser with `--min-confidence`, `--dry-run`, `--sprint`, and positional `source relation target` args. Implicit mode calls `analyze_dependencies` and filters by confidence, writing only `## Blocked By` (no backlinks). Explicit-pair mode validates both IDs and writes a single relationship directly. Updated `docs/reference/CLI.md`, `README.md`, and `skills/map-dependencies/SKILL.md`. Added `TestMainCLIApply` class with 15 tests covering all acceptance criteria.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-04-11T18:29:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4562649-3569-4235-84c6-2a01ad06a152.jsonl`
-- `/ll:confidence-check` - 2026-04-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/204c8cca-30f9-4698-9f69-27be46759232.jsonl`
-- `/ll:wire-issue` - 2026-04-11T18:23:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/69beaf64-aa99-4990-9777-1aa920715d22.jsonl`
-- `/ll:refine-issue` - 2026-04-11T18:13:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6c2d304-183d-431b-a87a-b864eb8ac352.jsonl`
-- `/ll:format-issue` - 2026-04-11T18:08:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/357454b3-7b86-4dcc-8764-fe83bcd065e4.jsonl`
+- `/ll:manage-issue` - 2026-04-11T00:00:00 - `current.jsonl`
+- `/ll:ready-issue` - 2026-04-11T18:29:40 - `b4562649-3569-4235-84c6-2a01ad06a152.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00 - `204c8cca-30f9-4698-9f69-27be46759232.jsonl`
+- `/ll:wire-issue` - 2026-04-11T18:23:42 - `69beaf64-aa99-4990-9777-1aa920715d22.jsonl`
+- `/ll:refine-issue` - 2026-04-11T18:13:01 - `c6c2d304-183d-431b-a87a-b864eb8ac352.jsonl`
+- `/ll:format-issue` - 2026-04-11T18:08:13 - `357454b3-7b86-4dcc-8764-fe83bcd065e4.jsonl`
 - `/ll:capture-issue` - 2026-04-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/edb17e35-0cf2-4ace-9fc3-69a8f503394e.jsonl`
 
 ---

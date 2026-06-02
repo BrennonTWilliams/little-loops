@@ -143,8 +143,8 @@ Added `issues_dir_multi_root` fixture and `test_clusters_no_arrows_between_indep
 **Closed** | Created: 2026-04-22 | Resolved: 2026-04-22 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-22T22:49:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1b5f3384-28eb-4ee5-89e8-fa72930a2e62.jsonl`
-- `/ll:confidence-check` - 2026-04-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffdba525-8a76-4b36-acf7-cf777c803de6.jsonl`
-- `/ll:wire-issue` - 2026-04-22T22:46:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe238444-7e3f-4dd6-b772-5488e2f50306.jsonl`
-- `/ll:refine-issue` - 2026-04-22T22:41:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74ff7167-2f52-41ea-83db-f23663476581.jsonl`
-- `/ll:capture-issue` - 2026-04-22T21:44:08Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7542f113-71e7-4fa6-a71a-914c65cf0077.jsonl`
+- `/ll:ready-issue` - 2026-04-22T22:49:26 - `1b5f3384-28eb-4ee5-89e8-fa72930a2e62.jsonl`
+- `/ll:confidence-check` - 2026-04-22T00:00:00Z - `ffdba525-8a76-4b36-acf7-cf777c803de6.jsonl`
+- `/ll:wire-issue` - 2026-04-22T22:46:16 - `fe238444-7e3f-4dd6-b772-5488e2f50306.jsonl`
+- `/ll:refine-issue` - 2026-04-22T22:41:32 - `74ff7167-2f52-41ea-83db-f23663476581.jsonl`
+- `/ll:capture-issue` - 2026-04-22T21:44:08Z - `7542f113-71e7-4fa6-a71a-914c65cf0077.jsonl`

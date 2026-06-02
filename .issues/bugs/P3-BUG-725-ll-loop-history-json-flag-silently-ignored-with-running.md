@@ -160,9 +160,9 @@ if getattr(args, "json", False):
 All 76 tests pass.
 
 ## Session Log
-- `/ll:capture-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20b47448-a4ee-4c68-a90e-1574eafbf9f4.jsonl`
-- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/489dd3dc-b0e8-40d4-8608-bda5ef8256a7.jsonl`
-- `/ll:ready-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/672265d6-a677-41aa-9572-d4eac047150d.jsonl`
+- `/ll:capture-issue` - 2026-03-13T00:00:00Z - `20b47448-a4ee-4c68-a90e-1574eafbf9f4.jsonl`
+- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `489dd3dc-b0e8-40d4-8608-bda5ef8256a7.jsonl`
+- `/ll:ready-issue` - 2026-03-13T00:00:00Z - `672265d6-a677-41aa-9572-d4eac047150d.jsonl`
 - `/ll:manage-issue` - 2026-03-13T00:00:00Z - fix
 
 ---

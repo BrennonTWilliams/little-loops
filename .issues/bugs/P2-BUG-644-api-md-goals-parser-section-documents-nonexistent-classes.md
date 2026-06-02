@@ -79,7 +79,7 @@ Rewrite the `goals_parser` section in `docs/reference/API.md` to document the ac
 
 ## Session Log
 
-- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/19d57f1f-86a8-4cd8-be15-a811b0ecce9d.jsonl`
+- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `19d57f1f-86a8-4cd8-be15-a811b0ecce9d.jsonl`
 
 ## Resolution
 

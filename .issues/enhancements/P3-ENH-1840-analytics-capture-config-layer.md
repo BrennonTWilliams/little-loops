@@ -182,9 +182,9 @@ Implemented the `analytics.capture` config layer in full:
 - Tests: 19 new tests across `TestFeatureEnabledForHelper`, `TestAnalyticsCaptureConfig`, `TestBRConfigAnalyticsCaptureIntegration`, and `test_analytics_capture_in_schema` — all pass
 
 ## Session Log
-- `/ll:manage-issue` - 2026-06-01T06:29:38Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab5b7063-586d-4d46-98ff-508f939fa8aa.jsonl`
-- `/ll:ready-issue` - 2026-06-01T06:25:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab5b7063-586d-4d46-98ff-508f939fa8aa.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57be6e9a-e5c2-439b-80e5-04c349b4c87e.jsonl`
-- `/ll:wire-issue` - 2026-06-01T06:18:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95cadb0b-6da8-4f6b-a689-d21bc63f3ce9.jsonl`
-- `/ll:refine-issue` - 2026-06-01T06:12:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21d238a3-9b92-4861-a16b-538adf0c392b.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c1325861-5c8a-40ab-90ee-ac4727f376b5.jsonl`
+- `/ll:manage-issue` - 2026-06-01T06:29:38Z - `ab5b7063-586d-4d46-98ff-508f939fa8aa.jsonl`
+- `/ll:ready-issue` - 2026-06-01T06:25:40 - `ab5b7063-586d-4d46-98ff-508f939fa8aa.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `57be6e9a-e5c2-439b-80e5-04c349b4c87e.jsonl`
+- `/ll:wire-issue` - 2026-06-01T06:18:09 - `95cadb0b-6da8-4f6b-a689-d21bc63f3ce9.jsonl`
+- `/ll:refine-issue` - 2026-06-01T06:12:54 - `21d238a3-9b92-4861-a16b-538adf0c392b.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `c1325861-5c8a-40ab-90ee-ac4727f376b5.jsonl`

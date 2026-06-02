@@ -152,12 +152,12 @@ Completed 2026-04-17. Prose-only doc updates landed across four files:
 Verification: grep confirms both `circuit_breaker_enabled` and `circuit_breaker_path` appear in LOOPS_GUIDE.md; `rate_limits` + both circuit-breaker keys appear in CONFIGURATION.md; `rate_limit_circuit.py` appears in both ARCHITECTURE.md and CONTRIBUTING.md. `ruff check scripts/` passes (no code changes). No tests run — `testable: false` per frontmatter; doc-wiring test assertions are the scope of ENH-1141.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/506ab92a-05c5-4bf9-bf1d-50aa96302fe8.jsonl`
-- `/ll:ready-issue` - 2026-04-17T06:29:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0825439-7dab-4986-9025-fa22fb0ff302.jsonl`
-- `/ll:wire-issue` - 2026-04-17T06:26:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04ae6c1d-2ee0-4a43-b8c5-f8600c76df7b.jsonl`
-- `/ll:refine-issue` - 2026-04-17T06:22:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c2b0411e-88e8-453f-bf55-0ff9ea0f9e56.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e20512e-4152-4cfc-9884-2846f71c2341.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4faedd2a-5d12-4c73-9ecb-a0e8ae7b27b0.jsonl`
+- `/ll:manage-issue` - 2026-04-17 - `506ab92a-05c5-4bf9-bf1d-50aa96302fe8.jsonl`
+- `/ll:ready-issue` - 2026-04-17T06:29:59 - `b0825439-7dab-4986-9025-fa22fb0ff302.jsonl`
+- `/ll:wire-issue` - 2026-04-17T06:26:38 - `04ae6c1d-2ee0-4a43-b8c5-f8600c76df7b.jsonl`
+- `/ll:refine-issue` - 2026-04-17T06:22:17 - `c2b0411e-88e8-453f-bf55-0ff9ea0f9e56.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `7e20512e-4152-4cfc-9884-2846f71c2341.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `4faedd2a-5d12-4c73-9ecb-a0e8ae7b27b0.jsonl`
 
 ---
 

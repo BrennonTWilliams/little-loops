@@ -250,17 +250,17 @@ _Last updated by `/ll:confidence-check` on 2026-05-15 (re-run; scores unchanged)
 - **New delegation tests not yet written** — the two new tests in test_subprocess_utils.py (resolve_host patch + env merge-order priority) are required by AC but must be authored during implementation; they're the only coverage that verifies the migration correctness at the abstraction boundary rather than the Popen boundary
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-15T18:28:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a7266ec-c5b5-4c2f-9e4f-98b8b1efda13.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/631f963e-730d-4448-9a7b-24ec9120e739.jsonl`
-- `/ll:wire-issue` - 2026-05-15T18:21:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6471c46-d789-49cb-9936-de27174a97ea.jsonl`
-- `/ll:refine-issue` - 2026-05-15T18:11:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c69cf60-78ec-4a83-8028-3eaf2ef8da8d.jsonl`
-- `/ll:confidence-check` - 2026-05-15T18:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82d0a12c-f330-4f71-af02-2884a8a07caf.jsonl`
-- `/ll:wire-issue` - 2026-05-15T18:02:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb7a1539-5968-4349-b66e-7412f36b200f.jsonl`
-- `/ll:refine-issue` - 2026-05-15T17:54:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2f575f6-1d58-472f-a602-97e2d7519327.jsonl`
-- `/ll:wire-issue` - 2026-05-15T17:20:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db3329e1-8acc-403a-b640-5d9e35fae4f5.jsonl`
-- `/ll:refine-issue` - 2026-05-15T17:16:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc5bf9df-9dcb-4cbd-9f50-94231bf44e37.jsonl`
-- `/ll:wire-issue` - 2026-05-15T13:56:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/978001d2-a715-45c7-b4c6-b5b80a6d8699.jsonl`
-- `/ll:refine-issue` - 2026-05-15T13:51:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdf2e3ae-16d6-4e72-9afd-6caa398f2bf0.jsonl`
-- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e969bf3-ae63-4f97-be5f-6be542d3997d.jsonl`
-- `/ll:confidence-check` - 2026-05-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/982aae20-b43e-46c0-8930-9d3848a09bdc.jsonl`
+- `/ll:ready-issue` - 2026-05-15T18:28:52 - `4a7266ec-c5b5-4c2f-9e4f-98b8b1efda13.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `631f963e-730d-4448-9a7b-24ec9120e739.jsonl`
+- `/ll:wire-issue` - 2026-05-15T18:21:31 - `c6471c46-d789-49cb-9936-de27174a97ea.jsonl`
+- `/ll:refine-issue` - 2026-05-15T18:11:18 - `5c69cf60-78ec-4a83-8028-3eaf2ef8da8d.jsonl`
+- `/ll:confidence-check` - 2026-05-15T18:30:00 - `82d0a12c-f330-4f71-af02-2884a8a07caf.jsonl`
+- `/ll:wire-issue` - 2026-05-15T18:02:20 - `eb7a1539-5968-4349-b66e-7412f36b200f.jsonl`
+- `/ll:refine-issue` - 2026-05-15T17:54:47 - `f2f575f6-1d58-472f-a602-97e2d7519327.jsonl`
+- `/ll:wire-issue` - 2026-05-15T17:20:52 - `db3329e1-8acc-403a-b640-5d9e35fae4f5.jsonl`
+- `/ll:refine-issue` - 2026-05-15T17:16:31 - `dc5bf9df-9dcb-4cbd-9f50-94231bf44e37.jsonl`
+- `/ll:wire-issue` - 2026-05-15T13:56:54 - `978001d2-a715-45c7-b4c6-b5b80a6d8699.jsonl`
+- `/ll:refine-issue` - 2026-05-15T13:51:29 - `bdf2e3ae-16d6-4e72-9afd-6caa398f2bf0.jsonl`
+- `/ll:issue-size-review` - 2026-05-15T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `4e969bf3-ae63-4f97-be5f-6be542d3997d.jsonl`
+- `/ll:confidence-check` - 2026-05-15T00:00:00 - `982aae20-b43e-46c0-8930-9d3848a09bdc.jsonl`

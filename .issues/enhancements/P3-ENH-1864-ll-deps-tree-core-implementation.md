@@ -139,14 +139,14 @@ Use `formatting.py` for `format_epic_tree()` to keep the change surface flat (av
 - `SprintManager.load_or_resolve()` intentionally NOT used here.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7d04b57-0a32-4582-abef-34489b0e43ac.jsonl`
-- `hook:posttooluse-status-done` - 2026-06-01T19:07:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a952b9dc-117a-44ac-8bd2-f5791b458cb1.jsonl`
-- `/ll:refine-issue` - 2026-06-01T19:21:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a38dfe29-9c06-43e8-ade3-e040edecae62.jsonl`
-- `/ll:ready-issue` - 2026-06-01T18:56:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a38dfe29-9c06-43e8-ade3-e040edecae62.jsonl`
-- `/ll:refine-issue` - 2026-06-01T18:43:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8eeca893-3738-4d07-9997-b5b15ecc0bae.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b821a849-b0a9-44d9-97a9-a7d0507e8dea.jsonl`
-- `/ll:wire-issue` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8eeca893-3738-4d07-9997-b5b15ecc0bae.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c41ca909-db8c-449b-9875-0d6bc9aa84fa.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00 - `f7d04b57-0a32-4582-abef-34489b0e43ac.jsonl`
+- `hook:posttooluse-status-done` - 2026-06-01T19:07:49 - `a952b9dc-117a-44ac-8bd2-f5791b458cb1.jsonl`
+- `/ll:refine-issue` - 2026-06-01T19:21:00 - `a38dfe29-9c06-43e8-ade3-e040edecae62.jsonl`
+- `/ll:ready-issue` - 2026-06-01T18:56:59 - `a38dfe29-9c06-43e8-ade3-e040edecae62.jsonl`
+- `/ll:refine-issue` - 2026-06-01T18:43:39 - `8eeca893-3738-4d07-9997-b5b15ecc0bae.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00 - `b821a849-b0a9-44d9-97a9-a7d0507e8dea.jsonl`
+- `/ll:wire-issue` - 2026-06-01T00:00:00 - `8eeca893-3738-4d07-9997-b5b15ecc0bae.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00 - `c41ca909-db8c-449b-9875-0d6bc9aa84fa.jsonl`
 
 ---
 

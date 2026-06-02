@@ -283,10 +283,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Completed** | Created: 2026-04-05 | Priority: P2
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-06T01:27:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/daa723cc-f2b4-443a-83b3-c5f718e4db32.jsonl`
-- `/ll:confidence-check` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e2c698b-3930-4f38-b9d2-b846982da937.jsonl`
-- `/ll:refine-issue` - 2026-04-06T00:12:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c20a939-96f6-4624-b02b-32cd18f94d1c.jsonl`
-- `/ll:format-issue` - 2026-04-06T00:07:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdd3da04-1d98-48b5-a7ce-a7ffbdefe5ec.jsonl`
-- `/ll:capture-issue` - 2026-04-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f1dbb90-1979-4e86-8aa0-5606a0e91771.jsonl`
+- `/ll:ready-issue` - 2026-04-06T01:27:49 - `daa723cc-f2b4-443a-83b3-c5f718e4db32.jsonl`
+- `/ll:confidence-check` - 2026-04-05T00:00:00Z - `4e2c698b-3930-4f38-b9d2-b846982da937.jsonl`
+- `/ll:refine-issue` - 2026-04-06T00:12:26 - `2c20a939-96f6-4624-b02b-32cd18f94d1c.jsonl`
+- `/ll:format-issue` - 2026-04-06T00:07:22 - `bdd3da04-1d98-48b5-a7ce-a7ffbdefe5ec.jsonl`
+- `/ll:capture-issue` - 2026-04-05T00:00:00Z - `2f1dbb90-1979-4e86-8aa0-5606a0e91771.jsonl`
 - `/ll:wire-issue` - 2026-04-06T00:56:18Z - session
 - `/ll:manage-issue feature implement FEAT-958` - 2026-04-05T00:00:00Z - session

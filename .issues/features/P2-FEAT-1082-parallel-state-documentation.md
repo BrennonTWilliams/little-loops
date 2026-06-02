@@ -226,13 +226,13 @@ The `fsm/` directory tree in `CONTRIBUTING.md:231–243` lists 11 files. The las
 ---
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-13T00:01:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/847acfcb-8aba-4124-8dc8-a98c7902e550.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4f936ed-2c70-4384-91f8-15f6bc968b95.jsonl`
-- `/ll:wire-issue` - 2026-04-12T23:55:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fb4b73df-7e24-44b9-b58d-111baf90419f.jsonl`
-- `/ll:refine-issue` - 2026-04-12T23:48:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f8fc4b9-85b6-49cc-a00d-2972dff4910b.jsonl`
-- `/ll:format-issue` - 2026-04-12T23:44:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a1579f05-6671-426a-84dc-53dcd5dd8fe1.jsonl`
-- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/77a4f6c6-909a-4d66-84d7-1e952b12aed8.jsonl`
-- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/847acfcb-8aba-4124-8dc8-a98c7902e550.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-13T00:01:16 - `847acfcb-8aba-4124-8dc8-a98c7902e550.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00 - `a4f936ed-2c70-4384-91f8-15f6bc968b95.jsonl`
+- `/ll:wire-issue` - 2026-04-12T23:55:52 - `fb4b73df-7e24-44b9-b58d-111baf90419f.jsonl`
+- `/ll:refine-issue` - 2026-04-12T23:48:24 - `4f8fc4b9-85b6-49cc-a00d-2972dff4910b.jsonl`
+- `/ll:format-issue` - 2026-04-12T23:44:10 - `a1579f05-6671-426a-84dc-53dcd5dd8fe1.jsonl`
+- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `77a4f6c6-909a-4d66-84d7-1e952b12aed8.jsonl`
+- `/ll:issue-size-review` - 2026-04-12T00:00:00 - `847acfcb-8aba-4124-8dc8-a98c7902e550.jsonl`
 
 ---
 

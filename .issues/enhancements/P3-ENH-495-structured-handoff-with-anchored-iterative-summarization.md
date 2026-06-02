@@ -138,12 +138,12 @@ The existing template has these sections: `## Conversation Summary` (with subsec
 **Verification**: lint passes (`ruff check`), tests pass (1 pre-existing unrelated failure in `test_ll_loop_display.py`). Prompt-only changes with no Python code modified.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c164620c-22bc-4248-a765-689616546d6f.jsonl`
-- `/ll:ready-issue` - 2026-03-14T23:40:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f6e32fe-a201-4ea2-a48c-b6348486250c.jsonl`
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `c164620c-22bc-4248-a765-689616546d6f.jsonl`
+- `/ll:ready-issue` - 2026-03-14T23:40:24 - `3f6e32fe-a201-4ea2-a48c-b6348486250c.jsonl`
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — readiness: 98/100 PROCEED, outcome: 78/100 MODERATE (up from 68 — improved change surface assessment: 2 isolated command files, docs refs not callers)
-- `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:format-issue` - 2026-02-24 - `cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 - `/ll:verify-issues` - 2026-02-25 - Corrected file paths: `skills/handoff/SKILL.md` → `commands/handoff.md`; `skills/resume/SKILL.md` → `commands/resume.md` (handoff/resume are commands, not skills)
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Documented current handoff schema (3-section prose) and resume behavior; noted existing ll-session-state.json structured fields
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Documented current handoff schema (3-section prose) and resume behavior; noted existing ll-session-state.json structured fields
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; research findings from 2026-02-25 remain current
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `commands/handoff.md` (lines 124–174) and `commands/resume.md` (lines 47–56, 106–120)

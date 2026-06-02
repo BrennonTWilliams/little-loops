@@ -164,7 +164,7 @@ All verification greps return a hit for every wired surface; the full test suite
 
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-22T21:55:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2364d2da-6768-4e03-8b14-140e0435729f.jsonl`
-- `/ll:confidence-check` - 2026-05-22T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b53de0d3-d850-43b9-9010-e17567340a8a.jsonl`
-- `/ll:refine-issue` - 2026-05-22T21:31:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f9c4451-bae8-485f-b744-89f4f1009dca.jsonl`
-- `/ll:format-issue` - 2026-05-22T21:02:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df79ad24-cc3b-462e-9fab-b112d3d4bad4.jsonl`
+- `/ll:manage-issue` - 2026-05-22T21:55:20 - `2364d2da-6768-4e03-8b14-140e0435729f.jsonl`
+- `/ll:confidence-check` - 2026-05-22T22:00:00 - `b53de0d3-d850-43b9-9010-e17567340a8a.jsonl`
+- `/ll:refine-issue` - 2026-05-22T21:31:07 - `7f9c4451-bae8-485f-b744-89f4f1009dca.jsonl`
+- `/ll:format-issue` - 2026-05-22T21:02:16 - `df79ad24-cc3b-462e-9fab-b112d3d4bad4.jsonl`

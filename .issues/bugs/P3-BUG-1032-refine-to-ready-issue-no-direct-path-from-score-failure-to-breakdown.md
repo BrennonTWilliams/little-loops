@@ -125,9 +125,9 @@ The structural twin is `test_check_lifetime_limit_routes_to_breakdown_issue` at 
 **Completed** | Created: 2026-04-11 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-11T05:46:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba7708c8-b719-402a-9ee7-a5f089cf84b8.jsonl`
-- `/ll:confidence-check` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d4d2ee8a-2f4f-412d-b789-1c3f3d4748e3.jsonl`
-- `/ll:refine-issue` - 2026-04-11T05:38:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/beb925f3-1081-49e6-920c-e728c119f859.jsonl`
-- `/ll:format-issue` - 2026-04-11T05:22:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2ede2e27-e614-4fb9-a6db-bba4198effb0.jsonl`
+- `/ll:ready-issue` - 2026-04-11T05:46:50 - `ba7708c8-b719-402a-9ee7-a5f089cf84b8.jsonl`
+- `/ll:confidence-check` - 2026-04-11T00:00:00Z - `d4d2ee8a-2f4f-412d-b789-1c3f3d4748e3.jsonl`
+- `/ll:refine-issue` - 2026-04-11T05:38:10 - `beb925f3-1081-49e6-920c-e728c119f859.jsonl`
+- `/ll:format-issue` - 2026-04-11T05:22:25 - `2ede2e27-e614-4fb9-a6db-bba4198effb0.jsonl`
 - `/ll:capture-issue` - 2026-04-11T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05d0324c-611c-469d-8af1-b4e42644c47d.jsonl`
-- `/ll:manage-issue` - 2026-04-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:manage-issue` - 2026-04-11T00:00:00Z

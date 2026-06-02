@@ -229,11 +229,11 @@ Implemented all changes described in the Proposed Solution:
 - FEAT-1748 (template files) — must be merged
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-27T23:14:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8aa268c3-56f7-4b5e-95a9-5e1b84cb1f8e.jsonl`
-- `/ll:wire-issue` - 2026-05-27T23:09:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc0a22cb-7cd9-43c7-968b-d20455bd229d.jsonl`
-- `/ll:refine-issue` - 2026-05-27T23:05:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1431281-3fdf-4a89-b828-ff33a60689e6.jsonl`
-- `/ll:issue-size-review` - 2026-05-27T23:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
-- `/ll:confidence-check` - 2026-05-27T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/279bbdbf-5ea0-4a25-9a30-82b6f7b098b0.jsonl`
+- `/ll:ready-issue` - 2026-05-27T23:14:16 - `8aa268c3-56f7-4b5e-95a9-5e1b84cb1f8e.jsonl`
+- `/ll:wire-issue` - 2026-05-27T23:09:58 - `dc0a22cb-7cd9-43c7-968b-d20455bd229d.jsonl`
+- `/ll:refine-issue` - 2026-05-27T23:05:51 - `f1431281-3fdf-4a89-b828-ff33a60689e6.jsonl`
+- `/ll:issue-size-review` - 2026-05-27T23:30:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:confidence-check` - 2026-05-27T00:00:00 - `279bbdbf-5ea0-4a25-9a30-82b6f7b098b0.jsonl`
 
 ---
 

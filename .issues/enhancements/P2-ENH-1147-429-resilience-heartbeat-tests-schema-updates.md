@@ -104,13 +104,13 @@ _Added by `/ll:confidence-check` on 2026-04-17_
 - **ENH-1144 must land first.** `rate_limit_waiting` is absent from `SCHEMA_DEFINITIONS` in `generate_schemas.py`. If ENH-1147 is implemented before ENH-1144, all four `== 22` assertions will fail and `test_expected_event_types_present` will fail too (the key won't be in the catalog). The code changes themselves are valid — ordering is the only risk.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-17T14:16:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c304c93-e69d-4966-8882-40066436dd22.jsonl`
-- `/ll:refine-issue` - 2026-04-17T08:12:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f31b64d3-b4f0-4639-b22c-9b2909d1dd61.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b94d8ebc-87c0-4120-8a97-2c53bebf4e84.jsonl`
-- `/ll:confidence-check` - 2026-04-17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ef29820-11df-40a0-9c67-a9335ee05d61.jsonl`
-- `/ll:wire-issue` - 2026-04-17T08:10:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cdc90935-b56b-4a93-88c9-c812afdc458b.jsonl`
-- `/ll:refine-issue` - 2026-04-17T08:05:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0abf7aa-5b3b-43f4-9f06-7130ff136651.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/714a7073-85c4-4a11-87ff-d55b6cd3eeba.jsonl`
+- `/ll:ready-issue` - 2026-04-17T14:16:10 - `1c304c93-e69d-4966-8882-40066436dd22.jsonl`
+- `/ll:refine-issue` - 2026-04-17T08:12:43 - `f31b64d3-b4f0-4639-b22c-9b2909d1dd61.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `b94d8ebc-87c0-4120-8a97-2c53bebf4e84.jsonl`
+- `/ll:confidence-check` - 2026-04-17 - `4ef29820-11df-40a0-9c67-a9335ee05d61.jsonl`
+- `/ll:wire-issue` - 2026-04-17T08:10:16 - `cdc90935-b56b-4a93-88c9-c812afdc458b.jsonl`
+- `/ll:refine-issue` - 2026-04-17T08:05:53 - `c0abf7aa-5b3b-43f4-9f06-7130ff136651.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `714a7073-85c4-4a11-87ff-d55b6cd3eeba.jsonl`
 
 ---
 

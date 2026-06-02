@@ -304,14 +304,14 @@ Implemented the `rate_limit_waiting` heartbeat event end-to-end:
 - `python -m mypy scripts/little_loops/` — only pre-existing `wcwidth` stub warning (unrelated)
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-17T09:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8297905d-ec50-4589-8ffd-0dd4fb48b66b.jsonl`
-- `/ll:ready-issue` - 2026-04-17T14:05:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4658734b-4b50-48ca-b2e9-43b8f009fdfc.jsonl`
-- `/ll:confidence-check` - 2026-04-17T14:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b682e8a0-7d3e-4d04-ac6a-e6e918dfbd45.jsonl`
-- `/ll:refine-issue` - 2026-04-17T13:51:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7dd2d091-ce7c-4813-83d1-6e6be1f87077.jsonl`
-- `/ll:wire-issue` - 2026-04-17T07:28:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9285cc5a-ccb9-40de-81d2-22a31b8af554.jsonl`
-- `/ll:refine-issue` - 2026-04-17T07:21:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/011d2dd3-667a-4e14-8841-6cb6d04b6a05.jsonl`
-- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a95f7723-f6c7-4abc-9358-01f0d396ef30.jsonl`
-- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/66558bdd-4b8e-4ddb-99d3-bb9d5749e796.jsonl`
+- `/ll:manage-issue` - 2026-04-17T09:15:00 - `8297905d-ec50-4589-8ffd-0dd4fb48b66b.jsonl`
+- `/ll:ready-issue` - 2026-04-17T14:05:56 - `4658734b-4b50-48ca-b2e9-43b8f009fdfc.jsonl`
+- `/ll:confidence-check` - 2026-04-17T14:00:00 - `b682e8a0-7d3e-4d04-ac6a-e6e918dfbd45.jsonl`
+- `/ll:refine-issue` - 2026-04-17T13:51:45 - `7dd2d091-ce7c-4813-83d1-6e6be1f87077.jsonl`
+- `/ll:wire-issue` - 2026-04-17T07:28:30 - `9285cc5a-ccb9-40de-81d2-22a31b8af554.jsonl`
+- `/ll:refine-issue` - 2026-04-17T07:21:24 - `011d2dd3-667a-4e14-8841-6cb6d04b6a05.jsonl`
+- `/ll:issue-size-review` - 2026-04-17T00:00:00Z - `a95f7723-f6c7-4abc-9358-01f0d396ef30.jsonl`
+- `/ll:confidence-check` - 2026-04-17T00:00:00Z - `66558bdd-4b8e-4ddb-99d3-bb9d5749e796.jsonl`
 
 ## Labels
 

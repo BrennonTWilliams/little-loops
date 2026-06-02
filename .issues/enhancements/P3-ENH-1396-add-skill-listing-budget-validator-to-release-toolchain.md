@@ -185,12 +185,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis (2026-05-11):_
 - `scripts/little_loops/cli/__init__.py` module docstring (line 1) does not mention `ll-verify-skill-budget` by name (only `ll-verify-docs` and `ll-check-links` are listed), though it is fully wired into `__all__` and the import line.
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-11T08:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38e20085-241b-48a3-893e-e46ebddac9e2.jsonl`
-- `/ll:wire-issue` - 2026-05-11T07:30:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24af1a8f-9e6d-4c05-9a57-efe2d79185bc.jsonl`
-- `/ll:refine-issue` - 2026-05-11T07:25:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d3e3a3cf-8897-4b2b-8a8c-8909db5a8fa2.jsonl`
-- `/ll:ready-issue` - 2026-05-11T05:40:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcf6c4cd-34a6-4c1d-a785-a4a894e46e06.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e50aaae6-0d95-4912-933d-ced1e60f4a38.jsonl`
-- `/ll:refine-issue` - 2026-05-11T05:35:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8be7f96b-7cbf-4c8c-981d-b0cfe9fe338a.jsonl`
-- `/ll:format-issue` - 2026-05-11T05:31:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72d970f6-0d7e-4967-bc0c-f30b05b554b8.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
-- `/ll:capture-issue` - 2026-05-09T20:48:12Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`
+- `/ll:confidence-check` - 2026-05-11T08:00:00Z - `38e20085-241b-48a3-893e-e46ebddac9e2.jsonl`
+- `/ll:wire-issue` - 2026-05-11T07:30:31 - `24af1a8f-9e6d-4c05-9a57-efe2d79185bc.jsonl`
+- `/ll:refine-issue` - 2026-05-11T07:25:20 - `d3e3a3cf-8897-4b2b-8a8c-8909db5a8fa2.jsonl`
+- `/ll:ready-issue` - 2026-05-11T05:40:12 - `bcf6c4cd-34a6-4c1d-a785-a4a894e46e06.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00Z - `e50aaae6-0d95-4912-933d-ced1e60f4a38.jsonl`
+- `/ll:refine-issue` - 2026-05-11T05:35:37 - `8be7f96b-7cbf-4c8c-981d-b0cfe9fe338a.jsonl`
+- `/ll:format-issue` - 2026-05-11T05:31:32 - `72d970f6-0d7e-4967-bc0c-f30b05b554b8.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
+- `/ll:capture-issue` - 2026-05-09T20:48:12Z - `6c428abc-6b67-47fc-b1a4-d2d8d176f6b7.jsonl`

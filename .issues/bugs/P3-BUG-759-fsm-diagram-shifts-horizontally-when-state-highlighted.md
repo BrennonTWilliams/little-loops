@@ -163,20 +163,20 @@ _Added by `/ll:go-no-go` on 2026-03-23_ — **NO-GO (REFINE)**
 The bug is real and fixing it is clearly valuable, but the proposed solution is mathematically wrong. The correct fix must use ANSI-aware width measurement rather than `total_width`. The issue should be updated to specify `_strip_ansi()` or `_wcswidth` before implementation.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-23T21:42:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e4986fda-2e18-4e55-9175-6ebf32ea568f.jsonl`
-- `/ll:confidence-check` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3c2e0332-088f-4fa7-a7f5-c437b25f8efa.jsonl`
-- `/ll:refine-issue` - 2026-03-23T21:35:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e396250c-81bc-42fa-9e39-b83a9269bb20.jsonl`
-- `/ll:confidence-check` - 2026-03-23T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24372921-3a00-4768-88b4-ef90d1d5064f.jsonl`
-- `/ll:refine-issue` - 2026-03-23T21:22:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b5430f1-ebbd-470d-a185-8171502097ea.jsonl`
-- `/ll:go-no-go` - 2026-03-23T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a533c1a2-57c6-484f-bd02-5153708e92fd.jsonl`
-- `/ll:verify-issues` - 2026-03-22T02:49:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ca8bfb19-1675-49ac-9d46-6c3933a7cb31.jsonl`
-- `/ll:verify-issues` - 2026-03-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
-- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:verify-issues` - 2026-03-16T19:47:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:verify-issues` - 2026-03-16T19:47:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
-- `/ll:format-issue` - 2026-03-16T19:45:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:ready-issue` - 2026-03-23T21:42:11 - `e4986fda-2e18-4e55-9175-6ebf32ea568f.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00 - `3c2e0332-088f-4fa7-a7f5-c437b25f8efa.jsonl`
+- `/ll:refine-issue` - 2026-03-23T21:35:00 - `e396250c-81bc-42fa-9e39-b83a9269bb20.jsonl`
+- `/ll:confidence-check` - 2026-03-23T22:00:00 - `24372921-3a00-4768-88b4-ef90d1d5064f.jsonl`
+- `/ll:refine-issue` - 2026-03-23T21:22:05 - `9b5430f1-ebbd-470d-a185-8171502097ea.jsonl`
+- `/ll:go-no-go` - 2026-03-23T00:00:00 - `a533c1a2-57c6-484f-bd02-5153708e92fd.jsonl`
+- `/ll:verify-issues` - 2026-03-22T02:49:36 - `ca8bfb19-1675-49ac-9d46-6c3933a7cb31.jsonl`
+- `/ll:verify-issues` - 2026-03-21T00:00:00 - `45cffc78-99fd-4e36-9bcb-32d53f60d9c2.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:verify-issues` - 2026-03-16T19:47:28 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:verify-issues` - 2026-03-16T19:47:20 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:format-issue` - 2026-03-16T19:45:42 - `3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 
-- `/ll:capture-issue` - 2026-03-15T22:49:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:capture-issue` - 2026-03-15T22:49:27Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 

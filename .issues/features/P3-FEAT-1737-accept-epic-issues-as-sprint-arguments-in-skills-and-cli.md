@@ -230,11 +230,11 @@ _Added by `/ll:confidence-check` on 2026-05-27; mitigations applied 2026-05-27_
 - **Moderate core logic in `load_or_resolve()`**: five resolution legs (pattern detect → forward lookup → backward scan → union dedup → status filter + ordering); mitigated by leg-by-leg test order in step 6.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-28T00:35:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/284cd144-0544-4ee8-b806-20b7316ec7e9.jsonl`
-- `/ll:confidence-check` - 2026-05-27T06:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2a9c6cc-4a64-4816-9521-d7ecff878e47.jsonl`
-- `/ll:confidence-check` - 2026-05-27T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6aa2b389-8690-4aba-a467-a4575b38d46e.jsonl`
-- `/ll:wire-issue` - 2026-05-28T00:05:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/70d1a28b-6e5d-424c-a7ee-0f4c6c686c6e.jsonl`
-- `/ll:refine-issue` - 2026-05-27T23:56:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05bd8488-8487-466c-b194-76003660b362.jsonl`
+- `/ll:ready-issue` - 2026-05-28T00:35:38 - `284cd144-0544-4ee8-b806-20b7316ec7e9.jsonl`
+- `/ll:confidence-check` - 2026-05-27T06:00:00Z - `a2a9c6cc-4a64-4816-9521-d7ecff878e47.jsonl`
+- `/ll:confidence-check` - 2026-05-27T00:00:00Z - `6aa2b389-8690-4aba-a467-a4575b38d46e.jsonl`
+- `/ll:wire-issue` - 2026-05-28T00:05:03 - `70d1a28b-6e5d-424c-a7ee-0f4c6c686c6e.jsonl`
+- `/ll:refine-issue` - 2026-05-27T23:56:20 - `05bd8488-8487-466c-b194-76003660b362.jsonl`
 - `rewrite` - 2026-05-27 - Redesigned to Option C (`SprintManager.load_or_resolve()` + union resolution + `--save` flag) after exploring Epic→Sprint mapping approaches
-- `/ll:format-issue` - 2026-05-27T05:04:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c37f932-1d34-4311-ac57-0faf89f85130.jsonl`
+- `/ll:format-issue` - 2026-05-27T05:04:55 - `2c37f932-1d34-4311-ac57-0faf89f85130.jsonl`
 - `/ll:capture-issue` - 2026-05-27T05:02:23Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c91edf22-5820-4f59-9f8d-4ab2ca66f171.jsonl`

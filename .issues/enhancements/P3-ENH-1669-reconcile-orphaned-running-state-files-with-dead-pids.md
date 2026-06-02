@@ -238,19 +238,19 @@ _Added by `/ll:confidence-check` on 2026-05-24_
 - **Status becomes a writer** — introduces a narrow race window where a just-spawned process with no `.pid` yet could be wrongly reconciled. Add a "just-started, no .pid yet" regression test modeled on `TestCmdStatusLockFilePid`.
 
 ## Session Log
-- `/ll:manage-issue improve ENH-1669` - 2026-05-24T14:17:28Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-24T14:05:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c765d5ee-5218-4413-bdd3-f34eaf82e296.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979e516b-8bbb-44b4-b83f-fb638e51839d.jsonl`
-- `pre-impl test fixes + save_state decision` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b86d74a1-029b-46f2-a7b9-03e998a02e0f.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b86d74a1-029b-46f2-a7b9-03e998a02e0f.jsonl`
-- `/ll:wire-issue` - 2026-05-24T13:40:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3464582d-1db1-46a9-b80a-7ca32c3d5cd4.jsonl`
-- `/ll:refine-issue` - 2026-05-24T13:31:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73097563-3366-47c7-ad17-c2ae7263a6e6.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/765fa3c6-1a05-4cb7-8170-c01366684b4e.jsonl`
-- `/ll:wire-issue` - 2026-05-24T13:18:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/765fa3c6-1a05-4cb7-8170-c01366684b4e.jsonl`
-- `/ll:refine-issue` - 2026-05-24T13:12:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5e8e93a-1535-42f0-83c5-a8a802d567b9.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
-- `/ll:format-issue` - 2026-05-24T05:08:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6eeae06-e4aa-4cf4-b5de-f799be9249c8.jsonl`
-- `/ll:capture-issue` - 2026-05-24T04:52:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f605fdcc-8000-4585-8dc4-835fc0020291.jsonl`
+- `/ll:manage-issue improve ENH-1669` - 2026-05-24T14:17:28Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-24T14:05:05 - `c765d5ee-5218-4413-bdd3-f34eaf82e296.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `979e516b-8bbb-44b4-b83f-fb638e51839d.jsonl`
+- `pre-impl test fixes + save_state decision` - 2026-05-24T00:00:00Z - `b86d74a1-029b-46f2-a7b9-03e998a02e0f.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `b86d74a1-029b-46f2-a7b9-03e998a02e0f.jsonl`
+- `/ll:wire-issue` - 2026-05-24T13:40:07 - `3464582d-1db1-46a9-b80a-7ca32c3d5cd4.jsonl`
+- `/ll:refine-issue` - 2026-05-24T13:31:41 - `73097563-3366-47c7-ad17-c2ae7263a6e6.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00Z - `765fa3c6-1a05-4cb7-8170-c01366684b4e.jsonl`
+- `/ll:wire-issue` - 2026-05-24T13:18:55 - `765fa3c6-1a05-4cb7-8170-c01366684b4e.jsonl`
+- `/ll:refine-issue` - 2026-05-24T13:12:12 - `f5e8e93a-1535-42f0-83c5-a8a802d567b9.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-24T06:05:46 - `8cdfeedd-6a9f-4683-a41d-9ff3860ac7e0.jsonl`
+- `/ll:format-issue` - 2026-05-24T05:08:25 - `c6eeae06-e4aa-4cf4-b5de-f799be9249c8.jsonl`
+- `/ll:capture-issue` - 2026-05-24T04:52:29Z - `f605fdcc-8000-4585-8dc4-835fc0020291.jsonl`
 
 ---
 

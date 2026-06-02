@@ -164,9 +164,9 @@ The `_parse_show_diagrams` validator (lines 72–87) accepts any value in `TOPOL
 The test file `test_ll_loop_display.py` has **five distinct test patterns** over presets (bulk expansion dict, `resolve_facets` round-trip, argparse acceptance, subprocess re-emit, `_render_fsm_diagram` kwargs forwarding). The issue's Success Metrics reference only the first two; the argparse acceptance test and subprocess re-emit test are low-effort additions that follow identical mechanical patterns for each existing preset.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-27T02:07:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7333fa9b-23e1-4d86-b9f4-e566eefd4ba6.jsonl`
-- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/651eaac4-300f-4fe6-b50d-34d0d2965c0e.jsonl`
-- `/ll:wire-issue` - 2026-05-27T02:01:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44c24902-b7db-4f3d-8b6d-550ea0038154.jsonl`
-- `/ll:refine-issue` - 2026-05-27T01:56:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a3786932-ec4d-4cae-adac-46d10e0c0537.jsonl`
-- `/ll:format-issue` - 2026-05-26T01:37:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c75bd9d1-613d-4aa0-9283-47dd1f54df31.jsonl`
-- `/ll:capture-issue` - 2026-05-25T23:00:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/632387fc-2984-41b5-beb0-6ada22e27465.jsonl`
+- `/ll:ready-issue` - 2026-05-27T02:07:26 - `7333fa9b-23e1-4d86-b9f4-e566eefd4ba6.jsonl`
+- `/ll:confidence-check` - 2026-05-26T00:00:00Z - `651eaac4-300f-4fe6-b50d-34d0d2965c0e.jsonl`
+- `/ll:wire-issue` - 2026-05-27T02:01:37 - `44c24902-b7db-4f3d-8b6d-550ea0038154.jsonl`
+- `/ll:refine-issue` - 2026-05-27T01:56:21 - `a3786932-ec4d-4cae-adac-46d10e0c0537.jsonl`
+- `/ll:format-issue` - 2026-05-26T01:37:05 - `c75bd9d1-613d-4aa0-9283-47dd1f54df31.jsonl`
+- `/ll:capture-issue` - 2026-05-25T23:00:07Z - `632387fc-2984-41b5-beb0-6ada22e27465.jsonl`

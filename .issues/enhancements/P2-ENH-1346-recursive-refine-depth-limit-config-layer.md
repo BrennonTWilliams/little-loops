@@ -224,8 +224,8 @@ The commands block already has `max_refine_count` (integer, minimum 1, maximum 2
 **Completed** | Created: 2026-05-03 | Priority: P2
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-03T16:15:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a7f2fd3b-a506-4110-abbd-b70c10d63b86.jsonl`
-- `/ll:confidence-check` - 2026-05-03T16:15:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c49f96c7-eda1-4bf9-ba6b-63bf3a2b032a.jsonl`
-- `/ll:wire-issue` - 2026-05-03T16:06:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b5e8540-a2e4-4c22-9b76-4cebdd1a1935.jsonl`
-- `/ll:refine-issue` - 2026-05-03T16:02:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47226442-43a7-4dd0-8da1-5a1728b7a2cd.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbb0e63c-be49-432f-9671-f8f7f8a4d675.jsonl`
+- `/ll:ready-issue` - 2026-05-03T16:15:37 - `a7f2fd3b-a506-4110-abbd-b70c10d63b86.jsonl`
+- `/ll:confidence-check` - 2026-05-03T16:15:00 - `c49f96c7-eda1-4bf9-ba6b-63bf3a2b032a.jsonl`
+- `/ll:wire-issue` - 2026-05-03T16:06:35 - `2b5e8540-a2e4-4c22-9b76-4cebdd1a1935.jsonl`
+- `/ll:refine-issue` - 2026-05-03T16:02:19 - `47226442-43a7-4dd0-8da1-5a1728b7a2cd.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T00:00:00 - `dbb0e63c-be49-432f-9671-f8f7f8a4d675.jsonl`

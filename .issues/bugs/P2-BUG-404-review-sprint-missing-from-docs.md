@@ -57,7 +57,7 @@ The `review_sprint` command exists in `commands/review_sprint.md` but is complet
 `bug`, `documentation`, `auto-generated`
 
 ## Session Log
-- `/ll:manage-issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e133534-9c00-4318-b32b-af5c69e96dad.jsonl`
+- `/ll:manage-issue` - 2026-02-13T00:00:00Z - `4e133534-9c00-4318-b32b-af5c69e96dad.jsonl`
 
 ## Resolution
 

@@ -105,8 +105,8 @@ All 19 event types documented: 11 FSM executor events, 1 FSM persistence event, 
 **Completed** | Created: 2026-04-02 | Priority: P3
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-03T03:26:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b73bcde2-df61-4356-b3d0-8afde9dcd38e.jsonl`
-- `/ll:manage-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
-- `/ll:ready-issue` - 2026-04-03T03:21:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e3630281-fc7f-486c-9eed-1e0b2282b20e.jsonl`
-- `/ll:verify-issues` - 2026-04-03T02:58:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
-- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/997b167f-013b-46d4-a03f-9ff27d26a2a1.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-03T03:26:05 - `b73bcde2-df61-4356-b3d0-8afde9dcd38e.jsonl`
+- `/ll:manage-issue` - 2026-04-02T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:ready-issue` - 2026-04-03T03:21:27 - `e3630281-fc7f-486c-9eed-1e0b2282b20e.jsonl`
+- `/ll:verify-issues` - 2026-04-03T02:58:18 - `7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
+- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `997b167f-013b-46d4-a03f-9ff27d26a2a1.jsonl`

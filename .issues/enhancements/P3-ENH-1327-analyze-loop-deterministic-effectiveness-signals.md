@@ -216,12 +216,12 @@ _Added by `/ll:confidence-check` on 2026-05-02_
 - 3 new YAML fixtures (analysis-stub-action, analysis-capture-vacuum, analysis-numeric-stall) must be authored from scratch; fixture correctness depends on the exact `ll-loop show --resolved --json` event schema — verify field names against live loop output before writing.
 
 ## Session Log
-- `/ll:decide-issue` - 2026-05-02T23:28:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b2bfd06-4435-45ee-9d21-b45dce5c461e.jsonl`
-- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/240b4286-7960-49d3-9941-39b44686e459.jsonl`
-- `/ll:wire-issue` - 2026-05-02T23:19:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/240b4286-7960-49d3-9941-39b44686e459.jsonl`
-- `/ll:refine-issue` - 2026-05-02T23:13:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fa73db3-6104-4572-aa2c-13851f10c219.jsonl`
-- `/ll:format-issue` - 2026-05-02T23:03:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e772f68-1c09-44f2-844d-e56af787e2e1.jsonl`
-- `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17077eeb-0a80-4927-8736-7cffe26a726a.jsonl`
+- `/ll:decide-issue` - 2026-05-02T23:28:02 - `5b2bfd06-4435-45ee-9d21-b45dce5c461e.jsonl`
+- `/ll:confidence-check` - 2026-05-02T00:00:00Z - `240b4286-7960-49d3-9941-39b44686e459.jsonl`
+- `/ll:wire-issue` - 2026-05-02T23:19:41 - `240b4286-7960-49d3-9941-39b44686e459.jsonl`
+- `/ll:refine-issue` - 2026-05-02T23:13:08 - `4fa73db3-6104-4572-aa2c-13851f10c219.jsonl`
+- `/ll:format-issue` - 2026-05-02T23:03:39 - `4e772f68-1c09-44f2-844d-e56af787e2e1.jsonl`
+- `/ll:issue-size-review` - 2026-05-02T00:00:00Z - `17077eeb-0a80-4927-8736-7cffe26a726a.jsonl`
 
 ---
 

@@ -174,12 +174,12 @@ Updated all 12 target files to reflect multi-instance loop semantics:
 - Multi-instance semantics documented in CLI.md (status/stop/resume/list) and README.md
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-03T21:09:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8dbc6f71-d2ca-405b-a38f-6deda185bda0.jsonl`
-- `/ll:confidence-check` - 2026-05-03T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93264a5c-207d-4729-8595-d35da63c07c0.jsonl`
-- `/ll:wire-issue` - 2026-05-03T21:03:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26eb2167-6e61-42dd-b600-23b39b69d0c2.jsonl`
-- `/ll:refine-issue` - 2026-05-03T20:57:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b372827-7847-4180-862d-16c925ec06b3.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T21:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/995ae302-a902-4497-a747-428e14fa83da.jsonl`
-- `/ll:manage-issue` - 2026-05-03T21:16:09Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:ready-issue` - 2026-05-03T21:09:03 - `8dbc6f71-d2ca-405b-a38f-6deda185bda0.jsonl`
+- `/ll:confidence-check` - 2026-05-03T22:00:00 - `93264a5c-207d-4729-8595-d35da63c07c0.jsonl`
+- `/ll:wire-issue` - 2026-05-03T21:03:52 - `26eb2167-6e61-42dd-b600-23b39b69d0c2.jsonl`
+- `/ll:refine-issue` - 2026-05-03T20:57:04 - `2b372827-7847-4180-862d-16c925ec06b3.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T21:45:00Z - `995ae302-a902-4497-a747-428e14fa83da.jsonl`
+- `/ll:manage-issue` - 2026-05-03T21:16:09Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 
 ---
 

@@ -210,14 +210,14 @@ _Added by `/ll:confidence-check` on 2026-04-23_
 - ~~**FEAT-1269 artifacts missing**: FEAT-1269 is in `.issues/completed/` but `scripts/little_loops/cli/logs.py` does not exist and `main_logs` is not registered in `pyproject.toml`. The completed file still reads `status: backlog`. FEAT-1270 cannot add a `tail` subparser to a file that doesn't exist — verify FEAT-1269 was actually implemented before proceeding.~~ **RESOLVED** (2026-04-23): `scripts/little_loops/cli/logs.py` exists with `discover` subcommand implemented; `ll-logs = "little_loops.cli:main_logs"` is registered in `pyproject.toml`. Dependency satisfied — FEAT-1270 is unblocked.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-23T21:02:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4624911d-eb78-419d-b2d3-4d0250252718.jsonl`
-- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab6a7ae5-8378-48e7-a8ed-89a936671ad3.jsonl`
-- `/ll:refine-issue` - 2026-04-23T20:56:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a21ca7a-517c-4dd8-bde5-60ff72516da7.jsonl`
-- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e99e13eb-7a4b-4f4e-bb27-a602348fe421.jsonl`
-- `/ll:wire-issue` - 2026-04-23T20:14:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2e7414d-e15b-4602-a8d9-40d2d0d4cfeb.jsonl`
-- `/ll:refine-issue` - 2026-04-23T20:07:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fd2a44ac-a328-4dcd-9e75-55059451afac.jsonl`
-- `/ll:format-issue` - 2026-04-23T20:02:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c47a923b-b9ae-4547-9ded-e6860b7798af.jsonl`
-- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36817284-b23d-4550-8ba1-417e527e53d0.jsonl`
+- `/ll:ready-issue` - 2026-04-23T21:02:37 - `4624911d-eb78-419d-b2d3-4d0250252718.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `ab6a7ae5-8378-48e7-a8ed-89a936671ad3.jsonl`
+- `/ll:refine-issue` - 2026-04-23T20:56:14 - `7a21ca7a-517c-4dd8-bde5-60ff72516da7.jsonl`
+- `/ll:confidence-check` - 2026-04-23T00:00:00Z - `e99e13eb-7a4b-4f4e-bb27-a602348fe421.jsonl`
+- `/ll:wire-issue` - 2026-04-23T20:14:08 - `b2e7414d-e15b-4602-a8d9-40d2d0d4cfeb.jsonl`
+- `/ll:refine-issue` - 2026-04-23T20:07:56 - `fd2a44ac-a328-4dcd-9e75-55059451afac.jsonl`
+- `/ll:format-issue` - 2026-04-23T20:02:30 - `c47a923b-b9ae-4547-9ded-e6860b7798af.jsonl`
+- `/ll:issue-size-review` - 2026-04-23T00:00:00Z - `36817284-b23d-4550-8ba1-417e527e53d0.jsonl`
 
 ---
 

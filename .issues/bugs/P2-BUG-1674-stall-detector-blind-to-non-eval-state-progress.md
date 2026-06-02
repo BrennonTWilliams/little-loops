@@ -188,10 +188,10 @@ Implemented Option A (fingerprint-based reset). Added `progress_paths: list[str]
 
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T09:19:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2166d25c-ed32-456a-bb5f-11bf12e192e7.jsonl`
-- `/ll:confidence-check` - 2026-05-24T08:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/05261683-829a-4403-986e-27389bc47dbe.jsonl`
-- `/ll:wire-issue` - 2026-05-24T07:44:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c3f102e7-8b1c-40a0-92c7-9fea7bc9a310.jsonl`
-- `/ll:decide-issue` - 2026-05-24T07:35:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81b5e62d-c94a-4872-b49f-a5ea9e87a99a.jsonl`
-- `/ll:refine-issue` - 2026-05-24T07:31:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2aaa4e23-87ed-4641-85ed-a9de682a4d82.jsonl`
-- `/ll:refine-issue` - 2026-05-24T07:30:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0975e21a-7b1b-4a84-82ba-aee75195eb72.jsonl`
-- `/ll:format-issue` - 2026-05-24T07:24:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4bd7f585-d3e7-44e3-81e4-3bd5de0cef5d.jsonl`
+- `/ll:ready-issue` - 2026-05-24T09:19:45 - `2166d25c-ed32-456a-bb5f-11bf12e192e7.jsonl`
+- `/ll:confidence-check` - 2026-05-24T08:00:00 - `05261683-829a-4403-986e-27389bc47dbe.jsonl`
+- `/ll:wire-issue` - 2026-05-24T07:44:26 - `c3f102e7-8b1c-40a0-92c7-9fea7bc9a310.jsonl`
+- `/ll:decide-issue` - 2026-05-24T07:35:50 - `81b5e62d-c94a-4872-b49f-a5ea9e87a99a.jsonl`
+- `/ll:refine-issue` - 2026-05-24T07:31:22 - `2aaa4e23-87ed-4641-85ed-a9de682a4d82.jsonl`
+- `/ll:refine-issue` - 2026-05-24T07:30:20 - `0975e21a-7b1b-4a84-82ba-aee75195eb72.jsonl`
+- `/ll:format-issue` - 2026-05-24T07:24:54 - `4bd7f585-d3e7-44e3-81e4-3bd5de0cef5d.jsonl`

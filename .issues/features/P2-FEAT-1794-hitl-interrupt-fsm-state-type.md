@@ -16,7 +16,6 @@ labels:
 relates_to: [FEAT-1545, FEAT-1613]
 decision_needed: false
 decision: Option A — hardcoded dispatch following the mcp_tool pattern. Simpler single-file executor change, follows existing conventions. Extension-based path (Option B) deferred as future refactor.
-parent: EPIC-1773
 ---
 
 # FEAT-1794: HITL interrupt FSM state type (`action_type: human_approval`)
@@ -321,13 +320,13 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - Action: update executor.py anchor lines before implementation to avoid confusion
 
 ## Session Log
-- `/ll:verify-issues` - 2026-06-01T03:08:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:53:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
-- `/ll:refine-issue` - 2026-05-30T04:16:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e2daf50-26d6-4657-859b-a4e70fd08209.jsonl`
-- `/ll:format-issue` - 2026-05-29T21:13:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b9fd7ee-19a7-49f3-85a1-70addaba91a5.jsonl`
-- `/ll:capture-issue` - 2026-05-29T20:37:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f2a0c61b-6b34-41d4-98fb-c566ba046de6.jsonl`
+- `/ll:verify-issues` - 2026-06-01T03:08:52 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-01T02:53:57 - `5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:53:49 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:refine-issue` - 2026-05-30T04:16:33 - `5e2daf50-26d6-4657-859b-a4e70fd08209.jsonl`
+- `/ll:format-issue` - 2026-05-29T21:13:19 - `2b9fd7ee-19a7-49f3-85a1-70addaba91a5.jsonl`
+- `/ll:capture-issue` - 2026-05-29T20:37:23Z - `f2a0c61b-6b34-41d4-98fb-c566ba046de6.jsonl`
 
 ---
 

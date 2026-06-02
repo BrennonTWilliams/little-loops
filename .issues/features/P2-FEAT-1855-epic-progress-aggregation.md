@@ -247,12 +247,12 @@ ll-issues list --group-by epic     # now includes (N/M done · K blocked) badge
 `enhancement`, `epics`, `cli`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T19:34:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ab8b4ae-3378-4730-9736-479cb6d5aa6e.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b683bd50-bc7c-486c-b125-062c3399175d.jsonl`
-- `/ll:wire-issue` - 2026-06-01T19:26:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d4e1a7d5-5056-4e46-8db9-e529fbf37c68.jsonl`
-- `/ll:refine-issue` - 2026-06-01T19:17:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ba071d29-681d-440e-9a8d-833fa01b9c50.jsonl`
-- `/ll:format-issue` - 2026-06-01T17:44:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da2e50a4-7590-4ddf-b880-913ecbd374e7.jsonl`
-- `/ll:capture-issue` - 2026-06-01T17:35:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/277dd3c5-ffef-46cb-bcc6-124409ce1225.jsonl`
+- `/ll:ready-issue` - 2026-06-01T19:34:11 - `0ab8b4ae-3378-4730-9736-479cb6d5aa6e.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `b683bd50-bc7c-486c-b125-062c3399175d.jsonl`
+- `/ll:wire-issue` - 2026-06-01T19:26:57 - `d4e1a7d5-5056-4e46-8db9-e529fbf37c68.jsonl`
+- `/ll:refine-issue` - 2026-06-01T19:17:27 - `ba071d29-681d-440e-9a8d-833fa01b9c50.jsonl`
+- `/ll:format-issue` - 2026-06-01T17:44:35 - `da2e50a4-7590-4ddf-b880-913ecbd374e7.jsonl`
+- `/ll:capture-issue` - 2026-06-01T17:35:32Z - `277dd3c5-ffef-46cb-bcc6-124409ce1225.jsonl`
 
 ---
 

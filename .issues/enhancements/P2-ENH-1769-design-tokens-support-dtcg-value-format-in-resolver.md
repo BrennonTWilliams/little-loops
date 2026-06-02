@@ -194,7 +194,7 @@ belt-and-suspenders for resilience against partially-flattened inputs.
 
 ## Session Log
 
-- `/ll:capture-issue` - 2026-05-28T21:10:40Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16b4effa-6777-470c-8a75-4136cb7cdc03.jsonl`
+- `/ll:capture-issue` - 2026-05-28T21:10:40Z - `16b4effa-6777-470c-8a75-4136cb7cdc03.jsonl`
 
 ---
 

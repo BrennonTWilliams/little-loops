@@ -169,11 +169,11 @@ Implemented `_is_earliest_waiter(entry_id, queue_dir)` in `cli/loop/_helpers.py`
 **Completed** | Created: 2026-05-02 | Completed: 2026-05-02 | Priority: P4
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-02T20:41:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b84dc8a5-211b-4016-9274-f01ca9f1ed9f.jsonl`
-- `/ll:decide-issue` - 2026-05-02T20:39:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/89261ec9-d524-456a-ad4c-b18059d10b93.jsonl`
-- `/ll:confidence-check` - 2026-05-02T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e78efbb-4296-4a05-9998-5e07a96a3607.jsonl`
-- `/ll:wire-issue` - 2026-05-02T20:33:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f97d5b7-6e6d-41b5-b904-07ee8b3b54df.jsonl`
-- `/ll:refine-issue` - 2026-05-02T20:27:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3751cb4e-6a67-4b00-ab9c-72103e3b916f.jsonl`
-- `/ll:format-issue` - 2026-05-02T19:59:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d469eb33-2332-43d1-ae05-da1005adf370.jsonl`
-- `/ll:capture-issue` - 2026-05-02T19:56:20Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c7505b5-ede1-476a-a6b7-a18e3c4c8571.jsonl`
-- `/ll:manage-issue` - 2026-05-02T20:44:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-05-02T20:41:29 - `b84dc8a5-211b-4016-9274-f01ca9f1ed9f.jsonl`
+- `/ll:decide-issue` - 2026-05-02T20:39:16 - `89261ec9-d524-456a-ad4c-b18059d10b93.jsonl`
+- `/ll:confidence-check` - 2026-05-02T21:00:00 - `9e78efbb-4296-4a05-9998-5e07a96a3607.jsonl`
+- `/ll:wire-issue` - 2026-05-02T20:33:04 - `2f97d5b7-6e6d-41b5-b904-07ee8b3b54df.jsonl`
+- `/ll:refine-issue` - 2026-05-02T20:27:58 - `3751cb4e-6a67-4b00-ab9c-72103e3b916f.jsonl`
+- `/ll:format-issue` - 2026-05-02T19:59:45 - `d469eb33-2332-43d1-ae05-da1005adf370.jsonl`
+- `/ll:capture-issue` - 2026-05-02T19:56:20Z - `5c7505b5-ede1-476a-a6b7-a18e3c4c8571.jsonl`
+- `/ll:manage-issue` - 2026-05-02T20:44:33Z - `current.jsonl`

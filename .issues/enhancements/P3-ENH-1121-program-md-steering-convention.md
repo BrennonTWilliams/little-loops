@@ -252,18 +252,18 @@ _Added by `/ll:go-no-go` on 2026-04-25_ — ~~**NO-GO (SKIP)**~~ **GO** _(revise
 - `ll-loop install harness-optimize` + editing the `context:` block is documented at `docs/guides/LOOPS_GUIDE.md:270` as the existing durable-defaults path, solving the core UX problem today without new code
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-25T18:14:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/096e08ad-573b-4e17-9674-d27d7d807c46.jsonl`
-- `/ll:confidence-check` - 2026-04-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb86effc-6421-4dbf-b1a1-86368e1d4644.jsonl`
-- `/ll:wire-issue` - 2026-04-25T18:09:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/435d237f-22dd-4664-8fe2-215738a163f3.jsonl`
-- `/ll:refine-issue` - 2026-04-25T18:02:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c63d5643-3cd6-4194-a8ec-e96b36f6f089.jsonl`
-- `/ll:verify-issues` - 2026-04-25T17:54:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/008a2f03-f9f5-4084-b150-f39e97039172.jsonl`
-- `/ll:wire-issue` - 2026-04-25T17:52:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/96749c6f-f17b-4d10-b158-4822f481e6b6.jsonl`
-- `/ll:confidence-check` - 2026-04-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71b43b70-5185-4ea0-abcc-f27ef3f5177c.jsonl`
-- `/ll:go-no-go` - 2026-04-25T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5791a1c-1f5c-4e4c-aa52-09e8dd7d510d.jsonl`
-- `/ll:ready-issue` - 2026-04-25T17:26:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/587fda44-a2b8-4c66-9daa-c634f91dbf78.jsonl`
-- `/ll:format-issue` - 2026-04-25T01:21:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4acbc6d5-2175-415e-8228-17ec102d80fe.jsonl`
-- `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
-- `/ll:capture-issue` - 2026-04-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
+- `/ll:ready-issue` - 2026-04-25T18:14:51 - `096e08ad-573b-4e17-9674-d27d7d807c46.jsonl`
+- `/ll:confidence-check` - 2026-04-25T00:00:00 - `cb86effc-6421-4dbf-b1a1-86368e1d4644.jsonl`
+- `/ll:wire-issue` - 2026-04-25T18:09:23 - `435d237f-22dd-4664-8fe2-215738a163f3.jsonl`
+- `/ll:refine-issue` - 2026-04-25T18:02:52 - `c63d5643-3cd6-4194-a8ec-e96b36f6f089.jsonl`
+- `/ll:verify-issues` - 2026-04-25T17:54:43 - `008a2f03-f9f5-4084-b150-f39e97039172.jsonl`
+- `/ll:wire-issue` - 2026-04-25T17:52:54 - `96749c6f-f17b-4d10-b158-4822f481e6b6.jsonl`
+- `/ll:confidence-check` - 2026-04-25T00:00:00 - `71b43b70-5185-4ea0-abcc-f27ef3f5177c.jsonl`
+- `/ll:go-no-go` - 2026-04-25T00:00:00 - `c5791a1c-1f5c-4e4c-aa52-09e8dd7d510d.jsonl`
+- `/ll:ready-issue` - 2026-04-25T17:26:45 - `587fda44-a2b8-4c66-9daa-c634f91dbf78.jsonl`
+- `/ll:format-issue` - 2026-04-25T01:21:29 - `4acbc6d5-2175-415e-8228-17ec102d80fe.jsonl`
+- `/ll:verify-issues` - 2026-04-24T03:02:15 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+- `/ll:capture-issue` - 2026-04-16T00:00:00Z - `2fb1a4ee-5512-43ed-b858-2a21a4738fb8.jsonl`
 
 ---
 
@@ -311,4 +311,4 @@ Implemented 2026-04-25 via `/ll:manage-issue enhancement implement ENH-1121`.
 - [x] No regression: existing loops unaffected (5318 passed, 5 skipped)
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-25T18:30:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/096e08ad-573b-4e17-9674-d27d7d807c46.jsonl`
+- `/ll:manage-issue` - 2026-04-25T18:30:57Z - `096e08ad-573b-4e17-9674-d27d7d807c46.jsonl`

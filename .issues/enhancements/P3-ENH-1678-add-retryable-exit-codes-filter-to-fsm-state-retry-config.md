@@ -133,9 +133,9 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - Action: Set `status: done` in frontmatter
 
 ## Session Log
-- `/ll:verify-issues` - 2026-05-31T05:53:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:verify-issues` - 2026-05-31T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
-- `/ll:verify-issues` - 2026-05-31T02:30:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
-- `/ll:verify-issues` - 2026-05-28T23:48:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0efd786b-4b4c-43ee-9e8e-268bad2cc8a5.jsonl`
-- `/ll:format-issue` - 2026-05-24T13:21:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/765fa3c6-1a05-4cb7-8170-c01366684b4e.jsonl`
-- `/ll:capture-issue` - 2026-05-24T13:15:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bfd5e964-4cba-4f63-8354-255b3fbb9f18.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:53:48 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:verify-issues` - 2026-05-31T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:verify-issues` - 2026-05-31T02:30:16 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+- `/ll:verify-issues` - 2026-05-28T23:48:15 - `0efd786b-4b4c-43ee-9e8e-268bad2cc8a5.jsonl`
+- `/ll:format-issue` - 2026-05-24T13:21:58 - `765fa3c6-1a05-4cb7-8170-c01366684b4e.jsonl`
+- `/ll:capture-issue` - 2026-05-24T13:15:53Z - `bfd5e964-4cba-4f63-8354-255b3fbb9f18.jsonl`

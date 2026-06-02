@@ -143,7 +143,7 @@ Added `#### \`diff_stall\`` subsection under Tier 1 Deterministic Evaluators (af
 **Completed** | Created: 2026-03-21 | Resolved: 2026-03-21 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-21T21:03:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d24ac2aa-b0a6-4dcf-ad84-5a82e6b41943.jsonl`
-- `/ll:refine-issue` - 2026-03-21T20:56:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/046e2874-b7e6-4fdc-be3e-2cb5d08bf936.jsonl`
-- `/ll:confidence-check` - 2026-03-21T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6954f438-c674-4534-8882-64f2cd0164a2.jsonl`
-- `/ll:manage-issue enh implement ENH-853` - 2026-03-21T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-03-21T21:03:13 - `d24ac2aa-b0a6-4dcf-ad84-5a82e6b41943.jsonl`
+- `/ll:refine-issue` - 2026-03-21T20:56:31 - `046e2874-b7e6-4fdc-be3e-2cb5d08bf936.jsonl`
+- `/ll:confidence-check` - 2026-03-21T21:00:00 - `6954f438-c674-4534-8882-64f2cd0164a2.jsonl`
+- `/ll:manage-issue enh implement ENH-853` - 2026-03-21T00:00:00 - `current.jsonl`

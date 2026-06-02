@@ -130,11 +130,11 @@ This principle is validated by published research on long-context LLM architectu
 - **2026-04-01** — NEEDS_UPDATE. Removed completed blocker ENH-665 — issue is now unblocked. `docs/ARCHITECTURE.md` exists; no `### Context Efficiency` section present. Enhancement not yet applied.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-03T04:13:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-enh-497-20260402-231010/4342c31e-fb4d-4bd4-9fcb-51fd10e4bb94.jsonl`
-- `/ll:verify-issues` - 2026-04-03T02:58:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
-- `/ll:verify-issues` - 2026-04-01T17:45:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
-- `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Identified insertion point in ARCHITECTURE.md (after line ~839, inside ## Key Design Decisions, after Context Monitor section)
+- `hook:posttooluse-git-mv` - 2026-04-03T04:13:44 - `4342c31e-fb4d-4bd4-9fcb-51fd10e4bb94.jsonl`
+- `/ll:verify-issues` - 2026-04-03T02:58:19 - `7b02a8b8-608b-4a1c-989a-390b7334b1d4.jsonl`
+- `/ll:verify-issues` - 2026-04-01T17:45:21 - `712d1434-5c33-48b6-9de5-782d16771df5.jsonl`
+- `/ll:format-issue` - 2026-02-24 - `cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Identified insertion point in ARCHITECTURE.md (after line ~839, inside ## Key Design Decisions, after Context Monitor section)
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by FEAT-441
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/ARCHITECTURE.md` (line 839) to Related Key Documentation
@@ -145,7 +145,7 @@ This principle is validated by published research on long-context LLM architectu
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: no Context Efficiency section in ARCHITECTURE.md
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `### Context Efficiency` section still absent from ARCHITECTURE.md
 - `/ll:ready-issue` - 2026-04-02T23:10:00 - `session-unavailable`
-- `/ll:manage-issue` - 2026-04-02T23:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl` - Implemented: added ### Context Efficiency section to docs/ARCHITECTURE.md
+- `/ll:manage-issue` - 2026-04-02T23:10:00 - `fffc83c9-009a-4696-8010-040737bf7247.jsonl` - Implemented: added ### Context Efficiency section to docs/ARCHITECTURE.md
 
 ---
 

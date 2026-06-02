@@ -77,7 +77,7 @@ Add an entry to the Quick Reference table:
   - Added `review-loop` row to Quick Reference table in alphabetical position
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d52031f4-3086-4912-9d38-46e53a5c63fb.jsonl`
+- `/ll:ready-issue` - 2026-03-12T00:00:00Z - `d52031f4-3086-4912-9d38-46e53a5c63fb.jsonl`
 - `/ll:manage-issue` - 2026-03-12 - ENH-680 implementation
 
 ---

@@ -171,9 +171,9 @@ event_bus.emit({
 **Completed** | Created: 2026-04-02 | Completed: 2026-04-02 | Priority: P4
 
 ## Session Log
-- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b679f3b-da40-413e-ade8-ef41c109581e.jsonl`
-- `/ll:refine-issue` - 2026-04-02T18:55:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/562ae113-f540-4eb1-854f-8e2587153d41.jsonl`
-- `/ll:format-issue` - 2026-04-02T18:47:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/41b7e13f-e7a5-4e5d-9839-ca0cca6a202b.jsonl`
-- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ec33f5e-0af1-4604-bdc4-0c4331282e3e.jsonl`
+- `/ll:confidence-check` - 2026-04-02T00:00:00Z - `7b679f3b-da40-413e-ade8-ef41c109581e.jsonl`
+- `/ll:refine-issue` - 2026-04-02T18:55:43 - `562ae113-f540-4eb1-854f-8e2587153d41.jsonl`
+- `/ll:format-issue` - 2026-04-02T18:47:06 - `41b7e13f-e7a5-4e5d-9839-ca0cca6a202b.jsonl`
+- `/ll:capture-issue` - 2026-04-02T00:00:00Z - `4ec33f5e-0af1-4604-bdc4-0c4331282e3e.jsonl`
 
 - `/ll:ready-issue` - 2026-04-02T20:47:27 - `unknown-session`

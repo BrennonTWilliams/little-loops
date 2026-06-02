@@ -307,13 +307,13 @@ _Added by `/ll:confidence-check` on 2026-05-09_
 - **Test breakage before first run**: `test_cli_args.py::test_contains_expected_types` and `test_cli_output.py` setup/teardown will fail immediately; fix these first or CI blocks all other validation.
 
 ## Session Log
-- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/adfa30cd-8f9d-48b3-9e4b-2a81bf6caa05.jsonl`
-- `/ll:wire-issue` - 2026-05-09T21:57:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7544439b-419c-4586-b140-ffaab75f3733.jsonl`
-- `/ll:refine-issue` - 2026-05-09T21:46:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4dc81de5-5bdf-4f30-9119-d45cc81ad80c.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
-- `/ll:format-issue` - 2026-05-09T20:39:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf87852d-ec5b-4a4d-959f-57a040534f19.jsonl`
+- `/ll:issue-size-review` - 2026-05-09T00:00:00Z - `adfa30cd-8f9d-48b3-9e4b-2a81bf6caa05.jsonl`
+- `/ll:wire-issue` - 2026-05-09T21:57:46 - `7544439b-419c-4586-b140-ffaab75f3733.jsonl`
+- `/ll:refine-issue` - 2026-05-09T21:46:49 - `4dc81de5-5bdf-4f30-9119-d45cc81ad80c.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-09T21:28:14 - `e645f0b2-a5ad-4372-9b3d-7e5a971f5dfa.jsonl`
+- `/ll:format-issue` - 2026-05-09T20:39:20 - `cf87852d-ec5b-4a4d-959f-57a040534f19.jsonl`
 - `/ll:capture-issue` - 2026-05-09T20:26:09Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e536be3e-1c62-4dcb-81f6-419c8b29e71f.jsonl`
-- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/235810f3-1406-4664-ab0d-c24db173c550.jsonl`
+- `/ll:confidence-check` - 2026-05-09T00:00:00Z - `235810f3-1406-4664-ab0d-c24db173c550.jsonl`
 
 ---
 

@@ -240,10 +240,10 @@ _Added by `/ll:confidence-check` on 2026-05-17_
 - ENH-1551: Status one-shot cleanup pass for non-canonical values in .issues/
 
 ## Session Log
-- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/501863a2-f47e-4a9d-ac6f-42bb4f68fcda.jsonl`
-- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e994b5a7-bd67-4e1b-8e86-ff8daad14873.jsonl`
-- `/ll:wire-issue` - 2026-05-17T08:13:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7566953b-6a4d-4484-b84c-26f7a869ac63.jsonl`
-- `/ll:refine-issue` - 2026-05-17T08:06:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ab87c4d-6a66-49e7-b727-427f181401b0.jsonl`
-- `/ll:verify-issues` - 2026-05-17T05:54:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9fb51237-8283-40d3-94ce-bda6ff4b1b33.jsonl`
-- `/ll:format-issue` - 2026-05-17T03:36:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fdd26cb3-344e-4b60-b7da-2a6f19dd2f75.jsonl`
-- `/ll:capture-issue` - 2026-05-17T03:25:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fc34edff-2889-4499-9167-9c9f3178d6c1.jsonl`
+- `/ll:confidence-check` - 2026-05-17T00:00:00Z - `501863a2-f47e-4a9d-ac6f-42bb4f68fcda.jsonl`
+- `/ll:issue-size-review` - 2026-05-17T00:00:00Z - `e994b5a7-bd67-4e1b-8e86-ff8daad14873.jsonl`
+- `/ll:wire-issue` - 2026-05-17T08:13:49 - `7566953b-6a4d-4484-b84c-26f7a869ac63.jsonl`
+- `/ll:refine-issue` - 2026-05-17T08:06:12 - `9ab87c4d-6a66-49e7-b727-427f181401b0.jsonl`
+- `/ll:verify-issues` - 2026-05-17T05:54:39 - `9fb51237-8283-40d3-94ce-bda6ff4b1b33.jsonl`
+- `/ll:format-issue` - 2026-05-17T03:36:51 - `fdd26cb3-344e-4b60-b7da-2a6f19dd2f75.jsonl`
+- `/ll:capture-issue` - 2026-05-17T03:25:34Z - `fc34edff-2889-4499-9167-9c9f3178d6c1.jsonl`

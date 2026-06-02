@@ -125,12 +125,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `display`, `captured`
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-03-24T21:38:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/849b93a7-cdb2-4d73-9632-76cf94704708.jsonl`
-- `/ll:ready-issue` - 2026-03-24T21:35:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0f7d60db-9601-427c-9994-470b9dd214a8.jsonl`
-- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53ba0be0-d3da-480a-afee-b057175a21d5.jsonl`
-- `/ll:refine-issue` - 2026-03-24T21:16:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62b2e8f8-ccf9-4ace-b015-4f31884ff3af.jsonl`
+- `hook:posttooluse-git-mv` - 2026-03-24T21:38:59 - `849b93a7-cdb2-4d73-9632-76cf94704708.jsonl`
+- `/ll:ready-issue` - 2026-03-24T21:35:09 - `0f7d60db-9601-427c-9994-470b9dd214a8.jsonl`
+- `/ll:confidence-check` - 2026-03-24T00:00:00Z - `53ba0be0-d3da-480a-afee-b057175a21d5.jsonl`
+- `/ll:refine-issue` - 2026-03-24T21:16:30 - `62b2e8f8-ccf9-4ace-b015-4f31884ff3af.jsonl`
 
-- `/ll:capture-issue` - 2026-03-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f7b65b55-cf2f-4329-bd1e-bb86516edd27.jsonl`
+- `/ll:capture-issue` - 2026-03-24T00:00:00Z - `f7b65b55-cf2f-4329-bd1e-bb86516edd27.jsonl`
 
 ## Resolution
 

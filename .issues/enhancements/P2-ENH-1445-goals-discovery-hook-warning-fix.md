@@ -141,13 +141,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-05-11 | Priority: P2
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-11T20:00:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49becedd-fa32-468d-92aa-cde351ac73f0.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ff0145d5-b7f9-4caa-94df-36d9126dc2fd.jsonl`
-- `/ll:decide-issue` - 2026-05-11T19:56:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2cf9c552-8f63-44f7-971b-98d9da90104c.jsonl`
-- `/ll:wire-issue` - 2026-05-11T19:50:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d95423f9-658c-4e96-8246-610cc4efd463.jsonl`
-- `/ll:refine-issue` - 2026-05-11T19:47:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f6570c7-cc28-4156-88a6-a61486c174bb.jsonl`
-- `/ll:issue-size-review` - 2026-05-11T19:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0abadba2-fa26-422a-8f2e-9ed2d2744c98.jsonl`
-- `/ll:confidence-check` - 2026-05-11T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/33a403c7-158c-474f-923d-29419c3cafc5.jsonl`
+- `/ll:ready-issue` - 2026-05-11T20:00:19 - `49becedd-fa32-468d-92aa-cde351ac73f0.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `ff0145d5-b7f9-4caa-94df-36d9126dc2fd.jsonl`
+- `/ll:decide-issue` - 2026-05-11T19:56:19 - `2cf9c552-8f63-44f7-971b-98d9da90104c.jsonl`
+- `/ll:wire-issue` - 2026-05-11T19:50:32 - `d95423f9-658c-4e96-8246-610cc4efd463.jsonl`
+- `/ll:refine-issue` - 2026-05-11T19:47:27 - `3f6570c7-cc28-4156-88a6-a61486c174bb.jsonl`
+- `/ll:issue-size-review` - 2026-05-11T19:30:00 - `0abadba2-fa26-422a-8f2e-9ed2d2744c98.jsonl`
+- `/ll:confidence-check` - 2026-05-11T00:00:00 - `33a403c7-158c-474f-923d-29419c3cafc5.jsonl`
 
 ---
 

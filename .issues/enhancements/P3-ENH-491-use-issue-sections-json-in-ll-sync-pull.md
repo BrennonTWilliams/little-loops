@@ -89,7 +89,7 @@ This output lacks the v2.0 section structure (Summary, Current Behavior, Expecte
 - `/ll:capture-issue` - 2026-02-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/111eb543-d1ab-4bb9-b78b-61104209c4eb.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
 - `/ll:verify-issues` - 2026-02-24 - Updated `_create_local_issue` line reference from 637-694 to 615-670
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified; no Python code currently loads issue-sections.json (all consumers are AI skill files); confirmed sync.py:615-670 uses hardcoded inline template as stated
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified; no Python code currently loads issue-sections.json (all consumers are AI skill files); confirmed sync.py:615-670 uses hardcoded inline template as stated
 
 ## Status
 

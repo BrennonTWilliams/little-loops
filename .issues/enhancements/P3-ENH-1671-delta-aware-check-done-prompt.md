@@ -299,11 +299,11 @@ Update first — wait for ENH-1658 to land, then confirm `next:` routing to `cou
 ---
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-24T13:59:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60831cc8-469a-4367-b84d-0ade73d9a986.jsonl`
-- `/ll:confidence-check` - 2026-05-24T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`
-- `/ll:wire-issue` - 2026-05-24T13:51:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d39e014b-4c8d-4ba2-8b69-47760f1c3687.jsonl`
-- `/ll:decide-issue` - 2026-05-24T13:45:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c10f6d15-52d0-417a-a7da-e6f624facae2.jsonl`
-- `/ll:refine-issue` - 2026-05-24T13:38:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f14fda9-d560-46f6-992c-b2274de5ed68.jsonl`
-- `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
-- `/ll:format-issue` - 2026-05-24T13:23:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/101e364c-669a-4add-9c9a-d2fd416d3171.jsonl`
-- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`
+- `/ll:ready-issue` - 2026-05-24T13:59:28 - `60831cc8-469a-4367-b84d-0ade73d9a986.jsonl`
+- `/ll:confidence-check` - 2026-05-24T00:00:00 - `f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`
+- `/ll:wire-issue` - 2026-05-24T13:51:37 - `d39e014b-4c8d-4ba2-8b69-47760f1c3687.jsonl`
+- `/ll:decide-issue` - 2026-05-24T13:45:26 - `c10f6d15-52d0-417a-a7da-e6f624facae2.jsonl`
+- `/ll:refine-issue` - 2026-05-24T13:38:50 - `8f14fda9-d560-46f6-992c-b2274de5ed68.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-05-24T13:37:49 - `1c29e127-5f7b-421f-9734-c94217103bba.jsonl`
+- `/ll:format-issue` - 2026-05-24T13:23:32 - `101e364c-669a-4add-9c9a-d2fd416d3171.jsonl`
+- `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`

@@ -456,18 +456,18 @@ Key decisions:
 - `_FILE_LINE` regex only matches relative paths (starting `[a-zA-Z_]`), so absolute paths are intentionally excluded.
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-27T20:55:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/564c5e37-eac4-477b-965f-3f220acda028.jsonl`
-- `/ll:manage-issue` - 2026-04-27T20:54:41Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6db6f9a8-f94e-4fa1-8d9a-d6bac325f1f6.jsonl`
-- `/ll:ready-issue` - 2026-04-27T20:37:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6db6f9a8-f94e-4fa1-8d9a-d6bac325f1f6.jsonl`
-- `/ll:confidence-check` - 2026-04-27T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ac825fad-b8ee-45c2-8945-487043d3bba9.jsonl`
-- `/ll:wire-issue` - 2026-04-27T20:14:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ae96759-c3f2-4177-a13a-8f6ee414e468.jsonl`
-- `/ll:refine-issue` - 2026-04-27T19:33:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f03c07e-76a1-42e2-9978-4ffb6684e484.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-27T20:55:01 - `564c5e37-eac4-477b-965f-3f220acda028.jsonl`
+- `/ll:manage-issue` - 2026-04-27T20:54:41Z - `6db6f9a8-f94e-4fa1-8d9a-d6bac325f1f6.jsonl`
+- `/ll:ready-issue` - 2026-04-27T20:37:08 - `6db6f9a8-f94e-4fa1-8d9a-d6bac325f1f6.jsonl`
+- `/ll:confidence-check` - 2026-04-27T00:00:00 - `ac825fad-b8ee-45c2-8945-487043d3bba9.jsonl`
+- `/ll:wire-issue` - 2026-04-27T20:14:31 - `4ae96759-c3f2-4177-a13a-8f6ee414e468.jsonl`
+- `/ll:refine-issue` - 2026-04-27T19:33:07 - `1f03c07e-76a1-42e2-9978-4ffb6684e484.jsonl`
 - Design revision - 2026-04-27 - Replaced `ast.parse()` walk-back design with language-agnostic regex backwards-scan. Motivation: little-loops is language-agnostic and the AST approach would silently skip `.ts`/`.go`/`.rs` references on non-Python projects. The regex approach uses stdlib `re` only, covers all common definition syntaxes, and treats misses as safe no-ops (leave original reference unchanged).
-- `/ll:confidence-check` - 2026-04-27T19:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/347d3186-75d2-471b-9e21-c66817ddf731.jsonl`
-- `/ll:wire-issue` - 2026-04-27T19:14:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6e5401e-6c0b-44a1-9668-5e9e34d7fcb7.jsonl`
-- `/ll:refine-issue` - 2026-04-27T19:08:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d3b7185f-23b7-4f5d-a4fb-ef3170ad3e77.jsonl`
-- `/ll:format-issue` - 2026-04-27T16:24:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55b2ae6b-cfb7-490c-a90a-55c58082ceb5.jsonl`
-- `/ll:issue-size-review` - 2026-04-27T17:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:confidence-check` - 2026-04-27T19:30:00 - `347d3186-75d2-471b-9e21-c66817ddf731.jsonl`
+- `/ll:wire-issue` - 2026-04-27T19:14:27 - `a6e5401e-6c0b-44a1-9668-5e9e34d7fcb7.jsonl`
+- `/ll:refine-issue` - 2026-04-27T19:08:33 - `d3b7185f-23b7-4f5d-a4fb-ef3170ad3e77.jsonl`
+- `/ll:format-issue` - 2026-04-27T16:24:44 - `55b2ae6b-cfb7-490c-a90a-55c58082ceb5.jsonl`
+- `/ll:issue-size-review` - 2026-04-27T17:30:00Z - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
 
 ---
 

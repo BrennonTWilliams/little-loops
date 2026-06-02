@@ -199,15 +199,15 @@ _Added by `/ll:confidence-check` on 2026-05-18_
 - Step 4 ✓ — `docs/reference/API.md` bullet added to `validate_fsm` "Checks performed" list
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-22T17:29:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5331c514-19e1-43ed-bae5-d63e2f455381.jsonl`
-- `/ll:confidence-check` - 2026-05-22T19:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c10fa591-8c6e-4d33-9734-f10f63a73dfd.jsonl`
-- `/ll:wire-issue` - 2026-05-22T17:25:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d55cd72d-5d46-44d1-9344-1c81c32ca467.jsonl`
-- `/ll:wire-issue` - 2026-05-22T17:25:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d55cd72d-5d46-44d1-9344-1c81c32ca467.jsonl`
-- `/ll:refine-issue` - 2026-05-22T17:18:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1ab2fbe2-f5bb-486c-9ef9-6e289494188f.jsonl`
-- `/ll:verify-issues` - 2026-05-22T16:11:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
-- `/ll:verify-issues` - 2026-05-22T11:10:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
-- `/ll:wire-issue` - 2026-05-18T09:30:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5571e64c-0146-4ce6-b685-6d24fc815c29.jsonl`
-- `/ll:refine-issue` - 2026-05-18T09:23:25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aa0f6b63-a498-4ea8-b762-333bb5e7342c.jsonl`
-- `/ll:confidence-check` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee00bd56-eb77-430a-9e44-072d6272930a.jsonl`
-- `/ll:issue-size-review` - 2026-05-18T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fbd13cdc-51a4-41ee-85fe-30c33cc936aa.jsonl`
-- `/ll:manage-issue` - 2026-05-22T17:38:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d38a5cd0-99ac-4f4d-819c-c5da7c54ee2e.jsonl`
+- `/ll:ready-issue` - 2026-05-22T17:29:20 - `5331c514-19e1-43ed-bae5-d63e2f455381.jsonl`
+- `/ll:confidence-check` - 2026-05-22T19:00:00 - `c10fa591-8c6e-4d33-9734-f10f63a73dfd.jsonl`
+- `/ll:wire-issue` - 2026-05-22T17:25:10 - `d55cd72d-5d46-44d1-9344-1c81c32ca467.jsonl`
+- `/ll:wire-issue` - 2026-05-22T17:25:06 - `d55cd72d-5d46-44d1-9344-1c81c32ca467.jsonl`
+- `/ll:refine-issue` - 2026-05-22T17:18:32 - `1ab2fbe2-f5bb-486c-9ef9-6e289494188f.jsonl`
+- `/ll:verify-issues` - 2026-05-22T16:11:41 - `d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
+- `/ll:verify-issues` - 2026-05-22T11:10:00 - `d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
+- `/ll:wire-issue` - 2026-05-18T09:30:31 - `5571e64c-0146-4ce6-b685-6d24fc815c29.jsonl`
+- `/ll:refine-issue` - 2026-05-18T09:23:25 - `aa0f6b63-a498-4ea8-b762-333bb5e7342c.jsonl`
+- `/ll:confidence-check` - 2026-05-18T00:00:00 - `ee00bd56-eb77-430a-9e44-072d6272930a.jsonl`
+- `/ll:issue-size-review` - 2026-05-18T00:00:00 - `fbd13cdc-51a4-41ee-85fe-30c33cc936aa.jsonl`
+- `/ll:manage-issue` - 2026-05-22T17:38:09 - `d38a5cd0-99ac-4f4d-819c-c5da7c54ee2e.jsonl`

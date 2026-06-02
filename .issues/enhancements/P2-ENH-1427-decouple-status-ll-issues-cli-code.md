@@ -226,13 +226,13 @@ All 16 implementation steps completed (13 original + 3 wiring-phase additions):
 - All 11 test files updated; 211 tests pass; 1 pre-existing unrelated failure (`test_marketplace_top_level_version_matches_plugin`)
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-05-10T17:22:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0b452f5d-0bb3-45eb-b714-8b5472820152.jsonl`
-- `/ll:ready-issue` - 2026-05-10T17:08:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2f985c5-455e-4780-9a03-a1b07ee53f38.jsonl`
-- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbdb0f18-2fde-4290-bc98-ee1851af4af9.jsonl`
-- `/ll:wire-issue` - 2026-05-10T17:00:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7dad6dd1-b723-4db0-9063-554e8d0e16fd.jsonl`
-- `/ll:refine-issue` - 2026-05-10T16:52:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/100dd3ca-3a8f-4f99-ae7d-8543ece55707.jsonl`
-- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8de4dc0e-8a1e-41f5-94a2-7daaa289459e.jsonl`
-- `/ll:manage-issue` - 2026-05-10T17:22:15Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `hook:posttooluse-git-mv` - 2026-05-10T17:22:52 - `0b452f5d-0bb3-45eb-b714-8b5472820152.jsonl`
+- `/ll:ready-issue` - 2026-05-10T17:08:03 - `b2f985c5-455e-4780-9a03-a1b07ee53f38.jsonl`
+- `/ll:confidence-check` - 2026-05-10T00:00:00Z - `dbdb0f18-2fde-4290-bc98-ee1851af4af9.jsonl`
+- `/ll:wire-issue` - 2026-05-10T17:00:34 - `7dad6dd1-b723-4db0-9063-554e8d0e16fd.jsonl`
+- `/ll:refine-issue` - 2026-05-10T16:52:08 - `100dd3ca-3a8f-4f99-ae7d-8543ece55707.jsonl`
+- `/ll:issue-size-review` - 2026-05-10T00:00:00Z - `8de4dc0e-8a1e-41f5-94a2-7daaa289459e.jsonl`
+- `/ll:manage-issue` - 2026-05-10T17:22:15Z - `current.jsonl`
 
 ---
 

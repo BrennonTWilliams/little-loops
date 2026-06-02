@@ -173,10 +173,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 Fixed by inserting `check_missing_artifacts` gate state between `check_decision_needed` and `breakdown_issue` in `refine-to-ready-issue.yaml`. Changed `check_decision_needed.on_no` and `check_decision_needed.on_error` from `breakdown_issue` to `check_missing_artifacts`. When `missing_artifacts: true`, the sub-loop now exits via `done`, allowing the outer `autodev` loop's `triage_outcome_failure → check_missing_artifacts → run_wire` path to handle repair. Also updated `docs/guides/LOOPS_GUIDE.md` to reflect the full three-gate chain and added 5 regression tests in `TestRefineToReadyIssueSubLoop`.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-16T04:23:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99cac8da-4f28-42e6-8dbc-8095b5843f22.jsonl`
-- `/ll:confidence-check` - 2026-05-16T04:25:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e40b080a-efae-4ba3-a354-1a0e00ea6c7a.jsonl`
-- `/ll:wire-issue` - 2026-05-16T04:19:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb28b6c9-84d0-4111-910a-5c9995456f1a.jsonl`
-- `/ll:refine-issue` - 2026-05-16T04:14:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eb40cea7-4a12-422f-a701-5d413a8ec138.jsonl`
-- `/ll:format-issue` - 2026-05-16T04:10:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bdf87445-2e6f-4176-b4f9-271ef09487e4.jsonl`
-- `/ll:capture-issue` - 2026-05-16T04:06:13Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffbdb77c-d0c6-43e0-a45d-2fb26e8e53b6.jsonl`
-- `/ll:manage-issue` - 2026-05-16T04:27:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e40b080a-efae-4ba3-a354-1a0e00ea6c7a.jsonl`
+- `/ll:ready-issue` - 2026-05-16T04:23:59 - `99cac8da-4f28-42e6-8dbc-8095b5843f22.jsonl`
+- `/ll:confidence-check` - 2026-05-16T04:25:00 - `e40b080a-efae-4ba3-a354-1a0e00ea6c7a.jsonl`
+- `/ll:wire-issue` - 2026-05-16T04:19:21 - `eb28b6c9-84d0-4111-910a-5c9995456f1a.jsonl`
+- `/ll:refine-issue` - 2026-05-16T04:14:50 - `eb40cea7-4a12-422f-a701-5d413a8ec138.jsonl`
+- `/ll:format-issue` - 2026-05-16T04:10:46 - `bdf87445-2e6f-4176-b4f9-271ef09487e4.jsonl`
+- `/ll:capture-issue` - 2026-05-16T04:06:13Z - `ffbdb77c-d0c6-43e0-a45d-2fb26e8e53b6.jsonl`
+- `/ll:manage-issue` - 2026-05-16T04:27:00Z - `e40b080a-efae-4ba3-a354-1a0e00ea6c7a.jsonl`

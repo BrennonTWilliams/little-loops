@@ -173,10 +173,10 @@ Fixed 4 locations across 2 files:
 All 3863 tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-23T18:29:45 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa97f181-0c89-48a7-90d1-c20a0ffe9cd8.jsonl`
-- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7754065d-d79f-4df1-9b8e-8e6c7e070b2c.jsonl`
-- `/ll:format-issue` - 2026-03-23T18:09:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4be9bd15-4ea4-4d36-846c-df93dbbf77e9.jsonl`
-- `/ll:refine-issue` - 2026-03-23T17:13:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce5d0bc6-5ac2-4aae-8e31-43ca6876d26e.jsonl`
+- `/ll:ready-issue` - 2026-03-23T18:29:45 - `fa97f181-0c89-48a7-90d1-c20a0ffe9cd8.jsonl`
+- `/ll:confidence-check` - 2026-03-23T00:00:00Z - `7754065d-d79f-4df1-9b8e-8e6c7e070b2c.jsonl`
+- `/ll:format-issue` - 2026-03-23T18:09:10 - `4be9bd15-4ea4-4d36-846c-df93dbbf77e9.jsonl`
+- `/ll:refine-issue` - 2026-03-23T17:13:16 - `ce5d0bc6-5ac2-4aae-8e31-43ca6876d26e.jsonl`
 - `/ll:capture-issue` - 2026-03-23T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/06fdc033-986b-4b59-b280-3505ad02d65c.jsonl`
 
 ---

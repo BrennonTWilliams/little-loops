@@ -212,14 +212,14 @@ Decided by `/ll:decide-issue` on 2026-06-01.
 - FEAT-557: Add `--format json` to `ll-workflows` (done — parity reference for output flags)
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T20:23:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/77ea0545-6144-4266-a5c4-0bfff8650779.jsonl`
-- `/ll:confidence-check` - 2026-06-01T21:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/813e2a5f-d24c-438e-a426-e4970231e347.jsonl`
-- `/ll:decide-issue` - 2026-06-01T20:19:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e874e443-0b3b-43eb-88ed-57be305c96d0.jsonl`
-- `/ll:wire-issue` - 2026-06-01T20:10:07 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/21fc4d51-9f05-467d-9e9a-9dfbe2765d14.jsonl`
-- `/ll:refine-issue` - 2026-06-01T20:05:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4b5da24-54cf-4b03-8f0f-1659be02c409.jsonl`
+- `/ll:ready-issue` - 2026-06-01T20:23:57 - `77ea0545-6144-4266-a5c4-0bfff8650779.jsonl`
+- `/ll:confidence-check` - 2026-06-01T21:00:00 - `813e2a5f-d24c-438e-a426-e4970231e347.jsonl`
+- `/ll:decide-issue` - 2026-06-01T20:19:39 - `e874e443-0b3b-43eb-88ed-57be305c96d0.jsonl`
+- `/ll:wire-issue` - 2026-06-01T20:10:07 - `21fc4d51-9f05-467d-9e9a-9dfbe2765d14.jsonl`
+- `/ll:refine-issue` - 2026-06-01T20:05:29 - `b4b5da24-54cf-4b03-8f0f-1659be02c409.jsonl`
 - `/ll:refine-issue` - 2026-06-01T00:00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:verify-issues` - 2026-05-31T05:40:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cc00c83-84fd-4f43-9f5f-608dd241e0d5.jsonl`
+- `/ll:verify-issues` - 2026-05-31T05:40:08 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00 - `8cc00c83-84fd-4f43-9f5f-608dd241e0d5.jsonl`
 - `/ll:capture-issue` - 2026-05-27T21:20:05Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d76f6684-f28b-48e1-8feb-af054e035afe.jsonl`
 
 ---

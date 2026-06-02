@@ -189,9 +189,9 @@ Verification:
 - `python -m mypy scripts/little_loops/` — pre-existing `wcwidth` stub warning only (unrelated to this change)
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00032768-5efc-466a-aad1-02f0fb698fb3.jsonl`
-- `/ll:ready-issue` - 2026-04-17T03:45:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86c5c7e4-236c-46a0-acd9-2124269e76f0.jsonl`
-- `/ll:confidence-check` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1db273db-92c0-4518-a02e-d131c8a6790d.jsonl`
-- `/ll:wire-issue` - 2026-04-17T03:41:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/51944600-1620-40f1-b229-242412743430.jsonl`
-- `/ll:refine-issue` - 2026-04-17T03:36:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a72ddf9a-f502-4693-ad85-c0fbf00745d3.jsonl`
-- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fc25386-a9f0-4e75-8434-c659db481895.jsonl`
+- `/ll:manage-issue` - 2026-04-16T00:00:00 - `00032768-5efc-466a-aad1-02f0fb698fb3.jsonl`
+- `/ll:ready-issue` - 2026-04-17T03:45:42 - `86c5c7e4-236c-46a0-acd9-2124269e76f0.jsonl`
+- `/ll:confidence-check` - 2026-04-16T00:00:00 - `1db273db-92c0-4518-a02e-d131c8a6790d.jsonl`
+- `/ll:wire-issue` - 2026-04-17T03:41:47 - `51944600-1620-40f1-b229-242412743430.jsonl`
+- `/ll:refine-issue` - 2026-04-17T03:36:17 - `a72ddf9a-f502-4693-ad85-c0fbf00745d3.jsonl`
+- `/ll:issue-size-review` - 2026-04-16T00:00:00 - `4fc25386-a9f0-4e75-8434-c659db481895.jsonl`

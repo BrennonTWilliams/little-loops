@@ -129,9 +129,9 @@ child_fsm.context = {**self.fsm.context, **captured_as_context, **child_fsm.cont
 **Test added**: `test_sub_loop_context_passthrough_captured_values` in `test_fsm_executor.py` — verifies a captured shell output is received as a plain string in the child loop's context.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-- `/ll:ready-issue` - 2026-04-02T02:58:38 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dab3a3df-4969-489e-998b-1844664bee57.jsonl`
-- `/ll:capture-issue` - 2026-04-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eaf73d5c-81eb-45a4-a5e6-b157f77ba059.jsonl`
+- `/ll:manage-issue` - 2026-04-01T00:00:00Z
+- `/ll:ready-issue` - 2026-04-02T02:58:38 - `dab3a3df-4969-489e-998b-1844664bee57.jsonl`
+- `/ll:capture-issue` - 2026-04-01T00:00:00Z - `eaf73d5c-81eb-45a4-a5e6-b157f77ba059.jsonl`
 
 ---
 

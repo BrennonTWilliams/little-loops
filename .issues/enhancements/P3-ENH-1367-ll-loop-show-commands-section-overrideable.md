@@ -173,10 +173,10 @@ Implemented as proposed. Added `CommandEntry` dataclass and `commands: list[Comm
 **Completed** | Created: 2026-05-05 | Completed: 2026-05-05 | Priority: P3
 
 ## Session Log
-- `/ll:ready-issue` - 2026-05-05T21:55:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed3dc7da-1dfc-4f68-9790-e7e803883487.jsonl`
-- `/ll:confidence-check` - 2026-05-05T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/16a3e113-baf2-41e0-b321-848c4bdfa74c.jsonl`
-- `/ll:wire-issue` - 2026-05-05T21:46:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d3577a7-f3d0-4155-9f46-1f1b3f63c65b.jsonl`
-- `/ll:refine-issue` - 2026-05-05T21:39:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/059b633f-2642-4e9d-8406-495c86986ecc.jsonl`
-- `/ll:format-issue` - 2026-05-05T16:11:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/98d22fda-71de-49e9-aea7-b33c13fb736c.jsonl`
-- `/ll:manage-issue` - 2026-05-05T22:00:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed3dc7da-1dfc-4f68-9790-e7e803883487.jsonl`
+- `/ll:ready-issue` - 2026-05-05T21:55:02 - `ed3dc7da-1dfc-4f68-9790-e7e803883487.jsonl`
+- `/ll:confidence-check` - 2026-05-05T22:00:00 - `16a3e113-baf2-41e0-b321-848c4bdfa74c.jsonl`
+- `/ll:wire-issue` - 2026-05-05T21:46:41 - `9d3577a7-f3d0-4155-9f46-1f1b3f63c65b.jsonl`
+- `/ll:refine-issue` - 2026-05-05T21:39:32 - `059b633f-2642-4e9d-8406-495c86986ecc.jsonl`
+- `/ll:format-issue` - 2026-05-05T16:11:50 - `98d22fda-71de-49e9-aea7-b33c13fb736c.jsonl`
+- `/ll:manage-issue` - 2026-05-05T22:00:34Z - `ed3dc7da-1dfc-4f68-9790-e7e803883487.jsonl`
 - `/ll:capture-issue` - 2026-05-05T16:08:53Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

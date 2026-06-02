@@ -207,12 +207,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `epics`, `skill`, `decomposition`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T21:46:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a66023e-f692-4d62-bacb-ee50c29a40b2.jsonl`
-- `/ll:wire-issue` - 2026-06-01T23:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/540b3294-cbb3-4d48-9bcb-553455ab6996.jsonl`
-- `/ll:refine-issue` - 2026-06-01T21:22:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0a7b6da-9f87-494e-bbbf-ba6d77bc6215.jsonl`
-- `/ll:format-issue` - 2026-06-01T17:44:47 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/756a4b19-3f84-45ba-b4ff-aeb860ba5ecf.jsonl`
-- `/ll:capture-issue` - 2026-06-01T17:35:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/277dd3c5-ffef-46cb-bcc6-124409ce1225.jsonl`
-- `/ll:confidence-check` - 2026-06-01T23:31:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5c971e-9282-4dbf-a93b-36e183431aca.jsonl`
+- `/ll:ready-issue` - 2026-06-01T21:46:03 - `9a66023e-f692-4d62-bacb-ee50c29a40b2.jsonl`
+- `/ll:wire-issue` - 2026-06-01T23:30:00 - `540b3294-cbb3-4d48-9bcb-553455ab6996.jsonl`
+- `/ll:refine-issue` - 2026-06-01T21:22:01 - `c0a7b6da-9f87-494e-bbbf-ba6d77bc6215.jsonl`
+- `/ll:format-issue` - 2026-06-01T17:44:47 - `756a4b19-3f84-45ba-b4ff-aeb860ba5ecf.jsonl`
+- `/ll:capture-issue` - 2026-06-01T17:35:32Z - `277dd3c5-ffef-46cb-bcc6-124409ce1225.jsonl`
+- `/ll:confidence-check` - 2026-06-01T23:31:00Z - `4c5c971e-9282-4dbf-a93b-36e183431aca.jsonl`
 
 ---
 

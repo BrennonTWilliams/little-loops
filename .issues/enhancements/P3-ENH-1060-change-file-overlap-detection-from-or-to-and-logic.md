@@ -193,11 +193,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 4526 tests pass (1 pre-existing failure in `test_builtin_loops.py` unrelated to this change).
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-12T17:04:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f45e1dff-afbc-4d86-8204-6bcacbd51ec3.jsonl`
-- `/ll:wire-issue` - 2026-04-12T16:38:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46202feb-d001-41be-a52b-687026007370.jsonl`
-- `/ll:refine-issue` - 2026-04-12T16:31:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/99267590-1f6b-48a8-b5a5-7586dfb4d27d.jsonl`
-- `/ll:capture-issue` - 2026-04-12T17:20:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d397308b-e908-423f-9d30-383270c713d4.jsonl`
-- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6fd5b1cf-9282-4020-bbe7-2578be1e816e.jsonl`
+- `/ll:ready-issue` - 2026-04-12T17:04:12 - `f45e1dff-afbc-4d86-8204-6bcacbd51ec3.jsonl`
+- `/ll:wire-issue` - 2026-04-12T16:38:35 - `46202feb-d001-41be-a52b-687026007370.jsonl`
+- `/ll:refine-issue` - 2026-04-12T16:31:05 - `99267590-1f6b-48a8-b5a5-7586dfb4d27d.jsonl`
+- `/ll:capture-issue` - 2026-04-12T17:20:00Z - `d397308b-e908-423f-9d30-383270c713d4.jsonl`
+- `/ll:confidence-check` - 2026-04-12T00:00:00Z - `6fd5b1cf-9282-4020-bbe7-2578be1e816e.jsonl`
 - `/ll:manage-issue` - 2026-04-12T00:00:00Z - (current session)
 
 ## Status

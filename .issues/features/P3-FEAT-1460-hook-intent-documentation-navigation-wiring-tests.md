@@ -251,9 +251,9 @@ Verification:
 - `ruff check` on touched test files — clean.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-12T05:36:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ee24c53-4a50-40f5-87d0-cfa286e6878c.jsonl`
-- `/ll:ready-issue` - 2026-05-12T05:30:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/833b1dee-1923-413b-8bf1-9689f2423052.jsonl`
-- `/ll:wire-issue` - 2026-05-12T05:25:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79fead5a-8bf9-428e-a7b5-806678c17cb3.jsonl`
-- `/ll:refine-issue` - 2026-05-12T05:21:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/80d5db40-25d8-4ef3-a5be-eeffe799ff83.jsonl`
-- `/ll:issue-size-review` - 2026-05-12T04:28:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
-- `/ll:confidence-check` - 2026-05-12T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`
+- `/ll:manage-issue` - 2026-05-12T05:36:08 - `5ee24c53-4a50-40f5-87d0-cfa286e6878c.jsonl`
+- `/ll:ready-issue` - 2026-05-12T05:30:40 - `833b1dee-1923-413b-8bf1-9689f2423052.jsonl`
+- `/ll:wire-issue` - 2026-05-12T05:25:28 - `79fead5a-8bf9-428e-a7b5-806678c17cb3.jsonl`
+- `/ll:refine-issue` - 2026-05-12T05:21:18 - `80d5db40-25d8-4ef3-a5be-eeffe799ff83.jsonl`
+- `/ll:issue-size-review` - 2026-05-12T04:28:55 - `001d2505-0292-435c-bc36-5f2f000ffd72.jsonl`
+- `/ll:confidence-check` - 2026-05-12T00:00:00 - `fff9609e-8a5a-401a-87db-430505c5cf93.jsonl`

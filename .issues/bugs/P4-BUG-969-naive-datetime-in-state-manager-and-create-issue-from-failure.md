@@ -148,11 +148,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `bug`, `datetime`, `captured`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-06T19:30:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9850e934-06c0-4400-88ad-a671286bc2c5.jsonl`
-- `/ll:ready-issue` - 2026-04-06T19:30:27 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9850e934-06c0-4400-88ad-a671286bc2c5.jsonl`
-- `/ll:wire-issue` - 2026-04-06T20:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c54bab8-6d66-4299-8536-f9754fcca2a4.jsonl`
-- `/ll:refine-issue` - 2026-04-06T19:15:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71d7d560-3e7b-4d8f-a782-7e0c62fdfa6c.jsonl`
-- `/ll:scan-codebase` - 2026-04-06T16:12:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
+- `/ll:ready-issue` - 2026-04-06T19:30:35 - `9850e934-06c0-4400-88ad-a671286bc2c5.jsonl`
+- `/ll:ready-issue` - 2026-04-06T19:30:27 - `9850e934-06c0-4400-88ad-a671286bc2c5.jsonl`
+- `/ll:wire-issue` - 2026-04-06T20:00:00 - `9c54bab8-6d66-4299-8536-f9754fcca2a4.jsonl`
+- `/ll:refine-issue` - 2026-04-06T19:15:14 - `71d7d560-3e7b-4d8f-a782-7e0c62fdfa6c.jsonl`
+- `/ll:scan-codebase` - 2026-04-06T16:12:28 - `c09c0093-977b-43e6-8295-2461a9af68ff.jsonl`
 
 ## Resolution
 

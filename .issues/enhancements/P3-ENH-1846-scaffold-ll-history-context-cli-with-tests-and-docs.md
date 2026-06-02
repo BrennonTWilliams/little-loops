@@ -205,12 +205,12 @@ Both are from `scripts/little_loops/cli/output.py`.
 - Strictly sequential with ENH-1847; if implementing both in one session, consider keeping as one issue (ENH-1708 parent) to avoid tracking overhead
 
 ## Session Log
-- `/ll:ready-issue` - 2026-06-01T10:18:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cf38a300-936b-4182-8d3c-653c9bc6200b.jsonl`
-- `/ll:wire-issue` - 2026-06-01T10:14:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/544e27c1-c5b2-4c59-bc53-6f190e1ade51.jsonl`
-- `/ll:refine-issue` - 2026-06-01T10:09:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/59bcb2ef-0812-43b3-b6ca-f20662a97853.jsonl`
-- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
-- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d911bade-69cf-42d7-8c1a-fd493d2859d8.jsonl`
-- `/ll:manage-issue` - 2026-06-01T10:28:40Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9bda050f-155e-4eb1-aea6-1bce4cf98225.jsonl`
+- `/ll:ready-issue` - 2026-06-01T10:18:16 - `cf38a300-936b-4182-8d3c-653c9bc6200b.jsonl`
+- `/ll:wire-issue` - 2026-06-01T10:14:13 - `544e27c1-c5b2-4c59-bc53-6f190e1ade51.jsonl`
+- `/ll:refine-issue` - 2026-06-01T10:09:29 - `59bcb2ef-0812-43b3-b6ca-f20662a97853.jsonl`
+- `/ll:issue-size-review` - 2026-06-01T00:00:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:confidence-check` - 2026-06-01T00:00:00Z - `d911bade-69cf-42d7-8c1a-fd493d2859d8.jsonl`
+- `/ll:manage-issue` - 2026-06-01T10:28:40Z - `9bda050f-155e-4eb1-aea6-1bce4cf98225.jsonl`
 
 ## Resolution
 

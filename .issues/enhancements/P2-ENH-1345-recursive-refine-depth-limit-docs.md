@@ -124,9 +124,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 All 5 acceptance criteria satisfied. Added `recursive-refine-current-depth.txt` to the Notes tmp-file list (was missing from prior partial implementation). Created `scripts/tests/test_enh1345_doc_wiring.py` with 7 passing tests locking in all criteria.
 
 ## Session Log
-- `/ll:manage-issue` - 2026-05-03T17:05:44Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
-- `/ll:ready-issue` - 2026-05-03T17:04:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/030ffdf6-8552-41c4-b3c5-1c73a91cce22.jsonl`
-- `/ll:wire-issue` - 2026-05-03T17:00:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d84bab8-8cff-4d55-8235-3d3772fb673a.jsonl`
-- `/ll:refine-issue` - 2026-05-03T16:54:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48151d5d-ba0e-4a5d-bdb3-59eec505c26c.jsonl`
-- `/ll:issue-size-review` - 2026-05-03T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f5908fa-e7cf-482b-a91b-52624eb2a99c.jsonl`
-- `/ll:confidence-check` - 2026-05-03T17:30:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9554fe07-a8a5-499f-8258-c9107e15b26a.jsonl`
+- `/ll:manage-issue` - 2026-05-03T17:05:44Z - `current.jsonl`
+- `/ll:ready-issue` - 2026-05-03T17:04:06 - `030ffdf6-8552-41c4-b3c5-1c73a91cce22.jsonl`
+- `/ll:wire-issue` - 2026-05-03T17:00:14 - `2d84bab8-8cff-4d55-8235-3d3772fb673a.jsonl`
+- `/ll:refine-issue` - 2026-05-03T16:54:39 - `48151d5d-ba0e-4a5d-bdb3-59eec505c26c.jsonl`
+- `/ll:issue-size-review` - 2026-05-03T00:00:00 - `9f5908fa-e7cf-482b-a91b-52624eb2a99c.jsonl`
+- `/ll:confidence-check` - 2026-05-03T17:30:00 - `9554fe07-a8a5-499f-8258-c9107e15b26a.jsonl`

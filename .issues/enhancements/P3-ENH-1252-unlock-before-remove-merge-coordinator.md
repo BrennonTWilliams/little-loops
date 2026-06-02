@@ -158,13 +158,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 Implemented inline unlock before remove in `MergeCoordinator._cleanup_worktree()` at `merge_coordinator.py:1205`. Added `git worktree unlock` call via `self._git_lock.run` before the existing `git worktree remove --force` call; return value discarded as `GitLock.run()` never raises. Added `test_cleanup_unlock_before_remove` in `TestCleanupWorktreeFallback` asserting strict `unlock_idx < remove_idx` ordering. All 5141 tests pass.
 
 ## Session Log
-- `/ll:ready-issue` - 2026-04-22T19:31:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f4c85863-a166-4f88-a3f9-22223190698a.jsonl`
-- `/ll:confidence-check` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a43c1ae8-e64e-4533-a175-4b2b06462f8f.jsonl`
-- `/ll:wire-issue` - 2026-04-22T16:21:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dff37768-1fee-4fb7-9e66-0c89101a95df.jsonl`
-- `/ll:refine-issue` - 2026-04-22T16:15:52 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/367ee7a8-400a-4b7b-8f39-2f6e5f8e3e1d.jsonl`
-- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d28f812d-9c9f-4c1d-9132-8d4f61f6064c.jsonl`
-- `/ll:manage-issue` - 2026-04-22T19:33:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
-
+- `/ll:ready-issue` - 2026-04-22T19:31:11 - `f4c85863-a166-4f88-a3f9-22223190698a.jsonl`
+- `/ll:confidence-check` - 2026-04-22T00:00:00 - `a43c1ae8-e64e-4533-a175-4b2b06462f8f.jsonl`
+- `/ll:wire-issue` - 2026-04-22T16:21:03 - `dff37768-1fee-4fb7-9e66-0c89101a95df.jsonl`
+- `/ll:refine-issue` - 2026-04-22T16:15:52 - `367ee7a8-400a-4b7b-8f39-2f6e5f8e3e1d.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `d28f812d-9c9f-4c1d-9132-8d4f61f6064c.jsonl`
+- `/ll:manage-issue` - 2026-04-22T19:33:53Z
 ---
 
 **Open** | Created: 2026-04-22 | Priority: P3

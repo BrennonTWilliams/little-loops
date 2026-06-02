@@ -74,9 +74,9 @@ Every line in `MEMORY.md` consumes context tokens in every conversation, whether
 `enhancement`, `memory`, `context-engineering`, `progressive-disclosure`
 
 ## Session Log
-- `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:format-issue` - 2026-02-24 - `cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 - `/ll:verify-issues` - 2026-02-25 - Updated Current Behavior: memory directory does not yet exist for this project; corrected description of what "currently" exists
-- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - No additional research needed; memory files don't exist yet; implementation is self-contained (create MEMORY.md + topic files)
+- `/ll:refine-issue` - 2026-02-25 - `b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - No additional research needed; memory files don't exist yet; implementation is self-contained (create MEMORY.md + topic files)
 
 ---
 

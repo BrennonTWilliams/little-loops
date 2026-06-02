@@ -218,12 +218,12 @@ _Added by `/ll:confidence-check` on 2026-04-22_
 - worktree-health.yaml grep fix changes the loop's count from always-0 to non-zero, which may trigger unexpected cleanup runs in CI envs running the loop
 
 ## Session Log
-- `hook:posttooluse-git-mv` - 2026-04-22T15:30:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4392751-fe1e-4762-b307-86db43c577b3.jsonl`
-- `/ll:confidence-check` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf1f3140-90a5-4ebf-a752-46183ce079dc.jsonl`
-- `/ll:wire-issue` - 2026-04-22T15:22:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/940f0219-3108-4f89-84ef-2983c9cc5d04.jsonl`
-- `/ll:refine-issue` - 2026-04-22T15:13:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b3c3e12d-0001-4c04-8f00-c22acb75421d.jsonl`
+- `hook:posttooluse-git-mv` - 2026-04-22T15:30:04 - `a4392751-fe1e-4762-b307-86db43c577b3.jsonl`
+- `/ll:confidence-check` - 2026-04-22T00:00:00 - `bf1f3140-90a5-4ebf-a752-46183ce079dc.jsonl`
+- `/ll:wire-issue` - 2026-04-22T15:22:35 - `940f0219-3108-4f89-84ef-2983c9cc5d04.jsonl`
+- `/ll:refine-issue` - 2026-04-22T15:13:57 - `b3c3e12d-0001-4c04-8f00-c22acb75421d.jsonl`
 - `parallel-family-review` - 2026-04-20T00:00:00Z - Filed as follow-up from parallel-family review. SIGKILL-during-cleanup is the one failure mode `try/finally` cannot cover; needs out-of-band recovery.
-- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a4392751-fe1e-4762-b307-86db43c577b3.jsonl`
+- `/ll:issue-size-review` - 2026-04-22T00:00:00 - `a4392751-fe1e-4762-b307-86db43c577b3.jsonl`
 
 ---
 

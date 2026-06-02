@@ -88,7 +88,7 @@ In worktree mode, each worker has its own `.issues/` snapshot at worker start. C
 ---
 
 ## Session Log
-- `/ll:verify-issues` - 2026-04-24T03:02:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
+- `/ll:verify-issues` - 2026-04-24T03:02:15 - `1faa7404-23ae-4397-94a1-06150dae54dd.jsonl`
 - `parallel-family-review` - 2026-04-20T00:00:00Z - Filed as follow-up from parallel-family review. `ll-issues` under parallel worktree mode has no current coordination story.
 
 ---

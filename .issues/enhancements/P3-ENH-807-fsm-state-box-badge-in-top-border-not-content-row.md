@@ -194,9 +194,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `python -m mypy scripts/little_loops/cli/loop/layout.py` — only pre-existing wcwidth stub warning
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-18T22:41:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7c9e65b-b14e-49db-a2dd-f906380c418c.jsonl`
-- `/ll:refine-issue` - 2026-03-18T22:36:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b466204-2c32-4956-a07d-e0d2c0840e7e.jsonl`
-- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9dd6b13-1607-4caf-b3d5-461e82aa833e.jsonl`
+- `/ll:ready-issue` - 2026-03-18T22:41:55 - `d7c9e65b-b14e-49db-a2dd-f906380c418c.jsonl`
+- `/ll:refine-issue` - 2026-03-18T22:36:13 - `3b466204-2c32-4956-a07d-e0d2c0840e7e.jsonl`
+- `/ll:confidence-check` - 2026-03-18T00:00:00Z - `f9dd6b13-1607-4caf-b3d5-461e82aa833e.jsonl`
 
 - `/ll:capture-issue` - 2026-03-18T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 

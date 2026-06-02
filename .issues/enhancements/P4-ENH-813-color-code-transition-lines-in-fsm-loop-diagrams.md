@@ -123,9 +123,9 @@ N/A
 `diagram`, `fsm`, `visualization`, `ux`
 
 ## Session Log
-- `/ll:ready-issue` - 2026-03-19T17:01:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38f32c30-0a2d-4aa0-9954-b85ea88edc63.jsonl`
-- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c179030-87aa-47bd-98f0-dbd231f6dfc2.jsonl`
-- `/ll:refine-issue` - 2026-03-19T16:50:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e80258f6-4af5-48f4-ac62-be9934b1952f.jsonl`
+- `/ll:ready-issue` - 2026-03-19T17:01:49 - `38f32c30-0a2d-4aa0-9954-b85ea88edc63.jsonl`
+- `/ll:confidence-check` - 2026-03-19T00:00:00Z - `6c179030-87aa-47bd-98f0-dbd231f6dfc2.jsonl`
+- `/ll:refine-issue` - 2026-03-19T16:50:19 - `e80258f6-4af5-48f4-ac62-be9934b1952f.jsonl`
 - `/ll:capture-issue` - 2026-03-19T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe93df18-9bd8-4ea2-b803-eb08b9798bc3.jsonl`
 
 ---
@@ -143,7 +143,7 @@ N/A
   - Added 8 TDD tests in `TestEdgeLineColorization` class
 
 ## Session Log
-- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:manage-issue` - 2026-03-19T00:00:00Z - `fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ## Status
 
