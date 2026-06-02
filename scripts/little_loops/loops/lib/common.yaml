@@ -120,3 +120,20 @@ fragments:
     evaluate:
       type: convergence
       direction: maximize
+
+  queue_pop:
+    description: |
+      Shell state that atomically pops the head of a queue file (head-1/tail-n+2/mv idiom).
+      State must supply: action (the three-line pop shell script, plus any per-loop extras
+      such as inflight sentinels or counter increments), on_yes (item popped), on_no (queue empty).
+      Optionally: on_error, capture.
+    action_type: shell
+    evaluate:
+      type: exit_code
+
+  queue_track:
+    description: |
+      Shell state that appends an ID to a skip or visited tracking file (echo >> idiom).
+      No evaluator — this state always transitions unconditionally via next:.
+      State must supply: action (echo "<ID>" >> <track-file>), next:.
+    action_type: shell

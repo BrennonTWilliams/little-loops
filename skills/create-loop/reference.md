@@ -1127,6 +1127,8 @@ import:
 | `with_throttle` | Per-state tool-call throttle defaults (`normal_max: 3`, `warn_max: 8`, `hard_max: 12`) | `on_throttle_hard` |
 | `parse_tagged_json` | `action_type: shell` — for states that extract a tagged JSON line from LLM output. **No default `action:`** (nested interpolation unsupported); caller's `action:` must reference captured output by literal variable name (e.g. `${captured.raw_enumeration.output}`). | `action` (extraction + normalization script), `capture`, `evaluate`, routing (`on_yes`, `on_no`) |
 | `convergence_gate` | `action_type: shell` + `evaluate.type: convergence` + `evaluate.direction: maximize` | `action`, `evaluate.target`, `evaluate.tolerance`, routing (`route.target`, `route.progress`, `route.stall`); optionally `evaluate.previous`, `route.error` |
+| `queue_pop` | `action_type: shell` + `evaluate.type: exit_code` — exit 0 = item popped, exit 1 = queue empty | `action` (pop shell script), routing (`on_yes`, `on_no`); optionally `on_error`, `capture` |
+| `queue_track` | `action_type: shell` — unconditional append; no evaluator | `action` (echo append script), `next:` |
 
 ### `lib/prompt-fragments.yaml` fragments
 

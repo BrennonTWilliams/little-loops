@@ -1592,3 +1592,126 @@ class TestConvergenceGateFragment:
         assert state["evaluate"]["direction"] == "maximize"
         assert state["evaluate"]["target"] == "0.85"
         assert "fragment" not in state
+
+
+# ---------------------------------------------------------------------------
+# lib/common.yaml: verify queue_pop fragment is present and correct
+# ---------------------------------------------------------------------------
+
+
+class TestQueuePopFragment:
+    """Tests that queue_pop exists in the real lib/common.yaml."""
+
+    @staticmethod
+    def _load_common_yaml() -> dict:
+        import yaml
+
+        lib_path = (
+            Path(__file__).parent.parent
+            / "little_loops"
+            / "loops"
+            / "lib"
+            / "common.yaml"
+        )
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_queue_pop_defined_in_common_yaml(self) -> None:
+        data = self._load_common_yaml()
+        assert "queue_pop" in data["fragments"]
+
+    def test_queue_pop_has_correct_action_type(self) -> None:
+        data = self._load_common_yaml()
+        assert data["fragments"]["queue_pop"]["action_type"] == "shell"
+
+    def test_queue_pop_has_exit_code_evaluator(self) -> None:
+        data = self._load_common_yaml()
+        evaluate = data["fragments"]["queue_pop"].get("evaluate", {})
+        assert evaluate.get("type") == "exit_code"
+
+    def test_queue_pop_has_description(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["queue_pop"]
+        assert "description" in frag
+        assert frag["description"].strip()
+
+    def test_queue_pop_resolves_in_loop(self) -> None:
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "pop",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "pop": {
+                    "fragment": "queue_pop",
+                    "action": "if [ ! -s /tmp/q.txt ]; then exit 1; fi; head -1 /tmp/q.txt",
+                    "capture": "item",
+                    "on_yes": "done",
+                    "on_no": "done",
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["pop"]
+        assert state["action_type"] == "shell"
+        assert state["evaluate"]["type"] == "exit_code"
+        assert "fragment" not in state
+
+
+# ---------------------------------------------------------------------------
+# lib/common.yaml: verify queue_track fragment is present and correct
+# ---------------------------------------------------------------------------
+
+
+class TestQueueTrackFragment:
+    """Tests that queue_track exists in the real lib/common.yaml."""
+
+    @staticmethod
+    def _load_common_yaml() -> dict:
+        import yaml
+
+        lib_path = (
+            Path(__file__).parent.parent
+            / "little_loops"
+            / "loops"
+            / "lib"
+            / "common.yaml"
+        )
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_queue_track_defined_in_common_yaml(self) -> None:
+        data = self._load_common_yaml()
+        assert "queue_track" in data["fragments"]
+
+    def test_queue_track_has_correct_action_type(self) -> None:
+        data = self._load_common_yaml()
+        assert data["fragments"]["queue_track"]["action_type"] == "shell"
+
+    def test_queue_track_has_description(self) -> None:
+        data = self._load_common_yaml()
+        frag = data["fragments"]["queue_track"]
+        assert "description" in frag
+        assert frag["description"].strip()
+
+    def test_queue_track_resolves_in_loop(self) -> None:
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "track",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "track": {
+                    "fragment": "queue_track",
+                    "action": 'echo "item1" >> /tmp/visited.txt',
+                    "next": "done",
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["track"]
+        assert state["action_type"] == "shell"
+        assert "evaluate" not in state  # unconditional — no evaluator
+        assert "fragment" not in state
