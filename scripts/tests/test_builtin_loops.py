@@ -2222,6 +2222,97 @@ class TestAutodevLoop:
             "skip_inflight must remove autodev-inflight so done does not surface a stale warning"
         )
 
+    def test_implement_current_reconciliation_prepends_stale_inflight(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-1870: on resume, a stale inflight issue (INFLIGHT != CURRENT) whose status
+        is not done/cancelled must be prepended to autodev-queue.txt before ll-auto runs."""
+        state = data["states"].get("implement_current", {})
+        action = state.get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "autodev-inflight").write_text("ENH-0099")
+        (run_dir / "autodev-queue.txt").write_text("ENH-0100\n")
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        mock_ll_auto = bin_dir / "ll-auto"
+        mock_ll_auto.write_text("#!/bin/bash\nexit 0\n")
+        mock_ll_auto.chmod(0o755)
+        script = action.replace("${captured.input.output}", "ENH-0042")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        script = f"export PATH={bin_dir}:$PATH\n" + script
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"implement_current reconciliation failed: {result.stderr}"
+        queue = (run_dir / "autodev-queue.txt").read_text()
+        assert queue.startswith("ENH-0099"), (
+            f"Stale inflight ENH-0099 must be prepended to queue; got: {queue!r}"
+        )
+        assert "ENH-0100" in queue, "Original queue entry ENH-0100 must be preserved"
+
+    def test_implement_current_reconciliation_noop_when_inflight_equals_current(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-1870: when autodev-inflight equals CURRENT (normal non-resumed run),
+        the reconciliation block must not modify autodev-queue.txt."""
+        state = data["states"].get("implement_current", {})
+        action = state.get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "autodev-inflight").write_text("ENH-0042")
+        (run_dir / "autodev-queue.txt").write_text("ENH-0100\n")
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        mock_ll_auto = bin_dir / "ll-auto"
+        mock_ll_auto.write_text("#!/bin/bash\nexit 0\n")
+        mock_ll_auto.chmod(0o755)
+        script = action.replace("${captured.input.output}", "ENH-0042")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        script = f"export PATH={bin_dir}:$PATH\n" + script
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"implement_current action failed: {result.stderr}"
+        queue = (run_dir / "autodev-queue.txt").read_text()
+        assert queue.strip() == "ENH-0100", (
+            f"Queue must be unchanged when inflight == current; got: {queue!r}"
+        )
+
+    def test_implement_current_reconciliation_skips_done_inflight(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-1870: when inflight issue already has status: done, it must not be
+        re-queued even if INFLIGHT != CURRENT."""
+        state = data["states"].get("implement_current", {})
+        action = state.get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "autodev-inflight").write_text("ENH-0099")
+        (run_dir / "autodev-queue.txt").write_text("ENH-0100\n")
+        issues_dir = tmp_path / ".issues" / "enhancements"
+        issues_dir.mkdir(parents=True)
+        (issues_dir / "P3-ENH-0099-test-issue.md").write_text(
+            "---\nid: ENH-0099\nstatus: done\n---\n"
+        )
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        mock_ll_auto = bin_dir / "ll-auto"
+        mock_ll_auto.write_text("#!/bin/bash\nexit 0\n")
+        mock_ll_auto.chmod(0o755)
+        script = action.replace("${captured.input.output}", "ENH-0042")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        script = f"export PATH={bin_dir}:$PATH\n" + script
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"implement_current action failed: {result.stderr}"
+        queue = (run_dir / "autodev-queue.txt").read_text()
+        assert "ENH-0099" not in queue, (
+            f"Done inflight issue ENH-0099 must not be re-queued; got: {queue!r}"
+        )
+        assert "ENH-0100" in queue, "Original queue entry ENH-0100 must be preserved"
+
     def test_scope_field_uses_run_dir_template(self, data: dict) -> None:
         """autodev must declare scope: ["${context.run_dir}"] for per-instance lock isolation
         (FEAT-1789). This enables concurrent autodev instances with different run_dir values."""

@@ -296,7 +296,26 @@ states:
     # queued issue. Exit 1 (on_no) → decision gate blocked; still advance to
     # dequeue_next so the queue drains normally. Fatal error → done.
     fragment: shell_exit
-    action: "ll-auto --only ${captured.input.output}"
+    action: |
+      # BUG-1870: re-queue any stale inflight issue left by a prior context handoff.
+      # On resume, init is bypassed so autodev-inflight may hold an issue that was
+      # dequeued-but-not-yet-implemented when the previous session was interrupted.
+      # The $INFLIGHT != $CURRENT guard makes this a no-op on normal (non-resumed) runs.
+      INFLIGHT=$(cat "${context.run_dir}/autodev-inflight" 2>/dev/null | tr -d '[:space:]')
+      CURRENT="${captured.input.output}"
+      if [ -n "$INFLIGHT" ] && [ "$INFLIGHT" != "$CURRENT" ]; then
+        INFLIGHT_FILE=$(find .issues -name "*-$INFLIGHT-*" ! -path "*/completed/*" 2>/dev/null | head -1)
+        STATUS="open"
+        if [ -n "$INFLIGHT_FILE" ]; then
+          STATUS=$(grep '^status:' "$INFLIGHT_FILE" | awk '{print $2}' | tr -d "'\"" 2>/dev/null || echo "open")
+        fi
+        if [ "$STATUS" != "done" ] && [ "$STATUS" != "cancelled" ]; then
+          { echo "$INFLIGHT"; cat "${context.run_dir}/autodev-queue.txt" 2>/dev/null; } \
+            > "${context.run_dir}/autodev-queue.tmp" \
+            && mv "${context.run_dir}/autodev-queue.tmp" "${context.run_dir}/autodev-queue.txt"
+        fi
+      fi
+      ll-auto --only "$CURRENT"
     action_type: shell
     on_yes: dequeue_next
     on_no: dequeue_next
