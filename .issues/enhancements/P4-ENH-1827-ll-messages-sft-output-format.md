@@ -144,6 +144,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `enhancement`, `cli`, `sft`, `ll-messages`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-02T23:32:42 - `adaf9bf1-77d1-459c-b949-ba44567e0443.jsonl`
 - `/ll:confidence-check` - 2026-06-02T23:45:00 - `6d2e5d05-1442-431e-a2c2-c3847d73a670.jsonl`
 - `/ll:wire-issue` - 2026-06-02T23:23:21 - `16d2eea7-9cc0-4d21-9d84-d96036fdb70d.jsonl`
 - `/ll:refine-issue` - 2026-06-02T23:17:02 - `d869663f-6cbd-441f-aa25-5bb3a2dafe09.jsonl`
