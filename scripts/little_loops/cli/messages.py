@@ -47,6 +47,9 @@ Examples:
   %(prog)s --skill capture-issue        # Filter to sessions where skill was invoked
   %(prog)s --skill capture-issue --examples-format  # Output (input, output) training pairs
   %(prog)s --skill refine-issue --examples-format --context-window 5 --stdout
+  %(prog)s --sft-format chatml --stdout
+  %(prog)s --sft-format sharegpt --context-window 3 --since 2026-05-01 --stdout
+  %(prog)s --sft-format alpaca --output data/sft/raw.jsonl
 
 Pipeline with ll-workflows (use the conventional path so ll-workflows finds it automatically):
   %(prog)s --output .ll/workflow-analysis/step1-patterns.jsonl
@@ -119,16 +122,22 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
             type=str,
             help="Filter to sessions where this skill was invoked (e.g. capture-issue)",
         )
-        parser.add_argument(
+        format_group = parser.add_mutually_exclusive_group()
+        format_group.add_argument(
             "--examples-format",
             action="store_true",
             help="Output (input, output) training pairs for prompt optimization instead of raw messages",
+        )
+        format_group.add_argument(
+            "--sft-format",
+            choices=["chatml", "alpaca", "sharegpt"],
+            help="Output conversation turns in SFT training format as JSON-lines (chatml, alpaca, sharegpt)",
         )
         parser.add_argument(
             "--context-window",
             type=int,
             default=3,
-            help="Number of preceding messages to include as context in --examples-format (default: 3)",
+            help="Number of preceding messages to include as context in --examples-format or --sft-format (default: 3)",
         )
 
         args = parser.parse_args()
@@ -222,6 +231,33 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
                 logger.success(f"Saved {len(examples)} examples to: {output_path}")
             return 0
 
+        # When --sft-format is set, emit conversation turns in SFT training format
+        if args.sft_format:
+            from little_loops.sft_formatter import to_alpaca, to_chatml, to_sharegpt
+            from little_loops.user_messages import extract_conversation_turns
+
+            formatter = {"chatml": to_chatml, "alpaca": to_alpaca, "sharegpt": to_sharegpt}[
+                args.sft_format
+            ]
+            windows = extract_conversation_turns(
+                project_folder=project_folder,
+                since=since,
+                context_window=args.context_window,
+                include_agent_sessions=not args.exclude_agents,
+            )
+            if args.limit is not None:
+                windows = windows[: args.limit]
+            logger.info(f"Found {len(windows)} conversation windows")
+            if args.stdout:
+                for window in windows:
+                    print(json.dumps(formatter(window)))
+            else:
+                output_path = _save_combined(
+                    [_SFTItem(formatter(w)) for w in windows], args.output
+                )
+                logger.success(f"Saved {len(windows)} windows to: {output_path}")
+            return 0
+
         # Merge and sort by timestamp
         combined: list[UserMessage | CommandRecord] = []
         combined.extend(messages)
@@ -269,3 +305,13 @@ def _save_combined(
             f.write(json.dumps(item.to_dict()) + "\n")
 
     return output_path
+
+
+class _SFTItem:
+    """Thin wrapper to make an SFT dict compatible with _save_combined()."""
+
+    def __init__(self, data: dict) -> None:
+        self._data = data
+
+    def to_dict(self) -> dict:
+        return self._data

@@ -1329,7 +1329,11 @@ class TestMessagesArgumentParsingWithCommands:
         parser.add_argument("--commands-only", action="store_true")
         parser.add_argument("--tools", type=str, default="Bash")
         parser.add_argument("--skill", type=str)
-        parser.add_argument("--examples-format", action="store_true")
+        format_group = parser.add_mutually_exclusive_group()
+        format_group.add_argument("--examples-format", action="store_true")
+        format_group.add_argument(
+            "--sft-format", choices=["chatml", "alpaca", "sharegpt"]
+        )
         parser.add_argument("--context-window", type=int, default=3)
         return parser.parse_args(args)
 
