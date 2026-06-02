@@ -44,10 +44,10 @@ class TestConfigureAreasWiring:
             "skills/configure/areas.md must include ll-doctor in the authorize-all description"
         )
 
-    def test_authorize_all_count_is_26(self) -> None:
+    def test_authorize_all_count_is_28(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 26" in content, (
-            "skills/configure/areas.md authorize-all count must be 26 (includes ll-ctx-stats)"
+        assert "Authorize all 28" in content, (
+            "skills/configure/areas.md authorize-all count must be 28"
         )
 
 

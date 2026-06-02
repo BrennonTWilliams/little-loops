@@ -1,0 +1,3 @@
+interface:
+  display_name: "Link Epics"
+  short_description: "Discover orphaned issues and propose parent EPIC assignments via Jaccard similar"

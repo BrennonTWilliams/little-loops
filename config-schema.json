@@ -1179,6 +1179,19 @@
             }
           },
           "additionalProperties": false
+        },
+        "cascade": {
+          "type": "object",
+          "description": "Cascade settings for EPIC status transitions.",
+          "properties": {
+            "default_status": {
+              "type": "string",
+              "enum": ["deferred", "cancelled", "done"],
+              "default": "deferred",
+              "description": "Default status applied to children when cascading EPIC closure via --cascade (without explicit --cascade-to)."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -1358,26 +1371,6 @@
               "type": "boolean",
               "default": true,
               "description": "Whether to capture file-operation events."
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    "epics": {
-      "type": "object",
-      "description": "EPIC lifecycle settings.",
-      "properties": {
-        "cascade": {
-          "type": "object",
-          "description": "Cascade settings for EPIC status transitions.",
-          "properties": {
-            "default_status": {
-              "type": "string",
-              "enum": ["deferred", "cancelled", "done"],
-              "default": "deferred",
-              "description": "Default status applied to children when cascading EPIC closure via --cascade (without explicit --cascade-to)."
             }
           },
           "additionalProperties": false
