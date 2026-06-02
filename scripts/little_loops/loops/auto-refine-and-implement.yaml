@@ -42,74 +42,17 @@ states:
     loop: recursive-refine
     with:
       input: "${captured.input.output}"
-    on_success: get_passed_issues
+    on_success: implement_chain
     on_failure: skip_and_continue
     on_error: skip_and_continue
 
-  # NOTE: get_passed_issues → implement_next → go_no_go → implement_issue → skip_and_continue are
-  # mirrored in sprint-refine-and-implement.yaml. Keep both files in sync when editing.
-  get_passed_issues:
-    action: |
-      SKIP_FILE=".loops/tmp/auto-refine-and-implement-skipped.txt"
-      IMPL_QUEUE=".loops/tmp/auto-refine-and-implement-impl-queue.txt"
-
-      if [ -s .loops/tmp/recursive-refine-skipped.txt ]; then
-        grep -v '^[[:space:]]*$' .loops/tmp/recursive-refine-skipped.txt >> "$SKIP_FILE"
-      fi
-
-      PASSED=""
-      if [ -s .loops/tmp/recursive-refine-passed.txt ]; then
-        PASSED=$(grep -v '^[[:space:]]*$' .loops/tmp/recursive-refine-passed.txt)
-      fi
-
-      if [ -n "$PASSED" ]; then
-        echo "$PASSED" >> "$SKIP_FILE"
-        echo "$PASSED" > "$IMPL_QUEUE"
-        exit 0
-      else
-        printf '' > "$IMPL_QUEUE"
-        exit 1
-      fi
-    fragment: shell_exit
-    on_yes: implement_next
-    on_no: get_next_issue
-    on_error: get_next_issue
-
-  implement_next:
-    action: |
-      IMPL_QUEUE=".loops/tmp/auto-refine-and-implement-impl-queue.txt"
-      if [ ! -s "$IMPL_QUEUE" ]; then
-        exit 1
-      fi
-      CURRENT=$(head -1 "$IMPL_QUEUE")
-      tail -n +2 "$IMPL_QUEUE" > "$IMPL_QUEUE.tmp"
-      mv "$IMPL_QUEUE.tmp" "$IMPL_QUEUE"
-      echo "$CURRENT"
-    fragment: shell_exit
-    capture: impl_id
-    on_yes: go_no_go
-    on_no: get_next_issue
-    on_error: get_next_issue
-
-  go_no_go:
-    fragment: shell_exit
-    action: "ll-action invoke go-no-go --args \"${captured.impl_id.output} --check --auto\""
-    on_yes: implement_issue
-    on_no: implement_next
-    on_error: implement_issue
-
-  implement_issue:
-    fragment: with_rate_limit_handling
-    action: |
-      ISSUE="${captured.impl_id.output}"
-      if ls .issues/completed/*$${ISSUE}* 2>/dev/null | grep -q .; then
-        echo "Issue $${ISSUE} already completed, skipping ll-auto"
-        exit 0
-      fi
-      ll-auto --only $${ISSUE}
-    action_type: shell
-    on_rate_limit_exhausted: done
-    next: implement_next
+  implement_chain:
+    loop: oracles/implement-issue-chain
+    with:
+      caller_prefix: "auto-refine-and-implement"
+    on_success: get_next_issue
+    on_failure: done
+    on_error: done
 
   skip_and_continue:
     action: |

@@ -651,11 +651,8 @@ Sprint file must exist at `.sprints/<sprint-name>.yaml` (standard sprint locatio
 ```
 get_next_issue → [issue found?]
   ├─ YES → refine_issue (sub-loop: recursive-refine) → [success?]
-  │           ├─ YES → get_passed_issues → [passed issues?]
-  │           │           ├─ YES → implement_next → go_no_go (/ll:go-no-go --check --auto) → [GO?]
-  │           │           │           ├─ YES → implement_issue (ll-auto --only) → implement_next (loop)
-  │           │           │           └─ NO  → implement_next (skip, loop)
-  │           │           └─ NO  → get_next_issue
+  │           ├─ YES → implement_chain (sub-loop: oracles/implement-issue-chain)
+  │           │           └─ [get_passed_issues → implement_next → go_no_go → implement_issue]
   │           └─ NO  → skip_and_continue → get_next_issue
   └─ NO  → done
 ```
@@ -689,11 +686,8 @@ ll-loop run auto-refine-and-implement --context max_issues=10
 ```
 init → get_next_issue → [issue found?]
          ├─ YES → refine_issue (sub-loop: recursive-refine) → [success?]
-         │         ├─ YES → get_passed_issues → [any passed?]
-         │         │         ├─ YES → implement_next → go_no_go (/ll:go-no-go --check --auto) → [GO?]
-         │         │         │         ├─ YES → implement_issue (ll-auto --only) → implement_next (loop)
-         │         │         │         └─ NO  → implement_next (skip, loop)
-         │         │         └─ NO  → get_next_issue (loop)
+         │         ├─ YES → implement_chain (sub-loop: oracles/implement-issue-chain)
+         │         │         └─ [get_passed_issues → implement_next → go_no_go → implement_issue]
          │         └─ NO  → skip_and_continue → get_next_issue (loop)
          └─ NO → done
 ```

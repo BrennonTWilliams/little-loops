@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
+from little_loops.fsm import is_runnable_loop
 from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
 
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
@@ -21,9 +22,9 @@ class TestBuiltinLoopFiles:
 
     @pytest.fixture
     def builtin_loops(self) -> list[Path]:
-        """Get all built-in loop files."""
+        """Get all built-in loop files including oracle sub-loops."""
         assert BUILTIN_LOOPS_DIR.exists(), f"Built-in loops dir not found: {BUILTIN_LOOPS_DIR}"
-        files = sorted(BUILTIN_LOOPS_DIR.glob("*.yaml"))
+        files = sorted(p for p in BUILTIN_LOOPS_DIR.rglob("*.yaml") if is_runnable_loop(p))
         assert len(files) > 0, "No built-in loop files found"
         return files
 
@@ -1218,9 +1219,7 @@ class TestAutoRefineAndImplementLoop:
             "init",
             "get_next_issue",
             "refine_issue",
-            "get_passed_issues",
-            "implement_next",
-            "implement_issue",
+            "implement_chain",
             "skip_and_continue",
             "done",
         }
@@ -1274,44 +1273,21 @@ class TestAutoRefineAndImplementLoop:
         )
 
     def test_refine_issue_has_success_and_failure_routes(self, data: dict) -> None:
-        """refine_issue must define on_success and on_failure routes."""
+        """refine_issue must route success to implement_chain and failure to skip_and_continue."""
         state = data["states"].get("refine_issue", {})
-        assert state.get("on_success") == "get_passed_issues"
+        assert state.get("on_success") == "implement_chain"
         assert state.get("on_failure") == "skip_and_continue"
 
-    def test_implement_next_captures_impl_id(self, data: dict) -> None:
-        """implement_next must capture as 'impl_id' for implement_issue to reference."""
-        state = data["states"].get("implement_next", {})
-        assert state.get("capture") == "impl_id"
-
-    def test_implement_issue_uses_impl_id(self, data: dict) -> None:
-        """implement_issue action must reference captured.impl_id.output."""
-        state = data["states"].get("implement_issue", {})
-        action = state.get("action", "")
-        assert "${captured.impl_id.output}" in action
-
-    def test_implement_issue_routes_to_implement_next(self, data: dict) -> None:
-        """implement_issue must loop back to implement_next to drain the queue."""
-        state = data["states"].get("implement_issue", {})
-        assert state.get("next") == "implement_next"
-
-    def test_implement_issue_has_completed_guard(self, data: dict) -> None:
-        """implement_issue must skip ll-auto when the issue is already in completed/."""
-        state = data["states"].get("implement_issue", {})
-        action = state.get("action", "")
-        assert "completed" in action, "implement_issue action must check .issues/completed/"
-        assert "exit 0" in action, (
-            "implement_issue action must exit 0 when issue is already completed"
+    def test_implement_chain_delegates_to_oracle(self, data: dict) -> None:
+        """implement_chain must delegate to the implement-issue-chain oracle with caller_prefix."""
+        state = data["states"].get("implement_chain", {})
+        assert state.get("loop") == "oracles/implement-issue-chain", (
+            f"implement_chain.loop should be 'oracles/implement-issue-chain', got {state.get('loop')!r}"
         )
-
-    def test_go_no_go_uses_ll_action_invoke(self, data: dict) -> None:
-        """go_no_go must call ll-action via the invoke subcommand, not pass the skill as a subcommand."""
-        state = data["states"].get("go_no_go", {})
-        action = state.get("action", "")
-        assert "ll-action invoke" in action, (
-            "go_no_go action must use 'll-action invoke', not 'll-action go-no-go'"
+        with_ = state.get("with", {})
+        assert with_.get("caller_prefix") == "auto-refine-and-implement", (
+            f"implement_chain.with.caller_prefix should be 'auto-refine-and-implement', got {with_.get('caller_prefix')!r}"
         )
-        assert "--check" in action, "go_no_go action must pass --check flag"
 
     def test_skip_and_continue_uses_input_capture(self, data: dict) -> None:
         """skip_and_continue must reference captured.input.output (not impl_id)."""
@@ -1336,25 +1312,6 @@ class TestAutoRefineAndImplementLoop:
                 assert ".loops/tmp/" in action
         assert found, f"No state references {skipped_ref!r}"
 
-    def test_impl_queue_file_uses_loops_tmp(self, data: dict) -> None:
-        """Impl queue file must use .loops/tmp/ path."""
-        states = data.get("states", {})
-        queue_ref = "auto-refine-and-implement-impl-queue"
-        found = False
-        for state_data in states.values():
-            action = state_data.get("action", "")
-            if queue_ref in action:
-                found = True
-                assert ".loops/tmp/" in action
-        assert found, f"No state references {queue_ref!r}"
-
-    def test_get_passed_issues_reads_recursive_refine_outputs(self, data: dict) -> None:
-        """get_passed_issues must read both recursive-refine output files."""
-        state = data["states"].get("get_passed_issues", {})
-        action = state.get("action", "")
-        assert "recursive-refine-passed.txt" in action
-        assert "recursive-refine-skipped.txt" in action
-
 
 class TestSprintRefineAndImplementLoop:
     """Structural tests for the sprint-refine-and-implement FSM loop."""
@@ -1369,42 +1326,31 @@ class TestSprintRefineAndImplementLoop:
     def test_required_states_exist(self, data: dict) -> None:
         """All required states must be present."""
         required = {
-            "implement_next",
-            "implement_issue",
+            "get_next_issue",
+            "refine_issue",
+            "implement_chain",
+            "skip_and_continue",
             "done",
         }
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
 
-    def test_implement_issue_uses_impl_id(self, data: dict) -> None:
-        """implement_issue action must reference captured.impl_id.output."""
-        state = data["states"].get("implement_issue", {})
-        action = state.get("action", "")
-        assert "${captured.impl_id.output}" in action
-
-    def test_implement_issue_routes_to_implement_next(self, data: dict) -> None:
-        """implement_issue must loop back to implement_next to drain the queue."""
-        state = data["states"].get("implement_issue", {})
-        assert state.get("next") == "implement_next"
-
-    def test_implement_issue_has_completed_guard(self, data: dict) -> None:
-        """implement_issue must skip ll-auto when the issue is already in completed/."""
-        state = data["states"].get("implement_issue", {})
-        action = state.get("action", "")
-        assert "completed" in action, "implement_issue action must check .issues/completed/"
-        assert "exit 0" in action, (
-            "implement_issue action must exit 0 when issue is already completed"
+    def test_implement_chain_delegates_to_oracle(self, data: dict) -> None:
+        """implement_chain must delegate to the implement-issue-chain oracle with caller_prefix."""
+        state = data["states"].get("implement_chain", {})
+        assert state.get("loop") == "oracles/implement-issue-chain", (
+            f"implement_chain.loop should be 'oracles/implement-issue-chain', got {state.get('loop')!r}"
+        )
+        with_ = state.get("with", {})
+        assert with_.get("caller_prefix") == "sprint-refine-and-implement", (
+            f"implement_chain.with.caller_prefix should be 'sprint-refine-and-implement', got {with_.get('caller_prefix')!r}"
         )
 
-    def test_go_no_go_uses_ll_action_invoke(self, data: dict) -> None:
-        """go_no_go must call ll-action via the invoke subcommand, not pass the skill as a subcommand."""
-        state = data["states"].get("go_no_go", {})
-        action = state.get("action", "")
-        assert "ll-action invoke" in action, (
-            "go_no_go action must use 'll-action invoke', not 'll-action go-no-go'"
-        )
-        assert "--check" in action, "go_no_go action must pass --check flag"
+    def test_refine_issue_uses_context_passthrough(self, data: dict) -> None:
+        """refine_issue must use context_passthrough: true (sprint passes context implicitly)."""
+        state = data["states"].get("refine_issue", {})
+        assert state.get("context_passthrough") is True
 
 
 class TestAutodevLoop:
@@ -5288,3 +5234,106 @@ class TestEnumerateAndProveOracle:
     def test_imports_common_yaml(self, data: dict) -> None:
         imports = data.get("import", [])
         assert "lib/common.yaml" in imports, "must import lib/common.yaml"
+
+
+class TestImplementIssueChainOracle:
+    """Structural tests for the implement-issue-chain oracle sub-loop (ENH-1874)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "oracles/implement-issue-chain.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "implement-issue-chain"
+        assert data.get("initial") == "get_passed_issues"
+        assert isinstance(data.get("states"), dict)
+
+    def test_has_parameters_block(self, data: dict) -> None:
+        params = data.get("parameters", {})
+        assert "caller_prefix" in params, "parameters block must declare caller_prefix"
+        assert params["caller_prefix"].get("required") is True
+
+    def test_shared_state_ok_is_set(self, data: dict) -> None:
+        assert data.get("shared_state_ok") is True, "shared_state_ok must be True (queue files cross-run by design)"
+
+    def test_required_states_exist(self, data: dict) -> None:
+        states = data.get("states", {})
+        for name in ("get_passed_issues", "implement_next", "go_no_go", "implement_issue", "done", "failed"):
+            assert name in states, f"required state '{name}' missing"
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        state = data["states"].get("done", {})
+        assert state.get("terminal") is True, "done.terminal should be True"
+
+    def test_failed_is_terminal(self, data: dict) -> None:
+        state = data["states"].get("failed", {})
+        assert state.get("terminal") is True, "failed.terminal should be True"
+
+    def test_imports_common_yaml(self, data: dict) -> None:
+        imports = data.get("import", [])
+        assert "lib/common.yaml" in imports, "must import lib/common.yaml"
+
+    def test_get_passed_issues_reads_recursive_refine_outputs(self, data: dict) -> None:
+        """get_passed_issues must read both recursive-refine output files."""
+        state = data["states"].get("get_passed_issues", {})
+        action = state.get("action", "")
+        assert "recursive-refine-passed.txt" in action
+        assert "recursive-refine-skipped.txt" in action
+
+    def test_get_passed_issues_uses_caller_prefix(self, data: dict) -> None:
+        """get_passed_issues must use ${context.caller_prefix} instead of a hardcoded prefix."""
+        state = data["states"].get("get_passed_issues", {})
+        action = state.get("action", "")
+        assert "${context.caller_prefix}" in action
+
+    def test_implement_next_captures_impl_id(self, data: dict) -> None:
+        """implement_next must capture as 'impl_id' for implement_issue to reference."""
+        state = data["states"].get("implement_next", {})
+        assert state.get("capture") == "impl_id"
+
+    def test_implement_next_uses_caller_prefix(self, data: dict) -> None:
+        """implement_next must use ${context.caller_prefix} for the impl-queue path."""
+        state = data["states"].get("implement_next", {})
+        action = state.get("action", "")
+        assert "${context.caller_prefix}" in action
+
+    def test_impl_queue_file_uses_loops_tmp(self, data: dict) -> None:
+        """Impl queue file must use .loops/tmp/ path with caller_prefix interpolation."""
+        states = data.get("states", {})
+        found = False
+        for state_data in states.values():
+            action = state_data.get("action", "")
+            if "${context.caller_prefix}-impl-queue" in action:
+                found = True
+                assert ".loops/tmp/" in action
+        assert found, "No state references ${context.caller_prefix}-impl-queue in .loops/tmp/"
+
+    def test_go_no_go_uses_ll_action_invoke(self, data: dict) -> None:
+        """go_no_go must call ll-action via the invoke subcommand."""
+        state = data["states"].get("go_no_go", {})
+        action = state.get("action", "")
+        assert "ll-action invoke" in action, (
+            "go_no_go action must use 'll-action invoke', not 'll-action go-no-go'"
+        )
+        assert "--check" in action, "go_no_go action must pass --check flag"
+
+    def test_implement_issue_uses_impl_id(self, data: dict) -> None:
+        """implement_issue action must reference captured.impl_id.output."""
+        state = data["states"].get("implement_issue", {})
+        action = state.get("action", "")
+        assert "${captured.impl_id.output}" in action
+
+    def test_implement_issue_has_completed_guard(self, data: dict) -> None:
+        """implement_issue must skip ll-auto when the issue is already in completed/."""
+        state = data["states"].get("implement_issue", {})
+        action = state.get("action", "")
+        assert "completed" in action, "implement_issue action must check .issues/completed/"
+        assert "exit 0" in action, "implement_issue action must exit 0 when issue is already completed"
+
+    def test_implement_issue_routes_to_implement_next(self, data: dict) -> None:
+        """implement_issue must loop back to implement_next to drain the queue."""
+        state = data["states"].get("implement_issue", {})
+        assert state.get("next") == "implement_next"

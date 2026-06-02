@@ -154,6 +154,7 @@ Internal sub-loops invoked via `loop:` delegation from parent loops. Not intende
 | `oracles/generator-evaluator` | Iterative artifact generation with visual evaluation — generate → Playwright screenshot → LLM rubric score until ALL_PASS or max_iterations; used by html-website-generator, html-anything, hitl-md, p5js-sketch-generator, and svg-image-generator. |
 | `oracles/oracle-capture-issue` | Capture and classify a single issue from conversation context, write it to `.issues/`, and emit the path; thin wrapper around `/ll:capture-issue` with `context_passthrough: true`. |
 | `oracles/enumerate-and-prove` | Parse a tagged ENUMERATE_JSON line from LLM output, validate and flatten the targets list, then prove each target via ready-to-implement-gate; used by adopt-third-party-api and integrate-sdk to eliminate duplicated parse → flatten → prove state chains. |
+| `oracles/implement-issue-chain` | Drain a recursive-refine passed-issues queue: reads recursive-refine-passed.txt, populates a caller-prefixed impl-queue, pops each issue, gates it through go-no-go, and runs ll-auto --only; used by auto-refine-and-implement and sprint-refine-and-implement to eliminate the mirrored 4-state implementation chain. |
 
 ---
 
