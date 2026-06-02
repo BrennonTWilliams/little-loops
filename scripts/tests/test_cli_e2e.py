@@ -346,9 +346,15 @@ class TestParallelExecutionWorkflow(E2ETestFixture):
             # Verify command succeeded
             assert exit_code == 0
 
-            # Verify no actual subprocess calls for Claude
-            # (Note: some subprocess calls may happen for git operations)
-            assert mock_run.call_count == 0 or "claude" not in str(mock_run.call_args)
+            # Verify Claude CLI was not invoked (git ops are expected; check the
+            # command list rather than the full string repr which may include
+            # "claude" in a cwd path such as /tmp/claude-501/...)
+            for call in mock_run.call_args_list:
+                cmd = call.args[0] if call.args else call.kwargs.get("args", [])
+                if isinstance(cmd, list) and cmd:
+                    assert not str(cmd[0]).endswith("claude"), (
+                        f"Unexpected Claude CLI invocation: {cmd}"
+                    )
 
         finally:
             os.chdir(original_cwd)

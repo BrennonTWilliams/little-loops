@@ -112,3 +112,4 @@ _Archive/
 
 # Nested .ll/ directories (e.g. .issues/epics/.ll/)
 **/.ll/
+.codegraph/

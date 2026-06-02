@@ -96,12 +96,40 @@ def _has_ll_activity(project_folder: Path) -> bool:
     return False
 
 
+def _extract_cwd_from_project(project_dir: Path) -> Path | None:
+    """Extract the project working directory from cwd fields in JSONL records.
+
+    Claude Code encodes project paths by replacing '/' with '-', which is
+    lossy for paths containing hyphens. Reading the cwd field from JSONL
+    records gives the canonical path without ambiguity.
+    """
+    jsonl_files = [f for f in project_dir.glob("*.jsonl") if not f.name.startswith("agent-")]
+    for jsonl_file in jsonl_files:
+        try:
+            with open(jsonl_file, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                        cwd = record.get("cwd")
+                        if isinstance(cwd, str) and cwd:
+                            return Path(cwd)
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            continue
+    return None
+
+
 def discover_all_projects(logger: Logger) -> list[Path]:
     """Discover all Claude projects with ll activity.
 
-    Iterates ~/.claude/projects/, decodes each directory name back to an
-    absolute path, checks for ll-relevant JSONL records, and returns a
-    sorted list of paths that exist on disk.
+    Iterates ~/.claude/projects/, resolves each directory name back to an
+    absolute path (preferring the cwd field from JSONL records over the
+    lossy '-'-based decode), checks for ll-relevant JSONL records, and
+    returns a sorted list of paths that exist on disk.
 
     Args:
         logger: Logger instance for warnings.
@@ -120,8 +148,13 @@ def discover_all_projects(logger: Logger) -> list[Path]:
         if not project_dir.is_dir():
             continue
 
-        # Decode directory name to path: "-Users-foo-bar" -> "/Users/foo/bar"
-        decoded_path = Path(project_dir.name.replace("-", "/"))
+        # Prefer cwd field from JSONL records; fall back to lossy decode.
+        # The lossy decode ("-Users-foo-bar" -> "/Users/foo/bar") breaks for
+        # paths that contain hyphens (e.g. "little-loops", macOS per-user
+        # temp dirs like /tmp/claude-501/).
+        decoded_path = _extract_cwd_from_project(project_dir) or Path(
+            project_dir.name.replace("-", "/")
+        )
 
         if not decoded_path.exists():
             logger.warning(f"Decoded path does not exist: {decoded_path}")

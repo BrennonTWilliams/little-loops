@@ -59,6 +59,8 @@ class TestDiscover:
             jsonl_file = proj_dir / "session.jsonl"
             with open(jsonl_file, "w") as f:
                 for record in records:
+                    if "cwd" not in record:
+                        record = {**record, "cwd": str(project_path)}
                     f.write(json.dumps(record) + "\n")
 
         return project_path
@@ -340,6 +342,7 @@ class TestDiscover:
                             "content": "/ll:manage-issue",
                             "timestamp": "2026-01-01T00:00:00Z",
                             "sessionId": "abc123",
+                            "cwd": str(project_path),
                         }
                     )
                     + "\n"
@@ -380,6 +383,7 @@ class TestDiscover:
                             "content": "/ll:manage-issue",
                             "timestamp": "2026-01-01T00:00:00Z",
                             "sessionId": "abc123",
+                            "cwd": str(project_path),
                         }
                     )
                     + "\n"
@@ -580,6 +584,8 @@ class TestExtract:
                 for record in records:
                     if "sessionId" not in record:
                         record = {**record, "sessionId": session_id}
+                    if "cwd" not in record:
+                        record = {**record, "cwd": str(project_path)}
                     f.write(json.dumps(record) + "\n")
 
         return project_path
