@@ -33,6 +33,7 @@ __all__ = [
     "extract_user_messages",
     "extract_commands",
     "build_examples",
+    "extract_conversation_turns",
     "save_messages",
 ]
 
@@ -715,6 +716,108 @@ def _extract_messages_with_context(
         messages.append(current_msg)
 
     return messages
+
+
+def _extract_turn_pairs(
+    records: list[dict],
+    jsonl_file: Path,
+    since: datetime | None,
+) -> list[tuple[str, str]]:
+    """Extract (user_text, assistant_text) pairs from a record stream.
+
+    Collects all assistant text blocks between consecutive user messages and
+    pairs them with the preceding user message.
+
+    Args:
+        records: All records from a JSONL session file
+        jsonl_file: Source file (for _parse_user_record fallback timestamp)
+        since: Filter for turns after this datetime
+
+    Returns:
+        List of (user_text, assistant_text) pairs in chronological order
+    """
+    pairs: list[tuple[str, str]] = []
+    current_user: str | None = None
+    assistant_texts: list[str] = []
+
+    for record in records:
+        if record.get("type") == "user":
+            if current_user is not None and assistant_texts:
+                pairs.append((current_user, "\n\n".join(assistant_texts)))
+            msg = _parse_user_record(record, jsonl_file, since)
+            current_user = msg.content if msg is not None else None
+            assistant_texts = []
+        elif record.get("type") == "assistant" and current_user is not None:
+            content = record.get("message", {}).get("content", [])
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text = block.get("text", "").strip()
+                        if text:
+                            assistant_texts.append(text)
+
+    if current_user is not None and assistant_texts:
+        pairs.append((current_user, "\n\n".join(assistant_texts)))
+
+    return pairs
+
+
+def extract_conversation_turns(
+    project_folder: Path,
+    since: datetime | None = None,
+    context_window: int = 3,
+    include_agent_sessions: bool = True,
+) -> list[list[tuple[str, str]]]:
+    """Extract conversation turns (user + assistant) from session logs.
+
+    Reads JSONL session files and extracts alternating user/assistant turn pairs,
+    grouping them into sliding windows of context_window turn-pairs each.
+
+    Args:
+        project_folder: Path to Claude project folder
+        since: Only include turns from sessions containing messages after this datetime
+        context_window: Number of (user, assistant) turn pairs per output window
+        include_agent_sessions: Whether to include agent-*.jsonl files
+
+    Returns:
+        List of conversation windows; each window is a list of (role, content) tuples
+        alternating between "user" and "assistant".
+    """
+    windows: list[list[tuple[str, str]]] = []
+
+    for jsonl_file in project_folder.glob("*.jsonl"):
+        if not include_agent_sessions and jsonl_file.name.startswith("agent-"):
+            continue
+
+        try:
+            all_records: list[dict] = []
+            with open(jsonl_file, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        all_records.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+
+            turn_pairs = _extract_turn_pairs(all_records, jsonl_file, since)
+
+            # Emit sliding windows of context_window turn-pairs
+            n = len(turn_pairs)
+            if n == 0:
+                continue
+            for i in range(max(1, n - context_window + 1)):
+                window_pairs = turn_pairs[i : i + context_window]
+                window: list[tuple[str, str]] = []
+                for user_text, assistant_text in window_pairs:
+                    window.append(("user", user_text))
+                    window.append(("assistant", assistant_text))
+                windows.append(window)
+        except OSError:
+            continue
+
+    return windows
 
 
 def save_messages(

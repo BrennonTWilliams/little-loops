@@ -1,24 +1,36 @@
 ---
 id: FEAT-1798
 type: FEAT
-title: Specialist-role harness template (Plan → Research → Implement → Report)
+title: "Specialist-role harness template (Plan \u2192 Research \u2192 Implement \u2192\
+  \ Report)"
 priority: P3
 status: open
 captured_at: '2026-05-29T20:37:23Z'
 discovered_date: 2026-05-29
 discovered_by: capture-issue
 labels:
-  - captured
-  - fsm
-  - harness
-  - loops
-  - templates
-  - create-loop
-relates_to: [ENH-1796, FEAT-1808]
+- captured
+- fsm
+- harness
+- loops
+- templates
+- create-loop
+relates_to:
+- ENH-1796
+- FEAT-1808
 parent: EPIC-1773
 decision_needed: false
-blocked_by: [FEAT-1808]
-decision: Option B — omit HITL gates, ship as autonomous pipeline (Plan → Research → Implement → Report without human gates). Simplest, works today. Include commented-out HITL block for future activation when FEAT-1794 lands. Upgrade to Option C after FEAT-1794.
+blocked_by: []
+decision: "Option B \u2014 omit HITL gates, ship as autonomous pipeline (Plan \u2192\
+  \ Research \u2192 Implement \u2192 Report without human gates). Simplest, works\
+  \ today. Include commented-out HITL block for future activation when FEAT-1794 lands.\
+  \ Upgrade to Option C after FEAT-1794."
+confidence_score: 90
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 10
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1798: Specialist-role harness template (Plan → Research → Implement → Report)
@@ -129,7 +141,7 @@ Wizard additions:
 | Document | Why Relevant |
 |---|---|
 | `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` § Generated FSM Structure | Variants A/B documented here; this adds C |
-| `skills/create-loop/loop-types.md` | Wizard implementation (lines 548–914 for Harness Questions) |
+| `skills/create-loop/loop-types.md` | Wizard implementation (lines 549–1065 for Harness Questions, next H2 at line 1067) |
 | `FEAT-1794` | HITL state type — preferred (not strictly required) for inter-role gates |
 | `ENH-1796` | Shared message log — improves prompt quality across the role chain |
 
@@ -137,16 +149,16 @@ Wizard additions:
 
 ### Files to Modify
 - `skills/create-loop/SKILL.md` — Step 1 loop type selection (~line 136): add "Specialist role pipeline" option; update Step 2 delegation to reference new question flow
-- `skills/create-loop/loop-types.md` — After Harness Questions section (after line 914): add `## Specialist Pipeline Questions` with S1-S5 question flow and Variant C FSM YAML template block
+- `skills/create-loop/loop-types.md` — Insert `## Specialist Pipeline Questions` section before line 1067 (`## Optimize a Harness (Meta-Loop) Questions`), after the `---` at line 1065; also update line 700 "Two structural variants" text to "Three structural variants"
 - `skills/create-loop/templates.md` — Add Variant C template entry if available in "Start from template" path (Step 0.1)
 - `skills/create-loop/reference.md` — Add specialist pipeline state structure to "Loop Type State Structures" section
-- `scripts/little_loops/loops/greenfield-builder.yaml` — `plan_harness` state action text hard-codes "two harness variants" and lists only `ll-loop install harness-single-shot` / `harness-multi-item`; expand to include Variant C option [Wiring pass]
+- `scripts/little_loops/loops/greenfield-builder.yaml` — `harness_planning` state action text hard-codes "two harness variants" and lists only `ll-loop install harness-single-shot` / `harness-multi-item`; expand to include Variant C option [Wiring pass]
 
 ### Files to Create
 - `scripts/little_loops/loops/harness-plan-research-implement-report.yaml` — Runnable annotated example (Variant C), matching `harness-single-shot.yaml` / `harness-multi-item.yaml` pattern with `# EXAMPLE:` comments
 
 ### Dependent Files (Documentation)
-- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — Add `### Variant C: Specialist-Role Pipeline` section after Variant B (after line ~561), plus entry in "Using the Example Files" table; also update `## Table of Contents` and `## See Also` which enumerate only Variant A/B
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — Add `### Variant C: Specialist-Role Pipeline` section after Variant B (after line ~713, before `## Using the Example Files` at line 715); update Table of Contents lines 26–29 to add Variant C entry; update line 717 "Two annotated" → "Three annotated"; add Variant C row to example files table; also update `## See Also`
 - `scripts/little_loops/loops/README.md` — Add Variant C entry under "Harness / Templates" section
 - `docs/guides/LOOPS_GUIDE.md` — **Harness Examples** table under the built-in loops catalog lists only `harness-single-shot` and `harness-multi-item`; add `harness-plan-research-implement-report` row [Wiring pass]
 
@@ -169,6 +181,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_fragments.py` — `TestBuiltinLoopMigration.migration_targets` at line ~998: add new YAML filename if it uses `fragment: shell_exit` states (optional but conventional)
 - **Constraint**: editing `skills/create-loop/loop-types.md` or `skills/create-loop/reference.md` must preserve `circuit_breaker_enabled` and `circuit_breaker_path` tokens (`test_circuit_breaker_doc_wiring.py` checks these)
 - **Constraint**: editing `skills/create-loop/loop-types.md` or `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` must preserve `timeout: 1500` and `MCP calls` tokens (`test_enh1639_doc_wiring.py` checks these)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Corrected state name in `greenfield-builder.yaml`**: The state that mentions "two harness variants" is named `harness_planning` (lines 90–111), not `plan_harness`. The exact text to replace: line 95 `"for the two harness variants (single-shot and multi-item)."` → three variants; line 102 add a third `ll-loop install harness-plan-research-implement-report` option as item 3 in the numbered list.
+
+**`loop-types.md` exact insert point for `## Specialist Pipeline Questions`**: The `## Harness Questions` section extends to line ~1065 (the full worked example and `diff_stall_gate` reference block), followed by `---` at line 1065. The next major H2 is `## Optimize a Harness (Meta-Loop) Questions` at line 1067. Insert `## Specialist Pipeline Questions` between lines 1065–1067, not at line 914 (which is inside the `## Harness Questions` section mid-content). The "Two structural variants" text at line 700 also needs updating to say "Three structural variants" once Variant C is added.
+
+**`AUTOMATIC_HARNESSING_GUIDE.md` exact insert points**: Variant B ends at line ~713 (`---` separator). `## Using the Example Files` starts at line 715 with "Two annotated example harness loops" (line 717). Insert `### Variant C: Specialist-Role Pipeline` section between lines 713–715. Also update: (a) Table of Contents (lines 26–29) — add `  - [Variant C: Specialist-Role Pipeline](#variant-c-specialist-role-pipeline)` after Variant B entry; (b) line 717 — "Two annotated" → "Three annotated"; (c) the example files table at line 719 — add a Variant C row.
+
+**`skills/create-loop/SKILL.md` Type Mapping section** (lines 148–157): In addition to adding the wizard option label, the Type Mapping block that follows at lines 148–157 needs a new entry: `"Specialist role pipeline" -> specialist-pipeline type (states: plan, research, implement, report, done)`. Without this, Step 2 delegation logic won't route to the new `## Specialist Pipeline Questions` section in loop-types.md.
 
 ### Key Architectural Insight
 
@@ -237,7 +261,7 @@ Three implementation options identified based on HITL gate handling:
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 8. Update `docs/guides/LOOPS_GUIDE.md` — add `harness-plan-research-implement-report` row to the **Harness Examples** table under the built-in loops catalog
-9. Update `scripts/little_loops/loops/greenfield-builder.yaml` — `plan_harness` state action: expand "two harness variants" guidance to list Variant C as a third option (`ll-loop install harness-plan-research-implement-report`)
+9. Update `scripts/little_loops/loops/greenfield-builder.yaml` — `harness_planning` state action: expand "two harness variants" guidance to list Variant C as a third option (`ll-loop install harness-plan-research-implement-report`)
 10. Write `TestHarnessPlanResearchImplementReport` class in `scripts/tests/test_create_loop.py` — structural assertions: `initial == "plan"`, required state names (`plan`, `research`, `implement`, `report`, `done`), phase sequencing chain, non-empty `description:` field
 11. When editing `loop-types.md` or `reference.md`, verify `circuit_breaker_enabled` and `circuit_breaker_path` tokens are preserved
 12. When editing `loop-types.md` or `AUTOMATIC_HARNESSING_GUIDE.md`, verify `timeout: 1500` and `MCP calls` tokens are preserved
@@ -250,7 +274,37 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-05-29 | Priority: P3
 
+## Confidence Check Notes
+
+_Updated by `/ll:confidence-check` on 2026-06-02_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 67/100 → MODERATE
+
+### Outcome Risk Factors
+- **Test coverage gap on wizard files**: Edits to `skills/create-loop/loop-types.md` and `SKILL.md` have no behavioral unit tests — wizard flow failures only surface at runtime; the only automated guards are token-presence constraints (`circuit_breaker_enabled`, `timeout: 1500`, `MCP calls`). Run constraint tests after each loop-types.md edit: `python -m pytest scripts/tests/test_circuit_breaker_doc_wiring.py scripts/tests/test_enh1639_doc_wiring.py -v`.
+- **S1-S5 question authoring**: The question flow is specified at outline level; exact question text, option labels, and defaults must be authored during implementation. Pattern is clear (H1-H4 in loop-types.md:548-694), but expect ~30-60 min of careful authoring to produce well-integrated questions.
+
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-02 — verdict: **NEEDS_UPDATE** (corrected inline)_
+
+**Stale line numbers in Integration Map / Similar Patterns sections:**
+- `scripts/little_loops/fsm/schema.py:309` → actual `StateConfig` at **line 337**
+- `scripts/little_loops/fsm/validation.py:711` → actual `validate_fsm()` at **line 775**
+- `skills/create-loop/loop-types.md:700-857` (Variant A/B templates) → Variant B extends to **~928** (next `##` section starts at 929); the 857 upper bound is ~71 lines short
+
+**Corrected in this pass:**
+- `blocked_by: [FEAT-1808]` removed — contradicted the explicit Option B decision ("works today, no dependency on FEAT-1808"); FEAT-1808 is a future upgrade path, not a blocker.
+
+**Confirmed accurate:** All referenced files exist; related issues FEAT-1794, FEAT-1808, ENH-1796, EPIC-1773 all open; `harness-plan-research-implement-report.yaml` not yet created (expected — it's the artifact to create); `action_type: human_approval` absent from FSM schema as described; test function line numbers off by 1 (within tolerance).
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-02T00:00:00Z - `65f77860-d771-4c40-9ba9-2bc9f9139bfe.jsonl`
+- `/ll:refine-issue` - 2026-06-02T23:34:29 - `dbfa4553-bb50-4095-a28a-7fd0414252fb.jsonl`
+- `/ll:verify-issues` - 2026-06-02T23:28:18 - `f1eb338d-104c-4e7d-b1d5-f987c7de0b61.jsonl`
+- `/ll:verify-issues` - 2026-06-02T00:00:00Z - `.ll/history.db`
+- `/ll:confidence-check` - 2026-06-02T23:45:00Z - `b12eb9b4-ce17-4eda-910b-3ad3e507ab53.jsonl`
 - `/ll:wire-issue` - 2026-06-02T23:30:00 - `3b0a90a1-2b16-41b1-bc9f-bda420fe11ad.jsonl`
 - `/ll:format-issue` - 2026-06-02T23:08:59 - `d869663f-6cbd-441f-aa25-5bb3a2dafe09.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:42 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
