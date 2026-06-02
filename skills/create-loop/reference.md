@@ -1132,3 +1132,9 @@ import:
 | Fragment | Provides | Caller must supply |
 |----------|----------|--------------------|
 | `ll_commit` | `action_type: prompt` + `action: /ll:commit ${context.commit_message}` — invokes `/ll:commit` with a parameterized message. No evaluate block. | `context.commit_message` (in loop `context:`), `next:` |
+
+### `lib/harness.yaml` fragments
+
+| Fragment | Provides | Caller must supply |
+|----------|----------|--------------------|
+| `playwright_screenshot` | `action_type: shell` + default `action` (`playwright screenshot "${context.file_url}" "${context.screenshot_path}" 2>&1 && echo "CAPTURED"`) + `evaluate.type: output_contains` with `pattern: "CAPTURED"` — callers that need `$(pwd)/` path expansion must override `action:` at the call site | `on_yes`, `on_no`, `on_error` routing; override `action:` when using absolute paths via `$(pwd)` |

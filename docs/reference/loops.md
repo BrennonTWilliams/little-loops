@@ -185,3 +185,54 @@ All artifacts are written to `${context.run_dir}` (the per-run directory injecte
 - `on_error` routes to `synthesize` (write what we have; don't stall)
 
 Knowledge accumulation: `knowledge-base.md` **appends** across iterations (sources accumulate); `coverage.md` **overwrites** each iteration (only latest score matters for routing).
+
+---
+
+## `oracles/generator-evaluator`
+
+**Category**: oracle sub-loop
+**File**: `scripts/little_loops/loops/oracles/generator-evaluator.yaml`
+
+Reusable iterative artifact generation oracle. Loops `generate → evaluate (Playwright screenshot) → score (LLM rubric)` until `ALL_PASS` or `max_iterations`. Returns `done` on success; the calling thin-wrapper routes `on_yes` to its next state.
+
+Used by `html-website-generator`, `svg-image-generator`, `html-anything`, `hitl-md`, and `hitl-compare` as a `loop:` delegation state named `run_gen_eval` (ENH-1869).
+
+### Parameters
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `run_dir` | yes | — | Directory path for generated artifacts (absolute or runner-injected relative path) |
+| `generate_prompt` | yes | — | Full LLM prompt for the `generate` state, including output file instructions |
+| `rubric` | no | `""` | Rubric criteria markdown passed to the `score` state |
+| `pass_threshold` | no | `6` | Minimum score per criterion to accept (out of 10) |
+| `artifact_path` | no | `"index.html"` | Artifact filename relative to `run_dir` for Playwright screenshot capture |
+
+### Invocation (thin-wrapper pattern)
+
+```yaml
+run_gen_eval:
+  loop: oracles/generator-evaluator
+  with:
+    run_dir: ${captured.run_dir.output}
+    generate_prompt: |
+      Write index.html to ${captured.run_dir.output}/ ...
+    rubric: |
+      - criterion_a: description
+    pass_threshold: 7
+  on_yes: done        # or smoke_test / finalize for wrappers that post-process
+  on_no: failed
+  on_error: failed
+```
+
+### Internal state machine
+
+```
+generate → evaluate (playwright_screenshot fragment) → score
+  score.on_yes → done (terminal)
+  score.on_no  → generate
+  evaluate.on_yes/no/error → score   # graceful degradation if Playwright unavailable
+```
+
+### Fragment dependency
+
+Imports `lib/harness.yaml` for the `playwright_screenshot` fragment used in the `evaluate` state. See `## Fragment Catalog → lib/harness.yaml fragments` in `skills/create-loop/reference.md`.

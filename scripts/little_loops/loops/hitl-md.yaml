@@ -11,20 +11,19 @@ description: |
   color highlighting plus on-demand popover affordances (delete / insert-before / insert-after /
   inline-edit / flag-for-AI). Includes a "Copy AI prompt" sticky control for flagged segments
   and a "Copy updated markdown" control for reconstructing the revised document. Iteratively
-  screenshots and scores the artifact until it passes a 6-criterion rubric (document readability,
-  inline highlighting, affordance overlay, keyboard reachability, inline constraint, markdown
-  reconstruction). On success, the final HTML is copied to ./hitl-md-review.html in the loop's
-  invocation directory so it's discoverable without digging into .loops/tmp/.
+  screenshots and scores the artifact until it passes a 13-criterion rubric. On success, the
+  final HTML is copied to ./hitl-md-review.html in the loop's invocation directory so it's
+  discoverable without digging into .loops/tmp/. Thin wrapper over oracles/generator-evaluator
+  (ENH-1869).
 
   GP-TSM integration: implemented as LLM-in-prompt segmentation — the segment state instructs
   the model to apply grammar-preserving boundary detection (sentence/clause level) and assign
   saliency scores and color codes by content type. No PyPI/subprocess dependencies required.
 
-  Note: the evaluate state's on_error routes to generate (not score), following the
-  svg-image-generator pattern. This is a deliberate divergence from the LOOPS_GUIDE.md design
-  rule ("never back to generate") at line 897 — Playwright failures here indicate the HTML itself
-  may be malformed, so regenerating is preferable to scoring a broken page. Only on_error takes
-  this route; on_yes and on_no both route to score for normal LLM-only fallback behavior.
+  Note: the evaluate state's on_no and on_error both route to score inside the
+  oracles/generator-evaluator oracle (graceful degradation). The on_error path in the original
+  hitl-md loop routed to generate instead of score — this deliberate divergence from the
+  LOOPS_GUIDE.md design rule is now handled by the oracle's internal routing logic.
 initial: init
 max_iterations: 20
 timeout: 7200
@@ -151,190 +150,161 @@ states:
       markdown_source field. The concatenation of all markdown_source values must reproduce the
       original document exactly (modulo trailing whitespace on each segment). This is required
       for the "Copy updated markdown" affordance to be lossless.
-    next: generate
+    next: run_gen_eval
 
-  generate:
-    # HITL-MD: Generator phase — reads segments.json (and any prior critique.md) and produces
-    # a single self-contained HTML review page. The page must render the document with its
-    # natural reading flow (headings as headings, paragraphs as paragraphs, lists as lists)
-    # and overlay saliency/affordances via inline highlighting + on-demand popovers — NOT as
-    # a vertical stack of bordered segment blocks. All CSS/JS inline; file:// must work.
-    action_type: prompt
-    action: |
-      Read ${captured.run_dir.output}/segments.json for the ordered segment list.
+  run_gen_eval:
+    # HARNESS: Thin-wrapper delegation — runs generate → evaluate (Playwright screenshot) →
+    # score (LLM rubric) inside oracles/generator-evaluator until ALL_PASS or max_iterations.
+    # Routes to finalize on success; failed on error or exhausted retries (ENH-1869).
+    loop: oracles/generator-evaluator
+    with:
+      run_dir: "${captured.run_dir.output}"
+      generate_prompt: |
+        Read ${captured.run_dir.output}/segments.json for the ordered segment list.
 
-      If ${captured.run_dir.output}/critique.md exists, read it and address all issues listed
-      in the "Issues to Address" section specifically and completely before writing the new page.
+        If ${captured.run_dir.output}/critique.md exists, read it and address all issues listed
+        in the "Issues to Address" section specifically and completely before writing the new page.
 
-      ${context.design_tokens_context}
+        ${context.design_tokens_context}
 
-      Read prompts/hitl-md-generate.md for the full design specification.
-      Write a single self-contained HTML file to ${captured.run_dir.output}/index.html
-      following every requirement in the design specification.
-    next: evaluate
-    on_error: failed
+        Read prompts/hitl-md-generate.md for the full design specification.
+        Write a single self-contained HTML file to ${captured.run_dir.output}/index.html
+        following every requirement in the design specification.
+      rubric: |
+        If ${captured.run_dir.output}/screenshot.png exists, read it to view the rendered review page.
+        Otherwise read ${captured.run_dir.output}/index.html directly to evaluate the HTML source.
+        Also read ${captured.run_dir.output}/segments.json to recall what segments should be present.
 
-  evaluate:
-    # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// page.
-    # Self-contained HTML (all CSS/JS inline) renders correctly under file:// without
-    # an HTTP server. Routes to score on success or Playwright-unavailable failure;
-    # routes back to generate on error — a deliberate divergence from the standard
-    # LOOPS_GUIDE.md routing rule (see top-level description for rationale).
-    action_type: shell
-    action: |
-      playwright screenshot "file://${captured.run_dir.output}/index.html" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
-    evaluate:
-      type: output_contains
-      pattern: "CAPTURED"
-    on_yes: score
-    on_no: score
-    on_error: generate
+        Score the review page on each criterion from 1 to 10 and write the evaluation to
+        ${captured.run_dir.output}/critique.md using this exact format:
 
-  score:
-    # HARNESS: Evaluator phase — LLM judges the screenshot against a 6-criterion rubric
-    # tailored to HITL single-document review ergonomics (document_readability,
-    # inline_highlighting, affordance_overlay, keyboard_reachability, inline_constraint,
-    # markdown_reconstruction). Per-criterion thresholds prevent strong visual design from
-    # masking a broken keyboard affordance or failed reconstruction.
-    # Gates via output_contains: "ALL_PASS"; routes to generate on fail, failed on LLM error.
-    action_type: prompt
-    action: |
-      If ${captured.run_dir.output}/screenshot.png exists, read it to view the rendered review page.
-      Otherwise read ${captured.run_dir.output}/index.html directly to evaluate the HTML source.
-      Also read ${captured.run_dir.output}/segments.json to recall what segments should be present.
+        ```
+        # Evaluation
 
-      Score the review page on each criterion from 1 to 10 and write the evaluation to
-      ${captured.run_dir.output}/critique.md using this exact format:
+        document_readability: N/10 — [explanation: does the page read as a normally-flowing
+          markdown document — headings as headings, paragraphs as paragraphs, lists as lists,
+          code blocks as code blocks? It MUST NOT look like a vertical stack of separately
+          bordered/padded segment blocks. Segment ID labels must NOT appear inline in the body.
+          Unselected segments must NOT be faded to low opacity. Score 10 if the document
+          rendering is indistinguishable from a plain markdown render except for inline color
+          highlights; deduct heavily for any block-stack or per-segment container styling that
+          breaks reading flow.]
+        inline_highlighting: N/10 — [explanation: is saliency conveyed via inline color
+          highlights (low-alpha background tints on inline <span class="seg"> wrappers for
+          prose; same low-alpha background applied directly to block elements for headings/
+          list-items/code/blockquotes)? No left-border-block pattern. Higher-saliency segments
+          should be perceptibly distinct from lower-saliency ones without being garish. Tints
+          must stay subtle enough that the text remains readable.]
+        affordance_overlay: N/10 — [explanation: are the five edit controls (delete,
+          insert-before, insert-after, edit, flag) delivered as a single click/focus-triggered
+          popover that overlays the document without reflowing surrounding content? Hidden by
+          default; only one popover visible at a time; dismissible by Escape, outside-click,
+          or selecting another segment. Is the "Copy AI prompt (N flagged)" sticky top button
+          visible with a live-updating flag count? Is "Copy updated markdown" prominent at the
+          bottom? Are flagged segments visible at a glance via an inline flag glyph or colored
+          underline?]
+        keyboard_reachability: N/10 — [explanation: can all five popover affordances be reached
+          and activated via keyboard alone? Does Tab/Shift+Tab and arrow navigation cycle
+          through segments? Is the currently selected segment scrolled into view? Is Escape
+          functional for both dismissing popovers and clearing selection? Would a keyboard-only
+          user be able to flag, edit, delete, and insert without a mouse?]
+        inline_constraint: N/10 — [explanation: does the page render correctly under file://?
+          All CSS/JS must be inline. No external src= or href= references. A broken-resource
+          icon or any CDN/external reference is a constraint violation. Score 10 for fully
+          self-contained; deduct 3 for each external reference found.]
+        markdown_reconstruction: N/10 — [explanation: for a smoke test, mentally trace a simple
+          scenario: delete one segment, edit one segment, insert one new segment. Would the
+          "Copy updated markdown" reconstruction produce well-formed markdown? Does segments.json
+          include all markdown_source fields needed for lossless reconstruction? Are IDs stable
+          and sequential?]
+        staged_highlighting: N/10 — [explanation: are highlights revealed in waves rather than
+          painted all at once on load? Look for IntersectionObserver usage on .seg elements,
+          a tier-1 immediate reveal of the top 3–5 importance segments, and a CSS transition
+          on background-color/opacity for the deferred tier. The transition must reference a
+          motion design token (var(--motion-duration-...) or a documented :root fallback) — NOT
+          a hardcoded duration. Mark FAIL_STAGED if all highlights appear on load with no
+          observer-driven reveal, or if the duration is a raw literal.]
+        density_control: N/10 — [explanation: is there a visible <input type="range"> density
+          slider in the toolbar that filters highlighted segments by saliency threshold? It
+          must default to a sparse position (Top 10–25%) so the first impression is uncluttered.
+          CRITICAL CHECK: inspect the JS density-filter function. If it uses display:none,
+          visibility:hidden, or any other mechanism that removes .seg elements from the document
+          flow for segments below the threshold, score maximum 4/10 regardless of visual
+          appearance — this is a document-correctness violation that breaks the reading
+          experience. The slider must only suppress highlight tints (background-color), never
+          hide content.
+          Slider styles (track, thumb, focus ring, labels) must source from semantic tokens —
+          any raw hex/px in the slider region is a deduction.]
+        multi_channel_saliency: N/10 — [explanation: does each .seg carry
+          data-channel-importance, data-channel-anomaly, data-channel-confidence, and
+          data-claim-type attributes? Are there four channel toggle controls in the toolbar
+          (importance, anomaly, claim_type, confidence) that swap the active tint palette?
+          Channel colors must come from CSS custom properties (var(--color-channel-...)),
+          not hardcoded fills.]
+        schema_switching: N/10 — [explanation: does the toolbar expose schema-switching view
+          toggles (By document order / By saliency tier / By claim type / By anomaly score)
+          that re-group .seg elements via DOM manipulation? Returning to "By document order"
+          must restore the original DOM order so the markdown reconstruction stays lossless.
+          Active/inactive toggle states must use action-primary and text-secondary tokens.]
+        minimap_state_rail: N/10 — [explanation: is there a fixed-position <canvas>-based
+          minimap on the right edge of the page showing the document as proportional colored
+          blocks with a viewport-position indicator? Does it use localStorage for visit-heatmap
+          persistence? Does it support click-to-navigate to a segment? Canvas fills must be
+          read from CSS custom properties at draw-time (getComputedStyle/getPropertyValue) so
+          theme switches take effect on redraw — embedded hex literals in fillStyle are a
+          deduction.]
+        trust_calibration: N/10 — [explanation: are confidence badges rendered *before* segment
+          body text (DOM order: badge first, content second) so the calibration signal is read
+          before fluency biases judgment? Does a "Trust calibration" toolbar toggle gate the
+          click-to-reveal behavior on high-saliency low-confidence segments
+          (data-saliency >= 0.7 AND data-channel-confidence < 0.5)? Do segments with
+          data-length-normalized="true" display a subtle length-normalized credibility marker
+          (e.g., a ruler icon)? Badge colors must map to status tokens (success / warning /
+          danger), not hardcoded greens / yellows / reds. Also verify that the trust-calibration
+          apply function (applyTrustCal or equivalent) is called inside the DOMContentLoaded
+          init handler — if absent from init, the feature is non-functional on first load,
+          deduct 3.]
+        design_token_consistency: N/10 — [explanation: scan the rendered <style> block and
+          inline style attributes for raw hex colors (e.g., #[0-9a-f]{3,8}), raw px/rem values
+          outside :root declarations, and inline style="color:..." literals. Confirm each new
+          ENH-1770 feature (staged highlighting, density slider, multi-channel rendering,
+          schema-switching toolbar, minimap, calibrated friction) sources colors, spacing,
+          typography, motion, and radii from var(--...) custom properties. Small concessions
+          allowed (1px borders, transparent fallbacks, single :root token fallbacks) but no
+          net-new hardcoded colors. Threshold 8 is intentionally strict because this criterion
+          guards against the LLM regressing to literal values under prompt drift.]
 
-      ```
-      # Evaluation
+        ## Issues to Address
+        [Specific, actionable critique for the generator. List each problem concisely so the
+         generator can address it on the next pass. If all scores meet their thresholds, write
+         "No issues — all criteria pass."]
+        ```
 
-      document_readability: N/10 — [explanation: does the page read as a normally-flowing
-        markdown document — headings as headings, paragraphs as paragraphs, lists as lists,
-        code blocks as code blocks? It MUST NOT look like a vertical stack of separately
-        bordered/padded segment blocks. Segment ID labels must NOT appear inline in the body.
-        Unselected segments must NOT be faded to low opacity. Score 10 if the document
-        rendering is indistinguishable from a plain markdown render except for inline color
-        highlights; deduct heavily for any block-stack or per-segment container styling that
-        breaks reading flow.]
-      inline_highlighting: N/10 — [explanation: is saliency conveyed via inline color
-        highlights (low-alpha background tints on inline <span class="seg"> wrappers for
-        prose; same low-alpha background applied directly to block elements for headings/
-        list-items/code/blockquotes)? No left-border-block pattern. Higher-saliency segments
-        should be perceptibly distinct from lower-saliency ones without being garish. Tints
-        must stay subtle enough that the text remains readable.]
-      affordance_overlay: N/10 — [explanation: are the five edit controls (delete,
-        insert-before, insert-after, edit, flag) delivered as a single click/focus-triggered
-        popover that overlays the document without reflowing surrounding content? Hidden by
-        default; only one popover visible at a time; dismissible by Escape, outside-click,
-        or selecting another segment. Is the "Copy AI prompt (N flagged)" sticky top button
-        visible with a live-updating flag count? Is "Copy updated markdown" prominent at the
-        bottom? Are flagged segments visible at a glance via an inline 🚩 glyph or colored
-        underline?]
-      keyboard_reachability: N/10 — [explanation: can all five popover affordances be reached
-        and activated via keyboard alone? Does Tab/Shift+Tab and arrow navigation cycle
-        through segments? Is the currently selected segment scrolled into view? Is Escape
-        functional for both dismissing popovers and clearing selection? Would a keyboard-only
-        user be able to flag, edit, delete, and insert without a mouse?]
-      inline_constraint: N/10 — [explanation: does the page render correctly under file://?
-        All CSS/JS must be inline. No external src= or href= references. A broken-resource
-        icon or any CDN/external reference is a constraint violation. Score 10 for fully
-        self-contained; deduct 3 for each external reference found.]
-      markdown_reconstruction: N/10 — [explanation: for a smoke test, mentally trace a simple
-        scenario: delete one segment, edit one segment, insert one new segment. Would the
-        "Copy updated markdown" reconstruction produce well-formed markdown? Does segments.json
-        include all markdown_source fields needed for lossless reconstruction? Are IDs stable
-        and sequential?]
-      staged_highlighting: N/10 — [explanation: are highlights revealed in waves rather than
-        painted all at once on load? Look for IntersectionObserver usage on .seg elements,
-        a tier-1 immediate reveal of the top 3–5 importance segments, and a CSS transition
-        on background-color/opacity for the deferred tier. The transition must reference a
-        motion design token (var(--motion-duration-…) or a documented :root fallback) — NOT
-        a hardcoded duration. Mark FAIL_STAGED if all highlights appear on load with no
-        observer-driven reveal, or if the duration is a raw literal.]
-      density_control: N/10 — [explanation: is there a visible <input type="range"> density
-        slider in the toolbar that filters highlighted segments by saliency threshold? It
-        must default to a sparse position (Top 10–25%) so the first impression is uncluttered.
-        CRITICAL CHECK: inspect the JS density-filter function. If it uses display:none,
-        visibility:hidden, or any other mechanism that removes .seg elements from the document
-        flow for segments below the threshold, score maximum 4/10 regardless of visual
-        appearance — this is a document-correctness violation that breaks the reading
-        experience. The slider must only suppress highlight tints (background-color), never
-        hide content.
-        Slider styles (track, thumb, focus ring, labels) must source from semantic tokens —
-        any raw hex/px in the slider region is a deduction.]
-      multi_channel_saliency: N/10 — [explanation: does each .seg carry
-        data-channel-importance, data-channel-anomaly, data-channel-confidence, and
-        data-claim-type attributes? Are there four channel toggle controls in the toolbar
-        (importance, anomaly, claim_type, confidence) that swap the active tint palette?
-        Channel colors must come from CSS custom properties (var(--color-channel-…)),
-        not hardcoded fills.]
-      schema_switching: N/10 — [explanation: does the toolbar expose schema-switching view
-        toggles (By document order / By saliency tier / By claim type / By anomaly score)
-        that re-group .seg elements via DOM manipulation? Returning to "By document order"
-        must restore the original DOM order so the markdown reconstruction stays lossless.
-        Active/inactive toggle states must use action-primary and text-secondary tokens.]
-      minimap_state_rail: N/10 — [explanation: is there a fixed-position <canvas>-based
-        minimap on the right edge of the page showing the document as proportional colored
-        blocks with a viewport-position indicator? Does it use localStorage for visit-heatmap
-        persistence? Does it support click-to-navigate to a segment? Canvas fills must be
-        read from CSS custom properties at draw-time (getComputedStyle/getPropertyValue) so
-        theme switches take effect on redraw — embedded hex literals in fillStyle are a
-        deduction.]
-      trust_calibration: N/10 — [explanation: are confidence badges rendered *before* segment
-        body text (DOM order: badge first, content second) so the calibration signal is read
-        before fluency biases judgment? Does a "Trust calibration" toolbar toggle gate the
-        click-to-reveal behavior on high-saliency low-confidence segments
-        (data-saliency >= 0.7 AND data-channel-confidence < 0.5)? Do segments with
-        data-length-normalized="true" display a subtle length-normalized credibility marker
-        (e.g., a ruler icon)? Badge colors must map to status tokens (success / warning /
-        danger), not hardcoded greens / yellows / reds. Also verify that the trust-calibration
-        apply function (applyTrustCal or equivalent) is called inside the DOMContentLoaded
-        init handler — if absent from init, the feature is non-functional on first load,
-        deduct 3.]
-      design_token_consistency: N/10 — [explanation: scan the rendered <style> block and
-        inline style attributes for raw hex colors (e.g., #[0-9a-f]{3,8}), raw px/rem values
-        outside :root declarations, and inline style="color:…" literals. Confirm each new
-        ENH-1770 feature (staged highlighting, density slider, multi-channel rendering,
-        schema-switching toolbar, minimap, calibrated friction) sources colors, spacing,
-        typography, motion, and radii from var(--…) custom properties. Small concessions
-        allowed (1px borders, transparent fallbacks, single :root token fallbacks) but no
-        net-new hardcoded colors. Threshold 8 is intentionally strict because this criterion
-        guards against the LLM regressing to literal values under prompt drift.]
+        Thresholds (evaluate each criterion independently — do NOT average):
+        - document_readability: 8
+        - inline_highlighting: 7
+        - affordance_overlay: 7
+        - keyboard_reachability: 7
+        - inline_constraint: 8
+        - markdown_reconstruction: 7
+        - staged_highlighting: 7
+        - density_control: 8
+        - multi_channel_saliency: 7
+        - schema_switching: 7
+        - minimap_state_rail: 7
+        - trust_calibration: 8
+        - design_token_consistency: 8
 
-      ## Issues to Address
-      [Specific, actionable critique for the generator. List each problem concisely so the
-       generator can address it on the next pass. If all scores meet their thresholds, write
-       "No issues — all criteria pass."]
-      ```
+        Per-criterion annotations in your output (e.g., "staged_highlighting: 7/10 — needs work")
+        must use lowercase descriptive text — do NOT emit a bare "PASS" or "FAIL" token, as the
+        compound gate token below is matched by output_contains and a bare token collision would
+        trigger a false pass.
 
-      Thresholds (evaluate each criterion independently — do NOT average):
-      - document_readability: 8
-      - inline_highlighting: 7
-      - affordance_overlay: 7
-      - keyboard_reachability: 7
-      - inline_constraint: 8
-      - markdown_reconstruction: 7
-      - staged_highlighting: 7
-      - density_control: 8
-      - multi_channel_saliency: 7
-      - schema_switching: 7
-      - minimap_state_rail: 7
-      - trust_calibration: 8
-      - design_token_consistency: 8
-
-      Per-criterion annotations in your output (e.g., "staged_highlighting: 7/10 — needs work")
-      must use lowercase descriptive text — do NOT emit a bare "PASS" or "FAIL" token, as the
-      compound gate token below is matched by output_contains and a bare token collision would
-      trigger a false pass.
-
-      If ALL thirteen criterion scores meet their individual thresholds, output exactly: ALL_PASS
-      Otherwise output: ITERATE
-    evaluate:
-      type: output_contains
-      pattern: "ALL_PASS"
+        If ALL thirteen criterion scores meet their individual thresholds, output exactly: ALL_PASS
+        Otherwise output: ITERATE
+      pass_threshold: 7
     on_yes: finalize
-    on_no: generate
+    on_no: failed
     on_error: failed
 
   finalize:
@@ -378,10 +348,10 @@ states:
          not as separated blocks. Click a highlighted span (or Tab/arrow-key to it) to reveal
          a popover with the five edit affordances anchored to that segment.
       3. Use the popover icon buttons on the selected segment to:
-         - 🗑 Delete segments that are stale or irrelevant
-         - ↑+ / +↓ Insert new content before or after a segment
-         - ✏ Edit a segment inline (in place)
-         - 🚩 Flag segments where you want the AI to revise or expand
+         - Delete segments that are stale or irrelevant
+         - Insert new content before or after a segment
+         - Edit a segment inline (in place)
+         - Flag segments where you want the AI to revise or expand
          Press Escape (or click outside the popover) to dismiss it.
       4. When you have flagged one or more segments, click "Copy AI prompt" at the top of the page.
          Paste the copied prompt into your coding agent chat for targeted AI revision of those spans.

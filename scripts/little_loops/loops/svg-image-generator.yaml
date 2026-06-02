@@ -8,6 +8,7 @@ description: |
   evaluation. Implements the GAN-style architecture from Anthropic's harness
   design article, adapted for SVG's simpler self-contained structure —
   no HTTP server required, no external dependencies, direct file:// rendering.
+  Thin wrapper over oracles/generator-evaluator (ENH-1869).
 initial: init
 max_iterations: 20
 timeout: 7200
@@ -52,103 +53,77 @@ states:
         gradients, generic stock-icon shapes, excessive detail that disappears at icon scale
 
       Be specific and opinionated. The generator will use this brief as its primary reference.
-    next: generate
+    next: run_gen_eval
 
-  generate:
-    # HARNESS: Generator phase — creates or refines the SVG file.
-    # On the first pass it uses only the visual brief. On subsequent iterations it also
-    # incorporates the evaluator's critique, directly addressing each flagged issue.
-    # SVGs must be fully self-contained: no external image hrefs, no external fonts,
-    # proper viewBox so they scale correctly at any size.
-    action_type: prompt
-    action: |
-      Read ${captured.run_dir.output}/brief.md for the visual brief.
+  run_gen_eval:
+    # HARNESS: Thin-wrapper delegation — runs generate → evaluate (Playwright screenshot) →
+    # score (LLM rubric) inside oracles/generator-evaluator until ALL_PASS or max_iterations.
+    # Routes to done on success; failed on error or exhausted retries (ENH-1869).
+    loop: oracles/generator-evaluator
+    with:
+      run_dir: "${captured.run_dir.output}"
+      artifact_path: "image.svg"
+      generate_prompt: |
+        Read ${captured.run_dir.output}/brief.md for the visual brief.
 
-      If ${captured.run_dir.output}/critique.md exists, read it and address all issues
-      listed in the "Issues to Address" section specifically and completely.
+        If ${captured.run_dir.output}/critique.md exists, read it and address all issues
+        listed in the "Issues to Address" section specifically and completely.
 
-      ${context.design_tokens_context}
+        ${context.design_tokens_context}
 
-      Write a single self-contained SVG file to ${captured.run_dir.output}/image.svg that:
-      - Implements the shape language and color palette from the brief
-      - If design tokens are provided above, use their semantic color values; do not
-        invent new colors outside the token palette
-      - Has a proper viewBox attribute (e.g. viewBox="0 0 800 800") so it scales correctly
-      - Contains no external dependencies: no <image href="...">, no external fonts,
-        no xlink:href pointing to remote resources — everything embedded or drawn with paths
-      - Uses clean, intentional paths with consistent stroke weights and deliberate proportions
-      - Achieves a distinctive aesthetic — avoid generic clip-art silhouettes and default
-        geometric shapes with no creative angle
-      - If critique exists, resolves every specific issue before introducing new ideas
-      - STRICT SIZE LIMIT: Keep the SVG under 250 lines. Prefer <circle>, <path>, and
-        <text> elements over verbose repeated markup. Use <g> with transform for repeated
-        elements. Abbreviate or omit individual tool labels if needed to stay under the limit —
-        ring labels ("Core Context", "Gateway", "Offloaded Ecosystem") are sufficient;
-        individual tool names are optional. Conciseness is a hard requirement.
-    next: evaluate
+        Write a single self-contained SVG file to ${captured.run_dir.output}/image.svg that:
+        - Implements the shape language and color palette from the brief
+        - If design tokens are provided above, use their semantic color values; do not
+          invent new colors outside the token palette
+        - Has a proper viewBox attribute (e.g. viewBox="0 0 800 800") so it scales correctly
+        - Contains no external dependencies: no <image href="...">, no external fonts,
+          no xlink:href pointing to remote resources — everything embedded or drawn with paths
+        - Uses clean, intentional paths with consistent stroke weights and deliberate proportions
+        - Achieves a distinctive aesthetic — avoid generic clip-art silhouettes and default
+          geometric shapes with no creative angle
+        - If critique exists, resolves every specific issue before introducing new ideas
+        - STRICT SIZE LIMIT: Keep the SVG under 250 lines. Prefer <circle>, <path>, and
+          <text> elements over verbose repeated markup. Use <g> with transform for repeated
+          elements. Abbreviate or omit individual tool labels if needed to stay under the limit —
+          ring labels ("Core Context", "Gateway", "Offloaded Ecosystem") are sufficient;
+          individual tool names are optional. Conciseness is a hard requirement.
+      rubric: |
+        Read the screenshot at ${captured.run_dir.output}/screenshot.png to view the generated SVG.
+        Also read ${captured.run_dir.output}/brief.md to recall the visual intent.
 
-  evaluate:
-    # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// SVG.
-    # SVGs render natively in browsers under file:// without an HTTP server, making
-    # them even simpler than HTML pages for this pattern. Routes to score on success;
-    # routes back to generate on failure (e.g. Playwright not installed, or file missing)
-    # so the loop can still make progress via LLM-only scoring if the shell tool is
-    # unavailable.
-    action_type: shell
-    action: |
-      playwright screenshot "file://${captured.run_dir.output}/image.svg" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
-    evaluate:
-      type: output_contains
-      pattern: "CAPTURED"
-    on_yes: score
-    on_no: generate
-    on_error: generate
+        Score the SVG on each criterion from 1 to 10 and write the evaluation to
+        ${captured.run_dir.output}/critique.md using this exact format:
 
-  score:
-    # HARNESS: Evaluator phase — LLM judges the screenshot against four SVG-specific
-    # criteria and writes structured critique for the generator's next iteration.
-    # Uses output_contains: "ALL_PASS" for routing — simple and robust vs JSON parsing.
-    # The PNG produced by the evaluate state is read as a multimodal image input.
-    action_type: prompt
-    action: |
-      Read the screenshot at ${captured.run_dir.output}/screenshot.png to view the generated SVG.
-      Also read ${captured.run_dir.output}/brief.md to recall the visual intent.
+        ```
+        # Evaluation
 
-      Score the SVG on each criterion from 1 to 10 and write the evaluation to
-      ${captured.run_dir.output}/critique.md using this exact format:
+        visual_clarity: N/10 — [explanation: is the concept immediately readable with no
+          ambiguity? At icon scale, can you tell what it is in under 2 seconds?]
+        originality: N/10 — [explanation: evidence of custom creative decisions?
+          Best designs avoid generic clip-art shapes and stock icon conventions.
+          Penalize: default silhouettes, unmodified geometric primitives, AI-slop fill patterns.]
+        craft: N/10 — [explanation: clean paths, consistent stroke weights, proper proportions,
+          deliberate use of negative space, color harmony.]
+        scalability: N/10 — [explanation: does the level of detail hold up at icon scale?
+          Complex paths that collapse below 32px should be penalized.]
 
-      ```
-      # Evaluation
+        ## Issues to Address
+        [Specific, actionable critique for the generator. List each problem concisely
+         so the generator can address it directly on the next pass. If all scores meet
+         threshold, write "No issues — all criteria pass."]
+        ```
 
-      visual_clarity: N/10 — [explanation: is the concept immediately readable with no
-        ambiguity? At icon scale, can you tell what it is in under 2 seconds?]
-      originality: N/10 — [explanation: evidence of custom creative decisions?
-        Best designs avoid generic clip-art shapes and stock icon conventions.
-        Penalize: default silhouettes, unmodified geometric primitives, AI-slop fill patterns.]
-      craft: N/10 — [explanation: clean paths, consistent stroke weights, proper proportions,
-        deliberate use of negative space, color harmony.]
-      scalability: N/10 — [explanation: does the level of detail hold up at icon scale?
-        Complex paths that collapse below 32px should be penalized.]
+        After writing the file, evaluate the scores:
+        - visual_clarity weight: 2x (threshold 6)
+        - originality weight: 2x (threshold 6)
+        - craft weight: 1x (threshold 6)
+        - scalability weight: 1x (threshold 6)
 
-      ## Issues to Address
-      [Specific, actionable critique for the generator. List each problem concisely
-       so the generator can address it directly on the next pass. If all scores meet
-       threshold, write "No issues — all criteria pass."]
-      ```
-
-      After writing the file, evaluate the scores:
-      - visual_clarity weight: 2× (threshold ${context.pass_threshold})
-      - originality weight: 2× (threshold ${context.pass_threshold})
-      - craft weight: 1× (threshold ${context.pass_threshold})
-      - scalability weight: 1× (threshold ${context.pass_threshold})
-
-      If ALL four individual scores are >= ${context.pass_threshold}, output exactly: ALL_PASS
-      Otherwise output: ITERATE
-    evaluate:
-      type: output_contains
-      pattern: "ALL_PASS"
+        If ALL four individual scores are >= 6, output exactly: ALL_PASS
+        Otherwise output: ITERATE
+      pass_threshold: 6
     on_yes: done
-    on_no: generate
+    on_no: diagnose
     on_error: diagnose
 
   done:

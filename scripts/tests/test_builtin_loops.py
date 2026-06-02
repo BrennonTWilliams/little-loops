@@ -2793,7 +2793,7 @@ class TestSprintBuildAndValidateLoop:
 
 
 class TestHtmlWebsiteGeneratorLoop:
-    """Structural tests for the html-website-generator FSM loop."""
+    """Structural tests for the html-website-generator thin-wrapper FSM loop (ENH-1869)."""
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "html-website-generator.yaml"
 
@@ -2810,48 +2810,68 @@ class TestHtmlWebsiteGeneratorLoop:
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
-        """All required states must be present."""
-        required = {"plan", "generate", "capture", "score", "smoke_test", "done"}
+        """Thin wrapper must retain pre-generate states and add run_gen_eval delegation."""
+        required = {"plan", "run_gen_eval", "smoke_test", "done", "failed"}
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
+
+    def test_inline_generate_evaluate_score_states_removed(self, data: dict) -> None:
+        """Inline generate, capture, and score states must be absent in the thin wrapper."""
+        states = set(data["states"].keys())
+        assert "generate" not in states, "generate state must be removed in thin wrapper"
+        assert "capture" not in states, "capture state must be removed in thin wrapper"
+        assert "score" not in states, "score state must be removed in thin wrapper"
 
     def test_done_state_is_terminal(self, data: dict) -> None:
         """done state must have terminal: true."""
         done_state = data["states"].get("done", {})
         assert done_state.get("terminal") is True
 
-    def test_evaluate_state_is_shell(self, data: dict) -> None:
-        """capture state must use action_type: shell for the Playwright CLI call."""
-        state = data["states"].get("capture", {})
-        assert state.get("action_type") == "shell"
+    def test_failed_state_is_terminal(self, data: dict) -> None:
+        """failed state must have terminal: true."""
+        state = data["states"].get("failed", {})
+        assert state.get("terminal") is True
 
-    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
-        """capture state must have an output_contains evaluator with pattern CAPTURED."""
-        state = data["states"].get("capture", {})
-        evaluator = state.get("evaluate", {})
-        assert evaluator.get("type") == "output_contains"
-        assert evaluator.get("pattern") == "CAPTURED"
+    def test_run_gen_eval_delegates_to_generator_evaluator(self, data: dict) -> None:
+        """run_gen_eval must delegate to oracles/generator-evaluator oracle sub-loop."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("loop") == "oracles/generator-evaluator", (
+            f"run_gen_eval.loop should be 'oracles/generator-evaluator', got {state.get('loop')!r}"
+        )
 
-    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
-        """capture state must route to score when screenshot succeeds."""
-        state = data["states"].get("capture", {})
-        assert state.get("on_yes") == "score"
+    def test_run_gen_eval_with_bindings_present(self, data: dict) -> None:
+        """run_gen_eval with: must bind run_dir, generate_prompt, rubric, and pass_threshold."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        assert "run_dir" in with_, f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        assert "generate_prompt" in with_, "run_gen_eval.with must contain 'generate_prompt'"
+        assert "rubric" in with_, "run_gen_eval.with must contain 'rubric'"
+        assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
 
-    def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
-        """capture state must route back to generate when screenshot fails."""
-        state = data["states"].get("capture", {})
-        assert state.get("on_no") == "generate"
+    def test_run_gen_eval_routes_to_smoke_test_on_yes(self, data: dict) -> None:
+        """run_gen_eval must route to smoke_test when sub-loop succeeds (ALL_PASS)."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("on_yes") == "smoke_test", (
+            f"run_gen_eval.on_yes should be 'smoke_test', got {state.get('on_yes')!r}"
+        )
 
-    def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
-        """score state must route to smoke_test when all criteria pass."""
-        state = data["states"].get("score", {})
-        assert state.get("on_yes") == "smoke_test"
+    def test_run_gen_eval_routes_to_failed_on_failure(self, data: dict) -> None:
+        """run_gen_eval must route to failed when sub-loop fails or exhausts iterations."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("on_no") == "failed", (
+            f"run_gen_eval.on_no should be 'failed', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "failed", (
+            f"run_gen_eval.on_error should be 'failed', got {state.get('on_error')!r}"
+        )
 
-    def test_score_state_routes_to_generate_on_iterate(self, data: dict) -> None:
-        """score state must route back to generate when criteria are not met."""
-        state = data["states"].get("score", {})
-        assert state.get("on_no") == "generate"
+    def test_plan_routes_to_run_gen_eval(self, data: dict) -> None:
+        """plan must route to run_gen_eval (not generate) in the thin wrapper."""
+        state = data["states"].get("plan", {})
+        assert state.get("next") == "run_gen_eval", (
+            f"plan.next should be 'run_gen_eval', got {state.get('next')!r}"
+        )
 
     def test_smoke_test_state_is_shell(self, data: dict) -> None:
         """smoke_test state must use action_type: shell for Playwright functional checks."""
@@ -2862,11 +2882,6 @@ class TestHtmlWebsiteGeneratorLoop:
         """smoke_test state must route to done when functional checks pass."""
         state = data["states"].get("smoke_test", {})
         assert state.get("on_yes") == "done"
-
-    def test_smoke_test_routes_to_generate_on_fail(self, data: dict) -> None:
-        """smoke_test state must route back to generate when functional checks fail."""
-        state = data["states"].get("smoke_test", {})
-        assert state.get("on_no") == "generate"
 
     def test_context_has_description(self, data: dict) -> None:
         """context block must define description variable; output_dir is runner-injected."""
@@ -2886,7 +2901,7 @@ class TestHtmlWebsiteGeneratorLoop:
 
 
 class TestSvgImageGeneratorLoop:
-    """Structural tests for the svg-image-generator FSM loop."""
+    """Structural tests for the svg-image-generator thin-wrapper FSM loop (ENH-1869)."""
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "svg-image-generator.yaml"
 
@@ -2903,11 +2918,18 @@ class TestSvgImageGeneratorLoop:
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
-        """All required states must be present."""
-        required = {"init", "plan", "generate", "evaluate", "score", "done", "diagnose", "failed"}
+        """Thin wrapper must retain pre-generate states and add run_gen_eval delegation."""
+        required = {"init", "plan", "run_gen_eval", "done", "diagnose", "failed"}
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
+
+    def test_inline_generate_evaluate_score_states_removed(self, data: dict) -> None:
+        """Inline generate, evaluate, and score states must be absent in the thin wrapper."""
+        states = set(data["states"].keys())
+        assert "generate" not in states, "generate state must be removed in thin wrapper"
+        assert "evaluate" not in states, "evaluate state must be removed in thin wrapper"
+        assert "score" not in states, "score state must be removed in thin wrapper"
 
     def test_init_state_is_shell_with_capture(self, data: dict) -> None:
         """init state must be a shell action that captures the timestamped run directory."""
@@ -2921,37 +2943,58 @@ class TestSvgImageGeneratorLoop:
         done_state = data["states"].get("done", {})
         assert done_state.get("terminal") is True
 
-    def test_evaluate_state_is_shell(self, data: dict) -> None:
-        """evaluate state must use action_type: shell for the Playwright CLI call."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("action_type") == "shell"
+    def test_failed_state_is_terminal(self, data: dict) -> None:
+        """failed state must have terminal: true."""
+        state = data["states"].get("failed", {})
+        assert state.get("terminal") is True
 
-    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
-        """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
-        state = data["states"].get("evaluate", {})
-        evaluator = state.get("evaluate", {})
-        assert evaluator.get("type") == "output_contains"
-        assert evaluator.get("pattern") == "CAPTURED"
+    def test_run_gen_eval_delegates_to_generator_evaluator(self, data: dict) -> None:
+        """run_gen_eval must delegate to oracles/generator-evaluator oracle sub-loop."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("loop") == "oracles/generator-evaluator", (
+            f"run_gen_eval.loop should be 'oracles/generator-evaluator', got {state.get('loop')!r}"
+        )
 
-    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
-        """evaluate state must route to score when screenshot succeeds."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("on_yes") == "score"
+    def test_run_gen_eval_with_bindings_present(self, data: dict) -> None:
+        """run_gen_eval with: must bind run_dir, generate_prompt, rubric, pass_threshold."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        assert "run_dir" in with_, f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        assert "generate_prompt" in with_, "run_gen_eval.with must contain 'generate_prompt'"
+        assert "rubric" in with_, "run_gen_eval.with must contain 'rubric'"
+        assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
 
-    def test_evaluate_routes_to_generate_on_no(self, data: dict) -> None:
-        """evaluate state must route back to generate when screenshot fails."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("on_no") == "generate"
+    def test_run_gen_eval_binds_svg_artifact_path(self, data: dict) -> None:
+        """run_gen_eval with: must bind artifact_path to 'image.svg' for SVG screenshot."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        assert with_.get("artifact_path") == "image.svg", (
+            f"run_gen_eval.with.artifact_path should be 'image.svg', got {with_.get('artifact_path')!r}"
+        )
 
-    def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
-        """score state must route to done when all criteria pass."""
-        state = data["states"].get("score", {})
-        assert state.get("on_yes") == "done"
+    def test_run_gen_eval_routes_to_done_on_yes(self, data: dict) -> None:
+        """run_gen_eval must route to done when sub-loop succeeds (ALL_PASS)."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("on_yes") == "done", (
+            f"run_gen_eval.on_yes should be 'done', got {state.get('on_yes')!r}"
+        )
 
-    def test_score_state_routes_to_generate_on_iterate(self, data: dict) -> None:
-        """score state must route back to generate when criteria are not met."""
-        state = data["states"].get("score", {})
-        assert state.get("on_no") == "generate"
+    def test_run_gen_eval_routes_to_diagnose_on_failure(self, data: dict) -> None:
+        """run_gen_eval must route to diagnose when sub-loop fails or exhausts iterations."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("on_no") == "diagnose", (
+            f"run_gen_eval.on_no should be 'diagnose', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "diagnose", (
+            f"run_gen_eval.on_error should be 'diagnose', got {state.get('on_error')!r}"
+        )
+
+    def test_plan_routes_to_run_gen_eval(self, data: dict) -> None:
+        """plan must route to run_gen_eval (not generate) in the thin wrapper."""
+        state = data["states"].get("plan", {})
+        assert state.get("next") == "run_gen_eval", (
+            f"plan.next should be 'run_gen_eval', got {state.get('next')!r}"
+        )
 
     def test_context_has_description(self, data: dict) -> None:
         """context block must define description; output_dir is runner-injected run_dir."""
@@ -2976,17 +3019,6 @@ class TestSvgImageGeneratorLoop:
         assert "$(pwd)" in action, (
             f"init.action must use $(pwd) for an absolute path, got: {action!r}"
         )
-
-    def test_evaluate_action_has_stderr_redirect(self, data: dict) -> None:
-        """evaluate action must redirect stderr to stdout so playwright errors surface."""
-        state = data["states"].get("evaluate", {})
-        action = state.get("action", "")
-        assert "2>&1" in action, f"evaluate.action must contain 2>&1, got: {action!r}"
-
-    def test_score_on_error_routes_to_failed(self, data: dict) -> None:
-        """score state must route to diagnose on error to surface LLM failures explicitly."""
-        state = data["states"].get("score", {})
-        assert state.get("on_error") == "diagnose"
 
     def test_diagnose_routes_to_failed(self, data: dict) -> None:
         """diagnose state must route to failed."""
@@ -3757,7 +3789,7 @@ class TestWorktreeHealthLoop:
 
 
 class TestHtmlAnythingLoop:
-    """Structural tests for the html-anything FSM loop (FEAT-1541)."""
+    """Structural tests for the html-anything thin-wrapper FSM loop (FEAT-1541, ENH-1869)."""
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "html-anything.yaml"
 
@@ -3774,11 +3806,18 @@ class TestHtmlAnythingLoop:
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
-        """All required states must be present: init, plan, generate, evaluate, score, done, diagnose, failed."""
-        required = {"init", "plan", "generate", "evaluate", "score", "done", "diagnose", "failed"}
+        """Thin wrapper must retain pre-generate states and add run_gen_eval delegation."""
+        required = {"init", "plan", "run_gen_eval", "done", "diagnose", "failed"}
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
+
+    def test_inline_generate_evaluate_score_states_removed(self, data: dict) -> None:
+        """Inline generate, evaluate, and score states must be absent in the thin wrapper."""
+        states = set(data["states"].keys())
+        assert "generate" not in states, "generate state must be removed in thin wrapper"
+        assert "evaluate" not in states, "evaluate state must be removed in thin wrapper"
+        assert "score" not in states, "score state must be removed in thin wrapper"
 
     def test_init_state_is_shell_with_capture(self, data: dict) -> None:
         """init state must be a shell action that captures the timestamped run directory."""
@@ -3815,71 +3854,66 @@ class TestHtmlAnythingLoop:
         state = data["states"].get("diagnose", {})
         assert not state.get("terminal", False)
 
-    def test_evaluate_state_is_shell(self, data: dict) -> None:
-        """evaluate state must use action_type: shell for the Playwright CLI call."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("action_type") == "shell"
-
-    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
-        """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
-        state = data["states"].get("evaluate", {})
-        evaluator = state.get("evaluate", {})
-        assert evaluator.get("type") == "output_contains"
-        assert evaluator.get("pattern") == "CAPTURED"
-
-    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
-        """evaluate state must route to score when screenshot succeeds."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("on_yes") == "score"
-
-    def test_evaluate_routes_to_score_on_no(self, data: dict) -> None:
-        """evaluate state must route to score for LLM-only fallback when screenshot fails."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("on_no") == "score"
-
-    def test_evaluate_on_error_routes_to_score(self, data: dict) -> None:
-        """evaluate state must route to score on error so Playwright absence degrades gracefully."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("on_error") == "score"
-
-    def test_evaluate_action_has_stderr_redirect(self, data: dict) -> None:
-        """evaluate action must redirect stderr to stdout so playwright errors surface."""
-        state = data["states"].get("evaluate", {})
-        action = state.get("action", "")
-        assert "2>&1" in action, f"evaluate.action must contain 2>&1, got: {action!r}"
-
-    def test_score_state_uses_all_pass_pattern(self, data: dict) -> None:
-        """score state must use output_contains with pattern ALL_PASS."""
-        state = data["states"].get("score", {})
-        evaluator = state.get("evaluate", {})
-        assert evaluator.get("type") == "output_contains"
-        assert evaluator.get("pattern") == "ALL_PASS"
-
-    def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
-        """score state must route to done when all criteria pass."""
-        state = data["states"].get("score", {})
-        assert state.get("on_yes") == "done"
-
-    def test_score_state_routes_to_generate_on_iterate(self, data: dict) -> None:
-        """score state must route back to generate when criteria are not met."""
-        state = data["states"].get("score", {})
-        assert state.get("on_no") == "generate"
-
-    def test_score_on_error_routes_to_failed(self, data: dict) -> None:
-        """score state must route to diagnose on error to surface LLM failures explicitly."""
-        state = data["states"].get("score", {})
-        assert state.get("on_error") == "diagnose"
-
-    def test_score_action_has_screenshot_or_html_fallback(self, data: dict) -> None:
-        """score state action must have the screenshot-or-HTML fallback preamble for graceful Playwright degradation."""
-        state = data["states"].get("score", {})
-        action = state.get("action", "")
-        assert "screenshot.png exists" in action, (
-            "score.action must check if screenshot.png exists for graceful Playwright degradation"
+    def test_run_gen_eval_delegates_to_generator_evaluator(self, data: dict) -> None:
+        """run_gen_eval must delegate to oracles/generator-evaluator oracle sub-loop."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("loop") == "oracles/generator-evaluator", (
+            f"run_gen_eval.loop should be 'oracles/generator-evaluator', got {state.get('loop')!r}"
         )
-        assert "Otherwise read" in action, (
-            "score.action must fall back to reading index.html when screenshot is absent"
+
+    def test_run_gen_eval_with_bindings_present(self, data: dict) -> None:
+        """run_gen_eval with: must bind run_dir, generate_prompt, rubric, pass_threshold."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        assert "run_dir" in with_, f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        assert "generate_prompt" in with_, "run_gen_eval.with must contain 'generate_prompt'"
+        assert "rubric" in with_, "run_gen_eval.with must contain 'rubric'"
+        assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
+
+    def test_run_gen_eval_routes_to_done_on_yes(self, data: dict) -> None:
+        """run_gen_eval must route to done when sub-loop succeeds (ALL_PASS)."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("on_yes") == "done", (
+            f"run_gen_eval.on_yes should be 'done', got {state.get('on_yes')!r}"
         )
+
+    def test_run_gen_eval_routes_to_diagnose_on_failure(self, data: dict) -> None:
+        """run_gen_eval must route to diagnose when sub-loop fails or exhausts iterations."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("on_no") == "diagnose", (
+            f"run_gen_eval.on_no should be 'diagnose', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "diagnose", (
+            f"run_gen_eval.on_error should be 'diagnose', got {state.get('on_error')!r}"
+        )
+
+    def test_plan_routes_to_run_gen_eval(self, data: dict) -> None:
+        """plan must route to run_gen_eval (not generate) in the thin wrapper."""
+        state = data["states"].get("plan", {})
+        assert state.get("next") == "run_gen_eval", (
+            f"plan.next should be 'run_gen_eval', got {state.get('next')!r}"
+        )
+
+    def test_plan_action_references_brief_and_rubric(self, data: dict) -> None:
+        """plan state must write both brief.md and rubric.md in a single atomic state."""
+        state = data["states"].get("plan", {})
+        action = state.get("action", "")
+        assert "brief.md" in action, "plan.action must write brief.md"
+        assert "rubric.md" in action, "plan.action must write rubric.md"
+
+    def test_rubric_binding_reads_rubric_dynamically(self, data: dict) -> None:
+        """run_gen_eval rubric binding must reference rubric.md for per-criterion thresholds."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        rubric = with_.get("rubric", "")
+        assert "rubric.md" in rubric, (
+            "run_gen_eval.with.rubric must reference rubric.md to load per-criterion thresholds"
+        )
+
+    def test_context_pass_threshold_is_7(self, data: dict) -> None:
+        """pass_threshold must be 7 — higher than SVG's 6 because platform constraints are binary."""
+        ctx = data.get("context", {})
+        assert ctx.get("pass_threshold") == 7
 
     def test_context_has_description(self, data: dict) -> None:
         """context block must define description; output_dir is runner-injected run_dir."""
@@ -3892,30 +3926,10 @@ class TestHtmlAnythingLoop:
         ctx = data.get("context", {})
         assert "design_tokens_context" in ctx
 
-    def test_context_pass_threshold_is_7(self, data: dict) -> None:
-        """pass_threshold must be 7 — higher than SVG's 6 because platform constraints are binary."""
-        ctx = data.get("context", {})
-        assert ctx.get("pass_threshold") == 7
-
     def test_max_iterations_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_iterations and timeout."""
         assert data.get("max_iterations", 0) > 0
         assert data.get("timeout", 0) > 0
-
-    def test_plan_action_references_brief_and_rubric(self, data: dict) -> None:
-        """plan state must write both brief.md and rubric.md in a single atomic state."""
-        state = data["states"].get("plan", {})
-        action = state.get("action", "")
-        assert "brief.md" in action, "plan.action must write brief.md"
-        assert "rubric.md" in action, "plan.action must write rubric.md"
-
-    def test_score_action_reads_rubric_dynamically(self, data: dict) -> None:
-        """score state must read rubric.md to load per-criterion thresholds dynamically."""
-        state = data["states"].get("score", {})
-        action = state.get("action", "")
-        assert "rubric.md" in action, (
-            "score.action must read rubric.md to load per-criterion thresholds"
-        )
 
     def test_done_reports_all_five_output_files(self, data: dict) -> None:
         """done state must reference all 5 output files: index.html, brief.md, rubric.md, critique.md, screenshot.png."""
@@ -3929,7 +3943,7 @@ class TestHtmlAnythingLoop:
 
 
 class TestHitlCompareLoop:
-    """Structural tests for the hitl-compare FSM loop (FEAT-1545)."""
+    """Structural tests for the hitl-compare thin-wrapper FSM loop (FEAT-1545, ENH-1869)."""
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "hitl-compare.yaml"
 
@@ -3946,11 +3960,18 @@ class TestHitlCompareLoop:
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
-        """All required states must be present: init, identify, prune, generate, evaluate, score, done, failed."""
-        required = {"init", "identify", "prune", "generate", "evaluate", "score", "done", "failed"}
+        """Thin wrapper must retain pre-generate states and add run_gen_eval delegation."""
+        required = {"init", "identify", "prune", "run_gen_eval", "done", "failed"}
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
+
+    def test_inline_generate_evaluate_score_states_removed(self, data: dict) -> None:
+        """Inline generate, evaluate, and score states must be absent in the thin wrapper."""
+        states = set(data["states"].keys())
+        assert "generate" not in states, "generate state must be removed in thin wrapper"
+        assert "evaluate" not in states, "evaluate state must be removed in thin wrapper"
+        assert "score" not in states, "score state must be removed in thin wrapper"
 
     def test_init_state_is_shell_with_capture(self, data: dict) -> None:
         """init state must be a shell action that captures the timestamped run directory."""
@@ -3977,60 +3998,45 @@ class TestHitlCompareLoop:
         state = data["states"].get("failed", {})
         assert state.get("terminal") is True
 
-    def test_evaluate_state_is_shell(self, data: dict) -> None:
-        """evaluate state must use action_type: shell for the Playwright CLI call."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("action_type") == "shell"
+    def test_run_gen_eval_delegates_to_generator_evaluator(self, data: dict) -> None:
+        """run_gen_eval must delegate to oracles/generator-evaluator oracle sub-loop."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("loop") == "oracles/generator-evaluator", (
+            f"run_gen_eval.loop should be 'oracles/generator-evaluator', got {state.get('loop')!r}"
+        )
 
-    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
-        """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
-        state = data["states"].get("evaluate", {})
-        evaluator = state.get("evaluate", {})
-        assert evaluator.get("type") == "output_contains"
-        assert evaluator.get("pattern") == "CAPTURED"
+    def test_run_gen_eval_with_bindings_present(self, data: dict) -> None:
+        """run_gen_eval with: must bind run_dir, generate_prompt, rubric, pass_threshold."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        assert "run_dir" in with_, f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        assert "generate_prompt" in with_, "run_gen_eval.with must contain 'generate_prompt'"
+        assert "rubric" in with_, "run_gen_eval.with must contain 'rubric'"
+        assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
 
-    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
-        """evaluate state must route to score when screenshot succeeds."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("on_yes") == "score"
+    def test_run_gen_eval_routes_to_done_on_yes(self, data: dict) -> None:
+        """run_gen_eval must route to done when sub-loop succeeds (ALL_PASS)."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("on_yes") == "done", (
+            f"run_gen_eval.on_yes should be 'done', got {state.get('on_yes')!r}"
+        )
 
-    def test_evaluate_routes_to_score_on_no(self, data: dict) -> None:
-        """evaluate state must route to score for LLM-only fallback when screenshot fails."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("on_no") == "score"
+    def test_run_gen_eval_routes_to_failed_on_failure(self, data: dict) -> None:
+        """run_gen_eval must route to failed when sub-loop fails or exhausts iterations."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("on_no") == "failed", (
+            f"run_gen_eval.on_no should be 'failed', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "failed", (
+            f"run_gen_eval.on_error should be 'failed', got {state.get('on_error')!r}"
+        )
 
-    def test_evaluate_on_error_routes_to_score(self, data: dict) -> None:
-        """evaluate state must route to score on error so Playwright absence degrades gracefully."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("on_error") == "score"
-
-    def test_evaluate_action_has_stderr_redirect(self, data: dict) -> None:
-        """evaluate action must redirect stderr to stdout so playwright errors surface."""
-        state = data["states"].get("evaluate", {})
-        action = state.get("action", "")
-        assert "2>&1" in action, f"evaluate.action must contain 2>&1, got: {action!r}"
-
-    def test_score_state_uses_all_pass_pattern(self, data: dict) -> None:
-        """score state must use output_contains with pattern ALL_PASS."""
-        state = data["states"].get("score", {})
-        evaluator = state.get("evaluate", {})
-        assert evaluator.get("type") == "output_contains"
-        assert evaluator.get("pattern") == "ALL_PASS"
-
-    def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
-        """score state must route to done when all criteria pass."""
-        state = data["states"].get("score", {})
-        assert state.get("on_yes") == "done"
-
-    def test_score_state_routes_to_generate_on_iterate(self, data: dict) -> None:
-        """score state must route back to generate when criteria are not met."""
-        state = data["states"].get("score", {})
-        assert state.get("on_no") == "generate"
-
-    def test_score_on_error_routes_to_failed(self, data: dict) -> None:
-        """score state must route to failed on error to surface LLM failures explicitly."""
-        state = data["states"].get("score", {})
-        assert state.get("on_error") == "failed"
+    def test_prune_routes_to_run_gen_eval(self, data: dict) -> None:
+        """prune must route to run_gen_eval (not generate) in the thin wrapper."""
+        state = data["states"].get("prune", {})
+        assert state.get("next") == "run_gen_eval", (
+            f"prune.next should be 'run_gen_eval', got {state.get('next')!r}"
+        )
 
     def test_context_has_inputs(self, data: dict) -> None:
         """context block must define inputs; output_dir is runner-injected run_dir."""
@@ -4060,11 +4066,30 @@ class TestHitlCompareLoop:
         action = state.get("action", "")
         assert "review.md" in action, "prune.action must write review.md"
 
-    def test_generate_action_writes_index_html(self, data: dict) -> None:
-        """generate state action must reference index.html as the output file."""
-        state = data["states"].get("generate", {})
-        action = state.get("action", "")
-        assert "index.html" in action, "generate.action must write index.html"
+    def test_generate_prompt_binding_writes_index_html(self, data: dict) -> None:
+        """run_gen_eval generate_prompt binding must reference index.html as the output file."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        generate_prompt = with_.get("generate_prompt", "")
+        assert "index.html" in generate_prompt, "generate_prompt binding must write index.html"
+
+    def test_generate_prompt_binding_has_write_in_affordance(self, data: dict) -> None:
+        """generate_prompt binding must include write-in custom option affordance instructions (ENH-1604)."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        generate_prompt = with_.get("generate_prompt", "")
+        assert "Write custom option" in generate_prompt, (
+            "generate_prompt binding must contain write-in affordance instructions ('Write custom option')"
+        )
+
+    def test_rubric_binding_references_write_in(self, data: dict) -> None:
+        """rubric binding must reference the write-in affordance (ENH-1604)."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        rubric = with_.get("rubric", "")
+        assert "write-in" in rubric, (
+            "run_gen_eval.with.rubric comparison_ergonomics must reference the write-in affordance"
+        )
 
     def test_done_reports_all_output_files(self, data: dict) -> None:
         """done state must reference all key output files."""
@@ -4076,25 +4101,9 @@ class TestHitlCompareLoop:
         assert "critique.md" in action, "done.action must reference critique.md"
         assert "screenshot.png" in action, "done.action must reference screenshot.png"
 
-    def test_generate_action_has_write_in_affordance(self, data: dict) -> None:
-        """generate state action must include write-in custom option affordance instructions (ENH-1604)."""
-        state = data["states"].get("generate", {})
-        action = state.get("action", "")
-        assert "Write custom option" in action, (
-            "generate.action must contain write-in affordance instructions ('Write custom option')"
-        )
-
-    def test_score_comparison_ergonomics_references_write_in(self, data: dict) -> None:
-        """score state comparison_ergonomics must reference the write-in affordance (ENH-1604)."""
-        state = data["states"].get("score", {})
-        action = state.get("action", "")
-        assert "write-in" in action, (
-            "score.action comparison_ergonomics must reference the write-in affordance"
-        )
-
 
 class TestHitlMdLoop:
-    """Structural tests for the hitl-md FSM loop (FEAT-1613)."""
+    """Structural tests for the hitl-md thin-wrapper FSM loop (FEAT-1613, ENH-1869)."""
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "hitl-md.yaml"
     PROMPT_FILE = Path("prompts/hitl-md-generate.md")
@@ -4106,13 +4115,14 @@ class TestHitlMdLoop:
 
     @pytest.fixture
     def generate_spec(self) -> str:
-        """Full design specification including both the YAML action and the extracted prompt file."""
+        """Full design specification combining the with: generate_prompt binding and the prompt file."""
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         yaml_data = yaml.safe_load(self.LOOP_FILE.read_text())
-        yaml_action = yaml_data["states"].get("generate", {}).get("action", "")
+        with_ = yaml_data["states"].get("run_gen_eval", {}).get("with", {})
+        generate_prompt = with_.get("generate_prompt", "")
         assert self.PROMPT_FILE.exists(), f"Prompt file not found: {self.PROMPT_FILE}"
         prompt_content = self.PROMPT_FILE.read_text()
-        return yaml_action + "\n" + prompt_content
+        return generate_prompt + "\n" + prompt_content
 
     def test_required_top_level_fields(self, data: dict) -> None:
         """Loop must have name, initial, input_key (singular), and states fields."""
@@ -4122,20 +4132,18 @@ class TestHitlMdLoop:
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
-        """All required states must be present: init, segment, generate, evaluate, score, finalize, done, failed."""
-        required = {
-            "init",
-            "segment",
-            "generate",
-            "evaluate",
-            "score",
-            "finalize",
-            "done",
-            "failed",
-        }
+        """Thin wrapper must retain pre-generate states and add run_gen_eval delegation."""
+        required = {"init", "segment", "run_gen_eval", "finalize", "done", "failed"}
         actual = set(data["states"].keys())
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
+
+    def test_inline_generate_evaluate_score_states_removed(self, data: dict) -> None:
+        """Inline generate, evaluate, and score states must be absent in the thin wrapper."""
+        states = set(data["states"].keys())
+        assert "generate" not in states, "generate state must be removed in thin wrapper"
+        assert "evaluate" not in states, "evaluate state must be removed in thin wrapper"
+        assert "score" not in states, "score state must be removed in thin wrapper"
 
     def test_init_state_is_shell_with_capture(self, data: dict) -> None:
         """init state must be a shell action that captures the timestamped run directory."""
@@ -4162,72 +4170,50 @@ class TestHitlMdLoop:
         state = data["states"].get("failed", {})
         assert state.get("terminal") is True
 
-    def test_evaluate_state_is_shell(self, data: dict) -> None:
-        """evaluate state must use action_type: shell for the Playwright CLI call."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("action_type") == "shell"
-
-    def test_evaluate_state_has_output_contains_evaluator(self, data: dict) -> None:
-        """evaluate state must have an output_contains evaluator with pattern CAPTURED."""
-        state = data["states"].get("evaluate", {})
-        evaluator = state.get("evaluate", {})
-        assert evaluator.get("type") == "output_contains"
-        assert evaluator.get("pattern") == "CAPTURED"
-
-    def test_evaluate_routes_to_score_on_yes(self, data: dict) -> None:
-        """evaluate state must route to score when screenshot succeeds."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("on_yes") == "score"
-
-    def test_evaluate_routes_to_score_on_no(self, data: dict) -> None:
-        """evaluate state must route to score for LLM-only fallback when screenshot fails."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("on_no") == "score"
-
-    def test_evaluate_on_error_routes_to_generate(self, data: dict) -> None:
-        """evaluate on_error must route to generate — deliberate divergence from hitl-compare pattern."""
-        state = data["states"].get("evaluate", {})
-        assert state.get("on_error") == "generate", (
-            "hitl-md routes on_error to generate (not score) so malformed HTML is regenerated"
+    def test_run_gen_eval_delegates_to_generator_evaluator(self, data: dict) -> None:
+        """run_gen_eval must delegate to oracles/generator-evaluator oracle sub-loop."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("loop") == "oracles/generator-evaluator", (
+            f"run_gen_eval.loop should be 'oracles/generator-evaluator', got {state.get('loop')!r}"
         )
 
-    def test_evaluate_action_has_stderr_redirect(self, data: dict) -> None:
-        """evaluate action must redirect stderr to stdout so playwright errors surface."""
-        state = data["states"].get("evaluate", {})
-        action = state.get("action", "")
-        assert "2>&1" in action, f"evaluate.action must contain 2>&1, got: {action!r}"
+    def test_run_gen_eval_with_bindings_present(self, data: dict) -> None:
+        """run_gen_eval with: must bind run_dir, generate_prompt, rubric, pass_threshold."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        assert "run_dir" in with_, f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        assert "generate_prompt" in with_, "run_gen_eval.with must contain 'generate_prompt'"
+        assert "rubric" in with_, "run_gen_eval.with must contain 'rubric'"
+        assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
 
-    def test_score_state_uses_all_pass_pattern(self, data: dict) -> None:
-        """score state must use output_contains with pattern ALL_PASS."""
-        state = data["states"].get("score", {})
-        evaluator = state.get("evaluate", {})
-        assert evaluator.get("type") == "output_contains"
-        assert evaluator.get("pattern") == "ALL_PASS"
+    def test_run_gen_eval_routes_to_finalize_on_yes(self, data: dict) -> None:
+        """run_gen_eval must route to finalize when sub-loop succeeds (ALL_PASS)."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("on_yes") == "finalize", (
+            f"run_gen_eval.on_yes should be 'finalize', got {state.get('on_yes')!r}"
+        )
 
-    def test_score_state_routes_to_finalize_on_pass(self, data: dict) -> None:
-        """score state must route to finalize (copy step) when all criteria pass."""
-        state = data["states"].get("score", {})
-        assert state.get("on_yes") == "finalize"
+    def test_run_gen_eval_routes_to_failed_on_failure(self, data: dict) -> None:
+        """run_gen_eval must route to failed when sub-loop fails or exhausts iterations."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("on_no") == "failed", (
+            f"run_gen_eval.on_no should be 'failed', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "failed", (
+            f"run_gen_eval.on_error should be 'failed', got {state.get('on_error')!r}"
+        )
+
+    def test_segment_routes_to_run_gen_eval(self, data: dict) -> None:
+        """segment must route to run_gen_eval (not generate) in the thin wrapper."""
+        state = data["states"].get("segment", {})
+        assert state.get("next") == "run_gen_eval", (
+            f"segment.next should be 'run_gen_eval', got {state.get('next')!r}"
+        )
 
     def test_finalize_state_routes_to_done(self, data: dict) -> None:
         """finalize state must route to done after copying the output HTML."""
         state = data["states"].get("finalize", {})
         assert state.get("on_yes") == "done"
-
-    def test_score_state_routes_to_generate_on_iterate(self, data: dict) -> None:
-        """score state must route back to generate when criteria are not met."""
-        state = data["states"].get("score", {})
-        assert state.get("on_no") == "generate"
-
-    def test_score_on_error_routes_to_failed(self, data: dict) -> None:
-        """score state must route to failed on error to surface LLM failures explicitly."""
-        state = data["states"].get("score", {})
-        assert state.get("on_error") == "failed"
-
-    def test_generate_on_error_routes_to_failed(self, data: dict) -> None:
-        """generate state must route to failed on error to surface prompt failures explicitly."""
-        state = data["states"].get("generate", {})
-        assert state.get("on_error") == "failed"
 
     def test_context_has_input(self, data: dict) -> None:
         """context block must define input (singular); output_dir is runner-injected run_dir."""
@@ -4251,11 +4237,12 @@ class TestHitlMdLoop:
         action = state.get("action", "")
         assert "segments.json" in action, "segment.action must write segments.json"
 
-    def test_generate_action_writes_index_html(self, data: dict) -> None:
-        """generate state action must reference index.html as the output file."""
-        state = data["states"].get("generate", {})
-        action = state.get("action", "")
-        assert "index.html" in action, "generate.action must write index.html"
+    def test_generate_prompt_binding_writes_index_html(self, data: dict) -> None:
+        """run_gen_eval generate_prompt binding must reference index.html as the output file."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        generate_prompt = with_.get("generate_prompt", "")
+        assert "index.html" in generate_prompt, "generate_prompt binding must write index.html"
 
     def test_done_reports_all_output_files(self, data: dict) -> None:
         """done state must reference all key output files."""
@@ -4362,12 +4349,11 @@ class TestHitlMdLoop:
             "generate spec must instruct use of CSS custom properties for token consistency"
         )
 
-    def test_score_state_has_new_criteria(self, data: dict) -> None:
-        """score state must include the 7 new ENH-1770 criteria with thresholds:
-        staged_highlighting, density_control, multi_channel_saliency,
-        schema_switching, minimap_state_rail, trust_calibration,
-        design_token_consistency."""
-        action = data["states"].get("score", {}).get("action", "")
+    def test_rubric_binding_has_new_criteria(self, data: dict) -> None:
+        """rubric binding must include the 7 new ENH-1770 criteria with thresholds."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        rubric = with_.get("rubric", "")
         new_criteria = (
             "staged_highlighting",
             "density_control",
@@ -4378,12 +4364,13 @@ class TestHitlMdLoop:
             "design_token_consistency",
         )
         for criterion in new_criteria:
-            assert criterion in action, f"score.action must include the '{criterion}' criterion"
+            assert criterion in rubric, f"rubric binding must include the '{criterion}' criterion"
 
-    def test_score_state_preserves_original_criteria(self, data: dict) -> None:
-        """score state must retain all 6 original criteria so the existing
-        rubric isn't lost when the new criteria are added."""
-        action = data["states"].get("score", {}).get("action", "")
+    def test_rubric_binding_preserves_original_criteria(self, data: dict) -> None:
+        """rubric binding must retain all 6 original criteria."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        rubric = with_.get("rubric", "")
         original_criteria = (
             "document_readability",
             "inline_highlighting",
@@ -4393,17 +4380,18 @@ class TestHitlMdLoop:
             "markdown_reconstruction",
         )
         for criterion in original_criteria:
-            assert criterion in action, (
-                f"score.action must retain the original '{criterion}' criterion"
+            assert criterion in rubric, (
+                f"rubric binding must retain the original '{criterion}' criterion"
             )
 
-    def test_score_state_uses_compound_all_pass_token(self, data: dict) -> None:
-        """score state must keep ALL_PASS as the compound gate token — per-criterion
-        annotations must not collide with a bare 'PASS' token (see
-        test_no_bare_pass_token_in_output_contains guard)."""
-        evaluator = data["states"].get("score", {}).get("evaluate", {})
-        assert evaluator.get("pattern") == "ALL_PASS", (
-            "score evaluator must use the compound ALL_PASS token"
+    def test_rubric_binding_uses_compound_all_pass_token(self, data: dict) -> None:
+        """rubric binding must keep ALL_PASS as the compound gate token — per-criterion
+        annotations must not collide with a bare 'PASS' token."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        rubric = with_.get("rubric", "")
+        assert "ALL_PASS" in rubric, (
+            "rubric binding must use the compound ALL_PASS token for gating"
         )
 
 
@@ -5147,8 +5135,10 @@ class TestGeneratorEvaluatorOracle:
         params = data.get("parameters", {})
         assert "run_dir" in params, "parameters block must declare run_dir"
         assert "generate_prompt" in params, "parameters block must declare generate_prompt"
+        assert "artifact_path" in params, "parameters block must declare artifact_path"
         assert params["run_dir"].get("required") is True
         assert params["generate_prompt"].get("required") is True
+        assert params["artifact_path"].get("required") is not True, "artifact_path must be optional"
 
     def test_required_states_exist(self, data: dict) -> None:
         states = data.get("states", {})

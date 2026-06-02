@@ -6,10 +6,10 @@ description: |
   Accepts a natural language website description via loop_input and
   iteratively generates and refines HTML/CSS/JS using Playwright CLI
   screenshot evaluation. Implements the GAN-style architecture from
-  Anthropic's harness design article.
+  Anthropic's harness design article. Thin wrapper over
+  oracles/generator-evaluator (ENH-1869).
 initial: plan
 max_iterations: 30
-on_handoff: spawn
 timeout: 14400
 
 # HARNESS: Context variables control quality threshold.
@@ -40,100 +40,72 @@ states:
         generic hero sections, AI-generated filler patterns
 
       Be specific and opinionated. The generator will use this brief as its primary reference.
-    next: generate
+    next: run_gen_eval
 
-  generate:
-    # HARNESS: Generator phase — creates or refines the HTML file.
-    # On the first pass it uses only the design brief. On subsequent iterations it also
-    # incorporates the evaluator's critique, directly addressing each flagged issue.
-    # All CSS and JS must be inline so the file renders correctly under a file:// URL
-    # without an HTTP server (no CORS, no external resource loading needed).
-    action_type: prompt
-    action: |
-      Read ${context.run_dir}/brief.md for the design brief.
+  run_gen_eval:
+    # HARNESS: Thin-wrapper delegation — runs generate → evaluate (Playwright screenshot) →
+    # score (LLM rubric) inside oracles/generator-evaluator until ALL_PASS or max_iterations.
+    # Routes to smoke_test on success; failed on error or exhausted retries (ENH-1869).
+    loop: oracles/generator-evaluator
+    with:
+      run_dir: "${context.run_dir}"
+      generate_prompt: |
+        Read ${context.run_dir}/brief.md for the design brief.
 
-      A previous iteration may have written ${context.run_dir}/critique.md. If
-      that file exists, read it and address every issue in its "Issues to
-      Address" section specifically and completely. If it does not exist,
-      proceed silently — do not narrate the check.
+        A previous iteration may have written ${context.run_dir}/critique.md. If
+        that file exists, read it and address every issue in its "Issues to
+        Address" section specifically and completely. If it does not exist,
+        proceed silently — do not narrate the check.
 
-      ${context.design_tokens_context}
+        ${context.design_tokens_context}
 
-      Write a single self-contained HTML file to ${context.run_dir}/index.html that:
-      - Implements the visual identity and layout from the brief
-      - Embeds all CSS and JavaScript inline (no external dependencies, no CDN links)
-      - Produces a responsive layout that works at desktop and mobile widths
-      - Achieves a distinctive, museum-quality aesthetic — avoid AI-slop patterns
-        (generic gradients, unmodified Bootstrap components, stock imagery placeholders,
-        bland sans-serif on white backgrounds)
-      - If design tokens are provided above, use their semantic names and resolved values
-        for colors; do not invent new color values outside the token palette
-      - If critique exists, resolves every specific issue before introducing new ideas
-    next: capture
+        Write a single self-contained HTML file to ${context.run_dir}/index.html that:
+        - Implements the visual identity and layout from the brief
+        - Embeds all CSS and JavaScript inline (no external dependencies, no CDN links)
+        - Produces a responsive layout that works at desktop and mobile widths
+        - Achieves a distinctive, museum-quality aesthetic — avoid AI-slop patterns
+          (generic gradients, unmodified Bootstrap components, stock imagery placeholders,
+          bland sans-serif on white backgrounds)
+        - If design tokens are provided above, use their semantic names and resolved values
+          for colors; do not invent new color values outside the token palette
+        - If critique exists, resolves every specific issue before introducing new ideas
+      rubric: |
+        Read the screenshot at ${context.run_dir}/screenshot.png to view the generated website.
+        Also read ${context.run_dir}/brief.md to recall the design intent.
 
-  capture:
-    # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// page.
-    # Self-contained HTML (all CSS/JS inline) renders correctly under file:// without
-    # an HTTP server, eliminating background process lifecycle issues entirely.
-    # Routes to score on a successful capture; routes back to generate on a failed
-    # capture to retry with a fresh HTML file (transient Playwright/render issues).
-    # on_error routes to the failed terminal so a missing/broken Playwright binary
-    # bails cleanly instead of spinning until max_iterations.
-    action_type: shell
-    action: |
-      playwright screenshot "file://$(pwd)/${context.run_dir}/index.html" "${context.run_dir}/screenshot.png" && echo "CAPTURED"
-    evaluate:
-      type: output_contains
-      pattern: "CAPTURED"
-    on_yes: score
-    on_no: generate
-    on_error: failed
+        Score the website on each criterion from 1 to 10 and write the evaluation to
+        ${context.run_dir}/critique.md using this exact format:
 
-  score:
-    # HARNESS: Evaluator phase — LLM judges the screenshot against four design criteria
-    # and writes structured critique for the generator's next iteration.
-    # Uses output_contains: "ALL_PASS" for routing — simple and robust vs JSON parsing.
-    # The PNG produced by the evaluate state is read as a multimodal image input.
-    action_type: prompt
-    action: |
-      Read the screenshot at ${context.run_dir}/screenshot.png to view the generated website.
-      Also read ${context.run_dir}/brief.md to recall the design intent.
+        ```
+        # Evaluation
 
-      Score the website on each criterion from 1 to 10 and write the evaluation to
-      ${context.run_dir}/critique.md using this exact format:
+        design_quality: N/10 — [explanation: does the design feel like a coherent whole?
+          Strong color/typography/layout combination creates a distinct mood and identity.]
+        originality: N/10 — [explanation: evidence of custom creative decisions?
+          Best designs are museum-quality. Penalize: purple gradients on white cards,
+          unmodified stock components, AI-generated fill patterns.]
+        craft: N/10 — [explanation: technical execution — typography hierarchy, spacing
+          consistency, color harmony, contrast ratios, pixel-level attention.]
+        functionality: N/10 — [explanation: can users understand what the site does and
+          complete the primary task within 5 seconds?]
 
-      ```
-      # Evaluation
+        ## Issues to Address
+        [Specific, actionable critique for the generator. List each problem concisely
+         so the generator can address it directly on the next pass. If all scores meet
+         threshold, write "No issues — all criteria pass."]
+        ```
 
-      design_quality: N/10 — [explanation: does the design feel like a coherent whole?
-        Strong color/typography/layout combination creates a distinct mood and identity.]
-      originality: N/10 — [explanation: evidence of custom creative decisions?
-        Best designs are museum-quality. Penalize: purple gradients on white cards,
-        unmodified stock components, AI-generated fill patterns.]
-      craft: N/10 — [explanation: technical execution — typography hierarchy, spacing
-        consistency, color harmony, contrast ratios, pixel-level attention.]
-      functionality: N/10 — [explanation: can users understand what the site does and
-        complete the primary task within 5 seconds?]
+        After writing the file, evaluate the scores:
+        - design_quality weight: 2x (threshold 6)
+        - originality weight: 2x (threshold 6)
+        - craft weight: 1x (threshold 6)
+        - functionality weight: 1x (threshold 6)
 
-      ## Issues to Address
-      [Specific, actionable critique for the generator. List each problem concisely
-       so the generator can address it directly on the next pass. If all scores meet
-       threshold, write "No issues — all criteria pass."]
-      ```
-
-      After writing the file, evaluate the scores:
-      - design_quality weight: 2× (threshold ${context.pass_threshold})
-      - originality weight: 2× (threshold ${context.pass_threshold})
-      - craft weight: 1× (threshold ${context.pass_threshold})
-      - functionality weight: 1× (threshold ${context.pass_threshold})
-
-      If ALL four individual scores are >= ${context.pass_threshold}, output exactly: ALL_PASS
-      Otherwise output: ITERATE
-    evaluate:
-      type: output_contains
-      pattern: "ALL_PASS"
+        If ALL four individual scores are >= 6, output exactly: ALL_PASS
+        Otherwise output: ITERATE
+      pass_threshold: 6
     on_yes: smoke_test
-    on_no: generate
+    on_no: failed
     on_error: failed
 
   smoke_test:
@@ -165,8 +137,8 @@ states:
       type: output_contains
       pattern: "SMOKE_PASS"
     on_yes: done
-    on_no: generate
-    on_error: generate
+    on_no: run_gen_eval
+    on_error: run_gen_eval
 
   done:
     # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
@@ -175,9 +147,9 @@ states:
     terminal: true
 
   failed:
-    # HARNESS: Failure terminal — reached when the screenshot tool or LLM judge errors
-    # out. Signals an explicit failure (vs. silent max_iterations exhaustion) so the
-    # outer loop / log reader can distinguish "loop bailed cleanly" from "loop is still
-    # iterating". The last artifacts (brief.md, any partial index.html, the last
-    # critique.md if one was written) remain in ${context.run_dir} for inspection.
+    # HARNESS: Failure terminal — reached when the sub-loop or smoke_test errors out.
+    # Signals an explicit failure so the outer loop / log reader can distinguish
+    # "loop bailed cleanly" from "loop is still iterating". The last artifacts
+    # (brief.md, any partial index.html, the last critique.md if one was written)
+    # remain in ${context.run_dir} for inspection.
     terminal: true

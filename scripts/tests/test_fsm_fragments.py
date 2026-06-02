@@ -997,11 +997,16 @@ class TestBuiltinLoopMigration:
             "fix-quality-and-tests.yaml",
             "harness-multi-item.yaml",
             "harness-single-shot.yaml",
+            "html-anything.yaml",
+            "html-website-generator.yaml",
+            "hitl-compare.yaml",
+            "hitl-md.yaml",
             "issue-refinement.yaml",
             "prompt-across-issues.yaml",
             "recursive-refine.yaml",
             "refine-to-ready-issue.yaml",
             "sprint-build-and-validate.yaml",
+            "svg-image-generator.yaml",
             "test-coverage-improvement.yaml",
         ]
         for loop_name in migration_targets:

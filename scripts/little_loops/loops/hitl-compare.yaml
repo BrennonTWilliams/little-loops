@@ -8,6 +8,7 @@ description: |
   prunes implementation-level micro-decisions, and generates a single self-contained interactive HTML
   page with toggle/select controls per surviving item and an "Export selections" affordance that yields
   a copy-pasteable markdown block for feeding chosen decisions back to the coding agent.
+  Thin wrapper over oracles/generator-evaluator (ENH-1869).
 initial: init
 max_iterations: 20
 timeout: 7200
@@ -126,150 +127,125 @@ states:
       If all items were pruned (K=0), write a "Nothing to review — all decisions are
       implementation-level or have obvious winners." note after the summary block and proceed
       to generate, which will produce a friendly "nothing to review" HTML page.
-    next: generate
+    next: run_gen_eval
 
-  generate:
-    # HITL: Generator phase — produces a single self-contained HTML review page with one
-    # comparison control per surviving review item and an "Export selections" affordance.
-    # All CSS and JS must be inline so the page renders under a file:// URL without a server.
-    # On subsequent iterations, addresses all critique.md issues before introducing changes.
-    action_type: prompt
-    action: |
-      Read ${captured.run_dir.output}/review.md for the surviving review items.
+  run_gen_eval:
+    # HARNESS: Thin-wrapper delegation — runs generate → evaluate (Playwright screenshot) →
+    # score (LLM rubric) inside oracles/generator-evaluator until ALL_PASS or max_iterations.
+    # Routes to done on success; failed on error or exhausted retries (ENH-1869).
+    loop: oracles/generator-evaluator
+    with:
+      run_dir: "${captured.run_dir.output}"
+      generate_prompt: |
+        Read ${captured.run_dir.output}/review.md for the surviving review items.
 
-      If ${captured.run_dir.output}/critique.md exists, read it and address all issues listed
-      in the "Issues to Address" section specifically and completely.
+        If ${captured.run_dir.output}/critique.md exists, read it and address all issues listed
+        in the "Issues to Address" section specifically and completely.
 
-      ${context.design_tokens_context}
+        ${context.design_tokens_context}
 
-      Write a single self-contained HTML file to ${captured.run_dir.output}/index.html that:
-      - Embeds ALL CSS and JavaScript inline (no external dependencies, no CDN links, no <link> tags)
-      - Renders correctly under a file:// URL without an HTTP server
-      - Has a clean header identifying this as a review page and showing the total item count
+        Write a single self-contained HTML file to ${captured.run_dir.output}/index.html that:
+        - Embeds ALL CSS and JavaScript inline (no external dependencies, no CDN links, no <link> tags)
+        - Renders correctly under a file:// URL without an HTTP server
+        - Has a clean header identifying this as a review page and showing the total item count
 
-      If review.md indicates "nothing to review" (K=0):
-      - Produce a simple, friendly page showing the pruning summary and confirming that all
-        decisions are implementation-level — no human selections needed.
+        If review.md indicates "nothing to review" (K=0):
+        - Produce a simple, friendly page showing the pruning summary and confirming that all
+          decisions are implementation-level — no human selections needed.
 
-      Otherwise, for each surviving review item:
-      - Show the item title and category label prominently
-      - Display each option's content and rationale in a readable format (side-by-side on wide
-        screens, stacked on narrow screens — pure CSS, no JS required for layout)
-      - Provide a comparison control: radio buttons for binary choices (2 options), a labeled
-        button group or cycle toggle for 3+ options
-      - Visually highlight the currently selected option (border, background, or checkmark)
-      - Below the last option for each item, include a subtle secondary affordance:
-        a small "＋ Write custom option" trigger (font-size: 0.85em, color: #888, cursor: pointer,
-        no border) that when clicked reveals a <textarea> (width: 100%, min-height: 60px,
-        border: 1px solid #ccc, border-radius: 4px, padding: 8px, font-size: 0.9em) with
-        placeholder "Describe your preferred option...". The write-in section is hidden on
-        page load. Clicking anywhere inside the textarea deselects any radio button and marks
-        the item as custom; clicking an extracted option radio re-collapses the textarea.
-        Style it visually subordinate — smaller font, muted color — so it does not compete
-        with the primary comparison controls.
+        Otherwise, for each surviving review item:
+        - Show the item title and category label prominently
+        - Display each option's content and rationale in a readable format (side-by-side on wide
+          screens, stacked on narrow screens — pure CSS, no JS required for layout)
+        - Provide a comparison control: radio buttons for binary choices (2 options), a labeled
+          button group or cycle toggle for 3+ options
+        - Visually highlight the currently selected option (border, background, or checkmark)
+        - Below the last option for each item, include a subtle secondary affordance:
+          a small "＋ Write custom option" trigger (font-size: 0.85em, color: #888, cursor: pointer,
+          no border) that when clicked reveals a <textarea> (width: 100%, min-height: 60px,
+          border: 1px solid #ccc, border-radius: 4px, padding: 8px, font-size: 0.9em) with
+          placeholder "Describe your preferred option...". The write-in section is hidden on
+          page load. Clicking anywhere inside the textarea deselects any radio button and marks
+          the item as custom; clicking an extracted option radio re-collapses the textarea.
+          Style it visually subordinate — smaller font, muted color — so it does not compete
+          with the primary comparison controls.
 
-      At the bottom of the page, include an "Export Selections" button that:
-      - Uses JavaScript to read the current state of all selection controls
-      - Builds a markdown block in this format:
+        At the bottom of the page, include an "Export Selections" button that:
+        - Uses JavaScript to read the current state of all selection controls
+        - Builds a markdown block in this format:
+          ```
+          ## Review Selections — [ISO timestamp]
+
+          - **[Item Title]**: [Chosen Option label, e.g. "Option A — [first few words of option]"]
+          - **[Item Title]**: Custom — [first ~80 chars of textarea text]  ← for write-in items
+          ...
+          ```
+          Items where the write-in textarea is active and non-empty emit "Custom — [text]";
+          items where the write-in textarea is active but empty are treated as unselected
+          (no line emitted for that item).
+        - Displays the block in a visible <textarea> or <pre> element the user can copy
+        - Includes a "Copy to clipboard" button that calls navigator.clipboard.writeText()
+
+        Design: clean typography, generous whitespace, each item in its own card with a visible
+        border, selected state unambiguous at a glance. Avoid external fonts.
+
+        For images: Do NOT use relative or absolute file:// paths in <img src> — browsers block these
+        under file://. Instead, for each option in review.md that has a `source_path:` line pointing
+        to an image file (.jpg, .jpeg, .png, .gif, .webp, .svg), embed the image inline as a base64
+        data URI. Use the Bash tool to convert each file:
+          base64 < /path/to/image.png
+        Then embed the result as:
+          <img src="data:image/TYPE;base64,OUTPUT" style="max-width:100%;height:auto;border-radius:4px;display:block;margin-bottom:8px;">
+        where TYPE matches the extension (use "jpeg" for .jpg, "svg+xml" for .svg, otherwise match
+        the extension). Place the <img> above the text description inside the option card. If base64
+        conversion fails or source_path is absent, render the card with text only — do not emit a
+        broken <img> tag.
+      rubric: |
+        If ${captured.run_dir.output}/screenshot.png exists, read it to view the rendered review page.
+        Otherwise read ${captured.run_dir.output}/index.html directly to evaluate the HTML source.
+        Also read ${captured.run_dir.output}/review.md to recall what items should be present.
+
+        Score the review page on each criterion from 1 to 10 and write the evaluation to
+        ${captured.run_dir.output}/critique.md using this exact format:
+
         ```
-        ## Review Selections — [ISO timestamp]
+        # Evaluation
 
-        - **[Item Title]**: [Chosen Option label, e.g. "Option A — [first few words of option]"]
-        - **[Item Title]**: Custom — [first ~80 chars of textarea text]  ← for write-in items
-        ...
+        clarity: N/10 — [explanation: can a reviewer immediately understand each item and its options?
+          Is each item title visible? Are options clearly labeled? Is the rationale readable?]
+        scannability: N/10 — [explanation: can a reviewer scan all items quickly to see what needs
+          a decision? Are items well-separated? Is the overall structure easy to navigate at a glance?]
+        comparison_ergonomics: N/10 — [explanation: does the comparison control make it easy to
+          toggle between options? Are options shown in a way that facilitates side-by-side comparison?
+          Is the selected state visually unambiguous? Is there a subtle write-in affordance below
+          the options that is clearly secondary (not a peer option)?]
+        export_affordance: N/10 — [explanation: is the "Export selections" button visible and
+          prominent? Does the exported markdown block clearly identify each item and its chosen option?
+          Is the copy affordance obvious?]
+        inline_constraint: N/10 — [explanation: does the page appear to render correctly under
+          file://? All CSS/JS must be inline. Images, if present, must be embedded as base64 data
+          URIs (src="data:image/...;base64,...") — NOT as file paths or relative URLs. A broken
+          image icon or any external src= attribute is a constraint violation. Data URI images
+          rendering correctly is a pass, not a violation.]
+
+        ## Issues to Address
+        [Specific, actionable critique for the generator. List each problem concisely so the
+         generator can address it on the next pass. If all scores meet their thresholds, write
+         "No issues — all criteria pass."]
         ```
-        Items where the write-in textarea is active and non-empty emit "Custom — [text]";
-        items where the write-in textarea is active but empty are treated as unselected
-        (no line emitted for that item).
-      - Displays the block in a visible <textarea> or <pre> element the user can copy
-      - Includes a "Copy to clipboard" button that calls navigator.clipboard.writeText()
 
-      Design: clean typography, generous whitespace, each item in its own card with a visible
-      border, selected state unambiguous at a glance. Avoid external fonts.
+        Thresholds (evaluate each criterion independently — do NOT average):
+        - clarity: 7
+        - scannability: 7
+        - comparison_ergonomics: 7
+        - export_affordance: 7
+        - inline_constraint: 8
 
-      For images: Do NOT use relative or absolute file:// paths in <img src> — browsers block these
-      under file://. Instead, for each option in review.md that has a `source_path:` line pointing
-      to an image file (.jpg, .jpeg, .png, .gif, .webp, .svg), embed the image inline as a base64
-      data URI. Use the Bash tool to convert each file:
-        base64 < /path/to/image.png
-      Then embed the result as:
-        <img src="data:image/TYPE;base64,OUTPUT" style="max-width:100%;height:auto;border-radius:4px;display:block;margin-bottom:8px;">
-      where TYPE matches the extension (use "jpeg" for .jpg, "svg+xml" for .svg, otherwise match
-      the extension). Place the <img> above the text description inside the option card. If base64
-      conversion fails or source_path is absent, render the card with text only — do not emit a
-      broken <img> tag.
-    next: evaluate
-
-  evaluate:
-    # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// page.
-    # Self-contained HTML (all CSS/JS inline) renders correctly under file:// without
-    # an HTTP server. Routes to score on success; routes to score on failure too
-    # (e.g. Playwright not installed, or file missing) so the loop degrades gracefully
-    # to LLM-only evaluation of the HTML source rather than cycling back to generate.
-    action_type: shell
-    action: |
-      playwright screenshot "file://${captured.run_dir.output}/index.html" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
-    evaluate:
-      type: output_contains
-      pattern: "CAPTURED"
-    on_yes: score
-    on_no: score
-    on_error: score
-
-  score:
-    # HARNESS: Evaluator phase — LLM judges the screenshot against a fixed 5-criterion rubric
-    # tailored to HITL comparison ergonomics. Per-criterion thresholds (not a weighted average)
-    # prevent strong visual design from masking a broken export affordance or missing inline constraint.
-    # Gates via output_contains: "ALL_PASS"; routes to generate on fail, failed on LLM error.
-    action_type: prompt
-    action: |
-      If ${captured.run_dir.output}/screenshot.png exists, read it to view the rendered review page.
-      Otherwise read ${captured.run_dir.output}/index.html directly to evaluate the HTML source.
-      Also read ${captured.run_dir.output}/review.md to recall what items should be present.
-
-      Score the review page on each criterion from 1 to 10 and write the evaluation to
-      ${captured.run_dir.output}/critique.md using this exact format:
-
-      ```
-      # Evaluation
-
-      clarity: N/10 — [explanation: can a reviewer immediately understand each item and its options?
-        Is each item title visible? Are options clearly labeled? Is the rationale readable?]
-      scannability: N/10 — [explanation: can a reviewer scan all items quickly to see what needs
-        a decision? Are items well-separated? Is the overall structure easy to navigate at a glance?]
-      comparison_ergonomics: N/10 — [explanation: does the comparison control make it easy to
-        toggle between options? Are options shown in a way that facilitates side-by-side comparison?
-        Is the selected state visually unambiguous? Is there a subtle write-in affordance below
-        the options that is clearly secondary (not a peer option)?]
-      export_affordance: N/10 — [explanation: is the "Export selections" button visible and
-        prominent? Does the exported markdown block clearly identify each item and its chosen option?
-        Is the copy affordance obvious?]
-      inline_constraint: N/10 — [explanation: does the page appear to render correctly under
-        file://? All CSS/JS must be inline. Images, if present, must be embedded as base64 data
-        URIs (src="data:image/...;base64,...") — NOT as file paths or relative URLs. A broken
-        image icon or any external src= attribute is a constraint violation. Data URI images
-        rendering correctly is a pass, not a violation.]
-
-      ## Issues to Address
-      [Specific, actionable critique for the generator. List each problem concisely so the
-       generator can address it on the next pass. If all scores meet their thresholds, write
-       "No issues — all criteria pass."]
-      ```
-
-      Thresholds (evaluate each criterion independently — do NOT average):
-      - clarity: 7
-      - scannability: 7
-      - comparison_ergonomics: 7
-      - export_affordance: 7
-      - inline_constraint: 8
-
-      If ALL five criterion scores meet their individual thresholds, output exactly: ALL_PASS
-      Otherwise output: ITERATE
-    evaluate:
-      type: output_contains
-      pattern: "ALL_PASS"
+        If ALL five criterion scores meet their individual thresholds, output exactly: ALL_PASS
+        Otherwise output: ITERATE
+      pass_threshold: 7
     on_yes: done
-    on_no: generate
+    on_no: failed
     on_error: failed
 
   done:

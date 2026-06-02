@@ -15,7 +15,7 @@ parameters:
   run_dir:
     type: string
     required: true
-    description: Directory path for generated artifacts (runner-injected context.run_dir or absolute path)
+    description: Directory path for generated artifacts (relative runner-injected path or absolute path)
   generate_prompt:
     type: string
     required: true
@@ -28,6 +28,10 @@ parameters:
     type: number
     required: false
     description: Minimum rubric score threshold to accept (default 6)
+  artifact_path:
+    type: string
+    required: false
+    description: Artifact filename relative to run_dir for screenshot capture (default index.html)
 
 import:
   - lib/harness.yaml
@@ -35,6 +39,7 @@ import:
 context:
   pass_threshold: 6
   rubric: ""
+  artifact_path: "index.html"
 
 states:
   generate:
@@ -47,7 +52,11 @@ states:
   evaluate:
     fragment: playwright_screenshot
     action: |
-      playwright screenshot "file://$(pwd)/${context.run_dir}/index.html" "${context.run_dir}/screenshot.png" 2>&1 && echo "CAPTURED"
+      case "${context.run_dir}" in
+        /*) ABS_DIR="${context.run_dir}" ;;
+        *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
+      esac
+      playwright screenshot "file://$${ABS_DIR}/${context.artifact_path}" "$${ABS_DIR}/screenshot.png" 2>&1 && echo "CAPTURED"
     on_yes: score
     on_no: score
     on_error: score

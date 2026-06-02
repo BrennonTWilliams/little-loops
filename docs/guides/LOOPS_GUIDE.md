@@ -1028,7 +1028,7 @@ run_eval → score_results → analyze_failures
 
 For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, `svg-textgrad`, `p5js-sketch-generator`, `pixi-data-viz`, and `pixi-generative-art`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
 
-> **Design rule: Playwright failure routing.** In any harness that uses Playwright for screenshot capture, route the `evaluate` state's `on_no` and `on_error` to the `score` state (LLM-only evaluation) — never back to `generate`. Routing to `generate` creates an infinite cycle: `generate` routes unconditionally back to `evaluate`, which fails again, repeating until `max_iterations` is exhausted with zero useful output. Routing forward to `score` lets the evaluator assess the HTML source directly and produce actionable critique even when no screenshot is available.
+> **Design rule: Playwright failure routing.** In any harness that uses Playwright for screenshot capture, route the `evaluate` state's `on_no` and `on_error` to the `score` state (LLM-only evaluation) — never back to `generate`. Routing to `generate` creates an infinite cycle: `generate` routes unconditionally back to `evaluate`, which fails again, repeating until `max_iterations` is exhausted with zero useful output. Routing forward to `score` lets the evaluator assess the HTML source directly and produce actionable critique even when no screenshot is available. After ENH-1869, these states (`evaluate`, `score`) live inside `oracles/generator-evaluator`; the rule applies to the oracle's internal state machine, not the calling thin-wrapper loops.
 
 ### `html-anything` — Generalized HTML Artifact Harness
 

@@ -9,6 +9,7 @@ description: |
   evaluation. Implements the GAN-style architecture with per-artifact-type criteria rather
   than hardcoded website scoring, so platform constraints (inline styles for email, dimensional
   accuracy for social cards, print safety for résumés) are enforced via the rubric thresholds.
+  Thin wrapper over oracles/generator-evaluator (ENH-1869).
 initial: init
 max_iterations: 20
 timeout: 7200
@@ -105,103 +106,76 @@ states:
 
       Be specific and opinionated. The generator will use brief.md as its primary reference,
       and score.md will enforce the thresholds in rubric.md on every iteration.
-    next: generate
+    next: run_gen_eval
 
-  generate:
-    # HARNESS: Generator phase — creates or refines index.html using the platform brief
-    # and rubric. On the first pass it uses brief.md and rubric.md to understand constraints.
-    # On subsequent iterations it also addresses critique.md issues specifically and completely.
-    # All CSS/JS must be inline so the file renders correctly under a file:// URL.
-    action_type: prompt
-    action: |
-      Read ${captured.run_dir.output}/brief.md for the platform brief and artifact type.
-      Read ${captured.run_dir.output}/rubric.md for the scoring criteria and thresholds.
+  run_gen_eval:
+    # HARNESS: Thin-wrapper delegation — runs generate → evaluate (Playwright screenshot) →
+    # score (LLM rubric) inside oracles/generator-evaluator until ALL_PASS or max_iterations.
+    # Routes to done on success; diagnose on error or exhausted retries (ENH-1869).
+    loop: oracles/generator-evaluator
+    with:
+      run_dir: "${captured.run_dir.output}"
+      generate_prompt: |
+        Read ${captured.run_dir.output}/brief.md for the platform brief and artifact type.
+        Read ${captured.run_dir.output}/rubric.md for the scoring criteria and thresholds.
 
-      If ${captured.run_dir.output}/critique.md exists, read it and address all issues
-      listed in the "Issues to Address" section specifically and completely.
+        If ${captured.run_dir.output}/critique.md exists, read it and address all issues
+        listed in the "Issues to Address" section specifically and completely.
 
-      ${context.design_tokens_context}
+        ${context.design_tokens_context}
 
-      Write a single self-contained HTML file to ${captured.run_dir.output}/index.html that:
-      - Fully satisfies every platform constraint specified in brief.md for the artifact type
-      - Embeds all CSS and JavaScript inline (no external dependencies, no CDN links)
-      - Renders correctly under a file:// URL without an HTTP server
-      - For html-email: uses table-based layout with all styles inline on every element,
-        no <style> blocks, no external fonts, max 600px wide, compatible with major email clients
-      - For html-social-card: renders at exactly the specified dimensions (1200×630 or 1080×1080),
-        uses absolute positioning for all elements, text stays within the safe zone
-      - For html-resume: A4/letter page dimensions, no JavaScript, high contrast (WCAG AA),
-        clean typography hierarchy for name/contact/sections
-      - For html-website: responsive layout, semantic HTML, accessible, distinctive aesthetic
-      - Achieves a distinctive, high-quality aesthetic — avoid AI-slop patterns
-      - If design tokens are provided above, use their semantic names and resolved values
-        for colors; do not invent new color values outside the token palette
-      - If critique exists, resolves every specific issue before introducing new ideas
-    next: evaluate
+        Write a single self-contained HTML file to ${captured.run_dir.output}/index.html that:
+        - Fully satisfies every platform constraint specified in brief.md for the artifact type
+        - Embeds all CSS and JavaScript inline (no external dependencies, no CDN links)
+        - Renders correctly under a file:// URL without an HTTP server
+        - For html-email: uses table-based layout with all styles inline on every element,
+          no <style> blocks, no external fonts, max 600px wide, compatible with major email clients
+        - For html-social-card: renders at exactly the specified dimensions (1200×630 or 1080×1080),
+          uses absolute positioning for all elements, text stays within the safe zone
+        - For html-resume: A4/letter page dimensions, no JavaScript, high contrast (WCAG AA),
+          clean typography hierarchy for name/contact/sections
+        - For html-website: responsive layout, semantic HTML, accessible, distinctive aesthetic
+        - Achieves a distinctive, high-quality aesthetic — avoid AI-slop patterns
+        - If design tokens are provided above, use their semantic names and resolved values
+          for colors; do not invent new color values outside the token palette
+        - If critique exists, resolves every specific issue before introducing new ideas
+      rubric: |
+        Read ${captured.run_dir.output}/rubric.md to load the artifact type and per-criterion
+        thresholds. Parse the YAML fenced block to get the criteria list.
 
-  evaluate:
-    # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// page.
-    # Self-contained HTML (all CSS/JS inline) renders correctly under file:// without
-    # an HTTP server. Routes to score on success; routes to score on failure too
-    # (e.g. Playwright not installed, or file missing) so the loop degrades gracefully
-    # to LLM-only evaluation of the HTML source rather than cycling back to generate.
-    action_type: shell
-    action: |
-      playwright screenshot "file://${captured.run_dir.output}/index.html" "${captured.run_dir.output}/screenshot.png" 2>&1 && echo "CAPTURED"
-    evaluate:
-      type: output_contains
-      pattern: "CAPTURED"
-    on_yes: score
-    on_no: score
-    on_error: score
+        If ${captured.run_dir.output}/screenshot.png exists, read it to view the rendered
+        artifact. Otherwise read ${captured.run_dir.output}/index.html directly to evaluate
+        the HTML source. Also read ${captured.run_dir.output}/brief.md to recall the platform intent.
 
-  score:
-    # HARNESS: Evaluator phase — LLM reads rubric.md to load artifact-specific per-criterion
-    # thresholds, then judges the screenshot against those criteria and writes critique.md.
-    # Uses per-criterion thresholds (not a weighted average) to prevent strong aesthetics
-    # from masking broken platform constraints — an html-email with score 9/10 visual
-    # quality but CSS classes instead of inline styles must still fail.
-    # Routes via output_contains: "ALL_PASS" — simple and robust vs JSON parsing.
-    action_type: prompt
-    action: |
-      Read ${captured.run_dir.output}/rubric.md to load the artifact type and per-criterion
-      thresholds. Parse the YAML fenced block to get the criteria list.
+        Score the artifact on each criterion from 1 to 10 and write the evaluation to
+        ${captured.run_dir.output}/critique.md using this exact format:
 
-      If ${captured.run_dir.output}/screenshot.png exists, read it to view the rendered
-      artifact. Otherwise read ${captured.run_dir.output}/index.html directly to evaluate
-      the HTML source. Also read ${captured.run_dir.output}/brief.md to recall the platform intent.
+        ```
+        # Evaluation
 
-      Score the artifact on each criterion from 1 to 10 and write the evaluation to
-      ${captured.run_dir.output}/critique.md using this exact format:
+        artifact_type: <type from rubric.md>
 
-      ```
-      # Evaluation
+        <criterion_name>: N/10 — [explanation: does it meet the platform requirement?
+          Reference the specific constraint from brief.md. Be specific and actionable.]
 
-      artifact_type: <type from rubric.md>
+        <repeat for each criterion in rubric.md>
 
-      <criterion_name>: N/10 — [explanation: does it meet the platform requirement?
-        Reference the specific constraint from brief.md. Be specific and actionable.]
+        ## Issues to Address
+        [Specific, actionable critique for the generator. List each problem concisely
+         so the generator can address it directly on the next pass. If all scores meet
+         their individual thresholds, write "No issues — all criteria pass."]
+        ```
 
-      <repeat for each criterion in rubric.md>
+        After writing the file, evaluate the scores against their individual thresholds from
+        rubric.md. Each criterion has its own threshold — do NOT use a weighted average.
+        Platform constraints (inline_styles, table_layout, dimensional_accuracy, print_safety)
+        typically have threshold 7 or 8; aesthetic criteria may have threshold 6 or 7.
 
-      ## Issues to Address
-      [Specific, actionable critique for the generator. List each problem concisely
-       so the generator can address it directly on the next pass. If all scores meet
-       their individual thresholds, write "No issues — all criteria pass."]
-      ```
-
-      After writing the file, evaluate the scores against their individual thresholds from
-      rubric.md. Each criterion has its own threshold — do NOT use a weighted average.
-      Platform constraints (inline_styles, table_layout, dimensional_accuracy, print_safety)
-      typically have threshold 7 or 8; aesthetic criteria may have threshold 6 or 7.
-
-      If ALL criterion scores are >= their individual rubric thresholds, output exactly: ALL_PASS
-      Otherwise output: ITERATE
-    evaluate:
-      type: output_contains
-      pattern: "ALL_PASS"
+        If ALL criterion scores are >= their individual rubric thresholds, output exactly: ALL_PASS
+        Otherwise output: ITERATE
+      pass_threshold: 7
     on_yes: done
-    on_no: generate
+    on_no: diagnose
     on_error: diagnose
 
   done:
