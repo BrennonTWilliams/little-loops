@@ -65,6 +65,9 @@ FEAT-1489 was marked done after wiring Codex and OpenCode, but Claude Code was m
 - Manual: after wiring, verify `tool_events` rows appear in `.ll/history.db` during a session
 - `scripts/tests/hooks/test_post_tool_use.py` — existing unit tests for the handler
 
+### Documentation
+- N/A - no documentation changes needed
+
 ### Configuration
 - `hooks/hooks.json` — the Claude Code hook registry
 
@@ -103,5 +106,6 @@ FEAT-1489 was marked done after wiring Codex and OpenCode, but Claude Code was m
 **Open** | Created: 2026-06-02 | Priority: P2
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-02T23:43:00 - `e58fe996-ddfe-46f4-a827-73b50b9ebde3.jsonl`
 
 - `/ll:capture-issue` - 2026-06-02T23:39:38Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/65f77860-d771-4c40-9ba9-2bc9f9139bfe.jsonl`

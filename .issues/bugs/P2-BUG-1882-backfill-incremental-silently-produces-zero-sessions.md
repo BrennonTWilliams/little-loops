@@ -9,6 +9,8 @@ discovered_by: capture-issue
 relates_to: [EPIC-1707, ENH-1830, ENH-1710, ENH-1711]
 labels:
   - bug
+  - history-db
+  - sessions
   - captured
 ---
 
@@ -66,8 +68,14 @@ ENH-1830 was marked done, but the `sessions` table being empty means:
 - `scripts/little_loops/cli/session.py` — `ll-session backfill` subcommand
 - `scripts/little_loops/history_reader.py` — reads `sessions` table
 
+### Similar Patterns
+- N/A — suppressed-exception pattern in `_run_backfill` is unique; other hooks in `scripts/little_loops/hooks/` do not use daemon threads
+
 ### Tests
 - `scripts/tests/test_session_store.py` — add backfill fixture test
+
+### Documentation
+- `docs/reference/API.md` — `session_store` module documentation may need updating if `backfill_incremental` signature or behavior changes
 
 ### Configuration
 - N/A
@@ -102,6 +110,11 @@ ENH-1830 was marked done, but the `sessions` table being empty means:
 - **Anchor**: `_run_backfill()` inner function
 - **Cause**: Unknown — all exceptions suppressed. Most likely candidates: JSONL file path passed to the thread is wrong (relative vs absolute), `session_id` INSERT conflicts on unique constraint without `OR IGNORE`, or `backfill_incremental` receives an empty `jsonl_files` list because the glob pattern doesn't match.
 
+## Related Key Documentation
+
+- `docs/reference/API.md` — `little_loops.session_store` module reference
+- `docs/reference/API.md` — `little_loops.hooks.session_start` hook documentation
+
 ## Labels
 
 `bug`, `history-db`, `sessions`, `captured`
@@ -111,5 +124,6 @@ ENH-1830 was marked done, but the `sessions` table being empty means:
 **Open** | Created: 2026-06-02 | Priority: P2
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-02T23:43:17 - `5a6438e8-ff2f-4342-b911-43dcd9985f55.jsonl`
 
 - `/ll:capture-issue` - 2026-06-02T23:39:38Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/65f77860-d771-4c40-9ba9-2bc9f9139bfe.jsonl`

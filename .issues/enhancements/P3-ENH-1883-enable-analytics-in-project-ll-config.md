@@ -52,6 +52,13 @@ After this change, each `/ll:` invocation creates a `skill_events` row. User cor
 
 Add an `analytics` block to `.ll/ll-config.json` with `enabled: true` and default-inclusive capture settings. Additionally, verify `config-schema.json` already has the `analytics` property block (FEAT-1623 was supposed to add it) so config validation doesn't reject the new key.
 
+## Scope Boundaries
+
+- **Out of scope**: Adding new analytics infrastructure — already implemented via ENH-1831–1835
+- **Out of scope**: Fixing `post_tool_use.py` Python handler wiring — tracked separately in BUG-1881
+- **Out of scope**: Analytics dashboards or reporting UI
+- **Out of scope**: Changing the `analytics` schema shape — use the existing `AnalyticsCaptureConfig` structure as-is
+
 ## Integration Map
 
 ### Files to Modify
@@ -63,8 +70,14 @@ Add an `analytics` block to `.ll/ll-config.json` with `enabled: true` and defaul
 - `scripts/little_loops/hooks/post_tool_use.py` — reads `analytics.enabled`
 - `scripts/little_loops/session_store.py` — `record_file_event` / `record_correction` / `record_skill_event`
 
+### Similar Patterns
+- N/A — adding a new top-level key to `ll-config.json`; no parallel analytics-like flag blocks exist
+
 ### Tests
 - Manual: invoke `/ll:ready-issue` and verify a `skill_events` row appears in `.ll/history.db`
+
+### Documentation
+- N/A — config-only change; no public API or user-facing documentation updated
 
 ### Configuration
 - `.ll/ll-config.json` — project config
@@ -97,5 +110,6 @@ Add an `analytics` block to `.ll/ll-config.json` with `enabled: true` and defaul
 **Open** | Created: 2026-06-02 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-02T23:43:15 - `6762fecb-c5c5-457f-a753-c7014e582f14.jsonl`
 
 - `/ll:capture-issue` - 2026-06-02T23:39:38Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/65f77860-d771-4c40-9ba9-2bc9f9139bfe.jsonl`
