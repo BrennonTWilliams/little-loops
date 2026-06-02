@@ -5,11 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
-import pytest
-
-from little_loops.issue_progress import EpicProgress, compute_epic_progress
+from little_loops.issue_progress import compute_epic_progress
 
 
 def _make_issue(
@@ -143,9 +140,7 @@ class TestComputeEpicProgress:
 
     def test_blocked_only_no_open(self, tmp_path: Path) -> None:
         epic = _make_issue(tmp_path, "EPIC-006", relates_to=["BUG-020"])
-        blocked = _make_issue(
-            tmp_path, "BUG-020", status="blocked", blocked_by=["BUG-099"]
-        )
+        blocked = _make_issue(tmp_path, "BUG-020", status="blocked", blocked_by=["BUG-099"])
 
         result = compute_epic_progress("EPIC-006", [epic, blocked])
         assert result is not None
@@ -154,9 +149,7 @@ class TestComputeEpicProgress:
         assert result.oldest_open.issue_id == "BUG-020"
 
     def test_done_children_included_in_totals(self, tmp_path: Path) -> None:
-        epic = _make_issue(
-            tmp_path, "EPIC-007", relates_to=["BUG-030", "BUG-031", "BUG-032"]
-        )
+        epic = _make_issue(tmp_path, "EPIC-007", relates_to=["BUG-030", "BUG-031", "BUG-032"])
         b1 = _make_issue(tmp_path, "BUG-030", status="done")
         b2 = _make_issue(tmp_path, "BUG-031", status="done")
         b3 = _make_issue(tmp_path, "BUG-032", status="open")

@@ -2032,6 +2032,7 @@ class TestMcpToolSchema:
         restored = EvaluateConfig.from_dict(d_three)
         assert restored.min_pairs == 3
 
+
 class TestSubLoopStateConfig:
     """Tests for sub-loop state configuration (FEAT-659)."""
 
@@ -3051,7 +3052,9 @@ class TestContractSchema:
             pairs=[{"producer": "api.ts", "consumer": "hook.ts", "contract": "must match"}],
         )
         assert config.type == "contract"
-        assert config.pairs == [{"producer": "api.ts", "consumer": "hook.ts", "contract": "must match"}]
+        assert config.pairs == [
+            {"producer": "api.ts", "consumer": "hook.ts", "contract": "must match"}
+        ]
 
     def test_contract_round_trips_through_dict(self) -> None:
         """contract evaluator serializes and deserializes pairs correctly."""

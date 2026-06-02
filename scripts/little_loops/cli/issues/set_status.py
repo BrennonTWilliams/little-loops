@@ -64,7 +64,9 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
 
         # Union of forward (relates_to:) + backward (parent:)
         forward_ids: set[str] = set(fm.get("relates_to", []))
-        backward_ids: set[str] = {i.issue_id for i in all_issues if i.parent and i.parent.upper() == epic_id}
+        backward_ids: set[str] = {
+            i.issue_id for i in all_issues if i.parent and i.parent.upper() == epic_id
+        }
         child_ids = forward_ids | backward_ids
 
         children = [i for i in all_issues if i.issue_id.upper() in child_ids]

@@ -692,7 +692,12 @@ class TestCommonYamlNewFragments:
                     "fragment": "parse_tagged_json",
                     "action": "echo '{\"count\": 1}'",
                     "capture": "parsed",
-                    "evaluate": {"type": "output_json", "path": ".count", "operator": "gt", "target": 0},
+                    "evaluate": {
+                        "type": "output_json",
+                        "path": ".count",
+                        "operator": "gt",
+                        "target": 0,
+                    },
                     "on_yes": "done",
                     "on_no": "done",
                 },
@@ -1152,9 +1157,7 @@ class TestFragmentDescriptionStripping:
         """Every fragment in lib/harness.yaml defines a description field."""
         import yaml
 
-        lib_path = (
-            Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "harness.yaml"
-        )
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "harness.yaml"
         with open(lib_path) as f:
             data = yaml.safe_load(f)
         fragments = data.get("fragments", {})
@@ -1392,13 +1395,7 @@ class TestHarnessYamlFragments:
     def _load_harness_yaml() -> dict:
         import yaml
 
-        lib_path = (
-            Path(__file__).parent.parent
-            / "little_loops"
-            / "loops"
-            / "lib"
-            / "harness.yaml"
-        )
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "harness.yaml"
         with open(lib_path) as f:
             return yaml.safe_load(f)
 
@@ -1421,8 +1418,12 @@ class TestHarnessYamlFragments:
     def test_playwright_screenshot_has_description(self) -> None:
         data = self._load_harness_yaml()
         frag = data["fragments"]["playwright_screenshot"]
-        assert "description" in frag, "playwright_screenshot fragment is missing a description field"
-        assert frag["description"].strip(), "playwright_screenshot fragment has an empty description"
+        assert "description" in frag, (
+            "playwright_screenshot fragment is missing a description field"
+        )
+        assert frag["description"].strip(), (
+            "playwright_screenshot fragment has an empty description"
+        )
 
     def test_playwright_screenshot_resolves_in_loop(self) -> None:
         """Full resolve_fragments integration against the real lib/harness.yaml."""
@@ -1462,13 +1463,7 @@ class TestLlRubricScoreFragment:
     def _load_harness_yaml() -> dict:
         import yaml
 
-        lib_path = (
-            Path(__file__).parent.parent
-            / "little_loops"
-            / "loops"
-            / "lib"
-            / "harness.yaml"
-        )
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "harness.yaml"
         with open(lib_path) as f:
             return yaml.safe_load(f)
 
@@ -1532,13 +1527,7 @@ class TestConvergenceGateFragment:
     def _load_common_yaml() -> dict:
         import yaml
 
-        lib_path = (
-            Path(__file__).parent.parent
-            / "little_loops"
-            / "loops"
-            / "lib"
-            / "common.yaml"
-        )
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
         with open(lib_path) as f:
             return yaml.safe_load(f)
 
@@ -1609,13 +1598,7 @@ class TestQueuePopFragment:
     def _load_common_yaml() -> dict:
         import yaml
 
-        lib_path = (
-            Path(__file__).parent.parent
-            / "little_loops"
-            / "loops"
-            / "lib"
-            / "common.yaml"
-        )
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
         with open(lib_path) as f:
             return yaml.safe_load(f)
 
@@ -1674,13 +1657,7 @@ class TestQueueTrackFragment:
     def _load_common_yaml() -> dict:
         import yaml
 
-        lib_path = (
-            Path(__file__).parent.parent
-            / "little_loops"
-            / "loops"
-            / "lib"
-            / "common.yaml"
-        )
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
         with open(lib_path) as f:
             return yaml.safe_load(f)
 
@@ -1732,13 +1709,7 @@ class TestDiffStallGateFragment:
     def _load_common_yaml() -> dict:
         import yaml
 
-        lib_path = (
-            Path(__file__).parent.parent
-            / "little_loops"
-            / "loops"
-            / "lib"
-            / "common.yaml"
-        )
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
         with open(lib_path) as f:
             return yaml.safe_load(f)
 

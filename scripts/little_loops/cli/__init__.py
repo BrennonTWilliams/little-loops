@@ -34,7 +34,6 @@ Provides command-line interfaces for automated issue management:
 """
 
 from little_loops.cli.action import main_action
-from little_loops.cli.harness import main_harness
 from little_loops.cli.adapt_agents_for_codex import main_adapt_agents_for_codex
 from little_loops.cli.adapt_skills_for_codex import main_adapt_skills_for_codex
 from little_loops.cli.auto import main_auto
@@ -45,6 +44,7 @@ from little_loops.cli.docs import main_check_links, main_verify_docs, main_verif
 from little_loops.cli.doctor import main_doctor
 from little_loops.cli.generate_skill_descriptions import main_generate_skill_descriptions
 from little_loops.cli.gitignore import main_gitignore
+from little_loops.cli.harness import main_harness
 from little_loops.cli.history import main_history
 from little_loops.cli.history_context import main_history_context
 from little_loops.cli.issues import main_issues

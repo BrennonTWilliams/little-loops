@@ -7,7 +7,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 COMMAND_FILE = PROJECT_ROOT / "commands" / "ready-issue.md"
 
-CLEAN_ISSUE ="""\
+CLEAN_ISSUE = """\
 ---
 title: Clean issue
 ---

@@ -160,7 +160,9 @@ Examples:
         add_skip_analysis_arg(show_parser)
 
         # edit subcommand
-        edit_parser = subparsers.add_parser("edit", aliases=["e"], help="Edit a sprint's issue list")
+        edit_parser = subparsers.add_parser(
+            "edit", aliases=["e"], help="Edit a sprint's issue list"
+        )
         edit_parser.set_defaults(command="edit")
         edit_parser.add_argument("sprint", help="Sprint name to edit")
         edit_parser.add_argument(

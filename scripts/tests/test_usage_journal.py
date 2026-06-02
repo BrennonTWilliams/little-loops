@@ -110,9 +110,7 @@ class TestUsageJournaling:
         if usage_path.exists():
             assert usage_path.read_text(encoding="utf-8").strip() == ""
 
-    def test_shell_action_skipped_from_journal(
-        self, tmp_path: Path, tmp_loops_dir: Path
-    ) -> None:
+    def test_shell_action_skipped_from_journal(self, tmp_path: Path, tmp_loops_dir: Path) -> None:
         """Shell action_type invocations produce no row in usage.jsonl."""
         run_dir = str(tmp_path / "run2") + "/"
         Path(run_dir).mkdir(parents=True, exist_ok=True)
@@ -120,7 +118,9 @@ class TestUsageJournaling:
             name="shell-loop",
             initial="run",
             states={
-                "run": StateConfig(action="echo hello", action_type="shell", on_yes="done", on_no="done"),
+                "run": StateConfig(
+                    action="echo hello", action_type="shell", on_yes="done", on_no="done"
+                ),
                 "done": StateConfig(terminal=True),
             },
             context={"run_dir": run_dir},
@@ -132,7 +132,7 @@ class TestUsageJournaling:
 
         usage_path = Path(run_dir) / "usage.jsonl"
         if usage_path.exists():
-            lines = [l for l in usage_path.read_text().splitlines() if l.strip()]
+            lines = [ln for ln in usage_path.read_text().splitlines() if ln.strip()]
             assert len(lines) == 0, "Shell actions must not produce usage.jsonl rows"
 
     def test_usage_jsonl_appends_across_iterations(
@@ -155,8 +155,12 @@ class TestUsageJournaling:
         )
         runner = MockActionRunner(
             results=[
-                ActionResult(output="yes", stderr="", exit_code=0, duration_ms=10, usage_events=[usage1]),
-                ActionResult(output="yes", stderr="", exit_code=0, duration_ms=10, usage_events=[usage2]),
+                ActionResult(
+                    output="yes", stderr="", exit_code=0, duration_ms=10, usage_events=[usage1]
+                ),
+                ActionResult(
+                    output="yes", stderr="", exit_code=0, duration_ms=10, usage_events=[usage2]
+                ),
             ]
         )
         executor = PersistentExecutor(fsm, loops_dir=tmp_loops_dir, action_runner=runner)
@@ -177,7 +181,11 @@ class TestUsageJournaling:
         """usage.jsonl must NOT be copied to .loops/.history/ — it lives permanently at run_dir."""
         usage = TokenUsage(100, 20, 0, 0, "claude-sonnet-4-6")
         runner = MockActionRunner(
-            results=[ActionResult(output="yes", stderr="", exit_code=0, duration_ms=10, usage_events=[usage])]
+            results=[
+                ActionResult(
+                    output="yes", stderr="", exit_code=0, duration_ms=10, usage_events=[usage]
+                )
+            ]
         )
         executor = PersistentExecutor(simple_fsm, loops_dir=tmp_loops_dir, action_runner=runner)
         executor.run()

@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from little_loops.fsm.evaluators import evaluate_output_contains
 from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
 
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"

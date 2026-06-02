@@ -2802,7 +2802,9 @@ class TestHtmlWebsiteGeneratorLoop:
         """run_gen_eval with: must bind run_dir, generate_prompt, rubric, and pass_threshold."""
         state = data["states"].get("run_gen_eval", {})
         with_ = state.get("with", {})
-        assert "run_dir" in with_, f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        assert "run_dir" in with_, (
+            f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        )
         assert "generate_prompt" in with_, "run_gen_eval.with must contain 'generate_prompt'"
         assert "rubric" in with_, "run_gen_eval.with must contain 'rubric'"
         assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
@@ -2917,7 +2919,9 @@ class TestSvgImageGeneratorLoop:
         """run_gen_eval with: must bind run_dir, generate_prompt, rubric, pass_threshold."""
         state = data["states"].get("run_gen_eval", {})
         with_ = state.get("with", {})
-        assert "run_dir" in with_, f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        assert "run_dir" in with_, (
+            f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        )
         assert "generate_prompt" in with_, "run_gen_eval.with must contain 'generate_prompt'"
         assert "rubric" in with_, "run_gen_eval.with must contain 'rubric'"
         assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
@@ -3823,7 +3827,9 @@ class TestHtmlAnythingLoop:
         """run_gen_eval with: must bind run_dir, generate_prompt, rubric, pass_threshold."""
         state = data["states"].get("run_gen_eval", {})
         with_ = state.get("with", {})
-        assert "run_dir" in with_, f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        assert "run_dir" in with_, (
+            f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        )
         assert "generate_prompt" in with_, "run_gen_eval.with must contain 'generate_prompt'"
         assert "rubric" in with_, "run_gen_eval.with must contain 'rubric'"
         assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
@@ -3967,7 +3973,9 @@ class TestHitlCompareLoop:
         """run_gen_eval with: must bind run_dir, generate_prompt, rubric, pass_threshold."""
         state = data["states"].get("run_gen_eval", {})
         with_ = state.get("with", {})
-        assert "run_dir" in with_, f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        assert "run_dir" in with_, (
+            f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        )
         assert "generate_prompt" in with_, "run_gen_eval.with must contain 'generate_prompt'"
         assert "rubric" in with_, "run_gen_eval.with must contain 'rubric'"
         assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
@@ -4139,7 +4147,9 @@ class TestHitlMdLoop:
         """run_gen_eval with: must bind run_dir, generate_prompt, rubric, pass_threshold."""
         state = data["states"].get("run_gen_eval", {})
         with_ = state.get("with", {})
-        assert "run_dir" in with_, f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        assert "run_dir" in with_, (
+            f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        )
         assert "generate_prompt" in with_, "run_gen_eval.with must contain 'generate_prompt'"
         assert "rubric" in with_, "run_gen_eval.with must contain 'rubric'"
         assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
@@ -4986,7 +4996,15 @@ class TestDeadCodeCleanupLoop:
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
-        required = {"scan", "count_findings", "remove_code", "verify_tests", "revert_and_scan", "commit", "done"}
+        required = {
+            "scan",
+            "count_findings",
+            "remove_code",
+            "verify_tests",
+            "revert_and_scan",
+            "commit",
+            "done",
+        }
         assert not required - set(data["states"].keys())
 
     def test_commit_uses_ll_commit_fragment(self, data: dict) -> None:
@@ -5064,7 +5082,15 @@ class TestIssueStalenessReviewLoop:
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
-        required = {"find_stale", "review_issue", "triage", "close_issue", "reprioritize", "commit", "done"}
+        required = {
+            "find_stale",
+            "review_issue",
+            "triage",
+            "close_issue",
+            "reprioritize",
+            "commit",
+            "done",
+        }
         assert not required - set(data["states"].keys())
 
     def test_commit_uses_ll_commit_fragment(self, data: dict) -> None:
@@ -5116,7 +5142,16 @@ class TestIncrementalRefactorLoop:
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
-        required = {"plan_steps", "execute_step", "verify_tests", "commit_step", "check_complete", "revert", "replan", "done"}
+        required = {
+            "plan_steps",
+            "execute_step",
+            "verify_tests",
+            "commit_step",
+            "check_complete",
+            "revert",
+            "replan",
+            "done",
+        }
         assert not required - set(data["states"].keys())
 
     def test_commit_step_uses_ll_commit_fragment(self, data: dict) -> None:
@@ -5269,11 +5304,20 @@ class TestImplementIssueChainOracle:
         assert params["caller_prefix"].get("required") is True
 
     def test_shared_state_ok_is_set(self, data: dict) -> None:
-        assert data.get("shared_state_ok") is True, "shared_state_ok must be True (queue files cross-run by design)"
+        assert data.get("shared_state_ok") is True, (
+            "shared_state_ok must be True (queue files cross-run by design)"
+        )
 
     def test_required_states_exist(self, data: dict) -> None:
         states = data.get("states", {})
-        for name in ("get_passed_issues", "implement_next", "go_no_go", "implement_issue", "done", "failed"):
+        for name in (
+            "get_passed_issues",
+            "implement_next",
+            "go_no_go",
+            "implement_issue",
+            "done",
+            "failed",
+        ):
             assert name in states, f"required state '{name}' missing"
 
     def test_done_is_terminal(self, data: dict) -> None:
@@ -5343,7 +5387,9 @@ class TestImplementIssueChainOracle:
         state = data["states"].get("implement_issue", {})
         action = state.get("action", "")
         assert "completed" in action, "implement_issue action must check .issues/completed/"
-        assert "exit 0" in action, "implement_issue action must exit 0 when issue is already completed"
+        assert "exit 0" in action, (
+            "implement_issue action must exit 0 when issue is already completed"
+        )
 
     def test_implement_issue_routes_to_implement_next(self, data: dict) -> None:
         """implement_issue must loop back to implement_next to drain the queue."""
@@ -5383,8 +5429,13 @@ class TestResearchCoverageOracle:
     def test_required_states_exist(self, data: dict) -> None:
         states = data.get("states", {})
         for name in (
-            "generate_queries", "search_web", "evaluate_sources",
-            "score_coverage", "plan_next", "synthesize", "done",
+            "generate_queries",
+            "search_web",
+            "evaluate_sources",
+            "score_coverage",
+            "plan_next",
+            "synthesize",
+            "done",
         ):
             assert name in states, f"required state '{name}' missing"
 

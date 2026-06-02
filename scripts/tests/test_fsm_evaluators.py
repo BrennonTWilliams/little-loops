@@ -18,10 +18,10 @@ from little_loops.fsm.evaluators import (
     evaluate,
     evaluate_action_stall,
     evaluate_blind_comparator,
+    evaluate_contract,
     evaluate_convergence,
     evaluate_diff_stall,
     evaluate_exit_code,
-    evaluate_contract,
     evaluate_llm_structured,
     evaluate_mcp_result,
     evaluate_output_contains,
@@ -647,7 +647,6 @@ class TestEvaluateDispatcher:
             f"{eval_type}: should not be short-circuited, got verdict={result.verdict!r} "
             f"details={result.details}"
         )
-
 
     def test_dispatch_contract_missing_pairs_returns_error(self) -> None:
         """contract type with no pairs returns error verdict."""
@@ -1981,7 +1980,9 @@ class TestContractEvaluator:
 
         config = EvaluateConfig(
             type="contract",
-            pairs=[{"producer": str(producer), "consumer": str(consumer), "contract": "must match"}],
+            pairs=[
+                {"producer": str(producer), "consumer": str(consumer), "contract": "must match"}
+            ],
         )
         ctx = InterpolationContext()
         with patch(
@@ -2044,7 +2045,9 @@ class TestContractEvaluator:
 
         config = EvaluateConfig(
             type="contract",
-            pairs=[{"producer": str(producer), "consumer": str(consumer), "contract": "must match"}],
+            pairs=[
+                {"producer": str(producer), "consumer": str(consumer), "contract": "must match"}
+            ],
         )
         ctx = InterpolationContext()
         result = evaluate(config, output="", exit_code=0, context=ctx)

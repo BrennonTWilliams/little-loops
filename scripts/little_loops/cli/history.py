@@ -214,7 +214,9 @@ Examples:
         config = BRConfig(project_root)
         configure_output(config.cli)
         logger = Logger(use_color=use_color_enabled())
-        issues_dir = getattr(args, "directory", None) or config.project_root / config.issues.base_dir
+        issues_dir = (
+            getattr(args, "directory", None) or config.project_root / config.issues.base_dir
+        )
 
         if args.command == "summary":
             # Prefer the unified session DB when populated; fall back to the

@@ -44,11 +44,15 @@ def _write_config(
 class TestUserPromptSubmitWithSessionStore:
     """ENH-1831: correction-detection write path (gated on analytics.enabled)."""
 
-    def test_correction_detected_writes_db(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_correction_detected_writes_db(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         _write_config(tmp_path, analytics_enabled=True)
         monkeypatch.chdir(tmp_path)
 
-        result = handle(_event({"prompt": "no, don't do that", "session_id": "sess-c1"}, cwd=str(tmp_path)))
+        result = handle(
+            _event({"prompt": "no, don't do that", "session_id": "sess-c1"}, cwd=str(tmp_path))
+        )
         assert result.exit_code == 0
 
         db_path = tmp_path / ".ll" / "history.db"
@@ -66,11 +70,18 @@ class TestUserPromptSubmitWithSessionStore:
         assert session_id == "sess-c1"
         assert source == "user_prompt_submit"
 
-    def test_non_correction_writes_no_db_row(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_non_correction_writes_no_db_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         _write_config(tmp_path, analytics_enabled=True)
         monkeypatch.chdir(tmp_path)
 
-        handle(_event({"prompt": "implement the login feature", "session_id": "sess-c2"}, cwd=str(tmp_path)))
+        handle(
+            _event(
+                {"prompt": "implement the login feature", "session_id": "sess-c2"},
+                cwd=str(tmp_path),
+            )
+        )
 
         db_path = tmp_path / ".ll" / "history.db"
         if db_path.exists():
@@ -81,7 +92,9 @@ class TestUserPromptSubmitWithSessionStore:
                 conn.close()
             assert count == 0, "non-correction prompt must not write to user_corrections"
 
-    def test_skips_write_when_analytics_disabled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_skips_write_when_analytics_disabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         _write_config(tmp_path, analytics_enabled=False)
         monkeypatch.chdir(tmp_path)
 
@@ -91,7 +104,9 @@ class TestUserPromptSubmitWithSessionStore:
             "analytics disabled — DB must not be created"
         )
 
-    def test_graceful_when_store_unwritable(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_graceful_when_store_unwritable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         import sqlite3 as _sqlite3
 
         from little_loops import session_store
@@ -106,7 +121,9 @@ class TestUserPromptSubmitWithSessionStore:
         result = handle(_event({"prompt": "stop, revert that"}, cwd=str(tmp_path)))
         assert result.exit_code == 0
 
-    def test_corrections_gate_disabled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_corrections_gate_disabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """analytics enabled but capture.corrections: false → no DB write."""
         import sqlite3 as _sqlite3
 
@@ -124,7 +141,9 @@ class TestUserPromptSubmitWithSessionStore:
                 conn.close()
             assert count == 0, "record_correction must not write when capture.corrections is false"
 
-    def test_corrections_gate_enabled_explicitly(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_corrections_gate_enabled_explicitly(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """analytics enabled with capture.corrections: true → row written."""
         import sqlite3 as _sqlite3
 
@@ -140,20 +159,28 @@ class TestUserPromptSubmitWithSessionStore:
             row = conn.execute("SELECT content FROM user_corrections").fetchone()
         finally:
             conn.close()
-        assert row is not None, "record_correction must write when capture.corrections is explicitly true"
+        assert row is not None, (
+            "record_correction must write when capture.corrections is explicitly true"
+        )
 
 
 class TestUserPromptSubmitSkillWrite:
     """ENH-1833: skill invocation write path (gated on analytics.enabled)."""
 
-    def test_skill_prompt_writes_skill_event(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_skill_prompt_writes_skill_event(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A /ll: prompt with analytics enabled writes one skill_events row."""
         import sqlite3 as _sqlite3
 
         _write_config(tmp_path, analytics_enabled=True)
         monkeypatch.chdir(tmp_path)
 
-        result = handle(_event({"prompt": "/ll:refine-issue ENH-1833", "session_id": "sess-sk1"}, cwd=str(tmp_path)))
+        result = handle(
+            _event(
+                {"prompt": "/ll:refine-issue ENH-1833", "session_id": "sess-sk1"}, cwd=str(tmp_path)
+            )
+        )
         assert result.exit_code == 0
 
         db_path = tmp_path / ".ll" / "history.db"
@@ -169,16 +196,24 @@ class TestUserPromptSubmitSkillWrite:
         assert "ENH-1833" in args
         assert session_id == "sess-sk1"
 
-    def test_non_skill_prompt_writes_no_skill_event(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_non_skill_prompt_writes_no_skill_event(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A regular prompt must not write to skill_events."""
         _write_config(tmp_path, analytics_enabled=True)
         monkeypatch.chdir(tmp_path)
 
-        handle(_event({"prompt": "implement the login feature", "session_id": "sess-sk2"}, cwd=str(tmp_path)))
+        handle(
+            _event(
+                {"prompt": "implement the login feature", "session_id": "sess-sk2"},
+                cwd=str(tmp_path),
+            )
+        )
 
         db_path = tmp_path / ".ll" / "history.db"
         if db_path.exists():
             import sqlite3 as _sqlite3
+
             conn = _sqlite3.connect(str(db_path))
             try:
                 count = conn.execute("SELECT COUNT(*) FROM skill_events").fetchone()[0]
@@ -186,7 +221,9 @@ class TestUserPromptSubmitSkillWrite:
                 conn.close()
             assert count == 0
 
-    def test_skill_write_skipped_when_analytics_disabled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_skill_write_skipped_when_analytics_disabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """analytics disabled → no DB created for skill invocations."""
         _write_config(tmp_path, analytics_enabled=False)
         monkeypatch.chdir(tmp_path)
@@ -197,7 +234,9 @@ class TestUserPromptSubmitSkillWrite:
             "analytics disabled — DB must not be created for skill writes"
         )
 
-    def test_skill_write_graceful_on_store_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_skill_write_graceful_on_store_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A DB error during skill write must not raise; hook must return exit_code=0."""
         import sqlite3 as _sqlite3
 

@@ -313,7 +313,10 @@ class TestConfigSchema:
             "rejected by additionalProperties: false on the hooks block"
         )
         assert data["properties"]["hooks"]["properties"]["stale_ref_fix"]["type"] == "string"
-        assert data["properties"]["hooks"]["properties"]["stale_ref_fix"]["enum"] == ["report", "auto"]
+        assert data["properties"]["hooks"]["properties"]["stale_ref_fix"]["enum"] == [
+            "report",
+            "auto",
+        ]
         assert data["properties"]["hooks"].get("additionalProperties") is False
 
     def test_events_in_schema(self) -> None:
@@ -448,9 +451,7 @@ class TestConfigSchema:
         )
         epics = root_props["epics"]
         assert epics["type"] == "object"
-        assert "scope" in epics["properties"], (
-            "epics.scope is not declared in config-schema.json"
-        )
+        assert "scope" in epics["properties"], "epics.scope is not declared in config-schema.json"
         scope = epics["properties"]["scope"]
         assert scope["type"] == "object"
         scope_props = scope["properties"]

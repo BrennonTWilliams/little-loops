@@ -244,15 +244,27 @@ class TestFileEventsWrite:
         "payload, expected_path",
         [
             (
-                {"tool_name": "Read", "tool_input": {"file_path": "scripts/foo.py"}, "session_id": "s1"},
+                {
+                    "tool_name": "Read",
+                    "tool_input": {"file_path": "scripts/foo.py"},
+                    "session_id": "s1",
+                },
                 "scripts/foo.py",
             ),
             (
-                {"tool_name": "Write", "tool_input": {"file_path": "out/bar.txt"}, "session_id": "s1"},
+                {
+                    "tool_name": "Write",
+                    "tool_input": {"file_path": "out/bar.txt"},
+                    "session_id": "s1",
+                },
                 "out/bar.txt",
             ),
             (
-                {"tool_name": "Edit", "tool_input": {"file_path": "src/main.py"}, "session_id": "s1"},
+                {
+                    "tool_name": "Edit",
+                    "tool_input": {"file_path": "src/main.py"},
+                    "session_id": "s1",
+                },
                 "src/main.py",
             ),
             (
@@ -268,7 +280,11 @@ class TestFileEventsWrite:
                 "scripts/",
             ),
             (
-                {"tool_name": "Bash", "tool_input": {"command": "cat scripts/foo.py"}, "session_id": "s1"},
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "cat scripts/foo.py"},
+                    "session_id": "s1",
+                },
                 "scripts/foo.py",
             ),
         ],
@@ -293,7 +309,12 @@ class TestFileEventsWrite:
         _write_config(tmp_path, analytics_enabled=True)
         monkeypatch.chdir(tmp_path)
 
-        handle(_event({"tool_name": "Bash", "tool_input": {"command": "ls -la"}, "session_id": "s1"}, cwd=str(tmp_path)))
+        handle(
+            _event(
+                {"tool_name": "Bash", "tool_input": {"command": "ls -la"}, "session_id": "s1"},
+                cwd=str(tmp_path),
+            )
+        )
 
         db_path = tmp_path / ".ll" / "history.db"
         conn = sqlite3.connect(str(db_path))
@@ -388,16 +409,24 @@ class TestFileEventsWrite:
         import little_loops.session_store as session_store
 
         write_calls: list = []
-        monkeypatch.setattr(session_store, "write_file_event", lambda *a, **kw: write_calls.append(a))
+        monkeypatch.setattr(
+            session_store, "write_file_event", lambda *a, **kw: write_calls.append(a)
+        )
 
         handle(
             _event(
-                {"tool_name": "Read", "tool_input": {"file_path": "scripts/foo.py"}, "session_id": "s1"},
+                {
+                    "tool_name": "Read",
+                    "tool_input": {"file_path": "scripts/foo.py"},
+                    "session_id": "s1",
+                },
                 cwd=str(tmp_path),
             )
         )
 
-        assert len(write_calls) == 0, "write_file_event must not be called when capture.file_events is false"
+        assert len(write_calls) == 0, (
+            "write_file_event must not be called when capture.file_events is false"
+        )
 
     def test_file_events_gate_enabled_explicitly(self, tmp_path, monkeypatch) -> None:
         """analytics enabled with capture.file_events: true → write_file_event IS called."""
@@ -406,7 +435,11 @@ class TestFileEventsWrite:
 
         handle(
             _event(
-                {"tool_name": "Read", "tool_input": {"file_path": "scripts/foo.py"}, "session_id": "s1"},
+                {
+                    "tool_name": "Read",
+                    "tool_input": {"file_path": "scripts/foo.py"},
+                    "session_id": "s1",
+                },
                 cwd=str(tmp_path),
             )
         )
@@ -417,7 +450,9 @@ class TestFileEventsWrite:
             row = conn.execute("SELECT path FROM file_events").fetchone()
         finally:
             conn.close()
-        assert row is not None, "write_file_event must be called when capture.file_events is explicitly true"
+        assert row is not None, (
+            "write_file_event must be called when capture.file_events is explicitly true"
+        )
         assert row[0] == "scripts/foo.py"
 
 

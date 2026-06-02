@@ -69,18 +69,23 @@ def handle(event: LLHookEvent) -> LLHookResult:
 
     if config is not None and feature_enabled(config, "analytics.enabled"):
         if is_correction(user_prompt):
-            capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
+            capture = AnalyticsCaptureConfig.from_dict(
+                config.get("analytics", {}).get("capture", {})
+            )
             if capture.corrections:
                 session_id = event.payload.get("session_id") or event.session_id
                 with contextlib.suppress(Exception):
-                    record_correction(cwd / ".ll" / "history.db", session_id, user_prompt, "user_prompt_submit")
+                    record_correction(
+                        cwd / ".ll" / "history.db", session_id, user_prompt, "user_prompt_submit"
+                    )
         # TODO(ENH-1835): wire analytics.capture.cli_commands gate when ENH-1834 lands
         m = re.match(r"^/ll:([a-z][a-z0-9-]*)(.*)", user_prompt.strip(), re.DOTALL)
         if m:
             session_id = event.payload.get("session_id") or event.session_id
             with contextlib.suppress(Exception):
-                record_skill_event(cwd / ".ll" / "history.db", session_id,
-                                   m.group(1), m.group(2).strip()[:200])
+                record_skill_event(
+                    cwd / ".ll" / "history.db", session_id, m.group(1), m.group(2).strip()[:200]
+                )
 
     if config is None:
         return LLHookResult(exit_code=0, stdout=_NO_CONFIG_MSG + "\n")

@@ -2337,7 +2337,9 @@ class TestIssueAutoCommitHook:
         config_file.write_text(json.dumps({"issues": {"auto_commit": True}}))
 
         # Seed the repo with an initial commit so git commit works
-        subprocess.run(["git", "add", str(config_file)], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "add", str(config_file)], cwd=str(tmp_path), check=True, capture_output=True
+        )
         subprocess.run(
             ["git", "commit", "-m", "init"],
             cwd=str(tmp_path),
@@ -2385,7 +2387,9 @@ class TestIssueAutoCommitHook:
         config_file.write_text(
             json.dumps({"issues": {"auto_commit": True, "auto_commit_prefix": "fix(issues)"}})
         )
-        subprocess.run(["git", "add", str(config_file)], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "add", str(config_file)], cwd=str(tmp_path), check=True, capture_output=True
+        )
         subprocess.run(
             ["git", "commit", "-m", "init"],
             cwd=str(tmp_path),
@@ -2422,7 +2426,9 @@ class TestIssueAutoCommitHook:
             f"Expected custom prefix in commit, got: {git_log.stdout!r}"
         )
 
-    def test_dirty_tree_skips_commit_prints_warning(self, hook_script: Path, tmp_path: Path) -> None:
+    def test_dirty_tree_skips_commit_prints_warning(
+        self, hook_script: Path, tmp_path: Path
+    ) -> None:
         """Dirty working tree → hook skips commit and prints warning to stderr."""
         import os
 
@@ -2431,7 +2437,9 @@ class TestIssueAutoCommitHook:
         ll_dir.mkdir()
         config_file = ll_dir / "ll-config.json"
         config_file.write_text(json.dumps({"issues": {"auto_commit": True}}))
-        subprocess.run(["git", "add", str(config_file)], cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "add", str(config_file)], cwd=str(tmp_path), check=True, capture_output=True
+        )
         subprocess.run(
             ["git", "commit", "-m", "init"],
             cwd=str(tmp_path),
@@ -2546,6 +2554,5 @@ class TestSessionEndSweep:
         )
 
         assert result.returncode == 0, (
-            f"session-end.sh exited {result.returncode}. "
-            f"stderr: {result.stderr!r}"
+            f"session-end.sh exited {result.returncode}. stderr: {result.stderr!r}"
         )

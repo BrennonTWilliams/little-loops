@@ -86,9 +86,9 @@ class EvaluateConfig:
     track: list[str] | None = None  # for action_stall: context keys to track (default: ["action"])
     max_repeat: int = 2  # for action_stall: consecutive identical iterations before failure
     baseline_path: str | None = None  # for comparator: path to .loops/baselines/<loop>/ dir
-    auto_promote: bool = False         # for comparator: write output to baseline on yes verdict
-    min_pairs: int = 1                 # for comparator: number of blind A/B comparisons to run
-    pairs: list[dict] | None = None      # for contract: list of producer/consumer pair dicts
+    auto_promote: bool = False  # for comparator: write output to baseline on yes verdict
+    min_pairs: int = 1  # for comparator: number of blind A/B comparisons to run
+    pairs: list[dict] | None = None  # for contract: list of producer/consumer pair dicts
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""

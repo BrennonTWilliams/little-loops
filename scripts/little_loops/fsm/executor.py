@@ -49,7 +49,10 @@ from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
 from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.session_log import get_current_session_jsonl
-from little_loops.subprocess_utils import DetailedUsageCallback, TokenUsage, UsageCallback, run_claude_command
+from little_loops.subprocess_utils import (
+    UsageCallback,
+    run_claude_command,
+)
 
 # Maximum number of per-state rate-limit retries before emitting rate_limit_exhausted.
 _DEFAULT_RATE_LIMIT_RETRIES: int = 3

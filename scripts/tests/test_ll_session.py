@@ -402,7 +402,9 @@ class TestMainSession:
         assert len(data) == 1
         assert data[0]["session_id"] == "sess-43"
 
-    def test_recent_correction_kind(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_recent_correction_kind(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """ENH-1831: recent --kind correction returns captured rows."""
         from little_loops.session_store import record_correction
 
@@ -412,7 +414,9 @@ class TestMainSession:
             assert main_session() == 0
         assert "don't do that" in capsys.readouterr().out
 
-    def test_recent_correction_empty(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_recent_correction_empty(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """ENH-1831: recent --kind correction with no rows emits 'No correction events'."""
         db = tmp_path / "session.db"
         ensure_db(db)
@@ -478,7 +482,9 @@ class TestBackfillSinceFlag:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         db = tmp_path / "session.db"
-        with patch("sys.argv", ["ll-session", "--db", str(db), "backfill", "--since", "2026-01-01"]):
+        with patch(
+            "sys.argv", ["ll-session", "--db", str(db), "backfill", "--since", "2026-01-01"]
+        ):
             with patch("little_loops.cli.session.backfill_incremental") as mock_inc:
                 with patch("little_loops.cli.session.get_project_folder") as mock_folder:
                     mock_folder.return_value = tmp_path
@@ -494,7 +500,9 @@ class TestBackfillSinceFlag:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         db = tmp_path / "session.db"
-        with patch("sys.argv", ["ll-session", "--db", str(db), "backfill", "--since", "not-a-date"]):
+        with patch(
+            "sys.argv", ["ll-session", "--db", str(db), "backfill", "--since", "not-a-date"]
+        ):
             result = main_session()
         assert result == 1
 
@@ -505,7 +513,11 @@ class TestBackfillSinceFlag:
         with patch("sys.argv", ["ll-session", "--db", str(db), "backfill"]):
             with patch("little_loops.cli.session.backfill") as mock_backfill:
                 mock_backfill.return_value = {
-                    "issues": 0, "loops": 0, "tools": 0, "messages": 0, "sessions": 0,
+                    "issues": 0,
+                    "loops": 0,
+                    "tools": 0,
+                    "messages": 0,
+                    "sessions": 0,
                 }
                 result = main_session()
         assert result == 0

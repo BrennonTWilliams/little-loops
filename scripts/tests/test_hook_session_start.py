@@ -261,9 +261,7 @@ class TestSessionStartBackfillThread:
         assert len(started) == 1, "exactly one thread should be spawned"
         assert started[0] is True, "thread must be a daemon thread"
 
-    def test_no_thread_when_no_config(
-        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_thread_when_no_config(self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         started: list[bool] = []
 
         class _MockThread:

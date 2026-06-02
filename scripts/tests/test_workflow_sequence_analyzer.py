@@ -2269,9 +2269,7 @@ class TestMainProposeSubcommand:
 
         mock_result = self._make_completed(stdout=self._PROPOSAL_YAML)
 
-        with patch(
-            "little_loops.subprocess_utils.run_claude_command", return_value=mock_result
-        ):
+        with patch("little_loops.subprocess_utils.run_claude_command", return_value=mock_result):
             with patch.object(
                 sys,
                 "argv",
@@ -2315,9 +2313,7 @@ class TestMainProposeSubcommand:
 
         mock_result = self._make_completed(stdout=self._PROPOSAL_YAML)
 
-        with patch(
-            "little_loops.subprocess_utils.run_claude_command", return_value=mock_result
-        ):
+        with patch("little_loops.subprocess_utils.run_claude_command", return_value=mock_result):
             with patch.object(
                 sys,
                 "argv",
@@ -2363,9 +2359,7 @@ class TestMainProposeSubcommand:
 
         mock_result = self._make_completed(returncode=1, stderr="skill error")
 
-        with patch(
-            "little_loops.subprocess_utils.run_claude_command", return_value=mock_result
-        ):
+        with patch("little_loops.subprocess_utils.run_claude_command", return_value=mock_result):
             with patch.object(
                 sys,
                 "argv",
@@ -2397,9 +2391,7 @@ class TestMainProposeSubcommand:
 
         mock_result = self._make_completed(stdout=self._PROPOSAL_YAML)
 
-        with patch(
-            "little_loops.subprocess_utils.run_claude_command", return_value=mock_result
-        ):
+        with patch("little_loops.subprocess_utils.run_claude_command", return_value=mock_result):
             with patch.object(
                 sys,
                 "argv",

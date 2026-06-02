@@ -79,9 +79,7 @@ def cmd_epic_progress(config: BRConfig, args: argparse.Namespace) -> int:
             f"- **Progress**: {done_count}/{total} done ({pct}%)",
         ]
         status_parts = [
-            f"{prog.by_status[s]} {s}"
-            for s in _STATUS_ORDER
-            if prog.by_status.get(s, 0) > 0
+            f"{prog.by_status[s]} {s}" for s in _STATUS_ORDER if prog.by_status.get(s, 0) > 0
         ]
         lines.append("- **Status**: " + "  •  ".join(status_parts))
         if prog.oldest_open is not None:
@@ -106,17 +104,13 @@ def cmd_epic_progress(config: BRConfig, args: argparse.Namespace) -> int:
     print(f"  Progress:     {bar}  {done_count}/{total} done ({pct}%)")
 
     status_parts = [
-        f"{prog.by_status[s]} {s}"
-        for s in _STATUS_ORDER
-        if prog.by_status.get(s, 0) > 0
+        f"{prog.by_status[s]} {s}" for s in _STATUS_ORDER if prog.by_status.get(s, 0) > 0
     ]
     print(f"  Status:       {'  •  '.join(status_parts)}")
 
     if prog.oldest_open is not None:
         age_str = (
-            f" ({prog.oldest_open_age_days} days)"
-            if prog.oldest_open_age_days is not None
-            else ""
+            f" ({prog.oldest_open_age_days} days)" if prog.oldest_open_age_days is not None else ""
         )
         issue_type = prog.oldest_open.issue_id.split("-", 1)[0]
         colored_id = colorize(prog.oldest_open.issue_id, TYPE_COLOR.get(issue_type, "0"))

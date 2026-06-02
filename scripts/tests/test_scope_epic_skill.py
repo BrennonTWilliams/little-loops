@@ -54,9 +54,7 @@ class TestScopeEpicSkillExists:
 
     def test_relates_to_wiring_referenced(self) -> None:
         content = SKILL_FILE.read_text()
-        assert "relates_to" in content, (
-            "Skill must reference relates_to frontmatter wiring"
-        )
+        assert "relates_to" in content, "Skill must reference relates_to frontmatter wiring"
 
     def test_children_section_wiring_referenced(self) -> None:
         content = SKILL_FILE.read_text()
@@ -78,9 +76,7 @@ class TestScopeEpicSkillExists:
 
     def test_git_staging_referenced(self) -> None:
         content = SKILL_FILE.read_text()
-        assert "git add" in content, (
-            "Skill must reference git add for staging created files"
-        )
+        assert "git add" in content, "Skill must reference git add for staging created files"
 
     def test_from_doc_flag_referenced(self) -> None:
         content = SKILL_FILE.read_text()

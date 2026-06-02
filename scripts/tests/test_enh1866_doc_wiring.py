@@ -16,9 +16,7 @@ class TestEnh1866LlDepsTreeWiring:
 
     def test_cli_md_has_ll_deps_tree_section(self) -> None:
         content = CLI_REFERENCE.read_text()
-        assert "ll-deps tree" in content, (
-            "docs/reference/CLI.md must have an ll-deps tree section"
-        )
+        assert "ll-deps tree" in content, "docs/reference/CLI.md must have an ll-deps tree section"
 
     def test_cli_md_has_epic_flag(self) -> None:
         content = CLI_REFERENCE.read_text()

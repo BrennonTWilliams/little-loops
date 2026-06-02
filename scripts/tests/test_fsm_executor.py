@@ -1991,7 +1991,16 @@ class TestErrorHandling:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
             ) -> ActionResult:
-                del action, timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
+                del (
+                    action,
+                    timeout,
+                    is_slash_command,
+                    on_output_line,
+                    agent,
+                    tools,
+                    on_usage,
+                    on_usage_detailed,
+                )
                 raise RuntimeError("Connection failed")
 
         executor = FSMExecutor(fsm, action_runner=FailingRunner())  # type: ignore[arg-type]
@@ -2502,7 +2511,15 @@ class TestSignalHandling:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
+                del (
+                    timeout,
+                    is_slash_command,
+                    on_output_line,
+                    agent,
+                    tools,
+                    on_usage,
+                    on_usage_detailed,
+                )
                 self.calls.append(action)
                 call_count[0] += 1
 
@@ -2587,7 +2604,15 @@ class TestSignalHandling:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
+                del (
+                    timeout,
+                    is_slash_command,
+                    on_output_line,
+                    agent,
+                    tools,
+                    on_usage,
+                    on_usage_detailed,
+                )
                 self.calls.append(action)
                 call_count[0] += 1
 
@@ -2764,7 +2789,16 @@ class TestActionExceptionRouting:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
             ) -> ActionResult:
-                del action, timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
+                del (
+                    action,
+                    timeout,
+                    is_slash_command,
+                    on_output_line,
+                    agent,
+                    tools,
+                    on_usage,
+                    on_usage_detailed,
+                )
                 raise exc
 
         return RaisingRunner()
@@ -6774,7 +6808,15 @@ class TestStallDetector:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
+                del (
+                    timeout,
+                    is_slash_command,
+                    on_output_line,
+                    agent,
+                    tools,
+                    on_usage,
+                    on_usage_detailed,
+                )
                 self.calls.append(action)
                 if "work" in action:
                     self.work_count += 1
@@ -6881,7 +6923,15 @@ class TestStallDetector:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed
+                del (
+                    timeout,
+                    is_slash_command,
+                    on_output_line,
+                    agent,
+                    tools,
+                    on_usage,
+                    on_usage_detailed,
+                )
                 self.calls.append(action)
                 # Simulate a loop that always appends to its own plan file (like
                 # general-task's continue_work state) — no real progress is made.

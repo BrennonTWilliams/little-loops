@@ -146,7 +146,9 @@ Examples:
             help=argparse.SUPPRESS,
         )
         run_parser.add_argument("--instance-id", type=str, default=None, help=argparse.SUPPRESS)
-        run_parser.add_argument("--quiet", "--qt", action="store_true", help="Suppress progress output")
+        run_parser.add_argument(
+            "--quiet", "--qt", action="store_true", help="Suppress progress output"
+        )
         run_parser.add_argument(
             "--follow",
             "-f",
@@ -265,7 +267,8 @@ Examples:
         list_parser.set_defaults(command="list")
         list_parser.add_argument("--running", action="store_true", help="Only show running loops")
         list_parser.add_argument(
-            "--status", help="Filter running loops by status (e.g., interrupted, awaiting_continuation)"
+            "--status",
+            help="Filter running loops by status (e.g., interrupted, awaiting_continuation)",
         )
         list_parser.add_argument("-j", "--json", action="store_true", help="Output as JSON array")
         list_parser.add_argument("--builtin", action="store_true", help="Show only built-in loops")
@@ -303,7 +306,10 @@ Examples:
         resume_parser.set_defaults(command="resume")
         resume_parser.add_argument("loop", help="Loop name or path")
         resume_parser.add_argument(
-            "--background", "-b", action="store_true", help="Resume as a detached background process"
+            "--background",
+            "-b",
+            action="store_true",
+            help="Resume as a detached background process",
         )
         resume_parser.add_argument(
             "--foreground-internal",
@@ -376,7 +382,9 @@ Examples:
 
         # History subcommand
         history_parser = subparsers.add_parser(
-            "history", aliases=["h"], help="List archived loop runs or show events for a specific run"
+            "history",
+            aliases=["h"],
+            help="List archived loop runs or show events for a specific run",
         )
         history_parser.set_defaults(command="history")
         history_parser.add_argument("loop", help="Loop name")
@@ -390,7 +398,10 @@ Examples:
             "--tail", "-n", type=int, default=50, help="Last N events (default: 50)"
         )
         history_parser.add_argument(
-            "--verbose", "-v", action="store_true", help="Show action output lines and LLM call details"
+            "--verbose",
+            "-v",
+            action="store_true",
+            help="Show action output lines and LLM call details",
         )
         history_parser.add_argument(
             "--full",
@@ -401,7 +412,11 @@ Examples:
             "-j", "--json", action="store_true", help="Output events as JSON array"
         )
         history_parser.add_argument(
-            "--event", "-e", type=str, default=None, help="Filter by event type (e.g. evaluate, route)"
+            "--event",
+            "-e",
+            type=str,
+            default=None,
+            help="Filter by event type (e.g. evaluate, route)",
         )
         history_parser.add_argument(
             "--state",
@@ -425,7 +440,9 @@ Examples:
         )
         test_parser.set_defaults(command="test")
         test_parser.add_argument("loop", help="Loop name")
-        test_parser.add_argument("--state", help="Test a specific state instead of the initial state")
+        test_parser.add_argument(
+            "--state", help="Test a specific state instead of the initial state"
+        )
         test_parser.add_argument(
             "--exit-code",
             type=int,
@@ -470,9 +487,13 @@ Examples:
         show_parser.add_argument(
             "--verbose", "-v", action="store_true", help="Show full action text and evaluate prompt"
         )
-        show_parser.add_argument("-j", "--json", action="store_true", help="Output FSM config as JSON")
         show_parser.add_argument(
-            "--resolved", action="store_true", help="Expand sub-loop states inline under _subloop key"
+            "-j", "--json", action="store_true", help="Output FSM config as JSON"
+        )
+        show_parser.add_argument(
+            "--resolved",
+            action="store_true",
+            help="Expand sub-loop states inline under _subloop key",
         )
         show_parser.add_argument(
             "--show-diagrams",
@@ -645,7 +666,9 @@ Examples:
             default=10,
             help="Minimum runs required for meaningful variance (default: 10)",
         )
-        diagnose_eval_parser.add_argument("-j", "--json", action="store_true", help="Output as JSON")
+        diagnose_eval_parser.add_argument(
+            "-j", "--json", action="store_true", help="Output as JSON"
+        )
 
         # Promote-baseline subcommand
         promote_bl_parser = subparsers.add_parser(

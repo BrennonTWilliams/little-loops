@@ -569,7 +569,9 @@ def close_issue(
                     return False
 
     try:
-        captured_at = parse_frontmatter(original_path.read_text(encoding="utf-8")).get("captured_at")
+        captured_at = parse_frontmatter(original_path.read_text(encoding="utf-8")).get(
+            "captured_at"
+        )
         # Prepare content with resolution section, then write status + completed_at
         resolution = _build_closure_resolution(
             close_status, close_reason, fix_commit, files_changed
@@ -638,7 +640,9 @@ def complete_issue_lifecycle(
     logger.info(f"Completing lifecycle for {info.issue_id} (command may have exited early)...")
 
     try:
-        captured_at = parse_frontmatter(original_path.read_text(encoding="utf-8")).get("captured_at")
+        captured_at = parse_frontmatter(original_path.read_text(encoding="utf-8")).get(
+            "captured_at"
+        )
         # Prepare content with resolution section, then write status + completed_at
         action = config.get_category_action(info.issue_type)
         resolution = _build_completion_resolution(action)

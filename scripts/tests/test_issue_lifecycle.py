@@ -1338,7 +1338,9 @@ class TestEventBusEmission:
         bugs_dir = tmp_path / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         original = bugs_dir / "P3-BUG-042-slow-query.md"
-        original.write_text("---\nstatus: open\ncaptured_at: '2026-05-20T10:00:00Z'\n---\n\n# BUG-042: Slow Query\n")
+        original.write_text(
+            "---\nstatus: open\ncaptured_at: '2026-05-20T10:00:00Z'\n---\n\n# BUG-042: Slow Query\n"
+        )
         new_path = bugs_dir / "P5-BUG-042-slow-query.md"
 
         received: list[dict] = []

@@ -114,9 +114,7 @@ def _auto_fix_file(path: Path, done_ids: set[str]) -> bool:
             continue
 
         # Only rewrite lines that mention a done ID
-        has_done_ref = any(
-            m.group(0) in done_ids for m in _ISSUE_ID_RE.finditer(line)
-        )
+        has_done_ref = any(m.group(0) in done_ids for m in _ISSUE_ID_RE.finditer(line))
         if has_done_ref and _STALE_STATUS_RE.search(line):
             new_line = _STALE_STATUS_RE.sub("is done", line)
             new_lines.append(new_line)

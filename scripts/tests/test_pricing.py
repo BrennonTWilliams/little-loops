@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from little_loops.pricing import MODEL_PRICING, estimate_cost_usd
 
 
@@ -22,7 +20,9 @@ class TestModelPricing:
 
     def test_output_more_expensive_than_input(self) -> None:
         for model, prices in MODEL_PRICING.items():
-            assert prices["output"] > prices["input"], f"{model}: output should cost more than input"
+            assert prices["output"] > prices["input"], (
+                f"{model}: output should cost more than input"
+            )
 
 
 class TestEstimateCostUsd:

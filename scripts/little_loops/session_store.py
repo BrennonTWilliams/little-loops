@@ -432,7 +432,9 @@ def record_skill_event(
             "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
             (ts, session_id, skill_name, args),
         )
-        _index(conn, content=skill_name, kind="skill", ref=session_id or "", anchor=skill_name, ts=ts)
+        _index(
+            conn, content=skill_name, kind="skill", ref=session_id or "", anchor=skill_name, ts=ts
+        )
         conn.commit()
     finally:
         conn.close()
@@ -988,9 +990,7 @@ def backfill_incremental(
     counts: dict[str, int] = {"tools": 0, "messages": 0, "sessions": 0}
     try:
         if since_ts is None:
-            row = conn.execute(
-                "SELECT value FROM meta WHERE key = 'last_backfill_ts'"
-            ).fetchone()
+            row = conn.execute("SELECT value FROM meta WHERE key = 'last_backfill_ts'").fetchone()
             raw = row[0] if (row and row[0]) else None
             if raw:
                 try:

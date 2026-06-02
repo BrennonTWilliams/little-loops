@@ -123,7 +123,9 @@ Examples:
 
         subs = parser.add_subparsers(dest="command", help="Available commands")
 
-        nid = subs.add_parser("next-id", aliases=["ni"], help="Print next globally unique issue number")
+        nid = subs.add_parser(
+            "next-id", aliases=["ni"], help="Print next globally unique issue number"
+        )
         nid.set_defaults(command="next-id")
         add_config_arg(nid)
 
@@ -200,7 +202,9 @@ Examples:
         )
         add_config_arg(ls)
 
-        sr = subs.add_parser("search", aliases=["sr"], help="Search issues with filters and sorting")
+        sr = subs.add_parser(
+            "search", aliases=["sr"], help="Search issues with filters and sorting"
+        )
         sr.set_defaults(command="search")
         sr.add_argument(
             "query",
@@ -247,7 +251,9 @@ Examples:
             help="Filter by label tag (repeatable)",
         )
         sr.add_argument("--since", metavar="DATE", help="Only issues on or after DATE (YYYY-MM-DD)")
-        sr.add_argument("--until", metavar="DATE", help="Only issues on or before DATE (YYYY-MM-DD)")
+        sr.add_argument(
+            "--until", metavar="DATE", help="Only issues on or before DATE (YYYY-MM-DD)"
+        )
         sr.add_argument(
             "--date-field",
             choices=["discovered", "updated"],
@@ -315,7 +321,11 @@ Examples:
             "--type", "-T", choices=["BUG", "FEAT", "ENH", "EPIC"], help="Filter by issue type"
         )
         seq.add_argument(
-            "--limit", "-n", type=int, default=10, help="Maximum number of issues to show (default: 10)"
+            "--limit",
+            "-n",
+            type=int,
+            default=10,
+            help="Maximum number of issues to show (default: 10)",
         )
         seq.add_argument("--json", "-j", action="store_true", help="Output as JSON array")
         add_config_arg(seq)
@@ -332,7 +342,9 @@ Examples:
         path_p.add_argument("--json", "-j", action="store_true", help="Output as JSON object")
         add_config_arg(path_p)
 
-        ie = subs.add_parser("impact-effort", aliases=["ie"], help="Display impact vs effort matrix")
+        ie = subs.add_parser(
+            "impact-effort", aliases=["ie"], help="Display impact vs effort matrix"
+        )
         ie.set_defaults(command="impact-effort")
         ie.add_argument(
             "--type", "-T", choices=["BUG", "FEAT", "ENH", "EPIC"], help="Filter by issue type"
@@ -638,7 +650,9 @@ Examples:
             help="Extract structured fingerprint (id, files, key_terms) from an issue file",
         )
         fp.set_defaults(command="fingerprint")
-        fp.add_argument("issue_path", help="Path to the issue file (absolute or relative to project root)")
+        fp.add_argument(
+            "issue_path", help="Path to the issue file (absolute or relative to project root)"
+        )
         add_config_arg(fp)
 
         sk = subs.add_parser(

@@ -8,14 +8,12 @@ references to done issue IDs.  Every path through ``handle()`` must return
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import pytest
 
 from little_loops.hooks.sweep_stale_refs import _auto_fix_file, _scan_file, handle
 from little_loops.hooks.types import LLHookEvent
-
 
 # ---------------------------------------------------------------------------
 # Fixtures & helpers
@@ -58,10 +56,7 @@ def _write_issues(tmp_path: Path, files: dict[str, str]) -> None:
 def _minimal_issue(issue_id: str, status: str, body: str = "") -> str:
     """Return minimal YAML-frontmatter issue content."""
     type_prefix = issue_id.split("-")[0]
-    return (
-        f"---\nid: {issue_id}\nstatus: {status}\n---\n\n"
-        f"# {type_prefix}: {issue_id}\n\n{body}"
-    )
+    return f"---\nid: {issue_id}\nstatus: {status}\n---\n\n# {type_prefix}: {issue_id}\n\n{body}"
 
 
 # ---------------------------------------------------------------------------
@@ -118,9 +113,7 @@ class TestSweepStaleRefsDetection:
         _write_issues(
             tmp_path,
             {
-                f"features/P3-{done_id}-done-thing.md": _minimal_issue(
-                    done_id, "done"
-                ),
+                f"features/P3-{done_id}-done-thing.md": _minimal_issue(done_id, "done"),
                 f"{open_subdir}/P3-{open_id}-checker.md": _minimal_issue(
                     open_id, "open", body=open_body
                 ),
@@ -196,9 +189,7 @@ class TestSweepStaleRefsDetection:
         assert result.exit_code == 0
         assert result.feedback is not None
         # Feedback lines look like "  /path/to/file.md:5: [FEAT-1000] ..."
-        assert ":5:" in result.feedback or any(
-            f":{n}:" in result.feedback for n in range(1, 20)
-        )
+        assert ":5:" in result.feedback or any(f":{n}:" in result.feedback for n in range(1, 20))
 
     def test_skips_code_fence_region(self, in_tmp: Path) -> None:
         """An ID inside a triple-backtick code block must NOT be flagged."""

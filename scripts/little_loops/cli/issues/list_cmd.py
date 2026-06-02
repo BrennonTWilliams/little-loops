@@ -158,9 +158,9 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
             from little_loops.issue_parser import find_issues as _find_issues_all
             from little_loops.issue_progress import compute_epic_progress
 
-            _all_statuses = frozenset(
-                {"open", "in_progress", "blocked", "done", "cancelled", "deferred"}
-            )
+            _all_statuses: set[str] = {
+                "open", "in_progress", "blocked", "done", "cancelled", "deferred"
+            }
             all_issues_for_progress = _find_issues_all(config, status_filter=_all_statuses)
             for epic_key in named_keys:
                 prog = compute_epic_progress(epic_key, all_issues_for_progress)

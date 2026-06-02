@@ -4267,9 +4267,7 @@ class TestCmdPromoteBaseline:
         assert "world" in content
         assert "Promoted baseline" in capsys.readouterr().out
 
-    def test_latest_run_used(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_latest_run_used(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """Uses the most recent run (highest timestamp) when multiple runs exist."""
         from little_loops.cli.loop.info import cmd_promote_baseline
 

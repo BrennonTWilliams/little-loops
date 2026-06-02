@@ -156,7 +156,9 @@ Examples:
         target = _get_cwd() / name
 
         if _target_exists(target):
-            logger.error(f"directory '{name}' already exists. Remove it or choose a different name.")
+            logger.error(
+                f"directory '{name}' already exists. Remove it or choose a different name."
+            )
             return 1
 
         files: dict[Path, str] = {

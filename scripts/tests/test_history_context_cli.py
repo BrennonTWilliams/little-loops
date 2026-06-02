@@ -57,9 +57,7 @@ class TestHistoryContextWithMatches:
         out = capsys.readouterr().out
         assert "wiring corrections into refine" in out
 
-    def test_caps_at_five_rows(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_caps_at_five_rows(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         db = tmp_path / "history.db"
         for i in range(10):
             record_correction(db, f"sess-{i}", f"correction ENH-1708 unique item {i}", "user")
@@ -107,8 +105,7 @@ class TestHistoryContextStaleRows:
         try:
             ts = (datetime.now(UTC) - timedelta(days=days_old)).strftime("%Y-%m-%dT%H:%M:%SZ")
             conn.execute(
-                "INSERT INTO user_corrections(ts, session_id, content, source) "
-                "VALUES(?, ?, ?, ?)",
+                "INSERT INTO user_corrections(ts, session_id, content, source) VALUES(?, ?, ?, ?)",
                 (ts, "sess-1", f"correction for {topic}", "user"),
             )
             conn.commit()

@@ -220,6 +220,7 @@ class SimulationActionRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         on_usage: UsageCallback | None = None,
+        on_usage_detailed: DetailedUsageCallback | None = None,
     ) -> ActionResult:
         """Prompt user for simulated result instead of executing.
 
@@ -231,6 +232,7 @@ class SimulationActionRunner:
             agent: Ignored in simulation
             tools: Ignored in simulation
             on_usage: Ignored in simulation
+            on_usage_detailed: Ignored in simulation
 
         Returns:
             ActionResult with simulated exit code

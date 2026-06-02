@@ -1024,9 +1024,7 @@ class TestSchemaV6:
         ensure_db(db)
         conn = sqlite3.connect(str(db))
         try:
-            row = conn.execute(
-                "SELECT value FROM meta WHERE key = 'last_backfill_ts'"
-            ).fetchone()
+            row = conn.execute("SELECT value FROM meta WHERE key = 'last_backfill_ts'").fetchone()
         finally:
             conn.close()
         assert row is not None, "last_backfill_ts key must exist in meta after v6 migration"
@@ -1101,9 +1099,7 @@ class TestBackfillIncremental:
         backfill_incremental(db, jsonl_files=[], since_ts=0.0)
         conn = connect(db)
         try:
-            row = conn.execute(
-                "SELECT value FROM meta WHERE key = 'last_backfill_ts'"
-            ).fetchone()
+            row = conn.execute("SELECT value FROM meta WHERE key = 'last_backfill_ts'").fetchone()
         finally:
             conn.close()
         assert row is not None
@@ -1144,25 +1140,31 @@ class TestBackfillIncremental:
 class TestIsCorrectionHeuristic:
     """ENH-1831: correction-detection heuristic."""
 
-    @pytest.mark.parametrize("text", [
-        "no, don't do that",
-        "stop doing that",
-        "revert that last change",
-        "don't add comments",
-        "No! That's wrong",
-        "that's wrong, try again",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "no, don't do that",
+            "stop doing that",
+            "revert that last change",
+            "don't add comments",
+            "No! That's wrong",
+            "that's wrong, try again",
+        ],
+    )
     def test_true_positives(self, text: str) -> None:
         assert is_correction(text), f"expected correction signal: {text!r}"
 
-    @pytest.mark.parametrize("text", [
-        "no problem",
-        "sounds good",
-        "noted, thanks",
-        "implement the login feature",
-        "fix the authentication bug",
-        "noted",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "no problem",
+            "sounds good",
+            "noted, thanks",
+            "implement the login feature",
+            "fix the authentication bug",
+            "noted",
+        ],
+    )
     def test_true_negatives(self, text: str) -> None:
         assert not is_correction(text), f"expected non-correction: {text!r}"
 
@@ -1172,6 +1174,7 @@ class TestRecordCorrection:
 
     def test_record_correction_roundtrip(self, tmp_path: Path) -> None:
         from little_loops.session_store import recent
+
         db = tmp_path / "session.db"
         record_correction(db, "sess-r1", "no, don't do that", "user_prompt_submit")
         rows = recent(db, kind="correction")
@@ -1181,6 +1184,7 @@ class TestRecordCorrection:
 
     def test_record_correction_truncates_to_512(self, tmp_path: Path) -> None:
         from little_loops.session_store import recent
+
         db = tmp_path / "session.db"
         long_text = "stop " + "x" * 600
         record_correction(db, None, long_text, "user_prompt_submit")
@@ -1189,6 +1193,7 @@ class TestRecordCorrection:
 
     def test_record_correction_fts_indexed(self, tmp_path: Path) -> None:
         from little_loops.session_store import search
+
         db = tmp_path / "session.db"
         record_correction(db, "sess-r2", "revert that last commit", "user_prompt_submit")
         results = search(db, query="revert")
@@ -1197,9 +1202,13 @@ class TestRecordCorrection:
     def test_record_correction_gate_disabled(self, tmp_path: Path) -> None:
         """capture.corrections: false suppresses write regardless of call site."""
         from little_loops.session_store import recent
+
         db = tmp_path / "session.db"
         record_correction(
-            db, "sess-g1", "no, stop", "user_prompt_submit",
+            db,
+            "sess-g1",
+            "no, stop",
+            "user_prompt_submit",
             config={"analytics": {"capture": {"corrections": False}}},
         )
         rows = recent(db, kind="correction")
@@ -1208,9 +1217,13 @@ class TestRecordCorrection:
     def test_write_file_event_gate_disabled(self, tmp_path: Path) -> None:
         """capture.file_events: false suppresses write regardless of call site."""
         from little_loops.session_store import recent, write_file_event
+
         db = tmp_path / "session.db"
         write_file_event(
-            db, "sess-g2", "scripts/foo.py", "Read",
+            db,
+            "sess-g2",
+            "scripts/foo.py",
+            "Read",
             config={"analytics": {"capture": {"file_events": False}}},
         )
         rows = recent(db, kind="file")
@@ -1222,6 +1235,7 @@ class TestRecordSkillEvent:
 
     def test_record_skill_event_roundtrip(self, tmp_path: Path) -> None:
         from little_loops.session_store import recent, record_skill_event
+
         db = tmp_path / "session.db"
         record_skill_event(db, "sess-s1", "refine-issue", "ENH-1833")
         rows = recent(db, kind="skill")
@@ -1232,6 +1246,7 @@ class TestRecordSkillEvent:
 
     def test_record_skill_event_truncates_args_to_200(self, tmp_path: Path) -> None:
         from little_loops.session_store import recent, record_skill_event
+
         db = tmp_path / "session.db"
         long_args = "x" * 300
         record_skill_event(db, None, "capture-issue", long_args)
@@ -1240,6 +1255,7 @@ class TestRecordSkillEvent:
 
     def test_record_skill_event_fts_indexed(self, tmp_path: Path) -> None:
         from little_loops.session_store import record_skill_event, search
+
         db = tmp_path / "session.db"
         record_skill_event(db, "sess-s2", "ready-issue", "")
         # FTS5 tokenises hyphens, so query on individual word "ready"
@@ -1249,6 +1265,7 @@ class TestRecordSkillEvent:
     def test_record_skill_event_config_stub_accepted(self, tmp_path: Path) -> None:
         """config= param is accepted (forward-compat stub for ENH-1835); no gate applied."""
         from little_loops.session_store import recent, record_skill_event
+
         db = tmp_path / "session.db"
         record_skill_event(db, "sess-s3", "check-code", "", config={"analytics": {}})
         rows = recent(db, kind="skill")
@@ -1292,7 +1309,9 @@ class TestCliEventContext:
         ensure_db(db)
         conn = sqlite3.connect(str(db))
         try:
-            names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()

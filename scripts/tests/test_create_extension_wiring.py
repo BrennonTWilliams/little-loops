@@ -358,7 +358,9 @@ class TestFeat1689LlHarnessWiring:
 
     def test_help_md_lists_ll_harness(self) -> None:
         content = HELP_MD.read_text()
-        assert "ll-harness" in content, "commands/help.md must list ll-harness in the CLI TOOLS block"
+        assert "ll-harness" in content, (
+            "commands/help.md must list ll-harness in the CLI TOOLS block"
+        )
 
     def test_cli_reference_has_ll_harness_section(self) -> None:
         content = CLI_REFERENCE.read_text()

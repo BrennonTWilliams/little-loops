@@ -26,9 +26,7 @@ class TestScopeEpicSkillExists:
     """skills/scope-epic/SKILL.md and agents/openai.yaml must exist."""
 
     def test_skill_file_exists(self) -> None:
-        assert SKILL_SCOPE_EPIC.exists(), (
-            "skills/scope-epic/SKILL.md must be created (FEAT-1857)"
-        )
+        assert SKILL_SCOPE_EPIC.exists(), "skills/scope-epic/SKILL.md must be created (FEAT-1857)"
 
     def test_openai_yaml_exists(self) -> None:
         assert OPENAI_YAML.exists(), (
@@ -55,9 +53,7 @@ class TestContributingWiring:
 
     def test_scope_epic_in_skills_tree(self) -> None:
         content = CONTRIBUTING.read_text()
-        assert "scope-epic/" in content, (
-            "CONTRIBUTING.md skills tree must include 'scope-epic/'"
-        )
+        assert "scope-epic/" in content, "CONTRIBUTING.md skills tree must include 'scope-epic/'"
 
 
 class TestArchitectureSkillCount:

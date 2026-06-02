@@ -1134,60 +1134,72 @@ def evaluate_contract(
         try:
             producer_content = Path(producer_path).read_text()
         except OSError as e:
-            pair_results.append({
-                "producer": producer_path,
-                "consumer": consumer_path,
-                "verdict": "error",
-                "error": f"cannot read producer file: {e}",
-            })
+            pair_results.append(
+                {
+                    "producer": producer_path,
+                    "consumer": consumer_path,
+                    "verdict": "error",
+                    "error": f"cannot read producer file: {e}",
+                }
+            )
             continue
 
         # Read consumer file
         try:
             consumer_content = Path(consumer_path).read_text()
         except OSError as e:
-            pair_results.append({
-                "producer": producer_path,
-                "consumer": consumer_path,
-                "verdict": "error",
-                "error": f"cannot read consumer file: {e}",
-            })
+            pair_results.append(
+                {
+                    "producer": producer_path,
+                    "consumer": consumer_path,
+                    "verdict": "error",
+                    "error": f"cannot read consumer file: {e}",
+                }
+            )
             continue
 
         # Apply optional regex extraction
         if producer_pattern:
             matches = re.findall(producer_pattern, producer_content, re.DOTALL)
             if not matches:
-                pair_results.append({
-                    "producer": producer_path,
-                    "consumer": consumer_path,
-                    "verdict": "error",
-                    "error": f"producer_pattern matched nothing in {producer_path}",
-                })
+                pair_results.append(
+                    {
+                        "producer": producer_path,
+                        "consumer": consumer_path,
+                        "verdict": "error",
+                        "error": f"producer_pattern matched nothing in {producer_path}",
+                    }
+                )
                 continue
             producer_slice = "\n".join(matches)
         else:
-            producer_slice = producer_content[-4000:] if len(producer_content) > 4000 else producer_content
+            producer_slice = (
+                producer_content[-4000:] if len(producer_content) > 4000 else producer_content
+            )
 
         if consumer_pattern:
             matches = re.findall(consumer_pattern, consumer_content, re.DOTALL)
             if not matches:
-                pair_results.append({
-                    "producer": producer_path,
-                    "consumer": consumer_path,
-                    "verdict": "error",
-                    "error": f"consumer_pattern matched nothing in {consumer_path}",
-                })
+                pair_results.append(
+                    {
+                        "producer": producer_path,
+                        "consumer": consumer_path,
+                        "verdict": "error",
+                        "error": f"consumer_pattern matched nothing in {consumer_path}",
+                    }
+                )
                 continue
             consumer_slice = "\n".join(matches)
         else:
-            consumer_slice = consumer_content[-4000:] if len(consumer_content) > 4000 else consumer_content
+            consumer_slice = (
+                consumer_content[-4000:] if len(consumer_content) > 4000 else consumer_content
+            )
 
         judge_prompt = (
             f"You are evaluating whether a producer output satisfies a consumer contract.\n\n"
             f"Contract rule: {contract_rule}\n\n"
-            f"<producer path=\"{producer_path}\">\n{producer_slice}\n</producer>\n\n"
-            f"<consumer path=\"{consumer_path}\">\n{consumer_slice}\n</consumer>\n\n"
+            f'<producer path="{producer_path}">\n{producer_slice}\n</producer>\n\n'
+            f'<consumer path="{consumer_path}">\n{consumer_slice}\n</consumer>\n\n'
             "Does the producer satisfy the consumer contract? "
             "Consider field names, types, casing, and structure. "
             "Answer yes if aligned, no if mismatched."
@@ -1206,13 +1218,15 @@ def evaluate_contract(
                 [invocation.binary, *args], capture_output=True, text=True, timeout=timeout
             )
         except subprocess.TimeoutExpired:
-            pair_results.append({
-                "producer": producer_path,
-                "consumer": consumer_path,
-                "verdict": "error",
-                "error": "LLM judge timed out",
-                "llm_latency_ms": int((time.monotonic() - t0) * 1000),
-            })
+            pair_results.append(
+                {
+                    "producer": producer_path,
+                    "consumer": consumer_path,
+                    "verdict": "error",
+                    "error": "LLM judge timed out",
+                    "llm_latency_ms": int((time.monotonic() - t0) * 1000),
+                }
+            )
             continue
         except FileNotFoundError:
             return EvaluationResult(
@@ -1225,23 +1239,27 @@ def evaluate_contract(
         llm_latency_ms = int((time.monotonic() - t0) * 1000)
 
         if proc.returncode != 0:
-            pair_results.append({
-                "producer": producer_path,
-                "consumer": consumer_path,
-                "verdict": "error",
-                "error": f"CLI error: {proc.stderr.strip()}",
-                "llm_latency_ms": llm_latency_ms,
-            })
+            pair_results.append(
+                {
+                    "producer": producer_path,
+                    "consumer": consumer_path,
+                    "verdict": "error",
+                    "error": f"CLI error: {proc.stderr.strip()}",
+                    "llm_latency_ms": llm_latency_ms,
+                }
+            )
             continue
 
         if not proc.stdout.strip():
-            pair_results.append({
-                "producer": producer_path,
-                "consumer": consumer_path,
-                "verdict": "error",
-                "error": "CLI returned empty output",
-                "llm_latency_ms": llm_latency_ms,
-            })
+            pair_results.append(
+                {
+                    "producer": producer_path,
+                    "consumer": consumer_path,
+                    "verdict": "error",
+                    "error": "CLI returned empty output",
+                    "llm_latency_ms": llm_latency_ms,
+                }
+            )
             continue
 
         try:
@@ -1255,24 +1273,28 @@ def evaluate_contract(
                 envelope = json.loads(lines[-1])
 
             if envelope.get("subtype") == "error_max_structured_output_retries":
-                pair_results.append({
-                    "producer": producer_path,
-                    "consumer": consumer_path,
-                    "verdict": "error",
-                    "error": "Claude CLI could not produce valid structured output after retries",
-                    "llm_latency_ms": llm_latency_ms,
-                })
+                pair_results.append(
+                    {
+                        "producer": producer_path,
+                        "consumer": consumer_path,
+                        "verdict": "error",
+                        "error": "Claude CLI could not produce valid structured output after retries",
+                        "llm_latency_ms": llm_latency_ms,
+                    }
+                )
                 continue
 
             if envelope.get("is_error", False):
                 err_text = str(envelope.get("result", "") or "")[:200]
-                pair_results.append({
-                    "producer": producer_path,
-                    "consumer": consumer_path,
-                    "verdict": "error",
-                    "error": f"Claude CLI reported error: {err_text}",
-                    "llm_latency_ms": llm_latency_ms,
-                })
+                pair_results.append(
+                    {
+                        "producer": producer_path,
+                        "consumer": consumer_path,
+                        "verdict": "error",
+                        "error": f"Claude CLI reported error: {err_text}",
+                        "llm_latency_ms": llm_latency_ms,
+                    }
+                )
                 continue
 
             if isinstance(envelope.get("structured_output"), dict):
@@ -1286,33 +1308,39 @@ def evaluate_contract(
                 elif "verdict" in envelope:
                     llm_result = envelope
                 else:
-                    pair_results.append({
-                        "producer": producer_path,
-                        "consumer": consumer_path,
-                        "verdict": "error",
-                        "error": "empty result field in CLI response",
-                        "llm_latency_ms": llm_latency_ms,
-                    })
+                    pair_results.append(
+                        {
+                            "producer": producer_path,
+                            "consumer": consumer_path,
+                            "verdict": "error",
+                            "error": "empty result field in CLI response",
+                            "llm_latency_ms": llm_latency_ms,
+                        }
+                    )
                     continue
 
         except (json.JSONDecodeError, TypeError, ValueError) as e:
-            pair_results.append({
-                "producer": producer_path,
-                "consumer": consumer_path,
-                "verdict": "error",
-                "error": f"failed to parse LLM response: {e}",
-                "llm_latency_ms": llm_latency_ms,
-            })
+            pair_results.append(
+                {
+                    "producer": producer_path,
+                    "consumer": consumer_path,
+                    "verdict": "error",
+                    "error": f"failed to parse LLM response: {e}",
+                    "llm_latency_ms": llm_latency_ms,
+                }
+            )
             continue
 
-        pair_results.append({
-            "producer": producer_path,
-            "consumer": consumer_path,
-            "verdict": str(llm_result.get("verdict", "error")),
-            "confidence": float(llm_result.get("confidence", 1.0)),
-            "reason": llm_result.get("reason", ""),
-            "llm_latency_ms": llm_latency_ms,
-        })
+        pair_results.append(
+            {
+                "producer": producer_path,
+                "consumer": consumer_path,
+                "verdict": str(llm_result.get("verdict", "error")),
+                "confidence": float(llm_result.get("confidence", 1.0)),
+                "reason": llm_result.get("reason", ""),
+                "llm_latency_ms": llm_latency_ms,
+            }
+        )
 
     # Aggregate: yes only if all pairs aligned; error takes precedence over no
     if any(p["verdict"] == "error" for p in pair_results):
@@ -1349,7 +1377,10 @@ def evaluate_comparator(
             baseline_file.write_text(output)
             return EvaluationResult(
                 verdict="yes",
-                details={"reason": "No baseline found; current output promoted as new baseline.", "bootstrapped": True},
+                details={
+                    "reason": "No baseline found; current output promoted as new baseline.",
+                    "bootstrapped": True,
+                },
             )
         return EvaluationResult(
             verdict="no_baseline",

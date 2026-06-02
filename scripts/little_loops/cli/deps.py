@@ -435,7 +435,9 @@ Examples:
                         "broken_refs": [list(pair) for pair in result.broken_refs],
                         "missing_backlinks": [list(pair) for pair in result.missing_backlinks],
                         "cycles": result.cycles,
-                        "stale_completed_refs": [list(pair) for pair in result.stale_completed_refs],
+                        "stale_completed_refs": [
+                            list(pair) for pair in result.stale_completed_refs
+                        ],
                         "broken_depends_on_refs": [
                             list(pair) for pair in result.broken_depends_on_refs
                         ],
@@ -503,7 +505,9 @@ Examples:
             return 0
 
         if args.command == "fix":
-            fix_result = fix_dependencies(issues, completed_ids, all_known_ids, dry_run=args.dry_run)
+            fix_result = fix_dependencies(
+                issues, completed_ids, all_known_ids, dry_run=args.dry_run
+            )
 
             if not fix_result.changes:
                 print("No fixable issues found.")
@@ -561,7 +565,9 @@ Examples:
 
                 blocked_path = issue_files.get(blocked_id)
                 if blocked_path is None:
-                    logger.error(f"issue {blocked_id!r} is not in active issues (cannot write to it)")
+                    logger.error(
+                        f"issue {blocked_id!r} is not in active issues (cannot write to it)"
+                    )
                     return 1
 
                 print(f"# {prefix}Dependency Apply Report")
@@ -587,7 +593,9 @@ Examples:
             filtered = [p for p in report.proposals if p.confidence >= args.min_confidence]
 
             if not filtered:
-                logger.info(f"No proposals at or above confidence threshold ({args.min_confidence}).")
+                logger.info(
+                    f"No proposals at or above confidence threshold ({args.min_confidence})."
+                )
                 return 0
 
             print(f"# {prefix}Dependency Apply Report")

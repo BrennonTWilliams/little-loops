@@ -21,7 +21,7 @@ from little_loops.cli.loop.diagram_modes import (
 from little_loops.cli.output import colorize, strip_ansi, terminal_size, terminal_width
 from little_loops.fsm.concurrency import LockManager, _process_alive, resolve_scope
 from little_loops.logger import Logger
-from little_loops.pricing import MODEL_PRICING, estimate_cost_usd
+from little_loops.pricing import estimate_cost_usd
 
 if TYPE_CHECKING:
     from little_loops.fsm.schema import FSMLoop

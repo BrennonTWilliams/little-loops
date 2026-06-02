@@ -37,9 +37,11 @@ class TestReviewSprintEpicAwareness:
 
     def test_epic_context_output_block_present(self) -> None:
         content = COMMAND_FILE.read_text()
-        assert "## EPIC context" in content or "### EPIC Context" in content or "EPIC Context" in content, (
-            "review-sprint.md must include an EPIC Context output block"
-        )
+        assert (
+            "## EPIC context" in content
+            or "### EPIC Context" in content
+            or "EPIC Context" in content
+        ), "review-sprint.md must include an EPIC Context output block"
 
     def test_ll_sprint_edit_add_fix_command_present(self) -> None:
         content = COMMAND_FILE.read_text()
@@ -78,15 +80,19 @@ class TestSprintGuideEpicAwareness:
 
     def test_epic_awareness_mentioned(self) -> None:
         content = SPRINT_GUIDE.read_text()
-        assert "EPIC" in content and ("awareness" in content.lower() or "blocker gap" in content.lower() or "critical-path" in content.lower()), (
-            "SPRINT_GUIDE.md must mention EPIC awareness in the review section"
-        )
+        assert "EPIC" in content and (
+            "awareness" in content.lower()
+            or "blocker gap" in content.lower()
+            or "critical-path" in content.lower()
+        ), "SPRINT_GUIDE.md must mention EPIC awareness in the review section"
 
     def test_epic_context_section_referenced(self) -> None:
         content = SPRINT_GUIDE.read_text()
-        assert "EPIC Context" in content or "epic-progress" in content or "ll-sprint show EPIC" in content, (
-            "SPRINT_GUIDE.md must reference the EPIC Context section or relevant tools"
-        )
+        assert (
+            "EPIC Context" in content
+            or "epic-progress" in content
+            or "ll-sprint show EPIC" in content
+        ), "SPRINT_GUIDE.md must reference the EPIC Context section or relevant tools"
 
 
 class TestCommandsRefEpicAwareness:

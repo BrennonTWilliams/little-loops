@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from little_loops.fsm.evaluators import evaluate_output_contains
 from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
 
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
@@ -69,10 +68,10 @@ class TestDeepResearchYaml:
     def test_run_research_with_bindings_present(self, data: dict) -> None:
         state = data["states"].get("run_research", {})
         with_ = state.get("with", {})
-        assert "run_dir" in with_, f"run_research.with must contain 'run_dir'"
-        assert "topic" in with_, f"run_research.with must contain 'topic'"
-        assert "source_filter" in with_, f"run_research.with must contain 'source_filter'"
-        assert "academic_mode" in with_, f"run_research.with must contain 'academic_mode'"
+        assert "run_dir" in with_, "run_research.with must contain 'run_dir'"
+        assert "topic" in with_, "run_research.with must contain 'topic'"
+        assert "source_filter" in with_, "run_research.with must contain 'source_filter'"
+        assert "academic_mode" in with_, "run_research.with must contain 'academic_mode'"
 
     def test_run_research_routes_to_done_on_success(self, data: dict) -> None:
         state = data["states"].get("run_research", {})

@@ -31,9 +31,7 @@ from little_loops.hooks.types import LLHookEvent, LLHookResult
 #   2. Paths that start with a letter and contain at least one / (e.g. scripts/foo.py)
 # Anchored by start-of-string or preceding whitespace so flag-like tokens
 # (e.g. -v, --flag) are not mistaken for paths.
-_BASH_PATH_RE = re.compile(
-    r"(?:^|\s)((?:\./|\.\.\/|/)[^\s\"'|&;><]+|[A-Za-z][\w./\-]*/[\w./\-]+)"
-)
+_BASH_PATH_RE = re.compile(r"(?:^|\s)((?:\./|\.\.\/|/)[^\s\"'|&;><]+|[A-Za-z][\w./\-]*/[\w./\-]+)")
 
 # Matches an issue ID (e.g. ENH-1832, BUG-007) within a file path.
 _ISSUE_ID_RE = re.compile(r"((?:BUG|FEAT|ENH|EPIC)-\d+)")
@@ -117,9 +115,7 @@ def _maybe_auto_commit(config: dict[str, Any], cwd: Path, file_path: str, tool_n
     abs_path = Path(file_path) if Path(file_path).is_absolute() else (cwd / file_path)
 
     with contextlib.suppress(Exception):
-        subprocess.run(
-            ["git", "add", str(abs_path)], cwd=str(cwd), check=True, capture_output=True
-        )
+        subprocess.run(["git", "add", str(abs_path)], cwd=str(cwd), check=True, capture_output=True)
         status_result = subprocess.run(
             ["git", "status", "--porcelain"],
             cwd=str(cwd),

@@ -96,7 +96,9 @@ class TestIssuesCLIFingerprint:
         config_path.write_text(json.dumps(sample_config))
 
         issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
-        issue_file.write_text("---\nid: ENH-999\nstatus: open\n---\n# ENH-999: test\n\n## Summary\nTest issue.\n")
+        issue_file.write_text(
+            "---\nid: ENH-999\nstatus: open\n---\n# ENH-999: test\n\n## Summary\nTest issue.\n"
+        )
 
         with patch.object(
             sys,

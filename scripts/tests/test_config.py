@@ -2293,7 +2293,9 @@ class TestBRConfigLearningTestsIntegration:
         """auto_commit overrides from config file are preserved through to_dict() (ENH-1843)."""
         config_file = temp_project_dir / ".ll" / "ll-config.json"
         config_file.parent.mkdir(parents=True, exist_ok=True)
-        config_file.write_text('{"issues": {"auto_commit": true, "auto_commit_prefix": "ci(issues)"}}')
+        config_file.write_text(
+            '{"issues": {"auto_commit": true, "auto_commit_prefix": "ci(issues)"}}'
+        )
         config = BRConfig(temp_project_dir)
         d = config.to_dict()
         issues = d["issues"]

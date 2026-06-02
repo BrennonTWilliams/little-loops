@@ -56,7 +56,9 @@ class TestDepsTree:
     def test_tree_epic_not_found(self, tmp_path: Path) -> None:
         """Missing EPIC returns exit code 1."""
         issues_dir = _setup_project(tmp_path)
-        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-999"]):
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-999"]
+        ):
             result = main()
         assert result == 1
 
@@ -64,7 +66,9 @@ class TestDepsTree:
         """EPIC with no children prints sentinel and exits 0."""
         issues_dir = _setup_project(tmp_path)
         _write_issue(issues_dir / "epics", "EPIC-001", title="Lonely epic")
-        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-001"]):
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-001"]
+        ):
             result = main()
         assert result == 0
         captured = capsys.readouterr()  # type: ignore[union-attr]
@@ -81,7 +85,9 @@ class TestDepsTree:
         )
         _write_issue(issues_dir / "features", "FEAT-001", title="First")
         _write_issue(issues_dir / "features", "FEAT-002", title="Second", blocked_by=["FEAT-001"])
-        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-001"]):
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-001"]
+        ):
             result = main()
         assert result == 0
         captured = capsys.readouterr()  # type: ignore[union-attr]
@@ -94,8 +100,12 @@ class TestDepsTree:
         """Children declared via parent: field (backward refs) appear in tree."""
         issues_dir = _setup_project(tmp_path)
         _write_issue(issues_dir / "epics", "EPIC-001", title="Parent epic")
-        _write_issue(issues_dir / "features", "FEAT-001", title="Child via parent", parent="EPIC-001")
-        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-001"]):
+        _write_issue(
+            issues_dir / "features", "FEAT-001", title="Child via parent", parent="EPIC-001"
+        )
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-001"]
+        ):
             result = main()
         assert result == 0
         captured = capsys.readouterr()  # type: ignore[union-attr]
@@ -111,7 +121,9 @@ class TestDepsTree:
             relates_to=["FEAT-001"],
         )
         _write_issue(issues_dir / "features", "FEAT-001", title="Completed feature", status="done")
-        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-001"]):
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-001"]
+        ):
             result = main()
         assert result == 0
         captured = capsys.readouterr()  # type: ignore[union-attr]
@@ -130,7 +142,9 @@ class TestDepsTree:
         _write_issue(issues_dir / "features", "FEAT-001", title="Alpha")
         _write_issue(issues_dir / "features", "FEAT-002", title="Beta", blocked_by=["FEAT-001"])
         with patch.object(
-            sys, "argv", ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-001", "-f", "json"]
+            sys,
+            "argv",
+            ["ll-deps", "-d", str(issues_dir), "tree", "--epic", "EPIC-001", "-f", "json"],
         ):
             result = main()
         assert result == 0
