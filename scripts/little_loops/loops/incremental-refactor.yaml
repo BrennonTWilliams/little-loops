@@ -11,6 +11,7 @@ context:
   commit_message: "refactor: apply incremental refactoring step"
 
 import:
+  - lib/common.yaml
   - lib/prompt-fragments.yaml
 
 states:
@@ -22,9 +23,7 @@ states:
   execute_step:
     action: "Execute the next incomplete refactoring step from the plan for goal: '${context.refactor_goal}'. Make only the minimal changes needed for this single step. Do not modify tests or make unrelated changes."
     action_type: prompt
-    evaluate:
-      type: diff_stall
-      max_stall: 2
+    fragment: diff_stall_gate
     on_yes: verify_tests
     on_no: replan
 

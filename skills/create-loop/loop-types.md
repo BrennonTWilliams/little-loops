@@ -717,9 +717,7 @@ states:
   check_stall:                   # include if stall detection selected (recommended for prompt-based skills)
     action: "echo 'checking stall'"
     action_type: shell
-    evaluate:
-      type: diff_stall
-      max_stall: 2
+    fragment: diff_stall_gate
     on_yes: check_concrete       # or check_semantic / check_invariants / done if later phases omitted
     on_no: done                  # stalled in single-shot mode → nothing more to do
     on_error: done
@@ -802,9 +800,7 @@ states:
   check_stall:                   # include if stall detection selected (recommended for prompt-based skills)
     action: "echo 'checking stall'"
     action_type: shell
-    evaluate:
-      type: diff_stall
-      max_stall: 2
+    fragment: diff_stall_gate
     on_yes: check_concrete       # or check_semantic / check_invariants / advance if later phases omitted
     on_no: advance               # stalled → skip item, move to next
     on_error: check_concrete
@@ -896,10 +892,7 @@ Add a `check_stall` state after the action that retries — if the working tree 
 check_stall:
   action: "echo 'checking stall'"      # action output is ignored by diff_stall
   action_type: shell
-  evaluate:
-    type: diff_stall
-    scope: ["scripts/"]  # optional: limit diff to specific paths; omit for repo root
-    max_stall: 2         # optional: consecutive no-change iterations before stall; default 1
+  fragment: diff_stall_gate
   on_yes: advance    # progress detected — move on
   on_no: skip_item  # stalled — skip without exhausting max_iterations
 ```

@@ -2763,9 +2763,7 @@ For prompt-based skills that may produce no-ops ("already done"), add a `check_s
 check_stall:
   action: "echo 'checking stall'"
   action_type: shell
-  evaluate:
-    type: diff_stall
-    max_stall: 2
+  fragment: diff_stall_gate
   on_yes: check_concrete    # progress detected — continue evaluation
   on_no: advance            # stalled — skip this item
 ```

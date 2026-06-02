@@ -73,9 +73,7 @@ states:
     # on_yes = progress (diff changed); on_no = stalled → skip to next item.
     action: "echo 'checking stall'"   # output is ignored; only the diff matters
     action_type: shell
-    evaluate:
-      type: diff_stall
-      max_stall: 2                    # 2 consecutive no-change iterations → stall verdict
+    fragment: diff_stall_gate
     on_yes: check_concrete            # progress detected → evaluation chain
     on_no: advance                    # stalled → skip item, move to next
     on_error: check_concrete

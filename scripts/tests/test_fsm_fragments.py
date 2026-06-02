@@ -1014,6 +1014,7 @@ class TestBuiltinLoopMigration:
             "harness-optimize.yaml",
             "auto-refine-and-implement.yaml",
             "sprint-refine-and-implement.yaml",
+            "incremental-refactor.yaml",
         ]
         for loop_name in migration_targets:
             path = loops_dir / loop_name
@@ -1716,4 +1717,65 @@ class TestQueueTrackFragment:
         state = result["states"]["track"]
         assert state["action_type"] == "shell"
         assert "evaluate" not in state  # unconditional — no evaluator
+        assert "fragment" not in state
+
+
+# ---------------------------------------------------------------------------
+# lib/common.yaml: verify diff_stall_gate fragment is present and correct
+# ---------------------------------------------------------------------------
+
+
+class TestDiffStallGateFragment:
+    """Tests that diff_stall_gate exists in the real lib/common.yaml."""
+
+    @staticmethod
+    def _load_common_yaml() -> dict:
+        import yaml
+
+        lib_path = (
+            Path(__file__).parent.parent
+            / "little_loops"
+            / "loops"
+            / "lib"
+            / "common.yaml"
+        )
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_diff_stall_gate_defined_in_common_yaml(self) -> None:
+        data = self._load_common_yaml()
+        assert "diff_stall_gate" in data["fragments"]
+
+    def test_diff_stall_gate_has_diff_stall_evaluator(self) -> None:
+        frag = self._load_common_yaml()["fragments"]["diff_stall_gate"]
+        assert frag["evaluate"]["type"] == "diff_stall"
+        assert frag["evaluate"]["max_stall"] == 2
+
+    def test_diff_stall_gate_has_description(self) -> None:
+        frag = self._load_common_yaml()["fragments"]["diff_stall_gate"]
+        assert "description" in frag
+        assert frag["description"].strip()
+
+    def test_diff_stall_gate_resolves_in_loop(self) -> None:
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "check_stall",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "check_stall": {
+                    "fragment": "diff_stall_gate",
+                    "action": "echo 'checking stall'",
+                    "action_type": "shell",
+                    "on_yes": "next_state",
+                    "on_no": "done",
+                },
+                "next_state": {"terminal": True},
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["check_stall"]
+        assert state["evaluate"]["type"] == "diff_stall"
+        assert state["evaluate"]["max_stall"] == 2
         assert "fragment" not in state

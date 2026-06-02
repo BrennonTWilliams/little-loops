@@ -355,10 +355,7 @@ Add a `check_stall` state when a skill might loop without making any code change
 check_stall:
   action: "echo 'checking stall'"     # output ignored by diff_stall
   action_type: shell
-  evaluate:
-    type: diff_stall
-    scope: ["scripts/"]    # optional: limit diff to specific paths
-    max_stall: 2           # optional: consecutive no-change iterations before stall
+  fragment: diff_stall_gate
   on_yes: check_concrete   # progress detected — proceed to evaluation chain
   on_no: advance           # stalled — skip item (use on_no: done for single-shot)
   on_error: check_concrete

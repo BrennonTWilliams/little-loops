@@ -394,10 +394,7 @@ states:
 check_stall:
   action: "echo checking"
   action_type: shell
-  evaluate:
-    type: diff_stall
-    scope: ["scripts/"]  # optional: limit to specific paths
-    max_stall: 2         # optional: default 1
+  fragment: diff_stall_gate
   on_yes: advance
   on_no: skip_item  # stalled — move to next item
 ```
@@ -1129,6 +1126,7 @@ import:
 | `convergence_gate` | `action_type: shell` + `evaluate.type: convergence` + `evaluate.direction: maximize` | `action`, `evaluate.target`, `evaluate.tolerance`, routing (`route.target`, `route.progress`, `route.stall`); optionally `evaluate.previous`, `route.error` |
 | `queue_pop` | `action_type: shell` + `evaluate.type: exit_code` — exit 0 = item popped, exit 1 = queue empty | `action` (pop shell script), routing (`on_yes`, `on_no`); optionally `on_error`, `capture` |
 | `queue_track` | `action_type: shell` — unconditional append; no evaluator | `action` (echo append script), `next:` |
+| `diff_stall_gate` | `evaluate.type: diff_stall` + `evaluate.max_stall: 2` — yes on progress, no on N consecutive identical diffs | `action`, `action_type`, routing (`on_yes`, `on_no`); optionally `on_error` and `evaluate.scope` |
 
 ### `lib/prompt-fragments.yaml` fragments
 

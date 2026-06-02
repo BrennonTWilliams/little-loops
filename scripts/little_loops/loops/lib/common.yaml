@@ -137,3 +137,17 @@ fragments:
       No evaluator — this state always transitions unconditionally via next:.
       State must supply: action (echo "<ID>" >> <track-file>), next:.
     action_type: shell
+
+  diff_stall_gate:
+    description: |
+      Evaluator-only fragment that supplies evaluate.type: diff_stall and
+      evaluate.max_stall: 2. Checks whether git diff has changed since the
+      last iteration; returns yes on progress, no on stall (max_stall
+      consecutive identical diffs).
+      State must supply: action, action_type, and routing (on_yes, on_no);
+      optionally on_error and evaluate.scope (list of paths) to limit the
+      diff to specific subtrees. Default max_stall: 2 (EvaluateConfig default
+      is 1; override per-state if needed).
+    evaluate:
+      type: diff_stall
+      max_stall: 2

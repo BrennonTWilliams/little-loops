@@ -1059,6 +1059,18 @@ class TestHarnessCapture:
             f"receives actual skill output as evidence, not the echo string"
         )
 
+    @pytest.mark.parametrize("loop_name", HARNESS_FILES)
+    def test_check_stall_uses_diff_stall_gate_fragment(self, loop_name: str) -> None:
+        """check_stall state must use fragment: diff_stall_gate after ENH-1877 conversion."""
+        path = BUILTIN_LOOPS_DIR / loop_name
+        assert path.exists(), f"Loop file not found: {path}"
+        data = yaml.safe_load(path.read_text())
+        check_stall = data.get("states", {}).get("check_stall", {})
+        assert check_stall.get("fragment") == "diff_stall_gate", (
+            f"{loop_name}: check_stall.fragment should be 'diff_stall_gate', "
+            f"got {check_stall.get('fragment')!r}"
+        )
+
 
 class TestBuiltinLoopOnBlockedCoverage:
     """Tests that llm_structured evaluate states in built-in loops define on_blocked handlers."""

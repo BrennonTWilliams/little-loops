@@ -45,9 +45,7 @@ states:
     # on_yes = progress detected (diff changed); on_no = stalled → give up in single-shot mode.
     action: "echo 'checking stall'"   # output is ignored; only the diff matters
     action_type: shell
-    evaluate:
-      type: diff_stall
-      max_stall: 2                    # allow up to 2 consecutive no-change iterations
+    fragment: diff_stall_gate
     on_yes: check_concrete            # progress detected → proceed to evaluation chain
     on_no: done                       # stalled in single-shot mode → nothing more to do
     on_error: done
