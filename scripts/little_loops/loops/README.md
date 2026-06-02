@@ -145,6 +145,16 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `hitl-compare` | Human-in-the-loop comparison harness — reads whitespace-separated inputs (file paths or raw text), extracts candidate review items with 2+ options, prunes implementation-level micro-decisions, and generates a single self-contained interactive HTML page with toggle/select controls and an "Export selections" affordance. |
 | `hitl-md` | Human-in-the-loop single-document review harness — reads a markdown file (or raw text), decomposes it into GP-TSM saliency-modulated segments with multi-channel saliency (importance/anomaly/claim_type/confidence) and length-normalized credibility flags, and generates a self-contained interactive HTML page with sensemaking enhancements (staged highlighting, density slider, schema-switching, canvas minimap, calibrated friction), keyboard navigation, edit affordances (delete/insert/edit/flag), a "Copy AI prompt" control for flagged segments, and a "Copy updated markdown" reconstruction control. Styles source from design token CSS custom properties. |
 
+## Oracle Sub-loops
+
+Internal sub-loops invoked via `loop:` delegation from parent loops. Not intended for direct `ll-loop run` use — they are always driven by a caller that binds required `parameters:` via `with:`.
+
+| Loop | Description |
+|---|---|
+| `oracles/generator-evaluator` | Iterative artifact generation with visual evaluation — generate → Playwright screenshot → LLM rubric score until ALL_PASS or max_iterations; used by html-website-generator, html-anything, hitl-md, p5js-sketch-generator, and svg-image-generator. |
+| `oracles/oracle-capture-issue` | Capture and classify a single issue from conversation context, write it to `.issues/`, and emit the path; thin wrapper around `/ll:capture-issue` with `context_passthrough: true`. |
+| `oracles/enumerate-and-prove` | Parse a tagged ENUMERATE_JSON line from LLM output, validate and flatten the targets list, then prove each target via ready-to-implement-gate; used by adopt-third-party-api and integrate-sdk to eliminate duplicated parse → flatten → prove state chains. |
+
 ---
 
 ## Creating Custom Loops

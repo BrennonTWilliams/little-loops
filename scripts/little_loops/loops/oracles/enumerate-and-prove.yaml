@@ -1,0 +1,95 @@
+name: enumerate-and-prove
+description: |
+  Oracle sub-loop that parses a tagged ENUMERATE_JSON line from LLM output, extracts and
+  validates the targets list, flattens to a comma-joined string, and proves each target via
+  ready-to-implement-gate. Used by adopt-third-party-api and integrate-sdk to eliminate
+  duplicated parse → flatten → prove state chains (ENH-1873).
+
+initial: parse_enumeration
+on_handoff: spawn
+timeout: 3600
+max_iterations: 100
+
+parameters:
+  raw_enumeration:
+    type: string
+    required: true
+    description: "Captured LLM output containing the ENUMERATE_JSON: tagged line"
+  max_retries:
+    type: string
+    required: false
+    description: Per-target explore-api retries passed to ready-to-implement-gate (default "2")
+  tag:
+    type: string
+    required: false
+    description: Tag prefix to scan for in the LLM output (default "ENUMERATE_JSON")
+
+import:
+  - lib/common.yaml
+
+context:
+  max_retries: "2"
+  tag: "ENUMERATE_JSON"
+
+states:
+
+  parse_enumeration:
+    fragment: parse_tagged_json
+    action: |
+      python3 << 'PYEOF'
+      import json, sys
+      output = """${context.raw_enumeration}"""
+      tag = "${context.tag}"
+      prefix = tag + ":"
+      found = None
+      for line in reversed(output.split('\n')):
+          line = line.strip()
+          if line.startswith(prefix):
+              found = line[len(prefix):]
+              break
+      if not found:
+          print(json.dumps({"targets": [], "count": 0, "rationale": "Failed to parse enumeration output — no " + tag + ": line found."}))
+          sys.exit(0)
+      try:
+          data = json.loads(found)
+          targets = [t.strip() for t in data.get("targets", []) if str(t).strip()][:7]
+          count = len(targets)
+          print(json.dumps({"targets": targets, "count": count, "rationale": data.get("rationale", "")}))
+      except (json.JSONDecodeError, ValueError) as e:
+          print(json.dumps({"targets": [], "count": 0, "rationale": f"JSON parse error: {e}"}))
+      PYEOF
+    capture: enumeration
+    evaluate:
+      type: output_json
+      path: ".count"
+      operator: gt
+      target: 0
+    on_yes: flatten
+    on_no: failed
+
+  flatten:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json
+      data = json.loads("""${captured.enumeration.output}""")
+      print(",".join(data["targets"]))
+      PYEOF
+    capture: targets
+    on_error: failed
+    next: prove
+
+  prove:
+    loop: ready-to-implement-gate
+    with:
+      targets: "${captured.targets.output}"
+      max_retries: "${context.max_retries}"
+    on_success: done
+    on_failure: failed
+    on_error: failed
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true

@@ -4894,18 +4894,20 @@ class TestAdoptThirdPartyApiLoop:
         """Loop must have a non-empty description."""
         assert data.get("description"), "adopt-third-party-api must have a non-empty description"
 
-    def test_prove_delegates_to_ready_to_implement_gate(self, data: dict) -> None:
-        """prove must delegate to ready-to-implement-gate."""
+    def test_prove_delegates_to_enumerate_and_prove_oracle(self, data: dict) -> None:
+        """prove must delegate to oracles/enumerate-and-prove."""
         state = data["states"].get("prove", {})
-        assert state.get("loop") == "ready-to-implement-gate", (
-            f"prove.loop should be 'ready-to-implement-gate', got {state.get('loop')!r}"
+        assert state.get("loop") == "oracles/enumerate-and-prove", (
+            f"prove.loop should be 'oracles/enumerate-and-prove', got {state.get('loop')!r}"
         )
 
-    def test_prove_with_contains_targets_and_max_retries(self, data: dict) -> None:
-        """prove with: must bind targets and max_retries."""
+    def test_prove_with_contains_raw_enumeration_and_max_retries(self, data: dict) -> None:
+        """prove with: must bind raw_enumeration and max_retries for the oracle."""
         state = data["states"].get("prove", {})
         with_ = state.get("with", {})
-        assert "targets" in with_, f"prove.with must contain 'targets', got {list(with_.keys())}"
+        assert "raw_enumeration" in with_, (
+            f"prove.with must contain 'raw_enumeration', got {list(with_.keys())}"
+        )
         assert "max_retries" in with_, (
             f"prove.with must contain 'max_retries', got {list(with_.keys())}"
         )
@@ -4939,18 +4941,20 @@ class TestIntegrateSdkLoop:
         """Loop must have a non-empty description."""
         assert data.get("description"), "integrate-sdk must have a non-empty description"
 
-    def test_prove_delegates_to_ready_to_implement_gate(self, data: dict) -> None:
-        """prove state must delegate to ready-to-implement-gate sub-loop."""
+    def test_prove_delegates_to_enumerate_and_prove_oracle(self, data: dict) -> None:
+        """prove state must delegate to oracles/enumerate-and-prove."""
         state = data["states"].get("prove", {})
-        assert state.get("loop") == "ready-to-implement-gate", (
-            f"prove.loop should be 'ready-to-implement-gate', got {state.get('loop')!r}"
+        assert state.get("loop") == "oracles/enumerate-and-prove", (
+            f"prove.loop should be 'oracles/enumerate-and-prove', got {state.get('loop')!r}"
         )
 
-    def test_prove_with_contains_targets_and_max_retries(self, data: dict) -> None:
-        """prove with: must bind both targets and max_retries."""
+    def test_prove_with_contains_raw_enumeration_and_max_retries(self, data: dict) -> None:
+        """prove with: must bind raw_enumeration and max_retries for the oracle."""
         state = data["states"].get("prove", {})
         with_ = state.get("with", {})
-        assert "targets" in with_, f"prove.with must contain 'targets', got {list(with_.keys())}"
+        assert "raw_enumeration" in with_, (
+            f"prove.with must contain 'raw_enumeration', got {list(with_.keys())}"
+        )
         assert "max_retries" in with_, (
             f"prove.with must contain 'max_retries', got {list(with_.keys())}"
         )
@@ -4976,6 +4980,10 @@ class TestIntegrateSdkLoop:
         assert not diagnose_state.get("terminal"), (
             "diagnose_and_block must not be terminal — it must run the diagnosis prompt "
             "then route to blocked"
+        )
+        # prove delegates to the oracle, not directly to ready-to-implement-gate
+        assert state.get("loop") == "oracles/enumerate-and-prove", (
+            f"prove.loop should be 'oracles/enumerate-and-prove', got {state.get('loop')!r}"
         )
 
     def test_blocked_is_terminal(self, data: dict) -> None:
@@ -5219,3 +5227,64 @@ class TestGeneratorEvaluatorOracle:
     def test_imports_harness_yaml(self, data: dict) -> None:
         imports = data.get("import", [])
         assert "lib/harness.yaml" in imports, "must import lib/harness.yaml"
+
+
+class TestEnumerateAndProveOracle:
+    """Structural tests for the enumerate-and-prove oracle sub-loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "oracles/enumerate-and-prove.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "enumerate-and-prove"
+        assert data.get("initial") == "parse_enumeration"
+        assert isinstance(data.get("states"), dict)
+
+    def test_has_parameters_block(self, data: dict) -> None:
+        params = data.get("parameters", {})
+        assert "raw_enumeration" in params, "parameters block must declare raw_enumeration"
+        assert params["raw_enumeration"].get("required") is True
+        assert "max_retries" in params, "parameters block must declare max_retries"
+        assert params["max_retries"].get("required") is not True, "max_retries must be optional"
+
+    def test_required_states_exist(self, data: dict) -> None:
+        states = data.get("states", {})
+        for name in ("parse_enumeration", "flatten", "prove", "done", "failed"):
+            assert name in states, f"required state '{name}' missing"
+
+    def test_parse_enumeration_uses_parse_tagged_json_fragment(self, data: dict) -> None:
+        state = data["states"].get("parse_enumeration", {})
+        assert state.get("fragment") == "parse_tagged_json", (
+            "parse_enumeration state must use fragment: parse_tagged_json"
+        )
+
+    def test_prove_delegates_to_ready_to_implement_gate(self, data: dict) -> None:
+        """Oracle's prove state delegates to ready-to-implement-gate (not to itself)."""
+        state = data["states"].get("prove", {})
+        assert state.get("loop") == "ready-to-implement-gate", (
+            f"prove.loop should be 'ready-to-implement-gate', got {state.get('loop')!r}"
+        )
+
+    def test_prove_with_contains_targets_and_max_retries(self, data: dict) -> None:
+        state = data["states"].get("prove", {})
+        with_ = state.get("with", {})
+        assert "targets" in with_, f"prove.with must contain 'targets', got {list(with_.keys())}"
+        assert "max_retries" in with_, (
+            f"prove.with must contain 'max_retries', got {list(with_.keys())}"
+        )
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        state = data["states"].get("done", {})
+        assert state.get("terminal") is True, "done.terminal should be True"
+
+    def test_failed_is_terminal(self, data: dict) -> None:
+        state = data["states"].get("failed", {})
+        assert state.get("terminal") is True, "failed.terminal should be True"
+
+    def test_imports_common_yaml(self, data: dict) -> None:
+        imports = data.get("import", [])
+        assert "lib/common.yaml" in imports, "must import lib/common.yaml"

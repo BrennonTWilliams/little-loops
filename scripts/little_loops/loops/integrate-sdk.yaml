@@ -72,8 +72,8 @@ states:
       type: llm_structured
       prompt: "Does the response end with an ENUMERATE_JSON: line containing valid JSON with 'targets', 'count', 'branch', and 'rationale' fields?"
       min_confidence: 0.5
-    on_yes: parse_enumeration
-    on_no: parse_enumeration
+    on_yes: prove
+    on_no: prove
 
   # ─── Phase 2b: Enumerate from docs/knowledge (greenfield branch) ────────────
 
@@ -111,75 +111,15 @@ states:
       type: llm_structured
       prompt: "Does the response end with an ENUMERATE_JSON: line containing valid JSON with 'targets', 'count', 'branch', and 'rationale' fields?"
       min_confidence: 0.5
-    on_yes: parse_enumeration
-    on_no: parse_enumeration
+    on_yes: prove
+    on_no: prove
 
-  # ─── Phase 3: Parse and validate enumeration ────────────────────────────────
-
-  parse_enumeration:
-    fragment: parse_tagged_json
-    action: |
-      python3 << 'PYEOF'
-      import json, sys
-      output = """${captured.raw_enumeration.output}"""
-      found = None
-      for line in reversed(output.split('\n')):
-          line = line.strip()
-          if line.startswith('ENUMERATE_JSON:'):
-              found = line[len('ENUMERATE_JSON:'):]
-              break
-      if not found:
-          print(json.dumps({
-              "targets": [], "count": 0,
-              "branch": "unknown", "requires_credentials": False,
-              "rationale": "Failed to parse enumeration output — no ENUMERATE_JSON: line found."
-          }))
-          sys.exit(0)
-      try:
-          data = json.loads(found)
-          targets = [t.strip() for t in data.get("targets", []) if str(t).strip()][:7]
-          count = len(targets)
-          print(json.dumps({
-              "targets": targets,
-              "count": count,
-              "branch": data.get("branch", "unknown"),
-              "requires_credentials": bool(data.get("requires_credentials", False)),
-              "rationale": data.get("rationale", "")
-          }))
-      except (json.JSONDecodeError, ValueError) as e:
-          print(json.dumps({
-              "targets": [], "count": 0,
-              "branch": "unknown", "requires_credentials": False,
-              "rationale": f"JSON parse error: {e}"
-          }))
-      PYEOF
-    capture: enumeration
-    evaluate:
-      type: output_json
-      path: ".count"
-      operator: gt
-      target: 0
-    on_yes: flatten_surfaces
-    on_no: diagnose_and_block
-
-  flatten_surfaces:
-    action_type: shell
-    action: |
-      python3 << 'PYEOF'
-      import json
-      data = json.loads("""${captured.enumeration.output}""")
-      print(",".join(data["targets"]))
-      PYEOF
-    capture: targets
-    on_error: diagnose_and_block
-    next: prove
-
-  # ─── Phase 4: Prove surfaces via Learning Tests ──────────────────────────────
+  # ─── Phase 3 & 4: Parse, flatten, and prove via oracle ──────────────────────
 
   prove:
-    loop: ready-to-implement-gate
+    loop: oracles/enumerate-and-prove
     with:
-      targets: "${captured.targets.output}"
+      raw_enumeration: "${captured.raw_enumeration.output}"
       max_retries: "${context.max_retries}"
     on_success: scaffold_integration
     on_failure: diagnose_and_block

@@ -54,64 +54,13 @@ states:
       type: llm_structured
       prompt: "Does the response end with an ENUMERATE_JSON: line containing valid JSON with 'targets', 'domain', 'count', and 'rationale' fields?"
       min_confidence: 0.5
-    on_yes: parse_enumeration
-    on_no: parse_enumeration
-
-  parse_enumeration:
-    fragment: parse_tagged_json
-    action: |
-      python3 << 'PYEOF'
-      import json, sys
-      from urllib.parse import urlparse
-      output = """${captured.raw_enumeration.output}"""
-      found = None
-      for line in reversed(output.split('\n')):
-          line = line.strip()
-          if line.startswith('ENUMERATE_JSON:'):
-              found = line[len('ENUMERATE_JSON:'):]
-              break
-      url = "${context.input}".strip()
-      try:
-          fallback_domain = urlparse(url).netloc.replace('.', '-')
-      except Exception:
-          fallback_domain = "unknown"
-      if not found:
-          print(json.dumps({"targets": [], "domain": fallback_domain, "count": 0, "rationale": "Failed to parse enumeration output."}))
-          sys.exit(0)
-      try:
-          data = json.loads(found)
-          targets = [t for t in data.get("targets", []) if t.strip()][:7]
-          count = len(targets)
-          domain = data.get("domain") or fallback_domain
-          print(json.dumps({"targets": targets, "domain": domain, "count": count, "rationale": data.get("rationale", "")}))
-      except (json.JSONDecodeError, ValueError) as e:
-          print(json.dumps({"targets": [], "domain": fallback_domain, "count": 0, "rationale": f"JSON parse error: {e}"}))
-      PYEOF
-    capture: enumeration
-    evaluate:
-      type: output_json
-      path: ".count"
-      operator: gt
-      target: 0
-    on_yes: flatten_targets
-    on_no: failed
-
-  flatten_targets:
-    action_type: shell
-    action: |
-      python3 << 'PYEOF'
-      import json
-      data = json.loads("""${captured.enumeration.output}""")
-      print(",".join(data["targets"]))
-      PYEOF
-    capture: targets
-    on_error: failed
-    next: prove
+    on_yes: prove
+    on_no: prove
 
   prove:
-    loop: ready-to-implement-gate
+    loop: oracles/enumerate-and-prove
     with:
-      targets: "${captured.targets.output}"
+      raw_enumeration: "${captured.raw_enumeration.output}"
       max_retries: "2"
     on_success: build_playbook
     on_failure: build_playbook_partial
