@@ -1,14 +1,25 @@
 ---
 id: ENH-1814
-title: Docs pass for `LEARNING_TESTS_GUIDE.md` and `LOOPS_GUIDE.md` covering the EPIC-1694 surface
+title: Docs pass for `LEARNING_TESTS_GUIDE.md` and `LOOPS_GUIDE.md` covering the EPIC-1694
+  surface
 type: ENH
 priority: P3
-status: open
-captured_at: "2026-05-30T21:35:04Z"
-discovered_date: "2026-05-30"
+status: done
+captured_at: '2026-05-30T21:35:04Z'
+completed_at: '2026-06-03T13:14:29Z'
+discovered_date: '2026-05-30'
 discovered_by: capture-issue
 parent: EPIC-1694
-relates_to: [EPIC-1694, FEAT-1695, FEAT-1696, FEAT-1692, FEAT-1697, FEAT-1738, FEAT-1739, FEAT-1743, FEAT-1813]
+relates_to:
+- EPIC-1694
+- FEAT-1695
+- FEAT-1696
+- FEAT-1692
+- FEAT-1697
+- FEAT-1738
+- FEAT-1739
+- FEAT-1743
+- FEAT-1813
 testable: false
 ---
 

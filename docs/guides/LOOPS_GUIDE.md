@@ -401,6 +401,8 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 
 **API Adoption**
 
+> For registry mechanics, record lifecycle, the `type: learning` FSM state reference, and guidance on picking among these loops, see [LEARNING_TESTS_GUIDE.md](LEARNING_TESTS_GUIDE.md).
+
 | Loop | Description |
 |------|-------------|
 | `adopt-third-party-api` | End-to-end API adoption pipeline — scrapes a vendor docs URL via `/ll:scrape-docs`, enumerates up to 7 significant endpoints/features, proves each via `ready-to-implement-gate`, and writes a citation-linked integration playbook to `docs/integration-<domain>.md`. Partial coverage (some targets refuted or exhausted) still produces a playbook with a top warning block listing unverified sections. |

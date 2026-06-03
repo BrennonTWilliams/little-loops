@@ -46,6 +46,14 @@ ll-learning-tests check "Anthropic SDK streaming" && echo "already proven, reuse
 
 The record lives at `.ll/learning-tests/anthropic-sdk-streaming.md`. The raw proof output is at `.ll/learning-tests/raw/anthropic-sdk-streaming.txt`.
 
+**New to the registry?** Start with `proof-first-task` — it runs your API assumptions through `assumption-firewall` before handing off to any implementation loop, so you never write integration code against unverified assumptions:
+
+```bash
+ll-loop run proof-first-task --context issue_file=".issues/features/P2-FEAT-1234-my-feature.md"
+```
+
+Enable automatic discovery of unproven API assumptions as you write code by setting `learning_tests.enabled: true` in `.ll/ll-config.json` — see [Discoverability: PreToolUse Gate](#discoverability-pretooluse-gate) for details.
+
 ## The Four-Phase Workflow
 
 `/ll:explore-api "<target>"` runs four explicit phases. Knowing what each does helps you steer mid-run and read the resulting record.
@@ -190,6 +198,20 @@ states:
 Required fields: one of `learning.targets` (non-empty list) or `learning.targets_csv` (non-empty string), plus `on_yes`, and one of `on_blocked` / `on_no`. The dispatch emits `learning_target_proven`, `learning_target_stale`, `learning_explore_invoked`, `learning_target_refuted`, `learning_complete`, and `learning_blocked` events for observability.
 
 This is the integration point that makes the registry pay for itself: a loop that touches a third-party API can declare its assumptions up front, and the first run pays the discovery cost while every subsequent run skips straight to the actual work. See [LOOPS_GUIDE.md → Progressive tool-call throttling](LOOPS_GUIDE.md#progressive-tool-call-throttling) for the full `type: learning` reference and event schema.
+
+### Gate Entry Points
+
+Five named loops compose the learning-test gate stack. Pick the one that matches your starting point:
+
+| Loop | When to use |
+|------|-------------|
+| `ready-to-implement-gate` | You already have an explicit list of API targets and want to prove them before implementation. The sub-loop primitive used by every other gate. |
+| `assumption-firewall` | You have an issue file and want the gate to extract and validate API assumptions for you before you start writing code. |
+| `integrate-sdk` | You are starting from an SDK discovery (greenfield or existing usage) and want proof-backed scaffolding with citation comments in the output. |
+| `adopt-third-party-api` | You are starting from a vendor docs URL and want an end-to-end pipeline: scrape → enumerate endpoints → prove each → write an integration playbook. |
+| `proof-first-task` | **Recommended default** — wraps any implementation loop with an `assumption-firewall` gate. Use this when you are not sure which specific gate fits; it handles assumption extraction automatically and delegates to `general-task` (or a caller-specified impl loop) once proven. |
+
+See [LOOPS_GUIDE.md → API Adoption](LOOPS_GUIDE.md#api-adoption) for the full description and `Run:` examples for each loop.
 
 ## Troubleshooting
 
