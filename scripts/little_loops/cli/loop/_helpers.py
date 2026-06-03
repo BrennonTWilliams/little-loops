@@ -437,10 +437,14 @@ def _render_pinned_pane(
     else:  # inline / single
         variants = [_build("single")]
 
+    # compact presets (clean/slim) set state_detail="title" and already sacrifice
+    # action body lines; tolerate fewer rows below the diagram to avoid the
+    # single-line fsm: fallback on larger loops.
+    effective_min_action_rows = 3 if facets.state_detail == "title" else min_action_rows
     pinned, pinned_height = _choose_pinned_layout(
         rows,
         variants,
-        min_action_rows=min_action_rows,
+        min_action_rows=effective_min_action_rows,
     )
     print(pinned, flush=True)
 
