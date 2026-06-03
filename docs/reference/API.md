@@ -41,6 +41,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.logger` | Logging utilities |
 | `little_loops.logo` | CLI logo display |
 | `little_loops.frontmatter` | YAML frontmatter read/write utilities |
+| `little_loops.decisions` | Decisions and rules log data layer (FEAT-1891) |
 | `little_loops.learning_tests` | Learning test registry — CRUD for `.ll/learning-tests/` records |
 | `little_loops.doc_counts` | Documentation count verification |
 | `little_loops.link_checker` | Link validation for markdown docs |
@@ -114,6 +115,7 @@ BRConfig(project_root: Path)
 | `design_tokens` | `DesignTokensConfig` | Design system token settings |
 | `orchestration` | `OrchestrationConfig` | Orchestration settings (host CLI selection) |
 | `events` | `EventsConfig` | Event transport/emission settings |
+| `decisions` | `DecisionsConfig` | Decisions and rules log configuration |
 | `learning_tests` | `LearningTestsConfig` | Learning test registry settings |
 | `extensions` | `list[str]` | Extension module paths to load |
 | `repo_path` | `Path` | Resolved repository root path |

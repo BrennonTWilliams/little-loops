@@ -196,6 +196,31 @@ class TestConfigSchema:
         assert "skip_packages" in disc_props
         assert disc_props["skip_packages"]["type"] == "array"
 
+    def test_decisions_in_schema(self) -> None:
+        """decisions must be declared in config-schema.json.
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing decisions will be rejected unless the property
+        is declared here.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        assert "decisions" in data["properties"], (
+            "decisions is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        dec_props = data["properties"]["decisions"]["properties"]
+        assert "enabled" in dec_props
+        assert dec_props["enabled"]["type"] == "boolean"
+        assert dec_props["enabled"].get("default") is False
+
+        assert "log_path" in dec_props
+        assert dec_props["log_path"]["type"] == "string"
+
+        assert "auto_generate" in dec_props
+        assert dec_props["auto_generate"]["type"] == "array"
+
+        assert data["properties"]["decisions"].get("additionalProperties") is False
+
     def test_design_tokens_in_schema(self) -> None:
         """design_tokens block must be declared in config-schema.json (FEAT-1747).
 

@@ -996,6 +996,64 @@ Based on selections, update `.ll/ll-config.json`:
 
 ---
 
+## Area: decisions
+
+### Current Values
+
+```
+Current Decisions Configuration
+--------------------------------
+  enabled:       {{config.decisions.enabled}}
+  log_path:      {{config.decisions.log_path}}
+  auto_generate: {{config.decisions.auto_generate}}
+```
+
+### Round 1
+
+```yaml
+questions:
+  - header: "Decisions"
+    question: "Enable the decisions log for capturing architectural decisions?"
+    options:
+      - label: "Enable (turn on)"
+        description: "Activate decisions log and auto-generation for tracked skill events"
+      - label: "Disable (turn off)"
+        description: "Disable decisions log — no decisions will be captured or generated"
+      - label: "Keep current ({{config.decisions.enabled}})"
+        description: "No change"
+    multiSelect: false
+
+  - header: "Log Path"
+    question: "Where should the decisions log be stored? (current: {{config.decisions.log_path}})"
+    options:
+      - label: ".ll/decisions.yaml (default)"
+        description: "Standard location under .ll/"
+      - label: "Keep {{config.decisions.log_path}}"
+        description: "No change"
+    multiSelect: false
+
+  - header: "Auto Generate"
+    question: "Which skill events should trigger automatic decision capture? (current: {{config.decisions.auto_generate}})"
+    options:
+      - label: "[] (none, default)"
+        description: "Do not auto-generate decisions — capture manually only"
+      - label: "Keep {{config.decisions.auto_generate}}"
+        description: "No change"
+    multiSelect: false
+```
+
+### Configuration Result
+
+Based on selections, update `.ll/ll-config.json`:
+
+- If "Enable" selected: set `decisions.enabled: true`
+- If "Disable" selected: set `decisions.enabled: false`
+- If "Keep current" selected: preserve existing `enabled` value
+- Map "Log Path" choice to `decisions.log_path` (omit if default `.ll/decisions.yaml`)
+- Map "Auto Generate" choice to `decisions.auto_generate` (omit if default `[]`)
+
+---
+
 ## Area: design_tokens
 
 ### Current Values

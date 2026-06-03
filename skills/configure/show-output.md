@@ -203,6 +203,18 @@ Learning Tests Configuration
 Edit: /ll:configure learning-tests
 ```
 
+## decisions --show
+
+```
+Decisions Configuration
+-----------------------
+  enabled:       {{config.decisions.enabled}}       (default: false)
+  log_path:      {{config.decisions.log_path}}      (default: .ll/decisions.yaml)
+  auto_generate: {{config.decisions.auto_generate}} (default: [])
+
+Edit: /ll:configure decisions
+```
+
 ## analytics --show
 
 ```

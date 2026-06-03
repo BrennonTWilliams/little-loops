@@ -22,6 +22,7 @@ from little_loops.config.automation import (
 from little_loops.config.cli import CliConfig, RefineStatusConfig
 from little_loops.config.features import (
     AnalyticsCaptureConfig,
+    DecisionsConfig,
     DesignTokensConfig,
     EventsConfig,
     IssuesConfig,
@@ -203,6 +204,9 @@ class BRConfig:
         self._learning_tests = LearningTestsConfig.from_dict(
             self._raw_config.get("learning_tests", {})
         )
+        self._decisions = DecisionsConfig.from_dict(
+            self._raw_config.get("decisions", {})
+        )
         self._sync = SyncConfig.from_dict(self._raw_config.get("sync", {}))
         self._dependency_mapping = DependencyMappingConfig.from_dict(
             self._raw_config.get("dependency_mapping", {})
@@ -266,6 +270,11 @@ class BRConfig:
     def learning_tests(self) -> LearningTestsConfig:
         """Get learning tests configuration."""
         return self._learning_tests
+
+    @property
+    def decisions(self) -> DecisionsConfig:
+        """Get decisions log configuration."""
+        return self._decisions
 
     @property
     def sync(self) -> SyncConfig:
@@ -584,6 +593,11 @@ class BRConfig:
                 "enabled": self._learning_tests.enabled,
                 "stale_after_days": self._learning_tests.stale_after_days,
                 "discoverability": self._learning_tests.discoverability.to_dict(),
+            },
+            "decisions": {
+                "enabled": self._decisions.enabled,
+                "log_path": self._decisions.log_path,
+                "auto_generate": list(self._decisions.auto_generate),
             },
             "design_tokens": {
                 "enabled": self._design_tokens.enabled,

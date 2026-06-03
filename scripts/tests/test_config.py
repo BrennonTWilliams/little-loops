@@ -22,6 +22,7 @@ from little_loops.config import (
     CliConfig,
     CommandsConfig,
     ConfidenceGateConfig,
+    DecisionsConfig,
     DependencyMappingConfig,
     DesignTokensConfig,
     DuplicateDetectionConfig,
@@ -754,6 +755,7 @@ class TestBRConfig:
         assert result["parallel"]["max_workers"] == 3
         assert "queue_wait_timeout_seconds" in result["loops"]
         assert "events" in result
+        assert "decisions" in result
 
         # Should be JSON serializable
         json.dumps(result)
@@ -2301,6 +2303,56 @@ class TestBRConfigLearningTestsIntegration:
         issues = d["issues"]
         assert issues["auto_commit"] is True
         assert issues["auto_commit_prefix"] == "ci(issues)"
+
+
+class TestDecisionsConfig:
+    """Tests for DecisionsConfig dataclass."""
+
+    def test_from_dict_defaults(self) -> None:
+        config = DecisionsConfig.from_dict({})
+        assert config.enabled is False
+        assert config.log_path == ".ll/decisions.yaml"
+        assert config.auto_generate == []
+
+    def test_from_dict_with_values(self) -> None:
+        data = {"enabled": True, "log_path": ".ll/my-decisions.yaml", "auto_generate": ["NAMING-001"]}
+        config = DecisionsConfig.from_dict(data)
+        assert config.enabled is True
+        assert config.log_path == ".ll/my-decisions.yaml"
+        assert config.auto_generate == ["NAMING-001"]
+
+    def test_from_dict_partial(self) -> None:
+        config = DecisionsConfig.from_dict({"enabled": True})
+        assert config.enabled is True
+        assert config.log_path == ".ll/decisions.yaml"
+
+
+class TestBRConfigDecisionsIntegration:
+    """Tests for BRConfig.decisions integration."""
+
+    def test_decisions_defaults_when_absent(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        assert config.decisions.enabled is False
+        assert config.decisions.log_path == ".ll/decisions.yaml"
+        assert config.decisions.auto_generate == []
+
+    def test_decisions_override_from_config(self, temp_project_dir: Path) -> None:
+        sample_config: dict[str, Any] = {"decisions": {"enabled": True, "log_path": ".ll/custom.yaml"}}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.decisions.enabled is True
+        assert config.decisions.log_path == ".ll/custom.yaml"
+
+    def test_decisions_round_trip_to_dict(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        d = config.to_dict()
+        assert "decisions" in d
+        dec = d["decisions"]
+        assert dec["enabled"] is False
+        assert dec["log_path"] == ".ll/decisions.yaml"
+        assert dec["auto_generate"] == []
 
 
 class TestDesignTokensConfig:

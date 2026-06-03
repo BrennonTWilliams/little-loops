@@ -234,6 +234,12 @@ For interactive editing, use `/ll:configure`.
     }
   },
 
+  "decisions": {
+    "enabled": false,
+    "log_path": ".ll/decisions.yaml",
+    "auto_generate": []
+  },
+
   "extensions": [
     "my_package.ext:MyExtension"
   ]
@@ -615,6 +621,16 @@ The design token loader supports the [W3C Design Tokens Community Group](https:/
 **See also**: [Design Tokens Community Group specification](https://tr.designtokens.org/)
 
 <!-- END TODO stub -->
+
+### `decisions`
+
+Decisions and rules log configuration (FEAT-1891). When enabled, architectural decisions and project rules are persisted to a YAML log for traceability.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | `bool` | `false` | Enable the decisions log feature. |
+| `log_path` | `str` | `".ll/decisions.yaml"` | Path to the decisions log file. |
+| `auto_generate` | `list[str]` | `[]` | List of trigger patterns that auto-populate the log. |
 
 ### `learning_tests`
 

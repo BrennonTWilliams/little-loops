@@ -404,6 +404,25 @@ class LearningTestsConfig:
         )
 
 
+
+@dataclass
+class DecisionsConfig:
+    """Decisions and rules log configuration."""
+
+    enabled: bool = False
+    log_path: str = ".ll/decisions.yaml"
+    auto_generate: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DecisionsConfig:
+        """Create DecisionsConfig from dictionary."""
+        return cls(
+            enabled=data.get("enabled", False),
+            log_path=data.get("log_path", ".ll/decisions.yaml"),
+            auto_generate=data.get("auto_generate", []),
+        )
+
+
 @dataclass
 class AnalyticsCaptureConfig:
     """Configuration for analytics capture gating (ENH-1840).

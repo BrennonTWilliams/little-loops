@@ -508,6 +508,31 @@
       },
       "additionalProperties": false
     },
+    "decisions": {
+      "type": "object",
+      "description": "Decisions and rules log configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable the decisions and rules log",
+          "default": false
+        },
+        "log_path": {
+          "type": "string",
+          "description": "Path to the decisions YAML log file",
+          "default": ".ll/decisions.yaml"
+        },
+        "auto_generate": {
+          "type": "array",
+          "description": "Entry IDs to auto-generate on init",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
     "scan": {
       "type": "object",
       "description": "Codebase scanning settings",
