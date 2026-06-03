@@ -10,14 +10,14 @@ discovered_by: capture-issue
 labels:
   - epic
   - captured
-relates_to: [ENH-1708, ENH-1710, ENH-1711, FEAT-1712, ENH-1752, ENH-1753, FEAT-1736, ENH-1831, ENH-1832, ENH-1833, ENH-1835, ENH-1830, ENH-1834, FEAT-1680, FEAT-948]
+relates_to: [ENH-1708, ENH-1710, ENH-1711, FEAT-1712, ENH-1752, ENH-1753, FEAT-1736, ENH-1831, ENH-1832, ENH-1833, ENH-1835, ENH-1830, ENH-1834, FEAT-1680, FEAT-948, ENH-1846, ENH-1847, ENH-1887, ENH-1888]
 ---
 
 # EPIC-1707: history.db as Agent Context Layer
 
 ## Summary
 
-Turn `.ll/history.db` from a write-only telemetry sink into a queryable context layer that ll skills, commands, and agents read from to make better decisions. The producer side (6 event tables + FTS5 `search_index`, writer hooks, `SQLiteTransport`) is built; the read API (`history_reader.py`, ENH-1752) is now also **done**. The consumer side still has zero references across `skills/`, `commands/`, and `agents/` — that wiring is the remaining work.
+Turn `.ll/history.db` from a write-only telemetry sink into a queryable context layer that ll skills, commands, and agents read from to make better decisions. The producer side (6 event tables + FTS5 `search_index`, writer hooks, `SQLiteTransport`) is built; the read API (`history_reader.py`, ENH-1752) is **done**; the `ll-history-context` CLI (ENH-1846) is **done**; and the initial 3-skill consumer wiring (ENH-1847: `refine-issue`, `ready-issue`, `confidence-check`) is **done**. Remaining work: broaden correction detection quality (ENH-1887), expand consumer coverage to `go-no-go` and `capture-issue` (ENH-1888), and the P3 features (FEAT-1712, FEAT-948, FEAT-1736).
 
 ## Goal
 
@@ -68,6 +68,10 @@ Without a consumer surface, the DB is dead weight: writers cost overhead, the sc
 - **ENH-1834** — Record `ll-` CLI command invocations in history.db
 - **FEAT-1680** — Session-end hook to sweep stale cross-issue status references
 - **FEAT-948** — Rules and Decisions Log for Issue Compliance
+- **ENH-1846** — Scaffold `ll-history-context` CLI with tests and docs (decomposed from ENH-1708; **done**)
+- **ENH-1847** — Wire `ll-history-context` into `refine-issue`, `ready-issue`, `confidence-check` (decomposed from ENH-1708; **done**)
+- **ENH-1887** — Broaden `is_correction()` detection beyond prefix regex (correction capture quality gap)
+- **ENH-1888** — Expand history.db consumer wiring to `go-no-go` and `capture-issue`
 
 ## Integration Map
 

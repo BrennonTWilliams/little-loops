@@ -200,6 +200,8 @@ context:
   pii_action: "flag"            # flag | redact | discard
   val_ratio: 0.1
   test_ratio: 0.1
+  schema_path: "schemas/sft.json"  # passed to dataset-curation via with: binding (Option B)
+  dedup_threshold: 0.9             # Jaccard similarity threshold for near-duplicate removal
 ```
 
 ## Integration Map
@@ -231,6 +233,19 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Loop handoff context key mismatch (see Proposed Solution / decision_needed):**
 - `dataset-curation.yaml` reads from `context.data_dir`; `sft-corpus` writes to `context.output_dir` — these are different keys; binding strategy is the implementation decision
+
+**`extract_conversation_turns()` exact signature** (`user_messages.py:L765`):
+- `project_folder: Path` — directory path, not individual file (e.g., `Path("~/.claude/projects").expanduser()`)
+- `since: datetime | None = None`, `context_window: int = 3`, `include_agent_sessions: bool = True`
+- Returns `list[list[tuple[str, str]]]`; `since` filter is **per-turn, not per-file** — all `.jsonl` files are fully scanned regardless of the sentinel; only output turns are dropped.
+- Already called by `ll-messages --sft-format`; the `harvest` shell state does not need to invoke it directly.
+
+**`to_alpaca()` turn requirement**: Requires ≥1 user turn and ≥1 assistant turn; a single-turn window leaves `output` empty. The `filter` state must discard examples with `len(turns) < 2` when `sft_format == "alpaca"`.
+
+**Recommended `action_type` for filter/dedup/split**: All three are batch JSONL operations — use `action_type: shell` with inline Python, not `prompt` states.
+- `filter`: word-count proxy via `python3 -c` against `context.min_tokens`/`context.max_tokens`; PII (`pii_action`) has no existing utility — use simple regex heuristic in v1 (email, phone, SSN patterns) or treat `flag` as a no-op pass for the initial release.
+- `dedup`: `from little_loops.text_utils import extract_words, calculate_word_overlap` inline; skip example if Jaccard vs any seen set ≥ `context.dedup_threshold`.
+- `split`: stratify by source session filename (present in JSONL metadata); write to `${context.output_dir}/staged/` as `train.jsonl`/`val.jsonl`/`test.jsonl` — this is the `data_dir` dataset-curation's `ingest` state reads from.
 
 ### Similar Patterns
 - `scripts/little_loops/loops/examples-miner.yaml:harvest` — canonical harvest sentinel shell pattern (`SINCE_ARG` + `--since`) and sentinel write in `publish` state
@@ -278,6 +293,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `loop`, `sft`, `fine-tuning`, `new-feature`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-03T00:46:04 - `ef863381-72dc-415f-ad39-f86d8e42dba1.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00Z - `17557f51-d1e7-48ab-8c75-d04f0cc19f24.jsonl`
 - `/ll:wire-issue` - 2026-06-03T00:31:19 - `dd96413d-220c-449b-8e81-593defe00fdc.jsonl`
 - `/ll:decide-issue` - 2026-06-03T00:24:05 - `0467dd38-23d6-4a11-9d93-1a10ed0c40c9.jsonl`

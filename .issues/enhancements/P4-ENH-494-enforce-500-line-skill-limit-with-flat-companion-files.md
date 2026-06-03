@@ -8,13 +8,13 @@ discovered_by: context-engineering-analysis
 status: open
 parent: EPIC-1745
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
-confidence_score: 95
-outcome_confidence: 64
+confidence_score: 100
+outcome_confidence: 71
 blocked_by: []
 milestone: refined-ready
 score_complexity: 18
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 10
 ---
 
@@ -203,8 +203,8 @@ _Added by `/ll:refine-issue` 2026-04-07 — codebase pattern analysis. Decision 
 
 ### New Files
 - `skills/audit-claude-config/wave1-prompts.md` — all three Task sub-agent prompt bodies (Task 1 ~66L, Task 2 ~42L, Task 3 ~177L); extracting only Task 3 leaves the file at ~535L (still over limit)
-- `skills/confidence-check/<companion>.md` — scoring criteria (Phase 2 + Phase 2b, lines 187–428) + output format templates (lines 650–738)
-- `skills/init/<companion>.md` — Display Summary template (142–218), CLAUDE.md content blocks (596–663), Completion Message (666–700)
+- `skills/confidence-check/rubric.md` — scoring criteria (Phase 2 + Phase 2b, lines 187–428) + output format templates (lines 650–738)
+- `skills/init/templates.md` — Display Summary template (142–218), CLAUDE.md content blocks (596–663), Completion Message (666–700)
 - `skills/debug-loop-run/reference.md` — Signal Rules (163–314, ~151L), issue-file template (507–565, ~58L), event-type field table (139–157, ~18L)
 
 ### Dependent Files (Callers/Importers)
@@ -213,7 +213,7 @@ _No code-level callers. SKILL.md files are consumed directly by Claude Code when
 
 ### Tests
 - `wc -l skills/*/SKILL.md` should show all files ≤ 500 lines after implementation
-- New (required): companion file existence tests following `test_improve_claude_md_skill.py:29–34` pattern — assert that `skills/audit-claude-config/<companion>.md`, `skills/confidence-check/<companion>.md`, `skills/init/<companion>.md`, and `skills/debug-loop-run/<companion>.md` exist on disk
+- New (required): companion file existence tests following `test_improve_claude_md_skill.py:29–34` pattern — assert that `skills/audit-claude-config/wave1-prompts.md`, `skills/confidence-check/rubric.md`, `skills/init/templates.md`, and `skills/debug-loop-run/reference.md` exist on disk
 - `scripts/tests/test_skill_expander.py:238–261` — `TestExpandSkillAgainstRealManageIssue` reads the real `skills/manage-issue/SKILL.md`; passes unchanged after trimming (no config tokens removed), but monitor if any new companion file introduces unresolved `{{config.*}}` references
 
 _Wiring pass added by `/ll:wire-issue` (2026-06-02):_
@@ -251,17 +251,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-02_
+_Updated by `/ll:confidence-check` on 2026-06-02 (post wire+refine pass)_
 
-**Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 64/100 → MODERATE
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE
 
 ### Outcome Risk Factors
-- **Test constraint surface**: 6 doc-wiring test files assert on specific strings within the SKILL.md files being modified; the integration map enumerates which strings must stay in SKILL.md (e.g., `"hooks/adapters/"`, `"rate_limit_waiting"`, `"parent: EPIC-NNN"`) — verify each extraction point against that table before moving content
-- **Companion file naming gap**: Names for `confidence-check/<companion>.md` and `init/<companion>.md` are unspecified; choose names matching convention (e.g., `rubric.md` / `criteria.md` for confidence-check, `templates.md` for init) before starting extraction on those skills
-- **Wide change surface across 6 SKILL.md files**: Each skill has distinct extraction targets; validate line counts after each skill's extraction rather than batch-verifying at the end to catch drift early
+- **Test constraint string in extraction range**: `parent: EPIC-NNN` (confidence-check line 248) and `rate_limit_waiting` (debug-loop-run line 149, within event-type table extraction range 139–157) are within extraction ranges but must remain in `SKILL.md` — leave a summary anchor line at each extraction point or skip moving those specific rows
+- **Distinct extraction targets per skill**: each of the 6 skills has different source ranges and constraint strings; validate post-extraction line count per skill rather than in a single batch pass at the end
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-02T01:00:00 - `b773ed04-caa9-4596-b890-7f5a3b05df36.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00 - `5bcea9e3-d849-448e-883c-cb3ab8ad842a.jsonl`
 - `/ll:wire-issue` - 2026-06-03T00:44:52 - `255e0c2b-935a-474d-b91e-187cb706a7ac.jsonl`
 - `/ll:refine-issue` - 2026-06-03T00:37:45 - `5b268ae9-6748-479c-8957-26f628059249.jsonl`

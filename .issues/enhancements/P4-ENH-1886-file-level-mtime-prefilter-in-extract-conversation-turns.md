@@ -30,6 +30,30 @@ When `since` is provided, skip any `.jsonl` file whose `os.path.getmtime()` is e
 
 Harvest sentinels are written after each successful publish run. Re-runs therefore know exactly how far back they need to look. Reading every historical `.jsonl` file is wasteful and will become noticeably slow as the corpus grows (each Claude Code session produces a separate JSONL file; a year of active use could mean thousands of files).
 
+## API/Interface
+
+N/A — No public API changes. `extract_conversation_turns()` signature is unchanged; only internal file-list filtering is added.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/user_messages.py` — `extract_conversation_turns()` (~L765): add mtime pre-filter before reading file contents
+
+### Dependent Files (Callers/Importers)
+- TBD — use grep to find references: `grep -r "extract_conversation_turns" scripts/`
+
+### Similar Patterns
+- `scripts/little_loops/loops/examples-miner.yaml` — also uses harvest sentinel + `--since`; verify it benefits automatically
+
+### Tests
+- `scripts/tests/test_user_messages.py` — add fixture test for mtime-based skipping (two JSONL fixtures with different mtimes)
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Implementation Steps
 
 1. In `extract_conversation_turns()`, after globbing `.jsonl` files, filter the list:
@@ -49,6 +73,18 @@ Harvest sentinels are written after each successful publish run. Re-runs therefo
 - [ ] Existing `test_user_messages.py` tests continue to pass
 - [ ] New test confirms mtime-based skipping with two fixture files
 
+## Impact
+
+- **Priority**: P4 — minor optimization; corpus is small today but degrades linearly with active use
+- **Effort**: Small — single function change plus one test fixture
+- **Risk**: Low — `since=None` behavior is unchanged; the mtime filter is additive only
+- **Breaking Change**: No
+
+## Scope Boundaries
+
+- **In scope**: Mtime pre-filter in `extract_conversation_turns()` when `since` is provided; 60-second hardcoded grace period
+- **Out of scope**: Making the grace period configurable via `.ll/ll-config.json`; changes to `examples-miner` harvest orchestration logic; per-turn timestamp filtering in `_extract_turn_pairs()` (remains unchanged)
+
 ## Related
 
 - FEAT-1826 — sft-corpus harvest state uses `--since` flag routed through this function
@@ -60,6 +96,7 @@ Harvest sentinels are written after each successful publish run. Re-runs therefo
 `performance`, `sft`, `user-messages`, `incremental`
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-03T01:14:02 - `6440d944-a7d1-441a-bc55-42e0d5f7c1f8.jsonl`
 - `/ll:capture-issue` - 2026-06-03T00:48:04Z - `dd96413d-220c-449b-8e81-593defe00fdc.jsonl`
 
 ---
