@@ -1331,9 +1331,7 @@ class TestMessagesArgumentParsingWithCommands:
         parser.add_argument("--skill", type=str)
         format_group = parser.add_mutually_exclusive_group()
         format_group.add_argument("--examples-format", action="store_true")
-        format_group.add_argument(
-            "--sft-format", choices=["chatml", "alpaca", "sharegpt"]
-        )
+        format_group.add_argument("--sft-format", choices=["chatml", "alpaca", "sharegpt"])
         parser.add_argument("--context-window", type=int, default=3)
         return parser.parse_args(args)
 
@@ -1609,7 +1607,6 @@ class TestSFTFormatter:
         """extract_conversation_turns returns windows of (role, content) tuples."""
         import json
         import tempfile
-        from datetime import datetime
         from pathlib import Path
 
         from little_loops.user_messages import extract_conversation_turns
@@ -1624,9 +1621,7 @@ class TestSFTFormatter:
             },
             {
                 "type": "assistant",
-                "message": {
-                    "content": [{"type": "text", "text": "Hello user!"}]
-                },
+                "message": {"content": [{"type": "text", "text": "Hello user!"}]},
             },
         ]
 
@@ -1670,9 +1665,7 @@ class TestSFTFormatter:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project_dir = Path(tmpdir)
-            (project_dir / "session.jsonl").write_text(
-                "\n".join(json.dumps(r) for r in records)
-            )
+            (project_dir / "session.jsonl").write_text("\n".join(json.dumps(r) for r in records))
             windows = extract_conversation_turns(project_dir, context_window=3)
 
         # 5 pairs, window=3 → 3 windows (sliding: [0,1,2], [1,2,3], [2,3,4])

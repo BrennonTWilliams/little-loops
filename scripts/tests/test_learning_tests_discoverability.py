@@ -57,10 +57,7 @@ def _write_record(project_dir: Path, target: str, status: str) -> None:
     lt_dir = project_dir / ".ll" / "learning-tests"
     lt_dir.mkdir(parents=True, exist_ok=True)
     slug = target.lower()
-    content = (
-        f"---\ntarget: {target}\ndate: '2026-01-01'\n"
-        f"status: {status}\nassertions: []\n---\n"
-    )
+    content = f"---\ntarget: {target}\ndate: '2026-01-01'\nstatus: {status}\nassertions: []\n---\n"
     (lt_dir / f"{slug}.md").write_text(content, encoding="utf-8")
 
 
@@ -159,9 +156,7 @@ class TestGateWarnMode:
         assert result.exit_code == 0
         assert result.feedback is not None
 
-    def test_skip_packages_honored(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_skip_packages_honored(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _write_config(
             tmp_path,
             enabled=True,
@@ -356,9 +351,7 @@ class TestExtractPackages:
         assert "stripe" in pkgs
 
     def test_js_relative_imports_excluded(self) -> None:
-        pkgs = _extract_packages(
-            "import foo from './local'\nimport bar from '../util'\n", "x.ts"
-        )
+        pkgs = _extract_packages("import foo from './local'\nimport bar from '../util'\n", "x.ts")
         assert "./local" not in pkgs
         assert "../util" not in pkgs
         assert "local" not in pkgs

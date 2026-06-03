@@ -385,7 +385,9 @@ class TestLearningConfigSerialization:
 
     def test_targets_csv_and_max_retries_expr_round_trip(self) -> None:
         """Both targets_csv and max_retries_expr survive serialization (ENH-1741)."""
-        cfg = LearningConfig(targets_csv="${context.targets}", max_retries_expr="${context.max_retries}")
+        cfg = LearningConfig(
+            targets_csv="${context.targets}", max_retries_expr="${context.max_retries}"
+        )
         d = cfg.to_dict()
         assert d["targets_csv"] == "${context.targets}"
         assert d["max_retries_expr"] == "${context.max_retries}"
@@ -508,4 +510,3 @@ class TestLearningStateCsvTargets:
         assert result.final_state == "blocked"
         # Only 1 explore attempt (not the default 2)
         assert len(runner.calls) == 1
-

@@ -85,7 +85,9 @@ class TestIssueInfoProperties:
         depends_on=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
         relates_to=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
         duplicate_of=st.one_of(st.none(), st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True)),
-        learning_tests_required=st.one_of(st.none(), st.lists(st.text(min_size=1, max_size=50), max_size=5)),
+        learning_tests_required=st.one_of(
+            st.none(), st.lists(st.text(min_size=1, max_size=50), max_size=5)
+        ),
     )
     @settings(max_examples=200)
     def test_roundtrip_serialization(
@@ -310,7 +312,9 @@ class TestIssueInfoWithProductImpactProperties:
         business_value=st.one_of(st.none(), st.sampled_from(["high", "medium", "low"])),
         user_benefit=st.one_of(st.none(), st.text(min_size=1, max_size=200)),
         status=st.sampled_from(["open", "in_progress", "blocked", "deferred", "done", "cancelled"]),
-        learning_tests_required=st.one_of(st.none(), st.lists(st.text(min_size=1, max_size=50), max_size=5)),
+        learning_tests_required=st.one_of(
+            st.none(), st.lists(st.text(min_size=1, max_size=50), max_size=5)
+        ),
     )
     @settings(max_examples=200)
     def test_roundtrip_with_product_impact(
@@ -378,7 +382,9 @@ class TestIssueInfoWithProductImpactProperties:
         blocks=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
         discovered_by=st.one_of(st.none(), st.text(min_size=1, max_size=50)),
         status=st.sampled_from(["open", "in_progress", "blocked", "deferred", "done", "cancelled"]),
-        learning_tests_required=st.one_of(st.none(), st.lists(st.text(min_size=1, max_size=50), max_size=5)),
+        learning_tests_required=st.one_of(
+            st.none(), st.lists(st.text(min_size=1, max_size=50), max_size=5)
+        ),
     )
     @settings(max_examples=200)
     def test_roundtrip_without_product_impact(

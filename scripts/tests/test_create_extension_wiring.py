@@ -450,7 +450,9 @@ class TestFeat948DecisionsWiring:
         tradeoff_idx = content.find("### `/ll:tradeoff-review-issues`")
         if tradeoff_idx == -1:
             tradeoff_idx = content.find("/ll:tradeoff-review-issues")
-        assert tradeoff_idx != -1, "docs/reference/COMMANDS.md must have a tradeoff-review-issues section"
+        assert tradeoff_idx != -1, (
+            "docs/reference/COMMANDS.md must have a tradeoff-review-issues section"
+        )
         section_excerpt = content[tradeoff_idx : tradeoff_idx + 800]
         assert "Decisions log" in section_excerpt or "decisions" in section_excerpt.lower(), (
             "docs/reference/COMMANDS.md /ll:tradeoff-review-issues must reference decisions log"

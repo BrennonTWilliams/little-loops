@@ -87,13 +87,17 @@ class TestLoadDecisions:
         assert loaded[0].id == "NAMING-001"
         assert isinstance(loaded[0], RuleEntry)
 
-    def test_loads_decision_entry(self, decisions_path: Path, sample_decision: DecisionEntry) -> None:
+    def test_loads_decision_entry(
+        self, decisions_path: Path, sample_decision: DecisionEntry
+    ) -> None:
         save_decisions([sample_decision], decisions_path)
         loaded = load_decisions(decisions_path)
         assert len(loaded) == 1
         assert isinstance(loaded[0], DecisionEntry)
 
-    def test_loads_exception_entry(self, decisions_path: Path, sample_exception: ExceptionEntry) -> None:
+    def test_loads_exception_entry(
+        self, decisions_path: Path, sample_exception: ExceptionEntry
+    ) -> None:
         save_decisions([sample_exception], decisions_path)
         loaded = load_decisions(decisions_path)
         assert len(loaded) == 1
@@ -127,7 +131,9 @@ class TestSaveDecisions:
         assert isinstance(data, list)
         assert data[0]["id"] == "NAMING-001"
 
-    def test_round_trip_preserves_fields(self, decisions_path: Path, sample_rule: RuleEntry) -> None:
+    def test_round_trip_preserves_fields(
+        self, decisions_path: Path, sample_rule: RuleEntry
+    ) -> None:
         save_decisions([sample_rule], decisions_path)
         loaded = load_decisions(decisions_path)
         assert loaded[0].id == sample_rule.id
@@ -191,7 +197,9 @@ class TestListEntries:
         assert len(result) == 1
         assert result[0].id == "WORKFLOW-001"
 
-    def test_returns_empty_for_no_matches(self, decisions_path: Path, sample_rule: RuleEntry) -> None:
+    def test_returns_empty_for_no_matches(
+        self, decisions_path: Path, sample_rule: RuleEntry
+    ) -> None:
         save_decisions([sample_rule], decisions_path)
         result = list_entries(decisions_path, type="decision")
         assert result == []
@@ -227,7 +235,9 @@ class TestResolveActive:
 class TestSetOutcome:
     """Tests for set_outcome()."""
 
-    def test_sets_outcome_on_decision(self, decisions_path: Path, sample_decision: DecisionEntry) -> None:
+    def test_sets_outcome_on_decision(
+        self, decisions_path: Path, sample_decision: DecisionEntry
+    ) -> None:
         save_decisions([sample_decision], decisions_path)
         set_outcome("WORKFLOW-001", "adopted", "2026-07-01", path=decisions_path)
         loaded = load_decisions(decisions_path)
@@ -269,7 +279,9 @@ class TestSetOutcome:
 
     def test_outcome_with_notes(self, decisions_path: Path, sample_decision: DecisionEntry) -> None:
         save_decisions([sample_decision], decisions_path)
-        set_outcome("WORKFLOW-001", "adopted", "2026-07-01", notes="Worked well", path=decisions_path)
+        set_outcome(
+            "WORKFLOW-001", "adopted", "2026-07-01", notes="Worked well", path=decisions_path
+        )
         loaded = load_decisions(decisions_path)
         assert isinstance(loaded[0], DecisionEntry)
         assert loaded[0].outcome is not None
@@ -300,6 +312,7 @@ class TestSyncToLocalMd:
 
     def _write_rules(self, decisions_path: Path, rules: list) -> None:
         import yaml
+
         decisions_path.write_text(yaml.dump(rules), encoding="utf-8")
 
     def test_creates_section(self, decisions_path: Path) -> None:
@@ -321,7 +334,9 @@ class TestSyncToLocalMd:
         from little_loops.decisions_sync import sync_to_local_md
 
         ll_local = decisions_path.parent / "ll.local.md"
-        ll_local.write_text("---\nkey: value\n---\n\n## Active Rules\n\n- Old rule\n", encoding="utf-8")
+        ll_local.write_text(
+            "---\nkey: value\n---\n\n## Active Rules\n\n- Old rule\n", encoding="utf-8"
+        )
 
         rule = RuleEntry(id="R-001", rule="New required rule", enforcement="required")
         save_decisions([rule], decisions_path)
@@ -353,7 +368,9 @@ class TestSyncToLocalMd:
         from little_loops.decisions_sync import sync_to_local_md
 
         old_rule = RuleEntry(id="R-001", rule="Old rule", enforcement="required")
-        new_rule = RuleEntry(id="R-002", rule="New rule", enforcement="required", supersedes="R-001")
+        new_rule = RuleEntry(
+            id="R-002", rule="New rule", enforcement="required", supersedes="R-001"
+        )
         save_decisions([old_rule, new_rule], decisions_path)
 
         sync_to_local_md(path=decisions_path)
@@ -418,8 +435,7 @@ class TestDecisionsExceptionSuppression:
         save_decisions([sample_rule, sample_exception], decisions_path)
         exceptions = list_entries(decisions_path, type="exception")
         suppressors = [
-            e for e in exceptions
-            if isinstance(e, ExceptionEntry) and e.rule_ref == sample_rule.id
+            e for e in exceptions if isinstance(e, ExceptionEntry) and e.rule_ref == sample_rule.id
         ]
         assert len(suppressors) == 1
         assert suppressors[0].id == sample_exception.id
@@ -433,9 +449,7 @@ class TestDecisionsExceptionSuppression:
         save_decisions([sample_rule, sample_exception], decisions_path)
         rules = list_entries(decisions_path, type="rule")
         exceptions = list_entries(decisions_path, type="exception")
-        exception_rule_refs = {
-            e.rule_ref for e in exceptions if isinstance(e, ExceptionEntry)
-        }
+        exception_rule_refs = {e.rule_ref for e in exceptions if isinstance(e, ExceptionEntry)}
         unviolated = [r for r in rules if r.id not in exception_rule_refs]
         assert sample_rule.id in exception_rule_refs
         assert len(unviolated) == 0
@@ -481,7 +495,9 @@ class TestGenerateFromCompleted:
         config.decisions.log_path = ".ll/decisions.yaml"
         config.issues.base_dir = ".issues"
 
-        with patch("little_loops.issue_history.parsing.scan_completed_issues", return_value=completed):
+        with patch(
+            "little_loops.issue_history.parsing.scan_completed_issues", return_value=completed
+        ):
             count = generate_from_completed(config)
 
         assert count == 2
@@ -519,7 +535,9 @@ class TestGenerateFromCompleted:
         config.decisions.log_path = ".ll/decisions.yaml"
         config.issues.base_dir = ".issues"
 
-        with patch("little_loops.issue_history.parsing.scan_completed_issues", return_value=completed):
+        with patch(
+            "little_loops.issue_history.parsing.scan_completed_issues", return_value=completed
+        ):
             count = generate_from_completed(config)
 
         assert count == 0

@@ -72,9 +72,7 @@ def apply_pii_action(example: dict, action: str) -> dict | None:
         ValueError: If *action* is not ``"flag"``, ``"redact"``, or ``"discard"``.
     """
     if action not in _VALID_ACTIONS:
-        raise ValueError(
-            f"Invalid pii_action {action!r}. Must be one of: {sorted(_VALID_ACTIONS)}"
-        )
+        raise ValueError(f"Invalid pii_action {action!r}. Must be one of: {sorted(_VALID_ACTIONS)}")
 
     combined = " ".join(v for v in example.values() if isinstance(v, str))
 

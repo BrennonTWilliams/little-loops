@@ -48,9 +48,7 @@ class TestHistoryContextAllowedTools:
         )
 
     def test_ll_go_no_go_stub_exists(self) -> None:
-        assert LL_GO_NO_GO_STUB.exists(), (
-            "skills/ll-go-no-go/SKILL.md bridge stub must exist"
-        )
+        assert LL_GO_NO_GO_STUB.exists(), "skills/ll-go-no-go/SKILL.md bridge stub must exist"
 
     def test_ll_capture_issue_stub_exists(self) -> None:
         assert LL_CAPTURE_ISSUE_STUB.exists(), (

@@ -267,9 +267,7 @@ def resolve_active(entries: list[AnyEntry]) -> list[AnyEntry]:
     An entry is inactive if another entry's `supersedes` field references its ID.
     """
     superseded_ids = {
-        getattr(e, "supersedes", None)
-        for e in entries
-        if getattr(e, "supersedes", None)
+        getattr(e, "supersedes", None) for e in entries if getattr(e, "supersedes", None)
     }
     return [e for e in entries if e.id not in superseded_ids]
 
@@ -320,9 +318,7 @@ def generate_from_completed(config: BRConfig) -> int:
         completed = scan_completed_issues(project_root / config.issues.base_dir)
 
     existing = load_decisions(log_path)
-    existing_issue_ids = {
-        e.issue for e in existing if isinstance(e, DecisionEntry) and e.issue
-    }
+    existing_issue_ids = {e.issue for e in existing if isinstance(e, DecisionEntry) and e.issue}
 
     count = 0
     for issue in completed:

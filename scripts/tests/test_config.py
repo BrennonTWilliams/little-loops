@@ -2315,7 +2315,11 @@ class TestDecisionsConfig:
         assert config.auto_generate == []
 
     def test_from_dict_with_values(self) -> None:
-        data = {"enabled": True, "log_path": ".ll/my-decisions.yaml", "auto_generate": ["NAMING-001"]}
+        data = {
+            "enabled": True,
+            "log_path": ".ll/my-decisions.yaml",
+            "auto_generate": ["NAMING-001"],
+        }
         config = DecisionsConfig.from_dict(data)
         assert config.enabled is True
         assert config.log_path == ".ll/my-decisions.yaml"
@@ -2337,7 +2341,9 @@ class TestBRConfigDecisionsIntegration:
         assert config.decisions.auto_generate == []
 
     def test_decisions_override_from_config(self, temp_project_dir: Path) -> None:
-        sample_config: dict[str, Any] = {"decisions": {"enabled": True, "log_path": ".ll/custom.yaml"}}
+        sample_config: dict[str, Any] = {
+            "decisions": {"enabled": True, "log_path": ".ll/custom.yaml"}
+        }
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 

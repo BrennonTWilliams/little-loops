@@ -197,7 +197,9 @@ def cmd_decisions(config: BRConfig, args: argparse.Namespace) -> int:
         return _cmd_list(args, path, list_entries, resolve_active)
 
     if sub == "add":
-        return _cmd_add(args, path, RuleEntry, DecisionEntry, ExceptionEntry, add_entry, list_entries)
+        return _cmd_add(
+            args, path, RuleEntry, DecisionEntry, ExceptionEntry, add_entry, list_entries
+        )
 
     if sub == "outcome":
         return _cmd_outcome(args, path, set_outcome)
@@ -206,7 +208,9 @@ def cmd_decisions(config: BRConfig, args: argparse.Namespace) -> int:
         from little_loops.decisions import generate_from_completed
 
         count = generate_from_completed(config)
-        print(f"Generated {count} decision entr{'y' if count == 1 else 'ies'} from completed issues.")
+        print(
+            f"Generated {count} decision entr{'y' if count == 1 else 'ies'} from completed issues."
+        )
         return 0
 
     if sub == "sync":
@@ -229,6 +233,7 @@ def _cmd_list(args, path, list_entries, resolve_active) -> int:
     # Post-filters
     if getattr(args, "no_outcome", False):
         from little_loops.decisions import DecisionEntry
+
         entries = [e for e in entries if isinstance(e, DecisionEntry) and e.outcome is None]
 
     if getattr(args, "before", None):
@@ -236,10 +241,8 @@ def _cmd_list(args, path, list_entries, resolve_active) -> int:
 
     if getattr(args, "scope", None):
         from little_loops.decisions import DecisionEntry
-        entries = [
-            e for e in entries
-            if isinstance(e, DecisionEntry) and e.scope == args.scope
-        ]
+
+        entries = [e for e in entries if isinstance(e, DecisionEntry) and e.scope == args.scope]
 
     if getattr(args, "active_only", False):
         entries = resolve_active(entries)
@@ -262,7 +265,9 @@ def _print_entry(entry) -> None:
     from little_loops.decisions import DecisionEntry, ExceptionEntry, RuleEntry
 
     label_str = ", ".join(entry.labels) if entry.labels else ""
-    print(f"{entry.id}  [{entry.type}]  {entry.category}" + (f"  ({label_str})" if label_str else ""))
+    print(
+        f"{entry.id}  [{entry.type}]  {entry.category}" + (f"  ({label_str})" if label_str else "")
+    )
     if isinstance(entry, (RuleEntry, DecisionEntry)):
         print(f"  rule: {entry.rule}")
     elif isinstance(entry, ExceptionEntry):

@@ -1966,9 +1966,7 @@ class TestMainMessagesAdditionalCoverage:
                     main_messages()
                 assert exc_info.value.code != 0
 
-    def test_sft_format_chatml_produces_records(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_sft_format_chatml_produces_records(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--sft-format chatml emits ChatML JSON-lines records via --stdout."""
         import json
         import tempfile
@@ -1983,21 +1981,15 @@ class TestMainMessagesAdditionalCoverage:
             },
             {
                 "type": "assistant",
-                "message": {
-                    "content": [{"type": "text", "text": "Hello user!"}]
-                },
+                "message": {"content": [{"type": "text", "text": "Hello user!"}]},
             },
         ]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project_dir = Path(tmpdir)
-            (project_dir / "session.jsonl").write_text(
-                "\n".join(json.dumps(r) for r in records)
-            )
+            (project_dir / "session.jsonl").write_text("\n".join(json.dumps(r) for r in records))
 
-            with patch(
-                "little_loops.user_messages.get_project_folder"
-            ) as mock_folder:
+            with patch("little_loops.user_messages.get_project_folder") as mock_folder:
                 mock_folder.return_value = project_dir
                 with patch.object(
                     sys,

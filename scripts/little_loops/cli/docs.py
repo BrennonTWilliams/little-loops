@@ -294,8 +294,7 @@ Exit codes:
                     "ok": len(violations) == 0,
                     "limit": args.limit,
                     "violations": [
-                        {"name": path.parent.name, "lines": lines}
-                        for path, lines in violations
+                        {"name": path.parent.name, "lines": lines} for path, lines in violations
                     ],
                 }
             )
@@ -305,9 +304,7 @@ Exit codes:
             logger.success(f"All SKILL.md files within {args.limit}-line limit")
             return 0
 
-        logger.error(
-            f"{len(violations)} SKILL.md file(s) exceed the {args.limit}-line limit:"
-        )
+        logger.error(f"{len(violations)} SKILL.md file(s) exceed the {args.limit}-line limit:")
         for path, lines in violations:
             print(f"  {lines:>6} lines  {path.parent.name}/SKILL.md")
         return 1

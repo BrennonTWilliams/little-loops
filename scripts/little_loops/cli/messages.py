@@ -252,9 +252,7 @@ Pipeline with ll-workflows (use the conventional path so ll-workflows finds it a
                 for window in windows:
                     print(json.dumps(formatter(window)))
             else:
-                output_path = _save_combined(
-                    [_SFTItem(formatter(w)) for w in windows], args.output
-                )
+                output_path = _save_combined([_SFTItem(formatter(w)) for w in windows], args.output)
                 logger.success(f"Saved {len(windows)} windows to: {output_path}")
             return 0
 

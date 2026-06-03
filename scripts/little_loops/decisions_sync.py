@@ -22,7 +22,8 @@ def sync_to_local_md(path: Path | None = None) -> None:
     ll_local_path = decisions_path.parent / "ll.local.md"
 
     rules = [
-        e for e in list_entries(decisions_path, type="rule")
+        e
+        for e in list_entries(decisions_path, type="rule")
         if getattr(e, "enforcement", None) == "required"
     ]
     active_rules = resolve_active(rules)

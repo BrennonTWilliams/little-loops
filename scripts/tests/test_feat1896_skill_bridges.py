@@ -57,7 +57,7 @@ class TestGoNoGoDecisionsBridge:
 
     def test_check_mode_guard_present(self) -> None:
         body = _body(GO_NO_GO_SKILL)
-        assert 'CHECK_MODE' in body and 'll-issues decisions add' in body, (
+        assert "CHECK_MODE" in body and "ll-issues decisions add" in body, (
             "skills/go-no-go/SKILL.md decisions add call must be guarded by CHECK_MODE"
         )
         # Guard and call must appear in the same section
@@ -176,7 +176,7 @@ class TestCaptureIssueDecisionsBridge:
 
     def test_bug_type_guard_present(self) -> None:
         body = _body(CAPTURE_ISSUE_SKILL)
-        assert 'ISSUE_TYPE' in body and 'BUG' in body, (
+        assert "ISSUE_TYPE" in body and "BUG" in body, (
             "capture-issue decisions add must be gated to skip BUG type"
         )
 

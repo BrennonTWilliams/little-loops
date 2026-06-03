@@ -52,6 +52,4 @@ class TestDecisionsContributing:
 
     def test_decisions_py_present(self) -> None:
         content = CONTRIBUTING.read_text()
-        assert "decisions.py" in content, (
-            "CONTRIBUTING.md must reference 'decisions.py'"
-        )
+        assert "decisions.py" in content, "CONTRIBUTING.md must reference 'decisions.py'"

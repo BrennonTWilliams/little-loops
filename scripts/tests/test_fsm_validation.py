@@ -1643,7 +1643,9 @@ class TestValidateStateLearningGuard:
         )
         errors = _validate_state_action("prove", state)
         target_errors = [
-            e for e in errors if "learning.targets" in e.path and e.severity == ValidationSeverity.ERROR
+            e
+            for e in errors
+            if "learning.targets" in e.path and e.severity == ValidationSeverity.ERROR
         ]
         assert target_errors == [], (
             f"targets_csv-only state should not produce an ERROR, got: {target_errors}"
@@ -1659,7 +1661,9 @@ class TestValidateStateLearningGuard:
         )
         errors = _validate_state_action("prove", state)
         target_errors = [
-            e for e in errors if "learning.targets" in e.path and e.severity == ValidationSeverity.ERROR
+            e
+            for e in errors
+            if "learning.targets" in e.path and e.severity == ValidationSeverity.ERROR
         ]
         assert len(target_errors) == 1, (
             f"Expected one ERROR for missing targets/targets_csv, got: {target_errors}"

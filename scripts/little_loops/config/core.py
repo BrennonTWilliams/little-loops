@@ -204,9 +204,7 @@ class BRConfig:
         self._learning_tests = LearningTestsConfig.from_dict(
             self._raw_config.get("learning_tests", {})
         )
-        self._decisions = DecisionsConfig.from_dict(
-            self._raw_config.get("decisions", {})
-        )
+        self._decisions = DecisionsConfig.from_dict(self._raw_config.get("decisions", {}))
         self._sync = SyncConfig.from_dict(self._raw_config.get("sync", {}))
         self._dependency_mapping = DependencyMappingConfig.from_dict(
             self._raw_config.get("dependency_mapping", {})

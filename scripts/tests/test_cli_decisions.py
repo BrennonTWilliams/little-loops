@@ -580,12 +580,15 @@ class TestDecisionsCLIGenerate:
                 completed_at=datetime(2026, 6, 3, tzinfo=UTC),
             ),
         ]
-        with mock_patch(
-            "little_loops.issue_history.parsing.scan_completed_issues", return_value=completed
-        ), patch.object(
-            sys,
-            "argv",
-            ["ll-issues", "decisions", "generate", "--config", str(temp_project_dir)],
+        with (
+            mock_patch(
+                "little_loops.issue_history.parsing.scan_completed_issues", return_value=completed
+            ),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "decisions", "generate", "--config", str(temp_project_dir)],
+            ),
         ):
             from little_loops.cli import main_issues
 

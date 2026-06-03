@@ -404,7 +404,6 @@ class LearningTestsConfig:
         )
 
 
-
 @dataclass
 class DecisionsConfig:
     """Decisions and rules log configuration."""
