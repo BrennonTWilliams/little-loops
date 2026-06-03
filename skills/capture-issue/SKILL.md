@@ -9,6 +9,7 @@ allowed-tools:
   - Grep
   - Write
   - Bash(ll-issues:*, git:*)
+  - Bash(ll-session:*)
 arguments:
   - name: input
     description: Natural language description of the issue (optional - analyzes conversation if omitted)
@@ -156,7 +157,7 @@ No actionable issues found in this conversation. You can run this command with a
 
 ### Phase 2: Duplicate Detection
 
-For each issue to capture, search for existing duplicates:
+For each issue to capture, search for existing duplicates. This phase performs three checks: (1) Jaccard scoring against active issues, (2) Jaccard scoring against completed/cancelled issues, and (3) an FTS5 near-duplicate check against the session history DB using `ll-session search --fts "<keywords>" --kind issue --limit 5 2>/dev/null || true`. If `.ll/history.db` is absent or the query returns no results, proceed silently without warning.
 
 #### Search Active Issues
 
@@ -202,6 +203,25 @@ ll-issues list --status done --format path
 ```
 
 Apply same scoring. If a completed issue has score >= {{config.issues.duplicate_detection.similar_threshold}}, it's a candidate for reopening.
+
+#### Search History DB for Near-Duplicates
+
+After Jaccard scoring, query the session history for recently closed or deferred issues matching the new issue's title keywords:
+
+```bash
+KEYWORDS=$(echo "<title>" | tr '[:upper:]' '[:lower:]' | grep -oE '\b[a-z]{3,}\b' | grep -vE '^(the|and|for|are|was|but|not|all|can|had|its|our|out|who|did|how|get|has|let|use|via|were|with|from|they|that|this|have|will|been|into|also|just|more|some|when|what|then|than|them|your|does|both|like)$' | tr '\n' ' ')
+HIST_DUPES=$(ll-session search --fts "$KEYWORDS" --kind issue --limit 5 2>/dev/null || true)
+```
+
+If results include issues with `status: done` or `status: deferred` and >70% title word overlap with the new issue title, surface a warning before writing the file:
+
+```
+Warning: Similar closed issue found: [ID] ([status]) — closed/deferred [N] days ago
+   Title: [existing issue title]
+   Proceed with new capture, or link to the existing issue instead?
+```
+
+Ask the user whether to proceed with capture or link to the existing issue. If `.ll/history.db` is absent or the query returns no results, proceed silently without warning.
 
 ### Phase 3: Handle Duplicates/Similar Issues
 

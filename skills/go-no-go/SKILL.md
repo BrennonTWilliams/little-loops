@@ -13,6 +13,7 @@ allowed-tools:
   - Agent
   - Edit
   - AskUserQuestion
+  - Bash(ll-history-context:*)
 metadata:
   short-description: Use when asked for an adversarial go/no-go review or whether an issue is worth i
 ---
@@ -133,6 +134,16 @@ Read the issue file completely. Extract and note:
 - Implementation steps
 - Motivation / use case
 - Impact section (priority, effort, risk)
+
+After loading the issue file, query the history database for prior corrections:
+
+```bash
+HIST=$(ll-history-context {{issue_id}} 2>/dev/null || true)
+```
+
+If `HIST` is non-empty, include it as a `## Historical Context` section in the evaluation context. Each matched correction is a -0.2 signal on the GO/NO-GO verdict confidence. Surface any matched corrections as explicit "prior concerns" in the output and weigh them in the judge agent's prompt.
+
+If `.ll/history.db` is absent or the query fails, proceed normally without historical context.
 
 ### Step 3a.5: Pre-Fetch Learning Test Context
 

@@ -111,7 +111,7 @@ little-loops/
 │       └── lib/
 │           └── common.sh    # Shared shell functions
 ├── loops/                   # Built-in FSM loop definitions (YAML); composable as sub-loops
-├── skills/                  # 33 skill definitions
+├── skills/                  # 35 skill definitions
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md
 │   ├── debug-loop-run/      # User-invoked
