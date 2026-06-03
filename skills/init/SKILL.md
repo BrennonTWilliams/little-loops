@@ -55,8 +55,8 @@ if [[ "$FLAGS" == *"--force"* ]]; then FORCE=true; fi
 if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
 if [[ "$FLAGS" == *"--codex"* ]]; then CODEX=true; fi
 
-# Auto-detect Codex CLI (codex on PATH or existing .codex/) if not passed.
-if [[ "$CODEX" == false ]]; then
+_ACTIVE_HOST="${LL_HOST_CLI:-${LL_HOOK_HOST:-}}"
+if [[ "$CODEX" == false ]] && [[ "$_ACTIVE_HOST" != "claude-code" ]]; then
     if command -v codex >/dev/null 2>&1 || [ -d ".codex" ]; then CODEX=true; fi
 fi
 
