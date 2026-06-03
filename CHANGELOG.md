@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+
+- Windows compatibility testing
+- Performance benchmarks for large repositories
+
+## [1.115.0] - 2026-06-03
+
 ### Added
 
+- **Rules and Decisions Log** — New `ll-issues decisions` CLI subcommand and `.ll/decisions.yaml` data layer for tracking opt-in compliance rules and decisions. Includes `list`, `add`, `outcome`, `generate` (LLM-assisted), and `sync` subcommands. Skill bridges wire the decisions log into `/ll:go-no-go` and `/ll:ready-issue`. (FEAT-948, FEAT-1892, FEAT-1893)
 - **`ll-verify-skills` line-count linter** — New CLI that checks every `SKILL.md` against a configurable line limit (default 500) and exits 1 on any violation. Supports `--limit N` and `--json` output. Run before release to enforce the flat-companion-file convention. (c53f0089)
 - **history.db wired into `/ll:go-no-go` and `/ll:capture-issue`** — `go-no-go` now queries `ll-history-context` after Step 3a and applies a −0.2 signal on GO/NO-GO confidence for each matched correction. `capture-issue` performs an FTS5 near-duplicate check via `ll-session` in Phase 2 with graceful degradation when `history.db` is absent. (ENH-1888)
 - **`is_correction()` broadened detection** — `session_store.py` adds phrase-internal patterns (`_PHRASE_RE`: "instead", "you missed", "should be", "wrong approach", "remember that", "always/never use", "from now on", "I meant…not") and an explicit `!remember` escape-hatch prefix (`_REMEMBER_RE`). More user corrections are now captured automatically in `history.db` without requiring a correction-style opening prefix. (ENH-1887)
@@ -16,7 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`learning_tests_required` gate in `/ll:ready-issue` and `/ll:go-no-go`** — Issues with `learning_tests_required:` frontmatter are now checked against the learning-test registry at gate time: proven → PASS, stale → WARN, missing/refuted → NOT_READY / NO-GO blocking. Gate is opt-in; absent or empty field is always PASS. (452affed)
 - **Variant C specialist-role pipeline template in `/ll:create-loop`** — New "Harness a skill — Variant C" option decomposes a task into four specialist roles (Plan, Research, Implement, Report) as distinct FSM states. Reference example: `loops/harness-plan-research-implement-report.yaml`. (FEAT-1798)
 - **`append_to_messages` FSM state field** — Loops can now build a run-scoped narrative log: each state that sets `append_to_messages: "${captured.X.output}"` appends to a `__messages__` accumulator passed as a prior-context block to all subsequent states. (7adff000)
-- **SFTFormatter + `ll-messages --sft-format`** — New `SFTFormatter` module supports `chatml`, `alpaca`, and `sharegpt` conversation formats. `ll-messages` gains `--sft-format <format>` (mutually exclusive with `--examples-format`) and a shared `--context-window N` (default 3) flag. (EPIC-1880, 6e9c7720, 55f53ea5, 293b2c43)
+- **SFTFormatter + `ll-messages --sft-format`** — New `SFTFormatter` module supports `chatml`, `alpaca`, and `sharegpt` conversation formats. `ll-messages` gains `--sft-format <format>` (mutually exclusive with `--examples-format`) and a shared `--context-window N` (default 3) flag. (EPIC-1880)
+- **PII detection utility** — New `pii_detection` module for filtering personally identifiable information from SFT training corpora. (106b2ae2)
+- **Learning-test discoverability gate via PreToolUse hook** — Hooks into `PreToolUse` to surface relevant learning tests at dispatch time, improving discoverability for issue workflows. (b10ebc19)
 
 ### Fixed
 
@@ -24,16 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PostToolUse hook wired into Claude Code** — The `post_tool_use` hook handler was not registered in the Claude Code hook config; it is now wired, enabling `tool_events` / `file_events` population and the auto-commit gate. (ad20d757)
 - **Session store: sessions populated before tool/message backfill** — `SQLiteTransport` now inserts session rows before the background JSONL backfill runs, eliminating FK-constraint violations on `tool_events` / `message_events` that referenced session IDs not yet present. (5c858662)
 - **autodev: stale inflight issue re-queued after context handoff resume** — When `ll-auto` resumes after a `CONTEXT_HANDOFF` signal, in-flight issues that were interrupted mid-processing are now correctly re-queued rather than dropped. (1693649e)
+- **Loop preset tuning** — Lowered `min_action_rows` threshold for clean/slim presets in the pinned pane. (50f938e7)
 
 ### Changed
 
 - **500-line `SKILL.md` limit enforced via companion files** — Skill directories now extract reference and template content into flat companion files (`*.md` peers to `SKILL.md`). `ll-verify-skills` mechanically enforces the limit; `ll-adapt-skills-for-codex` was updated to skip companion files during Codex bridging. (8bf9b23b)
 - **`ready-to-implement-gate` loop uses `type: learning` states** — The built-in gate loop now uses the FSM `type: learning` mechanism for assumption validation instead of ad-hoc shell checks, picking up the standard retry / `on_blocked` routing. (8db260ba)
-
-### Planned
-
-- Windows compatibility testing
-- Performance benchmarks for large repositories
+- **`ll-messages` mtime pre-filter** — `extract_conversation_turns()` now applies a file-level mtime pre-filter, skipping log files not modified since the requested start time, significantly improving performance on large log directories. (65b731a8)
 
 ## [1.114.0] - 2026-06-02
 
@@ -474,6 +481,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`check-duplicate-issue-id` hook TOCTOU race allows parallel duplicate IDs** — New `check-duplicate-issue-id-post.sh` PostToolUse Write hook reactively deletes any issue file whose integer ID already exists on disk, closing the race window between the PreToolUse "allow" response and the file landing on disk. (BUG-1364)
 
 [Unreleased]: https://github.com/BrennonTWilliams/little-loops/compare/v1.114.0...HEAD
+[1.115.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.114.0...v1.115.0
 [1.114.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.113.0...v1.114.0
 [1.113.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.112.0...v1.113.0
 [1.112.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.111.0...v1.112.0
