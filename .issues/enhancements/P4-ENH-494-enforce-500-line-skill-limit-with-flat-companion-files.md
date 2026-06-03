@@ -16,6 +16,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 10
+size: Very Large
 ---
 
 # ENH-494: Enforce 500-Line SKILL.md Limit with Flat Companion Files

@@ -23,7 +23,7 @@ description: |
   - Target software accessible at the given path or repo URL
   - Python 3.10+ available for venv install
 initial: init
-max_iterations: 5       # one initial bootstrap + up to 4 refine cycles
+max_iterations: 20      # clean pass = ~13 transitions; 5 was too low to reach delegate-bootstrap
 timeout: 7200           # 2h — CLI-Anything's full 7-phase pipeline takes 20-30 min
 
 context:
@@ -127,7 +127,25 @@ states:
       ```
 
       Be decisive. Do not equivocate.
-    next: bake-rubric
+    next: validate-classification
+
+  validate-classification:
+    # HARNESS: non-LLM exit-code gate — ensures classification.yaml is valid YAML with
+    # a recognised classification value before bake-rubric consumes it. Loops back to
+    # classify-target on failure so a malformed file doesn't silently poison downstream states.
+    action_type: shell
+    action: |
+      python3 -c "
+      import yaml, sys
+      d = yaml.safe_load(open('${captured.run_dir.output}/classification.yaml'))
+      assert d.get('classification') in ('desktop-gui', 'stateful-service', 'data-lib'), \
+        f\"unknown classification: {d.get('classification')}\"
+      assert d.get('target_name'), 'target_name is empty'
+      "
+    evaluate:
+      type: exit_code
+    on_yes: bake-rubric
+    on_no: classify-target
 
   bake-rubric:
     # HARNESS: write the per-target rubric BEFORE delegating. This is the bar the
@@ -172,7 +190,26 @@ states:
       data-lib:
         - json_output         (weight 2, threshold 1.0 — every command supports --json)
         - deterministic       (weight 1, threshold 1.0 — same inputs yield same outputs)
-    next: delegate-bootstrap
+    next: validate-rubric
+
+  validate-rubric:
+    # HARNESS: non-LLM exit-code gate — strips any markdown fenced-block wrappers the LLM
+    # adds around the YAML output, then parses the result. The audit confirmed bake-rubric
+    # produces ```yaml ... ``` fences that break downstream YAML consumers (score-bootstrap,
+    # publish-cache). Loops back to bake-rubric if the file is still unparseable after stripping.
+    action_type: shell
+    action: |
+      RUBRIC="${captured.run_dir.output}/rubric.yaml"
+      sed -i '' '/^```/d' "$RUBRIC"
+      python3 -c "
+      import yaml
+      d = yaml.safe_load(open('$RUBRIC'))
+      assert d.get('criteria'), 'criteria list is empty'
+      "
+    evaluate:
+      type: exit_code
+    on_yes: delegate-bootstrap
+    on_no: bake-rubric
 
   delegate-bootstrap:
     # HARNESS: hand off the actual 7-phase CLI generation to CLI-Anything's
