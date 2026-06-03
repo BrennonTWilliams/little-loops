@@ -218,6 +218,8 @@ To enable per-tool byte tracking, set `"analytics": {"enabled": true}` in `.ll/l
 
 Process all backlog issues sequentially in priority order. On startup, `ll-auto` prints a header showing the active LLM model name (detected from the Claude CLI `stream-json` init event).
 
+**Context handoff and stale-inflight re-queue:** When the agent's context window nears capacity, `ll-auto` emits a `CONTEXT_HANDOFF` signal and hands off to a fresh session. On resume (`--resume`), any issue that was in-flight at handoff time is re-queued at the front of the remaining work list so it is not silently dropped. (1693649e)
+
 **Flags:**
 
 | Flag | Short | Description |

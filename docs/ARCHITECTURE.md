@@ -628,12 +628,22 @@ flowchart TB
 | `SQLiteTransport.send()` | `session_store.py` | Routes `issue.*` / `loop.*` events to DB |
 | `EventBus.emit()` | `events.py` | Dispatches events to registered transports |
 | `post_tool_use` hook | `hooks/post_tool_use.py` | Writes `tool_events` / `file_events` per call |
-| `user_prompt_submit` hook | `hooks/user_prompt_submit.py` | Writes `user_corrections` / `skill_events` |
+| `user_prompt_submit` hook | `hooks/user_prompt_submit.py` | Writes `user_corrections` / `skill_events` via `is_correction()` heuristic |
 | `cli_event_context()` | `session_store.py` | Context manager that records `ll-` CLI entry-point invocations to `cli_events` (ENH-1849) |
 | `history_reader.py` | `history_reader.py` | Public read API: 5 query functions, 5 dataclasses |
 | `ll-history-context` CLI | `cli/history_context.py` | Primary consumer: renders `## Historical Context` block |
 | `ll-session` CLI | `cli/session.py` | Secondary consumer: search, issue events, sessions |
 | Skills | `commands/refine-issue.md` etc. | Call `ll-history-context` for agent context injection |
+
+### Correction Detection Heuristic
+
+`is_correction()` in `session_store.py` decides whether a user message should be recorded as a `user_corrections` row. It applies three independent pattern sets in order:
+
+1. **Prefix patterns** (`_CORRECTION_RE`) — Opening phrases like "no,", "wrong,", "actually,", "that's not", "you're wrong".
+2. **Phrase-internal patterns** (`_PHRASE_RE`) — Mid-sentence signals: "instead", "you missed", "should be" (guarded against false-positive affirmatives like "should be fine"), "wrong approach", "remember that", "always use", "never use", "from now on", "I meant … not". (ENH-1887)
+3. **Explicit escape hatch** (`_REMEMBER_RE`) — A message beginning with `!remember` is always classified as a correction regardless of phrasing. (ENH-1887)
+
+Any match across the three sets records the message as a correction. Consumers (`refine-issue`, `ready-issue`, `confidence-check`, `go-no-go`) retrieve these rows via `ll-history-context` to surface prior corrections as context before generating a response.
 
 ### Graceful-Degradation Contract
 

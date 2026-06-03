@@ -6,8 +6,15 @@ priority: P3
 discovered_date: 2026-04-04
 discovered_by: capture-issue
 blocked_by: []
-depends_on: FEAT-1479
+depends_on: []
 parent: EPIC-1707
+confidence_score: 96
+outcome_confidence: 60
+score_complexity: 13
+score_test_coverage: 10
+score_ambiguity: 22
+score_change_surface: 15
+implementation_order_risk: true
 ---
 
 # FEAT-948: Rules and Decisions Log for Issue Compliance
@@ -86,9 +93,9 @@ All three integrations are gated on graceful degradation: if `.ll/decisions.yaml
 - `scripts/little_loops/cli/issues/decisions.py` — CLI subcommand handler for `ll-issues decisions`; follow `scripts/little_loops/cli/issues/next_id.py:11` pattern
 
 **Modify existing:**
-- `scripts/little_loops/cli/issues/__init__.py:95` — add `decisions` subparser after `subs = parser.add_subparsers(dest="command", ...)` at line 95; add dispatch `if args.command == "decisions": return cmd_decisions(config, args)` before `return 1`; same pattern as all other subcommands in this file
-- `scripts/little_loops/config/features.py` — add `DecisionsConfig` dataclass with `enabled: bool`, `log_path: str = ".ll/decisions.yaml"`, `auto_generate: list[str]` fields; follow `IssuesConfig` at line 59
-- `scripts/little_loops/config/core.py:95` — add `self._decisions = DecisionsConfig.from_dict(...)` to `_parse_config()` and expose as `@property def decisions()`
+- `scripts/little_loops/cli/issues/__init__.py:124` — add `decisions` subparser after `subs = parser.add_subparsers(dest="command", ...)` at line 124 (line 95 is stale); add dispatch `if args.command == "decisions": return cmd_decisions(config, args)` in the dispatch chain at lines 689-733 before `return 1`; same pattern as all other subcommands in this file
+- `scripts/little_loops/config/features.py` — add `DecisionsConfig` dataclass with `enabled: bool`, `log_path: str = ".ll/decisions.yaml"`, `auto_generate: list[str]` fields; follow `IssuesConfig` at line 192 (line 59 is stale)
+- `scripts/little_loops/config/core.py:190` — add `self._decisions = DecisionsConfig.from_dict(...)` to `_parse_config()` (method starts at line 190, not 95) and expose as `@property def decisions()`
 - `hooks/scripts/session-start.sh:76-83` — extend to output the body (non-frontmatter) of `ll.local.md` when it contains an `## Active Rules` section, so compliance rules surface in Claude's context at session start; currently the Python heredoc (`merge_local_config()`) only outputs JSON from frontmatter and discards the body (`sys.exit(0)` at line 83); fix is inside the Python heredoc: extract body via `content.split("---", 2)[2]` after the frontmatter parse, then print it before `sys.exit(0)`
 - `commands/ready-issue.md` — add decisions log query step to suppress violations where a matching `exception` entry with `rule_ref` exists (currently at Section 2, lines 139-183)
 - `commands/verify-issues.md` — add query step to surface rule violations and suppress false positives via `exception` entries (current violation categories at lines 67-80)
@@ -108,12 +115,13 @@ All three integrations are gated on graceful degradation: if `.ll/decisions.yaml
 - `scripts/pyproject.toml:48` — add `ll-decisions = "little_loops.decisions:main"` entry point if a standalone `ll-decisions` binary is needed (vs. all ops under `ll-issues decisions`)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/issues/__init__.py:9` — `main_issues()` dispatches all `ll-issues` subcommands; decisions handler added here
+- `scripts/little_loops/cli/issues/__init__.py:689-733` — `main_issues()` dispatch chain; decisions handler added here; `add_subparsers` is at line 124
 - `scripts/little_loops/cli/__init__.py:24` — re-exports `main_issues`, no change needed
 - `hooks/scripts/session-start.sh:21` — already sets `LOCAL_FILE=".ll/ll.local.md"`; needs extension to output the body content
 - `skills/capture-issue/SKILL.md` — optional: log decisions at capture time
 - `commands/ready-issue.md` — validation command (not a skill); add decisions log query for exception suppression
 - `commands/verify-issues.md` — violation-surfacing command (not a skill); add rule violation query and false-positive suppression
+- `scripts/little_loops/config/__init__.py` — must re-export `DecisionsConfig` alongside `IssuesConfig` and other config classes [wiring pass]
 
 ### Similar Patterns
 
@@ -127,7 +135,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/sprint.py:206-373` — `SprintManager` class: CRUD manager with `create`/`load`/`list_all`/`delete` over `.yaml` files; closest model for `DecisionsManager`
 - `scripts/little_loops/state.py:134-155` — atomic write pattern (`tempfile.mkstemp` + `os.replace`); use if log corruption risk is a concern
 - `scripts/little_loops/session_log.py:112-128` — markdown section insert-after pattern (for writing `## Active Rules` into `ll.local.md`)
-- `scripts/little_loops/issue_history/parsing.py:263-287` — `scan_completed_issues(completed_dir: Path) -> list[CompletedIssue]` is the entry point for auto-generation from completed issues; returns `CompletedIssue` dataclass list; integrate here for `generate --from=completed`
+- `scripts/little_loops/issue_history/parsing.py:289` — `scan_completed_issues(issues_dir: Path, category_dirs: list[str] | None = None) -> list[CompletedIssue]` is the entry point for auto-generation from completed issues (line 263 is stale; function is at 289); returns `CompletedIssue` dataclass list sorted by file path; integrate here for `generate --from=completed`. A DB-backed alternative exists at line 351: `scan_completed_issues_from_db(db_path: Path)` — queries `issue_events` table for `transition='done'` rows; use this if `.ll/history.db` is available for faster lookups
 
 ### Tests
 
@@ -141,35 +149,66 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `temp_project_dir` (conftest.py:56) — tmpdir with `.ll/` folder; write `decisions.yaml` to `temp_project_dir / ".ll" / "decisions.yaml"` in tests
 - `sample_config` (conftest.py:66) — base config dict; add `decisions` key with test config
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Existing test files to update:**
+- `scripts/tests/test_config.py` — add `DecisionsConfig` to import block; add `TestDecisionsConfig` unit-test class and `TestBRConfigDecisionsIntegration` integration-test class following the `TestBRConfigLearningTestsIntegration` shape at line 2250; add `assert "decisions" in result` to `TestBRConfig.test_to_dict()` at line 743 [Agents 1, 3]
+- `scripts/tests/test_config_schema.py` — add `test_decisions_in_schema()` method following `test_learning_tests_in_schema()` at line 164; validates `"decisions"` key is declared under `config-schema.json` `properties` (root has `additionalProperties: false` — new top-level key is blocked without a schema declaration) [Agent 3]
+
+**New wiring test to add:**
+- `scripts/tests/test_create_extension_wiring.py` — add `TestFeat948DecisionsWiring` class asserting `decisions` appears in `commands/help.md`, `docs/reference/CLI.md`, `docs/reference/CONFIGURATION.md`, `.claude/CLAUDE.md`, and `CONTRIBUTING.md` (following the existing wiring-check pattern in that file) [Agent 2]
+
 ### Documentation
 - `docs/ARCHITECTURE.md` — document new log as a persistence layer
 - `.claude/CLAUDE.md` — update Key Directories and CLI Tools sections
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md` — add `decisions` block to Full Configuration Example and a table row in the Configuration Sections listing [Agent 2]
+- `docs/reference/API.md` — add `decisions: DecisionsConfig` row to the `BRConfig` Properties table [Agent 2]
+- `docs/reference/CLI.md` — add `#### ll-issues decisions` subsection documenting `list`, `add`, `generate`, `sync`, and `outcome` sub-sub-commands and their flags [Agent 2]
+- `CONTRIBUTING.md` — add `decisions.py` entry to the `cli/issues/` directory tree listing [Agent 2]
+- `commands/help.md` — append `decisions` to the `ll-issues` subcommand description in the CLI TOOLS block [Agent 2]
 
 ### Configuration
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-- `scripts/little_loops/config/features.py` — add `DecisionsConfig` with `enabled`, `log_path`, `auto_generate` fields; loaded from `ll-config.json` under a `"decisions"` key
-- `scripts/little_loops/config/core.py:95` — `_parse_config()` adds `self._decisions = DecisionsConfig.from_dict(self._raw_config.get("decisions", {}))`
+- `scripts/little_loops/config/features.py:192` — add `DecisionsConfig` with `enabled`, `log_path`, `auto_generate` fields after `IssuesConfig`; loaded from `ll-config.json` under a `"decisions"` key
+- `scripts/little_loops/config/core.py:190` — `_parse_config()` adds `self._decisions = DecisionsConfig.from_dict(self._raw_config.get("decisions", {}))`
 - `config-schema.json` — add `decisions` object schema (enabled, log_path, auto_generate) matching `DecisionsConfig` fields
 - `pyyaml>=6.0` is already a dependency (`scripts/pyproject.toml:38`) — no new deps needed
 
 ## Implementation Steps
 
 1. **Design + schema** — define `@dataclass` entry types (`RuleEntry`, `DecisionEntry`, `ExceptionEntry`) in `scripts/little_loops/decisions.py`; storage at `.ll/decisions.yaml` using `yaml.safe_load` / `yaml.dump(default_flow_style=False, sort_keys=False)` pattern from `scripts/little_loops/sprint.py:184`
-2. **Config** — add `DecisionsConfig` to `scripts/little_loops/config/features.py` (after `IssuesConfig:59`); wire into `BRConfig._parse_config()` at `scripts/little_loops/config/core.py:95`; update `config-schema.json`
+2. **Config** — add `DecisionsConfig` to `scripts/little_loops/config/features.py` (after `IssuesConfig:192`); wire into `BRConfig._parse_config()` at `scripts/little_loops/config/core.py:190`; update `config-schema.json`
 3. **Core CRUD** — implement `load_decisions()`, `save_decisions()`, `add_entry()`, `list_entries(type, category, label)`, `resolve_active()` (supersedes-aware) in `scripts/little_loops/decisions.py`
-4. **CLI subcommand** — create `scripts/little_loops/cli/issues/decisions.py` with `cmd_decisions(config, args)`; register `decisions` subparser in `scripts/little_loops/cli/issues/__init__.py:95` following existing subcommand pattern; supports `list`, `add`, `generate`, `sync` sub-sub-commands
+4. **CLI subcommand** — create `scripts/little_loops/cli/issues/decisions.py` with `cmd_decisions(config, args)`; register `decisions` subparser after line 124 in `scripts/little_loops/cli/issues/__init__.py` (where `add_subparsers` is called); add dispatch in the chain at lines 689-733 following existing subcommand pattern; supports `list`, `add`, `generate`, `sync` sub-sub-commands
 5. **Sync to ll.local.md** — implement `sync_to_local_md(project_root)` in `scripts/little_loops/decisions.py`; writes `## Active Rules` section; extend `hooks/scripts/session-start.sh` (after line 97) to also output the body of `ll.local.md` so `## Active Rules` surfaces in Claude's context at session start
 6. **Skill-level decision capture bridges** — update three skills to append `decision` entries as a side effect:
    - `skills/decide-issue/SKILL.md`: after Phase 6 annotation, call `ll-issues decisions add --type=decision --issue=$FILE --rule="<chosen option title>" --rationale="<Decision Rationale text>" --alternatives-rejected="<other options + scores>"` (or equivalent Python call); guard with `[ -f .ll/decisions.yaml ]` or `decisions.enabled` check
    - `commands/tradeoff-review-issues.md`: after final output, append `decision` entry with recommendation text and tradeoff narrative
    - `skills/go-no-go/SKILL.md`: after verdict, append `decision` entry with Go/No-Go result and rationale
 7. **capture-issue integration** — update `skills/capture-issue/SKILL.md` to optionally log a `decision` entry when the user makes a notable architectural choice
-8. **Auto-generation from completed issues** — add `generate_from_completed(config)` to `decisions.py` using `scan_completed_issues()` from `scripts/little_loops/issue_history/parsing.py:263`; the hook system has no per-command event (only `PostToolUse`/`Bash` and `Stop`) so auto-triggering from manage-issue requires detecting manage-issue invocation in the `issue-completion-log.sh` hook OR exposing this as a manual `ll-issues decisions generate --from=completed` command
+8. **Auto-generation from completed issues** — add `generate_from_completed(config)` to `decisions.py` using `scan_completed_issues()` from `scripts/little_loops/issue_history/parsing.py:289`; consider `scan_completed_issues_from_db()` at line 351 as a faster alternative when `.ll/history.db` is available; the hook system has no per-command event (only `PostToolUse`/`Bash` and `Stop`) so auto-triggering from manage-issue requires detecting manage-issue invocation in the `issue-completion-log.sh` hook OR exposing this as a manual `ll-issues decisions generate --from=completed` command
 9. **Validation integration** — update `commands/ready-issue.md` and `commands/verify-issues.md` to query decisions log: check active `required` rules, surface violations, suppress false positives where `exception` entry with matching `rule_ref` exists; also update `skills/format-issue/SKILL.md` (listed in Proposed Solution alongside these two)
 10. **Tests** — write `scripts/tests/test_decisions.py` (CRUD, exception suppression, supersedes resolution) and `scripts/tests/test_cli_decisions.py` (CLI via `patch.object(sys, "argv")`); use `temp_project_dir` fixture from `conftest.py:56`
 11. **Docs** — update `docs/ARCHITECTURE.md`, `.claude/CLAUDE.md` Key Directories and CLI Tools sections
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+12. Extend `BRConfig.to_dict()` in `scripts/little_loops/config/core.py` — add `decisions` block to the serialization dict (parallel to all other config properties); also update the import block (lines 23–33) to include `DecisionsConfig`
+13. Re-export `DecisionsConfig` from `scripts/little_loops/config/__init__.py` alongside `IssuesConfig` and other config classes
+14. Update `commands/help.md` — append `decisions` to the `ll-issues` subcommand description in the CLI TOOLS block
+15. Update `docs/reference/CONFIGURATION.md` — add `decisions` config block to the Full Configuration Example and a table row in the Configuration Sections section
+16. Update `docs/reference/API.md` — add `decisions: DecisionsConfig` row to the `BRConfig` Properties table
+17. Update `docs/reference/CLI.md` — add `#### ll-issues decisions` subsection documenting `list`, `add`, `generate`, `sync`, and `outcome` sub-sub-commands and their flags
+18. Update `CONTRIBUTING.md` — add `cli/issues/decisions.py` to the `cli/issues/` directory tree listing
+19. Update `scripts/tests/test_config.py` — add `DecisionsConfig` to import block; add `TestDecisionsConfig` class and `TestBRConfigDecisionsIntegration` class following `TestBRConfigLearningTestsIntegration` at line 2250; add `assert "decisions" in result` to `TestBRConfig.test_to_dict()` at line 743
+20. Update `scripts/tests/test_config_schema.py` — add `test_decisions_in_schema()` method following `test_learning_tests_in_schema()` at line 164
+21. Add `TestFeat948DecisionsWiring` class to `scripts/tests/test_create_extension_wiring.py` — assert `decisions` is documented in `commands/help.md`, `docs/reference/CLI.md`, `docs/reference/CONFIGURATION.md`, `.claude/CLAUDE.md`, and `CONTRIBUTING.md`
 
 ## Use Case
 
@@ -378,7 +417,22 @@ The existing 11-step plan stands. Affected steps:
 - No `DecisionsConfig` in `config/features.py` ✓
 - `scripts/little_loops/sprint.py:142-202` dataclass + YAML pattern confirmed ✓
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-02_
+
+**Readiness Score**: 96/100 → PROCEED
+**Outcome Confidence**: 60/100 → LOW
+
+### Outcome Risk Factors
+- **Broad change surface** — 26 sites across 6+ subsystems; implement tests first so the CRUD layer is validated before wiring integrations into CLI dispatch and skill files
+- **No existing test coverage on new modules** — `test_decisions.py` and `test_cli_decisions.py` are co-deliverables; write tests before implementing CLI and skill-level integrations to catch CRUD regressions early
+- **Wide integration footprint on validation commands** — changes to `ready-issue`, `verify-issues`, and `format-issue` must degrade gracefully when `.ll/decisions.yaml` is absent; the graceful degradation constraint (line 63–67) is explicit but must be exercised in tests
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-02T00:00:00Z - `4b5de5ec-d385-4650-ba02-2b30fd86f7c9.jsonl`
+- `/ll:wire-issue` - 2026-06-03T04:32:47 - `9c0f8dbb-351a-41ed-9197-60fd7f2c12ae.jsonl`
+- `/ll:refine-issue` - 2026-06-03T04:21:10 - `60ee9acd-b841-40a0-a88d-945fde499b97.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:43 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:09 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
@@ -406,5 +460,7 @@ The existing 11-step plan stands. Affected steps:
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-11): `.ll/decisions.yaml` is a user-edited, human-authored YAML file and must remain as such — it is not a candidate for migration into FEAT-1112's `.ll/session.db`. The two stores serve different purposes: `decisions.yaml` holds standing rules, per-issue decisions, and exceptions authored by a developer; `session.db` holds machine-generated tool-event and session data. FEAT-1112 is a prerequisite only for the query/sync infrastructure (e.g., `ll-decisions sync` writing to `.ll/ll.local.md` may benefit from FTS5 lookups); it does not imply decisions data moves to SQLite. When implementing, treat decisions.yaml as the source of truth and SQLite as a read-only index if used at all.
 
 **Sequencing note** (added by `/ll:audit-issue-conflicts` 2026-05-14): BUG-1461 should resolve before this issue is implemented. Both touch `config-schema.json` and the session-start hook path. BUG-1461 either removes `continuation.auto_detect_on_session_start` from the schema or adds an implementation in `session_start.py`; this issue adds a `decisions` block to the same schema and extends `session-start.sh`. Resolving BUG-1461 first provides a stable schema baseline. Related: BUG-1461.
+
+**Dependency note** (added by `/ll:refine-issue` 2026-06-02): `depends_on: FEAT-1479` in frontmatter appears erroneous. FEAT-1479 (Pi Adapter Config, P5-open) adds a `"pi"` host to `hooks.properties.host.enum` in `config-schema.json` and a Pi branch in `config/core.py:_config_candidates()` — unrelated to the decisions log. The actual `config-schema.json` sequencing concern for this issue is with BUG-1461 (noted below). Consider clearing `depends_on: FEAT-1479` from frontmatter; the BUG-1461 note in the Scope Boundary is the load-bearing sequencing constraint.
 
 **Extensibility note** (added by `/ll:audit-issue-conflicts` 2026-05-31): FEAT-1736 adds a fourth `coupling` entry type to `decisions.yaml` and depends on this issue. When implementing `add_entry()`, `list_entries()`, and `resolve_active()`, use an open/extensible dispatch pattern (e.g., a registry dict or explicit `elif` chain with a documented extension point) rather than a closed match on the three MVP types (`rule`, `decision`, `exception`). This ensures FEAT-1736 can introduce the `coupling` type without modifying core dispatch logic. Related: FEAT-1736.
