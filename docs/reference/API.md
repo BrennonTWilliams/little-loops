@@ -6153,7 +6153,7 @@ def main_hooks(argv: list[str]) -> int: ...
 4. Calls the handler; writes `result.stdout` to stdout if non-`None`, prints `result.feedback` to stderr if truthy, and returns `result.exit_code` (the `__main__` shim raises `SystemExit(...)`).
 
 **Adapter integration:**
-- Claude Code adapters (`hooks/adapters/claude-code/precompact.sh`, `session-start.sh`, `session-end.sh`) invoke `python -m little_loops.hooks <intent>` directly — `LL_HOOK_HOST` defaults to `"claude-code"`.
+- Claude Code adapters (`hooks/adapters/claude-code/precompact.sh`, `post-tool-use.sh`, `session-start.sh`, `session-end.sh`) invoke `python -m little_loops.hooks <intent>` directly — `LL_HOOK_HOST` defaults to `"claude-code"`.
 - The OpenCode adapter (`hooks/adapters/opencode/index.ts`) sets `LL_HOOK_HOST=opencode` before invoking the same CLI.
 - The Codex CLI adapter (`hooks/adapters/codex/session-start.sh`, `pre-compact.sh`) sets `LL_HOOK_HOST=codex` before invoking the same CLI. The `hooks.json` template restricts `SessionStart` to `"matcher": "startup"` per FEAT-957's policy (avoids re-emitting identifiers on `resume`/`clear` and minimizes trust-hash churn).
 

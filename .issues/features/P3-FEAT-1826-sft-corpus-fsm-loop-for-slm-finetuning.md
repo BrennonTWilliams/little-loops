@@ -8,6 +8,7 @@ captured_at: "2026-05-31T22:00:59Z"
 discovered_date: "2026-05-31"
 discovered_by: capture-issue
 parent: EPIC-1880
+decision_needed: false
 ---
 
 # FEAT-1826: sft-corpus FSM loop for SLM fine-tuning from session logs
@@ -57,6 +58,117 @@ A practitioner wants to fine-tune an SLM on Claude Code session data. They have 
 ### Child loop handoff
 Pipe the curated back-half (filter → dedup → split) through `dataset-curation` via a `loop:` handoff, reusing its quality/distribution/validate/publish states rather than reimplementing them.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Critical: `ingest` + `convert` collapse into one shell action (ENH-1827 `status: done`)**
+
+`ll-messages --sft-format` already handles both phases:
+
+```bash
+# harvest state (action_type: shell)
+SINCE_ARG=""; [ -f sft-corpus.last_harvested ] && SINCE_ARG="--since $(cat sft-corpus.last_harvested)"
+ll-messages --sft-format ${context.sft_format} \
+  --context-window ${context.max_turns} \
+  $SINCE_ARG \
+  --output ${context.output_dir}/raw.jsonl
+```
+
+**Harvest sentinel pattern** (from `examples-miner.yaml:harvest/publish`):
+- Read: `[ -f sft-corpus.last_harvested ] && SINCE_ARG="--since $(cat sft-corpus.last_harvested)"`
+- Write: `date -u +%Y-%m-%dT%H:%M:%SZ > sft-corpus.last_harvested` (in terminal/publish state)
+
+**`loop:` handoff syntax** (from `examples-miner.yaml:run_optimizer`, `schema.py:L381`):
+- `context_passthrough: true` — forwards parent context wholesale; mutually exclusive with `with:`
+- `with:` block — explicit bindings; required when child context key names differ from parent
+- `on_success`/`on_failure` are aliases for `on_yes`/`on_no` in `StateConfig.from_dict`
+
+**Token filtering**: No `tiktoken` in codebase. Use word-count approximation as proxy:
+```bash
+python3 -c "import sys,json; d=json.loads(sys.stdin.read()); \
+  print(sum(len(m.get('content','').split()) for m in d.get('messages', [])))"
+```
+Or instruct the `filter` prompt state to estimate turn lengths from the example JSON.
+
+**Dedup**: `scripts/little_loops/text_utils.py:calculate_word_overlap()` uses Jaccard similarity — same pattern the codebase uses for near-duplicate detection. No hashlib approach needed.
+
+**dataset-curation context key mismatch — see `decision_needed` options below.**
+
+**Run command**: `ll-loop run sft-corpus` — auto-discovered from `scripts/little_loops/loops/sft-corpus.yaml`
+
+---
+
+**Proposed Solution — dataset-curation handoff strategy (3 options)**
+
+This is the primary implementation decision. `context_passthrough` and `with:` are mutually exclusive, and `dataset-curation` uses `context.data_dir` while `sft-corpus` writes to `context.output_dir`.
+
+**Option A: Align context keys in sft-corpus**
+
+Add `data_dir` as an alias in sft-corpus's `context:` block pointing to the staging directory. Use `context_passthrough: true` — child inherits `data_dir` from parent.
+
+```yaml
+context:
+  data_dir: "data/sft/staged"   # staging dir; passed to dataset-curation via context_passthrough
+  output_dir: "data/sft"
+  ...
+
+curate:
+  loop: dataset-curation
+  context_passthrough: true
+  on_success: update_sentinel
+  on_failure: done
+```
+
+Pro: No changes to `dataset-curation.yaml`. Con: `data_dir` semantics in sft-corpus are slightly misleading.
+
+**Option B: Use `with:` for explicit binding**
+
+> **Selected:** Option B — explicit `with:` binding via `ParameterSpec` is the purpose-built mechanism for cross-loop context key mapping, matching the `scan-and-implement.yaml` pattern exactly.
+
+Add a formal `parameters:` block to `dataset-curation.yaml` declaring `data_dir`, then use `with:` from sft-corpus to bind it explicitly.
+
+```yaml
+# in sft-corpus.yaml
+curate:
+  loop: dataset-curation
+  with:
+    data_dir: "${context.output_dir}/staged"
+    output_dir: "${context.output_dir}"
+    schema_path: "${context.schema_path}"
+  on_success: update_sentinel
+  on_failure: done
+```
+
+Pro: Explicit and type-safe; no key aliasing confusion. Con: Requires adding `parameters:` to `dataset-curation.yaml`.
+
+**Option C: sft-corpus owns filter/dedup/split; dataset-curation handles only validate+publish**
+
+sft-corpus implements all 6 states itself and uses `dataset-curation` only for final schema validation and publishing. The `loop:` handoff to `dataset-curation` starts from its `validate_schema` state.
+
+Pro: No context key mismatch; cleaner separation of concerns. Con: Reimplements distribution-balance logic that `dataset-curation` already has; the `loop:` field doesn't support specifying a start-state in the child FSM (child always begins at `initial`).
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-02.
+
+**Selected**: Option B: Use `with:` for explicit binding
+
+**Reasoning**: Option B uses the purpose-built `ParameterSpec` + `with:` mechanism (`schema.py:208`) that was designed precisely for cross-loop context key mapping, and matches the established `scan-and-implement.yaml:77` handoff pattern. Option A (context_passthrough with an alias key) works but introduces a misleading `data_dir` in sft-corpus's context block. Option C is technically non-viable: `loop:` handoffs have no `start_state` parameter and `dataset-curation`'s `initial` state is `ingest` — the child FSM cannot be entered at `validate_schema`.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 2/3 | 3/3 | 2/3 | 3/3 | 10/12 |
+| Option B | 3/3 | 2/3 | 3/3 | 2/3 | 10/12 |
+| Option C | 0/3 | 0/3 | 1/3 | 0/3 | 1/12 |
+
+**Key evidence**:
+- **Option A**: `examples-miner.yaml:138` uses `context_passthrough: true` — established pattern, but adding a `data_dir` alias key in sft-corpus purely for child compatibility has no prior precedent in the codebase.
+- **Option B**: `scan-and-implement.yaml:77` uses `with:` for explicit bindings; `ParameterSpec` (`schema.py:208`) is the designed mechanism for exactly this use case. Adding `parameters:` to `dataset-curation.yaml` with defaults is non-breaking.
+- **Option C**: `dataset-curation.yaml:19` sets `initial: ingest`; no `start_state` field exists in `StateConfig` (`schema.py:381`). The `loop:` handoff cannot target `validate_schema` as entry point — this option is architecturally blocked without FSM runner changes.
+
 ## API / Interface
 
 Context keys (`.ll/ll-config.json` or loop `context:` block):
@@ -85,14 +197,35 @@ context:
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/dataset-curation.yaml` — invoked as back-half via `loop:` handoff
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Reusable utilities (no reimplementation needed):**
+- `scripts/little_loops/sft_formatter.py:to_chatml()` (L7) — converts `list[tuple[str,str]]` → `{"messages": [...]}`
+- `scripts/little_loops/sft_formatter.py:to_alpaca()` (L20) — first user turn → instruction, last assistant → output
+- `scripts/little_loops/sft_formatter.py:to_sharegpt()` (L39) — maps user→human, assistant→gpt
+- `scripts/little_loops/user_messages.py:extract_conversation_turns()` (L765) — sliding-window extraction from `.jsonl` logs with `since` filter; returns `list[list[tuple[str,str]]]`
+- `scripts/little_loops/cli/messages.py:main_messages()` — `ll-messages --sft-format <fmt> --context-window N --since DATE --stdout` already combines ingest + format conversion (ENH-1827 `status: done`)
+- `scripts/little_loops/text_utils.py:calculate_word_overlap()` — Jaccard similarity for near-duplicate detection (not hashlib); existing dedup pattern in the codebase
+
+**Loop handoff context key mismatch (see Proposed Solution / decision_needed):**
+- `dataset-curation.yaml` reads from `context.data_dir`; `sft-corpus` writes to `context.output_dir` — these are different keys; binding strategy is the implementation decision
+
 ### Similar Patterns
-- `scripts/little_loops/loops/examples-miner.yaml` — reference for log ingestion and harvest-sentinel patterns
+- `scripts/little_loops/loops/examples-miner.yaml:harvest` — canonical harvest sentinel shell pattern (`SINCE_ARG` + `--since`) and sentinel write in `publish` state
+- `scripts/little_loops/loops/examples-miner.yaml:run_optimizer` — `loop: apo-textgrad` with `context_passthrough: true`, `on_success`/`on_failure` routing
+- `scripts/little_loops/loops/scan-and-implement.yaml` — `loop:` with explicit `with:` bindings (alternative to `context_passthrough`)
+- `scripts/little_loops/loops/dataset-curation.yaml:route_quality` — `output_numeric` evaluator (non-LLM gate); pairs with `llm_structured` in `validate_schema` to satisfy MR-1
 
 ### Tests
-- TBD — add integration test in `scripts/tests/` verifying loop produces valid output files
+- `scripts/tests/test_fsm_flow.py:TestBuiltinLoopRegression.test_all_builtin_loops_still_load()` — auto-picks up new `loops/sft-corpus.yaml`; no custom YAML validation test needed
+- `scripts/tests/test_loops_recursive_refine.py` — template for testing shell state logic via `_bash(script, tmp_path)` with `.loops/tmp/` fixtures (if sentinel/filter shell snippets need unit tests)
+- `scripts/tests/test_user_messages.py` — SFT formatter tests already exist; add `extract_conversation_turns` coverage if testing that path directly
 
 ### Documentation
-- TBD — consider a loop guide entry in `docs/guides/`
+- `docs/guides/EXAMPLES_MINING_GUIDE.md` — deep-dive on harvest sentinel pattern; read before implementing `ingest` state
+- `docs/guides/LOOPS_GUIDE.md` — loop authoring guide; `loop:` handoff syntax documented in sub-loop section
 
 ### Configuration
 - `.ll/ll-config.json` — optional `sft_corpus` section for context key overrides
@@ -115,6 +248,8 @@ context:
 `loop`, `sft`, `fine-tuning`, `new-feature`
 
 ## Session Log
+- `/ll:decide-issue` - 2026-06-03T00:24:05 - `0467dd38-23d6-4a11-9d93-1a10ed0c40c9.jsonl`
+- `/ll:refine-issue` - 2026-06-03T00:18:35 - `d3bc2a68-d557-49f9-a947-e12cd4b90c1c.jsonl`
 - `/ll:format-issue` - 2026-06-02T23:15:08 - `0d29889f-5db4-42d2-b354-e9615aee84a2.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:43 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:capture-issue` - 2026-05-31T22:00:59Z - `109abe71-e47d-4222-b37d-c17fd7d98dee.jsonl`

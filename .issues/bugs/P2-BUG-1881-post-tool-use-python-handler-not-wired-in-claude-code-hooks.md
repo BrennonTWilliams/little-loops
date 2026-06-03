@@ -2,9 +2,10 @@
 id: BUG-1881
 type: BUG
 priority: P2
-status: open
+status: done
 discovered_date: 2026-06-02
 captured_at: '2026-06-02T23:39:38Z'
+completed_at: '2026-06-03T00:23:32Z'
 discovered_by: capture-issue
 relates_to:
 - EPIC-1707
@@ -181,4 +182,5 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `/ll:refine-issue` - 2026-06-02T23:50:46 - `2a1abd26-d301-4d91-8b99-8cf96eaffa61.jsonl`
 - `/ll:format-issue` - 2026-06-02T23:43:00 - `e58fe996-ddfe-46f4-a827-73b50b9ebde3.jsonl`
 
+- `/ll:manage-issue` - 2026-06-03T00:23:32Z - `34bab018-1b4d-4b83-8b6b-8b9ae22a3976.jsonl`
 - `/ll:capture-issue` - 2026-06-02T23:39:38Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/65f77860-d771-4c40-9ba9-2bc9f9139bfe.jsonl`

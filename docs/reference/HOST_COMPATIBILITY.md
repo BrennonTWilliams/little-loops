@@ -33,9 +33,11 @@ into `LLHookEvent` payloads.
     tool invocation and require a latency budget. Research decision
     (FEAT-1488, `thoughts/research/hot-path-hook-intents.md`), executed
     by FEAT-1489 and extended by FEAT-1623:
-    - `post_tool_use` is wired fire-and-forget on both hosts. OpenCode
-      invokes `spawnIntent` without `await`. Codex uses a 4-line blocking
-      shim with a 5s timeout. Per FEAT-1623 the handler persists per-tool
+    - `post_tool_use` is wired on all three hosts. Claude Code uses a
+      blocking shim (`hooks/adapters/claude-code/post-tool-use.sh`) with a
+      5s timeout (BUG-1881). OpenCode invokes `spawnIntent` without `await`
+      (fire-and-forget). Codex uses a 4-line blocking shim with a 5s
+      timeout. Per FEAT-1623 the handler persists per-tool
       byte metrics into `.ll/history.db` when `analytics.enabled` is set;
       a single-row INSERT (or the disabled-guard early return) keeps
       handler p95 well below the timeout. Failures are suppressed inside

@@ -57,6 +57,17 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/post-tool-use.sh",
+            "timeout": 5,
+            "statusMessage": "Recording tool use..."
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/context-monitor.sh",
             "timeout": 5,
             "statusMessage": "Monitoring context usage..."

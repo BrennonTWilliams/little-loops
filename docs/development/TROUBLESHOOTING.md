@@ -829,6 +829,7 @@ If `ll-loop stop` still reports "not running" (e.g. lock file is missing but sco
    chmod +x hooks/scripts/check-duplicate-issue-id.sh
    chmod +x hooks/scripts/check-duplicate-issue-id-post.sh
    chmod +x hooks/scripts/user-prompt-check.sh
+   chmod +x hooks/adapters/claude-code/post-tool-use.sh
    chmod +x hooks/adapters/claude-code/precompact.sh
    chmod +x hooks/adapters/claude-code/session-end.sh
    chmod +x hooks/adapters/claude-code/session-start.sh
