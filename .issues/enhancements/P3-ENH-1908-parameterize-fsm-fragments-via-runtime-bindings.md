@@ -2,8 +2,9 @@
 id: ENH-1908
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-03T20:51:54Z'
+completed_at: '2026-06-03T23:19:25Z'
 discovered_date: '2026-06-03'
 discovered_by: capture-issue
 labels:

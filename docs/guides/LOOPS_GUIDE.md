@@ -3117,8 +3117,7 @@ State-level fields override fragment fields at every nesting level, including ne
 states:
   check_count:
     fragment: retry_counter       # provides action_type, action script, evaluate.type/operator
-    evaluate:
-      target: 5                   # override only the target; type/operator from fragment
+    with: {counter_key: my_retries, max_retries: 5}   # runtime bindings for parameterized fragment
     on_yes: keep_going
     on_no: give_up
 ```
@@ -3155,7 +3154,7 @@ Generic structure fragments (action_type + evaluate combinator) used by all buil
 | Fragment | Description | Provides | Caller must supply |
 |----------|-------------|----------|--------------------|
 | `shell_exit` | Shell command evaluated by exit code. | `action_type: shell` + `evaluate.type: exit_code` | `action`, routing (`on_yes`, `on_no`) |
-| `retry_counter` | Increments a counter file and checks if still below `context.max_retries`. | Shell counter script + `output_numeric` evaluator | `context.counter_key`, `context.max_retries`, routing |
+| `retry_counter` | Increments a counter file and checks if still below the max retry limit. Declares `parameters: {counter_key, max_retries}` — bind at call site via `with:` for collision-free multi-use. | Shell counter script + `output_numeric` evaluator | `with: {counter_key: ..., max_retries: ...}` (or legacy `context.counter_key` / `context.max_retries`), routing |
 | `llm_gate` | LLM prompt state with structured yes/no output. When the prompt performs multiple MCP tool calls followed by synthesis (~10 calls), set `timeout: 1500` or higher at the state level; the 3600s executor fallback is bypassed by any loop-level `default_timeout:`. | `action_type: prompt` + `evaluate.type: llm_structured` | `action`, `evaluate.prompt`, routing (`on_yes`, `on_no`), optionally `timeout` |
 | `numeric_gate` | Shell command evaluated by numeric output comparison. | `action_type: shell` + `evaluate.type: output_numeric` | `action`, `evaluate.operator`, `evaluate.target`, routing (`on_yes`, `on_no`) |
 | `with_rate_limit_handling` | Applies per-state two-tier rate-limit retry handling: 3 short retries (30 s base backoff) then the default long-wait ladder (5 min → 15 min → 30 min → 1 h) up to a 6 h wall-clock budget. | `max_rate_limit_retries: 3`, `rate_limit_backoff_base_seconds: 30`, plus inherited `rate_limit_long_wait_ladder` and `rate_limit_max_wait_seconds` defaults | `on_rate_limit_exhausted` (target state name) |
@@ -3289,7 +3288,7 @@ states:
 | Fragment | Description | Provides | Caller must supply |
 |----------|-------------|----------|--------------------|
 | `playwright_screenshot` | Runs `playwright screenshot` and emits `CAPTURED` on success. Default action uses `context.file_url` and `context.screenshot_path` with `2>&1` stderr capture (Variant B). Variant A callers needing `$(pwd)/` expansion must override `action:` at the call site. | `action_type: shell` + `evaluate.type: output_contains` (`pattern: "CAPTURED"`) | `context.file_url`, `context.screenshot_path` (or override `action:`), routing (`on_yes`, `on_no`, `on_error`) |
-| `ll_rubric_score` | Scores a generated artifact in `context.run_dir` against `context.rubric` with pass threshold `context.pass_threshold`. Emits `ALL_PASS` when all criteria pass; otherwise `NEEDS_WORK` with improvement notes. Used in the `generator-evaluator` oracle `score` state. | `action_type: prompt` + `evaluate.type: output_contains` (`pattern: "ALL_PASS"`) | `context.run_dir`, `context.rubric`, `context.pass_threshold` in loop context, routing (`on_yes`, `on_no`, `on_error`) |
+| `ll_rubric_score` | Scores a generated artifact against a rubric with a configurable pass threshold. Emits `ALL_PASS` when all criteria pass; otherwise `NEEDS_WORK` with improvement notes. Used in the `generator-evaluator` oracle `score` state. Declares `parameters: {run_dir, rubric, pass_threshold}` — bind at call site via `with:`. | `action_type: prompt` + `evaluate.type: output_contains` (`pattern: "ALL_PASS"`) | `with: {run_dir: ..., rubric: ..., pass_threshold: ...}` (or legacy `context.run_dir` / `context.rubric` / `context.pass_threshold`), routing (`on_yes`, `on_no`, `on_error`) |
 
 Built-in loops import the libraries as `import: ["lib/common.yaml"]` or `import: ["lib/cli.yaml"]`. User loops in `.loops/` can do the same — built-in fragment libraries resolve automatically, so no copying or symlinking is required. You can also define your own local fragments in your loop file or a local library.
 
@@ -3301,7 +3300,7 @@ Built-in loops import the libraries as `import: ["lib/common.yaml"]` or `import:
 | Sub-loop (`loop:`) | Reusing a complete, well-tested loop as a pipeline stage with its own execution context |
 | Inline states | Custom logic that doesn't map to any reuse pattern |
 
-Fragment resolution is parse-time only — the engine never sees `fragment:` keys and there is no runtime overhead.
+Fragment field merging is parse-time — the engine never sees `fragment:` keys. Parameterized fragments (those with a `parameters:` block) additionally support runtime binding via `with:`, which is evaluated at execution time so the same fragment can appear in multiple states with different counter keys or thresholds without collision.
 
 ---
 

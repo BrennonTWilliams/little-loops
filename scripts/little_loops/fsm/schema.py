@@ -402,6 +402,14 @@ class StateConfig:
         with_: Explicit parameter bindings for sub-loop calls (YAML key: 'with'). Maps
             declared child parameter names to parent expressions. Only valid when 'loop'
             is set. Mutually exclusive with context_passthrough.
+        fragment_name: Original fragment name from the 'fragment:' YAML key. Populated by
+            resolve_fragments; None for non-fragment states. Used for validation and debugging.
+        fragment_bindings: Parameter bindings for fragment references (YAML key 'with' on a
+            fragment state, renamed to 'fragment_bindings' by resolve_fragments). Distinct from
+            with_ (sub-loop bindings) and params (MCP tool args). Only valid when fragment_name
+            is set.
+        fragment_parameters: Parsed ParameterSpec declarations from the fragment definition's
+            'parameters:' block. Populated by resolve_fragments for validation and runtime checks.
     """
 
     action: str | None = None
@@ -431,6 +439,9 @@ class StateConfig:
     loop: str | None = None
     context_passthrough: bool = False
     with_: dict[str, Any] = field(default_factory=dict)
+    fragment_name: str | None = None
+    fragment_bindings: dict[str, Any] = field(default_factory=dict)
+    fragment_parameters: dict[str, ParameterSpec] = field(default_factory=dict)
     agent: str | None = None
     tools: list[str] | None = None
     extra_routes: dict[str, str] = field(default_factory=dict)
@@ -497,6 +508,8 @@ class StateConfig:
             result["context_passthrough"] = self.context_passthrough
         if self.with_:
             result["with"] = self.with_
+        if self.fragment_bindings:
+            result["fragment_bindings"] = self.fragment_bindings
         if self.agent is not None:
             result["agent"] = self.agent
         if self.tools is not None:
@@ -587,6 +600,12 @@ class StateConfig:
             throttle=throttle,
             on_throttle_hard=data.get("on_throttle_hard"),
             learning=learning,
+            fragment_name=data.get("fragment_name"),
+            fragment_bindings=data.get("fragment_bindings", {}),
+            fragment_parameters={
+                name: ParameterSpec.from_dict(spec)
+                for name, spec in data.get("fragment_parameters", {}).items()
+            },
         )
 
     def get_referenced_states(self) -> set[str]:

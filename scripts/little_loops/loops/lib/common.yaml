@@ -23,19 +23,26 @@ fragments:
   retry_counter:
     description: |
       Shell state that increments a counter file and evaluates whether it is still below
-      the retry limit. State must supply (via context interpolation):
-        context.counter_key  — filename under .loops/tmp/ for the counter
-        context.max_retries  — upper bound (lt comparison)
+      the retry limit. Caller must supply via with: bindings:
+        counter_key  — filename under .loops/tmp/ for the counter
+        max_retries  — upper bound (lt comparison); defaults to 3 if not bound
       State must supply routing: on_yes (continue), on_no (give up).
+    parameters:
+      counter_key:
+        type: string
+        required: true
+      max_retries:
+        type: integer
+        default: 3
     action: |
-      FILE=".loops/tmp/${context.counter_key}"
+      FILE=".loops/tmp/${param.counter_key}"
       N=$(cat "$FILE" 2>/dev/null || echo 0)
       N=$((N + 1)); printf '%s' "$N" > "$FILE"; echo "$N"
     action_type: shell
     evaluate:
       type: output_numeric
       operator: lt
-      target: "${context.max_retries}"
+      target: "${param.max_retries}"
 
   llm_gate:
     description: |

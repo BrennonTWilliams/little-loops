@@ -1750,3 +1750,158 @@ class TestDiffStallGateFragment:
         assert state["evaluate"]["type"] == "diff_stall"
         assert state["evaluate"]["max_stall"] == 2
         assert "fragment" not in state
+
+
+class TestFragmentParameterBindings:
+    """Tests for fragment parameterization via with: bindings in resolve_fragments."""
+
+    @staticmethod
+    def _write_lib(tmp_path: Path, name: str, content: str) -> Path:
+        lib_dir = tmp_path / "lib"
+        lib_dir.mkdir(exist_ok=True)
+        lib_file = lib_dir / name
+        lib_file.write_text(content)
+        return lib_dir
+
+    def test_with_bindings_become_fragment_bindings(self, tmp_path: Path) -> None:
+        """with: on a fragment state is renamed to fragment_bindings."""
+        _lib_dir = self._write_lib(tmp_path, "test.yaml", """
+fragments:
+  my_frag:
+    parameters:
+      key_name:
+        type: string
+        required: true
+    action: echo ${param.key_name}
+    action_type: shell
+""")
+        raw = {
+            "name": "test",
+            "initial": "step",
+            "import": ["lib/test.yaml"],
+            "states": {
+                "step": {
+                    "fragment": "my_frag",
+                    "with": {"key_name": "my_value"},
+                    "on_yes": "done",
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, tmp_path)
+        state = result["states"]["step"]
+        assert state["fragment_bindings"] == {"key_name": "my_value"}
+        assert "with" not in state
+        assert state["fragment_name"] == "my_frag"
+        assert "fragment" not in state
+
+    def test_fragment_parameters_carried_through(self, tmp_path: Path) -> None:
+        """Fragment parameters are stored in the merged state dict."""
+        _lib_dir = self._write_lib(tmp_path, "test.yaml", """
+fragments:
+  counter:
+    parameters:
+      counter_key:
+        type: string
+        required: true
+      max_retries:
+        type: integer
+        default: 3
+    action: echo ${param.counter_key}
+    action_type: shell
+""")
+        raw = {
+            "name": "test",
+            "initial": "step",
+            "import": ["lib/test.yaml"],
+            "states": {
+                "step": {
+                    "fragment": "counter",
+                    "with": {"counter_key": "my_counter"},
+                    "on_yes": "done",
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, tmp_path)
+        state = result["states"]["step"]
+        assert "fragment_parameters" in state
+        assert "counter_key" in state["fragment_parameters"]
+        assert "max_retries" in state["fragment_parameters"]
+        # parameters: should NOT appear in the state (it's captured separately)
+        assert "parameters" not in state
+
+    def test_no_fragment_bindings_without_with(self, tmp_path: Path) -> None:
+        """Fragment state without with: has empty fragment_bindings."""
+        _lib_dir = self._write_lib(tmp_path, "test.yaml", """
+fragments:
+  simple_frag:
+    action: echo hello
+    action_type: shell
+""")
+        raw = {
+            "name": "test",
+            "initial": "step",
+            "import": ["lib/test.yaml"],
+            "states": {
+                "step": {
+                    "fragment": "simple_frag",
+                    "on_yes": "done",
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, tmp_path)
+        state = result["states"]["step"]
+        assert state.get("fragment_bindings", {}) == {}
+        assert state["fragment_name"] == "simple_frag"
+
+    def test_retry_counter_has_parameters_in_real_lib(self) -> None:
+        """retry_counter in lib/common.yaml has been migrated to use parameters:."""
+        import yaml
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
+        with open(lib_path) as f:
+            data = yaml.safe_load(f)
+        frag = data["fragments"]["retry_counter"]
+        assert "parameters" in frag
+        assert "counter_key" in frag["parameters"]
+        assert frag["parameters"]["counter_key"]["required"] is True
+        assert "max_retries" in frag["parameters"]
+        assert frag["parameters"]["max_retries"]["default"] == 3
+        # Must use param.X not context.X
+        assert "${param.counter_key}" in frag["action"]
+        assert "${param.max_retries}" in frag["evaluate"]["target"]
+
+    def test_two_fragment_states_independent_bindings(self, tmp_path: Path) -> None:
+        """Two states using same fragment get independent fragment_bindings."""
+        _lib_dir = self._write_lib(tmp_path, "test.yaml", """
+fragments:
+  counter:
+    parameters:
+      counter_key:
+        type: string
+        required: true
+    action: echo ${param.counter_key}
+    action_type: shell
+""")
+        raw = {
+            "name": "test",
+            "initial": "step1",
+            "import": ["lib/test.yaml"],
+            "states": {
+                "step1": {
+                    "fragment": "counter",
+                    "with": {"counter_key": "first_counter"},
+                    "on_yes": "step2",
+                },
+                "step2": {
+                    "fragment": "counter",
+                    "with": {"counter_key": "second_counter"},
+                    "on_yes": "done",
+                },
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, tmp_path)
+        assert result["states"]["step1"]["fragment_bindings"] == {"counter_key": "first_counter"}
+        assert result["states"]["step2"]["fragment_bindings"] == {"counter_key": "second_counter"}

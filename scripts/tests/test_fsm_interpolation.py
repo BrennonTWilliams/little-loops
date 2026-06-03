@@ -493,3 +493,40 @@ class TestFormatDuration:
         assert _format_duration(90000) == "1m 30s"
         assert _format_duration(125000) == "2m 5s"
         assert _format_duration(3600000) == "60m"
+
+
+class TestParamNamespace:
+    """Tests for the param namespace in InterpolationContext."""
+
+    def test_param_resolves_simple_key(self) -> None:
+        ctx = InterpolationContext(param={"counter_key": "lint_retries"})
+        result = interpolate("${param.counter_key}", ctx)
+        assert result == "lint_retries"
+
+    def test_param_resolves_integer(self) -> None:
+        ctx = InterpolationContext(param={"max_retries": 5})
+        result = interpolate("${param.max_retries}", ctx)
+        assert result == "5"
+
+    def test_param_resolves_nested_key(self) -> None:
+        ctx = InterpolationContext(param={"nested": {"key": "val"}})
+        result = interpolate("${param.nested.key}", ctx)
+        assert result == "val"
+
+    def test_param_unknown_key_raises(self) -> None:
+        ctx = InterpolationContext(param={})
+        with pytest.raises(InterpolationError):
+            interpolate("${param.missing}", ctx)
+
+    def test_param_independent_from_context(self) -> None:
+        ctx = InterpolationContext(
+            context={"key": "from_context"},
+            param={"key": "from_param"},
+        )
+        assert interpolate("${context.key}", ctx) == "from_context"
+        assert interpolate("${param.key}", ctx) == "from_param"
+
+    def test_param_empty_by_default(self) -> None:
+        ctx = InterpolationContext()
+        with pytest.raises(InterpolationError):
+            interpolate("${param.anything}", ctx)

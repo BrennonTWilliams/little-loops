@@ -1570,7 +1570,9 @@ class FSMExecutor:
         Returns:
             InterpolationContext with all runtime values
         """
-        return InterpolationContext(
+        from little_loops.fsm.interpolation import interpolate_dict
+
+        ctx = InterpolationContext(
             context=self.fsm.context,
             captured=self.captured,
             prev=self.prev_result,
@@ -1582,6 +1584,29 @@ class FSMExecutor:
             elapsed_ms=_now_ms() - self.start_time_ms + self.elapsed_offset_ms,
             messages=list(self.messages),
         )
+
+        # Populate param namespace from fragment bindings (if this state uses a fragment)
+        state = self.fsm.states.get(self.current_state)
+        if state is not None and (state.fragment_bindings or state.fragment_parameters):
+            resolved = interpolate_dict(state.fragment_bindings, ctx)
+            # Apply declared defaults for unbound optional parameters
+            for param_name, param_spec in state.fragment_parameters.items():
+                if (
+                    param_name not in resolved
+                    and not param_spec.required
+                    and param_spec.default is not None
+                ):
+                    resolved[param_name] = param_spec.default
+            # Runtime enforcement: required parameters must be bound
+            for param_name, param_spec in state.fragment_parameters.items():
+                if param_spec.required and param_name not in resolved:
+                    raise ValueError(
+                        f"Fragment '{state.fragment_name}' requires parameter '{param_name}' "
+                        f"but it is not bound in 'with'"
+                    )
+            ctx.param = resolved
+
+        return ctx
 
     def _emit(self, event: str, data: dict[str, Any]) -> None:
         """Emit an event via the callback."""

@@ -7204,3 +7204,136 @@ class TestMaxIterationsSummaryHook:
 
         summary_events = [e for e in events if e.get("event") == "max_iterations_summary"]
         assert len(summary_events) == 1
+
+
+class TestFragmentParamBinding:
+    """Tests for fragment with: bindings populating the param namespace at runtime."""
+
+    def _make_fragment_state(
+        self,
+        fragment_name: str,
+        bindings: dict,
+        parameters: dict | None = None,
+        **kwargs,
+    ) -> StateConfig:
+        """Build a StateConfig that looks like it came from a parameterized fragment."""
+        from little_loops.fsm.schema import ParameterSpec
+        parsed_params = {}
+        if parameters:
+            for name, spec in parameters.items():
+                parsed_params[name] = ParameterSpec.from_dict(spec)
+        return StateConfig(
+            fragment_name=fragment_name,
+            fragment_bindings=bindings,
+            fragment_parameters=parsed_params,
+            **kwargs,
+        )
+
+    def test_param_namespace_populated_from_fragment_bindings(self, tmp_path: Path) -> None:
+        """Fragment bindings are available via ${param.X} in the action."""
+        state = self._make_fragment_state(
+            "retry_counter",
+            bindings={"counter_key": "lint_count", "max_retries": 5},
+            parameters={
+                "counter_key": {"type": "string", "required": True},
+                "max_retries": {"type": "integer", "default": 3},
+            },
+            action='echo "${param.counter_key} ${param.max_retries}"',
+            action_type="shell",
+            capture="out",
+            next="done",
+        )
+        fsm = FSMLoop(
+            name="test",
+            initial="step",
+            states={
+                "step": state,
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(fsm)
+        result = executor.run()
+        assert result.final_state == "done"
+        out = executor.captured.get("out", {}).get("output", "").strip()
+        assert "lint_count" in out
+        assert "5" in out
+
+    def test_fragment_default_applied_when_unbound(self, tmp_path: Path) -> None:
+        """Unbound optional fragment params use their declared default."""
+        state = self._make_fragment_state(
+            "counter",
+            bindings={"counter_key": "my_count"},  # max_retries NOT bound
+            parameters={
+                "counter_key": {"type": "string", "required": True},
+                "max_retries": {"type": "integer", "default": 7},
+            },
+            action='echo "${param.max_retries}"',
+            action_type="shell",
+            capture="out",
+            next="done",
+        )
+        fsm = FSMLoop(
+            name="test",
+            initial="step",
+            states={
+                "step": state,
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(fsm)
+        result = executor.run()
+        assert result.final_state == "done"
+        out = executor.captured["out"]["output"].strip()
+        assert out == "7"
+
+    def test_missing_required_fragment_param_terminates_with_error(self) -> None:
+        """Missing required fragment param causes the executor to terminate with error."""
+        state = self._make_fragment_state(
+            "counter",
+            bindings={},  # counter_key NOT bound but required
+            parameters={
+                "counter_key": {"type": "string", "required": True},
+            },
+            action='echo ${param.counter_key}',
+            action_type="shell",
+            next="done",
+        )
+        fsm = FSMLoop(
+            name="test",
+            initial="step",
+            states={
+                "step": state,
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(fsm)
+        result = executor.run()
+        assert result.terminated_by == "error"
+        assert result.error is not None
+        assert "requires parameter 'counter_key'" in result.error
+
+    def test_fragment_binding_interpolates_context(self) -> None:
+        """Fragment bindings support ${context.*} interpolation."""
+        state = self._make_fragment_state(
+            "counter",
+            bindings={"counter_key": "${context.my_key}"},
+            parameters={"counter_key": {"type": "string", "required": True}},
+            action='echo ${param.counter_key}',
+            action_type="shell",
+            capture="out",
+            next="done",
+        )
+        fsm = FSMLoop(
+            name="test",
+            initial="step",
+            context={"my_key": "from_context_val"},
+            states={
+                "step": state,
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(fsm)
+        result = executor.run()
+        assert result.final_state == "done"
+        out = executor.captured["out"]["output"].strip()
+        assert out == "from_context_val"

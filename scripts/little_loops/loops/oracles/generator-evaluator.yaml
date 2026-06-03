@@ -63,6 +63,10 @@ states:
 
   score:
     fragment: ll_rubric_score
+    with:
+      run_dir: "${context.run_dir}"
+      rubric: "${context.rubric}"
+      pass_threshold: "${context.pass_threshold}"
     on_yes: done
     on_no: generate
     on_error: generate

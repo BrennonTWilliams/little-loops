@@ -13,6 +13,7 @@ Supported namespaces:
     loop: Loop-level metadata (name, started_at, elapsed_ms, elapsed)
     env: Environment variables
     messages: Shared append-only message log (${messages}, ${messages.last(N)}, ${messages.summary})
+    param: Per-state parameter bindings for fragment references
 """
 
 from __future__ import annotations
@@ -51,6 +52,7 @@ class InterpolationContext:
         loop_name: FSM loop name
         started_at: ISO timestamp when loop started
         elapsed_ms: Milliseconds since loop started
+        param: Per-state parameter bindings for fragment references (resolved from fragment_bindings)
     """
 
     context: dict[str, Any] = field(default_factory=dict)
@@ -64,6 +66,7 @@ class InterpolationContext:
     elapsed_ms: int = 0
     messages: list[str] = field(default_factory=list)
     messages_summary: str = ""
+    param: dict[str, Any] = field(default_factory=dict)
 
     def resolve(self, namespace: str, path: str) -> Any:
         """Resolve a namespace.path reference to its value.
@@ -101,6 +104,8 @@ class InterpolationContext:
             return value
         elif namespace == "messages":
             return self._get_messages_value(path)
+        elif namespace == "param":
+            return self._get_nested(self.param, path, "param")
         else:
             raise InterpolationError(f"Unknown namespace: {namespace}")
 

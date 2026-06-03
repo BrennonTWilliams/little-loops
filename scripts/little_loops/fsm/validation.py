@@ -401,6 +401,78 @@ def _validate_with_bindings(fsm: FSMLoop, loop_dir: Path) -> list[ValidationErro
     return errors
 
 
+def _validate_fragment_bindings(fsm: FSMLoop, loop_dir: Path) -> list[ValidationError]:
+    """Validate fragment with: bindings against fragment parameter contracts.
+
+    Called from load_and_validate (not validate_fsm) because fragment parameters
+    are populated by resolve_fragments which runs before dataclass parsing.
+
+    Args:
+        fsm: The FSM loop to validate
+        loop_dir: Directory containing the loop file (unused; kept for API symmetry with
+            _validate_with_bindings)
+
+    Returns:
+        List of validation errors found
+    """
+    # Runner-injected vars available at runtime but not at static analysis time
+    RUNNER_INJECTED = {"run_dir", "loop_name", "started_at"}
+
+    errors: list[ValidationError] = []
+
+    for state_name, state in fsm.states.items():
+        if not state.fragment_parameters:
+            continue  # No declared contract — nothing to cross-validate
+
+        path = f"states.{state_name}"
+
+        # Unknown with: keys (not declared by fragment)
+        for key in state.fragment_bindings:
+            if key not in state.fragment_parameters:
+                errors.append(
+                    ValidationError(
+                        message=(
+                            f"'with.{key}' is not a declared parameter of fragment "
+                            f"'{state.fragment_name}'. "
+                            f"Declared: {', '.join(sorted(state.fragment_parameters))}"
+                        ),
+                        path=f"{path}.with.{key}",
+                    )
+                )
+
+        # Required parameters not bound (whitelist runner-injected vars)
+        for param_name, param_spec in state.fragment_parameters.items():
+            if param_spec.required and param_name not in state.fragment_bindings:
+                if param_name in RUNNER_INJECTED:
+                    continue  # Available at runtime; not a static error
+                errors.append(
+                    ValidationError(
+                        message=(
+                            f"Required parameter '{param_name}' of fragment "
+                            f"'{state.fragment_name}' is not bound in 'with'"
+                        ),
+                        path=f"{path}.with",
+                    )
+                )
+
+        # Statically-detectable type mismatches (skip interpolation strings)
+        for param_name, value in state.fragment_bindings.items():
+            if param_name not in state.fragment_parameters:
+                continue
+            if isinstance(value, str) and "${" in value:
+                continue
+            type_error = _check_param_type(value, state.fragment_parameters[param_name])
+            if type_error:
+                errors.append(
+                    ValidationError(
+                        message=f"Parameter '{param_name}': {type_error}",
+                        path=f"{path}.with.{param_name}",
+                    )
+                )
+
+    return errors
+
+
 def _validate_state_action(state_name: str, state: StateConfig) -> list[ValidationError]:
     """Validate state action configuration.
 
@@ -1472,6 +1544,7 @@ def load_and_validate(path: Path) -> tuple[FSMLoop, list[ValidationError]]:
 
     # Validate with: bindings against child loop parameters (requires file-system access)
     errors.extend(_validate_with_bindings(fsm, path.parent))
+    errors.extend(_validate_fragment_bindings(fsm, path.parent))
 
     # Filter to errors only (not warnings) for raising
     error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]

@@ -171,6 +171,13 @@
           "description": {
             "type": "string",
             "description": "Human-readable description of what this fragment provides and what the calling state must supply. Stripped at parse time — the FSM engine never sees it."
+          },
+          "parameters": {
+            "type": "object",
+            "description": "Declares the fragment's public input contract. Callers bind values to these parameters via 'with:' on states that use this fragment.",
+            "additionalProperties": {
+              "$ref": "#/definitions/parameterSpec"
+            }
           }
         },
         "additionalProperties": true
@@ -385,7 +392,7 @@
         },
         "with": {
           "type": "object",
-          "description": "Explicit parameter bindings for sub-loop calls. Maps the child loop's declared parameter names to parent expressions (supports ${variable} interpolation). Only valid when 'loop' is set. Mutually exclusive with 'context_passthrough'.",
+          "description": "Explicit parameter bindings for sub-loop calls or fragment parameter binding. Maps declared parameter names to expressions (supports ${variable} interpolation). Valid when 'loop' is set (sub-loop binding) or 'fragment' is set (fragment parameter binding). Mutually exclusive with 'context_passthrough'.",
           "additionalProperties": true
         },
         "fragment": {

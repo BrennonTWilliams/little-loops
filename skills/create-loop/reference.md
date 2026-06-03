@@ -749,7 +749,7 @@ states:
 
 #### fragment (Optional)
 
-The `fragment` field references a named partial state definition from an imported library (`import:`) or the loop's own `fragments:` block. Fragment fields are merged into the state at **parse time** — state-level keys win at every nesting level, including nested objects like `evaluate`.
+The `fragment` field references a named partial state definition from an imported library (`import:`) or the loop's own `fragments:` block. Fragment fields are merged into the state at **parse time** — state-level keys win at every nesting level, including nested objects like `evaluate`. Fragments that declare a `parameters:` block also support **runtime parameterization** via the companion `with:` field, which binds named values at execution time so the same fragment can be used multiple times in one loop without counter-key collisions.
 
 **Type:** `str` — name of a fragment defined in `import:` libraries or the local `fragments:` block.
 
@@ -794,6 +794,37 @@ states:
       target: 1            # overrides only target; type and operator from fragment
     on_yes: done
     on_no: fail
+```
+
+**Runtime parameterization example — `with:` for parameterized fragments:**
+
+When a fragment declares a `parameters:` block, use `with:` to bind values at run time. This lets the same fragment appear multiple times in one loop without counter-key collisions:
+
+```yaml
+fragments:
+  retry_counter:
+    parameters:
+      counter_key: {type: string, required: true}
+      max_retries: {type: integer, default: 3}
+    action: |
+      FILE=".loops/tmp/${param.counter_key}"
+      N=$(cat "$FILE" 2>/dev/null || echo 0); N=$((N+1))
+      printf '%s' "$N" > "$FILE"; echo "$N"
+    action_type: shell
+    evaluate: {type: output_numeric, operator: lt, target: "${param.max_retries}"}
+
+states:
+  lint_retry:
+    fragment: retry_counter
+    with: {counter_key: lint_retries, max_retries: 5}
+    on_yes: lint
+    on_no: give_up
+
+  test_retry:
+    fragment: retry_counter
+    with: {counter_key: test_retries, max_retries: 3}
+    on_yes: run_tests
+    on_no: give_up
 ```
 
 #### on_partial (Optional)
@@ -1166,7 +1197,7 @@ import:
 |----------|----------|--------------------|
 | `shell_exit` | `action_type: shell` + `evaluate.type: exit_code` | `action`, routing (`on_yes`, `on_no`) |
 | `llm_gate` | `action_type: prompt` + `evaluate.type: llm_structured` | `action`, `evaluate.prompt`, routing (`on_yes`, `on_no`) |
-| `retry_counter` | Shell counter script + `output_numeric` evaluator | `context.counter_key`, `context.max_retries`, routing |
+| `retry_counter` | Shell counter script + `output_numeric` evaluator. Declares `parameters: {counter_key, max_retries}` — bind at call site via `with: {counter_key: ..., max_retries: ...}` | `with: {counter_key: ..., max_retries: ...}` (or legacy `context.counter_key` / `context.max_retries`), routing |
 | `numeric_gate` | `action_type: shell` + `evaluate.type: output_numeric` | `action`, `evaluate.operator`, `evaluate.target`, routing |
 | `with_rate_limit_handling` | Two-tier rate-limit retry defaults (3 short + long-wait ladder up to 6 h) | `on_rate_limit_exhausted` |
 | `with_throttle` | Per-state tool-call throttle defaults (`normal_max: 3`, `warn_max: 8`, `hard_max: 12`) | `on_throttle_hard` |
@@ -1187,4 +1218,4 @@ import:
 | Fragment | Provides | Caller must supply |
 |----------|----------|--------------------|
 | `playwright_screenshot` | `action_type: shell` + default `action` (`playwright screenshot "${context.file_url}" "${context.screenshot_path}" 2>&1 && echo "CAPTURED"`) + `evaluate.type: output_contains` with `pattern: "CAPTURED"` — callers that need `$(pwd)/` path expansion must override `action:` at the call site | `on_yes`, `on_no`, `on_error` routing; override `action:` when using absolute paths via `$(pwd)` |
-| `ll_rubric_score` | `action_type: prompt` + rubric scoring action referencing `${context.run_dir}`, `${context.rubric}`, `${context.pass_threshold}` + `evaluate.type: output_contains` with `pattern: "ALL_PASS"` — emits `ALL_PASS` when all rubric criteria pass | `on_yes`, `on_no`, `on_error` routing; `context.run_dir`, `context.rubric`, `context.pass_threshold` in loop context |
+| `ll_rubric_score` | `action_type: prompt` + rubric scoring action + `evaluate.type: output_contains` with `pattern: "ALL_PASS"` — emits `ALL_PASS` when all rubric criteria pass. Declares `parameters: {run_dir, rubric, pass_threshold}` — bind at call site via `with:` | `on_yes`, `on_no`, `on_error` routing; `with: {run_dir: ..., rubric: ..., pass_threshold: ...}` (or legacy `context.run_dir` / `context.rubric` / `context.pass_threshold`) |

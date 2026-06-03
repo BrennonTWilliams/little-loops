@@ -136,7 +136,14 @@ def resolve_fragments(raw_loop_dict: dict[str, Any], loop_dir: Path) -> dict[str
         # Strip description before merge — it is metadata, not a state field
         frag_copy = dict(all_fragments[fragment_name])
         frag_copy.pop("description", None)
+        frag_parameters = frag_copy.pop("parameters", {})  # capture before deep merge
         merged = _deep_merge(frag_copy, state_dict)
+        # Carry fragment metadata for runtime binding and validation
+        fragment_bindings = merged.pop("with", {})  # rename with: → fragment_bindings
+        merged["fragment_name"] = fragment_name  # preserve for validation lookup
+        merged["fragment_bindings"] = fragment_bindings  # per-state param bindings
+        if frag_parameters:
+            merged["fragment_parameters"] = frag_parameters  # fragment's declared params
         del merged["fragment"]  # consume the fragment: key
         states[state_name] = merged
 

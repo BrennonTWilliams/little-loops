@@ -327,8 +327,19 @@ states:                         # State definitions
     terminal: boolean           # True if this is an end state
     capture: string             # Variable name to store output
     timeout: number             # Action-level timeout in seconds
-    fragment: string            # Name of a fragment to inherit fields from (parse-time only;
-                                # state-level keys override fragment keys at every nesting level)
+    fragment: string            # Name of a fragment to inherit fields from; state-level keys
+                                # override fragment keys at every nesting level. Fragments that
+                                # declare a `parameters:` block also support runtime binding via
+                                # `with:` — see "Fragment Parameterization" below.
+    with: object                # Runtime parameter bindings for a parameterized fragment.
+                                # Keys map to `parameters` declared in the fragment definition;
+                                # values are interpolated at run time (context refs allowed).
+                                # Example:
+                                #   lint_retry:
+                                #     fragment: retry_counter
+                                #     with: {counter_key: lint_retries, max_retries: 5}
+                                #     on_yes: lint
+                                #     on_no: give_up
     agent: string               # Subprocess agent name; passes --agent <name> to the Claude subprocess (prompt states only)
     tools: list                 # Subprocess tool scope; passes --tools <csv> to the Claude subprocess (prompt states only)
 

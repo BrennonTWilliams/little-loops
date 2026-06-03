@@ -14,17 +14,28 @@ fragments:
 
   ll_rubric_score:
     description: |
-      Prompt fragment that scores a generated artifact in context.run_dir against the rubric
-      in context.rubric with pass threshold context.pass_threshold. Emits ALL_PASS when all
-      criteria meet or exceed the threshold; otherwise emits NEEDS_WORK with improvement notes.
-      Used in the generator-evaluator oracle score state.
+      Prompt fragment that scores a generated artifact against a rubric. Caller must supply
+      via with: bindings:
+        run_dir         — directory containing the artifact to review (runner-injected; bind via with: {run_dir: "${context.run_dir}"})
+        rubric          — rubric criteria as markdown text (required)
+        pass_threshold  — minimum score threshold, e.g. 6 (required)
+    parameters:
+      run_dir:
+        type: string
+        required: true
+      rubric:
+        type: string
+        required: true
+      pass_threshold:
+        type: number
+        required: true
     action_type: prompt
     action: |
-      Review the generated artifact in ${context.run_dir} against the rubric below.
+      Review the generated artifact in ${param.run_dir} against the rubric below.
 
-      ${context.rubric}
+      ${param.rubric}
 
-      Pass threshold: ${context.pass_threshold}/10 per criterion.
+      Pass threshold: ${param.pass_threshold}/10 per criterion.
       If all criteria meet or exceed the threshold, output ALL_PASS on its own line.
       Otherwise output NEEDS_WORK and describe the specific improvements required.
     evaluate:
