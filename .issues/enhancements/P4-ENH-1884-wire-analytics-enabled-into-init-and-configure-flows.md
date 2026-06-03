@@ -4,10 +4,18 @@ type: ENH
 priority: P4
 status: open
 discovered_date: 2026-06-03
-captured_at: "2026-06-03T00:00:44Z"
+captured_at: '2026-06-03T00:00:44Z'
 discovered_by: capture-issue
-relates_to: [ENH-1883, EPIC-1707]
+relates_to:
+- ENH-1883
+- EPIC-1707
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 72
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-1884: Wire `analytics.enabled` into `/ll:init` and `/ll:configure` flows
@@ -141,8 +149,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-06-03 | Priority: P4
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-02_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 72/100 → MODERATE
+
+### Outcome Risk Factors
+- **Nine change sites across init/configure skill files** — breadth reduces complexity score, though each is a mechanical/local pattern addition with an explicit template to follow
+- **Two regression tests will fail without updates**: `test_feat1743_init_wiring.py::test_total_is_nine` asserts `"TOTAL = 9"` and `test_feat1756_init_wiring.py::test_total_is_eight` asserts `"TOTAL = 9"` — update both to `"TOTAL = 10"` and `"9–10 rounds"` (Steps 8-9) before running the test suite
+- **Minor unresolved point**: `capture.*` sub-questions in `skills/configure/areas.md` are "(optional)" — decide at implementation time whether to mirror `learning_tests` sub-options per capture category or keep a single three-way Enable/Disable/Keep toggle
+
 ## Session Log
 - `/ll:wire-issue` - 2026-06-03T01:15:30 - `8ec4fac1-2d16-4aea-837a-70e1536cd194.jsonl`
 - `/ll:refine-issue` - 2026-06-03T01:10:48 - `3a0b09f9-ee68-4e79-af7f-259373dea049.jsonl`
 - `/ll:format-issue` - 2026-06-03T00:02:41 - `9d48d4a7-c415-4554-9993-3036a70f17e9.jsonl`
 - `/ll:capture-issue` - 2026-06-03T00:00:44Z - `9351ec8d-8ce0-495b-85f9-95010ab64ced.jsonl`
+- `/ll:confidence-check` - 2026-06-02T00:00:00Z - `b873f620-6d78-48f5-ae75-487f1bbe0bab.jsonl`
