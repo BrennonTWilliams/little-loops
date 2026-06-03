@@ -734,6 +734,10 @@ def _backfill_issues(conn: sqlite3.Connection, issues_dir: Path) -> int:
             continue
         issue_id = fm.get("id")
         if not issue_id:
+            m = _FILENAME_TYPE_RE.search(issue_file.name)
+            if m:
+                issue_id = f"{m.group(1)}-{m.group(2)}"
+        if not issue_id:
             continue
         status = str(fm.get("status", "open"))
         discovered_by = fm.get("discovered_by")
