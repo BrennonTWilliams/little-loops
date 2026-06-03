@@ -1,0 +1,261 @@
+name: migrate-sdk-version
+category: api-adoption
+description: >
+  Re-proves stale learning-test records after a dependency bump, classifying
+  each as still-valid, needs-upgrade, or refuted, and producing a triage report.
+initial: list_stale
+max_iterations: 50
+timeout: 7200
+on_handoff: spawn
+import:
+  - lib/common.yaml
+context:
+  targets: ""   # optional comma-separated filter; empty = process all stale records
+
+states:
+  list_stale:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, subprocess, sys, os
+
+      result = subprocess.run(["ll-learning-tests", "list"], capture_output=True, text=True)
+      if result.returncode != 0:
+          sys.stderr.write(result.stderr)
+          sys.exit(1)
+
+      records = json.loads(result.stdout)
+      stale = [r for r in records if r.get("status") == "stale"]
+
+      targets_filter = "${context.targets}".strip()
+      if targets_filter:
+          filter_set = {t.strip() for t in targets_filter.split(",") if t.strip()}
+          stale = [r for r in stale if r.get("target") in filter_set]
+
+      run_dir = "${context.run_dir}"
+      os.makedirs(run_dir, exist_ok=True)
+      queue_path = os.path.join(run_dir, "migrate-sdk-version-queue.txt")
+
+      if stale:
+          with open(queue_path, "w") as f:
+              for r in stale:
+                  f.write(r["target"] + "\n")
+          print(f"Queued {len(stale)} stale record(s) to {queue_path}")
+          sys.exit(0)
+      else:
+          with open(queue_path, "w") as f:
+              pass
+          print("No stale records found.")
+          sys.exit(1)
+      PYEOF
+    evaluate:
+      type: exit_code
+    on_yes: reprove_next
+    on_no: done_empty
+    on_error: done_empty
+
+  reprove_next:
+    action: |
+      QUEUE="${context.run_dir}/migrate-sdk-version-queue.txt"
+      if [ ! -s "$QUEUE" ]; then
+        exit 1
+      fi
+      TARGET=$(head -1 "$QUEUE")
+      tail -n +2 "$QUEUE" > "$QUEUE.tmp"
+      mv "$QUEUE.tmp" "$QUEUE"
+      export TARGET
+
+      python3 << 'PYEOF'
+      import json, subprocess, sys, os
+
+      target = os.environ.get("TARGET", "").strip()
+      if not target:
+          sys.exit(1)
+
+      # Read old record before re-proving
+      old_result = subprocess.run(
+          ["ll-learning-tests", "check", target],
+          capture_output=True, text=True, check=False
+      )
+      old_data = {}
+      if old_result.returncode == 0:
+          try:
+              old_data = json.loads(old_result.stdout)
+          except (json.JSONDecodeError, ValueError):
+              pass
+
+      # Re-prove via explore-api (writes new record to disk)
+      subprocess.run(
+          ["ll-action", "invoke", "explore-api", "--args", target],
+          check=False, capture_output=True, text=True
+      )
+
+      # Read new record after re-proving
+      new_result = subprocess.run(
+          ["ll-learning-tests", "check", target],
+          capture_output=True, text=True, check=False
+      )
+      new_data = {}
+      if new_result.returncode == 0:
+          try:
+              new_data = json.loads(new_result.stdout)
+          except (json.JSONDecodeError, ValueError):
+              pass
+
+      print(json.dumps({"target": target, "old": old_data, "new": new_data}))
+      PYEOF
+    fragment: shell_exit
+    capture: reprove
+    on_yes: classify_outcome
+    on_no: prepare_report_path
+    on_error: advance_queue
+
+  classify_outcome:
+    fragment: llm_gate
+    timeout: 120
+    action: |
+      You are classifying the outcome of re-proving a learning-test record.
+
+      Compare the OLD record (before re-exploration) and the NEW record (after re-exploration)
+      to determine whether the API contract is still valid, upgraded, or broken.
+
+      REPROVE DATA:
+      ${captured.reprove.output}
+
+      Classification rules:
+      - `still-valid`: The new record has the same assertions with the same pass/fail results
+        as the old record. The API contract is unchanged.
+      - `needs-upgrade`: The API shape is intact but assertions differ — new assertions were
+        added, versions bumped, or existing assertions have different wording. The record was
+        updated but the underlying API still works.
+      - `refuted`: One or more previously-passing assertions now fail, or the API surface
+        broke in a way that invalidates prior claims.
+
+      On the LAST LINE of your response, output exactly:
+      CLASSIFY_JSON:{"verdict": "still-valid"|"needs-upgrade"|"refuted"}
+    capture: classify_result
+    evaluate:
+      type: output_contains
+      pattern: "CLASSIFY_JSON:"
+    on_yes: apply_update
+    on_no: apply_update
+    on_blocked: apply_update
+    on_error: apply_update
+
+  apply_update:
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, sys
+
+      classify_output = """${captured.classify_result.output}"""
+      verdict = None
+      for line in reversed(classify_output.split('\n')):
+          line = line.strip()
+          if line.startswith('CLASSIFY_JSON:'):
+              try:
+                  data = json.loads(line[len('CLASSIFY_JSON:'):])
+                  verdict = data.get("verdict")
+              except (json.JSONDecodeError, ValueError):
+                  pass
+              break
+
+      reprove_raw = """${captured.reprove.output}"""
+      target = ""
+      try:
+          reprove_data = json.loads(reprove_raw.strip())
+          target = reprove_data.get("target", "")
+      except (json.JSONDecodeError, ValueError):
+          pass
+
+      if verdict == "refuted" and target:
+          try:
+              import pathlib
+              from little_loops.frontmatter import update_frontmatter
+              from little_loops.issue_parser import slugify
+              slug = slugify(target)
+              record_path = pathlib.Path(".ll/learning-tests") / f"{slug}.md"
+              if record_path.exists():
+                  content = record_path.read_text()
+                  updated = update_frontmatter(content, {"status": "refuted"})
+                  record_path.write_text(updated)
+          except Exception as e:
+              sys.stderr.write(f"Warning: could not set refuted status: {e}\n")
+
+      print(json.dumps({
+          "target": target,
+          "verdict": verdict or "unknown",
+      }))
+      PYEOF
+    capture: update_result
+    next: advance_queue
+
+  advance_queue:
+    action_type: shell
+    action: |
+      QUEUE="${context.run_dir}/migrate-sdk-version-queue.txt"
+      if [ -s "$QUEUE" ]; then
+        wc -l < "$QUEUE" | tr -d ' '
+        exit 0
+      else
+        echo "0"
+        exit 1
+      fi
+    evaluate:
+      type: exit_code
+    on_yes: reprove_next
+    on_no: prepare_report_path
+    on_error: prepare_report_path
+
+  prepare_report_path:
+    action_type: shell
+    action: |
+      mkdir -p ${context.run_dir}
+      echo "${context.run_dir}/report-$(date +%Y-%m-%dT%H%M%S).md"
+    capture: report_path
+    next: build_report
+
+  build_report:
+    fragment: llm_gate
+    timeout: 300
+    action: |
+      Read the current state of the Learning Test Registry and write a re-prove triage report.
+
+      First, run `ll-learning-tests list` (shell) to get the most recent registry state reflecting
+      any records just re-proven or marked refuted by this migration run.
+
+      Write a markdown report to `${captured.report_path.output}` with these four sections:
+
+      ## SDK Migration Triage Report — $(date +%Y-%m-%d)
+
+      ### 1. Re-proven (still-valid)
+      Records confirmed unchanged after re-exploration. Assertions and API shape match the old record.
+      List each with target, date, and assertion count.
+
+      ### 2. Upgraded (needs-upgrade)
+      Records where the API contract is intact but assertions drifted — new assertions added, versions
+      bumped, or wording updated. List each with target, old date, new date, and change summary.
+
+      ### 3. Refuted
+      Records where previously-passing assertions now fail or the API broke. These require code changes.
+      List each with target and the failing assertions. Include a recommendation to fix callers.
+
+      ### 4. Summary and Next Actions
+      - Total records processed
+      - Count per category (re-proven, upgraded, refuted)
+      - Recommended next steps: focus on refuted records that require code changes
+
+      Write the report now using the Write tool.
+    evaluate:
+      prompt: "Was the triage report successfully written to the file?"
+      min_confidence: 0.5
+    on_yes: done
+    on_no: done
+    on_blocked: done
+    on_error: done
+
+  done:
+    terminal: true
+
+  done_empty:
+    terminal: true

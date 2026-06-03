@@ -1250,7 +1250,7 @@ The `raw/` subdirectory is created on demand by `/ll:explore-api` — `write_rec
 
 There is no `write`/`add` subcommand. Record creation is owned by `/ll:explore-api` (and any future skill variants) so the prompt context — claims, reasoning, proof script — is captured alongside the result, not just the result alone. Skills emit the on-disk YAML directly via the `Write` tool to match the format that `write_record()` produces.
 
-For automated bulk staleness detection across all records, use `ll-loop run learning-tests-audit` — a built-in FSM loop that compares record dates against PyPI/npm registry release timelines and batch-marks stale records. See `docs/guides/LOOPS_GUIDE.md` → API Adoption.
+For automated bulk staleness detection across all records, use `ll-loop run learning-tests-audit` — a built-in FSM loop that compares record dates against PyPI/npm registry release timelines and batch-marks stale records. Once records are marked stale, run `ll-loop run migrate-sdk-version` to re-prove them: it iterates the stale queue, re-runs `/ll:explore-api` for each target, classifies each result as `still-valid`, `needs-upgrade`, or `refuted`, and produces a triage report. Together these two loops form the two-step registry maintenance workflow. See `docs/guides/LOOPS_GUIDE.md` → API Adoption.
 
 ---
 

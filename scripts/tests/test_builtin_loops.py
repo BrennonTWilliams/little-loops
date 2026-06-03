@@ -132,6 +132,7 @@ class TestBuiltinLoopFiles:
             "proof-first-task",
             "cli-anything-bootstrap",
             "adversarial-redesign",
+            "migrate-sdk-version",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -5570,3 +5571,93 @@ class TestResearchCoverageOracle:
         assert "source_filter" in action, (
             "search_web must reference source_filter parameter for site constraint"
         )
+
+
+class TestMigrateSdkVersionLoop:
+    """Structural tests for the migrate-sdk-version FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "migrate-sdk-version.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, and states fields."""
+        assert data.get("name") == "migrate-sdk-version"
+        assert data.get("initial") == "list_stale"
+        assert isinstance(data.get("states"), dict)
+
+    def test_category_is_api_adoption(self, data: dict) -> None:
+        """Loop must be in the api-adoption category."""
+        assert data.get("category") == "api-adoption"
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All required states must be present."""
+        required = {
+            "list_stale",
+            "reprove_next",
+            "classify_outcome",
+            "apply_update",
+            "advance_queue",
+            "prepare_report_path",
+            "build_report",
+            "done",
+            "done_empty",
+        }
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        done_state = data["states"].get("done", {})
+        assert done_state.get("terminal") is True
+
+    def test_done_empty_state_is_terminal(self, data: dict) -> None:
+        """done_empty state must have terminal: true."""
+        state = data["states"].get("done_empty", {})
+        assert state.get("terminal") is True
+
+    def test_classify_outcome_uses_output_contains(self, data: dict) -> None:
+        """classify_outcome must use output_contains evaluator with CLASSIFY_JSON: pattern."""
+        state = data["states"].get("classify_outcome", {})
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_contains"
+        assert "CLASSIFY_JSON:" in evaluate.get("pattern", "")
+
+    def test_list_stale_uses_run_dir(self, data: dict) -> None:
+        """list_stale action must write queue to ${context.run_dir} for per-run isolation."""
+        action = data["states"].get("list_stale", {}).get("action", "")
+        assert "${context.run_dir}" in action
+
+    def test_prepare_report_path_uses_run_dir(self, data: dict) -> None:
+        """prepare_report_path must use ${context.run_dir} for per-run isolation."""
+        action = data["states"].get("prepare_report_path", {}).get("action", "")
+        assert "${context.run_dir}" in action
+
+    def test_prepare_report_path_captures_report_path(self, data: dict) -> None:
+        """prepare_report_path must capture: report_path for build_report."""
+        state = data["states"].get("prepare_report_path", {})
+        assert state.get("capture") == "report_path"
+
+    def test_build_report_uses_llm_gate_fragment(self, data: dict) -> None:
+        """build_report must use llm_gate fragment."""
+        state = data["states"].get("build_report", {})
+        assert state.get("fragment") == "llm_gate"
+
+    def test_build_report_references_captured_report_path(self, data: dict) -> None:
+        """build_report must reference ${captured.report_path.output}."""
+        action = data["states"].get("build_report", {}).get("action", "")
+        assert "${captured.report_path.output}" in action
+
+    def test_max_iterations_and_timeout(self, data: dict) -> None:
+        """Loop must define max_iterations and timeout."""
+        assert data.get("max_iterations", 0) > 0
+        assert data.get("timeout", 0) > 0
+
+    def test_reprove_next_captures_reprove(self, data: dict) -> None:
+        """reprove_next must capture: reprove so classify_outcome can access old/new records."""
+        state = data["states"].get("reprove_next", {})
+        assert state.get("capture") == "reprove"

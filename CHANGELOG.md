@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`migrate-sdk-version` loop** — FSM loop for bulk re-proving stale learning-test records after a dependency bump. Iterates the stale queue, re-runs `/ll:explore-api` for each target, classifies each result as `still-valid`, `needs-upgrade`, or `refuted`, and produces a triage report. Counterpart to `learning-tests-audit`: run after it marks records stale. (FEAT-1813)
+
 - **`parse_tagged_json` fragment** — New `lib/common.yaml` fragment that injects `action_type: shell` into states that extract a tagged JSON line from LLM output. Eliminates duplicated `action_type` declarations across 3 integration loops. No default `action:` is provided (the FSM interpolation engine is single-pass; nested `${captured.${context.var}.output}` raises `InterpolationError`); callers supply `action:` referencing the captured variable by its literal name. (ENH-1861)
 - **3 integration loops converted to `parse_tagged_json`** — `adopt-third-party-api.yaml`, `integrate-sdk.yaml`, and `assumption-firewall.yaml` now declare `fragment: parse_tagged_json` on their parse states and `import: ["lib/common.yaml"]`. Existing `action:`, `capture:`, `evaluate:`, and routing fields are unchanged. (ENH-1861)
 - **`ll-harness` CLI** — New one-shot runner evaluation CLI that invokes a skill (`skill`), shell command (`cmd`), MCP tool (`mcp`), or raw Claude prompt (`prompt`), captures output, and evaluates against optional exit-code and semantic criteria. Exits `0` (PASS), `1` (FAIL), or `2` (error/timeout). Registered as `ll-harness` in `pyproject.toml`. (FEAT-1689)

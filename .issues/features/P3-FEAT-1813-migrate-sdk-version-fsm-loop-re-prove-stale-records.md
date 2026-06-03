@@ -3,8 +3,9 @@ id: FEAT-1813
 title: "`migrate-sdk-version` FSM loop \u2014 re-prove stale learning-test records"
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-30T21:35:04Z'
+completed_at: '2026-06-03T02:25:19Z'
 discovered_date: '2026-05-30'
 discovered_by: capture-issue
 parent: EPIC-1694
