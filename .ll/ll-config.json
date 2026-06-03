@@ -48,6 +48,15 @@
     "active": "warm-paper",
     "active_theme": "dark"
   },
+  "analytics": {
+    "enabled": true,
+    "capture": {
+      "skills": ["*"],
+      "cli_commands": ["*"],
+      "corrections": true,
+      "file_events": true
+    }
+  },
   "documents": {
     "enabled": true,
     "categories": {
