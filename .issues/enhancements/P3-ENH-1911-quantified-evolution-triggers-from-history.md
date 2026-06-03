@@ -20,6 +20,22 @@ manually instead of invoking the matching skill). Both signals turn accreted his
 concrete, count-backed proposals for harness self-improvement (a CLAUDE.md rule, a sharper
 skill description, or a new loop).
 
+## Current Behavior
+
+`analyze-history` surfaces recurring manual activity (`ManualPattern` / `ManualPatternAnalysis`) but does not quantify:
+- How many times the same user correction has recurred across sessions
+- How many times a user bypassed a registered skill or loop, doing the work manually instead
+
+Corrections accumulate in `memory/feedback_*` files without recurrence counts; skill/loop bypasses go undetected.
+
+## Expected Behavior
+
+`analyze-history` gains an `## Evolution Triggers` section reporting:
+- **Recurring feedback**: corrections clustered by topic, with occurrence counts, example session IDs, and a candidate permanent-rule proposal for any cluster meeting the configured threshold
+- **Skill bypass**: skills/loops where the user performed the work manually instead of invoking them, with bypass counts and example sessions
+
+`improve-claude-md` receives the ranked candidates annotated with recurrence counts to justify CLAUDE.md rule additions or skill-description tweaks. Both thresholds are configurable via `analysis.evolution.*` in `.ll/ll-config.json`.
+
 ## Motivation
 
 little-loops already detects recurring *manual* activity — `ManualPattern` /
@@ -66,6 +82,13 @@ recurring manual work but not recurring *feedback* or *bypass*.
 - Config: `analysis.evolution.feedback_min_recurrence` (default 2),
   `analysis.evolution.bypass_min_count` (default 2).
 
+## Scope Boundaries
+
+- **Out of scope**: auto-applying corrections to CLAUDE.md or skill descriptions — detector + proposer only; applying a change stays with `improve-claude-md` / the user
+- **Out of scope**: cross-project bypass tracking — operates only on this project's `.ll/history.db`
+- **Out of scope**: inferring feedback from code review diffs, PR comments, or external tools — only session history and `memory/feedback_*`
+- **Out of scope**: real-time per-session trigger reporting — batch analysis only, invoked explicitly
+
 ## Open Questions
 
 1. **Bypass detection precision.** Matching "user did X manually that skill Y covers" is fuzzy;
@@ -91,9 +114,33 @@ recurring manual work but not recurring *feedback* or *bypass*.
 - `ll-history` / `ll-history-context` — FTS5 + topic-excerpt machinery to reuse
 - `agents/loop-specialist.md` — post-hoc failure-mode taxonomy (related "evolve the harness" surface)
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/issue_history/__init__.py` — exports `ManualPattern`/`ManualPatternAnalysis`; must export new `RecurringFeedback`/`SkillBypass` models
+- `skills/analyze-history/SKILL.md` — consumes `ManualPatternAnalysis` output; must consume new evolution trigger models
+
+### Tests
+- `scripts/tests/test_issue_history_advanced_analytics.py` — extend with `RecurringFeedback`/`SkillBypass` model tests
+- `scripts/tests/test_issue_history_analysis.py` — extend with evolution-trigger analysis integration tests
+- `scripts/tests/test_evolution_triggers.py` (new) — detector logic unit tests (threshold filtering, cluster dedup, bypass matching)
+
+### Documentation
+- `docs/reference/API.md` — update `little_loops.issue_history.models` section with new models
+- `skills/analyze-history/SKILL.md` — document the `## Evolution Triggers` report section and output format
+
 ### Configuration
 - `analysis.evolution.feedback_min_recurrence` (default 2)
 - `analysis.evolution.bypass_min_count` (default 2)
+
+## Impact
+
+- **Priority**: P3 — Enhances harness self-improvement loop; no existing P0–P2 blockers
+- **Effort**: Medium — New detector models (~2 dataclasses), FTS5 query additions, report section in two skills, config schema update
+- **Risk**: Low — Additive only; no existing behavior changes; proposal-only output
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `history`, `analyze-history`, `improve-claude-md`, `evolution`
 
 ## Provenance
 
@@ -103,11 +150,11 @@ bypasses orchestrator). This issue ports the *signal detection*; little-loops ke
 rigorous "propose, don't auto-grade" stance for the action side.
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-03T21:05:33 - `b833547d-130c-42f1-b9a5-75900748b2de.jsonl`
 - `/ll:capture-issue` - 2026-06-03T20:59:38Z - `b4fa1e68-4a59-49bd-949a-5a5b7533509f.jsonl`
 
 ---
 
 ## Status
 
-- **State**: open
-- **Created**: 2026-06-03
+**Open** | Created: 2026-06-03 | Priority: P3

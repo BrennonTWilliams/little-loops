@@ -158,21 +158,52 @@ Extend the runtime `parameters:` / `with:` model to fragment references:
 
 ## Integration Map
 
-- `scripts/little_loops/fsm/fragments.py` — `resolve_fragments`: carry `with:`
-  bindings onto state; keep deep-merge for plain fields.
-- `scripts/little_loops/fsm/schema.py` — reuse `ParameterSpec`; add fragment
-  `parameters:` parsing; add a `fragment_bindings` field to `StateConfig`
-  (avoid collision with existing MCP `params`).
-- `scripts/little_loops/fsm/interpolation.py` — add a `param` namespace to
-  `InterpolationContext.resolve`.
-- `scripts/little_loops/fsm/executor.py` — populate the `param` namespace per
-  state in `_build_context`; apply defaults/required/type (mirror
-  `_execute_sub_loop`, executor.py ~506-612).
-- `scripts/little_loops/fsm/validation.py` — fragment-binding cross-validation
-  analogous to `_validate_with_bindings`; teach it about runner-injected vars so
-  it does not false-positive on `run_dir`.
-- Migrate `retry_counter` and `ll_rubric_score` off bare `${context.X}` onto
-  `${param.X}` as the proof cases; keep genuine runtime refs as runtime interp.
+### Files to Modify
+- `scripts/little_loops/fsm/fragments.py` — `resolve_fragments`: carry `with:` bindings onto state; keep deep-merge for plain fields
+- `scripts/little_loops/fsm/schema.py` — reuse `ParameterSpec`; add fragment `parameters:` parsing; add `StateConfig.fragment_bindings` field (avoid collision with existing MCP `params`)
+- `scripts/little_loops/fsm/interpolation.py` — add `param` namespace to `InterpolationContext.resolve`
+- `scripts/little_loops/fsm/executor.py` — populate `param` namespace per state in `_build_context`; apply defaults/required/type (mirror `_execute_sub_loop`, ~L506-612)
+- `scripts/little_loops/fsm/validation.py` — fragment-binding cross-validation analogous to `_validate_with_bindings`; runner-injected-var aware to avoid false-positive on `run_dir`
+- `scripts/little_loops/loops/lib/retry_counter.yaml` — migrate `${context.counter_key}` / `${context.max_retries}` to `parameters:` + `${param.X}`
+- `scripts/little_loops/loops/lib/ll_rubric_score.yaml` — migrate `${context.run_dir}` to `parameters:` + `${param.run_dir}`
+
+### Dependent Files (Callers/Importers)
+- Any loop YAML using `fragment: retry_counter` or `fragment: ll_rubric_score` — will need `with:` bindings added after migration (opt-in; fragments without `parameters:` are unchanged)
+
+### Similar Patterns
+- Sub-loop `with:` bindings: `executor.py` `_execute_sub_loop` / `_validate_with_bindings` — pattern to mirror exactly
+
+### Tests
+- `scripts/tests/test_fsm_fragments.py` (new or extend) — missing required param → ERROR, default applied, two references no collision, `run_dir` resolves at runtime
+
+### Documentation
+- N/A — no user-facing docs reference fragment parameterization contract
+
+### Configuration
+- N/A
+
+## API/Interface
+
+New YAML authoring contract for fragments (opt-in; existing fragments unchanged):
+
+```yaml
+# Fragment definition — new top-level `parameters:` block
+retry_counter:
+  parameters:
+    counter_key: {type: string, required: true}
+    max_retries: {type: integer, default: 3}
+  action: ...
+
+# Fragment reference — new optional `with:` map on the state
+lint_retry:
+  fragment: retry_counter
+  with: {counter_key: lint_retries, max_retries: 5}
+```
+
+New Python surface:
+- `StateConfig.fragment_bindings: dict[str, Any]` — resolved `with:` bindings carried from `resolve_fragments` (distinct from `StateConfig.params` which holds MCP tool args)
+- `InterpolationContext` — new `param` namespace alongside `context`, `env`, `captured`
+- `load_and_validate` — new cross-validation pass: unknown bindings flagged, missing required params flagged, runner-injected vars (`run_dir`) whitelisted
 
 ## Implementation Steps
 
@@ -210,9 +241,10 @@ Migrate fragments opportunistically.
 
 ## Impact
 
-Medium. Touches `fragments.py`, `schema.py`, `interpolation.py`, `executor.py`,
-`validation.py` and the `lib/` fragment defs, but reuses existing dataclasses and
-the interpolation engine, so net new surface is small.
+- **Priority**: P3 — medium-priority DX enhancement; silent fragment failures are a real pain point but non-blocking for current work
+- **Effort**: Medium — touches 5 core FSM files and `lib/` fragment defs, but reuses `ParameterSpec` dataclass and existing interpolation engine verbatim; net new surface is small
+- **Risk**: Low — fully additive and opt-in; existing `${context.X}` interpolation is unchanged; no breaking changes to callers
+- **Breaking Change**: No
 
 ## Related Key Documentation
 
@@ -226,6 +258,7 @@ the interpolation engine, so net new surface is small.
 fsm, fragments, loops, dx
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-03T21:01:44 - `b833547d-130c-42f1-b9a5-75900748b2de.jsonl`
 - `/ll:capture-issue` - 2026-06-03T20:51:54Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1cd9a64-5656-4d3a-9168-942bbb1958da.jsonl`
 
 ## Status

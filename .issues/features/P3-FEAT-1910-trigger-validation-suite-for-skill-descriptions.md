@@ -21,6 +21,28 @@ with another skill's trigger space. This is the one genuine capability gap surfa
 review of the `revfactory/harness` plugin (its Phase 6-4 "Trigger Validation"): little-loops
 generates and budgets descriptions but never tests that they actually fire as intended.
 
+## Current Behavior
+
+little-loops provides ~70 `/ll:*` skills sharing a dense keyword space. Existing verifier
+tooling covers description generation and static constraints, but not trigger semantics:
+- `ll-generate-skill-descriptions` extracts `trigger keywords:` and writes ≤100-char descriptions
+  but never tests whether they fire or false-fire.
+- `ll-verify-skill-budget` checks token footprint against the listing budget.
+- `ll-verify-skills` enforces the 500-line SKILL.md cap.
+
+Trigger collisions (two skills firing on the same phrasing) and silent misfires (a skill failing
+to fire on a natural rephrase) go undetected.
+
+## Expected Behavior
+
+A new `ll-verify-triggers` CLI validates each skill's description against a set of
+should-fire and should-NOT-fire phrasings. Running `ll-verify-triggers` (locally or in CI):
+- Reports per-skill precision/recall
+- Emits a cross-skill collision matrix
+- Exits 1 when any skill falls below threshold or collides with another skill
+
+The check integrates into CI alongside `ll-verify-skill-budget` and `ll-verify-skills`.
+
 ## Motivation
 
 little-loops has ~70 `/ll:*` skills sharing a dense keyword space. Existing tooling only
@@ -46,6 +68,17 @@ A maintainer adds a new skill whose description overlaps an existing one. Runnin
 `ll-verify-triggers` (locally or in CI) reports that 3 of the new skill's should-fire phrasings
 also match an existing skill (collision) and that 2 should-NOT phrasings false-fire. The
 maintainer tightens the description and re-runs until precision/recall clear the threshold.
+
+## Acceptance Criteria
+
+- [ ] `ll-verify-triggers` CLI exists; accepts a skill set (default: all `skills/*/SKILL.md` + `commands/*.md`)
+- [ ] Each skill can carry a `trigger_fixtures:` block (or sidecar file) with should-fire and should-NOT-fire phrasings
+- [ ] Per-skill precision/recall is computed and reported in a table
+- [ ] Cross-skill collision matrix is emitted; collisions are reported per-skill-pair
+- [ ] Exit code 1 when any skill falls below threshold or has a collision; exit 0 on full pass
+- [ ] Primary signal is deterministic (non-LLM), satisfying the MR-1 non-LLM evaluator pairing requirement
+- [ ] CI runs `ll-verify-triggers` alongside `ll-verify-skill-budget` and `ll-verify-skills`
+- [ ] Tests cover fixture parsing, precision/recall math, collision detection, and exit-code behavior
 
 ## API/Interface
 
@@ -99,6 +132,17 @@ maintainer tightens the description and re-runs until precision/recall clear the
 ### Tests
 - `scripts/tests/test_verify_triggers.py` — fixture parsing, precision/recall math, collision detection, exit-code behavior
 
+## Impact
+
+- **Priority**: P3 — Detection capability gap; not blocking in-flight work but a live CI blind spot as the skill namespace grows.
+- **Effort**: Medium — New CLI, fixture format definition, matcher logic, and CI wiring; reuses existing `generate_skill_descriptions.py` keyword extraction.
+- **Risk**: Low — Additive new tooling; no changes to existing skill descriptions or CLI infrastructure.
+- **Breaking Change**: No
+
+## Labels
+
+`feature`, `verification`, `ci`, `skills`
+
 ## Provenance
 
 Surfaced while reviewing `https://github.com/revfactory/harness` for ideas applicable to
@@ -107,6 +151,7 @@ should-NOT-trigger (near-miss) queries; this issue ports that discipline into a 
 CI-enforceable check that fits little-loops' non-LLM-evaluator philosophy.
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-03T21:04:12 - `b62e3f92-2664-4793-81e7-cf8464c74fe6.jsonl`
 - `/ll:capture-issue` - 2026-06-03T20:59:38Z - `b4fa1e68-4a59-49bd-949a-5a5b7533509f.jsonl`
 
 ---
