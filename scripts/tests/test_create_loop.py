@@ -233,3 +233,110 @@ class TestLoopFileCreation:
         # Simulate the check from create-loop/SKILL.md Step 5
         exists = loop_file.exists()
         assert exists is True
+
+
+# =============================================================================
+# Harness Plan-Research-Implement-Report (Variant C) Structural Tests
+# =============================================================================
+
+HARNESS_PLAN_RESEARCH_IMPLEMENT_REPORT_YAML = """
+name: harness-plan-research-implement-report
+category: harness
+description: |
+  EXAMPLE: Specialist-role pipeline with Plan -> Research -> Implement -> Report decomposition.
+initial: plan
+max_iterations: 50
+import:
+  - lib/common.yaml
+states:
+  plan:
+    action: "Create a detailed implementation plan."
+    action_type: prompt
+    capture: plan
+    next: research
+  research:
+    action: "Research the codebase and documentation relevant to the plan."
+    action_type: prompt
+    capture: research
+    next: implement
+  implement:
+    action: "Implement the plan using the research findings."
+    action_type: prompt
+    capture: execute_result
+    max_retries: 3
+    on_retry_exhausted: report
+    next: check_stall
+  check_stall:
+    action: "echo checking stall"
+    action_type: shell
+    fragment: diff_stall_gate
+    on_yes: check_concrete
+    on_no: report
+    on_error: report
+  check_concrete:
+    action: "pytest"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: check_semantic
+    on_no: implement
+    on_error: implement
+  check_semantic:
+    action: "echo Evaluating implementation quality"
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      source: "${captured.execute_result.output}"
+      prompt: "Evaluate the implementation. Answer YES or NO."
+    on_yes: check_invariants
+    on_no: implement
+    on_partial: check_semantic
+  check_invariants:
+    action: "git diff --stat HEAD | wc -l | tr -d ' '"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 50
+    on_yes: report
+    on_no: implement
+    on_error: report
+  report:
+    action: "Produce a completion report."
+    action_type: prompt
+    next: done
+  done:
+    terminal: true
+"""
+
+
+class TestHarnessPlanResearchImplementReport:
+    """Structural validation for the Variant C scaffold from /ll:create-loop."""
+
+    @pytest.fixture
+    def scaffold(self) -> dict:
+        return yaml.safe_load(HARNESS_PLAN_RESEARCH_IMPLEMENT_REPORT_YAML)
+
+    def test_initial_state_is_plan(self, scaffold: dict) -> None:
+        """Variant C must start from the plan state."""
+        assert scaffold["initial"] == "plan"
+
+    def test_required_states_exist(self, scaffold: dict) -> None:
+        """All four specialist roles plus terminal state must be present."""
+        states = set(scaffold["states"].keys())
+        required = {"plan", "research", "implement", "report", "done"}
+        assert required.issubset(states), f"Missing states: {required - states}"
+
+    def test_phase_sequencing(self, scaffold: dict) -> None:
+        """plan routes to research, research routes to implement."""
+        states = scaffold["states"]
+        assert states["plan"].get("next") == "research", "plan must route to research"
+        assert states["research"].get("next") == "implement", "research must route to implement"
+
+    def test_terminal_state(self, scaffold: dict) -> None:
+        """done must be a terminal state."""
+        assert scaffold["states"]["done"].get("terminal") is True
+
+    def test_description_field(self, scaffold: dict) -> None:
+        """Variant C scaffold must have a non-empty description."""
+        assert scaffold.get("description"), "description field must be non-empty"

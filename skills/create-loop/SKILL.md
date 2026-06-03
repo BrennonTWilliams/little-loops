@@ -134,6 +134,8 @@ questions:
         description: "Execute steps in order, repeat until condition met. Best for: multi-stage builds"
       - label: "Harness a skill or prompt"
         description: "Wrap a skill/prompt with plan-evaluate-iterate. Auto-generates evaluation from project context."
+      - label: "Specialist role pipeline"
+        description: "Decompose a task into Plan -> Research -> Implement -> Report specialist roles. Best for deep refactors, multi-file features, and cross-cutting changes."
       - label: "RL: Bandit (explore vs exploit)"
         description: "Epsilon-greedy bandit loop — alternate explore/exploit rounds, routing on reward convergence. Best for: A/B strategy selection, prompt optimization, hyperparameter search."
       - label: "RL: RLHF-style (generate → score → refine)"
@@ -150,6 +152,7 @@ questions:
 - "Drive a metric toward a target" -> `drive-metric` type (states: measure, apply, done)
 - "Run a sequence of steps" -> `run-sequence` type (step_0...step_N, check_done, done)
 - "Harness a skill or prompt" -> `harness` type (states: discover, execute, check_concrete, check_semantic, check_invariants, advance, done)
+- "Specialist role pipeline" -> `specialist-pipeline` type (states: plan, research, implement, report, done)
 - **Sub-loop composition** — not a wizard type; use `loop:` field in YAML to invoke other loops as child FSMs (see [reference.md](reference.md))
 - "RL: Bandit (explore vs exploit)" -> `rl-bandit` type (states: explore, exploit, reward, done)
 - "RL: RLHF-style (generate → score → refine)" -> `rl-rlhf` type (states: generate, score, refine, done)

@@ -92,14 +92,16 @@ states:
     timeout: 600
     action: |
       Plan an as-a-user eval harness for the project. Read `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`
-      for the two harness variants (single-shot and multi-item).
+      for the three harness variants (single-shot, multi-item, and specialist-role pipeline).
 
       Using the design artifacts:
       ${captured.design_artifacts.output}
 
       1. Determine which variant fits: Variant A (single-shot) for a single validation scenario,
-         Variant B (multi-item) for multiple test cases or items
-      2. Run `ll-loop install harness-single-shot` or `ll-loop install harness-multi-item` to get the template
+         Variant B (multi-item) for multiple test cases or items,
+         Variant C (specialist-role pipeline) for tasks needing Plan -> Research -> Implement -> Report phase decomposition
+      2. Run `ll-loop install harness-single-shot`, `ll-loop install harness-multi-item`, or
+         `ll-loop install harness-plan-research-implement-report` to get the template
       3. Customize the installed harness YAML in `.loops/`:
          - Set `name` to a project-specific name (e.g., `myproject-harness`)
          - Configure `execute.action` to run the project

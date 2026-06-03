@@ -4,8 +4,9 @@ type: FEAT
 title: "Specialist-role harness template (Plan \u2192 Research \u2192 Implement \u2192\
   \ Report)"
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-29T20:37:23Z'
+completed_at: '2026-06-03T00:02:41Z'
 discovered_date: 2026-05-29
 discovered_by: capture-issue
 labels:
@@ -299,7 +300,23 @@ _Added by `/ll:verify-issues` on 2026-06-02 — verdict: **NEEDS_UPDATE** (corre
 
 **Confirmed accurate:** All referenced files exist; related issues FEAT-1794, FEAT-1808, ENH-1796, EPIC-1773 all open; `harness-plan-research-implement-report.yaml` not yet created (expected — it's the artifact to create); `action_type: human_approval` absent from FSM schema as described; test function line numbers off by 1 (within tolerance).
 
+## Resolution
+
+**Implemented**: 2026-06-03
+
+All 6 acceptance criteria met:
+- `/ll:create-loop` SKILL.md updated with "Specialist role pipeline" option and `specialist-pipeline` type mapping
+- `skills/create-loop/loop-types.md` updated: "Three structural variants" + full `## Specialist Pipeline Questions` section (S1–S5) with Generate YAML block
+- `scripts/little_loops/loops/harness-plan-research-implement-report.yaml` created — passes `ll-loop validate`
+- `harness-plan-research-implement-report` added to `test_expected_loops_exist` expected set
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` includes `### Variant C: Specialist-Role Pipeline` section, updated ToC, and updated example files table
+- Generated YAML includes `# OPTIONAL: review_plan` commented HITL block for FEAT-1794
+- `greenfield-builder.yaml`, `loops/README.md`, `docs/guides/LOOPS_GUIDE.md` wired to reference Variant C
+- `TestHarnessPlanResearchImplementReport` test class added to `test_create_loop.py` (5 structural assertions)
+- Decision: Option B (autonomous pipeline, no HITL gates) per pre-existing decision frontmatter
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-02T23:45:35 - `b0f85017-dbd3-4f68-ae48-e1ee34c9c934.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00Z - `65f77860-d771-4c40-9ba9-2bc9f9139bfe.jsonl`
 - `/ll:refine-issue` - 2026-06-02T23:34:29 - `dbfa4553-bb50-4095-a28a-7fd0414252fb.jsonl`
 - `/ll:verify-issues` - 2026-06-02T23:28:18 - `f1eb338d-104c-4e7d-b1d5-f987c7de0b61.jsonl`

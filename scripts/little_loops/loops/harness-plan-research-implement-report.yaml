@@ -1,0 +1,150 @@
+# EXAMPLE: Specialist-role pipeline (Plan -> Research -> Implement -> Report).
+# Use as a starting point when your task benefits from explicit phase decomposition:
+# deep refactors, multi-file features, or cross-cutting changes.
+# This is Variant C from docs/guides/AUTOMATIC_HARNESSING_GUIDE.md
+#
+# Pipeline in order:
+#   plan -> research -> implement -> check_stall -> check_concrete -> check_semantic -> check_invariants -> report -> done
+#
+# Optional HITL review gate (between plan and research) is shown as a commented-out block.
+# Activate once FEAT-1794 (action_type: human_approval) lands.
+#
+# Usage:    ll-loop run harness-plan-research-implement-report
+# Validate: ll-loop test harness-plan-research-implement-report
+
+name: harness-plan-research-implement-report
+category: harness
+description: |
+  EXAMPLE: Specialist-role pipeline with Plan -> Research -> Implement -> Report decomposition.
+  Wraps a multi-phase implementation task with explicit planning, background research, and
+  quality gates (stall detection, concrete test gate, LLM quality judge, diff size invariant).
+  Adapt by replacing the plan/research/implement actions with your task-specific skills or prompts.
+initial: plan
+max_iterations: 50              # higher budget for multi-phase tasks
+timeout: 7200                   # 2-hour wall clock limit (seconds)
+import:
+  - lib/common.yaml
+
+states:
+
+  plan:
+    # EXAMPLE: Planning role -- produce a structured plan for the task.
+    # action_type: slash_command -> run /ll:iterate-plan for structured plan generation
+    # action_type: prompt        -> send free-form planning instructions to Claude
+    # Replace the action with your task-specific planning prompt or skill.
+    action: >
+      Create a detailed implementation plan for the task.
+      Include: scope, files to change, approach, acceptance criteria, and test strategy.
+      Write the plan to ${context.run_dir}/plan.md
+    action_type: prompt
+    capture: plan
+    next: research
+
+  # OPTIONAL: review_plan (HITL gate -- requires FEAT-1794 action_type: human_approval)
+  # Uncomment to add a human approval gate after planning and before research.
+  # Until FEAT-1794 lands, use the workaround pattern from loop-router.yaml:
+  #   a prompt state with an output_contains evaluator routing on "APPROVE".
+  #
+  # review_plan:
+  #   action_type: human_approval
+  #   prompt: >
+  #     Review the plan: ${captured.plan.output}
+  #     Reply APPROVE to proceed to research, or REVISE to re-plan.
+  #   on_yes: research
+  #   on_no: plan
+
+  research:
+    # EXAMPLE: Research role -- investigate codebase, docs, or web for context.
+    # Use Read, Grep, Glob, and WebSearch tools to gather background information.
+    # Capture findings so the implement role can reference ${captured.research.output}.
+    action: >
+      Research the codebase and documentation relevant to the plan.
+      Read referenced files, search for related patterns, and document findings.
+      Write research notes to ${context.run_dir}/research.md
+    action_type: prompt
+    capture: research
+    next: implement
+
+  implement:
+    # EXAMPLE: Implement role -- apply the plan using research context.
+    # action_type: slash_command -> run a skill like /ll:manage-issue
+    # action_type: prompt        -> send instructions with plan and research context
+    # The captured plan and research are available for reference in the action prompt.
+    action: >
+      Implement the plan using the research findings.
+      Reference the plan and research context to guide implementation.
+    action_type: prompt
+    capture: execute_result
+    max_retries: 3
+    on_retry_exhausted: report        # give up and report what was done
+    next: check_stall
+
+  check_stall:
+    # EXAMPLE: Stall detection -- catches implement runs that return without making changes.
+    # In specialist-pipeline mode, a stall routes to report (not done) so the earlier
+    # planning and research context is always surfaced in the final report.
+    action: "echo 'checking stall'"
+    action_type: shell
+    fragment: diff_stall_gate
+    on_yes: check_concrete            # progress detected -> proceed to evaluation chain
+    on_no: report                     # no changes -> skip evaluation, still produce report
+    on_error: report
+
+  check_concrete:
+    # EXAMPLE: Cheapest gate first -- run the project's configured test suite.
+    # Reads test_cmd from .ll/ll-config.json; falls back to 'pytest' if absent.
+    action: |
+      CMD=$(python3 -c "
+      import json, pathlib
+      p = pathlib.Path('.ll/ll-config.json')
+      cfg = json.loads(p.read_text()) if p.exists() else {}
+      print(cfg.get('project', {}).get('test_cmd', 'pytest'))
+      ")
+      eval "$CMD" 2>&1
+    fragment: shell_exit
+    on_yes: check_semantic            # tests pass -> LLM quality check
+    on_no: implement                  # tests fail -> retry the implement role
+    on_error: implement
+
+  check_semantic:
+    # EXAMPLE: LLM-as-judge evaluates whether the implementation achieved the plan intent.
+    # Customize the prompt to describe what "success" means for your task.
+    action: "echo 'Evaluating implementation quality'"
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      source: "${captured.execute_result.output}"
+      prompt: >
+        Evaluate the implementation against the plan on these criteria:
+        1. At least one file was modified and the task appears meaningfully complete
+        2. Absence of failure signals: no errors reported, no incomplete or partial output
+        3. Changes are consistent with the planned scope
+        Answer YES only if all criteria pass. Otherwise NO, stating which criterion failed.
+    on_yes: check_invariants          # quality confirmed -> check diff size
+    on_no: implement                  # quality not confirmed -> retry
+    on_partial: check_semantic        # ambiguous -> re-evaluate
+
+  check_invariants:
+    # EXAMPLE: Diff size gate -- prevents runaway changes from being accepted.
+    # Increase target to 150-200 for documentation or large-scale refactor tasks.
+    action: "git diff --stat HEAD | wc -l | tr -d ' '"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 50
+    on_yes: report                    # diff is acceptably small -> produce report
+    on_no: implement                  # diff too large -> retry
+    on_error: report
+
+  report:
+    # EXAMPLE: Reporter role -- summarize what was done for review.
+    # Reads captured plan, research, and implementation result to produce a concise summary.
+    action: >
+      Produce a completion report summarizing the specialist-role pipeline execution.
+      Include: plan summary, research findings used, changes made, test results, and next steps.
+    action_type: prompt
+    next: done
+
+  done:
+    terminal: true

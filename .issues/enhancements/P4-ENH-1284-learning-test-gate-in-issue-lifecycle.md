@@ -3,12 +3,18 @@ id: ENH-1284
 title: Learning Test Gate in Issue Lifecycle
 type: ENH
 priority: P4
-captured_at: "2026-04-25T18:06:01Z"
-discovered_date: "2026-04-25"
+captured_at: '2026-04-25T18:06:01Z'
+discovered_date: '2026-04-25'
 discovered_by: capture-issue
 parent: EPIC-1694
 status: open
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-1284: Learning Test Gate in Issue Lifecycle
@@ -113,10 +119,14 @@ Add `learning_tests_required` to the `## Frontmatter Fields` table (around line 
 - `commands/ready-issue.md` — add Learning Test Gate subsection after Dependency Status (line 163); add VALIDATION table row (line 334)
 - `skills/go-no-go/SKILL.md` — inject pre-fetched registry context block into adversarial agent and judge prompts in Phase 3b/3d
 - `docs/reference/ISSUE_TEMPLATE.md` — add `learning_tests_required` to `## Frontmatter Fields` table and add a dedicated sub-section
+- `scripts/little_loops/cli/issues/show.py` — add `learning_tests_required` to `_parse_card_fields()` return dict so `ll-issues show --json` exposes it (consistent with `decision_needed` pattern) [Agent 1 finding]
 
-### Dependent Files (read-only)
-- `scripts/little_loops/learning_tests.py` — `check_learning_test(target: str) -> LearnTestRecord | None` (line 140); `LearnTestRecord.status: Literal["proven", "refuted", "stale"]`; `LearnTestRecord.to_dict()` for JSON serialization
-- `scripts/little_loops/cli/learning_tests.py` — `cmd_check()` exit contract: exit 0 = record found (check `status` in JSON stdout), exit 1 = not found
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/learning_tests.py` — `check_learning_test(target: str) -> LearnTestRecord | None` (line 140); `LearnTestRecord.status: Literal["proven", "refuted", "stale"]`; `LearnTestRecord.to_dict()` for JSON serialization (read-only)
+- `scripts/little_loops/cli/learning_tests.py` — `cmd_check()` exit contract: exit 0 = record found (check `status` in JSON stdout), exit 1 = not found (read-only)
+- `scripts/little_loops/output_parsing.py` — `parse_validation_table()` and `parse_ready_issue_output()` parse ready-issue VALIDATION table output; new "Learning Tests" row must match parseable format (first-word of Check column = key); does not break existing tests but implementation must align [Agent 1 finding]
 
 ### Similar Patterns
 - `scripts/little_loops/issue_parser.py:267` — `decision_needed: bool | None = None` — field registration pattern
@@ -124,13 +134,23 @@ Add `learning_tests_required` to the `## Frontmatter Fields` table (around line 
 - `scripts/little_loops/loops/ready-to-implement-gate.yaml` — `check_next` state — existing shell gate using `ll-learning-tests check` (status parsing: `| python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('status',''))"`)
 
 ### Tests
-- `scripts/tests/test_ready_issue_lint.py` — existing ready-issue test patterns to extend
+- `scripts/tests/test_ready_issue_lint.py` — existing ready-issue test patterns to extend; add `TestReadyIssueLearningTestGate` class asserting the gate step text is present (follow `TestReadyIssueHistoryContextInjection` template)
 - `scripts/tests/test_learning_tests.py` — existing registry tests; add fixtures for proven/stale/refuted/missing scenarios
 - New tests: issue with `learning_tests_required` + missing target → NOT_READY; issue with all proven targets → READY; refuted target → hard NOT_READY
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_parser.py` — add new `TestIssueInfoLearningTestsRequired` class following the 8-test pattern of `TestIssueInfoDecisionNeeded` (lines 1990–2118): default None, list value, to_dict, from_dict missing, from_dict with value, parse_file with YAML list, parse_file absent, roundtrip [Agent 3 finding]
+- `scripts/tests/test_issue_parser_properties.py` — update `TestIssueInfoProperties.test_roundtrip_serialization` and product-impact roundtrip variants to include `learning_tests_required` in `@given` strategy (`st.one_of(st.none(), st.lists(st.text(...), max_size=5))`) and assertions [Agent 3 finding — tests to update]
+- `scripts/tests/test_issues_cli.py` — add `test_show_json_includes_learning_tests_required` in `TestShowCommand` (requires `_parse_card_fields()` update in `show.py`); follows `test_show_json_includes_decision_needed` pattern [Agent 2 + 3 finding]
 
 ### Documentation
 - `docs/reference/ISSUE_TEMPLATE.md` — `## Frontmatter Fields` table (line ~876)
 - `docs/development/TROUBLESHOOTING.md` — add entry for learning test gate failures
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — `### IssueInfo` section (lines ~582–614) manually maintains every field with type annotation and comment; add `learning_tests_required: list[str] | None = None` line parallel to `decision_needed` entry [Agent 2 finding]
+- `docs/reference/COMMANDS.md` — `### /ll:ready-issue` section needs a note describing the new Learning Test Gate check phase (parallel to how `decision_needed` is documented under `### /ll:refine-issue`) [Agent 2 finding]
+- `docs/guides/LEARNING_TESTS_GUIDE.md` — currently covers FSM-layer integration only; add section connecting `learning_tests_required` issue frontmatter to the `ready-issue` interactive gate [Agent 2 finding]
 
 ### Configuration
 - N/A — uses registry from `scripts/little_loops/learning_tests.py`; no new config needed
@@ -142,6 +162,18 @@ Add `learning_tests_required` to the `## Frontmatter Fields` table (around line 
 3. **Inject learning test context into `skills/go-no-go/SKILL.md`** Phase 3b: before launching adversarial agents, fetch registry status for each `learning_tests_required` target via `ll-learning-tests check`; inject a formatted context block into both pro/con agent prompts and the judge prompt
 4. **Write tests** in `scripts/tests/test_ready_issue_lint.py` and `scripts/tests/test_learning_tests.py`: proven target passes, missing target blocks with message, refuted target hard-blocks, empty `learning_tests_required` is ignored
 5. **Document** `learning_tests_required` in `docs/reference/ISSUE_TEMPLATE.md` `## Frontmatter Fields` table; add `docs/development/TROUBLESHOOTING.md` entry
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. **Update `scripts/little_loops/cli/issues/show.py`** — add `learning_tests_required` to `_parse_card_fields()` return dict (the same string-coercion used for `decision_needed` does not apply since this is a list, not bool; emit raw list or serialize to JSON string for consistency with other list fields like `blocked_by`)
+7. **Update `docs/reference/API.md`** — add `learning_tests_required: list[str] | None = None` to the `### IssueInfo` field listing (lines ~582–614) alongside the `decision_needed` entry
+8. **Update `docs/reference/COMMANDS.md`** — add a note to `### /ll:ready-issue` describing the new Learning Test Gate check phase and the `learning_tests_required` frontmatter field it reads
+9. **Update `docs/guides/LEARNING_TESTS_GUIDE.md`** — add a section explaining that `learning_tests_required` in issue frontmatter connects to the `ready-issue` interactive gate (complement to the FSM-layer integration already documented)
+10. **Add `TestIssueInfoLearningTestsRequired`** in `scripts/tests/test_issue_parser.py` — follow the 8-test pattern of `TestIssueInfoDecisionNeeded`: default None, list value, to_dict output, from_dict missing, from_dict with value, parse_file with YAML list (`- "target"`), parse_file without key, roundtrip
+11. **Update `scripts/tests/test_issue_parser_properties.py`** — add `learning_tests_required` strategy (`st.one_of(st.none(), st.lists(st.text(min_size=1, max_size=50), max_size=5))`) to `TestIssueInfoProperties.test_roundtrip_serialization` and the two product-impact roundtrip tests
+12. **Add `test_show_json_includes_learning_tests_required`** in `scripts/tests/test_issues_cli.py` `TestShowCommand` — follows `test_show_json_includes_decision_needed` pattern; requires step 6 to be done first
 
 ## Success Metrics
 
@@ -200,6 +232,8 @@ STATUS=$(ll-learning-tests check "$TARGET" 2>/dev/null \
 `enhancement`, `deferred`, `issue-lifecycle`, `learning-tests`, `captured`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-02T00:00:00 - `39cdf65b-efa6-4b44-9a6b-86a84df257c4.jsonl`
+- `/ll:wire-issue` - 2026-06-02T23:50:22 - `e58fe996-ddfe-46f4-a827-73b50b9ebde3.jsonl`
 - `/ll:refine-issue` - 2026-06-02T23:42:40 - `87fe1b1a-2ce7-4463-81b3-4d0dd2ce232e.jsonl`
 - `/ll:refine-issue` - 2026-06-02T00:00:00 - `refine-issue-run`
 - `/ll:format-issue` - 2026-06-02T23:33:49 - `65f77860-d771-4c40-9ba9-2bc9f9139bfe.jsonl`

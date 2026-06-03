@@ -697,7 +697,7 @@ questions:
 
 ### Generate Harness FSM YAML
 
-Use the answers from Steps H1–H4 to generate the YAML. Two structural variants:
+Use the answers from Steps H1–H4 to generate the YAML. Three structural variants (see Specialist Pipeline Questions below for Variant C):
 
 #### Variant A: Single-Shot (no item discovery)
 
@@ -1061,6 +1061,203 @@ states:
   done:
     terminal: true
 ```
+
+## Specialist Pipeline Questions
+
+If user selected "Specialist role pipeline":
+
+### Step S1: Active Roles
+
+```yaml
+questions:
+  - question: "Which roles should be active in this specialist pipeline?"
+    header: "Roles"
+    multiSelect: true
+    options:
+      - label: "Plan (Recommended)"
+        description: "Generate a structured plan for the task before any implementation."
+      - label: "Research (Recommended)"
+        description: "Investigate the codebase, docs, or web before implementing."
+      - label: "Implement (Recommended)"
+        description: "Apply the plan using research context. Core role -- always include this."
+      - label: "Report (Recommended)"
+        description: "Produce a summary of what was done after implementation completes."
+```
+
+Default: all four selected. The plan -> research -> implement -> report chain is the primary pipeline.
+
+### Step S2: Target Task
+
+```yaml
+questions:
+  - question: "How should the task be specified?"
+    header: "Task input"
+    multiSelect: false
+    options:
+      - label: "Specify at run time (Recommended)"
+        description: "Pass the task description when running: ll-loop run my-loop"
+      - label: "Hardcode a fixed task"
+        description: "Embed the task description directly in the generated YAML."
+```
+
+If "Hardcode a fixed task": ask via Other for the task description text, then embed it in the plan, research, and implement state actions.
+
+### Step S3: Planning Approach
+
+```yaml
+questions:
+  - question: "How should the Plan role generate the plan?"
+    header: "Planner"
+    multiSelect: false
+    options:
+      - label: "/ll:iterate-plan (Recommended)"
+        description: "Use the iterate-plan skill to produce a structured implementation plan."
+      - label: "Custom prompt"
+        description: "Write a free-form planning prompt directly in the state action."
+      - label: "Skip planning"
+        description: "Omit the plan state; implement role acts directly on the task."
+```
+
+### Step S4: Evaluation Phases
+
+Read `.ll/ll-config.json` to detect `test_cmd`, `lint_cmd`, `type_cmd`. Present evaluation phase options (same as H3):
+
+```yaml
+questions:
+  - question: "Which evaluation phases should guard the implementation?"
+    header: "Evaluation"
+    multiSelect: true
+    options:
+      - label: "Tool-based gates (Recommended)"
+        description: "Run test_cmd / lint_cmd / type_cmd after implement. Show only if at least one command is configured."
+      - label: "Stall detection (Recommended)"
+        description: "Detect when implement makes no file changes. Catches no-op runs before any gate cost."
+      - label: "LLM-as-judge"
+        description: "Ask an LLM to evaluate whether the implementation meets the plan criteria. timeout: 1500 applies to long MCP calls."
+      - label: "Diff invariants"
+        description: "Gate on diff size to prevent runaway changes."
+```
+
+### Step S5: Iteration Budget
+
+```yaml
+questions:
+  - question: "How many total loop iterations before giving up?"
+    header: "Budget"
+    multiSelect: false
+    options:
+      - label: "50 (Recommended)"
+        description: "Suitable for most single-task specialist pipelines."
+      - label: "100"
+        description: "For longer multi-stage tasks."
+      - label: "200"
+        description: "For extended autonomous runs."
+```
+
+---
+
+### Generate Specialist Pipeline YAML
+
+Use the answers from Steps S1-S5 to generate the YAML. Route linearly: plan -> research -> implement -> [evaluation chain] -> report -> done.
+
+```yaml
+name: "<loop-name>"
+initial: plan                        # or research/implement if earlier roles omitted in S1
+max_iterations: <s5-budget>
+timeout: 7200
+import:
+  - lib/common.yaml
+
+states:
+  plan:                              # include if "Plan" selected in S1; omit if "Skip planning" in S3
+    action: "/ll:iterate-plan <task>" # or custom prompt from S3
+    action_type: slash_command       # or prompt if custom prompt selected
+    capture: plan
+    next: research                   # or implement if Research omitted in S1
+
+  # OPTIONAL: review_plan (HITL gate -- requires FEAT-1794 action_type: human_approval)
+  # Uncomment once FEAT-1794 lands. Without it, use a prompt-gate workaround:
+  #   see scripts/little_loops/loops/loop-router.yaml for the output_contains pattern.
+  #
+  # review_plan:
+  #   action_type: human_approval
+  #   prompt: "Review the plan: ${captured.plan.output}. Reply APPROVE to proceed."
+  #   on_yes: research
+  #   on_no: plan
+
+  research:                          # include if "Research" selected in S1
+    action: "Research the codebase and documentation relevant to the plan."
+    action_type: prompt
+    capture: research
+    next: implement
+
+  implement:
+    action: "Implement the plan using the research findings."
+    action_type: prompt
+    capture: execute_result
+    max_retries: 3
+    on_retry_exhausted: report
+    next: check_stall                # or check_concrete / check_semantic / report if stall detection omitted
+
+  check_stall:                       # include if stall detection selected in S4
+    action: "echo 'checking stall'"
+    action_type: shell
+    fragment: diff_stall_gate
+    on_yes: check_concrete           # or check_semantic / check_invariants / report if concrete gate omitted
+    on_no: report                    # no changes in specialist mode -> still produce report
+    on_error: report
+
+  check_concrete:                    # include if tool-based gates selected in S4
+    action: "<test_cmd or lint_cmd from .ll/ll-config.json>"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: check_semantic           # or check_invariants / report if later phases omitted
+    on_no: implement
+    on_error: implement
+
+  check_semantic:                    # include if LLM-as-judge selected in S4
+    action: "echo 'Evaluating implementation quality'"
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      source: "${captured.execute_result.output}"
+      prompt: >
+        Evaluate the implementation on these criteria:
+        1. At least one file was modified and the task appears meaningfully complete
+        2. Absence of failure signals: no errors, no incomplete output
+        Answer YES only if all criteria pass. Otherwise NO.
+    on_yes: check_invariants         # or report if diff invariants omitted
+    on_no: implement
+    on_partial: check_semantic
+
+  check_invariants:                  # include if diff invariants selected in S4
+    action: "git diff --stat HEAD | wc -l | tr -d ' '"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 50
+    on_yes: report
+    on_no: implement
+    on_error: report
+
+  report:                            # include if "Report" selected in S1
+    action: >
+      Produce a completion report summarizing: plan summary, research used,
+      changes made, test results, and next steps.
+    action_type: prompt
+    next: done
+
+  done:
+    terminal: true
+```
+
+**Wiring notes:**
+- If "Plan" is omitted: set `initial: research` (or `initial: implement` if Research also omitted)
+- If "Research" is omitted: route `plan -> implement`
+- All evaluation phases are optional; route each state `on_yes` to the next enabled phase or to `report`
+- The `# OPTIONAL: review_plan` block must always appear as a commented-out example between `plan` and `research`
 
 ---
 

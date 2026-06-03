@@ -91,6 +91,7 @@ class TestBuiltinLoopFiles:
             "context-health-monitor",
             "harness-single-shot",
             "harness-multi-item",
+            "harness-plan-research-implement-report",
             "harness-optimize",
             "general-task",
             "refine-to-ready-issue",

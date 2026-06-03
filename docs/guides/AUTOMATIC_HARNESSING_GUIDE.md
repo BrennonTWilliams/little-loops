@@ -26,6 +26,7 @@ The hard problem in automated iteration isn't running the skill — it's knowing
 - [Generated FSM Structure](#generated-fsm-structure)
   - [Variant A: Single-Shot](#variant-a-single-shot)
   - [Variant B: Multi-Item](#variant-b-multi-item)
+  - [Variant C: Specialist-Role Pipeline](#variant-c-specialist-role-pipeline)
 - [Using the Example Files](#using-the-example-files)
 - [Worked Example: Harness `refine-issue`](#worked-example-harness-refine-issue)
 - [Tips](#tips)
@@ -712,14 +713,40 @@ states:
 
 ---
 
+### Variant C: Specialist-Role Pipeline
+
+Variant C decomposes a task into four specialist roles — Plan, Research, Implement, and Report — each as a distinct FSM state. Use it when the task benefits from explicit phase separation: deep refactors, multi-file features, or cross-cutting changes where a single `execute` state is too coarse-grained.
+
+```
+plan -> research -> implement -> check_stall -> check_concrete -> check_semantic -> check_invariants -> report -> done
+```
+
+**Role responsibilities:**
+
+| Role | State | Purpose |
+|------|-------|---------|
+| Planner | `plan` | Generate a structured plan for the task before any implementation |
+| Researcher | `research` | Investigate codebase, docs, or web for relevant context |
+| Implementer | `implement` | Apply the plan using research context; equivalent to `execute` in Variants A/B |
+| Reporter | `report` | Summarize what was done after the evaluation chain passes |
+
+**HITL gate pattern (FEAT-1794 dependency):** Between `plan` and `research`, an optional `review_plan` gate can pause the loop for human approval. Until `action_type: human_approval` (FEAT-1794) is available, use the workaround pattern from `scripts/little_loops/loops/loop-router.yaml` (a prompt state with `output_contains` routing). The ready-to-run example includes the HITL gate as a commented-out `# OPTIONAL: review_plan` block.
+
+**Evaluation chain:** Variants A and B evaluation phases (`check_stall`, `check_concrete`, `check_semantic`, `check_invariants`) apply between `implement` and `report`, identical to Variant A. The stall route goes to `report` rather than `done`, so the earlier planning and research context is always surfaced in the final report even when implementation stalls.
+
+> **Ready-to-run example**: [`scripts/little_loops/loops/harness-plan-research-implement-report.yaml`](../../scripts/little_loops/loops/harness-plan-research-implement-report.yaml) is a fully annotated version of this variant. See [Using the Example Files](#using-the-example-files) below.
+
+---
+
 ## Using the Example Files
 
-Two annotated example harness loops are built in to `loops/`:
+Three annotated example harness loops are built in to `loops/`:
 
 | File | Variant | Phases included |
 |------|---------|-----------------|
 | [`scripts/little_loops/loops/harness-single-shot.yaml`](../../scripts/little_loops/loops/harness-single-shot.yaml) | A — Single-shot | `check_stall`, `check_concrete`, `check_semantic`, `check_invariants`; `check_mcp` and `check_skill` as commented-out optional gates |
 | [`scripts/little_loops/loops/harness-multi-item.yaml`](../../scripts/little_loops/loops/harness-multi-item.yaml) | B — Multi-item | All five phases active: `check_concrete`, `check_mcp`, `check_skill`, `check_semantic`, `check_invariants` |
+| [`scripts/little_loops/loops/harness-plan-research-implement-report.yaml`](../../scripts/little_loops/loops/harness-plan-research-implement-report.yaml) | C — Specialist-role pipeline | `plan`, `research`, `implement` roles with full evaluation chain; `review_plan` HITL gate as commented-out `# OPTIONAL:` block |
 
 Each state in both files has an `# EXAMPLE:` comment explaining its pedagogical purpose.
 
