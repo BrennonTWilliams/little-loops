@@ -5,14 +5,21 @@ type: ENH
 priority: P3
 status: open
 discovered_date: 2026-06-02
-captured_at: "2026-06-02T00:00:00Z"
+captured_at: '2026-06-02T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-1707
 depends_on: []
 blocked_by: []
+decision_needed: true
 labels:
-  - enhancement
-  - captured
+- enhancement
+- captured
+confidence_score: 96
+outcome_confidence: 79
+score_complexity: 19
+score_test_coverage: 22
+score_ambiguity: 18
+score_change_surface: 20
 ---
 
 # ENH-1887: Broaden is_correction() detection beyond prefix regex
@@ -81,24 +88,69 @@ Add a prefix command that users can prepend to any message to force correction r
 
 ## Scope Boundaries
 
-- **In scope**: `session_store.py` `is_correction()` and `_CORRECTION_RE`; `user_prompt_submit.py` write path; unit tests in `scripts/tests/test_session_store.py` (`TestIsCorrection`)
+- **In scope**: `session_store.py` `is_correction()` and `_CORRECTION_RE`; `user_prompt_submit.py` write path; unit tests in `scripts/tests/test_session_store.py` (`TestIsCorrectionHeuristic`)
 - **Out of scope**: changing the `user_corrections` table schema; retroactive backfill of past sessions; LLM-based classification (Option C) in the initial pass
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/session_store.py` — update `_CORRECTION_RE` (and add scoring logic if Option B)
-- `scripts/little_loops/hooks/user_prompt_submit.py` — add `!remember` prefix handling if Option D chosen
+- `scripts/little_loops/session_store.py` — update `_CORRECTION_RE` (and/or add `_PHRASE_RE`, `_REMEMBER_RE` siblings); update `is_correction()` at line ~103 to call all pattern sets
+- `scripts/little_loops/hooks/user_prompt_submit.py` — add `!remember` prefix handling in `handle()` if Option D chosen
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/hooks/user_prompt_submit.py` — only caller of `is_correction()`; imports via `from little_loops.session_store import is_correction, record_correction`
+
+### Consumer Layer (Read Path — context only, no changes needed)
+- `scripts/little_loops/history_reader.py:find_user_corrections()` — LIKE search on `user_corrections` table; stale-filtered at 30 days; used by `ll-history-context`
+- `scripts/little_loops/session_store.py:recent()` — raw `SELECT * FROM user_corrections ORDER BY id DESC LIMIT ?`; used by `ll-session` CLI
 
 ### Tests
-- `scripts/tests/test_session_store.py` — extend `TestIsCorrection` with true-positive examples for newly captured patterns and false-positive guard cases
+- `scripts/tests/test_session_store.py` — extend `TestIsCorrectionHeuristic` class (currently 6 true-positive + 6 true-negative parametrized cases) with new pattern coverage
+- `scripts/tests/test_hook_user_prompt_submit.py` — add integration test for `!remember` unconditional write path: send `"!remember always use snake_case"` via `handle()` and verify a `user_corrections` row is written. This test is needed regardless of whether `handle()` itself changes — `!remember` is routed through `is_correction()` internally, so the hook integration path `handle() → is_correction("!remember...") → True → record_correction()` is currently untested.
+- `scripts/tests/test_hook_user_prompt_submit.py` — `test_non_correction_writes_no_db_row` acts as a false-positive guard (sends `"implement the login feature"`, asserts no DB row); re-verify this case passes after `_PHRASE_RE` is added, since it must not match any new phrase-internal patterns.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- No new test files are needed; the above are extensions to existing files.
+
+### Documentation
+- `docs/reference/API.md` — documents `is_correction()` and `record_correction()`; update if function signature changes
 
 ## Implementation Steps
 
-1. Extend `_CORRECTION_RE` in `session_store.py` with phrase-internal patterns (`instead`, `actually`, `you missed`, `should be`, `wrong approach`), explicit memory signals (`remember that`, `always use`, `never use`, `from now on`), and restatement forms (`I meant X not Y`, `not X, use Y`)
-2. Add `!remember` prefix branch in `user_prompt_submit.py`: if the message starts with `!remember`, write a `user_corrections` row unconditionally before regex evaluation
-3. Extend `TestIsCorrection` in `scripts/tests/test_session_store.py` with ≥10 true-positive cases covering newly added patterns and ≥5 false-positive guard cases (normal messages that must return `False`)
-4. Run `python -m pytest scripts/tests/test_session_store.py -v` and confirm all new cases pass
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Key constraint**: `_CORRECTION_RE` uses `re.match` (prefix-anchored via `^\s*`). Phrase-internal signals like "actually" or "instead" require `re.search` on a separate regex, because removing `^` from the prefix patterns would allow them to match anywhere and inflate false positives. The recommended structure is two (or three) separate module-level pattern sets, following the `tuple[re.Pattern[str], ...]` + `any(p.search(text) for p in patterns)` idiom already used in `scripts/little_loops/fsm/validation.py:_MULTIMODAL_EVAL_PATTERNS`.
+
+**Recommended `session_store.py` shape (Option A + D)**:
+```python
+_CORRECTION_RE = re.compile(                          # existing — prefix-anchored
+    r"^\s*(no[,!]|don'?t\s|stop\s|revert|that'?s\s+wrong|not\s+like\s+that)",
+    re.IGNORECASE,
+)
+_PHRASE_RE = re.compile(                              # new — phrase-internal, re.search
+    r"\b(instead|actually|you missed|should be|wrong approach"
+    r"|remember that|always use|never use|from now on"
+    r"|I meant\b.*\bnot\b|not\b.*\buse\b)\b",
+    re.IGNORECASE,
+)
+_REMEMBER_RE = re.compile(r"^!remember\b", re.IGNORECASE)  # new — explicit escape hatch
+
+def is_correction(text: str) -> bool:
+    t = text[:512]
+    return bool(_REMEMBER_RE.match(t) or _CORRECTION_RE.match(t) or _PHRASE_RE.search(t))
+```
+
+**`user_prompt_submit.py:handle()` gating**: the `!remember` case is handled by `_REMEMBER_RE` inside `is_correction()` itself rather than at the call site — this avoids duplicating the analytics gate logic and keeps all detection logic in `session_store.py`.
+
+**Existing test class**: `TestIsCorrectionHeuristic` (NOT `TestIsCorrection`) at `scripts/tests/test_session_store.py`; currently has two `@pytest.mark.parametrize` blocks (`test_true_positives` — 6 cases; `test_true_negatives` — 6 cases). Follow Pattern 11 from the codebase pattern catalog.
+
+1. In `scripts/little_loops/session_store.py` (lines ~97–103): keep `_CORRECTION_RE` unchanged; add `_PHRASE_RE` (phrase-internal, non-anchored) and `_REMEMBER_RE` (`^!remember\b`) as sibling module-level constants; update `is_correction()` to return `bool(_REMEMBER_RE.match(t) or _CORRECTION_RE.match(t) or _PHRASE_RE.search(t))`
+2. No changes needed to `scripts/little_loops/hooks/user_prompt_submit.py:handle()` if `!remember` is handled inside `is_correction()` — the existing analytics gate at lines ~70–80 already delegates fully to `is_correction()`
+3. Extend `TestIsCorrectionHeuristic` in `scripts/tests/test_session_store.py` with ≥10 new true-positive cases covering: `_PHRASE_RE` patterns (e.g., `"use snake_case instead"`, `"actually that function is in utils.py"`, `"you missed the import"`, `"should be a try/except"`, `"remember that we always use dataclasses"`, `"never use bare except"`, `"from now on always add type hints"`), `_REMEMBER_RE` (e.g., `"!remember always use snake_case"`, `"!Remember use absolute imports"`) and ≥5 false-positive guard cases (e.g., `"that should be fine"`, `"use it as-is"`, `"this is actually a good idea"` — subtle near-misses for `_PHRASE_RE`)
+4. Add integration test in `scripts/tests/test_hook_user_prompt_submit.py`: send `"!remember always use snake_case"` via `handle()` with analytics enabled and verify `user_corrections` row written — this exercises the `handle() → is_correction("!remember...") → True → record_correction()` path which is currently untested. Re-run `test_non_correction_writes_no_db_row` to confirm `"implement the login feature"` still returns False after `_PHRASE_RE` is added.
+5. Run `python -m pytest scripts/tests/test_session_store.py::TestIsCorrectionHeuristic scripts/tests/test_hook_user_prompt_submit.py -v` and confirm all new cases pass
 
 ## Impact
 
@@ -119,4 +171,6 @@ Add a prefix command that users can prepend to any message to force correction r
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-03T02:57:26 - `5d1e935f-a524-4a99-896f-bc491c8c9f90.jsonl`
+- `/ll:refine-issue` - 2026-06-03T02:51:48 - `5f8be02f-9c45-4d21-a4a9-e456e040a263.jsonl`
 - `/ll:format-issue` - 2026-06-03T01:13:40 - `8c9f6308-6202-49af-81bc-7d0b6b6978b2.jsonl`
