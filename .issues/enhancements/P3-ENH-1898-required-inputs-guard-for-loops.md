@@ -50,12 +50,6 @@ Silent-empty-input is a footgun: the loop "succeeds" but optimizes against an
 empty subject, wasting a full run and masking operator error. A declarative
 guard makes the contract explicit and shifts the failure left to start-time.
 
-## Current Pain Point
-
-Operators must remember out-of-band that a loop needs an input. There is no
-schema affordance, no validation warning, and no runtime check — the only
-symptom is low-quality output discovered after the fact.
-
 ## Proposed Solution
 
 1. **Schema**: add an optional `required_inputs: [str]` top-level field to
@@ -76,11 +70,6 @@ symptom is low-quality output discovered after the fact.
 - Out of scope: type validation, format/regex validation, or default-value
   synthesis for inputs (could be a follow-up).
 
-## Backwards Compatibility
-
-Fully backward compatible: `required_inputs` is optional. Loops that omit it
-behave exactly as today. No existing loop sets the field.
-
 ## Integration Map
 
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — add `required_inputs`.
@@ -100,8 +89,10 @@ behave exactly as today. No existing loop sets the field.
 
 ## Impact
 
-Prevents silent low-quality runs for input-driven loops; makes the input
-contract self-documenting in the YAML.
+- **Priority**: P3 — Non-blocking footgun; loops degrade silently rather than fail, so discovery is delayed but not catastrophic.
+- **Effort**: Small — Schema field addition, ~10-line runner guard, and unit tests; no architectural changes.
+- **Risk**: Low — Additive only; `required_inputs` is optional so all existing loops are unaffected.
+- **Breaking Change**: No — loops omitting `required_inputs` behave identically to today.
 
 ## Status
 
@@ -109,4 +100,5 @@ contract self-documenting in the YAML.
 - **State**: open
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-03T19:21:49 - `9e65eaa3-eac1-4a28-8cdf-0b883be5b699.jsonl`
 - `/ll:capture-issue` - 2026-06-03T19:12:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cba1a69-7a53-425f-8c5d-4f1ba61f51bb.jsonl`

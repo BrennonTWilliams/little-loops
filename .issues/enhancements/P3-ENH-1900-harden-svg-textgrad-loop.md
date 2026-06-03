@@ -135,10 +135,22 @@ Closes two correctness gaps (artifacts, error handling) and makes the quality
 gate actually discriminating, so the gradient path is exercised when output
 quality drops.
 
+- **Priority**: P3 - Quality/correctness hardening of one bundled loop; no
+  active consumer is blocked, but the gaps produce silently-missing artifacts
+  and an unexercised gradient path.
+- **Effort**: Small - Three localized edits to a single YAML file
+  (`svg-textgrad.yaml`); no new patterns, reuses existing FSM states and
+  context variables.
+- **Risk**: Low - Loop-local changes only, no schema or runtime impact. Tighter
+  thresholds alter pass/fail for borderline generations by design (see
+  Backwards Compatibility).
+- **Breaking Change**: No
+
 ## Status
 
 - **Created**: 2026-06-03 via `/ll:capture-issue` (from `svg-textgrad` audit)
 - **State**: open
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-03T19:21:26 - `2115b373-786c-489c-aa3d-71ed6687c4c6.jsonl`
 - `/ll:capture-issue` - 2026-06-03T19:12:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cba1a69-7a53-425f-8c5d-4f1ba61f51bb.jsonl`
