@@ -155,7 +155,9 @@ Assumed claims appear in the final record alongside the proven ones, flagged `re
 
 ## Using Learning Tests in Loops
 
-FSM loops can gate execution on proven assumptions via `type: learning` states. When a loop enters a learning state, the executor iterates `learning.targets`: proven targets pass through immediately, missing or stale records auto-trigger `/ll:explore-api <target>` (up to `learning.max_retries` times), and refuted records (or exhausted retries) route to `on_blocked`. Learning states are exempt from the per-state `hard_max` throttle because they legitimately make N tool calls per visit.
+FSM loops can gate execution on proven assumptions via `type: learning` states. When a loop enters a learning state, the executor resolves the target list at runtime: if `learning.targets_csv` is set, it is interpolated and CSV-split into individual targets; otherwise `learning.targets` is used directly. The retry limit is resolved the same way — `learning.max_retries_expr` (if set) is interpolated and `int()`-cast; otherwise `learning.max_retries` (default 2) is used. Proven targets pass through immediately, missing or stale records auto-trigger `/ll:explore-api <target>` (up to the resolved retry limit), and refuted records (or exhausted retries) route to `on_blocked`. Learning states are exempt from the per-state `hard_max` throttle because they legitimately make N tool calls per visit.
+
+Static target list (original form):
 
 ```yaml
 states:
@@ -170,9 +172,22 @@ states:
     on_blocked: blocked   # any target refuted, or retries exhausted
 ```
 
-`on_blocked` fires when a target is `refuted` (no retries attempted) or when `max_retries` is exhausted without it becoming proven. `on_no` is the fallback if `on_blocked` is not defined; prefer `on_blocked` for clarity.
+Runtime CSV form — used by `ready-to-implement-gate` (the canonical built-in example):
 
-Required fields: `learning.targets` (non-empty), `on_yes`, and one of `on_blocked` / `on_no`. The dispatch emits `learning_target_proven`, `learning_target_stale`, `learning_explore_invoked`, `learning_target_refuted`, `learning_complete`, and `learning_blocked` events for observability.
+```yaml
+states:
+  prove:
+    type: learning
+    learning:
+      targets_csv: "${context.targets}"           # resolved + CSV-split at runtime
+      max_retries_expr: "${context.max_retries}"  # resolved to int at runtime
+    on_yes: done
+    on_blocked: blocked
+```
+
+`on_blocked` fires when a target is `refuted` (no retries attempted) or when the retry limit is exhausted without it becoming proven. `on_no` is the fallback if `on_blocked` is not defined; prefer `on_blocked` for clarity.
+
+Required fields: one of `learning.targets` (non-empty list) or `learning.targets_csv` (non-empty string), plus `on_yes`, and one of `on_blocked` / `on_no`. The dispatch emits `learning_target_proven`, `learning_target_stale`, `learning_explore_invoked`, `learning_target_refuted`, `learning_complete`, and `learning_blocked` events for observability.
 
 This is the integration point that makes the registry pay for itself: a loop that touches a third-party API can declare its assumptions up front, and the first run pays the discovery cost while every subsequent run skips straight to the actual work. See [LOOPS_GUIDE.md → Progressive tool-call throttling](LOOPS_GUIDE.md#progressive-tool-call-throttling) for the full `type: learning` reference and event schema.
 

@@ -3,8 +3,9 @@ id: ENH-1741
 title: 'Refactor `ready-to-implement-gate` to use `type: learning` states'
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-05-27T18:08:06Z'
+completed_at: '2026-06-03T01:43:52Z'
 discovered_date: '2026-05-27'
 discovered_by: capture-issue
 parent: EPIC-1694
@@ -233,7 +234,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 11. Fix event payload in `scripts/little_loops/fsm/executor.py:_execute_learning_state` (line ~685) — `learning_complete` event currently emits `list(state.learning.targets)`, which is `[]` when only `targets_csv` is used; capture the runtime-resolved targets list and emit that instead
 12. Update `docs/reference/API.md:LearningConfig` section — add `targets_csv: str | None = None` and `max_retries_expr: str | None = None` to the Python snippet; update the "iterates targets in order" prose to describe CSV resolution and the `max_retries_expr` runtime-cast path
 13. Update `docs/guides/LEARNING_TESTS_GUIDE.md` "Using Learning Tests in Loops" section — update the "executor iterates `learning.targets`" sentence to cover both `targets_csv` and `max_retries_expr` paths
-14. Update `scripts/tests/test_fsm_schema.py` — add `targets_csv` and `max_retries_expr` round-trip cases to `TestStateConfig` (line 246; this is the class that contains `test_state_config_learning_round_trip` at line 2714 and `test_state_config_learning_default_max_retries` at line 2740): `from_dict({"targets_csv": "a,b"})` populates `targets_csv`; `from_dict({"targets_csv": "a,b", "max_retries_expr": "${context.max_retries}"})` populates both; `to_dict()` emits each when set, `None` when absent
+14. Update `scripts/tests/test_fsm_schema.py` — add `targets_csv` and `max_retries_expr` round-trip cases to `TestStateConfigWith` (line 2566; this is the class that contains `test_state_config_learning_round_trip` at line 2714 and `test_state_config_learning_default_max_retries` at line 2740): `from_dict({"targets_csv": "a,b"})` populates `targets_csv`; `from_dict({"targets_csv": "a,b", "max_retries_expr": "${context.max_retries}"})` populates both; `to_dict()` emits each when set, `None` when absent
 15. Create `scripts/tests/fixtures/fsm/learning-state-csv-loop.yaml` — `type: learning` fixture using `targets_csv: "target-a, target-b"` and `max_retries_expr: "3"` for fixture-based executor integration tests of both runtime-resolution paths
 16. Add test cases to `scripts/tests/test_fsm_validation.py` for the updated `_validate_state_action` learning-branch guard (step 9): one case asserting no ERROR when `targets_csv` is set and `targets` is empty; one case asserting ERROR when both `targets` and `targets_csv` are absent — this file has zero coverage for the learning validation path
 
@@ -277,6 +278,7 @@ _Updated by `/ll:confidence-check` on 2026-06-03 (prior runs: 2026-06-03, 2026-0
 - **Wide change surface across 4 subsystems (12 sites)**: YAML loop, 3 Python FSM modules, JSON schema, 3 test files, 1 new fixture, 2 docs — while each individual change is mechanical-to-local, coordinating 12 co-deliverables increases the chance of a missed file or integration gap. Use the 15-step implementation plan as a strict checklist.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-03T01:32:16 - `1e2c7402-2a12-4b03-9bed-fd03b180f6f6.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00Z - `cd337a5e-6c5a-497f-85c6-5d7810ae3d93.jsonl`
 - `/ll:wire-issue` - 2026-06-03T01:19:37 - `c248cfd7-99e1-4fef-ade0-380ad5d3bf4b.jsonl`
 - `/ll:refine-issue` - 2026-06-03T01:13:07 - `53ca8bcc-0ece-4614-b419-050afc9172cb.jsonl`

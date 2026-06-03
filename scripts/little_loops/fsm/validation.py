@@ -456,10 +456,10 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
 
     # FEAT-1283: type=learning requires a populated LearningConfig
     if state.type == "learning" and state.learning is not None:
-        if not state.learning.targets:
+        if not state.learning.targets and not state.learning.targets_csv:
             errors.append(
                 ValidationError(
-                    message="type=learning requires non-empty 'learning.targets'",
+                    message="type=learning requires non-empty 'learning.targets' or 'learning.targets_csv'",
                     path=f"{path}.learning.targets",
                 )
             )

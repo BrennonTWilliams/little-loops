@@ -2749,6 +2749,47 @@ class TestThrottleConfig:
         assert state.learning is not None
         assert state.learning.max_retries == 2
 
+    def test_state_config_learning_targets_csv_round_trip(self) -> None:
+        """ENH-1741: targets_csv survives StateConfig.from_dict/to_dict round-trip."""
+        original = StateConfig.from_dict(
+            {
+                "type": "learning",
+                "learning": {"targets_csv": "${context.targets}"},
+                "on_yes": "done",
+                "on_blocked": "blocked",
+            }
+        )
+        assert original.learning is not None
+        assert original.learning.targets_csv == "${context.targets}"
+        assert original.learning.targets == []
+        d = original.to_dict()
+        assert d["learning"]["targets_csv"] == "${context.targets}"
+        restored = StateConfig.from_dict(d)
+        assert restored.learning is not None
+        assert restored.learning.targets_csv == "${context.targets}"
+
+    def test_state_config_learning_max_retries_expr_round_trip(self) -> None:
+        """ENH-1741: max_retries_expr survives StateConfig.from_dict/to_dict round-trip."""
+        original = StateConfig.from_dict(
+            {
+                "type": "learning",
+                "learning": {
+                    "targets_csv": "${context.targets}",
+                    "max_retries_expr": "${context.max_retries}",
+                },
+                "on_yes": "done",
+                "on_blocked": "blocked",
+            }
+        )
+        assert original.learning is not None
+        assert original.learning.targets_csv == "${context.targets}"
+        assert original.learning.max_retries_expr == "${context.max_retries}"
+        d = original.to_dict()
+        assert d["learning"]["max_retries_expr"] == "${context.max_retries}"
+        restored = StateConfig.from_dict(d)
+        assert restored.learning is not None
+        assert restored.learning.max_retries_expr == "${context.max_retries}"
+
 
 class TestTargetStateSpec:
     """ENH-1552: TargetStateSpec dataclass round-trip and defaults."""

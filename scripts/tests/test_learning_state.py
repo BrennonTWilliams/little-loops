@@ -373,3 +373,139 @@ class TestLearningConfigSerialization:
         assert restored.learning is not None
         assert restored.learning.targets == ["a", "b"]
         assert restored.learning.max_retries == 3
+
+    def test_targets_csv_round_trip(self) -> None:
+        """targets_csv is preserved through to_dict/from_dict (ENH-1741)."""
+        cfg = LearningConfig(targets_csv="${context.targets}")
+        d = cfg.to_dict()
+        assert d["targets_csv"] == "${context.targets}"
+        restored = LearningConfig.from_dict(d)
+        assert restored.targets_csv == "${context.targets}"
+        assert restored.targets == []
+
+    def test_targets_csv_and_max_retries_expr_round_trip(self) -> None:
+        """Both targets_csv and max_retries_expr survive serialization (ENH-1741)."""
+        cfg = LearningConfig(targets_csv="${context.targets}", max_retries_expr="${context.max_retries}")
+        d = cfg.to_dict()
+        assert d["targets_csv"] == "${context.targets}"
+        assert d["max_retries_expr"] == "${context.max_retries}"
+        restored = LearningConfig.from_dict(d)
+        assert restored.targets_csv == "${context.targets}"
+        assert restored.max_retries_expr == "${context.max_retries}"
+
+    def test_targets_csv_absent_means_none(self) -> None:
+        """When targets_csv is not in dict, restored value is None (ENH-1741)."""
+        cfg = LearningConfig.from_dict({"targets": ["a"]})
+        assert cfg.targets_csv is None
+        assert cfg.max_retries_expr is None
+
+
+class TestLearningStateCsvTargets:
+    """ENH-1741: targets_csv resolved at runtime and split into individual targets."""
+
+    def _csv_fsm(
+        self,
+        targets_csv: str,
+        max_retries_expr: str | None = None,
+        on_blocked: str | None = "blocked",
+    ) -> FSMLoop:
+        """Build a minimal FSM with a targets_csv learning state."""
+        states: dict[str, StateConfig] = {
+            "prove": StateConfig(
+                type="learning",
+                learning=LearningConfig(
+                    targets_csv=targets_csv,
+                    max_retries_expr=max_retries_expr,
+                ),
+                on_yes="planning",
+                on_blocked=on_blocked,
+                on_no="blocked",
+            ),
+            "planning": StateConfig(terminal=True),
+            "blocked": StateConfig(terminal=True),
+        }
+        return FSMLoop(name="csv-test", initial="prove", states=states)
+
+    def test_csv_targets_all_proven(self, temp_project_dir: Path, monkeypatch: Any) -> None:
+        """Both targets from a CSV string are iterated and proven."""
+        monkeypatch.chdir(temp_project_dir)
+        base = temp_project_dir / ".ll" / "learning-tests"
+        base.mkdir(parents=True)
+        for target in ["target-a", "target-b"]:
+            write_record(
+                LearnTestRecord(
+                    target=target,
+                    date="2026-05-11",
+                    status="proven",
+                    assertions=[Assertion(claim="c", result="pass")],
+                    raw_output_path=None,
+                ),
+                base_dir=base,
+            )
+
+        fsm = self._csv_fsm("target-a, target-b")
+        runner = _MockRunner()
+        events: list[dict] = []
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.final_state == "planning"
+        assert runner.calls == []
+        complete = [e for e in events if e.get("event") == "learning_complete"]
+        assert complete[0]["targets"] == ["target-a", "target-b"]
+
+    def test_csv_whitespace_stripped(self, temp_project_dir: Path, monkeypatch: Any) -> None:
+        """Whitespace around CSV items is stripped when resolving targets_csv."""
+        monkeypatch.chdir(temp_project_dir)
+        base = temp_project_dir / ".ll" / "learning-tests"
+        base.mkdir(parents=True)
+        write_record(
+            LearnTestRecord(
+                target="target-a",
+                date="2026-05-11",
+                status="proven",
+                assertions=[Assertion(claim="c", result="pass")],
+                raw_output_path=None,
+            ),
+            base_dir=base,
+        )
+
+        # "  target-a  " should strip to "target-a"
+        fsm = self._csv_fsm("  target-a  ")
+        runner = _MockRunner()
+        result = FSMExecutor(fsm, action_runner=runner).run()
+        assert result.final_state == "planning"
+
+    def test_max_retries_expr_respected(self, temp_project_dir: Path, monkeypatch: Any) -> None:
+        """max_retries_expr is resolved to int and used as the retry limit."""
+        monkeypatch.chdir(temp_project_dir)
+        base = temp_project_dir / ".ll" / "learning-tests"
+        base.mkdir(parents=True)
+
+        # No record for target-x: explore-api will be called up to max_retries times.
+        # Set max_retries_expr to "1" → only 1 explore attempt before blocking.
+        fsm = FSMLoop(
+            name="expr-test",
+            initial="prove",
+            states={
+                "prove": StateConfig(
+                    type="learning",
+                    learning=LearningConfig(
+                        targets_csv="target-x",
+                        max_retries_expr="1",
+                    ),
+                    on_yes="planning",
+                    on_blocked="blocked",
+                    on_no="blocked",
+                ),
+                "planning": StateConfig(terminal=True),
+                "blocked": StateConfig(terminal=True),
+            },
+        )
+        runner = _MockRunner(base_dir=base, write_records=False)
+        result = FSMExecutor(fsm, action_runner=runner).run()
+
+        assert result.final_state == "blocked"
+        # Only 1 explore attempt (not the default 2)
+        assert len(runner.calls) == 1
+

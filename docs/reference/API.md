@@ -4215,13 +4215,15 @@ class ThrottleConfig:
 
 `from little_loops.fsm.schema import LearningConfig`
 
-FEAT-1283: per-state configuration for `type: learning` dispatch. The handler iterates `targets` in order, consults the learning-tests registry (ENH-1282) for each, and invokes `/ll:explore-api <target>` (up to `max_retries` times) when a record is missing or stale. The state advances via `on_yes` only after every target reaches status `proven`; refuted records and exhausted retries route to `on_blocked` (preferred) or `on_no`.
+FEAT-1283: per-state configuration for `type: learning` dispatch. The handler resolves the target list at runtime — if `targets_csv` is set it is interpolated and CSV-split; otherwise `targets` is used directly. The retry limit is resolved similarly: `max_retries_expr` (if set) is interpolated and `int()`-cast; otherwise `max_retries` (default 2) is used. Each target is then consulted in the learning-tests registry (ENH-1282); the state invokes `/ll:explore-api <target>` on a missing or stale record and advances via `on_yes` only after every target reaches status `proven`; refuted records and exhausted retries route to `on_blocked` (preferred) or `on_no`.
 
 ```python
 @dataclass
 class LearningConfig:
-    targets: list[str]              # Ordered targets (slugified internally for registry lookups)
-    max_retries: int = 2            # Max /ll:explore-api invocations per target before routing to on_blocked
+    targets: list[str] = field(default_factory=list)  # Ordered targets (slugified internally for registry lookups)
+    targets_csv: str | None = None      # Runtime-interpolated CSV alternative to targets (ENH-1741)
+    max_retries: int = 2                # Max /ll:explore-api invocations per target before routing to on_blocked
+    max_retries_expr: str | None = None # Runtime-interpolated retry limit; takes precedence over max_retries (ENH-1741)
 ```
 
 **Learning event types** (see `docs/reference/EVENT-SCHEMA.md` for full payloads):

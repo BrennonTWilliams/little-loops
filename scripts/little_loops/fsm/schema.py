@@ -309,27 +309,44 @@ class LearningConfig:
             streaming"). Each is slugified internally when looking up the
             registry record. All targets must reach status="proven" for the
             state to advance via on_yes.
+        targets_csv: Runtime-interpolated comma-separated target string (e.g.
+            "${context.targets}"). Resolved and CSV-split by the executor at
+            execution time. Alternative to the static ``targets`` list for loops
+            that receive targets as a context CSV string. Exactly one of
+            ``targets`` (non-empty) or ``targets_csv`` must be set.
         max_retries: Maximum number of `/ll:explore-api` invocations per target
             before the state routes to on_blocked / on_no with reason
             ``retries_exhausted``. Counts only re-exploration attempts; the
             initial registry lookup is free. Distinct from ENH-1115's throttle
             counter, which measures tool-call volume; learning states are
             already exempt from throttle hard_max via FSMExecutor._check_throttle.
+        max_retries_expr: Runtime-interpolated retry limit (e.g.
+            "${context.max_retries}"). Resolved via interpolate() and int()-cast
+            at execution time. Takes precedence over ``max_retries`` when set.
     """
 
-    targets: list[str]
+    targets: list[str] = field(default_factory=list)
+    targets_csv: str | None = None
     max_retries: int = 2
+    max_retries_expr: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
-        return {"targets": list(self.targets), "max_retries": self.max_retries}
+        result: dict[str, Any] = {"targets": list(self.targets), "max_retries": self.max_retries}
+        if self.targets_csv is not None:
+            result["targets_csv"] = self.targets_csv
+        if self.max_retries_expr is not None:
+            result["max_retries_expr"] = self.max_retries_expr
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LearningConfig:
         """Create from dictionary (JSON/YAML deserialization)."""
         return cls(
             targets=list(data.get("targets") or []),
+            targets_csv=data.get("targets_csv") or None,
             max_retries=int(data.get("max_retries", 2)),
+            max_retries_expr=data.get("max_retries_expr") or None,
         )
 
 

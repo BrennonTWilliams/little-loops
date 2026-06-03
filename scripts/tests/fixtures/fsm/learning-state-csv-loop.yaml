@@ -1,0 +1,20 @@
+name: learning-state-csv-loop
+description: Test fixture exercising the type=learning state with targets_csv and max_retries_expr (ENH-1741).
+initial: prove
+states:
+  prove:
+    type: learning
+    learning:
+      targets_csv: "target-a, target-b"
+      max_retries_expr: "3"
+    on_yes: planning
+    on_blocked: blocked
+    on_no: blocked
+  planning:
+    action: "echo planning"
+    on_yes: done
+    on_no: done
+  blocked:
+    terminal: true
+  done:
+    terminal: true

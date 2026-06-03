@@ -402,7 +402,7 @@
         },
         "learning": {
           "type": "object",
-          "description": "FEAT-1283: configuration for type=learning states. Declares targets that must be proven against the learning-tests registry (ENH-1282) before the state advances. Required when type='learning'.",
+          "description": "FEAT-1283: configuration for type=learning states. Declares targets that must be proven against the learning-tests registry (ENH-1282) before the state advances. Required when type='learning'. Exactly one of 'targets' or 'targets_csv' must be set.",
           "properties": {
             "targets": {
               "type": "array",
@@ -410,14 +410,25 @@
               "items": {"type": "string"},
               "minItems": 1
             },
+            "targets_csv": {
+              "type": "string",
+              "description": "Comma-separated target identifiers resolved at runtime via interpolate(). Alternative to 'targets' for loops that pass targets as a context CSV string (e.g., \"${context.targets}\")."
+            },
             "max_retries": {
               "type": "integer",
               "minimum": 0,
               "default": 2,
               "description": "Maximum /ll:explore-api invocations per target before routing to on_blocked/on_no with reason 'retries_exhausted'. Counts only re-exploration attempts; the initial registry lookup is free."
+            },
+            "max_retries_expr": {
+              "type": "string",
+              "description": "Runtime-interpolated retry limit. Resolved via interpolate() and int()-cast at execution time. Alternative to the static 'max_retries' integer for loops that pass max_retries as a context string (e.g., \"${context.max_retries}\"). Takes precedence over max_retries when set."
             }
           },
-          "required": ["targets"],
+          "anyOf": [
+            {"required": ["targets"]},
+            {"required": ["targets_csv"]}
+          ],
           "additionalProperties": false
         },
         "throttle": {

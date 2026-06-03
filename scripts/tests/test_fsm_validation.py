@@ -14,6 +14,7 @@ from little_loops.fsm.schema import (
     CircuitConfig,
     EvaluateConfig,
     FSMLoop,
+    LearningConfig,
     ParameterSpec,
     RepeatedFailureConfig,
     StateConfig,
@@ -28,6 +29,7 @@ from little_loops.fsm.validation import (
     _validate_meta_loop_evaluation,
     _validate_parameters,
     _validate_progress_paths_isolation,
+    _validate_state_action,
     _validate_zero_retry_counter,
     load_and_validate,
     validate_fsm,
@@ -1610,4 +1612,55 @@ class TestHarnessMultimodalEvaluatorBlindSpot:
         ]
         assert len(blind_spot_warnings) == 1, (
             f"Expected one blind-spot warning in validate_fsm output, got: {blind_spot_warnings}"
+        )
+
+
+class TestValidateStateLearningGuard:
+    """ENH-1741: _validate_state_action learning guard accepts targets_csv."""
+
+    def _make_fsm(self, learning: LearningConfig) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="prove",
+            states={
+                "prove": StateConfig(
+                    type="learning",
+                    learning=learning,
+                    on_yes="done",
+                    on_blocked="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_targets_csv_only_passes_validation(self) -> None:
+        """A learning state with only targets_csv set must not emit an ERROR."""
+        state = StateConfig(
+            type="learning",
+            learning=LearningConfig(targets_csv="${context.targets}"),
+            on_yes="done",
+            on_blocked="done",
+        )
+        errors = _validate_state_action("prove", state)
+        target_errors = [
+            e for e in errors if "learning.targets" in e.path and e.severity == ValidationSeverity.ERROR
+        ]
+        assert target_errors == [], (
+            f"targets_csv-only state should not produce an ERROR, got: {target_errors}"
+        )
+
+    def test_neither_targets_nor_targets_csv_emits_error(self) -> None:
+        """A learning state with neither targets nor targets_csv must emit an ERROR."""
+        state = StateConfig(
+            type="learning",
+            learning=LearningConfig(),  # empty targets, no targets_csv
+            on_yes="done",
+            on_blocked="done",
+        )
+        errors = _validate_state_action("prove", state)
+        target_errors = [
+            e for e in errors if "learning.targets" in e.path and e.severity == ValidationSeverity.ERROR
+        ]
+        assert len(target_errors) == 1, (
+            f"Expected one ERROR for missing targets/targets_csv, got: {target_errors}"
         )

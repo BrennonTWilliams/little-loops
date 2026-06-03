@@ -4666,26 +4666,24 @@ class TestReadyToImplementGateLoop:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
-    def test_explore_uses_ll_action_invoke(self, data: dict) -> None:
-        """explore state must call ll-action invoke, not /ll:explore-api (which is not a shell binary)."""
-        state = data["states"].get("explore", {})
-        action = state.get("action", "")
-        assert "ll-action invoke" in action, (
-            "explore action must use 'll-action invoke', not '/ll:explore-api'"
-        )
-        assert "/ll:explore-api" not in action, (
-            "explore action must not call /ll:explore-api directly; use 'll-action invoke explore-api'"
+    def test_prove_state_has_type_learning(self, data: dict) -> None:
+        """prove state must use type: learning (ENH-1741)."""
+        state = data["states"].get("prove", {})
+        assert state.get("type") == "learning", (
+            f"prove.type should be 'learning', got {state.get('type')!r}"
         )
 
-    def test_parse_targets_evaluate_is_output_json_on_remaining(self, data: dict) -> None:
-        """parse_targets evaluate must use output_json evaluator with path '.remaining'."""
-        state = data["states"].get("parse_targets", {})
-        evaluate = state.get("evaluate", {})
-        assert evaluate.get("type") == "output_json", (
-            f"parse_targets.evaluate.type should be 'output_json', got {evaluate.get('type')!r}"
+    def test_prove_state_has_targets_csv_with_context_ref(self, data: dict) -> None:
+        """prove state must use targets_csv referencing context.targets (ENH-1741)."""
+        state = data["states"].get("prove", {})
+        learning = state.get("learning", {})
+        targets_csv = learning.get("targets_csv", "")
+        assert "${context.targets}" in targets_csv, (
+            f"prove.learning.targets_csv must reference '${{context.targets}}', got {targets_csv!r}"
         )
-        assert evaluate.get("path") == ".remaining", (
-            f"parse_targets.evaluate.path should be '.remaining', got {evaluate.get('path')!r}"
+        assert learning.get("max_retries_expr") == "${context.max_retries}", (
+            f"prove.learning.max_retries_expr must be '${{context.max_retries}}', "
+            f"got {learning.get('max_retries_expr')!r}"
         )
 
     def test_done_is_terminal(self, data: dict) -> None:

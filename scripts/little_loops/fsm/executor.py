@@ -614,7 +614,13 @@ class FSMExecutor:
     def _execute_learning_state(self, state: StateConfig, ctx: InterpolationContext) -> str | None:
         """Execute a FEAT-1283 ``type: learning`` state.
 
-        Iterates ``state.learning.targets`` in order. For each target:
+        Resolves the target list at runtime: if ``learning.targets_csv`` is set,
+        it is interpolated and CSV-split; otherwise ``learning.targets`` is used
+        directly.  The retry limit is resolved similarly: ``learning.max_retries_expr``
+        (if set) is interpolated and int()-cast; otherwise ``learning.max_retries``
+        (default 2) is used.
+
+        For each target:
           1. Look up its record in the learning-tests registry (ENH-1282).
           2. If proven → continue.
           3. If refuted → emit ``learning_target_refuted`` + ``learning_blocked``
@@ -633,6 +639,19 @@ class FSMExecutor:
 
         assert state.learning is not None  # guarded by caller
 
+        # Resolve target list at runtime (ENH-1741: targets_csv support).
+        if state.learning.targets_csv is not None:
+            raw_csv = interpolate(state.learning.targets_csv, ctx)
+            targets = [t.strip() for t in raw_csv.split(",") if t.strip()]
+        else:
+            targets = list(state.learning.targets)
+
+        # Resolve retry limit at runtime (ENH-1741: max_retries_expr support).
+        if state.learning.max_retries_expr is not None:
+            max_retries = int(interpolate(state.learning.max_retries_expr, ctx))
+        else:
+            max_retries = state.learning.max_retries
+
         def _blocked_target(reason: str, target: str) -> str | None:
             self._emit(
                 "learning_blocked",
@@ -641,12 +660,12 @@ class FSMExecutor:
             route = state.on_blocked or state.on_no
             return interpolate(route, ctx) if route else None
 
-        for target in state.learning.targets:
+        for target in targets:
             record = check_learning_test(target)
 
             attempts = 0
             while record is None or record.status == "stale":
-                if attempts >= state.learning.max_retries:
+                if attempts >= max_retries:
                     return _blocked_target("retries_exhausted", target)
 
                 if record is None:
@@ -682,7 +701,7 @@ class FSMExecutor:
 
         self._emit(
             "learning_complete",
-            {"state": self.current_state, "targets": list(state.learning.targets)},
+            {"state": self.current_state, "targets": targets},
         )
         return interpolate(state.on_yes, ctx) if state.on_yes else None
 
