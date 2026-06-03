@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from little_loops.config.core import BRConfig
 
 import yaml
 
@@ -294,3 +297,52 @@ def set_outcome(
             save_decisions(entries, path)
             return
     raise KeyError(f"No entry with id {entry_id!r}")
+
+
+def generate_from_completed(config: BRConfig) -> int:
+    """Generate DecisionEntry records from completed issues and persist to the log.
+
+    Prefers the SQLite history DB when present; falls back to filesystem scanning.
+    Skips issues that already have an entry in the log. Returns the count added.
+    """
+    from little_loops.issue_history.parsing import (
+        scan_completed_issues,
+        scan_completed_issues_from_db,
+    )
+
+    project_root = Path(config.project_root)
+    log_path = project_root / config.decisions.log_path
+    db_path = project_root / ".ll" / "history.db"
+
+    if db_path.exists():
+        completed = scan_completed_issues_from_db(db_path)
+    else:
+        completed = scan_completed_issues(project_root / config.issues.base_dir)
+
+    existing = load_decisions(log_path)
+    existing_issue_ids = {
+        e.issue for e in existing if isinstance(e, DecisionEntry) and e.issue
+    }
+
+    count = 0
+    for issue in completed:
+        if issue.issue_id in existing_issue_ids:
+            continue
+        ts = ""
+        if issue.completed_at:
+            ts = issue.completed_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        elif issue.captured_at:
+            ts = issue.captured_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        entry = DecisionEntry(
+            id=f"DEC-{issue.issue_id}",
+            timestamp=ts,
+            category=issue.issue_type.lower(),
+            labels=[issue.priority, issue.issue_type.lower()],
+            rationale=f"Auto-generated from completed issue {issue.issue_id}",
+            issue=issue.issue_id,
+            scope="issue",
+        )
+        add_entry(entry, log_path)
+        count += 1
+
+    return count

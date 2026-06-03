@@ -183,6 +183,16 @@ Controls design system token injection into FSM loops. See [CONFIGURATION.md →
 | `themes_dir` | `str` | `"themes"` | Subdirectory of `path` containing per-theme override files. |
 | `active_theme` | `str` | `"light"` | Name of the active theme; must match a file in `themes_dir`. |
 
+#### DecisionsConfig
+
+Controls the decisions and rules log. See [CONFIGURATION.md → `decisions`](CONFIGURATION.md#decisions) for setup guidance.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | `bool` | `False` | Enable the decisions log feature. When `False`, all integrations gracefully skip. |
+| `log_path` | `str` | `".ll/decisions.yaml"` | Path to the decisions log file, relative to the project root. |
+| `auto_generate` | `list[str]` | `[]` | Sources to auto-generate decision entries from (e.g., `["completed"]`). |
+
 #### Methods
 
 ##### get_issue_dir

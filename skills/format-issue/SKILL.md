@@ -180,6 +180,17 @@ See [templates.md](templates.md) for:
 - Rename logic and examples
 - Interactive mode behavior
 
+### 2.6. Decisions Log Query
+
+Check active required rules against the issue's proposed approach (gracefully skipped when `.ll/decisions.yaml` is absent):
+
+1. Run `ll-issues decisions list --type rule --enforcement required --active-only 2>/dev/null || true`
+2. If output is empty or command produces no output: skip this step entirely (opt-in feature)
+3. For each required rule found, check if the issue's `## Proposed Solution` section conflicts
+4. Run `ll-issues decisions list --type exception 2>/dev/null || true` to find suppressors
+5. If a violation is found and no exception entry has a matching `rule_ref`: add a `[DECISIONS]` finding to the Step 3.5 quality output — `[DECISIONS] Rule <ID> may be violated: <rule text>`
+6. Suppressed violations are silently skipped
+
 ### 3. Identify Gaps
 
 Analyze content against type-specific checklists defined in the per-type template `templates/{type}-sections.json` v2.0 (relative to the little-loops plugin directory), where `{type}` is `bug`, `feat`, or `enh` based on the issue type.

@@ -76,7 +76,7 @@ class TestFeat1045DocUpdates:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "31 typed CLI tools" in content, "README.md must say '31 typed CLI tools'"
+        assert "32 typed CLI tools" in content, "README.md must say '32 typed CLI tools'"
 
     def test_claude_md_lists_ll_create_extension(self) -> None:
         content = CLAUDE_MD.read_text()
@@ -189,7 +189,7 @@ class TestFeat1229LlActionWiring:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "31 typed CLI tools" in content, "README.md must say '31 typed CLI tools'"
+        assert "32 typed CLI tools" in content, "README.md must say '32 typed CLI tools'"
 
     def test_configure_areas_count_is_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
@@ -394,4 +394,82 @@ class TestFeat1689LlHarnessWiring:
         assert count >= 3, (
             f"skills/init/SKILL.md must mention ll-harness at least 3 times "
             f"(permissions + 2 CLAUDE.md boilerplate blocks); found {count}"
+        )
+
+
+ARCHITECTURE_MD = PROJECT_ROOT / "docs" / "ARCHITECTURE.md"
+
+
+class TestFeat948DecisionsWiring:
+    """FEAT-948/1893: Decisions log must be documented across all authoritative surfaces."""
+
+    def test_claude_md_key_directories_has_decisions_yaml(self) -> None:
+        content = CLAUDE_MD.read_text()
+        assert "decisions.yaml" in content, (
+            ".claude/CLAUDE.md Key Directories must include decisions.yaml"
+        )
+
+    def test_claude_md_cli_tools_has_decisions_subcommand(self) -> None:
+        content = CLAUDE_MD.read_text()
+        assert "decisions" in content, (
+            ".claude/CLAUDE.md CLI Tools must mention ll-issues decisions subcommands"
+        )
+
+    def test_cli_reference_has_decisions_section(self) -> None:
+        content = CLI_REFERENCE.read_text()
+        assert "ll-issues decisions" in content, (
+            "docs/reference/CLI.md must have an ll-issues decisions section"
+        )
+
+    def test_cli_reference_generate_not_stub(self) -> None:
+        content = CLI_REFERENCE.read_text()
+        assert "FEAT-1893" not in content, (
+            "docs/reference/CLI.md must not reference FEAT-1893 stub annotation"
+        )
+
+    def test_api_reference_has_decisions_config(self) -> None:
+        content = API_REFERENCE.read_text()
+        assert "DecisionsConfig" in content, (
+            "docs/reference/API.md must have a DecisionsConfig subsection"
+        )
+
+    def test_commands_md_decide_issue_has_decisions_note(self) -> None:
+        content = COMMANDS_MD.read_text()
+        # The decide-issue section should mention decisions log
+        decide_idx = content.find("### `/ll:decide-issue`")
+        if decide_idx == -1:
+            decide_idx = content.find("/ll:decide-issue")
+        assert decide_idx != -1, "docs/reference/COMMANDS.md must have a decide-issue section"
+        section_excerpt = content[decide_idx : decide_idx + 800]
+        assert "Decisions log" in section_excerpt or "decisions" in section_excerpt.lower(), (
+            "docs/reference/COMMANDS.md /ll:decide-issue must reference decisions log"
+        )
+
+    def test_commands_md_tradeoff_review_has_decisions_note(self) -> None:
+        content = COMMANDS_MD.read_text()
+        tradeoff_idx = content.find("### `/ll:tradeoff-review-issues`")
+        if tradeoff_idx == -1:
+            tradeoff_idx = content.find("/ll:tradeoff-review-issues")
+        assert tradeoff_idx != -1, "docs/reference/COMMANDS.md must have a tradeoff-review-issues section"
+        section_excerpt = content[tradeoff_idx : tradeoff_idx + 800]
+        assert "Decisions log" in section_excerpt or "decisions" in section_excerpt.lower(), (
+            "docs/reference/COMMANDS.md /ll:tradeoff-review-issues must reference decisions log"
+        )
+
+    def test_commands_md_go_no_go_has_decisions_note(self) -> None:
+        content = COMMANDS_MD.read_text()
+        gng_idx = content.find("### `/ll:go-no-go`")
+        if gng_idx == -1:
+            gng_idx = content.find("/ll:go-no-go")
+        assert gng_idx != -1, "docs/reference/COMMANDS.md must have a go-no-go section"
+        next_section = content.find("\n###", gng_idx + 1)
+        section_content = content[gng_idx:next_section] if next_section != -1 else content[gng_idx:]
+        assert "Decisions log" in section_content or "decisions" in section_content.lower(), (
+            "docs/reference/COMMANDS.md /ll:go-no-go must reference decisions log"
+        )
+
+    def test_architecture_md_mentions_decisions_yaml(self) -> None:
+        content = ARCHITECTURE_MD.read_text()
+        assert "decisions.yaml" in content, (
+            "docs/ARCHITECTURE.md must document .ll/decisions.yaml as a persistence layer"
         )

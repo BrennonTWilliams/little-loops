@@ -64,6 +64,7 @@ ll-issues list --format path | sort
 2. **Verify line numbers**: Has the code moved or changed?
 3. **Validate code snippets**: Does quoted code match current code?
 4. **Test claims**: Is the described behavior accurate?
+5. **Check decisions rules**: Run `ll-issues decisions list --type rule --enforcement required --active-only 2>/dev/null || true`. If output is non-empty, check whether the issue's proposed solution conflicts with any active required rule. Suppress violations where a matching exception entry (`rule_ref` = rule ID) exists. Assign verdict `DECISIONS_VIOLATION` if a non-suppressed violation is found. Gracefully skip if `.ll/decisions.yaml` is absent.
 
 #### C. Determine Verdict
 
@@ -77,6 +78,7 @@ ll-issues list --format path | sort
 | REGRESSION_LIKELY | Matches completed issue, files modified since fix |
 | POSSIBLE_REGRESSION | Matches completed issue, but can't confirm regression |
 | DEP_ISSUES | Dependency references have problems (broken refs, missing backlinks, cycles) |
+| DECISIONS_VIOLATION | Issue violates an active required rule in the decisions log |
 
 #### E. Validate Dependency References
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -364,6 +365,7 @@ class TestSyncToLocalMd:
 
     def test_uses_atomic_write(self, decisions_path: Path) -> None:
         from unittest.mock import patch
+
         from little_loops.decisions import save_decisions
         from little_loops.decisions_sync import sync_to_local_md
 
@@ -377,3 +379,149 @@ class TestSyncToLocalMd:
         # The target of the replace should be ll.local.md
         final_target = mock_replace.call_args[0][1]
         assert str(ll_local) == str(final_target)
+
+
+# =============================================================================
+# TestDecisionsGracefulDegradation
+# =============================================================================
+
+
+class TestDecisionsGracefulDegradation:
+    """Graceful degradation when .ll/decisions.yaml is absent."""
+
+    def test_load_absent_path_returns_empty(self, tmp_path: Path) -> None:
+        absent = tmp_path / "nonexistent.yaml"
+        assert load_decisions(absent) == []
+
+    def test_list_entries_absent_path_returns_empty(self, tmp_path: Path) -> None:
+        absent = tmp_path / "nonexistent.yaml"
+        assert list_entries(absent) == []
+
+    def test_resolve_active_empty_list_returns_empty(self) -> None:
+        assert resolve_active([]) == []
+
+
+# =============================================================================
+# TestDecisionsExceptionSuppression
+# =============================================================================
+
+
+class TestDecisionsExceptionSuppression:
+    """Exception entries suppress corresponding rule violations."""
+
+    def test_exception_found_by_rule_ref(
+        self,
+        decisions_path: Path,
+        sample_rule: RuleEntry,
+        sample_exception: ExceptionEntry,
+    ) -> None:
+        save_decisions([sample_rule, sample_exception], decisions_path)
+        exceptions = list_entries(decisions_path, type="exception")
+        suppressors = [
+            e for e in exceptions
+            if isinstance(e, ExceptionEntry) and e.rule_ref == sample_rule.id
+        ]
+        assert len(suppressors) == 1
+        assert suppressors[0].id == sample_exception.id
+
+    def test_rule_suppressed_when_exception_matches(
+        self,
+        decisions_path: Path,
+        sample_rule: RuleEntry,
+        sample_exception: ExceptionEntry,
+    ) -> None:
+        save_decisions([sample_rule, sample_exception], decisions_path)
+        rules = list_entries(decisions_path, type="rule")
+        exceptions = list_entries(decisions_path, type="exception")
+        exception_rule_refs = {
+            e.rule_ref for e in exceptions if isinstance(e, ExceptionEntry)
+        }
+        unviolated = [r for r in rules if r.id not in exception_rule_refs]
+        assert sample_rule.id in exception_rule_refs
+        assert len(unviolated) == 0
+
+
+# =============================================================================
+# TestGenerateFromCompleted
+# =============================================================================
+
+
+class TestGenerateFromCompleted:
+    """generate_from_completed() auto-generates DecisionEntry records."""
+
+    def test_generates_entries_from_completed_issues(
+        self,
+        decisions_path: Path,
+        temp_project_dir: Path,
+    ) -> None:
+        from datetime import datetime
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.decisions import generate_from_completed
+        from little_loops.issue_history.models import CompletedIssue
+
+        completed = [
+            CompletedIssue(
+                path=temp_project_dir / ".issues/features/P3-FEAT-001-test.md",
+                issue_type="FEAT",
+                priority="P3",
+                issue_id="FEAT-001",
+                completed_at=datetime(2026, 6, 3, tzinfo=UTC),
+            ),
+            CompletedIssue(
+                path=temp_project_dir / ".issues/bugs/P2-BUG-001-test.md",
+                issue_type="BUG",
+                priority="P2",
+                issue_id="BUG-001",
+                completed_at=datetime(2026, 6, 3, tzinfo=UTC),
+            ),
+        ]
+        config = MagicMock()
+        config.project_root = temp_project_dir
+        config.decisions.log_path = ".ll/decisions.yaml"
+        config.issues.base_dir = ".issues"
+
+        with patch("little_loops.issue_history.parsing.scan_completed_issues", return_value=completed):
+            count = generate_from_completed(config)
+
+        assert count == 2
+        entries = load_decisions(decisions_path)
+        assert len(entries) == 2
+        issue_ids = {e.issue for e in entries if isinstance(e, DecisionEntry) and e.issue}
+        assert "FEAT-001" in issue_ids
+        assert "BUG-001" in issue_ids
+
+    def test_skips_already_logged_issues(
+        self,
+        decisions_path: Path,
+        temp_project_dir: Path,
+    ) -> None:
+        from datetime import datetime
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.decisions import generate_from_completed
+        from little_loops.issue_history.models import CompletedIssue
+
+        existing = DecisionEntry(id="DEC-FEAT-001", issue="FEAT-001")
+        save_decisions([existing], decisions_path)
+
+        completed = [
+            CompletedIssue(
+                path=temp_project_dir / ".issues/features/P3-FEAT-001-test.md",
+                issue_type="FEAT",
+                priority="P3",
+                issue_id="FEAT-001",
+                completed_at=datetime(2026, 6, 3, tzinfo=UTC),
+            ),
+        ]
+        config = MagicMock()
+        config.project_root = temp_project_dir
+        config.decisions.log_path = ".ll/decisions.yaml"
+        config.issues.base_dir = ".issues"
+
+        with patch("little_loops.issue_history.parsing.scan_completed_issues", return_value=completed):
+            count = generate_from_completed(config)
+
+        assert count == 0
+        entries = load_decisions(decisions_path)
+        assert len(entries) == 1

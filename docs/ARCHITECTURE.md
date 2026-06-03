@@ -638,6 +638,20 @@ flowchart TB
 | `ll-session` CLI | `cli/session.py` | Secondary consumer: search, issue events, sessions |
 | Skills | `commands/refine-issue.md` etc. | Call `ll-history-context` for agent context injection |
 
+### Decisions Log: `.ll/decisions.yaml`
+
+`.ll/decisions.yaml` is the per-project decisions and rules persistence layer — a YAML file managed by `ll-issues decisions` subcommands and the `decisions.py` data layer. It stores three entry types:
+
+| Entry Type | Purpose |
+|-----------|---------|
+| `rule` | Enforced policies (advisory or required); required rules surface in `/ll:ready-issue` validation |
+| `decision` | Recorded architectural or process decisions; auto-generated from completed issues via `ll-issues decisions generate` |
+| `exception` | One-time exceptions to existing rules; suppress false-positive violations in `/ll:ready-issue` and `/ll:verify-issues` |
+
+**Opt-in**: Absent `.ll/decisions.yaml` is never an error — all integrations gracefully skip when the file is missing. Enable the feature by adding a `decisions:` block to `.ll/ll-config.json`.
+
+**Key consumers**: `/ll:ready-issue` (Decisions Gate), `/ll:verify-issues` (rule violation detection), `/ll:format-issue` (quality analysis), `decisions_sync.py` (active rules → `.ll/ll.local.md` sync).
+
 ### Correction Detection Heuristic
 
 `is_correction()` in `session_store.py` decides whether a user message should be recorded as a `user_corrections` row. It applies three independent pattern sets in order:

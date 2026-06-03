@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -15,6 +16,7 @@ from little_loops.decisions import (
     DecisionEntry,
     ExceptionEntry,
     RuleEntry,
+    list_entries,
     save_decisions,
 )
 
@@ -556,15 +558,31 @@ class TestDecisionsCLISync:
 class TestDecisionsCLIGenerate:
     """Tests for ll-issues decisions generate sub-sub-command."""
 
-    def test_generate_stub(
+    def test_generate_from_completed_writes_entries(
         self,
         temp_project_dir: Path,
         sample_config: dict[str, Any],
         decisions_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """generate returns 0 and stdout references FEAT-1893."""
-        with patch.object(
+        """generate runs generate_from_completed and reports entry count."""
+        from datetime import datetime
+        from unittest.mock import patch as mock_patch
+
+        from little_loops.issue_history.models import CompletedIssue
+
+        completed = [
+            CompletedIssue(
+                path=temp_project_dir / ".issues/features/P3-FEAT-001-test.md",
+                issue_type="FEAT",
+                priority="P3",
+                issue_id="FEAT-001",
+                completed_at=datetime(2026, 6, 3, tzinfo=UTC),
+            ),
+        ]
+        with mock_patch(
+            "little_loops.issue_history.parsing.scan_completed_issues", return_value=completed
+        ), patch.object(
             sys,
             "argv",
             ["ll-issues", "decisions", "generate", "--config", str(temp_project_dir)],
@@ -575,7 +593,9 @@ class TestDecisionsCLIGenerate:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "FEAT-1893" in captured.out
+        assert "1" in captured.out
+        entries = list_entries(decisions_path)
+        assert len(entries) == 1
 
 
 # =============================================================================

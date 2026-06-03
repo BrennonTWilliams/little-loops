@@ -184,6 +184,18 @@ Record corrections in `CORRECTIONS_MADE` as usual, but the top-level verdict mus
 - Refuted or missing targets block readiness and override READY/CORRECTED.
 - Stale targets produce a WARN but do not block.
 
+#### Decisions Gate
+- Check active required rules against this issue:
+  - Run `ll-issues decisions list --type rule --enforcement required --active-only --format json 2>/dev/null || true`
+  - If absent or empty output: SKIPPED (decisions log is opt-in; gracefully skip entirely)
+  - If rules present, for each required rule check if this issue's proposed solution conflicts:
+    - Check for exception entries: `ll-issues decisions list --type exception 2>/dev/null || true`
+    - If an exception entry has `rule_ref` matching this rule's ID and `issue` matching this issue's ID: suppress the violation
+    - If violation found and not suppressed: FAIL row in VALIDATION table: `Decisions | FAIL | Rule <ID>: <rule text> violated`
+    - If no violation: PASS row: `Decisions | PASS | All required rules satisfied`
+    - If exception suppresses the violation: PASS row: `Decisions | PASS | Rule <ID> suppressed by exception <exception_id>`
+- Absent `.ll/decisions.yaml` is never an error — governance is opt-in.
+
 #### Metadata
 - [ ] Priority prefix in filename
 - [ ] Issue ID format correct

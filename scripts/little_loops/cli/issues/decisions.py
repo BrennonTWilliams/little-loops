@@ -152,7 +152,7 @@ def add_decisions_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentP
     # -- generate (stub) --
     gen_p = subsubs.add_parser(
         "generate",
-        help="Generate decisions log entries from completed issues (stub; see FEAT-1893)",
+        help="Generate decisions log entries from completed issues",
     )
     gen_p.add_argument(
         "--from",
@@ -203,7 +203,10 @@ def cmd_decisions(config: BRConfig, args: argparse.Namespace) -> int:
         return _cmd_outcome(args, path, set_outcome)
 
     if sub == "generate":
-        print("generate: not yet implemented (see FEAT-1893)")
+        from little_loops.decisions import generate_from_completed
+
+        count = generate_from_completed(config)
+        print(f"Generated {count} decision entr{'y' if count == 1 else 'ies'} from completed issues.")
         return 0
 
     if sub == "sync":
