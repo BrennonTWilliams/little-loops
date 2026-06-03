@@ -535,6 +535,50 @@ metadata:
 
 **Description convention**: The `description` field is a **trigger document** — Claude uses it to decide when to auto-activate the skill. Lead with trigger conditions ("Use when..."), not a capability summary. Include 5-10 quoted trigger keywords matching natural user phrasing. This reduces missed activations and false positives.
 
+### Skill File Size: 500-Line Limit & Companion Files
+
+Keep every `SKILL.md` at or under **500 lines**. The entire `SKILL.md` is loaded
+into the context window whenever the skill activates, so every line costs
+attention budget — even lines irrelevant to the current task. This is the same
+progressive-disclosure principle the skills themselves teach: skills should be
+cheap to load, with full reference material available but not forced into
+context.
+
+When a skill grows past 500 lines, extract its **reference/template** content
+(verbatim output templates, large rubric/lookup tables, sub-agent prompt bodies,
+worked examples) into **flat companion files** that live directly in
+`skills/<name>/` alongside `SKILL.md`:
+
+```
+skills/my-skill/
+├── SKILL.md          # operational flow, ≤ 500 lines
+├── templates.md      # extracted output/display templates
+└── reference.md      # extracted lookup tables / rubrics
+```
+
+Keep the *operational flow* (the steps Claude executes) in `SKILL.md`; move the
+*reference material* (what something looks like, the full table, the verbatim
+prompt) to a companion file. Use descriptive flat filenames — `templates.md`,
+`reference.md`, `rubric.md`, `areas.md` — not nested subdirectories. This
+matches the established pattern already used by many skills
+(`create-loop/`, `configure/`, `format-issue/`, `audit-claude-config/`, …).
+
+At each extraction point, leave a pointer in `SKILL.md` so the flow stays
+coherent. Two referencing conventions are in use:
+
+- `See [reference.md](reference.md) for <description>` — inline at the step where
+  the content is needed (most common).
+- `Read [reference.md](reference.md) now` — imperative read instruction when the
+  companion content must be consulted before continuing.
+
+Add a terminal `## Additional Resources` section listing the companion files when
+a skill has several. Companion files have no line limit — only `SKILL.md` is
+capped at 500 lines.
+
+> The `ll-verify-skills` CLI lint command that mechanically enforces this limit
+> is tracked separately (ENH-977). Until it lands, check manually with
+> `wc -l skills/*/SKILL.md | sort -rn`.
+
 ### New Skill Checklist
 
 Before adding a new skill, answer:

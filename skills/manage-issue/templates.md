@@ -415,4 +415,80 @@ ISSUE MANAGED: {ISSUE_ID} - {action}
 ================================================================================
 ```
 
+---
+
+## Arguments Reference
+
+Full per-argument reference for `/ll:manage-issue`. The canonical machine-readable
+schema lives in `SKILL.md`'s YAML frontmatter; this section is the human-readable
+expansion.
+
+- **issue_type** (required): Type of issue
+  - `bug` - Search in bugs directory
+  - `feature` - Search in features directory
+  - `enhancement` - Search in enhancements directory
+  - `epic` - Search in epics directory. Note: EPICs are coordination containers; manage-issue lists their child issues and redirects to `/ll:manage-issue` per child or `/ll:create-sprint` for grouped execution rather than implementing the EPIC directly.
+
+- **action** (required): Action to perform
+  - `fix` - Fix a bug
+  - `implement` - Implement a feature
+  - `improve` - Improve/enhance existing functionality or documentation
+  - **IMPORTANT**: Requires full implementation (Plan → Implement → Verify → Complete)
+  - For documentation: Must edit/create files, not just verify content
+  - For code: Follow same implementation process as fix/implement
+  - Behaves identically to fix/implement actions across all issue types
+  - `verify` - Verify issue status only
+  - `plan` - Create plan only (equivalent to --plan-only flag)
+  - `defer` - Move issue to deferred/ (parked, not active or completed)
+  - `undefer` - Move issue from deferred/ back to its active category directory
+
+- **issue_id** (optional): Specific issue ID
+  - If provided, work on that issue
+  - If omitted, find highest priority
+
+- **flags** (optional): Modify command behavior
+  - `--plan-only` - Stop after creating the implementation plan
+  - `--dry-run` - Alias for `--plan-only`
+  - `--resume` - Resume from existing plan checkpoint
+  - `--gates` - Enable phase gates for manual verification between phases
+  - `--quick` - Skip deep research (Phase 1.5) and confidence check for faster planning
+  - `--force-implement` - Bypass confidence gate (when `commands.confidence_gate.enabled` is true)
+
+## Usage Examples
+
+```bash
+# Fix highest priority bug
+/ll:manage-issue bug fix
+
+# Implement specific feature
+/ll:manage-issue feature implement FEAT-042
+
+# Create plan only, don't implement
+/ll:manage-issue feature implement FEAT-042 --plan-only
+
+# Dry run (alias for --plan-only)
+/ll:manage-issue enhancement improve ENH-100 --dry-run
+
+# Quick mode: skip deep research for faster planning
+/ll:manage-issue bug fix BUG-050 --quick
+
+# Resume interrupted work from checkpoint
+/ll:manage-issue bug fix BUG-123 --resume
+
+# Defer an issue (park it for later)
+/ll:manage-issue feature defer FEAT-441
+
+# Undefer an issue (bring it back to active)
+/ll:manage-issue feature undefer FEAT-441
+
+# Enable phase gates for careful manual verification
+/ll:manage-issue feature implement FEAT-042 --gates
+
+# Just verify an issue (no implementation)
+/ll:manage-issue bug verify BUG-123
+
+# Bypass confidence gate for a specific issue
+/ll:manage-issue enhancement improve ENH-100 --force-implement
+```
+
 **Display Note**: When reviewing an issue file during implementation, check for and display product impact fields if present in the frontmatter. These provide business context for prioritization decisions.

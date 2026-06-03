@@ -5,7 +5,8 @@ type: ENH
 priority: P4
 discovered_date: 2026-02-24
 discovered_by: context-engineering-analysis
-status: open
+status: done
+completed_at: 2026-06-03 02:59:38+00:00
 parent: EPIC-1745
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
 confidence_score: 100
@@ -262,6 +263,7 @@ _Updated by `/ll:confidence-check` on 2026-06-02 (post wire+refine pass)_
 - **Distinct extraction targets per skill**: each of the 6 skills has different source ranges and constraint strings; validate post-extraction line count per skill rather than in a single batch pass at the end
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-03T02:27:43 - `983679a6-7bf0-468a-bc41-cd0676068e0d.jsonl`
 - `/ll:confidence-check` - 2026-06-02T01:00:00 - `b773ed04-caa9-4596-b890-7f5a3b05df36.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00 - `5bcea9e3-d849-448e-883c-cb3ab8ad842a.jsonl`
 - `/ll:wire-issue` - 2026-06-03T00:44:52 - `255e0c2b-935a-474d-b91e-187cb706a7ac.jsonl`
@@ -330,9 +332,33 @@ _Updated by `/ll:confidence-check` on 2026-06-02 (post wire+refine pass)_
 - 2026-05-14 — 779 / 709 / 614 / 559
 - 2026-04-26 — 711 / 697 / 606 / 556
 
+## Resolution
+
+**Implemented 2026-06-03.** All 6 oversized skills brought ≤ 500 lines via flat companion-file extraction (pure progressive-disclosure reorganization; no behavior change):
+
+| Skill | Before | After | Companion file |
+|-------|-------:|------:|----------------|
+| `confidence-check` | 827 | 499 | `rubric.md` (new) — Phase 2/2b scoring tables, output templates, examples |
+| `init` | 743 | 497 | `templates.md` (new) — Display Summary, codex-adapter, gitignore, detail blocks |
+| `audit-claude-config` | 712 | 470 | `wave1-prompts.md` (new) — Task 1/2/3 sub-agent prompts + settings table |
+| `debug-loop-run` | 603 | 426 | `reference.md` (new) — Signal Rules, issue-file template, event-type table |
+| `review-loop` | 577 | 444 | `reference.md` (existing) — QC-1..14 bodies, display-format templates |
+| `manage-issue` | 562 | 496 | `templates.md` (existing) — removed duplicate `## Arguments`, moved examples |
+
+**Constraint preservation**: All doc-wiring test-pinned strings kept in their `SKILL.md` (e.g. `hooks/adapters/`, `parent: EPIC-NNN`, `rate_limit_waiting`, init `permissions.allow` list + CLAUDE.md boilerplate blocks). The init wiring tests pin the permission list / boilerplate / completion-message blocks to `SKILL.md`, so those were intentionally NOT extracted (the issue's wiring notes under-specified this).
+
+**Docs & convention**:
+- `CONTRIBUTING.md` § "Adding Skills" — new "500-Line Limit & Companion Files" subsection documenting the limit, flat companion-file pattern, and referencing conventions.
+- `docs/ARCHITECTURE.md` — skills tree updated with new companion files (and the stale `review-loop/` entry fixed to list its existing `reference.md`).
+- `docs/reference/API.md` — confidence-check rubric stub now points at `rubric.md`.
+
+**Test**: `scripts/tests/test_enh494_skill_companions.py` (new) — asserts companion files exist + are linked, and a global guard that **no** `SKILL.md` exceeds 500 lines (enforces the convention going forward; the `ll-verify-skills` CLI lint remains ENH-977's scope).
+
+**Verification**: full suite `9159 passed, 5 skipped`. `wc -l skills/*/SKILL.md` confirms all ≤ 500.
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P4
+**Done** | Created: 2026-02-24 | Completed: 2026-06-03 | Priority: P4
 
 ---
 

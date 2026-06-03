@@ -115,12 +115,14 @@ little-loops/
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md
 │   ├── debug-loop-run/      # User-invoked
-│   │   └── SKILL.md
+│   │   ├── SKILL.md
+│   │   └── reference.md
 │   ├── audit-loop-run/      # User-invoked
 │   │   └── SKILL.md
 │   ├── audit-claude-config/ # User-invoked
 │   │   ├── SKILL.md
-│   │   └── report-template.md
+│   │   ├── report-template.md
+│   │   └── wave1-prompts.md
 │   ├── audit-docs/          # User-invoked
 │   │   ├── SKILL.md
 │   │   └── templates.md
@@ -132,7 +134,8 @@ little-loops/
 │   ├── cleanup-loops/       # User-invoked
 │   │   └── SKILL.md
 │   ├── confidence-check/    # Proactive
-│   │   └── SKILL.md
+│   │   ├── SKILL.md
+│   │   └── rubric.md
 │   ├── configure/           # User-invoked
 │   │   ├── SKILL.md
 │   │   ├── areas.md
@@ -154,7 +157,8 @@ little-loops/
 │   │   └── algorithm.md
 │   ├── init/                # User-invoked
 │   │   ├── SKILL.md
-│   │   └── interactive.md
+│   │   ├── interactive.md
+│   │   └── templates.md
 │   ├── issue-size-review/   # Proactive
 │   │   └── SKILL.md
 │   ├── issue-workflow/      # User-invoked
@@ -167,7 +171,8 @@ little-loops/
 │   ├── product-analyzer/    # User-invoked
 │   │   └── SKILL.md
 │   ├── review-loop/         # User-invoked
-│   │   └── SKILL.md
+│   │   ├── SKILL.md
+│   │   └── reference.md
 │   ├── update/              # User-invoked
 │   │   └── SKILL.md
 │   ├── update-docs/         # User-invoked

@@ -129,105 +129,26 @@ Each finding: `{ check_id: "V-N", severity: "Error"|"Warning", location: "<path>
 
 ## Step 2b: Quality Checks
 
-Run each quality check from `reference.md` against the raw YAML dict. Record findings in the same list.
+Run each quality check from `reference.md` against the raw YAML dict. Record findings in the same list. Each check's full discriminator, severity, and fix template live in `reference.md`; the per-check algorithm bodies for QC-1 through QC-14 live in `reference.md` under **Skill-Side Quality Check Procedures (Step 2b)** — see [reference.md](reference.md) for the step-by-step procedure of each check.
 
-### QC-1: max_iterations Range
+| QC | Check | Reference section | Resulting check_id |
+|----|-------|-------------------|--------------------|
+| QC-1 | max_iterations Range | QC-1 | QC-1 |
+| QC-2 | Missing `on_error` Routing | QC-2 | QC-2 |
+| QC-3 | `action_type` Mismatch | QC-3 | QC-3 |
+| QC-4 | Convergence Missing `on_maintain` | QC-4 | QC-4 |
+| QC-5 | Hardcoded User Paths | QC-5 | QC-5 |
+| QC-6 | `on_handoff` Recommendation | QC-6 | QC-6 |
+| QC-7 | `capture` Usage Opportunity | QC-7 | QC-7 |
+| QC-8 | Spin Detection | FA-1 | FA-1 |
+| QC-9 | Missing Failure Terminal | FA-2 | FA-2 |
+| QC-10 | Unresetting / bare `/tmp` Shared State | FA-3a, FA-3 | FA-3a, FA-3 |
+| QC-11 | Monolithic Prompt State | FA-4 | FA-4 |
+| QC-12 | Unreachable States | FA-5 | FA-5 |
+| QC-13 | Dead-End Non-Terminal States | FA-6 | FA-6 |
+| QC-14 | Replaceable Prompt State Detection | PR-1 | PR-1 |
 
-Read `max_iterations` from the YAML dict (absent = 50 default).
-
-- If value < 3: add Warning finding at path `max_iterations`
-- If value > 100: add Warning finding at path `max_iterations`
-- If key is absent: add Suggestion finding at path `max_iterations`
-
-### QC-2: Missing `on_error` Routing
-
-For each state in `states`:
-- Skip if `terminal: true`
-- If the state has an `evaluate` block: check for `on_error` at the state level and for `route.error` in a `route` block
-- If neither is present: add Warning finding at path `states.<name>`
-
-### QC-3: `action_type` Mismatch
-
-For each state with an `action` field:
-
-**Looks like natural-language prompt** (action text > 10 words, no shell metacharacters: `|`, `&&`, `||`, `$`, `;`, `>`, `<`, backtick, and does not start with a known shell binary):
-- If `action_type` is absent or `action_type: shell`: add Suggestion finding
-
-**Looks like shell command** (starts with a known binary or contains `&&`, `|`, `$`):
-- If `action_type: prompt`: add Warning finding
-
-**Unknown/contributed `action_type`** (value not in `["prompt", "slash_command", "shell", "mcp_tool"]`):
-- If `action_type` is explicitly set to a value outside the built-in list: add Warning finding at path `states.<name>`
-- Warning text: `action_type '<value>' is not a built-in type; if this is a contributed type, ensure it is registered in the extension registry (_contributed_actions) before the loop runs.`
-- Do NOT emit an Error; contributed types are valid after schema widening (FEAT-990)
-
-### QC-4: Convergence State Missing `on_maintain`
-
-For each state where `evaluate.type == "convergence"`:
-- If `on_maintain` is absent at the state level: add Warning finding at path `states.<name>`
-
-### QC-5: Hardcoded User Paths
-
-For each state with an `action` field:
-- If `action` contains `/Users/`, `/home/`, or `~/` as a literal string: add Warning finding at path `states.<name>.action`
-
-### QC-6: `on_handoff` Recommendation
-
-Read top-level `on_handoff`. Read `max_iterations` (use 50 if absent).
-- If `max_iterations > 20` AND `on_handoff` is absent: add Suggestion finding at path `on_handoff`
-
-### QC-7: `capture` Usage Opportunity
-
-Collect all state action texts. Check if any downstream state action contains `$captured` or `{{captured}}`.
-- For each upstream state that has `evaluate.type` in `["output_contains", "output_numeric", "output_json"]` and lacks `capture:`: add Suggestion finding at path `states.<name>`
-
-Before running QC-8 through QC-13, build the FSM mental model from the YAML dict: record terminal states (where `terminal: true`), the transition map (all routing targets per non-terminal state), the inbound map (which states reach each state), and the happy path (trace `on_yes`/`next` from `initial` to terminal). Use this model in the checks below.
-
-### QC-8: Spin Detection
-
-For each non-terminal state, check whether ALL of its `on_error` and `on_partial` transitions route back to itself (or form a tight cycle of ≤ 2 states) with no counter or escape condition:
-- If yes: add Warning finding at path `states.<name>` (check_id: FA-1)
-
-### QC-9: Missing Failure Terminal
-
-Scan all terminal states. If none has a name suggesting failure (`failed`, `error`, `aborted`, `bail`, `halt`, or similar), and `max_iterations` is the only stop condition for failure cases:
-- Add Warning finding at path `(loop)` (check_id: FA-2)
-- Note: a non-terminal error-handling state that eventually routes to a failure terminal does NOT trigger this
-
-### QC-10: Unresetting Shared State
-
-Scan all state `action` texts for writes to `/tmp/` paths (e.g., `echo ... > /tmp/foo`, `tee /tmp/foo`). For each `/tmp/` path written:
-
-**Cross-project path check (FA-3a)**: If the path matches bare `/tmp/<name>` (i.e., not `.loops/tmp/`), add Warning finding at path `states.<name>.action` (check_id: FA-3a). Bare `/tmp/` paths are shared globally across all projects on the machine — when two projects run concurrently, they collide silently. Use `.loops/tmp/<name>` (project-scoped by CWD) instead.
-
-**Unresetting state check (FA-3)**: Check whether any state action resets or removes the path at loop start (in the `initial` state or an explicit `start`/`init` state):
-- If a file is written but never reset: add Warning finding at path `states.<name>.action` (check_id: FA-3)
-
-### QC-11: Monolithic Prompt State
-
-For each state with `action_type: prompt`, count distinct numbered steps in the action text (lines matching `Step [N]`, `[N].`, `[N])`):
-- If ≥ 4 distinct steps: add Suggestion finding at path `states.<name>` (check_id: FA-4)
-
-### QC-12: Unreachable States
-
-For each state not reachable via BFS from `initial` using all outbound transitions:
-- Skip if V-11 already flagged this state (check existing findings for `V-11` at the same location)
-- Otherwise: add Warning finding at path `states.<name>` (check_id: FA-5)
-
-### QC-13: Dead-End Non-Terminal States
-
-For each non-terminal state that has no outbound transitions (`on_yes`, `on_no`, `on_partial`, `on_blocked`, `on_error`, `next`, any `route.*`, or any custom `on_<verdict>` in `extra_routes`):
-- Add Error finding at path `states.<name>` (check_id: FA-6)
-
-### QC-14: Replaceable Prompt State Detection
-
-For each state where `action_type: prompt` OR where `action_type` is absent and the action looks like a natural-language prompt (more than 10 words, no shell metacharacters: `|`, `&&`, `||`, `$`, `;`, `>`, `<`, backtick):
-
-1. Strip template variable references (`{{...}}`, `$identifier`) from the action text, leaving only literal words.
-2. Check the literal text against the **Heuristic Groups** defined in `reference.md` (PR-1): file/path existence (Group A), counting (Group B), simple formatting (Group C), yes/no decision on structured data (Group D), pure template substitution (Group E), and simple string/path operations (Group F).
-3. Check for **Exemption Keywords** defined in `reference.md` (PR-1): if any exemption keyword is present in the action text, skip this state.
-4. Also skip if the action text exceeds 50 words.
-5. If a heuristic group matches and no exemption applies: add a Suggestion finding at path `states.<name>` with check_id `PR-1`, naming the detected pattern group and providing an example alternative.
+Before running QC-8 through QC-13, build the FSM mental model from the YAML dict: terminal states (`terminal: true`), the transition map (all routing targets per non-terminal state), the inbound map (which states reach each state), and the happy path (trace `on_yes`/`next` from `initial` to terminal). Use this model in QC-8 through QC-13.
 
 **Do not output any findings yet.** Proceed to Step 2c to build the narrative, then Step 2.5 for behavioral verification, then Step 3 to display everything.
 
@@ -275,39 +196,7 @@ Extract 2–4 key activity phrases from the declared goal (skip if goal is absen
 
 ### 2c-4: Output FSM Flow Review
 
-After Step 3 displays the findings table and before Step 4, output both blocks:
-
-```
-### FSM Flow Review: <loop-name>
-
-  <One-sentence overall assessment of whether the flow achieves its declared purpose>
-
-  **What works well**
-  - <strength 1>
-  - <strength 2>
-  ...
-
-  **Issues to consider**
-  <N>. <plain-English description of FA-N or SR-N finding with concrete suggestion>
-  ...
-  (or "No significant logic issues found." if no FA-* or SR-* findings)
-
-### Semantic Flow Review: <loop-name>
-
-  **Loop goal**: "<declared description or (no description provided)>"
-  **Happy path**: <state-1> → <state-2> → ... → <terminal>
-    <✓ or ⚠> <one-line assessment of whether path achieves the declared goal>
-
-  **State analysis**:
-    <For each state on the happy path:>
-    <✓ or ⚠> `<name>` — <brief assessment of name/action coherence>
-
-  **Transition analysis**:
-    <For each significant routing decision:>
-    <✓ or ⚠> <transition description> — <semantic assessment>
-
-  **Goal alignment**: <one-sentence overall verdict>
-```
+After Step 3 displays the findings table and before Step 4, output the **FSM Flow Review** block (overall assessment, "What works well" list, "Issues to consider" list) and the **Semantic Flow Review** block (loop goal, happy path, state analysis, transition analysis, goal alignment). See [reference.md](reference.md) Findings Display Format for the exact bordered template of both blocks.
 
 ---
 
@@ -347,29 +236,7 @@ Report any unexpected errors from the real run in findings with check_id `SIM-3`
 
 ## Step 3: Display Findings
 
-Output the full findings report using the format from `reference.md`:
-
-```
-## Review: <loop-name>
-
-Format: FSM
-States: <N> states  |  Initial: <initial>  |  Max iterations: <N>
-
-### Errors (N)
-| # | Check | Location | Issue |
-|---|-------|----------|-------|
-...
-
-### Warnings (N)
-| # | Check | Location | Issue |
-|---|-------|----------|-------|
-...
-
-### Suggestions (N)
-| # | Check | Location | Issue |
-|---|-------|----------|-------|
-...
-```
+Output the full findings report (header line, then Errors / Warnings / Suggestions tables, each with `# | Check | Location | Issue` columns). See [reference.md](reference.md) Findings Display Format for the exact template.
 
 If there are zero findings in a severity group, omit that group's section entirely. If all three groups are empty, output:
 

@@ -636,7 +636,7 @@ Create from dictionary.
 #### Confidence-Check Score Rubrics (Outcome Criteria A & D)
 
 <!-- TODO: update-docs stub — ENH-1412 / ENH-1413 — drafted 2026-05-10 -->
-> **Stub**: Auto-drafted by `/ll:update-docs`. Source of truth is `skills/confidence-check/SKILL.md`; expand here if reference-doc readers need the rubric without opening the skill.
+> **Stub**: Auto-drafted by `/ll:update-docs`. Source of truth is `skills/confidence-check/rubric.md` (the full scoring tables, extracted from `SKILL.md` per ENH-494); expand here if reference-doc readers need the rubric without opening the skill.
 
 The `score_complexity` and `score_change_surface` fields are composite scores produced by `/ll:confidence-check`. They were refactored in ENH-1413 and ENH-1412 respectively into sub-axis structures:
 
@@ -654,7 +654,7 @@ Dual-pattern rubric — the issue is scored under whichever pattern fits:
 - **Pattern B — Enumerated mechanical fanout** (verifiability-based): Score by completeness of the verification chain (issue enumerates all sites + greppable invariant + automated test that asserts coverage). A complete chain earns a full score even with a large file count, because the change is mechanically verifiable.
 - Phase 4.8 suppresses large-file-surface risk phrases when Pattern B's verification chain is complete.
 
-See `skills/confidence-check/SKILL.md` for the full rubric tables, examples, and phase definitions.
+See `skills/confidence-check/rubric.md` for the full rubric tables and output templates, and `skills/confidence-check/SKILL.md` for the phase definitions and flow.
 <!-- END TODO stub -->
 
 ### ProductImpact
