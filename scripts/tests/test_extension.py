@@ -655,6 +655,24 @@ class TestNewProtocols:
 
         assert CapabilityNotSupported is not None
 
+    def test_smoke_import_detect_pii(self) -> None:
+        """Importing detect_pii from public API succeeds (no circular import)."""
+        from little_loops import detect_pii  # noqa: F401 — import is the test
+
+        assert detect_pii is not None
+
+    def test_smoke_import_redact_pii(self) -> None:
+        """Importing redact_pii from public API succeeds (no circular import)."""
+        from little_loops import redact_pii  # noqa: F401 — import is the test
+
+        assert redact_pii is not None
+
+    def test_smoke_import_apply_pii_action(self) -> None:
+        """Importing apply_pii_action from public API succeeds (no circular import)."""
+        from little_loops import apply_pii_action  # noqa: F401 — import is the test
+
+        assert apply_pii_action is not None
+
     def test_ll_hook_intent_extension_protocol_satisfied(self) -> None:
         """A class with provided_hook_intents() satisfies LLHookIntentExtension."""
         from little_loops.extension import LLHookIntentExtension

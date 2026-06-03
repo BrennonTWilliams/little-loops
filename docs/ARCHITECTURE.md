@@ -271,6 +271,7 @@ little-loops/
         ├── git_operations.py    # Git utilities
         ├── work_verification.py # Verification helpers
         ├── text_utils.py        # Text processing utilities
+        ├── pii.py               # PII detection and redaction utilities
         ├── subprocess_utils.py  # Subprocess handling
         ├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner)
         ├── sprint.py            # Sprint definition and management

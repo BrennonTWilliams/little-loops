@@ -51,6 +51,7 @@ from little_loops.transport import (
     WebhookTransport,
     wire_transports,
 )
+from little_loops.pii import apply_pii_action, detect_pii, redact_pii
 from little_loops.work_verification import (
     EXCLUDED_DIRECTORIES,
     filter_excluded_files,
@@ -122,4 +123,8 @@ __all__ = [
     "GitHubSyncManager",
     "SyncResult",
     "SyncStatus",
+    # pii
+    "apply_pii_action",
+    "detect_pii",
+    "redact_pii",
 ]

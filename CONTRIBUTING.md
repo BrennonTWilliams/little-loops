@@ -231,6 +231,7 @@ little-loops/
         ├── subprocess_utils.py
         ├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner + OpenCodeRunner + PiRunner)
         ├── text_utils.py        # Text processing utilities
+        ├── pii.py               # PII detection and redaction utilities
         ├── logger.py
         ├── logo.py              # CLI logo display
         ├── dependency_graph.py  # Dependency graph construction

@@ -53,6 +53,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.session_log` | Session log linking for issue files |
 | `little_loops.file_utils` | Shared file I/O utilities (atomic writes) |
 | `little_loops.text_utils` | Text extraction utilities for issue content |
+| `little_loops.pii` | PII detection and redaction utilities (`detect_pii`, `redact_pii`, `apply_pii_action`) |
 | `little_loops.cli` | CLI entry points (package) |
 | `little_loops.parallel` | Parallel processing subpackage |
 | `little_loops.fsm` | FSM loop system subpackage |
@@ -5734,6 +5735,96 @@ query = extract_words("session logging")
 raw = score_bm25(query, doc_words_list[0], doc_freq=doc_freq, avg_doc_len=avg_doc_len, total_docs=2)
 normalized = raw / (raw + 1)  # map to [0, 1)
 print(f"BM25 normalized: {normalized:.3f}")
+```
+
+---
+
+## little_loops.pii
+
+Regex-based PII detection and redaction utilities for SFT corpus filtering.
+
+```python
+from little_loops.pii import detect_pii, redact_pii, apply_pii_action
+```
+
+### PII_PATTERNS
+
+```python
+PII_PATTERNS: dict[str, re.Pattern[str]]
+```
+
+Module-level dict mapping PII type names to their compiled regex patterns.
+
+| Key | Pattern covers |
+|-----|---------------|
+| `"email"` | Standard email addresses |
+| `"phone"` | US phone numbers (with/without country code, parens, dashes, dots) |
+| `"ssn"` | Social Security Numbers (``NNN-NN-NNNN`` format) |
+
+### detect_pii
+
+```python
+def detect_pii(text: str) -> list[str]
+```
+
+Return list of PII type names found in *text*.
+
+**Parameters**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `text` | `str` | Input text to scan |
+
+**Returns**: List of PII type name strings (e.g. `["email", "phone"]`); empty list if none found.
+
+### redact_pii
+
+```python
+def redact_pii(text: str) -> str
+```
+
+Replace all PII spans in *text* with ``[TYPE]`` placeholders.
+
+**Parameters**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `text` | `str` | Input text to redact |
+
+**Returns**: Text with PII replaced by ``[EMAIL]``, ``[PHONE]``, or ``[SSN]`` placeholders.
+
+### apply_pii_action
+
+```python
+def apply_pii_action(example: dict, action: str) -> dict | None
+```
+
+Apply ``flag``/``redact``/``discard`` to a formatted SFT example dict.
+
+**Parameters**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `example` | `dict` | SFT example dict (Alpaca, ShareGPT, etc.) |
+| `action` | `str` | One of ``"flag"``, ``"redact"``, ``"discard"`` |
+
+**Returns**: Modified example dict, or ``None`` for ``"discard"`` when PII is detected.
+
+**Raises**: `ValueError` if *action* is not one of the three supported values.
+
+**Example**
+
+```python
+from little_loops.pii import detect_pii, redact_pii, apply_pii_action
+
+text = "Contact john@example.com or call 555-867-5309"
+detect_pii(text)    # -> ["email", "phone"]
+redact_pii(text)    # -> "Contact [EMAIL] or call [PHONE]"
+
+example = {"instruction": "Email john@example.com", "output": "OK"}
+apply_pii_action(example, "flag")     # -> {... "pii_detected": True}
+apply_pii_action(example, "redact")   # -> {"instruction": "Email [EMAIL]", ...}
+apply_pii_action(example, "discard")  # -> None
 ```
 
 ---
