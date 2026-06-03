@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 __all__ = [
@@ -762,6 +762,14 @@ def _extract_turn_pairs(
     return pairs
 
 
+def _mtime(path: Path) -> float:
+    """Return file modification time as a Unix float, or 0.0 if inaccessible."""
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def extract_conversation_turns(
     project_folder: Path,
     since: datetime | None = None,
@@ -785,7 +793,12 @@ def extract_conversation_turns(
     """
     windows: list[list[tuple[str, str]]] = []
 
-    for jsonl_file in project_folder.glob("*.jsonl"):
+    jsonl_files = list(project_folder.glob("*.jsonl"))
+    if since is not None:
+        cutoff_ts = (since - timedelta(seconds=60)).timestamp()
+        jsonl_files = [f for f in jsonl_files if _mtime(f) >= cutoff_ts]
+
+    for jsonl_file in jsonl_files:
         if not include_agent_sessions and jsonl_file.name.startswith("agent-"):
             continue
 

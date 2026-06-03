@@ -1680,3 +1680,56 @@ class TestSFTFormatter:
         # Each window has 3 pairs × 2 turns = 6 tuples
         for window in windows:
             assert len(window) == 6
+
+    def test_extract_conversation_turns_skips_old_files(self) -> None:
+        """extract_conversation_turns skips files whose mtime predates since - 60s."""
+        import json
+        import os
+        import tempfile
+        from datetime import datetime
+        from pathlib import Path
+
+        from little_loops.user_messages import extract_conversation_turns
+
+        # since = 2025-06-01; records are timestamped 2025-06-02 (after since, so per-record
+        # filter passes); old_file gets mtime 2025-01-01 (before cutoff); new_file keeps a
+        # mtime well after since.
+        since = datetime(2025, 6, 1)
+        record_ts = "2025-06-02T00:00:00Z"
+
+        def _make_session(path: Path, label: str) -> None:
+            records = [
+                {
+                    "type": "user",
+                    "timestamp": record_ts,
+                    "sessionId": f"sess-{label}",
+                    "uuid": f"u-{label}",
+                    "message": {"content": f"Hello from {label}"},
+                },
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "text", "text": f"Reply from {label}"}]},
+                },
+            ]
+            path.write_text("\n".join(json.dumps(r) for r in records))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = Path(tmpdir)
+            old_file = project_dir / "old_session.jsonl"
+            new_file = project_dir / "new_session.jsonl"
+            _make_session(old_file, "old")
+            _make_session(new_file, "new")
+
+            # old_file: mtime well before cutoff (since - 60s = 2025-05-31 23:59:00)
+            old_ts = datetime(2025, 1, 1).timestamp()
+            os.utime(old_file, (old_ts, old_ts))
+            # new_file: mtime well after since
+            new_ts = datetime(2025, 6, 2).timestamp()
+            os.utime(new_file, (new_ts, new_ts))
+
+            windows = extract_conversation_turns(project_dir, since=since)
+
+        all_turns = [turn for window in windows for turn in window]
+        user_texts = [content for role, content in all_turns if role == "user"]
+        assert any("new" in t for t in user_texts), "new session turns should be present"
+        assert not any("old" in t for t in user_texts), "old session turns should be skipped"
