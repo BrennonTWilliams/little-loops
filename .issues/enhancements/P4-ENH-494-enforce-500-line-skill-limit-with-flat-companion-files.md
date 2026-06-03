@@ -8,10 +8,14 @@ discovered_by: context-engineering-analysis
 status: open
 parent: EPIC-1745
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
-confidence_score: 98
-outcome_confidence: 71
+confidence_score: 95
+outcome_confidence: 64
 blocked_by: []
 milestone: refined-ready
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-494: Enforce 500-Line SKILL.md Limit with Flat Companion Files
@@ -58,17 +62,19 @@ Every line in a `SKILL.md` is loaded into the context window when that skill is 
 1. ~~Run `wc -l skills/*/SKILL.md | sort -n` to identify oversized skills~~ (**Done — see Research Findings below**)
 2. Extract overflow content per skill using the flat companion-file pattern:
    - `audit-claude-config`: extract `SKILL.md:231–407` (Task 3 sub-agent prompt) + `SKILL.md:261–315` (settings table) → new companion file
-   - `confidence-check`: extract `SKILL.md:189–385` (scoring criteria) + `SKILL.md:530–615` (output templates) → new companion file
-   - `init`: extract `SKILL.md:130–201` (Display Summary template), `SKILL.md:505–550` (CLAUDE.md blocks), `SKILL.md:554–583` (Completion Message) → new companion file
-   - `manage-issue`: remove duplicated Arguments block at `SKILL.md:449–516`
-   - `debug-loop-run` (602L): identify and extract reference/template content into a new companion file (scope expanded 2026-05-24)
-   - `review-loop` (577L): `reference.md` already exists; extract remaining overflow content — identify bloated sections and move to `reference.md` or a new companion file (scope expanded 2026-05-24)
+   - `confidence-check`: extract `SKILL.md:187–428` (Phase 2 + Phase 2b scoring criteria — 5 criterion tables + 4 outcome-confidence tables) + `SKILL.md:650–738` (output format templates `## Output Format` and `## Batch Output Format`) → new companion file; optionally also `SKILL.md:750–827` (`## Examples`, ~77L)
+   - `init`: extract `SKILL.md:142–218` (Display Summary bordered template), `SKILL.md:596–663` (CLAUDE.md content blocks written to user's CLAUDE.md), `SKILL.md:666–700` (Completion Message bordered template) → new companion file
+   - `manage-issue`: remove duplicated Arguments block at `SKILL.md:488–524`
+   - `debug-loop-run` (603L): extract `SKILL.md:163–314` (`### Signal Rules` — 13 named signal rules with lookup tables, ~151L), `SKILL.md:507–565` (`### 6c. Write the issue file` template, ~58L), `SKILL.md:139–157` (event-type field table, ~18L) → new companion file (removes ~227L, brings file to ~376L)
+   - `review-loop` (577L): `reference.md` already exists; move QC-1 through QC-14 check bodies from `SKILL.md:129–232` (~103L) and display format blocks at `SKILL.md:278–311`, `SKILL.md:347–395`, `SKILL.md:501–519` (~100L total) into `reference.md` (removes ~200L, brings file to ~380L)
 3. Add inline `See [companion.md](companion.md) for <description>` links at each extraction point (follow pattern from `format-issue/SKILL.md:190` or `review-loop/SKILL.md:69`); add `## Additional Resources` terminal section (follow `create-loop/SKILL.md:295–299`)
-4. Update `CONTRIBUTING.md:436–462` ("Adding Skills" section) with 500-line limit, companion-file naming convention, and referencing patterns
+4. Update `CONTRIBUTING.md:507–554` ("Adding Skills" section) with 500-line limit, companion-file naming convention, and referencing patterns
 ### Wiring Phase (added by `/ll:wire-issue`)
 
-5. Update `docs/ARCHITECTURE.md:104–106,115–116,136–138` — add new companion filenames to the verbose file-level directory tree for `audit-claude-config/`, `confidence-check/`, and `init/`; update entries for `debug-loop-run/` and `review-loop/` when new companion files are added
+5. Update `docs/ARCHITECTURE.md:114–176` — add new companion filenames to the verbose file-level directory tree for `audit-claude-config/`, `confidence-check/`, and `init/`; update entries for `debug-loop-run/` and `review-loop/` when new companion files are added; also fix `review-loop/` entry (currently shows only `SKILL.md`, missing the already-existing `reference.md`)
 6. Add companion file existence tests (follow `test_improve_claude_md_skill.py:29–34` pattern) asserting that all new companion files exist on disk after implementation (3 original + up to 2 new for `debug-loop-run` and `review-loop`)
+7. Before each extraction, grep the target content range for strings asserted by the doc-wiring tests below — any match must stay in `SKILL.md` (via a summary line or anchor), not move wholesale to the companion file: `hooks/adapters/` (audit-claude-config + init), `rate_limit_waiting` / `Fault Signals` / `Effectiveness Signals` / `Step 3b` (debug-loop-run), section headings asserted in `test_confidence_check_skill.py` (confidence-check)
+8. Update `docs/reference/API.md:638–657` (`confidence_check` stub section) to reference the new companion filename for rubric tables after extraction
 
 _The `ll-verify-skills` CLI lint command is tracked separately in ENH-977 (blocked by this issue)._
 
@@ -125,6 +131,40 @@ _Added by `/ll:refine-issue` — Skill line count audit (updated 2026-04-07):_
 
 **No companion files exist yet for the 4 original oversized skills.** `debug-loop-run` and `review-loop` are newly in scope as of 2026-05-24.
 
+### Updated Line Ranges and New Extraction Targets (2026-06-02)
+
+_Added by `/ll:refine-issue` — corrects stale references and specifies debug-loop-run/review-loop targets:_
+
+**Stale reference corrections** (all line numbers shifted since earlier refinements):
+
+| Skill | Section | Old Range | Current Range |
+|-------|---------|-----------|---------------|
+| `confidence-check` | Phase 2 + Phase 2b scoring criteria | 189–385 | **187–428** (+43L at end due to Phase 2b growth) |
+| `confidence-check` | Output format templates | 530–615 | **650–738** (Phase 4.5–4.9 write-back phases displaced these ~120L down) |
+| `init` | Display Summary bordered template | 130–201 | **142–218** |
+| `init` | CLAUDE.md content blocks | 505–550 | **596–663** (steps 8.5, 9.5, 10.5 added between) |
+| `init` | Completion Message template | 554–583 | **666–700** |
+| `manage-issue` | Duplicated Arguments block | 449–516 | **488–524** |
+| `CONTRIBUTING.md` | "Adding Skills" section | 436–462 | **507–554** |
+| `docs/ARCHITECTURE.md` | Skills directory tree | 104–106, 115–116, 136–138 | **114–176** |
+
+**`audit-claude-config` post-extraction size**: Extracting only Task 3 (232–408, ~177L) leaves the file at ~535L — still over the 500-line limit. Tasks 1 and 2 also use the same inline sub-agent prompt pattern (Task 1: ~122–188, ~66L; Task 2: ~189–231, ~42L). To reliably reach ≤500L, all three task prompt bodies should be extracted to a single companion file (e.g., `wave1-prompts.md`), removing ~285L total.
+
+**`debug-loop-run` specific extraction targets** (no companion files exist yet):
+- `SKILL.md:163–314` — `### Signal Rules`: 13 named signal definitions (trigger conditions, priority, title format, include-list). Pure lookup reference, ~151L.
+- `SKILL.md:507–565` — `### 6c. Write the issue file`: verbatim issue-file markdown template, ~58L.
+- `SKILL.md:139–157` — event-type field table (`| Event type | Key fields |`), ~18L.
+- Combined extraction: ~227L → file reduces from 603L to ~376L.
+
+**`review-loop` specific extraction targets** (`reference.md` already exists and absorbs check definitions by reference):
+- `SKILL.md:129–232` — QC-1 through QC-14 check bodies (~103L): these are inline in SKILL.md but Step 1 already instructs "Run each quality check from `reference.md`"; consolidating the bodies there resolves the structural inconsistency.
+- `SKILL.md:278–311` — `### 2c-4: Output FSM Flow Review` format blocks (~34L): two bordered display templates.
+- `SKILL.md:347–395` — `## Step 3: Display Findings` format blocks (~48L): `| # | Check | Location | Issue |` bordered table templates.
+- `SKILL.md:501–519` — `## Step 6: Summary Report` format block (~18L): bordered `## Review Complete` summary template.
+- Combined extraction: ~200L → file reduces from 577L to ~380L.
+
+**`review-loop` in `docs/ARCHITECTURE.md` tree**: The tree at line 162 shows `review-loop/` with only `SKILL.md` — `reference.md` (which already exists) is missing from the tree. This needs fixing as part of the ARCHITECTURE.md update step.
+
 ### Companion File Pattern (Decided: Flat)
 
 _Added by `/ll:refine-issue` 2026-04-07 — codebase pattern analysis. Decision applied 2026-04-07._
@@ -159,13 +199,13 @@ _Added by `/ll:refine-issue` 2026-04-07 — codebase pattern analysis. Decision 
 - `skills/manage-issue/SKILL.md` — remove duplicated Arguments block at `SKILL.md:449–516`
 - `skills/debug-loop-run/SKILL.md` — identify and extract reference/template sections to new companion file (scope expanded 2026-05-24)
 - `skills/review-loop/SKILL.md` — extract overflow to existing `reference.md` or new companion file (scope expanded 2026-05-24)
-- `CONTRIBUTING.md:436–462` — "Adding Skills" section; add 500-line limit and companion-file convention (currently documents directory structure only, no size guidance)
+- `CONTRIBUTING.md:507–554` — "Adding Skills" section; add 500-line limit and companion-file convention (currently documents directory structure only, no size guidance)
 
 ### New Files
-- `skills/audit-claude-config/<companion>.md` — Task 3 sub-agent prompt + settings table
-- `skills/confidence-check/<companion>.md` — scoring criteria + output templates
-- `skills/init/<companion>.md` — Display Summary template, CLAUDE.md blocks, Completion Message
-- `skills/debug-loop-run/<companion>.md` — reference/template content extracted from SKILL.md
+- `skills/audit-claude-config/wave1-prompts.md` — all three Task sub-agent prompt bodies (Task 1 ~66L, Task 2 ~42L, Task 3 ~177L); extracting only Task 3 leaves the file at ~535L (still over limit)
+- `skills/confidence-check/<companion>.md` — scoring criteria (Phase 2 + Phase 2b, lines 187–428) + output format templates (lines 650–738)
+- `skills/init/<companion>.md` — Display Summary template (142–218), CLAUDE.md content blocks (596–663), Completion Message (666–700)
+- `skills/debug-loop-run/reference.md` — Signal Rules (163–314, ~151L), issue-file template (507–565, ~58L), event-type field table (139–157, ~18L)
 
 ### Dependent Files (Callers/Importers)
 
@@ -176,13 +216,20 @@ _No code-level callers. SKILL.md files are consumed directly by Claude Code when
 - New (required): companion file existence tests following `test_improve_claude_md_skill.py:29–34` pattern — assert that `skills/audit-claude-config/<companion>.md`, `skills/confidence-check/<companion>.md`, `skills/init/<companion>.md`, and `skills/debug-loop-run/<companion>.md` exist on disk
 - `scripts/tests/test_skill_expander.py:238–261` — `TestExpandSkillAgainstRealManageIssue` reads the real `skills/manage-issue/SKILL.md`; passes unchanged after trimming (no config tokens removed), but monitor if any new companion file introduces unresolved `{{config.*}}` references
 
+_Wiring pass added by `/ll:wire-issue` (2026-06-02):_
+- `scripts/tests/test_feat1457_doc_wiring.py:TestAuditClaudeConfigWiring` — reads `audit-claude-config/SKILL.md` directly; asserts `"hooks/adapters/"` and `"scripts/little_loops/hooks/"` are present. Extraction must NOT move these strings to `wave1-prompts.md` or these tests break.
+- `scripts/tests/test_feat1457_doc_wiring.py:TestInitSkillWiring` — reads `init/SKILL.md` directly; asserts `"hooks/adapters/claude-code/"` is present. Extraction must preserve this string in `SKILL.md`.
+- `scripts/tests/test_confidence_check_skill.py` (14 methods across 10 classes) — reads `confidence-check/SKILL.md` and asserts on section headings and content strings. Any section moved to the companion file must leave anchors in SKILL.md or these tests will break.
+- `scripts/tests/test_enh1433_doc_wiring.py:TestConfidenceCheckCanonicalVocab` — asserts `"parent: EPIC-NNN"` is present in `confidence-check/SKILL.md`. Verify this string is not located exclusively within the scoring criteria block being extracted (lines 187–428).
+- `scripts/tests/test_enh1146_doc_wiring.py:TestAnalyzeLoopSkillWiring` — reads `debug-loop-run/SKILL.md`; asserts `"rate_limit_waiting"`, `"Step 3b"`, `"### Fault Signals"`, `"### Effectiveness Signals"` are present. Extraction of Signal Rules (163–314) to `reference.md` must NOT move these strings out of SKILL.md.
+- `scripts/tests/test_debug_loop_run_synthesis.py:527–548` — reads `debug-loop-run/SKILL.md`; asserts `"--skip-issue-creation"`, `"--auto"`, and their ordering within `## Step 5:`. Extraction must preserve `## Step 5:` section and its associated flags in `SKILL.md` (these are in the step body, not the Signal Rules block).
+
 ### Documentation
-- `CONTRIBUTING.md:436–462` — "Adding Skills" section; insert 500-line limit, companion-file naming convention, and referencing pattern
+- `CONTRIBUTING.md:507–554` — "Adding Skills" section; insert 500-line limit, companion-file naming convention, and referencing pattern
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `docs/ARCHITECTURE.md:104–106` — verbose file-level directory tree lists `audit-claude-config/` companion files by name (`report-template.md`); add new companion filename when created
-- `docs/ARCHITECTURE.md:115–116` — tree shows `confidence-check/` as `└── SKILL.md` only; update to two-item list with new companion file
-- `docs/ARCHITECTURE.md:136–138` — tree shows `init/` with `SKILL.md` + `interactive.md`; add new companion file as third entry
+- `docs/ARCHITECTURE.md:114–176` — verbose file-level directory tree for skills; within this range: `audit-claude-config/` (lists `report-template.md`) needs new companion filename added; `confidence-check/` shows only `SKILL.md` — update to show new companion file; `init/` shows `SKILL.md` + `interactive.md` — add new companion as third entry; `review-loop/` shows only `SKILL.md` (stale — `reference.md` already exists and must be added here too)
+- `docs/reference/API.md:638–657` — `confidence_check` stub section contains two cross-references to `skills/confidence-check/SKILL.md` as the source of rubric tables (lines 639, 657); after extraction, these should be updated to name the new companion file.
 
 
 ## Impact
@@ -202,7 +249,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-02_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Outcome Risk Factors
+- **Test constraint surface**: 6 doc-wiring test files assert on specific strings within the SKILL.md files being modified; the integration map enumerates which strings must stay in SKILL.md (e.g., `"hooks/adapters/"`, `"rate_limit_waiting"`, `"parent: EPIC-NNN"`) — verify each extraction point against that table before moving content
+- **Companion file naming gap**: Names for `confidence-check/<companion>.md` and `init/<companion>.md` are unspecified; choose names matching convention (e.g., `rubric.md` / `criteria.md` for confidence-check, `templates.md` for init) before starting extraction on those skills
+- **Wide change surface across 6 SKILL.md files**: Each skill has distinct extraction targets; validate line counts after each skill's extraction rather than batch-verifying at the end to catch drift early
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-02T00:00:00 - `5bcea9e3-d849-448e-883c-cb3ab8ad842a.jsonl`
+- `/ll:wire-issue` - 2026-06-03T00:44:52 - `255e0c2b-935a-474d-b91e-187cb706a7ac.jsonl`
+- `/ll:refine-issue` - 2026-06-03T00:37:45 - `5b268ae9-6748-479c-8957-26f628059249.jsonl`
+- `/ll:refine-issue` - 2026-06-03T00:37:22 - `5b268ae9-6748-479c-8957-26f628059249.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:47:58 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:16 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-29T20:07:40 - `7409b034-0513-44ad-a2a1-f3e47126e95b.jsonl`

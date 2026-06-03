@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import threading
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,8 @@ import yaml
 
 from little_loops.config.core import deep_merge, resolve_config_path
 from little_loops.hooks.types import LLHookEvent, LLHookResult
+
+logger = logging.getLogger(__name__)
 
 _LOCAL_OVERRIDE_FILE = Path(".ll/ll.local.md")
 _PRIOR_SESSION_STATE = Path(".ll/ll-context-state.json")
@@ -120,7 +123,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
         _db_path = cwd / ".ll" / "history.db"
 
         def _run_backfill() -> None:
-            with contextlib.suppress(Exception):
+            try:
                 from little_loops.session_store import backfill_incremental
                 from little_loops.user_messages import get_project_folder
 
@@ -128,6 +131,8 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 if project_folder is not None:
                     jsonl_files = list(project_folder.glob("*.jsonl"))
                     backfill_incremental(_db_path, jsonl_files=jsonl_files)
+            except Exception:
+                logger.warning("session_start: backfill_incremental failed", exc_info=True)
 
         threading.Thread(target=_run_backfill, daemon=True).start()
 

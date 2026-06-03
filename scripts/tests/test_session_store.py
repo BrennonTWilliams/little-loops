@@ -1135,6 +1135,18 @@ class TestBackfillIncremental:
         db = tmp_path / "history.db"
         counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
         assert counts["messages"] >= 1
+        assert counts["sessions"] >= 1
+
+    def test_sessions_inserted_from_jsonl(self, tmp_path: Path) -> None:
+        jsonl = self._make_tool_jsonl(tmp_path, "sess-1")
+        db = tmp_path / "history.db"
+        backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        conn = connect(db)
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 1
 
 
 class TestIsCorrectionHeuristic:

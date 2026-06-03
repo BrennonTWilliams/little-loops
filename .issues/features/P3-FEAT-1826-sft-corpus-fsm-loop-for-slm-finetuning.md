@@ -1,14 +1,20 @@
 ---
 id: FEAT-1826
-title: "sft-corpus FSM loop for SLM fine-tuning from session logs"
+title: sft-corpus FSM loop for SLM fine-tuning from session logs
 type: FEAT
 priority: P3
 status: open
-captured_at: "2026-05-31T22:00:59Z"
-discovered_date: "2026-05-31"
+captured_at: '2026-05-31T22:00:59Z'
+discovered_date: '2026-05-31'
 discovered_by: capture-issue
 parent: EPIC-1880
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-1826: sft-corpus FSM loop for SLM fine-tuning from session logs
@@ -272,6 +278,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `loop`, `sft`, `fine-tuning`, `new-feature`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-02T00:00:00Z - `17557f51-d1e7-48ab-8c75-d04f0cc19f24.jsonl`
 - `/ll:wire-issue` - 2026-06-03T00:31:19 - `dd96413d-220c-449b-8e81-593defe00fdc.jsonl`
 - `/ll:decide-issue` - 2026-06-03T00:24:05 - `0467dd38-23d6-4a11-9d93-1a10ed0c40c9.jsonl`
 - `/ll:refine-issue` - 2026-06-03T00:18:35 - `d3bc2a68-d557-49f9-a947-e12cd4b90c1c.jsonl`

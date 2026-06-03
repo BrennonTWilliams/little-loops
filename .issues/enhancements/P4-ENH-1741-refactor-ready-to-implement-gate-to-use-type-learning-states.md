@@ -1,6 +1,6 @@
 ---
 id: ENH-1741
-title: Refactor `ready-to-implement-gate` to use `type: learning` states
+title: 'Refactor `ready-to-implement-gate` to use `type: learning` states'
 type: ENH
 priority: P4
 status: open
@@ -11,7 +11,13 @@ parent: EPIC-1694
 relates_to:
 - FEAT-1695
 - FEAT-1283
-decision_needed: true
+decision_needed: false
+confidence_score: 96
+outcome_confidence: 70
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 20
+score_change_surface: 18
 ---
 
 # ENH-1741: Refactor `ready-to-implement-gate` to use `type: learning` states
@@ -116,6 +122,8 @@ Both options preserve the external contract (same input context variables `targe
 
 ### Option A: Extend Executor to Support Runtime `targets_csv`
 
+> **Selected:** Option A — `interpolate()` is already in-scope in `_execute_learning_state()`, the `str | None` runtime-resolution pattern has three precedents in `evaluators.py`, and FEAT-1283/FEAT-1794/FEAT-1451 all co-landed similarly-sized executor extensions inline rather than deferring.
+
 Add a `targets_csv` key to `LearningConfig` resolved at runtime inside `_execute_learning_state()` by splitting on commas. Callers pass the existing CSV string unchanged. The refactored loop becomes a 3-state YAML (well below the ≤ 4 target):
 
 ```yaml
@@ -149,6 +157,25 @@ This keeps ENH-1741 scoped strictly to the YAML refactor and avoids any executor
 Trade-off: Cleaner scope separation, but delays the refactor and creates a two-issue chain for what is ultimately a small end-to-end change.
 
 **Codebase context**: The `_execute_learning_state()` path already calls `self._run_action()` (which performs interpolation on action templates). Adding CSV resolution for `targets_csv` is ~5 lines and follows the same interpolation pattern already used elsewhere in the executor.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-02.
+
+**Selected**: Option A — Extend Executor to Support Runtime `targets_csv`
+
+**Reasoning**: `interpolate()` is already imported and called within `_execute_learning_state()`, and the `str | None` config-field-with-runtime-resolution pattern is established three times in `evaluators.py` and once in `EvaluateConfig`. Three prior FSM executor dispatch extensions (FEAT-1283, FEAT-1794, FEAT-1451) all chose to co-land ~5-line inline changes rather than create prerequisite issues; Option B conflicts with this pattern and risks permanent orphaning of a P4 item in a backlog already holding 50+ `blocked_by:` chains. All nine file touchpoints are mechanical 1–4-line edits with clear codebase templates.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (extend executor with `targets_csv`) | 3/3 | 2/3 | 3/3 | 2/3 | 10/12 |
+| Option B (prerequisite issue + defer) | 1/3 | 2/3 | 2/3 | 2/3 | 7/12 |
+
+**Key evidence**:
+- **Option A**: `interpolate()` already imported and called at executor.py:687; `EvaluateConfig.tolerance: str | None` is a direct structural precedent; FEAT-1283/FEAT-1794/FEAT-1451 all co-landed inline executor dispatch extensions; `TestLearningStateMultipleTargets` is the exact test template
+- **Option B**: FEAT-1695 deliberately documented the parse-time constraint as an architectural choice but explicitly anticipated a future enhancement that "could collapse this loop into a thin wrapper" — ENH-1741 is that enhancement; zero existing built-in loops use `type: learning`, so no other callers benefit from further deferral
 
 ## Investigation Findings
 
@@ -215,7 +242,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-05-27 | Priority: P4
 
+## Confidence Check Notes
+
+_Updated by `/ll:confidence-check` on 2026-06-03 (prior run: 2026-06-02)_
+
+**Readiness Score**: 96/100 → PROCEED
+**Outcome Confidence**: 70/100 → MODERATE
+
+### Outcome Risk Factors
+- **Wide change surface across 4 subsystems (11 sites)**: YAML loop, 3 Python FSM modules, JSON schema, 3 test files, 1 new fixture, 2 docs — while each individual change is mechanical-to-local, coordinating 11 co-deliverables increases the chance of a missed file or integration gap. Use the 15-step implementation plan as a strict checklist.
+- **JSON schema relaxation form unspecified**: `fsm-loop-schema.json` must allow either `targets` or `targets_csv` in the `learning` object (step 10). The issue specifies the intent but not the exact JSON Schema syntax (oneOf? conditional? remove `required` entirely?), leaving a judgment call during implementation.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-03T00:42:45Z - `255e0c2b-935a-474d-b91e-187cb706a7ac.jsonl`
+- `/ll:decide-issue` - 2026-06-03T00:39:12 - `17557f51-d1e7-48ab-8c75-d04f0cc19f24.jsonl`
+- `/ll:confidence-check` - 2026-06-02T00:00:00 - `5b268ae9-6748-479c-8957-26f628059249.jsonl`
 - `/ll:wire-issue` - 2026-06-03T00:30:40 - `54f65d4f-1a02-4225-91b7-4bda9970528f.jsonl`
 - `/ll:refine-issue` - 2026-06-03T00:21:36 - `0467dd38-23d6-4a11-9d93-1a10ed0c40c9.jsonl`
 - `/ll:format-issue` - 2026-06-03T00:13:06 - `b7c7a708-237c-4305-a9e6-3f4df11cc3cb.jsonl`

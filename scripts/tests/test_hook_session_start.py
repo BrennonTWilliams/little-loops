@@ -7,6 +7,7 @@ this module exercises the pure-function handler under unit conditions.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -278,7 +279,7 @@ class TestSessionStartBackfillThread:
     def test_backfill_error_does_not_propagate(
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The thread target is wrapped in contextlib.suppress — errors must not surface."""
+        """The thread target catches exceptions and logs a warning — errors must not surface."""
         (in_tmp / ".ll").mkdir()
         (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
 
@@ -303,3 +304,33 @@ class TestSessionStartBackfillThread:
         result = handle(_event())
         assert result.exit_code == 0
         assert executed == [True], "thread target should have been called"
+
+    def test_backfill_warning_logged(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """When backfill_incremental raises, a WARNING is emitted by the session_start logger."""
+        (in_tmp / ".ll").mkdir()
+        (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
+
+        def _inline_thread(target, daemon=False, **kw):
+            class _T:
+                def start(self_inner):
+                    target()  # run synchronously
+
+            return _T()
+
+        def _raise(*a, **kw):
+            raise RuntimeError("simulated backfill failure")
+
+        monkeypatch.setattr("little_loops.hooks.session_start.threading.Thread", _inline_thread)
+        import little_loops.session_store as ss
+        import little_loops.user_messages as um
+
+        monkeypatch.setattr(ss, "backfill_incremental", _raise)
+        monkeypatch.setattr(um, "get_project_folder", lambda *a, **kw: in_tmp)
+
+        with caplog.at_level(logging.WARNING):
+            result = handle(_event())
+
+        assert result.exit_code == 0
+        assert any("backfill" in r.message.lower() for r in caplog.records)

@@ -983,8 +983,8 @@ def backfill_incremental(
 
     Issues and loop-state JSON are NOT backfilled here; this variant is
     JSONL-only and designed for low-latency background use in session hooks.
-    Errors are not suppressed — the caller (session hook) wraps the thread
-    function in ``contextlib.suppress(Exception)``.
+    Errors are not suppressed — the caller (session hook) catches them and
+    logs a warning.
     """
     conn = connect(db)
     counts: dict[str, int] = {"tools": 0, "messages": 0, "sessions": 0}
@@ -1002,9 +1002,9 @@ def backfill_incremental(
 
         filtered = [f for f in jsonl_files if _mtime(f) >= since_ts]
         if filtered:
+            counts["sessions"] = _backfill_sessions(conn, filtered)
             counts["tools"] = _backfill_tool_events(conn, filtered)
             counts["messages"] = _backfill_messages(conn, filtered)
-            counts["sessions"] = _backfill_sessions(conn, filtered)
 
         conn.execute(
             "INSERT INTO meta(key, value) VALUES('last_backfill_ts', ?) "

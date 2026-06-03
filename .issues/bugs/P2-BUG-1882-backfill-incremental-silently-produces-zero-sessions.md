@@ -2,17 +2,28 @@
 id: BUG-1882
 type: BUG
 priority: P2
-status: open
+status: done
 discovered_date: 2026-06-02
-captured_at: "2026-06-02T23:39:38Z"
+captured_at: '2026-06-02T23:39:38Z'
+completed_at: '2026-06-03T00:49:03Z'
 discovered_by: capture-issue
-relates_to: [EPIC-1707, ENH-1830, ENH-1710, ENH-1711]
+relates_to:
+- EPIC-1707
+- ENH-1830
+- ENH-1710
+- ENH-1711
 decision_needed: false
 labels:
-  - bug
-  - history-db
-  - sessions
-  - captured
+- bug
+- history-db
+- sessions
+- captured
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-1882: `backfill_incremental` silently produces 0 sessions despite JSONL files present
@@ -88,6 +99,10 @@ ENH-1830 was marked done, but the `sessions` table being empty means:
 - `scripts/little_loops/history_reader.py` — reads `sessions` table; all `search()` and `related_issue_events()` queries return empty without rows
 - `scripts/little_loops/user_messages.py` — `get_project_folder()` (used in both `_run_backfill()` and the CLI `--since` path); same `path_str.replace("/", "-")` encoding; both resolve `~/.claude/projects/<encoded-cwd>`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/workflow_sequence/io.py` — queries `message_events` and `issue_sessions` VIEW; blocked on sessions data [Agent 1 finding]
+- `scripts/little_loops/workflow_sequence/analysis.py` — queries `message_events` and `issue_sessions` VIEW; blocked on sessions data [Agent 1 finding]
+
 ### Similar Patterns
 - `scripts/little_loops/session_store.py::SQLiteTransport.__init__()` and `.send()` — canonical `logger.warning(..., exc_info=True)` pattern for diagnosable background DB failures; this is the model to follow in `_run_backfill`
 - `scripts/little_loops/session_store.py::_backfill_issues()` — uses `INSERT OR IGNORE` for dedup (contrast: `_backfill_tool_events` and `_backfill_messages` use plain `INSERT`; inconsistency is worth fixing)
@@ -97,6 +112,12 @@ ENH-1830 was marked done, but the `sessions` table being empty means:
 - `scripts/tests/test_session_store.py` — `TestBackfillIncremental` class; `_make_tool_jsonl()` and `_make_msg_jsonl()` fixture helpers for minimal JSONL with `sessionId` field (model for new `_make_session_jsonl()` helper)
 - `scripts/tests/test_hook_session_start.py` — `TestSessionStartBackfillThread`; `in_tmp` fixture (`os.chdir` pattern); `monkeypatch.setattr("...threading.Thread", _MockThread)` pattern for inline thread execution tests
 - Add: `TestBackfillSessions.test_sessions_inserted_from_jsonl` in `scripts/tests/test_session_store.py` — write JSONL with `{type: "assistant", sessionId: "sess-1", ...}` → call `backfill_incremental(db, jsonl_files=[jsonl])` → `assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 1`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_session.py` — `TestBackfillSinceFlag` class; exercises `ll-session backfill --since DATE`; all calls mock `backfill_incremental` so these pass today but confirm CLI wiring after fix [Agent 1 finding]
+- Update: `test_backfill_error_does_not_propagate` in `test_hook_session_start.py` — docstring currently says "wrapped in contextlib.suppress"; update to reflect `try/except Exception: logger.warning(...)` mechanism after fix [Agent 3 finding]
+- Add: `TestSessionStartBackfillThread.test_backfill_warning_logged` in `test_hook_session_start.py` — use `_inline_thread`, patch `backfill_incremental` to raise, use `caplog.at_level(logging.WARNING, logger="little_loops.hooks.session_start")` and assert `any("backfill" in r.message for r in caplog.records)` — follow pattern from `test_transport.py::TestSQLiteTransport` [Agent 3 finding]
+- Note: `test_messages_and_sessions_backfilled` in `TestBackfillIncremental` asserts `counts["messages"] >= 1` but NOT `counts["sessions"]` despite its name; consider adding sessions assertion as part of this fix [Agent 3 finding]
 
 ### Documentation
 - `docs/reference/API.md` — `session_store` module documentation may need updating if `backfill_incremental` call order or behavior changes
@@ -129,7 +150,15 @@ ENH-1830 was marked done, but the `sessions` table being empty means:
    python3 -c "import sqlite3; c=sqlite3.connect('.ll/history.db'); print(c.execute('SELECT COUNT(*) FROM sessions').fetchone())"
    ll-session recent --kind all
    ```
-   Also run `ll-session backfill --since 0` to force a full re-backfill of all historical JSONL files (resets the mtime filter to `0.0`).
+   Also run `ll-session backfill --since 1970-01-01` to force a full re-backfill of all historical JSONL files (resets the mtime filter to `0.0`). Note: `--since 0` will fail with a date parse error; use `1970-01-01` as the epoch reset.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Update docstring in `scripts/tests/test_hook_session_start.py::TestSessionStartBackfillThread::test_backfill_error_does_not_propagate` — change `"wrapped in contextlib.suppress"` to reflect `try/except Exception: logger.warning(...)` after step 3
+7. Add `TestSessionStartBackfillThread.test_backfill_warning_logged` to `scripts/tests/test_hook_session_start.py` — caplog-based assertion that `logger.warning` fires when `backfill_incremental` raises (use `caplog.at_level(logging.WARNING, logger="little_loops.hooks.session_start")`)
+8. Verify `scripts/little_loops/workflow_sequence/io.py` and `workflow_sequence/analysis.py` return populated data after the fix (these query `message_events` and `issue_sessions` VIEW and are currently blocked on empty sessions table)
 
 ## Impact
 
@@ -161,6 +190,9 @@ ENH-1830 was marked done, but the `sessions` table being empty means:
 **Open** | Created: 2026-06-02 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-03T00:39:07 - `17557f51-d1e7-48ab-8c75-d04f0cc19f24.jsonl`
+- `/ll:confidence-check` - 2026-06-02T00:00:00Z - `cd5941ce-4a67-45ab-bbe8-a3a963fd0340.jsonl`
+- `/ll:wire-issue` - 2026-06-03T00:35:47 - `74dfcd78-1fad-4c70-aa72-73eab649f386.jsonl`
 - `/ll:refine-issue` - 2026-06-03T00:29:59 - `288ea8fe-1443-4178-9435-e6f8b106cc59.jsonl`
 - `/ll:format-issue` - 2026-06-02T23:43:17 - `5a6438e8-ff2f-4342-b911-43dcd9985f55.jsonl`
 
