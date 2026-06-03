@@ -270,7 +270,7 @@ def main_session() -> int:
                 logger.success(
                     f"Backfilled {inc_total} rows (incremental, since {since_flag}; "
                     f"tools={inc_counts['tools']}, messages={inc_counts['messages']}, "
-                    f"sessions={inc_counts['sessions']})"
+                    f"sessions={inc_counts['sessions']}, corrections={inc_counts.get('corrections', 0)})"
                 )
                 return 0
             counts = backfill(args.db)
@@ -279,7 +279,7 @@ def main_session() -> int:
                 f"Backfilled {total} rows "
                 f"(issues={counts['issues']}, loops={counts['loops']}, "
                 f"tools={counts['tools']}, messages={counts.get('messages', 0)}, "
-                f"sessions={counts.get('sessions', 0)})"
+                f"sessions={counts.get('sessions', 0)}, corrections={counts.get('corrections', 0)})"
             )
             return 0
 

@@ -23,6 +23,7 @@ Public API:
                                  ``issue_events`` (ENH-1690)
     backfill(db,...):            populate the database from existing on-disk sources
     backfill_incremental(db,...): incremental JSONL-only backfill filtered by mtime
+    mine_corrections_from_messages(conn,...): scan message_events and insert corrections
     search(db,...):              FTS5 full-text query with BM25 ranking
     recent(db,...):              recent rows for a given event kind
     is_correction(text):         return True if text matches a user-correction signal
@@ -54,6 +55,7 @@ __all__ = [
     "SQLiteTransport",
     "backfill",
     "backfill_incremental",
+    "mine_corrections_from_messages",
     "search",
     "recent",
     "is_correction",
@@ -65,7 +67,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/history.db")
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 _VALID_KINDS = frozenset({"tool", "file", "issue", "loop", "correction", "message", "skill", "cli"})
 _KIND_TABLE = {
@@ -266,6 +268,13 @@ _MIGRATIONS: list[str] = [
         exit_code INTEGER,
         duration_ms INTEGER
     );
+    """,
+    # v9 (ENH-1904): unique dedup index on user_corrections so INSERT OR IGNORE
+    # enforces idempotency during correction mining. Mirrors v3's
+    # idx_issue_events_dedup pattern.
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_corrections_dedup
+        ON user_corrections(session_id, content);
     """,
 ]
 
@@ -918,6 +927,43 @@ def _backfill_messages(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int
     return count
 
 
+def mine_corrections_from_messages(
+    conn: sqlite3.Connection, config: dict | None = None
+) -> int:
+    """Scan ``message_events`` and insert matching rows into ``user_corrections``.
+
+    Designed for both the one-time retroactive pass over existing rows and
+    repeated calls during backfill; idempotent via ``INSERT OR IGNORE`` +
+    ``idx_corrections_dedup``. Only writes a ``search_index`` entry when the
+    row is actually inserted (rowcount == 1) to avoid duplicate FTS rows.
+    Gated by ``analytics.capture.corrections`` (ENH-1841).
+
+    Returns the count of newly inserted correction rows.
+    """
+    if config is not None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
+        if not capture.corrections:
+            return 0
+
+    count = 0
+    rows = conn.execute("SELECT ts, session_id, content FROM message_events").fetchall()
+    for ts, session_id, content in rows:
+        if not content or not is_correction(content):
+            continue
+        text = content[:512]
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO user_corrections(ts, session_id, content, source)"
+            " VALUES(?, ?, ?, 'backfill')",
+            (ts, session_id, text),
+        )
+        if cursor.rowcount:
+            _index(conn, content=text, kind="correction", ref=session_id or "", anchor="backfill", ts=ts)
+            count += 1
+    return count
+
+
 def _backfill_sessions(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int:
     """Seed ``sessions`` table by mapping each JSONL file to its session_id.
 
@@ -965,6 +1011,7 @@ def backfill(
     issues_dir: Path | None = None,
     loops_dir: Path | None = None,
     jsonl_files: list[Path] | None = None,
+    config: dict | None = None,
 ) -> dict[str, int]:
     """Populate the database from existing on-disk sources.
 
@@ -975,7 +1022,7 @@ def backfill(
     issues_dir = issues_dir if issues_dir is not None else Path(".issues")
     loops_dir = loops_dir if loops_dir is not None else Path(".loops")
     conn = connect(db)
-    counts: dict[str, int] = {"issues": 0, "loops": 0, "tools": 0, "messages": 0, "sessions": 0}
+    counts: dict[str, int] = {"issues": 0, "loops": 0, "tools": 0, "messages": 0, "sessions": 0, "corrections": 0}
     try:
         if issues_dir.is_dir():
             counts["issues"] = _backfill_issues(conn, issues_dir)
@@ -985,6 +1032,7 @@ def backfill(
             counts["tools"] = _backfill_tool_events(conn, jsonl_files)
             counts["messages"] = _backfill_messages(conn, jsonl_files)
             counts["sessions"] = _backfill_sessions(conn, jsonl_files)
+        counts["corrections"] = mine_corrections_from_messages(conn, config)
         conn.commit()
     finally:
         conn.close()
@@ -996,6 +1044,7 @@ def backfill_incremental(
     *,
     jsonl_files: list[Path],
     since_ts: float | None = None,
+    config: dict | None = None,
 ) -> dict[str, int]:
     """Backfill only JSONL files modified after *since_ts*.
 
@@ -1010,7 +1059,7 @@ def backfill_incremental(
     logs a warning.
     """
     conn = connect(db)
-    counts: dict[str, int] = {"tools": 0, "messages": 0, "sessions": 0}
+    counts: dict[str, int] = {"tools": 0, "messages": 0, "sessions": 0, "corrections": 0}
     try:
         if since_ts is None:
             row = conn.execute("SELECT value FROM meta WHERE key = 'last_backfill_ts'").fetchone()
@@ -1029,6 +1078,7 @@ def backfill_incremental(
             counts["tools"] = _backfill_tool_events(conn, filtered)
             counts["messages"] = _backfill_messages(conn, filtered)
 
+        counts["corrections"] = mine_corrections_from_messages(conn, config)
         conn.execute(
             "INSERT INTO meta(key, value) VALUES('last_backfill_ts', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",

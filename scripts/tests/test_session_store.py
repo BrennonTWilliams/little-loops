@@ -268,7 +268,7 @@ class TestBackfill:
     def test_backfill_missing_sources_is_noop(self, tmp_path: Path) -> None:
         db = tmp_path / "session.db"
         counts = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no")
-        assert counts == {"issues": 0, "loops": 0, "tools": 0, "messages": 0, "sessions": 0}
+        assert counts == {"issues": 0, "loops": 0, "tools": 0, "messages": 0, "sessions": 0, "corrections": 0}
 
     def test_backfill_jsonl_populates_sessions(self, tmp_path: Path) -> None:
         jsonl = tmp_path / "session.jsonl"
@@ -528,6 +528,54 @@ class TestBackfillMessages:
         db = tmp_path / "session.db"
         ensure_db(db)
         assert recent(db, kind="message") == []
+
+    def test_backfill_populates_corrections_from_correction_message(self, tmp_path: Path) -> None:
+        """Backfill with a correction-pattern message populates user_corrections."""
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("s-corr", "2026-06-03T10:00:00Z", "no, don't do that"),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+        )
+        assert counts["corrections"] == 1
+        rows = recent(db, kind="correction")
+        assert len(rows) == 1
+        assert rows[0]["content"] == "no, don't do that"
+        assert rows[0]["session_id"] == "s-corr"
+
+    def test_backfill_corrections_gate_disabled(self, tmp_path: Path) -> None:
+        """analytics.capture.corrections=false suppresses correction mining during backfill."""
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("s-gate", "2026-06-03T10:00:00Z", "no, don't do that"),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            config={"analytics": {"capture": {"corrections": False}}},
+        )
+        assert counts["corrections"] == 0
+        assert len(recent(db, kind="correction")) == 0
+
+    def test_backfill_corrections_idempotent(self, tmp_path: Path) -> None:
+        """Running backfill twice on same JSONL produces exactly 1 correction row."""
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("s-idem", "2026-06-03T10:00:00Z", "no, don't do that"),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
+        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
+        rows = recent(db, kind="correction")
+        assert len(rows) == 1, "re-running backfill must not duplicate correction rows"
 
 
 class TestBackfillIssuesV2Columns:
@@ -1038,7 +1086,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 8
+        assert SCHEMA_VERSION == 9
 
 
 class TestBackfillIncremental:
@@ -1343,5 +1391,126 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 8
-        assert int(row[0]) == 8
+        assert SCHEMA_VERSION == 9
+        assert int(row[0]) == 9
+
+
+class TestMineCorrectionsFromMessages:
+    """Unit tests for mine_corrections_from_messages() (ENH-1904)."""
+
+    def test_mines_corrections_from_existing_message_events(self, tmp_path: Path) -> None:
+        """mine_corrections_from_messages picks up pre-existing message_events rows."""
+        from little_loops.session_store import connect as ss_connect
+        from little_loops.session_store import mine_corrections_from_messages
+
+        db = tmp_path / "session.db"
+        conn = ss_connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-06-03T10:00:00Z", "s-mine", "no, don't do that"),
+            )
+            conn.commit()
+            count = mine_corrections_from_messages(conn)
+            conn.commit()
+            assert count == 1
+        finally:
+            conn.close()
+        rows = recent(db, kind="correction")
+        assert len(rows) == 1
+        assert rows[0]["session_id"] == "s-mine"
+
+    def test_mine_corrections_idempotent(self, tmp_path: Path) -> None:
+        """Calling mine_corrections_from_messages twice produces exactly 1 row."""
+        from little_loops.session_store import connect as ss_connect
+        from little_loops.session_store import mine_corrections_from_messages
+
+        db = tmp_path / "session.db"
+        conn = ss_connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-06-03T10:00:00Z", "s-idem2", "no, don't do that"),
+            )
+            conn.commit()
+            mine_corrections_from_messages(conn)
+            conn.commit()
+            mine_corrections_from_messages(conn)
+            conn.commit()
+        finally:
+            conn.close()
+        assert len(recent(db, kind="correction")) == 1
+
+    def test_mine_corrections_gate_disabled(self, tmp_path: Path) -> None:
+        """mine_corrections_from_messages respects analytics.capture.corrections gate."""
+        from little_loops.session_store import connect as ss_connect
+        from little_loops.session_store import mine_corrections_from_messages
+
+        db = tmp_path / "session.db"
+        conn = ss_connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-06-03T10:00:00Z", "s-gated", "no, don't do that"),
+            )
+            conn.commit()
+            count = mine_corrections_from_messages(
+                conn, config={"analytics": {"capture": {"corrections": False}}}
+            )
+            conn.commit()
+            assert count == 0
+        finally:
+            conn.close()
+        assert len(recent(db, kind="correction")) == 0
+
+
+class TestSchemaV9:
+    """Verify that the v9 migration creates idx_corrections_dedup (ENH-1904)."""
+
+    def test_schema_version_is_nine(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        finally:
+            conn.close()
+        assert SCHEMA_VERSION == 9
+        assert int(row[0]) == 9
+
+    def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_corrections_dedup'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "idx_corrections_dedup index must exist after ensure_db()"
+
+    def test_v8_to_v9_migration(self, tmp_path: Path) -> None:
+        """Manually bootstrap a v8 schema, then verify ensure_db() applies the v9 migration."""
+        db = tmp_path / "history.db"
+        from little_loops.session_store import _MIGRATIONS
+
+        conn = sqlite3.connect(str(db))
+        try:
+            for sql in _MIGRATIONS[:8]:  # indices 0-7 = v1 through v8
+                conn.executescript(sql)
+            conn.execute("INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '8')")
+            conn.commit()
+        finally:
+            conn.close()
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            index_row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_corrections_dedup'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert int(version[0]) == 9
+        assert index_row is not None

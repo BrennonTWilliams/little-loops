@@ -192,11 +192,13 @@ class TestMainSession:
                     "tools": 3,
                     "messages": 5,
                     "sessions": 2,
+                    "corrections": 0,
                 }
                 assert main_session() == 0
         out = capsys.readouterr().out
         assert "messages=5" in out
         assert "sessions=2" in out
+        assert "corrections=0" in out
         assert "Backfilled 12" in out
 
     def test_recent_message_kind(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

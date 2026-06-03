@@ -3,9 +3,10 @@ id: ENH-1904
 title: Mine user corrections from backfilled message_events
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-06-03
 captured_at: '2026-06-03T19:50:05Z'
+completed_at: '2026-06-03T20:47:49Z'
 discovered_by: capture-issue
 parent: EPIC-1707
 relates_to:
@@ -341,7 +342,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `captured`, `history-db`
 
+## Resolution
+
+- Added v9 DB migration: `idx_corrections_dedup` unique index on `user_corrections(session_id, content)` enabling idempotent `INSERT OR IGNORE`
+- Added `mine_corrections_from_messages(conn, config=None) -> int` that scans all `message_events`, applies `is_correction()`, and inserts matches via `INSERT OR IGNORE`
+- Threaded `config: dict | None = None` into `backfill()` and `backfill_incremental()`; both now call `mine_corrections_from_messages()` and return `counts["corrections"]`
+- Updated `ll-session backfill` CLI output to show `corrections=N`
+- Fixed existing schema version assertions (v8 → v9) in two test classes
+- Added `TestSchemaV9`, `TestMineCorrectionsFromMessages`, and three new `TestBackfillMessages` methods
+- One-time mining pass: `user_corrections` 1 → 78 rows from 19,322 `message_events`; second run produces `corrections=0` (idempotency verified)
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-03T20:36:29 - `01b723de-4602-463d-aef4-34abca28d9bb.jsonl`
 - `/ll:confidence-check` - 2026-06-03T21:00:00Z - `05f0b8cd-d4c6-444a-8f99-5505d4cea6e9.jsonl`
 - `/ll:wire-issue` - 2026-06-03T20:16:37 - `5cfac3fd-69b5-4992-849b-b3e21aecf055.jsonl`
 - `/ll:decide-issue` - 2026-06-03T20:09:38 - `b6afb15c-f134-4ccb-92b1-d82d2072936c.jsonl`
