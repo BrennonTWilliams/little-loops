@@ -134,7 +134,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/sync.py:176-181` — `yaml.dump` / `yaml.safe_load` for updating frontmatter YAML in-place
 - `scripts/little_loops/sprint.py:206-373` — `SprintManager` class: CRUD manager with `create`/`load`/`list_all`/`delete` over `.yaml` files; closest model for `DecisionsManager`
 - `scripts/little_loops/state.py:134-155` — atomic write pattern (`tempfile.mkstemp` + `os.replace`); use if log corruption risk is a concern
-- `scripts/little_loops/session_log.py:112-128` — markdown section insert-after pattern (for writing `## Active Rules` into `ll.local.md`)
+- `scripts/little_loops/session_log.py:119-132` — markdown section insert-after pattern (for writing `## Active Rules` into `ll.local.md`)
 - `scripts/little_loops/issue_history/parsing.py:289` — `scan_completed_issues(issues_dir: Path, category_dirs: list[str] | None = None) -> list[CompletedIssue]` is the entry point for auto-generation from completed issues (line 263 is stale; function is at 289); returns `CompletedIssue` dataclass list sorted by file path; integrate here for `generate --from=completed`. A DB-backed alternative exists at line 351: `scan_completed_issues_from_db(db_path: Path)` — queries `issue_events` table for `transition='done'` rows; use this if `.ll/history.db` is available for faster lookups
 
 ### Tests
@@ -199,7 +199,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-12. Extend `BRConfig.to_dict()` in `scripts/little_loops/config/core.py` — add `decisions` block to the serialization dict (parallel to all other config properties); also update the import block (lines 23–33) to include `DecisionsConfig`
+12. Extend `BRConfig.to_dict()` in `scripts/little_loops/config/core.py:493` — add `decisions` block to the serialization dict (parallel to all other config properties); also update the import block (lines 23–33) to include `DecisionsConfig`
 13. Re-export `DecisionsConfig` from `scripts/little_loops/config/__init__.py` alongside `IssuesConfig` and other config classes
 14. Update `commands/help.md` — append `decisions` to the `ll-issues` subcommand description in the CLI TOOLS block
 15. Update `docs/reference/CONFIGURATION.md` — add `decisions` config block to the Full Configuration Example and a table row in the Configuration Sections section
@@ -410,12 +410,17 @@ The existing 11-step plan stands. Affected steps:
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-04-26
+**Verdict**: VALID — Verified 2026-04-26 (updated references 2026-06-02)
 
-- `scripts/little_loops/cli/issues/__init__.py:95` — add_subparsers confirmed at line 95; issue body already references line 95 ✓
+- `scripts/little_loops/cli/issues/__init__.py:95` — add_subparsers was at line 95 at verification time; file has since grown; current line is **124** (Integration Map already corrects to `:124`)
 - `decisions.py` module does not exist — feature not implemented ✓
 - No `DecisionsConfig` in `config/features.py` ✓
 - `scripts/little_loops/sprint.py:142-202` dataclass + YAML pattern confirmed ✓
+- Dispatch chain `689–733` confirmed current ✓
+- `IssuesConfig` at `features.py:192` confirmed current ✓
+- `_parse_config()` at `core.py:190` confirmed current ✓
+- `BRConfig.to_dict()` at `core.py:493` confirmed ✓
+- `scan_completed_issues()` at `parsing.py:289` confirmed current ✓
 
 ## Confidence Check Notes
 
@@ -430,6 +435,7 @@ _Added by `/ll:confidence-check` on 2026-06-02_
 - **Wide integration footprint on validation commands** — changes to `ready-issue`, `verify-issues`, and `format-issue` must degrade gracefully when `.ll/decisions.yaml` is absent; the graceful degradation constraint (line 63–67) is explicit but must be exercised in tests
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-03T04:40:23 - `06bf2ce8-90e5-41bf-b6ba-c6af6af36e79.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00Z - `4b5de5ec-d385-4650-ba02-2b30fd86f7c9.jsonl`
 - `/ll:wire-issue` - 2026-06-03T04:32:47 - `9c0f8dbb-351a-41ed-9197-60fd7f2c12ae.jsonl`
 - `/ll:refine-issue` - 2026-06-03T04:21:10 - `60ee9acd-b841-40a0-a88d-945fde499b97.jsonl`
