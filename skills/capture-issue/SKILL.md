@@ -303,6 +303,21 @@ See [templates.md](templates.md) for the complete issue file template structure.
 
 To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). Add the `## Session Log` section before the `---` / `## Status` footer.
 
+   For FEAT or EPIC captures, append a decision entry to the log (silent no-op when `decisions.yaml` is absent; skip entirely for BUG type):
+
+   ```bash
+   if [ "$ISSUE_TYPE" != "BUG" ] && [ -f .ll/decisions.yaml ]; then
+       ll-issues decisions add \
+         --type=decision \
+         --category="architecture" \
+         --issue="$ISSUE_ID" \
+         --rule="Captured: $ISSUE_TITLE" \
+         --rationale="$ISSUE_SUMMARY" \
+         --scope=issue \
+         2>/dev/null || true
+   fi
+   ```
+
 6. **Stage the new file:**
 ```bash
 git add "{{config.issues.base_dir}}/[category]/[filename]"

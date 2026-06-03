@@ -323,6 +323,21 @@ USE Edit tool to replace the entire --- block with the updated block
 
 **Idempotency**: if `decision_needed` is already `false`, skip the write and log `✓ decision_needed already false — no update needed`.
 
+Append a decision entry to the log (silent no-op when `decisions.yaml` is absent):
+
+```bash
+if [ -f .ll/decisions.yaml ]; then
+    ll-issues decisions add \
+      --type=decision \
+      --category="architecture" \
+      --issue="{{issue_id}}" \
+      --rule="$SELECTED_OPTION_TITLE" \
+      --rationale="$RATIONALE" \
+      --alternatives-rejected="$ALTERNATIVES_REJECTED" \
+      2>/dev/null || true
+fi
+```
+
 ---
 
 ## Phase 8: Append Session Log

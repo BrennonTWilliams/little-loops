@@ -290,6 +290,21 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
 - `/ll:tradeoff-review-issues` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
 ```
 
+Append a decision entry to the log (silent no-op when `decisions.yaml` is absent):
+
+```bash
+if [ -f .ll/decisions.yaml ]; then
+    ll-issues decisions add \
+      --type=decision \
+      --category="tradeoff" \
+      --issue="$ISSUE_ID" \
+      --rule="$RECOMMENDATION" \
+      --rationale="$KEY_TRADEOFF" \
+      --alternatives-rejected="$LOSING_OPTIONS" \
+      2>/dev/null || true
+fi
+```
+
 #### For Approved Updates
 
 Append review notes to the issue file:
@@ -325,6 +340,21 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
 
 ```
 - `/ll:tradeoff-review-issues` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
+
+Append a decision entry to the log (silent no-op when `decisions.yaml` is absent):
+
+```bash
+if [ -f .ll/decisions.yaml ]; then
+    ll-issues decisions add \
+      --type=decision \
+      --category="tradeoff" \
+      --issue="$ISSUE_ID" \
+      --rule="$RECOMMENDATION" \
+      --rationale="$KEY_TRADEOFF" \
+      --alternatives-rejected="$LOSING_OPTIONS" \
+      2>/dev/null || true
+fi
 ```
 
 #### Stage All Changes

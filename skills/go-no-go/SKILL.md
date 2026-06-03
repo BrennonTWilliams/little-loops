@@ -14,6 +14,7 @@ allowed-tools:
   - Edit
   - AskUserQuestion
   - Bash(ll-history-context:*)
+  - Bash(ll-issues:*)
 metadata:
   short-description: Use when asked for an adversarial go/no-go review or whether an issue is worth i
 ---
@@ -397,6 +398,21 @@ After writing findings (or skipping), stage the updated issue file:
 
 ```bash
 git add "[issue-file-path]"
+```
+
+Append a decision entry to the log (silent no-op when `decisions.yaml` is absent or when `CHECK_MODE` is true):
+
+```bash
+if [ "$CHECK_MODE" != "true" ] && [ -f .ll/decisions.yaml ]; then
+    ll-issues decisions add \
+      --type=decision \
+      --category="implementation" \
+      --issue="{{issue_id}}" \
+      --rule="$VERDICT" \
+      --rationale="$RATIONALE" \
+      --enforcement=advisory \
+      2>/dev/null || true
+fi
 ```
 
 ---

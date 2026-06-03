@@ -14,6 +14,7 @@ allowed-tools:
   - Edit
   - AskUserQuestion
   - Bash(ll-history-context:*)
+  - Bash(ll-issues:*)
 metadata:
   short-description: Use when asked for an adversarial go/no-go review or whether an issue is worth i
 ---

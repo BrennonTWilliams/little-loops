@@ -56,3 +56,9 @@ class TestHistoryContextAllowedTools:
         assert LL_CAPTURE_ISSUE_STUB.exists(), (
             "skills/ll-capture-issue/SKILL.md bridge stub must exist"
         )
+
+    def test_ll_go_no_go_stub_has_ll_issues_tool(self) -> None:
+        fm = _frontmatter(LL_GO_NO_GO_STUB)
+        assert "Bash(ll-issues:*)" in fm, (
+            "skills/ll-go-no-go/SKILL.md must include Bash(ll-issues:*) in allowed-tools (FEAT-1896)"
+        )
