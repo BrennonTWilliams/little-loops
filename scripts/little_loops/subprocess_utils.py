@@ -310,6 +310,7 @@ def run_claude_command(
 
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
+    detected_model: str = "unknown"
 
     # Use selectors for non-blocking read from both streams
     with selectors.DefaultSelector() as sel:
@@ -362,8 +363,10 @@ def run_claude_command(
                             event = json.loads(line)
                             etype = event.get("type")
                             if etype == "system" and event.get("subtype") == "init":
-                                if on_model_detected and "model" in event:
-                                    on_model_detected(event["model"])
+                                if "model" in event:
+                                    detected_model = event["model"]
+                                    if on_model_detected:
+                                        on_model_detected(event["model"])
                                 continue  # don't add to stdout_lines
                             elif etype == "assistant":
                                 msg = event.get("message", {})
@@ -399,7 +402,7 @@ def run_claude_command(
                                             cache_creation_tokens=usage.get(
                                                 "cache_creation_input_tokens", 0
                                             ),
-                                            model=event.get("model", "unknown"),
+                                            model=event.get("model", detected_model),
                                         )
                                     )
                                 if event.get("is_error"):

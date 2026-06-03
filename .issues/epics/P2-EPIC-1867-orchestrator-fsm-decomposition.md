@@ -7,7 +7,7 @@ captured_at: "2026-06-02T02:18:04Z"
 discovered_date: 2026-06-02
 discovered_by: capture-issue
 status: open
-relates_to: []
+relates_to: [FEAT-1901, FEAT-1902, FEAT-1899, ENH-1903]
 ---
 
 # EPIC-1867: Orchestrator FSM Decomposition (ll-auto / ll-sprint / ll-parallel)
@@ -91,16 +91,10 @@ When this epic is done:
 
 ## Children
 
-_Planned decomposition (run `/ll:scope-epic` to materialize as child issues):_
-
-- **Layer 0** — Stabilize shared core as a documented internal library + 3–4
-  `ll-issues` subcommands (`next`, `verify-work`, `classify-failure`).
-  Behavior-neutral; existing tests gate it. (Low risk)
-- **Layer 1** — `loops/ll-auto.yaml` FSM + `ll-auto` shim + A/B parity & event-parity
-  harness. Risk concentrated in the verify/parity gates.
-- **Layer 2** — `ll-sprint plan --json` + FSM wave driver reusing Layer-1 states +
-  `ll-sprint` shim.
-- **Layer 3** — `ll-parallel`: keep as the parallel substrate (no FSM work; docs only).
+- **FEAT-1901** — Stabilize shared orchestration core and expose as ll-issues subcommands (Layer 0)
+- **FEAT-1902** — Author loops/ll-auto.yaml FSM + ll-auto shim + A/B parity harness (Layer 1)
+- **FEAT-1899** — Implement ll-sprint FSM wave driver and shim (Layer 2)
+- **ENH-1903** — Document ll-parallel as canonical parallel substrate (Layer 3)
 
 ## Verification Notes
 

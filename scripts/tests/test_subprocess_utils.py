@@ -1647,6 +1647,73 @@ class TestRunClaudeCommandModelDetection:
 
         assert result.stdout == "plain text line"
 
+    def _make_two_line_selector(self, mock_selector: Any, mock_process: Mock) -> None:
+        """Configure selector to return stdout key twice then exit loop."""
+        _patch_selector_cm(mock_selector)
+        selector_instance = mock_selector.return_value
+        call_count = [0]
+
+        def get_map_side_effect() -> dict[Any, Any]:
+            call_count[0] += 1
+            return {"stdout": True} if call_count[0] <= 2 else {}
+
+        selector_instance.get_map.side_effect = get_map_side_effect
+        key = Mock()
+        key.fileobj = mock_process.stdout
+        selector_instance.select.return_value = [(key, None)]
+        selector_instance.register = Mock()
+        selector_instance.unregister = Mock()
+
+    def test_model_falls_back_to_init_event_when_result_has_no_model(self) -> None:
+        """TokenUsage.model uses init-event model when result event omits model (BUG-1897)."""
+        init_event = '{"type": "system", "subtype": "init", "model": "claude-sonnet-4-6"}\n'
+        result_event = (
+            '{"type": "result", "usage": {"input_tokens": 100, "output_tokens": 50, '
+            '"cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}\n'
+        )
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(init_event + result_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        from little_loops.subprocess_utils import TokenUsage
+
+        detailed_calls: list[TokenUsage] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_two_line_selector(mock_selector, mock_process)
+                run_claude_command("test", on_usage_detailed=detailed_calls.append)
+
+        assert len(detailed_calls) == 1
+        assert detailed_calls[0].model == "claude-sonnet-4-6"
+
+    def test_result_event_model_takes_priority_over_init_event_model(self) -> None:
+        """Explicit model field in result event takes priority over init-captured model."""
+        init_event = '{"type": "system", "subtype": "init", "model": "claude-sonnet-4-6"}\n'
+        result_event = (
+            '{"type": "result", "model": "claude-opus-4-8", "usage": {"input_tokens": 100, '
+            '"output_tokens": 50, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}\n'
+        )
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(init_event + result_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        from little_loops.subprocess_utils import TokenUsage
+
+        detailed_calls: list[TokenUsage] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_two_line_selector(mock_selector, mock_process)
+                run_claude_command("test", on_usage_detailed=detailed_calls.append)
+
+        assert len(detailed_calls) == 1
+        assert detailed_calls[0].model == "claude-opus-4-8"
+
     def test_on_model_detected_none_no_error(self) -> None:
         """Omitting on_model_detected when init event arrives raises no error."""
         init_event = '{"type": "system", "subtype": "init", "model": "claude-sonnet-4-6"}\n'
