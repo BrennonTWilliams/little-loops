@@ -99,10 +99,29 @@ _CORRECTION_RE = re.compile(
     re.IGNORECASE,
 )
 
+_PHRASE_RE = re.compile(
+    r"\b(?:"
+    r"instead"
+    r"|actually\s+(?:that|this|it)\s"
+    r"|you missed"
+    r"|should be\s+(?!fine\b|ok\b|okay\b|good\b|great\b|alright\b|correct\b|right\b)"
+    r"|wrong approach"
+    r"|remember that"
+    r"|always use"
+    r"|never use"
+    r"|from now on"
+    r"|I meant\b.*\bnot\b"
+    r"|not\b.*\buse\b"
+    r")",
+    re.IGNORECASE,
+)
+_REMEMBER_RE = re.compile(r"^!remember\b", re.IGNORECASE)
+
 
 def is_correction(text: str) -> bool:
     """Return True if *text* matches a known user-correction signal."""
-    return bool(_CORRECTION_RE.match(text[:512]))
+    t = text[:512]
+    return bool(_REMEMBER_RE.match(t) or _CORRECTION_RE.match(t) or _PHRASE_RE.search(t))
 
 
 # ---------------------------------------------------------------------------

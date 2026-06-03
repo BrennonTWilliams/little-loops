@@ -92,6 +92,34 @@ class TestUserPromptSubmitWithSessionStore:
                 conn.close()
             assert count == 0, "non-correction prompt must not write to user_corrections"
 
+    def test_remember_prefix_writes_correction_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+
+        handle(
+            _event(
+                {"prompt": "!remember always use snake_case", "session_id": "sess-c3"},
+                cwd=str(tmp_path),
+            )
+        )
+
+        db_path = tmp_path / ".ll" / "history.db"
+        assert db_path.is_file(), "!remember must create history.db"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute(
+                "SELECT content, session_id, source FROM user_corrections"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "!remember must write a user_corrections row"
+        content, session_id, source = row
+        assert "always use snake_case" in content
+        assert session_id == "sess-c3"
+        assert source == "user_prompt_submit"
+
     def test_skips_write_when_analytics_disabled(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -1161,6 +1161,16 @@ class TestIsCorrectionHeuristic:
             "don't add comments",
             "No! That's wrong",
             "that's wrong, try again",
+            "use snake_case instead",
+            "actually that function is in utils.py",
+            "you missed the import",
+            "should be wrapped in a try/except",
+            "remember that we always use dataclasses",
+            "never use bare except clauses",
+            "from now on always add type hints",
+            "!remember always use snake_case",
+            "!Remember use absolute imports",
+            "wrong approach, use a generator",
         ],
     )
     def test_true_positives(self, text: str) -> None:
@@ -1175,6 +1185,11 @@ class TestIsCorrectionHeuristic:
             "implement the login feature",
             "fix the authentication bug",
             "noted",
+            "that should be fine",
+            "use it as-is",
+            "this is actually a great idea",
+            "never mind, good work",
+            "I'm always happy with this approach",
         ],
     )
     def test_true_negatives(self, text: str) -> None:

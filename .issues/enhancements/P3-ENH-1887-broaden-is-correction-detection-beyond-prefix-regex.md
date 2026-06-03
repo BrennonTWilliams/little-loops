@@ -3,18 +3,19 @@ id: ENH-1887
 title: Broaden is_correction() detection beyond prefix regex
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-06-02
 captured_at: '2026-06-02T00:00:00Z'
+completed_at: '2026-06-03T03:14:28Z'
 discovered_by: capture-issue
 parent: EPIC-1707
 depends_on: []
 blocked_by: []
-decision_needed: true
+decision_needed: false
 labels:
 - enhancement
 - captured
-confidence_score: 96
+confidence_score: 100
 outcome_confidence: 79
 score_complexity: 19
 score_test_coverage: 22
@@ -79,6 +80,31 @@ Add a prefix command that users can prepend to any message to force correction r
 **Risk**: adoption requires users to learn a new syntax; existing natural corrections still go unrecorded.
 
 **Recommended starting point**: Option A + D — expand the regex to cover the most common natural-language patterns (Option A), and add `!remember` as an explicit escape hatch (Option D). Option B can follow if calibration data warrants it.
+
+> **Selected:** Option A + D — expanded regex patterns (`_PHRASE_RE`) plus `!remember` explicit escape hatch (`_REMEMBER_RE`)
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-02.
+
+**Selected**: Option A + D — Expanded regex patterns + `!remember` prefix escape hatch
+
+**Reasoning**: Option A scores 12/12 — the `tuple[re.Pattern[str], ...] + any(p.search(...))` idiom is already in use in `fsm/validation.py:108–113`, the single call site at `user_prompt_submit.py:71` requires no changes, and `TestIsCorrectionHeuristic` needs only list appends to extend. Option D scores 10/12, adds zero false positives, and fits cleanly via one new `_REMEMBER_RE` constant inside `is_correction()`. Options B and C are deferred: B lacks calibration data (the table is nearly empty until A+D populates it), and C contradicts the synchronous zero-network hook design with a documented p95 ≤ 200ms target and a 5-second test ceiling.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (Expanded regex) | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| Option D (!remember prefix) | 2/3 | 3/3 | 3/3 | 2/3 | 10/12 |
+| Option B (Weighted scoring) | 1/3 | 1/3 | 2/3 | 2/3 | 6/12 |
+| Option C (LLM classification) | 0/3 | 0/3 | 1/3 | 0/3 | 1/12 |
+
+**Key evidence**:
+- Option A: `_MULTIMODAL_EVAL_PATTERNS` idiom (`fsm/validation.py:108–113`) is the exact `tuple[re.Pattern, ...] + any(p.search(...))` pattern to follow; single call site unchanged; test class ready for list-append extension
+- Option D: `bypass_prefix` precedent in `user_prompt_submit.py:101` shows prefix routing is established; one new `_REMEMBER_RE` constant in `session_store.py` suffices
+- Option B: No calibration corpus exists; `ScoringWeightsConfig` is scoped to dependency mapping; all three required pieces (registry, config surface, calibration data) must be built from scratch
+- Option C: Entire hooks layer is synchronous/zero-network (p95 ≤ 200ms target); test suite enforces 5s hard ceiling (`test_hooks_integration.py:785`); no hook makes any LLM call
 
 ## Success Metrics
 
@@ -171,6 +197,9 @@ def is_correction(text: str) -> bool:
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-03T03:10:38 - `588d66b0-c8d7-4950-9a19-8140e43b67e8.jsonl`
+- `/ll:confidence-check` - 2026-06-02T00:00:00Z - `1f3e2c1f-928d-49df-9f88-076d123bed4f.jsonl`
+- `/ll:decide-issue` - 2026-06-03T03:04:32 - `e42431df-160c-48e8-95ff-02e142b6d570.jsonl`
 - `/ll:wire-issue` - 2026-06-03T02:57:26 - `5d1e935f-a524-4a99-896f-bc491c8c9f90.jsonl`
 - `/ll:refine-issue` - 2026-06-03T02:51:48 - `5f8be02f-9c45-4d21-a4a9-e456e040a263.jsonl`
 - `/ll:format-issue` - 2026-06-03T01:13:40 - `8c9f6308-6202-49af-81bc-7d0b6b6978b2.jsonl`
