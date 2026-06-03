@@ -593,6 +593,8 @@ Before adding a new skill, answer:
 
 4. **Before release:** run `ll-verify-skill-budget` to check the total description token footprint. Exits 1 if over the 2000-token budget — shorten descriptions or tag more skills with `disable-model-invocation: true`. Then run `/doctor` and verify "0 skill descriptions dropped".
 
+5. **Before release:** run `ll-verify-skills` to check that no SKILL.md exceeds 500 lines. Exits 1 if any violation is found — extract reference content into companion files (see the 500-line convention above).
+
 > **Optional utility:** `ll-generate-skill-descriptions` auto-generates minimal (≤100 char) descriptions from SKILL.md content using Claude (dry-run by default; use `--apply` to write back). Useful before a release to batch-refresh descriptions for LLM-discoverable skills.
 
 Skills are user-invocable workflows that activate based on trigger keywords or explicit invocation. Prefer creating skills over agents for new functionality (see development preferences in CLAUDE.md).

@@ -6,7 +6,12 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from little_loops.cli.docs import main_check_links, main_verify_docs, main_verify_skill_budget
+from little_loops.cli.docs import (
+    main_check_links,
+    main_verify_docs,
+    main_verify_skill_budget,
+    main_verify_skills,
+)
 
 
 class TestMainVerifyDocs:
@@ -485,3 +490,99 @@ class TestMainVerifySkillBudget:
         assert result == 0
         data = json.loads(capsys.readouterr().out)
         assert data["under_budget"] is True
+
+
+class TestMainVerifySkills:
+    """Tests for main_verify_skills entry point."""
+
+    def test_no_violations_returns_0(self) -> None:
+        """Returns 0 when all SKILL.md files are within the line limit."""
+        with (
+            patch("sys.argv", ["ll-verify-skills"]),
+            patch(
+                "little_loops.doc_counts.check_skill_sizes",
+                return_value=[],
+            ),
+            patch("builtins.print"),
+        ):
+            result = main_verify_skills()
+
+        assert result == 0
+
+    def test_violations_returns_1(self) -> None:
+        """Returns 1 when any SKILL.md exceeds the line limit."""
+        with (
+            patch("sys.argv", ["ll-verify-skills"]),
+            patch(
+                "little_loops.doc_counts.check_skill_sizes",
+                return_value=[(Path("skills/big-skill/SKILL.md"), 620)],
+            ),
+            patch("builtins.print"),
+        ):
+            result = main_verify_skills()
+
+        assert result == 1
+
+    def test_custom_limit_passed_to_check(self) -> None:
+        """--limit N is forwarded to check_skill_sizes."""
+        with (
+            patch("sys.argv", ["ll-verify-skills", "--limit", "400"]),
+            patch(
+                "little_loops.doc_counts.check_skill_sizes",
+                return_value=[],
+            ) as mock_check,
+            patch("builtins.print"),
+        ):
+            main_verify_skills()
+
+        call_kwargs = mock_check.call_args[1]
+        assert call_kwargs["limit"] == 400
+
+    def test_custom_directory(self, tmp_path: Path) -> None:
+        """--directory uses provided path."""
+        with (
+            patch("sys.argv", ["ll-verify-skills", "-C", str(tmp_path)]),
+            patch(
+                "little_loops.doc_counts.check_skill_sizes",
+                return_value=[],
+            ) as mock_check,
+            patch("builtins.print"),
+        ):
+            main_verify_skills()
+
+        call_kwargs = mock_check.call_args[1]
+        assert call_kwargs["base_dir"] == tmp_path
+
+    def test_json_flag_no_violations(self, capsys) -> None:
+        """--json outputs valid JSON when no violations."""
+        with (
+            patch("sys.argv", ["ll-verify-skills", "--json"]),
+            patch(
+                "little_loops.doc_counts.check_skill_sizes",
+                return_value=[],
+            ),
+        ):
+            result = main_verify_skills()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["ok"] is True
+        assert data["violations"] == []
+
+    def test_json_flag_with_violations(self, capsys) -> None:
+        """--json outputs violation details."""
+        with (
+            patch("sys.argv", ["ll-verify-skills", "--json"]),
+            patch(
+                "little_loops.doc_counts.check_skill_sizes",
+                return_value=[(Path("skills/big-skill/SKILL.md"), 620)],
+            ),
+        ):
+            result = main_verify_skills()
+
+        assert result == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["ok"] is False
+        assert len(data["violations"]) == 1
+        assert data["violations"][0]["name"] == "big-skill"
+        assert data["violations"][0]["lines"] == 620

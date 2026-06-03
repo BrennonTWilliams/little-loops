@@ -1879,6 +1879,31 @@ ll-verify-skill-budget --threshold 1500  # Custom threshold
 
 ---
 
+### ll-verify-skills
+
+Check that no `SKILL.md` file exceeds the 500-line limit.
+
+Scans all `skills/*/SKILL.md` files. Skips skills with `disable-model-invocation: true`. Exits 1 if any file exceeds the limit.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--limit` | | Maximum lines per SKILL.md (default: 500) |
+| `--json` | `-j` | Output as JSON |
+| `--directory` | `-C` | Base directory (default: current directory) |
+
+**Exit codes:** `0` = all within limit, `1` = violations found
+
+**Examples:**
+```bash
+ll-verify-skills                    # Check against default 500-line limit
+ll-verify-skills --limit 400        # Custom limit
+ll-verify-skills --json             # Output as JSON
+```
+
+---
+
 ### ll-check-links
 
 Check markdown documentation for broken links.

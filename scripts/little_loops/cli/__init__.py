@@ -40,7 +40,12 @@ from little_loops.cli.auto import main_auto
 from little_loops.cli.create_extension import main_create_extension
 from little_loops.cli.ctx_stats import main_ctx_stats
 from little_loops.cli.deps import main_deps
-from little_loops.cli.docs import main_check_links, main_verify_docs, main_verify_skill_budget
+from little_loops.cli.docs import (
+    main_check_links,
+    main_verify_docs,
+    main_verify_skill_budget,
+    main_verify_skills,
+)
 from little_loops.cli.doctor import main_doctor
 from little_loops.cli.generate_skill_descriptions import main_generate_skill_descriptions
 from little_loops.cli.gitignore import main_gitignore
@@ -98,6 +103,7 @@ __all__ = [
     "main_sync",
     "main_verify_docs",
     "main_verify_skill_budget",
+    "main_verify_skills",
     # Re-exported for backward compatibility (used in tests)
     "_render_execution_plan",
     "_render_dependency_graph",

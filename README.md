@@ -43,7 +43,7 @@ The unit of work is the feature, the sprint, or the overnight optimization — n
 
 Raw agents re-derive the same structural moves differently each run. The `ll-` CLI removes the improvisation surface: context gathering, issue lifecycle, sprint moves, and worktree setup all run as typed commands. Two runs of the same feature land in the same shape — by construction, not by prompting.
 
-- **30 typed CLI tools** (`ll-issues`, `ll-sprint`, `ll-loop`, `ll-parallel`, `ll-action`, etc.) — structural work runs as commands, not improvised tool calls
+- **31 typed CLI tools** (`ll-issues`, `ll-sprint`, `ll-loop`, `ll-parallel`, `ll-action`, etc.) — structural work runs as commands, not improvised tool calls
 - **`/ll:manage-issue`** — composes the CLIs into a fixed plan → implement → verify → complete sequence. The agent reasons *inside* steps, not about *which* steps to take
 - **Skill harnesses** (`/ll:ready-issue`, `/ll:wire-issue`, `/ll:confidence-check`) — same inputs, same gates, same outputs
 - **Worktree setup, branch naming, issue ID generation** — mechanical operations that produce identical structure across runs

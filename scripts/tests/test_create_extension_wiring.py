@@ -54,8 +54,8 @@ class TestConfigureAreasWiring:
 
     def test_count_updated_to_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 28" in content, (
-            "skills/configure/areas.md must show 'Authorize all 28' ll- CLI tools"
+        assert "Authorize all 29" in content, (
+            "skills/configure/areas.md must show 'Authorize all 29' ll- CLI tools"
         )
 
     def test_ll_create_extension_in_enumeration(self) -> None:
@@ -76,7 +76,7 @@ class TestFeat1045DocUpdates:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "30 typed CLI tools" in content, "README.md must say '30 typed CLI tools'"
+        assert "31 typed CLI tools" in content, "README.md must say '31 typed CLI tools'"
 
     def test_claude_md_lists_ll_create_extension(self) -> None:
         content = CLAUDE_MD.read_text()
@@ -189,12 +189,12 @@ class TestFeat1229LlActionWiring:
 
     def test_readme_tool_count_is_20(self) -> None:
         content = README.read_text()
-        assert "30 typed CLI tools" in content, "README.md must say '30 typed CLI tools'"
+        assert "31 typed CLI tools" in content, "README.md must say '31 typed CLI tools'"
 
     def test_configure_areas_count_is_17(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 28" in content, (
-            "skills/configure/areas.md must show 'Authorize all 28' ll- CLI tools"
+        assert "Authorize all 29" in content, (
+            "skills/configure/areas.md must show 'Authorize all 29' ll- CLI tools"
         )
 
     def test_configure_areas_lists_ll_action(self) -> None:
@@ -372,8 +372,8 @@ class TestFeat1689LlHarnessWiring:
 
     def test_configure_areas_count_updated_to_28(self) -> None:
         content = CONFIGURE_AREAS.read_text()
-        assert "Authorize all 28" in content, (
-            "skills/configure/areas.md must show 'Authorize all 28' ll- CLI tools"
+        assert "Authorize all 29" in content, (
+            "skills/configure/areas.md must show 'Authorize all 29' ll- CLI tools"
         )
 
     def test_configure_areas_lists_ll_harness(self) -> None:

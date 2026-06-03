@@ -5,7 +5,9 @@ type: ENH
 priority: P4
 discovered_date: 2026-04-07
 discovered_by: split-from-ENH-494
-status: open
+captured_at: 2026-04-07 00:00:00+00:00
+completed_at: 2026-06-03 04:02:01+00:00
+status: done
 parent: EPIC-1745
 blocked_by: []
 confidence_score: 80
@@ -73,7 +75,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    - `docs/reference/CLI.md:1880` — add `ll-verify-skills` reference section after `ll-verify-skill-budget` (which ends at line 1880, with `### ll-check-links` at line 1882); follow the same section structure
 
 7. Update skill templates that enumerate CLI tools:
-   - `skills/init/SKILL.md:544,617,652` — three occurrences list `ll-verify-docs`; add `ll-verify-skills` at each (and optionally `ll-verify-skill-budget` if not already present)
+   - `skills/init/SKILL.md:329,402,437` — three occurrences list `ll-verify-docs`; add `ll-verify-skills` at each (and optionally `ll-verify-skill-budget` if not already present)
    - `skills/configure/areas.md:813` — the current 28-tool enumeration string; add `ll-verify-skills` to the tool list and bump the count from `"Authorize all 28"` to `"Authorize all 29"`
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -110,7 +112,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `.claude/CLAUDE.md:174` — add `ll-verify-skills` after `ll-verify-skill-budget` at line 174
 - `README.md:46` — update `"30 typed CLI tools"` → `"31 typed CLI tools"` (count string only; no per-tool listing section)
 - `docs/reference/CLI.md:1880` — add `ll-verify-skills` reference section after `ll-verify-skill-budget` (ends at line 1880, before `### ll-check-links` at line 1882)
-- `skills/init/SKILL.md:544,617,652` — add `ll-verify-skills` at three template locations listing `ll-verify-docs`
+- `skills/init/SKILL.md:329,402,437` — add `ll-verify-skills` at three template locations listing `ll-verify-docs`
 - `skills/configure/areas.md:813` — add `ll-verify-skills` to enumeration string; bump count from `"Authorize all 28"` to `"Authorize all 29"`
 - `CONTRIBUTING.md:594` — "New Skill Checklist" section; add `ll-verify-skills` item after item 4 (`ll-verify-skill-budget` at line 594)
 - `scripts/tests/test_create_extension_wiring.py` — update count assertions for `areas.md` (steps 8) and `README.md` (step 9)
@@ -207,6 +209,7 @@ _Added by `/ll:confidence-check` on 2026-06-02_
 - **5 breaking test assertions pre-identified**: `test_create_extension_wiring.py` contains 5 assertions that will break: 3 asserting `"Authorize all 28"` (lines 57, 196, 375) and 2 asserting `"30 typed CLI tools"` (lines 79, 192). Steps 8–9 in the implementation plan address these.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-03T03:48:30 - `2ac8bc42-fa7c-4c87-bcc5-c8727999a2e0.jsonl`
 - `/ll:refine-issue` - 2026-06-03T03:45:06 - `1c5f3489-3162-4e2a-b587-f77e2b02980f.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:refine-issue` - 2026-06-03T01:55:51 - `7d84a3c4-7800-4b5a-b1f1-cde3fa604493.jsonl`

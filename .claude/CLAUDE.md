@@ -172,6 +172,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-sync` - Sync local issues with GitHub Issues
 - `ll-verify-docs` - Verify documented counts match actual file counts
 - `ll-verify-skill-budget` - Check skill description token footprint against listing budget (exit 1 if over)
+- `ll-verify-skills` - Check that no SKILL.md exceeds 500 lines (exit 1 if any violations)
 - `ll-check-links` - Check markdown documentation for broken links
 - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, anchor-sweep, fingerprint, epic-progress)
 - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale); record creation is owned by `/ll:explore-api`

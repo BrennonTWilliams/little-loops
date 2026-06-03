@@ -234,6 +234,85 @@ Exit codes:
             return 1
 
 
+def main_verify_skills() -> int:
+    """Entry point for ll-verify-skills command.
+
+    Scan SKILL.md files and fail if any exceed the 500-line limit.
+
+    Returns:
+        Exit code (0 = all within limit, 1 = violations found)
+    """
+    with cli_event_context(DEFAULT_DB_PATH, "ll-verify-skills", sys.argv[1:]):
+        from little_loops.doc_counts import check_skill_sizes
+
+        parser = argparse.ArgumentParser(
+            prog="ll-verify-skills",
+            description="Verify no SKILL.md file exceeds the 500-line limit",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="""
+Examples:
+  %(prog)s                    # Check against default 500-line limit
+  %(prog)s --limit 400        # Custom line limit
+  %(prog)s --json             # Output as JSON
+
+Exit codes:
+  0 - All SKILL.md files within limit
+  1 - One or more violations found
+""",
+        )
+
+        parser.add_argument(
+            "--limit",
+            type=int,
+            default=500,
+            metavar="N",
+            help="Maximum allowed lines per SKILL.md (default: 500)",
+        )
+
+        parser.add_argument(
+            "-C",
+            "--directory",
+            type=Path,
+            default=None,
+            help="Base directory (default: current directory)",
+        )
+
+        add_json_arg(parser)
+
+        args = parser.parse_args()
+
+        configure_output()
+        logger = Logger(use_color=use_color_enabled())
+
+        base_dir = args.directory or Path.cwd()
+
+        violations = check_skill_sizes(base_dir=base_dir, limit=args.limit)
+
+        if args.json:
+            print_json(
+                {
+                    "ok": len(violations) == 0,
+                    "limit": args.limit,
+                    "violations": [
+                        {"name": path.parent.name, "lines": lines}
+                        for path, lines in violations
+                    ],
+                }
+            )
+            return 0 if not violations else 1
+
+        if not violations:
+            logger.success(f"All SKILL.md files within {args.limit}-line limit")
+            return 0
+
+        logger.error(
+            f"{len(violations)} SKILL.md file(s) exceed the {args.limit}-line limit:"
+        )
+        for path, lines in violations:
+            print(f"  {lines:>6} lines  {path.parent.name}/SKILL.md")
+        return 1
+
+
 def main_check_links() -> int:
     """Entry point for ll-check-links command.
 

@@ -327,6 +327,7 @@ Add ll- CLI command allow entries to Claude Code's settings file to pre-authoriz
      "Bash(ll-deps:*)",
      "Bash(ll-sync:*)",
      "Bash(ll-verify-docs:*)",
+     "Bash(ll-verify-skills:*)",
      "Bash(ll-check-links:*)",
      "Bash(ll-gitignore:*)",
      "Bash(ll-create-extension:*)",
@@ -400,6 +401,7 @@ If user opted in:
    - `ll-deps` - Cross-issue dependency analysis and validation
    - `ll-sync` - Sync local issues with GitHub Issues
    - `ll-verify-docs` - Verify documented counts match actual file counts
+   - `ll-verify-skills` - Check that no SKILL.md exceeds 500 lines
    - `ll-check-links` - Check markdown documentation for broken links
    - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, anchor-sweep, fingerprint)
    - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
@@ -435,6 +437,7 @@ If user opted in:
    - `ll-deps` - Cross-issue dependency analysis and validation
    - `ll-sync` - Sync local issues with GitHub Issues
    - `ll-verify-docs` - Verify documented counts match actual file counts
+   - `ll-verify-skills` - Check that no SKILL.md exceeds 500 lines
    - `ll-check-links` - Check markdown documentation for broken links
    - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, anchor-sweep, fingerprint)
    - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files

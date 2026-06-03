@@ -366,6 +366,45 @@ def check_skill_budget(
     )
 
 
+def check_skill_sizes(
+    base_dir: Path | None = None,
+    limit: int = 500,
+) -> list[tuple[Path, int]]:
+    """Scan skills/*/SKILL.md files and return those exceeding the line limit.
+
+    Skips skills with ``disable-model-invocation: true``.
+
+    Args:
+        base_dir: Base directory (defaults to cwd)
+        limit: Maximum allowed lines per SKILL.md (default: 500)
+
+    Returns:
+        List of (path, line_count) pairs where line_count > limit
+    """
+    if base_dir is None:
+        base_dir = Path.cwd()
+
+    skills_dir = base_dir / "skills"
+    violations: list[tuple[Path, int]] = []
+
+    if not skills_dir.exists():
+        return violations
+
+    for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
+        try:
+            text = skill_md.read_text()
+        except OSError:
+            continue
+        fm = _parse_skill_frontmatter(text)
+        if fm.get("disable-model-invocation", "").lower() in ("true", "yes", "1"):
+            continue
+        line_count = len(text.splitlines())
+        if line_count > limit:
+            violations.append((skill_md, line_count))
+
+    return violations
+
+
 def fix_counts(base_dir: Path, result: VerificationResult) -> FixResult:
     """Fix count mismatches in documentation files.
 

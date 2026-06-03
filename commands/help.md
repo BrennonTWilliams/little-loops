@@ -264,6 +264,7 @@ ll-sync           Sync local issues with GitHub Issues
 ll-issues         Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, clusters, anchor-sweep, fingerprint)
 ll-verify-docs    Verify documented counts match actual file counts
 ll-verify-skill-budget Check skill description token footprint against listing budget
+ll-verify-skills  Check that no SKILL.md exceeds 500 lines
 ll-check-links    Check markdown documentation for broken links
 ll-gitignore      Suggest and apply .gitignore patterns based on untracked files
 ll-migrate        Migrate completed/deferred issues to type-based directories (one-time, ENH-1390)
