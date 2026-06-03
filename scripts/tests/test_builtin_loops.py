@@ -3579,6 +3579,7 @@ class TestSvgTextgradLoop:
             "done",
             "diagnose",
             "failed",
+            "seal_artifacts",
         }
         actual = set(data["states"].keys())
         missing = required - actual
@@ -3732,10 +3733,10 @@ class TestSvgTextgradLoop:
             "reads the prior compute_gradient output, not this state's (empty) output"
         )
 
-    def test_route_convergence_on_yes_routes_to_done(self, data: dict) -> None:
-        """route_convergence must route to done when CONVERGED is detected."""
+    def test_route_convergence_on_yes_routes_to_seal_artifacts(self, data: dict) -> None:
+        """route_convergence must route to seal_artifacts when CONVERGED is detected."""
         state = data["states"].get("route_convergence", {})
-        assert state.get("on_yes") == "done"
+        assert state.get("on_yes") == "seal_artifacts"
 
     def test_route_convergence_on_no_routes_to_append_gradient(self, data: dict) -> None:
         """route_convergence must route to append_gradient when not converged."""
@@ -3775,10 +3776,10 @@ class TestSvgTextgradLoop:
         assert evaluator.get("type") == "output_contains"
         assert evaluator.get("pattern") == "SHELL_PASS"
 
-    def test_verify_score_routes_to_done_on_yes(self, data: dict) -> None:
-        """verify_score must route to done when weighted average meets pass_threshold."""
+    def test_verify_score_routes_to_seal_artifacts_on_yes(self, data: dict) -> None:
+        """verify_score must route to seal_artifacts when weighted average meets pass_threshold."""
         state = data["states"].get("verify_score", {})
-        assert state.get("on_yes") == "done"
+        assert state.get("on_yes") == "seal_artifacts"
 
     def test_verify_score_routes_to_track_best_on_no(self, data: dict) -> None:
         """verify_score must route to track_best on SHELL_ITERATE."""
@@ -3807,6 +3808,48 @@ class TestSvgTextgradLoop:
         assert ".gradient_tmp.txt" in action, (
             "append_gradient.action must use a temp file to safely handle multi-line gradient output"
         )
+
+    def test_seal_artifacts_state_exists(self, data: dict) -> None:
+        """seal_artifacts state must exist in the loop."""
+        assert "seal_artifacts" in data["states"]
+
+    def test_seal_artifacts_is_shell(self, data: dict) -> None:
+        """seal_artifacts state must use action_type: shell."""
+        state = data["states"].get("seal_artifacts", {})
+        assert state.get("action_type") == "shell"
+
+    def test_seal_artifacts_routes_to_done(self, data: dict) -> None:
+        """seal_artifacts state must route unconditionally to done."""
+        state = data["states"].get("seal_artifacts", {})
+        assert state.get("next") == "done"
+
+    def test_generate_on_error_routes_to_diagnose(self, data: dict) -> None:
+        """generate state must route to diagnose on error."""
+        state = data["states"].get("generate", {})
+        assert state.get("on_error") == "diagnose"
+
+    def test_context_pass_threshold_is_7(self, data: dict) -> None:
+        """context pass_threshold must be 7 (raised from 6 to catch per-criterion regressions)."""
+        ctx = data.get("context", {})
+        assert ctx.get("pass_threshold") == 7
+
+    def test_context_has_min_per_criterion(self, data: dict) -> None:
+        """context must define min_per_criterion for per-criterion floor check."""
+        ctx = data.get("context", {})
+        assert "min_per_criterion" in ctx
+
+    def test_verify_score_action_uses_min_per_criterion(self, data: dict) -> None:
+        """verify_score action must reference min_per_criterion for the per-criterion floor check."""
+        state = data["states"].get("verify_score", {})
+        action = state.get("action", "")
+        assert "min_per_criterion" in action
+
+    def test_seal_artifacts_action_copies_best_svg(self, data: dict) -> None:
+        """seal_artifacts action must copy image.svg to best.svg and brief.md to best-brief.md."""
+        state = data["states"].get("seal_artifacts", {})
+        action = state.get("action", "")
+        assert "best.svg" in action
+        assert "best-brief.md" in action
 
 
 class TestWorktreeHealthLoop:

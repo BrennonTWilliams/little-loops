@@ -3,11 +3,20 @@ id: ENH-1900
 title: Harden svg-textgrad loop (best.svg, on_error, threshold)
 type: enhancement
 priority: P3
-status: open
-captured_at: "2026-06-03T19:12:59Z"
+status: done
+captured_at: '2026-06-03T19:12:59Z'
+completed_at: '2026-06-03T20:29:57Z'
 discovered_date: 2026-06-03
 discovered_by: capture-issue
-labels: [loops, svg-textgrad]
+labels:
+- loops
+- svg-textgrad
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 25
+score_change_surface: 22
 ---
 
 # ENH-1900: Harden `svg-textgrad` loop (best.svg, on_error, threshold)
@@ -246,6 +255,8 @@ quality drops.
 - **State**: open
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-03T20:26:14 - `9a55e072-e0d9-43c1-b103-6e602a2e9e29.jsonl`
+- `/ll:confidence-check` - 2026-06-03T20:45:00Z - `31b2bc85-a0b5-413e-94f6-06c7a9e7124c.jsonl`
 - `/ll:wire-issue` - 2026-06-03T20:21:46 - `19bd6a32-49de-4e4e-aee4-cfc71bf924f9.jsonl`
 - `/ll:refine-issue` - 2026-06-03T20:16:58 - `ab834a21-9998-4af9-89b6-a7bd885c7c3b.jsonl`
 - `/ll:format-issue` - 2026-06-03T19:21:26 - `2115b373-786c-489c-aa3d-71ed6687c4c6.jsonl`

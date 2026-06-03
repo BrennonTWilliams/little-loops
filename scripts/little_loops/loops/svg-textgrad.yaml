@@ -16,7 +16,8 @@ timeout: 7200
 # HARNESS: Context variables control quality threshold.
 context:
   description: ""             # populated from loop_input via input_key: description
-  pass_threshold: 6           # minimum score per criterion (1-10) to pass
+  pass_threshold: 7           # weighted-average gate: (2VC+2OG+CR+SC)/6 >= threshold
+  min_per_criterion: 6        # each criterion must be >= this
   design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
 
 states:
@@ -84,6 +85,7 @@ states:
         <text> elements over verbose repeated markup. Use <g> with transform for repeated
         elements. Conciseness is a hard requirement.
     next: screenshot
+    on_error: diagnose
 
   screenshot:
     # HARNESS: Screenshot gate — Playwright CLI captures the rendered file:// SVG.
@@ -170,11 +172,16 @@ states:
         | awk -v iter="$ITER" 'BEGIN{printf "## Iteration %s\n", iter} {print}' \
         >> "$DIR/scores.md"
       echo "" >> "$DIR/scores.md"
-      # --- External weighted average: (2×VC + 2×OG + CR + SC) / 6 >= pass_threshold ---
+      # --- External weighted average: (2×VC + 2×OG + CR + SC) must be >= pass_threshold*6 (=42 at threshold=7) ---
       VC=$(grep -E "^visual_clarity: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
       OG=$(grep -E "^originality: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
       CR=$(grep -E "^craft: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
       SC=$(grep -E "^scalability: [0-9]+" "$DIR/critique.md" | grep -oE "[0-9]+" | head -1 2>/dev/null || echo 0)
+      MIN="${context.min_per_criterion}"
+      if [ "$VC" -lt "$MIN" ] || [ "$OG" -lt "$MIN" ] || \
+         [ "$CR" -lt "$MIN" ] || [ "$SC" -lt "$MIN" ]; then
+        echo "SHELL_ITERATE"; exit 0
+      fi
       THRESH="${context.pass_threshold}"
       WEIGHTED=$((2*VC + 2*OG + CR + SC))
       if [ "$WEIGHTED" -ge "$((THRESH * 6))" ]; then
@@ -185,7 +192,7 @@ states:
     evaluate:
       type: output_contains
       pattern: "SHELL_PASS"
-    on_yes: done
+    on_yes: seal_artifacts
     on_no: track_best
     on_error: track_best
 
@@ -251,7 +258,7 @@ states:
       type: output_contains
       source: "${captured.gradient.output}"
       pattern: "CONVERGED"
-    on_yes: done
+    on_yes: seal_artifacts
     on_no: append_gradient
     on_error: append_gradient
 
@@ -295,6 +302,16 @@ states:
 
       Overwrite ${captured.run_dir.output}/brief.md with the rewritten brief.
     next: generate
+
+  seal_artifacts:
+    # Ensures best.svg and best-brief.md always exist when done is reached,
+    # including first-pass success where track_best is bypassed.
+    action_type: shell
+    action: |
+      DIR="${captured.run_dir.output}"
+      [ -f "$DIR/best.svg" ] || cp "$DIR/image.svg" "$DIR/best.svg"
+      [ -f "$DIR/best-brief.md" ] || cp "$DIR/brief.md" "$DIR/best-brief.md"
+    next: done
 
   done:
     # HARNESS: Terminal state — reached when all criteria pass, convergence is detected,

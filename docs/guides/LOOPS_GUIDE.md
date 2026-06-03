@@ -1350,7 +1350,8 @@ ll-loop run svg-textgrad "a minimalist coffee cup icon"
 | `description` | (from `loop_input`) | Natural language SVG description — passed as the positional argument |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/svg-textgrad-{timestamp}/`) for `image.svg`, `brief.md`, `critique.md`, `gradients.md`, `scores.md`, `screenshot.png`, `best.svg`, and `best-brief.md`; created automatically. Override with `--context run_dir=path/`. |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
-| `pass_threshold` | `6` | Minimum score per criterion (1–10); **weighted average** `(2×visual_clarity + 2×originality + craft + scalability) / 6` must meet or exceed this value |
+| `pass_threshold` | `7` | Weighted-average gate: `(2×visual_clarity + 2×originality + craft + scalability) / 6` must meet or exceed this value (default raised from 6 to 7 to match the tighter discriminating threshold) |
+| `min_per_criterion` | `6` | Per-criterion floor: each of the four scores must be ≥ this value before the weighted average is checked; a single weak criterion (e.g. scalability 5/10) forces another gradient iteration |
 
 Override per-run:
 
@@ -1364,9 +1365,9 @@ ll-loop run svg-textgrad "lightning bolt icon" \
 ```
 init → plan → generate → evaluate
                             ├─ CAPTURED → score → verify_score
-                            │                         ├─ SHELL_PASS   → done
+                            │                         ├─ SHELL_PASS   → seal_artifacts → done
                             │                         ├─ SHELL_ITERATE → record_scores → compute_gradient → route_convergence
-                            │                         │                                                        ├─ CONVERGED → done
+                            │                         │                                                        ├─ CONVERGED → seal_artifacts → done
                             │                         │                                                        └─ continue  → append_gradient → apply_gradient → generate
                             │                         └─ ERROR        → record_scores → compute_gradient → …
                             │              score ERROR → diagnose → failed

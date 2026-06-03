@@ -5,13 +5,26 @@ type: ENH
 priority: P3
 status: open
 discovered_date: 2026-06-03
-captured_at: "2026-06-03T19:50:05Z"
+captured_at: '2026-06-03T19:50:05Z'
 discovered_by: capture-issue
 parent: EPIC-1707
-relates_to: [EPIC-1707, ENH-1752, ENH-1846, ENH-1847, ENH-1888, ENH-1711]
+relates_to:
+- EPIC-1707
+- ENH-1752
+- ENH-1846
+- ENH-1847
+- ENH-1888
+- ENH-1711
 labels:
-  - captured
-  - history-db
+- captured
+- history-db
+confidence_score: 96
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 18
+implementation_order_risk: true
 ---
 
 # ENH-1905: Wire history.db effort/velocity reads into planning skills
@@ -198,7 +211,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `captured`, `history-db`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-06-03_
+
+**Readiness Score**: 96/100 → PROCEED
+**Outcome Confidence**: 74/100 → MODERATE
+
+### Outcome Risk Factors
+- Broad file surface across 14 sites — coordinating changes across Python, 4 skill markdowns, 1 command, 3 doc files, 3 test files, and CLAUDE.md increases the chance of omitting one touchpoint; implement tests first so the doc-wiring assertions guard the sweep
+- Implementation ordering: Python backend (`history_reader.py`) and CLI `--effort` flag must be complete before skill wiring can be verified end-to-end; implement co-deliverables in sequence: Python functions → CLI → skill wiring → tests
+
 ## Session Log
+- `/ll:confidence-check` - 2026-06-03T20:30:00Z - `31b2bc85-a0b5-413e-94f6-06c7a9e7124c.jsonl`
 - `/ll:wire-issue` - 2026-06-03T20:19:04 - `c1a5f52d-2382-47ae-be05-cfb663438f44.jsonl`
 - `/ll:refine-issue` - 2026-06-03T20:12:40 - `5cfac3fd-69b5-4992-849b-b3e21aecf055.jsonl`
 - `/ll:format-issue` - 2026-06-03T20:07:08 - `0ecffd0e-287b-4cbc-aeee-94a176efb0b2.jsonl`
