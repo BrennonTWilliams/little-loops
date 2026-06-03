@@ -135,6 +135,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "llm",
         "on_handoff",
         "input_key",
+        "required_inputs",
         "config",
         "category",
         "labels",
@@ -913,6 +914,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_meta_loop_evaluation(fsm))
 
+    errors.extend(_validate_input_key_without_guard(fsm))
+
     errors.extend(_validate_artifact_isolation(fsm))
 
     errors.extend(_validate_harness_multimodal_evaluator_blind_spot(fsm))
@@ -1148,6 +1151,31 @@ def _find_shared_tmp_writes(fsm: FSMLoop) -> list[tuple[str, str]]:
         for match in _SHARED_TMP_PATH_RE.finditer(state.action):
             findings.append((state_name, match.group(0)))
     return findings
+
+
+def _validate_input_key_without_guard(fsm: FSMLoop) -> list[ValidationError]:
+    """Warn when a loop sets a custom input_key but omits required_inputs.
+
+    A loop that accepts a runtime input via a named key (e.g. input_key: description)
+    but doesn't declare required_inputs will silently proceed with an empty value if the
+    user forgets to pass one. Declaring required_inputs shifts that failure to start-time.
+    """
+    if fsm.input_key == "input":
+        return []
+    if fsm.required_inputs:
+        return []
+    return [
+        ValidationError(
+            message=(
+                f"Loop sets input_key: '{fsm.input_key}' but does not declare "
+                f"required_inputs. If this input is mandatory, add "
+                f"'required_inputs: [\"{fsm.input_key}\"]' to make the runner "
+                f"abort when no input is provided."
+            ),
+            path="required_inputs",
+            severity=ValidationSeverity.WARNING,
+        )
+    ]
 
 
 def _validate_artifact_isolation(fsm: FSMLoop) -> list[ValidationError]:

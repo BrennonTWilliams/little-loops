@@ -346,6 +346,10 @@ maintain: boolean               # Restart after completion
 category: string                # Grouping category for loop discovery and ll-loop list filtering
                                 # (e.g. 'apo', 'code-quality', 'issue-management')
 labels: array[string]           # Arbitrary tags for loop filtering with ll-loop list --label
+required_inputs: array[string]  # Context keys that must be non-empty at start-time. Runner
+                                # exits 1 with a clear error if any key is absent or empty.
+                                # Pair with input_key to make the input contract explicit.
+                                # ll-loop validate warns when input_key is set but this is absent.
 commands:                       # Override Commands section in ll-loop show output (optional)
   - cmd: string                 #   Full command string (e.g. "ll-loop run my-loop --param x=1")
     comment: string             #   Short description shown as comment

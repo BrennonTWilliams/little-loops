@@ -60,18 +60,31 @@ correctness gaps a downstream consumer would hit.
 
 ## Proposed Solution
 
-**(a) `done` ensures best artifacts** — add a shell preamble to `done`:
+**(a) New `seal_artifacts` shell state before `done`** — `done` uses
+`action_type: prompt`; shell commands cannot run inside a prompt action. The
+correct approach inserts a dedicated shell state that guarantees best-artifact
+copies exist, then routes to `done`. Two existing `on_yes: done` routes must be
+redirected to `seal_artifacts`:
 
 ```yaml
-done:
-  action: |
-    DIR="${captured.run_dir.output}"
-    [ -f "$DIR/best.svg" ] || cp "$DIR/image.svg" "$DIR/best.svg"
-    [ -f "$DIR/best-brief.md" ] || cp "$DIR/brief.md" "$DIR/best-brief.md"
-    # ... existing prompt action follows
+# New state — insert between track_best/route_convergence and done:
+  seal_artifacts:
+    # Ensures best.svg and best-brief.md always exist when done is reached,
+    # including first-pass success where track_best is bypassed.
+    action_type: shell
+    action: |
+      DIR="${captured.run_dir.output}"
+      [ -f "$DIR/best.svg" ] || cp "$DIR/image.svg" "$DIR/best.svg"
+      [ -f "$DIR/best-brief.md" ] || cp "$DIR/brief.md" "$DIR/best-brief.md"
+    next: done
 ```
 
-**(b) `generate` error route**:
+Routing changes (two places):
+- `verify_score.on_yes: done` → `verify_score.on_yes: seal_artifacts` (line 188)
+- `route_convergence.on_yes: done` → `route_convergence.on_yes: seal_artifacts` (line 254)
+
+**(b) `generate` error route** — add `on_error: diagnose` to the `generate` state
+(line 86, after `next: screenshot`):
 
 ```yaml
 generate:
@@ -80,7 +93,11 @@ generate:
   on_error: diagnose
 ```
 
-**(c) tighten + relabel the gate** — fix the misleading comment, raise
+This matches the existing convention used by `score` (line 157) and mirrors the
+`on_error: diagnose` pattern in `general-task.yaml` (11 states), `rn-refine.yaml`
+(4 states), and `refine-to-ready-issue.yaml` (10 states).
+
+**(c) Tighten + relabel the gate** — fix the misleading comment, raise
 `pass_threshold` to 7 (≈70% / 42/60), and add a per-criterion floor in the
 `verify_score` shell action:
 
@@ -90,14 +107,22 @@ context:
   min_per_criterion: 6       # each criterion must be >= this
 ```
 
+In `verify_score` (lines 159–190), insert the floor check between score extraction
+and the weighted-average check:
+
 ```bash
-# in verify_score, after extracting VC OG CR SC:
+# after extracting VC OG CR SC (lines 174–177), before THRESH= (line 178):
 MIN="${context.min_per_criterion}"
 if [ "$VC" -lt "$MIN" ] || [ "$OG" -lt "$MIN" ] || \
    [ "$CR" -lt "$MIN" ] || [ "$SC" -lt "$MIN" ]; then
   echo "SHELL_ITERATE"; exit 0
 fi
 ```
+
+Also update the weighted-average comment at line 173 from
+`# --- External weighted average: (2×VC + 2×OG + CR + SC) / 6 >= pass_threshold ---`
+to accurately describe the threshold: with `pass_threshold: 7`, the gate is
+`WEIGHTED >= 42` (not `/6`).
 
 Per the audit, `pass_threshold: 7` + `min_per_criterion: 6` would have caught
 Run B on both the weighted average (39 < 42) and the scalability floor (5 < 6).
@@ -116,18 +141,87 @@ pass/fail behavior for borderline generations by design.
 
 ## Integration Map
 
-- `scripts/little_loops/loops/svg-textgrad.yaml` — `done`, `generate`,
-  `context`, and `verify_score` states.
-- Validate with `ll-loop validate svg-textgrad` after editing.
+### Files to Modify
+- `scripts/little_loops/loops/svg-textgrad.yaml` — single file; all three fixes are here
+
+### States to Change
+
+| State | Lines | Change |
+|---|---|---|
+| `context` block | 17–20 | Fix comment on `pass_threshold`; raise to 7; add `min_per_criterion: 6` |
+| `generate` | 62–86 | Add `on_error: diagnose` after `next: screenshot` (line 86) |
+| `verify_score` | 159–190 | Insert per-criterion floor check (lines 174–177 → 178); update arithmetic comment |
+| `verify_score` routing | 188 | Change `on_yes: done` → `on_yes: seal_artifacts` |
+| `route_convergence` routing | 254 | Change `on_yes: done` → `on_yes: seal_artifacts` |
+| NEW: `seal_artifacts` | insert before `done` (line 299) | New shell state: copies `image.svg`→`best.svg` and `brief.md`→`best-brief.md` if absent |
+| `done` | 299–317 | No content changes; `seal_artifacts.next: done` ensures it is still reached |
+
+### Dependent Callers — No Runtime or Schema Impact
+- `scripts/little_loops/fsm/executor.py` — `FSMExecutor._execute_state()` and `_route()`: these handle `on_error` and `next:` generically; no changes needed
+- `scripts/little_loops/fsm/validation.py` — `ll-loop validate` enforces MR-1 (non-LLM evaluator pairing); the new `seal_artifacts` state uses `next:` (unconditional) so no evaluator is required and MR-1 does not apply
+
+### Tests
+
+- `scripts/tests/test_builtin_loops.py` — covers built-in loop schema validation; run after editing to confirm `seal_artifacts` is reachable and `on_error` on `generate` is valid
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Tests that will break (must update):**
+- `TestSvgTextgradLoop.test_verify_score_routes_to_done_on_yes` (line 3778) — asserts `on_yes == "done"`; rename and change assertion to `== "seal_artifacts"`
+- `TestSvgTextgradLoop.test_route_convergence_on_yes_routes_to_done` (line 3735) — asserts `on_yes == "done"`; rename and change assertion to `== "seal_artifacts"`
+
+**Existing test to update (no break, coverage gap):**
+- `TestSvgTextgradLoop.test_required_states_exist` (line 3564) — add `"seal_artifacts"` to the `required` set
+
+**New tests to write in `TestSvgTextgradLoop`:**
+- `test_seal_artifacts_state_exists` — assert `"seal_artifacts"` in `data["states"]`
+- `test_seal_artifacts_is_shell` — assert `action_type == "shell"` (pattern: `test_track_best_is_shell`)
+- `test_seal_artifacts_routes_to_done` — assert `next == "done"` (unconditional)
+- `test_generate_on_error_routes_to_diagnose` — assert `generate.on_error == "diagnose"`
+- `test_context_pass_threshold_is_7` — assert `context["pass_threshold"] == 7`
+- `test_context_has_min_per_criterion` — assert `"min_per_criterion"` in `context`
+- `test_verify_score_action_uses_min_per_criterion` — assert `"min_per_criterion"` in `verify_score.action`
+- `test_seal_artifacts_action_copies_best_svg` — assert `"best.svg"` and `"best-brief.md"` in `seal_artifacts.action`
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — FSM flow diagram (§ svg-textgrad, ~line 1364) shows `→ done` for both `verify_score.on_yes` and `route_convergence.on_yes`; must update to `→ seal_artifacts → done`. Context variable table (~line 1353) lists `pass_threshold` default as `6`; must update default to `7`, fix gate description, and add `min_per_criterion` row.
+
+### Validation Command
+```bash
+ll-loop validate svg-textgrad
+```
 
 ## Implementation Steps
 
-1. Add the copy-if-missing preamble to `done`.
-2. Add `on_error: diagnose` to `generate`.
-3. Fix the `pass_threshold` comment; raise to 7; add `min_per_criterion` and the
-   floor check in `verify_score`.
-4. Run `ll-loop validate svg-textgrad`; optionally re-run the loop to confirm a
-   regressed generation now triggers a gradient iteration.
+All edits are in `scripts/little_loops/loops/svg-textgrad.yaml`.
+
+1. **Fix `context` block (lines 17–20)**: Change `pass_threshold: 6` → `7`; fix
+   the comment to read `# weighted-average gate: (2VC+2OG+CR+SC)/6 >= threshold`;
+   add `min_per_criterion: 6  # each criterion must be >= this`.
+2. **Add `on_error: diagnose` to `generate` (after line 86)**: Insert `on_error: diagnose`
+   on the line after `next: screenshot`.
+3. **Update `verify_score` (lines 159–190)**:
+   a. After the four score-extraction lines (174–177), insert the per-criterion floor check
+      (`MIN="${context.min_per_criterion}"` + the four-way `if [ ... -lt ... ]` block).
+   b. Update the arithmetic comment at line 173 to remove the misleading `/6` phrasing.
+   c. Change `on_yes: done` (line 188) → `on_yes: seal_artifacts`.
+4. **Update `route_convergence` (line 254)**: Change `on_yes: done` → `on_yes: seal_artifacts`.
+5. **Insert `seal_artifacts` state** before the `done:` definition (line 299):
+   New `action_type: shell` state with `next: done`; copies `image.svg` → `best.svg` and
+   `brief.md` → `best-brief.md` using `[ -f ... ] || cp ...` guards.
+6. **Validate**: Run `ll-loop validate svg-textgrad`; expect clean output (no MR-1/MR-3 errors).
+7. **Smoke test (optional)**: Run `ll-loop run svg-textgrad --input description="test"` with a
+   low `pass_threshold` (e.g. 10) to force a regressed generation and confirm `seal_artifacts`
+   runs and `best.svg` is present in the run output directory.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `scripts/tests/test_builtin_loops.py` — fix the two breaking tests: rename `test_verify_score_routes_to_done_on_yes` → `test_verify_score_routes_to_seal_artifacts_on_yes` and `test_route_convergence_on_yes_routes_to_done` → `test_route_convergence_on_yes_routes_to_seal_artifacts`, changing `== "done"` to `== "seal_artifacts"` in both; add `"seal_artifacts"` to the `required` set in `test_required_states_exist`; write the 8 new tests listed in the Tests section.
+9. Update `docs/guides/LOOPS_GUIDE.md` — update the FSM flow diagram (both `→ done` exits to `→ seal_artifacts → done`), change `pass_threshold` default from `6` to `7` in the context variable table, and add a `min_per_criterion` row describing the per-criterion floor.
 
 ## Impact
 
@@ -152,5 +246,7 @@ quality drops.
 - **State**: open
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-03T20:21:46 - `19bd6a32-49de-4e4e-aee4-cfc71bf924f9.jsonl`
+- `/ll:refine-issue` - 2026-06-03T20:16:58 - `ab834a21-9998-4af9-89b6-a7bd885c7c3b.jsonl`
 - `/ll:format-issue` - 2026-06-03T19:21:26 - `2115b373-786c-489c-aa3d-71ed6687c4c6.jsonl`
 - `/ll:capture-issue` - 2026-06-03T19:12:59Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5cba1a69-7a53-425f-8c5d-4f1ba61f51bb.jsonl`

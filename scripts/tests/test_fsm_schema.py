@@ -1783,6 +1783,24 @@ class TestLoadAndValidate:
         with pytest.raises(ValueError, match="missing required fields.*states"):
             load_and_validate(fixture_path)
 
+    def test_required_inputs_key_no_warning(self, tmp_path: Path) -> None:
+        """A YAML with top-level 'required_inputs:' produces no unknown-key warning."""
+        loop_yaml = tmp_path / "required-inputs-key.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop that needs an input\n"
+            "initial: check\n"
+            "input_key: description\n"
+            "required_inputs:\n"
+            "  - description\n"
+            "states:\n"
+            "  check:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
+
 
 class TestValidationError:
     """Tests for ValidationError dataclass."""
@@ -3165,3 +3183,59 @@ class TestContractSchema:
         assert len(restored.pairs) == 2
         assert restored.pairs[0]["producer"] == "api1.ts"
         assert restored.pairs[1]["contract"] == "rule 2"
+
+
+class TestFSMLoopRequiredInputs:
+    """Tests for FSMLoop.required_inputs field (ENH-1898)."""
+
+    def test_defaults_to_empty(self) -> None:
+        """FSMLoop.required_inputs defaults to empty list."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert fsm.required_inputs == []
+
+    def test_to_dict_omits_when_empty(self) -> None:
+        """to_dict does not include 'required_inputs' key when empty."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        assert "required_inputs" not in fsm.to_dict()
+
+    def test_to_dict_includes_when_set(self) -> None:
+        """to_dict serializes required_inputs when non-empty."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+            required_inputs=["description"],
+        )
+        d = fsm.to_dict()
+        assert "required_inputs" in d
+        assert d["required_inputs"] == ["description"]
+
+    def test_from_dict_parses(self) -> None:
+        """from_dict deserializes required_inputs list."""
+        data = {
+            "name": "test",
+            "initial": "start",
+            "states": {"start": {"terminal": True}},
+            "required_inputs": ["description", "topic"],
+        }
+        fsm = FSMLoop.from_dict(data)
+        assert fsm.required_inputs == ["description", "topic"]
+
+    def test_round_trip(self) -> None:
+        """FSMLoop with required_inputs round-trips through to_dict/from_dict."""
+        original = FSMLoop(
+            name="my-loop",
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+            required_inputs=["description"],
+        )
+        restored = FSMLoop.from_dict(original.to_dict())
+        assert restored.required_inputs == ["description"]

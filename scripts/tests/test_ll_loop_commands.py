@@ -2900,6 +2900,49 @@ states:
 
         assert fsm.context[fsm.input_key] == raw
 
+    @pytest.fixture
+    def required_input_loop(self, tmp_path: Path) -> Path:
+        """Create a loop that declares required_inputs."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_file = loops_dir / "required-loop.yaml"
+        loop_file.write_text(
+            "name: required-loop\n"
+            "description: A loop that requires description input\n"
+            "initial: init\n"
+            "input_key: description\n"
+            "required_inputs:\n"
+            "  - description\n"
+            "context:\n"
+            "  description: ''\n"
+            "states:\n"
+            "  init:\n"
+            "    action: 'echo ${context.description}'\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        return loops_dir
+
+    def test_required_input_supplied_proceeds(
+        self,
+        required_input_loop: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When required input is supplied, cmd_run proceeds past the required_inputs guard."""
+        import sys
+        from unittest.mock import patch
+
+        monkeypatch.chdir(required_input_loop.parent)
+        with patch.object(sys, "argv", ["ll-loop", "run", "--dry-run", "required-loop", "a nice description"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        # Guard should not abort (exit 1 with guard message) — dry-run returns 0
+        assert result == 0
+
 
 class TestCmdStatusJson:
     """Tests for ll-loop status --json."""

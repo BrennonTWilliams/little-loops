@@ -1,6 +1,7 @@
 name: svg-textgrad
 category: harness
 input_key: description
+required_inputs: ["description"]
 description: |
   TextGrad-style SVG harness: optimizes the visual brief via structured gradient updates
   rather than feeding raw critique directly to the generator. Each iteration computes a

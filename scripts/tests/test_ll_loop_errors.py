@@ -368,3 +368,69 @@ states:
             assert result == 1, f"Expected error for {scenario}"
             combined = captured.out + captured.err
             assert combined.strip() != "", f"Empty output for {scenario}"
+
+
+class TestRequiredInputsGuard:
+    """Integration tests for required_inputs pre-flight guard (ENH-1898)."""
+
+    LOOP_TEMPLATE = (
+        "name: needs-input\n"
+        "description: A loop that requires a description input\n"
+        "initial: run\n"
+        "input_key: description\n"
+        "required_inputs:\n"
+        "  - description\n"
+        "context:\n"
+        "  description: ''\n"
+        "states:\n"
+        "  run:\n"
+        "    action: 'echo ${context.description}'\n"
+        "    on_yes: done\n"
+        "    on_no: done\n"
+        "  done:\n"
+        "    terminal: true\n"
+    )
+
+    def _setup(self, tmp_path: Path) -> None:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "needs-input.yaml").write_text(self.LOOP_TEMPLATE)
+
+    def test_missing_input_exits_1(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ll-loop run with no --input exits 1 when required_inputs is declared."""
+        self._setup(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "needs-input"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        assert "needs-input" in combined
+        assert "description" in combined
+
+    def test_empty_string_input_exits_1(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ll-loop run --input '' exits 1 when required_inputs is declared."""
+        self._setup(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "needs-input", ""]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        assert "description" in combined

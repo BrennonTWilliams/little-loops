@@ -942,6 +942,7 @@ class FSMLoop:
     config: LoopConfigOverrides | None = None
     category: str = ""
     labels: list[str] = field(default_factory=list)
+    required_inputs: list[str] = field(default_factory=list)
     commands: list[CommandEntry] = field(default_factory=list)
     targets: list[TargetFileSpec] = field(default_factory=list)
     circuit: CircuitConfig | None = None
@@ -998,6 +999,8 @@ class FSMLoop:
             result["category"] = self.category
         if self.labels:
             result["labels"] = self.labels
+        if self.required_inputs:
+            result["required_inputs"] = self.required_inputs
         if self.commands:
             result["commands"] = [{"cmd": e.cmd, "comment": e.comment} for e in self.commands]
         if self.targets:
@@ -1060,6 +1063,7 @@ class FSMLoop:
             config=loop_config,
             category=data.get("category", ""),
             labels=data.get("labels", []),
+            required_inputs=data.get("required_inputs", []),
             commands=[CommandEntry(**e) for e in data.get("commands", [])],
             targets=[TargetFileSpec.from_dict(t) for t in (data.get("targets") or [])],
             circuit=circuit,

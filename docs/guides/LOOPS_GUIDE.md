@@ -350,6 +350,8 @@ ll-loop run general-task "Refactor the auth module to use dependency injection"
 ```
 
 > **JSON input shorthand**: Any loop that accepts context variables can receive them as a single JSON object positional argument. If the object's keys match defined context variables, each key is unpacked directly into context. If the JSON is invalid or keys don't match, the value is stored as a string in `context[input_key]` (the loop's configured input variable, usually `input`).
+
+> **Declaring required inputs**: If a loop's `input_key` is mandatory, add `required_inputs: ["<key>"]` to the loop YAML. The runner checks each listed key before starting and exits with code 1 if any key is absent or empty, with a message naming the loop and the missing key. Loops without `required_inputs` behave as before. `ll-loop validate` also emits a WARNING when a loop sets a custom `input_key` but omits `required_inputs`, nudging authors to declare intent explicitly.
 >
 > ```bash
 > # Equivalent: pass multiple context vars as a JSON object (auto-unpacked)

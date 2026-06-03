@@ -63,6 +63,13 @@
       "description": "Context key used as fallback when the positional input arg is not valid JSON or has no keys matching the loop's defined context variables. When JSON unpacking succeeds, multiple context keys are populated directly and input_key is not used (default: 'input')",
       "default": "input"
     },
+    "required_inputs": {
+      "type": "array",
+      "description": "Context keys that must be non-empty before the loop starts. The runner aborts with exit code 1 if any listed key is absent or empty in fsm.context at start-time.",
+      "items": {
+        "type": "string"
+      }
+    },
     "on_handoff": {
       "type": "string",
       "description": "Behavior when handoff signal detected",

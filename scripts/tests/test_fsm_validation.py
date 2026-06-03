@@ -26,6 +26,7 @@ from little_loops.fsm.validation import (
     _validate_artifact_isolation,
     _validate_evaluator,
     _validate_harness_multimodal_evaluator_blind_spot,
+    _validate_input_key_without_guard,
     _validate_meta_loop_evaluation,
     _validate_parameters,
     _validate_progress_paths_isolation,
@@ -1668,3 +1669,57 @@ class TestValidateStateLearningGuard:
         assert len(target_errors) == 1, (
             f"Expected one ERROR for missing targets/targets_csv, got: {target_errors}"
         )
+
+
+class TestRequiredInputsValidation:
+    """Tests for _validate_input_key_without_guard (ENH-1898)."""
+
+    def _make_fsm(self, input_key: str = "input", required_inputs: list | None = None) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": make_state(terminal=True)},
+            input_key=input_key,
+            required_inputs=required_inputs or [],
+        )
+
+    def test_warning_fires_when_input_key_set_without_required_inputs(self) -> None:
+        """WARNING emitted when input_key is custom but required_inputs is empty."""
+        fsm = self._make_fsm(input_key="description", required_inputs=[])
+        errors = _validate_input_key_without_guard(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert "required_inputs" in errors[0].path
+        assert "description" in errors[0].message
+
+    def test_no_warning_when_required_inputs_declared(self) -> None:
+        """No WARNING when required_inputs is declared alongside custom input_key."""
+        fsm = self._make_fsm(input_key="description", required_inputs=["description"])
+        errors = _validate_input_key_without_guard(fsm)
+        assert errors == []
+
+    def test_no_warning_for_default_input_key(self) -> None:
+        """No WARNING when input_key is the default 'input' (not explicitly overridden)."""
+        fsm = self._make_fsm(input_key="input", required_inputs=[])
+        errors = _validate_input_key_without_guard(fsm)
+        assert errors == []
+
+    def test_warning_wired_into_validate_fsm(self) -> None:
+        """_validate_input_key_without_guard is wired into validate_fsm."""
+        fsm = self._make_fsm(input_key="topic", required_inputs=[])
+        all_errors = validate_fsm(fsm)
+        guard_warnings = [
+            e for e in all_errors
+            if e.severity == ValidationSeverity.WARNING and "required_inputs" in e.path
+        ]
+        assert len(guard_warnings) == 1
+
+    def test_no_warning_when_required_inputs_wired_into_validate_fsm(self) -> None:
+        """validate_fsm emits no guard WARNING when required_inputs is declared."""
+        fsm = self._make_fsm(input_key="topic", required_inputs=["topic"])
+        all_errors = validate_fsm(fsm)
+        guard_warnings = [
+            e for e in all_errors
+            if e.severity == ValidationSeverity.WARNING and "required_inputs" in e.path
+        ]
+        assert guard_warnings == []

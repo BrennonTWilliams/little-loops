@@ -231,6 +231,15 @@ def cmd_run(
             )
         return 1
 
+    # Pre-run validation: check required_inputs are present and non-empty
+    for key in fsm.required_inputs:
+        if not fsm.context.get(key, ""):
+            logger.error(
+                f"loop '{loop_name}' requires input '{key}' but none was provided. "
+                f"Pass it via: ll-loop run {loop_name} <value>"
+            )
+            return 1
+
     # Baseline mode: apply to context before background gate so flags forward correctly
     baseline_enabled = getattr(args, "baseline", False)
     if baseline_enabled:
