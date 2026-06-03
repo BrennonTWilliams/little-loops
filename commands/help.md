@@ -261,7 +261,7 @@ ll-messages       Extract user messages from Claude Code logs
 ll-history        View issue statistics, analysis, and generate docs from history
 ll-deps           Cross-issue dependency analysis and validation
 ll-sync           Sync local issues with GitHub Issues
-ll-issues         Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, clusters, anchor-sweep, fingerprint)
+ll-issues         Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, clusters, anchor-sweep, fingerprint, epic-progress, decisions)
 ll-verify-docs    Verify documented counts match actual file counts
 ll-verify-skill-budget Check skill description token footprint against listing budget
 ll-verify-skills  Check that no SKILL.md exceeds 500 lines

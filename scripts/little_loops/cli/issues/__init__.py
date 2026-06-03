@@ -24,6 +24,10 @@ def main_issues() -> int:
         from little_loops.cli.issues.check_readiness import cmd_check_readiness
         from little_loops.cli.issues.clusters import cmd_clusters
         from little_loops.cli.issues.count_cmd import cmd_count
+        from little_loops.cli.issues.decisions import (
+            add_decisions_parser,
+            cmd_decisions,
+        )
         from little_loops.cli.issues.epic_progress import (
             add_epic_progress_parser,
             cmd_epic_progress,
@@ -73,6 +77,7 @@ Sub-commands:
   skip             Deprioritize an issue by bumping its priority prefix
   anchor-sweep     Rewrite file:line references in active issue files to anchor form
   fingerprint      Extract structured fingerprint (id, files, key_terms) from an issue file
+  decisions        Manage rules, decisions, and exceptions log (list/add/outcome/generate/sync)
 
 Examples:
   %(prog)s next-id
@@ -672,6 +677,7 @@ Examples:
         add_config_arg(sk)
 
         add_epic_progress_parser(subs)
+        add_decisions_parser(subs)
 
         args = parser.parse_args()
 
@@ -730,4 +736,6 @@ Examples:
             return cmd_skip(config, args)
         if args.command == "epic-progress":
             return cmd_epic_progress(config, args)
+        if args.command == "decisions":
+            return cmd_decisions(config, args)
         return 1

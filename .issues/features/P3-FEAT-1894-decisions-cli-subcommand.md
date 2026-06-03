@@ -1,13 +1,22 @@
 ---
 id: FEAT-1894
-title: "Decisions Log — CLI Subcommand"
+title: "Decisions Log \u2014 CLI Subcommand"
 type: FEAT
 priority: P3
 parent: FEAT-1892
 discovered_date: 2026-06-03
+captured_at: 2026-06-03 00:00:00+00:00
+completed_at: 2026-06-03 06:12:16+00:00
 depends_on:
 - FEAT-1891
 decision_needed: false
+confidence_score: 96
+outcome_confidence: 77
+score_complexity: 15
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 20
+status: done
 ---
 
 # FEAT-1894: Decisions Log — CLI Subcommand
@@ -15,6 +24,18 @@ decision_needed: false
 ## Summary
 
 Create the `ll-issues decisions` CLI subcommand with full CRUD sub-sub-commands (`list`, `add`, `generate` stub, `sync`, `outcome`), register it in `cli/issues/__init__.py`, write CLI tests, and update all documentation touchpoints. This is the foundational child of FEAT-1892 and must land before Children 2 and 3 can be worked.
+
+## Current Behavior
+
+The `ll-issues` CLI has no `decisions` subcommand. The decisions log data layer (FEAT-1891) provides `load_decisions`, `add_entry`, `list_entries`, `set_outcome`, and `resolve_active` in Python, but there is no CLI access — users cannot list, add, record outcomes for, or sync decisions log entries from the command line.
+
+## Expected Behavior
+
+`ll-issues decisions` is available with five sub-sub-commands: `list`, `add`, `generate`, `sync`, and `outcome`. The subcommand is registered in `main_issues()`, appears in `ll-issues --help`, and is documented across all touchpoints (`commands/help.md`, `docs/reference/CLI.md`, `CONTRIBUTING.md`, `.claude/CLAUDE.md`, `skills/init/SKILL.md`).
+
+## Use Case
+
+A developer implementing a feature records an architectural decision: `ll-issues decisions add --type=decision --category=architecture --rule="Use atomic_write for all file mutations" --rationale="Prevents partial state on crash" --issue=FEAT-1894`. After the feature ships, they record the outcome: `ll-issues decisions outcome dec-001 --result=worked --notes="No partial write incidents in 30 days"`. They list pending decisions without outcomes using `ll-issues decisions list --no-outcome`.
 
 ## Parent Issue
 
@@ -221,6 +242,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 17. **Update `skills/init/SKILL.md`** — two occurrences of the `ll-issues` subcommand parenthetical (lines 406 and 442) are missing both `epic-progress` and `decisions`; update both lines to include the full current subcommand list.
 
+## Impact
+
+- **Priority**: P3 — Foundational CLI surface for the decisions log feature; required before FEAT-1895 and FEAT-1896 can deliver usable workflows
+- **Effort**: Medium — New file following `epic_progress.py` pattern; 3-step registration in `__init__.py`; tests follow `TestIssuesCLIEpicProgress` structure
+- **Risk**: Low — Pure addition; no modifications to existing subcommand dispatch logic
+- **Breaking Change**: No
+
+## Labels
+
+`cli`, `decisions`, `ll-issues`, `feat`
+
+## Status
+
+**Open** | Created: 2026-06-03 | Priority: P3
+
 ## Acceptance Criteria
 
 - [ ] `cmd_decisions(config, args)` created at `scripts/little_loops/cli/issues/decisions.py`
@@ -238,6 +274,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] `test_cli_decisions.py` covers CRUD ops and graceful degradation
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-03T06:02:34 - `f678b791-1e26-4f78-81b4-09d7e563a05b.jsonl`
+- `/ll:confidence-check` - 2026-06-03T00:00:00Z - `052a81ba-2882-4387-9900-f9e5e85be308.jsonl`
 - `/ll:wire-issue` - 2026-06-03T05:57:25 - `668e8525-fcbc-4360-adf2-fac62db1d711.jsonl`
 - `/ll:refine-issue` - 2026-06-03T05:50:07 - `ad858343-d927-433c-91f1-6ab9312aef3b.jsonl`
 - `/ll:issue-size-review` - 2026-06-03T00:00:00Z - `3b396e18-8717-4088-9842-5574f1659959.jsonl`

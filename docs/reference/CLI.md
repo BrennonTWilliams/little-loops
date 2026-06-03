@@ -1254,6 +1254,70 @@ ll-issues ep EPIC-1773 --format markdown       # Markdown-formatted summary
 
 ---
 
+#### `ll-issues decisions`
+
+Manage rules, decisions, and exceptions log.
+
+**Sub-sub-commands:**
+
+| Sub-command | Description |
+|-------------|-------------|
+| `list` | List decisions log entries (with optional filters) |
+| `add` | Add a new rule, decision, or exception entry |
+| `outcome <ID>` | Record the outcome of a decision entry |
+| `generate` | Generate entries from completed issues (stub; see FEAT-1893) |
+| `sync` | Sync active rules to `.ll/ll.local.md` (stub; see FEAT-1895) |
+
+**`list` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--type` | Filter by entry type: `rule`, `decision`, `exception` |
+| `--category` | Filter by category string |
+| `--label` | Filter by label |
+| `--no-outcome` | Show only `DecisionEntry` records with no outcome |
+| `--before <ISO-8601>` | Show entries with timestamp before this date |
+| `--scope <scope>` | Filter `DecisionEntry` records by scope |
+| `--active-only` | Exclude entries superseded by a newer entry |
+| `--format` / `-f` | Output format: `text` (default), `json` |
+
+**`add` flags:**
+
+| Flag | Applies to | Description |
+|------|-----------|-------------|
+| `--type` | all | Entry type: `rule`, `decision`, `exception` (required) |
+| `--category` | all | Category string (required) |
+| `--rule` | rule, decision | Rule or decision text (required for these types) |
+| `--rationale` | all | Why this entry applies (required) |
+| `--issue` | all | Related issue ID |
+| `--label` | all | Comma-separated labels |
+| `--enforcement` | rule | `required` or `advisory` (default: `advisory`) |
+| `--rule-ref` | exception | Rule being excepted (required for exception) |
+| `--alternatives-rejected` | decision, exception | Alternatives considered |
+| `--supersedes` | rule | ID of the rule this supersedes |
+| `--scope` | decision | `issue` (default) or `project` |
+| `--id` | all | Explicit entry ID (auto-generated if omitted) |
+
+**`outcome` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `<ID>` | Entry ID to record outcome for (positional, required) |
+| `--result` | Outcome: `worked`, `did_not_work`, `mixed`, `reversed` (required) |
+| `--notes` | Free-text notes about the outcome |
+| `--measured-at <ISO-8601>` | When the outcome was measured (default: now) |
+| `--force` | Overwrite an existing outcome |
+
+```bash
+ll-issues decisions list
+ll-issues decisions list --type rule --active-only
+ll-issues decisions list --no-outcome
+ll-issues decisions add --type=decision --category=architecture --rule="Use atomic_write" --rationale="Prevents partial state"
+ll-issues decisions outcome dec-001 --result=worked --notes="No incidents in 30 days"
+```
+
+---
+
 ### ll-deps
 
 Cross-issue dependency discovery and validation.

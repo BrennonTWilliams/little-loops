@@ -210,7 +210,8 @@ little-loops/
         ├── issues/              # Issue utility sub-package (ENH-1300)
         │   ├── __init__.py
         │   ├── anchors.py       # resolve_anchor(): language-agnostic backwards scan
-        │   └── anchor_sweep.py  # sweep_issues(): two-phase scan-and-rewrite
+        │   ├── anchor_sweep.py  # sweep_issues(): two-phase scan-and-rewrite
+        │   └── decisions.py     # add_decisions_parser() + cmd_decisions(): decisions log CLI
         ├── cli_args.py          # Argument parsing
         ├── config.py            # Configuration management
         ├── state.py             # State persistence
