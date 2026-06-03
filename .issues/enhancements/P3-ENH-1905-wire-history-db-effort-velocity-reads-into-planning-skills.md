@@ -15,6 +15,7 @@ relates_to:
 - ENH-1847
 - ENH-1888
 - ENH-1711
+- ENH-1909
 labels:
 - captured
 - history-db
@@ -89,22 +90,34 @@ def recent_issue_velocity(limit: int = 10) -> list[dict]:
 
 CLI addition:
 ```
-ll-history-context --effort <issue_id>
+ll-history-context <issue_id> --effort
 ```
 
 > **Note on `total_tokens`**: The `issue_sessions` VIEW does not include token counts — only session timestamps. Computing `total_tokens` requires joining `tool_events` on `session_id`, which no existing `history_reader.py` function does. The initial implementation should omit `total_tokens` (return `None` or exclude the key) and document this as a future enhancement. The dict shape should be `{"session_count": int, "cycle_time_days": float | None}` for the MVP.
 
+> **Config keys (user configurability)**: `limit` in `recent_issue_velocity` and the set of surfaced metric fields should be read from `ll-config.json` rather than hardcoded. Suggested keys under a `history:` namespace:
+> - `history.velocity_window` (int, default `10`) — controls how many recent issues `recent_issue_velocity` returns
+> - `history.effort_fields` (list[str], default `["session_count", "cycle_time_days"]`) — controls which fields are printed by `ll-history-context <issue_id> --effort`
+> - `history.max_age_days` (int | null, default `null`) — when set, sessions older than this many days are excluded from effort computation; `null` disables staleness filtering
+>
+> The MVP may fall back to these defaults when the keys are absent, but the implementation must read from config if present so users can tune behavior without code changes. This keeps the rubric extensible as the `issue_sessions` schema grows (e.g. adding `total_tokens` later).
+>
+> **`effort_fields` validation**: unknown field names in `history.effort_fields` must be logged as a warning and skipped — they must never raise an exception or abort the skill. This ensures forward compatibility when users reference a field (e.g. `total_tokens`) before the backing code lands.
+
 > **Graceful-degradation guard pattern** (verbatim from `skills/confidence-check/SKILL.md § Phase 1` and `skills/go-no-go/SKILL.md § Step 3a`):
 > ```bash
-> EFFORT=$(ll-history-context --effort {{issue_id}} 2>/dev/null || true)
+> EFFORT=$(ll-history-context {{issue_id}} --effort 2>/dev/null || true)
 > ```
 > `|| true` ensures a non-zero exit never aborts the skill. `allowed-tools` entry: `Bash(ll-history-context:*)`.
+>
+> **Design clarification (verified against `cli/history_context.py`)**: `issue_id` is a positional arg in the current CLI (`_build_parser()` line 51); `--file` is an optional flag that takes a PATH. `--effort` must be implemented as a **boolean flag** (no argument) reusing the existing positional `issue_id` — not as `--effort <issue_id>`, which would require making the positional arg optional. Usage: `ll-history-context <issue_id> --effort`. The guard above is already corrected to this form.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/history_reader.py`
 - `scripts/little_loops/cli/history_context.py`
+- `config-schema.json` — add `history.velocity_window` and `history.effort_fields` keys under a new `history` namespace (confirmed: no `history` key exists yet)
 - `commands/create-sprint.md`
 - `skills/scope-epic/SKILL.md`
 - `skills/manage-issue/SKILL.md`
@@ -115,7 +128,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `.claude/CLAUDE.md` — `ll-history-context` bullet description must mention the new `--effort` flag
 
 ### Dependent Files (Callers/Importers)
-- `commands/create-sprint.md` — will call `ll-history-context --effort` for per-issue sizing
+- `commands/create-sprint.md` — will call `ll-history-context <issue_id> --effort` for per-issue sizing
 - `skills/scope-epic/SKILL.md` — will call `recent_issue_velocity()` for epic decomposition guidance
 - `skills/manage-issue/SKILL.md` — will call `issue_effort()` before generating implementation plan
 - `skills/review-epic/SKILL.md` — will call velocity read during epic review
@@ -171,17 +184,22 @@ _Added by `/ll:refine-issue` — concrete file references from codebase analysis
 
 2. **`scripts/little_loops/cli/history_context.py:main_history_context()`** — add `--effort` flag to `argparse`; when passed, call `issue_effort(args.issue_id)` and print a `## Effort Context` block; exit 0 silently when no data. Mirror the existing `--file` flag pattern.
 
-3. **`commands/create-sprint.md`** — add `Bash(ll-history-context:*)` to `allowed-tools` frontmatter; inject `EFFORT=$(ll-history-context --effort {{issue_id}} 2>/dev/null || true)` guard in `### Step 1.5.1: Scan Active Issues` or `### 4. Validate Issues Exist`; include non-empty `$EFFORT` in per-issue sizing context.
+3. **`commands/create-sprint.md`** — add `Bash(ll-history-context:*)` to `allowed-tools` frontmatter (currently has `Bash(mkdir:*)` and `Bash(ll-issues:*)`); inject `EFFORT=$(ll-history-context {{issue_id}} --effort 2>/dev/null || true)` guard in `### Step 1.5.1: Scan Active Issues` or `### 4. Validate Issues Exist`; include non-empty `$EFFORT` in per-issue sizing context.
 
-4. **`skills/scope-epic/SKILL.md`** — add `Bash(ll-history-context:*)` to `allowed-tools`; inject guard in `### Phase 2: Decompose Theme into EPIC + Children`; use velocity output to calibrate child-issue size estimates.
+4. **`skills/scope-epic/SKILL.md`** — add `Bash(ll-history-context:*)` to `allowed-tools` (currently has `Read`, `Write`, `Edit`, `Glob`, `Grep`, `AskUserQuestion`, `Bash(ll-issues:*, git:*)`); inject guard in `### Phase 2: Decompose Theme into EPIC + Children`; use velocity output to calibrate child-issue size estimates.
 
-5. **`skills/manage-issue/SKILL.md`** — add `Bash(ll-history-context:*)` to `allowed-tools`; inject guard in `## Phase 1.5: Deep Research`, alongside the three existing parallel `Task` calls; include non-empty `$EFFORT` in the implementation plan preamble.
+5. **`skills/manage-issue/SKILL.md`** — add `Bash(ll-history-context:*)` to `allowed-tools` (currently has only `Bash(git:*)`); inject guard in `## Phase 1.5: Deep Research`, alongside the three existing parallel `Task` calls; include non-empty `$EFFORT` in the implementation plan preamble.
 
-6. **`skills/review-epic/SKILL.md`** — add `Bash(ll-history-context:*)` to `allowed-tools`; inject guard in `## Step 2: Load EPIC and Resolve Children` or `## Step 3: Compute Progress Aggregates`; surface session counts and cycle times in the health report.
+6. **`skills/review-epic/SKILL.md`** — add `Bash(ll-history-context:*)` to `allowed-tools` (currently has `Read`, `Bash(ll-issues:*)`, `Bash(git:*)`); inject guard in `## Step 2: Load EPIC and Resolve Children` or `## Step 3: Compute Progress Aggregates`; surface session counts and cycle times in the health report.
 
-7. **`scripts/tests/test_history_reader.py`** — add test cases for `issue_effort()` and `recent_issue_velocity()`: empty-DB returns `None`/`[]`; single-session returns `cycle_time_days=0.0`; multi-session returns correct day delta.
+7. **`config-schema.json`** — add the following keys under the `history` namespace. `history_reader.py` and `history_context.py` must read these keys via `ll-config.json` and fall back to defaults when absent:
+   - `history.velocity_window` (integer, default `10`)
+   - `history.effort_fields` (array of strings, default `["session_count", "cycle_time_days"]`) — unknown values are warned-and-skipped, not raised
+   - `history.max_age_days` (integer | null, default `null`) — `null` = no staleness filter; positive integer excludes sessions older than N days from `issue_effort()` and `recent_issue_velocity()` results
 
-8. **`scripts/tests/test_enh1905_doc_wiring.py`** (new file) — create following `scripts/tests/test_enh1888_doc_wiring.py`; validate `commands/create-sprint.md`, `skills/scope-epic/SKILL.md`, `skills/manage-issue/SKILL.md`, `skills/review-epic/SKILL.md` each contain `Bash(ll-history-context:*)` in `allowed-tools`.
+8. **`scripts/tests/test_history_reader.py`** — add test cases for `issue_effort()` and `recent_issue_velocity()`: empty-DB returns `None`/`[]`; single-session returns `cycle_time_days=0.0`; multi-session returns correct day delta.
+
+9. **`scripts/tests/test_enh1905_doc_wiring.py`** (new file) — create following `scripts/tests/test_enh1888_doc_wiring.py`; validate `commands/create-sprint.md`, `skills/scope-epic/SKILL.md`, `skills/manage-issue/SKILL.md`, `skills/review-epic/SKILL.md` each contain `Bash(ll-history-context:*)` in `allowed-tools`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -195,8 +213,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Scope Boundaries
 
-- **In scope**: Adding `issue_effort()` / `recent_issue_velocity()` reads to `history_reader.py`; CLI exposure via `ll-history-context`; wiring the four planning skills with graceful-degradation guards.
-- **Out of scope**: New session data collection (handled by ENH-1904); UI/visualization of effort data; changes to how `issue_sessions` view is populated; backfilling historical data.
+- **In scope**: Adding `issue_effort()` / `recent_issue_velocity()` reads to `history_reader.py`; CLI exposure via `ll-history-context`; wiring the four planning skills with graceful-degradation guards; adding `history.velocity_window`, `history.effort_fields`, and `history.max_age_days` config keys to `config-schema.json` so users can tune the rubric without code changes.
+- **Out of scope**: New session data collection (handled by ENH-1904); UI/visualization of effort data; changes to how `issue_sessions` view is populated; backfilling historical data; configuring which skills receive history context (tracked in ENH-1909).
 
 ## Impact
 
@@ -213,16 +231,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-03_
+_Last updated by `/ll:confidence-check` on 2026-06-03 (re-check after wire-issue pass)_
 
 **Readiness Score**: 96/100 → PROCEED
 **Outcome Confidence**: 74/100 → MODERATE
 
 ### Outcome Risk Factors
-- Broad file surface across 14 sites — coordinating changes across Python, 4 skill markdowns, 1 command, 3 doc files, 3 test files, and CLAUDE.md increases the chance of omitting one touchpoint; implement tests first so the doc-wiring assertions guard the sweep
-- Implementation ordering: Python backend (`history_reader.py`) and CLI `--effort` flag must be complete before skill wiring can be verified end-to-end; implement co-deliverables in sequence: Python functions → CLI → skill wiring → tests
+- Broad file surface across 15 sites (wire-issue pass added Codex bridge stub, CLI.md, ARCHITECTURE.md, CLAUDE.md to the original 11 sites) — tick off sites in order using `test_enh1905_doc_wiring.py` assertions as a completeness gate
+- Implementation ordering: Python backend (`history_reader.py` + `history_context.py`) must be complete and tested before skill wiring can be end-to-end verified; recommended sequence: Python functions → CLI `--effort` flag → config-schema.json → skill wiring (4 skills + Codex stub) → doc updates
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-03T21:30:00Z - `05f0b8cd-d4c6-444a-8f99-5505d4cea6e9.jsonl`
+- `/ll:refine-issue` - 2026-06-03T20:56:43 - `d1a065c6-71ae-4747-b229-4d42ac65cacd.jsonl`
 - `/ll:confidence-check` - 2026-06-03T20:30:00Z - `31b2bc85-a0b5-413e-94f6-06c7a9e7124c.jsonl`
 - `/ll:wire-issue` - 2026-06-03T20:19:04 - `c1a5f52d-2382-47ae-be05-cfb663438f44.jsonl`
 - `/ll:refine-issue` - 2026-06-03T20:12:40 - `5cfac3fd-69b5-4992-849b-b3e21aecf055.jsonl`

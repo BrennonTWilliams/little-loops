@@ -7,10 +7,11 @@ discovered_date: 2026-06-03
 captured_at: "2026-06-03T19:54:05Z"
 discovered_by: capture-issue
 parent: EPIC-1707
-relates_to: [ENH-1752, ENH-1846, ENH-1847, FEAT-1263, ENH-1830]
+relates_to: [ENH-1752, ENH-1846, ENH-1847, FEAT-1263, ENH-1830, ENH-1905, ENH-1909, ENH-1911]
 labels:
   - captured
   - history-db
+  - configurability
 ---
 
 # ENH-1907: Project-Context Snapshot at Session Start
@@ -78,22 +79,71 @@ it benefits **every** session (not just issue-scoped skills), it reuses the
 already-built read API (ENH-1752), and it directly exercises the
 `user_corrections` → fewer-repeated-corrections success metric the EPIC tracks.
 
+## Success Metrics
+
+- Gate-off (default): no `<project_context>` block injected; `session_start` timing unaffected.
+- Gate-on + populated DB: `<project_context>` block present in session context and under hard `char_cap`.
+- Gate-on + missing/stale DB: no block injected, no error, exit 0 (graceful degradation verified).
+- **Config-driven composition**: reordering `sections` reorders the rendered blocks; omitting a section removes it; `sections: []` injects nothing — all verified without editing code.
+- **Inspectability**: `ll-history-context --project` prints exactly what the hook would inject for the current config.
+- Reduction in repeated `user_corrections` across sessions (EPIC-1707 primary metric).
+
+## Scope Boundaries
+
+- **In scope**: `project_digest()` aggregation + **section-provider registry** + bounded formatter in `history_reader.py`; gated wiring in `session_start.py`; ordered `history.session_digest.sections` config block in `config-schema.json`; a `ll-history-context --project` inspection dry-run (prints what would be injected, for config tuning); unit and integration tests; docs sweep (ARCHITECTURE / API / CONFIGURATION).
+- **Out of scope**: Per-session personal handoff (FEAT-1263), issue-scoped history lookups (ENH-1846/1847), backfill behavior changes (ENH-1830), real-time within-session digest refresh (digest reflects previous-session rows only by design), user-supplied output **templates** / arbitrary external data sources (deliberately deferred — they conflict with the fixed `char_cap` on the every-session hot path; the section registry covers composability safely without them).
+
 ## Proposed Solution
 
+The guiding design principle is **"project info surfaced at session start should
+be as user-configurable as possible, long-term"** — without sacrificing the
+hot-path safety envelope EPIC-1707 mandates. This means the *what* (which
+sections, which sources, in what order) is config-driven, while the *safety
+ceiling* (gate, hard char cap, freshness window) stays fixed and is not
+user-unbounded. The mechanism is a **section-provider registry**, not three
+hardcoded blocks.
+
 1. **Add a project-digest query to `history_reader.py`** — a new
-   `project_digest(db_path, *, days=7, max_files=N, max_issues=N,
-   max_corrections=N)` that aggregates across all paths/issues (the existing
-   `recent_file_events` / `find_user_corrections` / `related_issue_events` are
-   per-path / per-topic / per-issue and don't roll up). Returns a typed
-   dataclass; returns an empty/sentinel result on missing/empty/stale DB, mirroring
-   the degradation contract the other readers already follow.
+   `project_digest(db_path, *, days=7, sections=...)` that aggregates across all
+   paths/issues (the existing `recent_file_events` / `find_user_corrections` /
+   `related_issue_events` are per-path / per-topic / per-issue and don't roll
+   up). Returns a typed dataclass; returns an empty/sentinel result on
+   missing/empty/stale DB, mirroring the degradation contract the other readers
+   already follow.
 
-2. **Render a bounded block** — a small formatter (in `history_reader.py` or a
-   thin helper) that turns the digest into the `<project_context>` markdown,
-   enforcing a **hard character cap** so the block can never bloat the
-   every-session hot path.
+2. **Build the digest from a registry of named section providers**, NOT three
+   hardcoded blocks. Each provider is a small record:
 
-3. **Wire into `session_start.py`** — behind an **opt-in config gate**, call the
+   ```python
+   SectionProvider(
+       name="touched_files",      # config-addressable key
+       query=_touched_files,      # (conn, *, days, cap) -> list[Row]
+       default_cap=10,
+       render=_render_touched,    # rows -> markdown lines
+   )
+   ```
+
+   The three v1 providers (`touched_files`, `completed_issues`,
+   `recurring_corrections`) register into a `SECTION_PROVIDERS` table. The
+   digest renders providers **in the order the config `sections` list names
+   them**; a section omitted from the list is suppressed. This is the single
+   change that makes "as configurable as possible" cheap now and expensive
+   later: future history-derived signals — effort/velocity (ENH-1905),
+   quantified evolution triggers (ENH-1911) — land as a *new provider + a config
+   entry*, with **no formatter rewrite and no schema migration**. (This mirrors
+   how ENH-1909 turns ENH-1905's hardcoded skill set into a config list — same
+   "registry + config-or-default" contract, same `history.*` namespace.)
+
+3. **Render a bounded block** — a formatter that walks the configured providers
+   in order, applies each provider's cap, and concatenates their markdown into
+   the `<project_context>` block, enforcing a **global hard character cap**
+   (`char_cap`) so the block can never bloat the every-session hot path
+   regardless of how many sections a user enables (truncate with a "+N more"
+   tail). `char_cap` and `enabled` are the fixed safety ceiling — deliberately
+   NOT "as configurable as possible," because full template/source freedom on
+   the every-session path conflicts with EPIC-1707's primary risk.
+
+4. **Wire into `session_start.py`** — behind an **opt-in config gate**, call the
    digest + formatter and emit the block via `additionalContext`
    (`hookSpecificOutput.additionalContext` envelope — see FEAT-1263's format
    correction note). All errors suppressed; never blocks startup. Note the
@@ -101,10 +151,19 @@ already-built read API (ENH-1752), and it directly exercises the
    so the digest reflects the *previous* session's already-persisted rows, not
    this session's backfill — acceptable, but document it.
 
-4. **Config + schema** — add a gate flag (proposed:
-   `history.session_digest.enabled`, default `false` while it bakes) plus the
-   tunables (`days`, caps) to `config-schema.json`
-   (`additionalProperties: false`, so the schema MUST be updated).
+5. **Add an inspection dry-run** — a `ll-history-context --project` mode (or
+   equivalent) that prints exactly what *would* be injected for the current
+   config, without starting a session. This is the mechanism by which a user
+   iterates on their `sections` config; without it, tuning means starting
+   sessions and eyeballing the result. Reuses the same `project_digest()` +
+   formatter, so it costs little beyond an argparse branch.
+
+6. **Config + schema** — add a gate flag (`history.session_digest.enabled`,
+   default `false` while it bakes), the global tunables (`days`, `char_cap`),
+   and the **ordered `sections` list** (each entry `{name, max}`) to
+   `config-schema.json` (`additionalProperties: false`, so the schema MUST be
+   updated). Note `history` is not yet a top-level schema key — coordinate the
+   parent-object definition with ENH-1905 / ENH-1909, whichever lands first.
 
 ### Critical design constraints
 
@@ -117,26 +176,87 @@ agents, and `session_start` is on the hot path of *every* session. Therefore:
 - **Graceful degradation** on missing/empty/stale DB — inject nothing, never
   error, never block startup.
 
+## API/Interface
+
+```python
+@dataclass(frozen=True)
+class SectionProvider:
+    name: str                                   # config-addressable key
+    query: Callable[..., list]                  # (conn, *, days, cap) -> rows
+    default_cap: int
+    render: Callable[[list], list[str]]         # rows -> markdown lines
+
+SECTION_PROVIDERS: dict[str, SectionProvider]   # registry; v1 = 3 entries
+
+def project_digest(
+    db_path: Path,
+    *,
+    days: int = 7,
+    sections: list[SectionSpec] | None = None,   # ordered; None -> all providers
+) -> ProjectDigest: ...
+
+def render_project_context(
+    digest: ProjectDigest,
+    *,
+    char_cap: int = 1200,
+) -> str: ...   # "" when digest is empty (no block injected)
+```
+
+Config keys added to `config-schema.json` under `history.session_digest`:
+- `enabled` (bool, default `false`) — fixed safety gate
+- `days` (int, default `7`) — global freshness window
+- `char_cap` (int, default `1200`) — fixed hot-path safety ceiling
+- `sections` (array, ordered) — each entry `{ "name": str, "max": int }`;
+  render order = list order; omit a section to suppress it; default = all v1
+  providers at their `default_cap`. New history-derived providers (ENH-1905
+  effort/velocity, ENH-1911 evolution triggers) become additional entries here
+  with no formatter/schema change.
+
+```jsonc
+"history": {
+  "session_digest": {
+    "enabled": false,
+    "days": 7,
+    "char_cap": 1200,
+    "sections": [
+      { "name": "touched_files",         "max": 10 },
+      { "name": "completed_issues",      "max": 5  },
+      { "name": "recurring_corrections", "max": 5  }
+    ]
+  }
+}
+```
+
 ## Integration Map
 
 ### Files to Modify
 
-- `scripts/little_loops/history_reader.py` — add `project_digest()` aggregation +
-  bounded markdown formatter; reuse the `_connect_readonly` / `_stale_cutoff`
-  helpers.
+- `scripts/little_loops/history_reader.py` — add the `SECTION_PROVIDERS`
+  registry (3 v1 providers), `project_digest()` aggregation, and the
+  order-aware bounded `render_project_context()` formatter; reuse the
+  `_connect_readonly` / `_stale_cutoff` helpers.
 - `scripts/little_loops/hooks/session_start.py` — in `handle()`, after config
   composition, append the rendered block to the stdout/`additionalContext`
   payload behind the gate (best-effort, suppressed).
-- `config-schema.json` — add `history.session_digest` object
-  (`enabled` + tunables); schema is `additionalProperties: false`.
+- `ll-history-context` CLI (entry point in `scripts/`) — add a `--project`
+  mode that prints the rendered digest for the current config and exits
+  (inspection / config-tuning surface).
+- `config-schema.json` — add `history.session_digest` object (`enabled`,
+  `days`, `char_cap`, ordered `sections`); schema is
+  `additionalProperties: false`. Coordinate the `history` parent-object
+  definition with ENH-1905 / ENH-1909.
 
 ### Tests
 
 - `scripts/tests/test_history_reader.py` — `project_digest` cases: populated DB,
-  empty tables, stale-only rows (>window), and size-cap truncation.
+  empty tables, stale-only rows (>window), `char_cap` truncation, **section
+  selection/ordering** (custom `sections` list reorders blocks; omitted section
+  is absent; `sections: []` → empty digest), and per-section `max` capping.
 - `scripts/tests/test_hooks_integration.py` — extend session-start coverage:
   gate off → no block; gate on + populated DB → `<project_context>` present and
   under the cap; gate on + missing/empty DB → no block, exit 0.
+- CLI test — `ll-history-context --project` prints the same block the hook would
+  inject for a given config (and nothing on empty/stale DB, exit 0).
 
 ### Documentation
 
@@ -147,12 +267,17 @@ agents, and `session_start` is on the hot path of *every* session. Therefore:
 
 ## Implementation Steps
 
-1. Implement `project_digest()` + formatter in `history_reader.py` with
-   degradation + cap; unit-test in isolation.
-2. Add the `history.session_digest` config block to `config-schema.json`.
+1. Implement the `SECTION_PROVIDERS` registry (3 v1 providers), `project_digest()`,
+   and order-aware `render_project_context()` in `history_reader.py` with
+   degradation + cap; unit-test in isolation (incl. section ordering/omission).
+2. Add the `history.session_digest` config block (`enabled`, `days`, `char_cap`,
+   ordered `sections`) to `config-schema.json`.
 3. Wire the gated call into `session_start.py::handle()`; suppress all errors.
-4. Add session-start integration tests (gate on/off, populated/empty/stale).
-5. Doc sweep (ARCHITECTURE / API / CONFIGURATION).
+4. Add the `ll-history-context --project` inspection mode + its test.
+5. Add session-start integration tests (gate on/off, populated/empty/stale).
+6. Doc sweep (ARCHITECTURE / API / CONFIGURATION) — document the section
+   registry as the extension point future history-derived consumers register
+   into.
 
 ## Impact
 
@@ -172,12 +297,19 @@ agents, and `session_start` is on the hot path of *every* session. Therefore:
 - ENH-1846 / ENH-1847 — `ll-history-context` (issue-scoped sibling consumer)
 - FEAT-1263 — SessionStart Context Injector (personal handoff; distinct concern)
 - ENH-1830 — background backfill at session start (ordering interaction)
+- ENH-1905 — wire effort/velocity history reads into planning skills (a future
+  section provider; establishes the `history.*` "config-or-default" pattern)
+- ENH-1909 — make planning-skill history injection configurable (sibling
+  `history.*` configurability issue; same registry-vs-hardcoded reframe)
+- ENH-1911 — quantified evolution triggers from history (a future section
+  provider)
 
 ## Labels
 
 `captured`, `history-db`
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-03T19:57:40 - `eac7b3fc-572a-4d81-b23d-2d9c91efa16d.jsonl`
 - `/ll:capture-issue` - 2026-06-03T19:54:05Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ada31840-370b-4650-bda9-261f3422cc4a.jsonl`
 
 ---
