@@ -30,6 +30,8 @@ Personal development preferences.
 
 **Merge behavior**: Nested objects are deep merged, arrays replace (not append), explicit `null` removes a setting.
 
+**Note**: The `## Active Rules` section in the body of `ll.local.md` is machine-written by `sync_to_local_md` (via `ll-issues decisions sync`) and contains active required decision rules. Do not hand-edit this section; it will be overwritten on the next sync.
+
 ## Key Directories
 
 ```

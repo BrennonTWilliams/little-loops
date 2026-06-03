@@ -286,3 +286,94 @@ class TestSetOutcome:
         assert isinstance(loaded[0], DecisionEntry)
         assert loaded[0].scope == "quarter"
         assert loaded[0].issue is None
+
+
+class TestSyncToLocalMd:
+    """Tests for sync_to_local_md() in little_loops.decisions_sync."""
+
+    @pytest.fixture
+    def decisions_path(self, tmp_path: Path) -> Path:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(parents=True, exist_ok=True)
+        return ll_dir / "decisions.yaml"
+
+    def _write_rules(self, decisions_path: Path, rules: list) -> None:
+        import yaml
+        decisions_path.write_text(yaml.dump(rules), encoding="utf-8")
+
+    def test_creates_section(self, decisions_path: Path) -> None:
+        from little_loops.decisions import save_decisions
+        from little_loops.decisions_sync import sync_to_local_md
+
+        rule = RuleEntry(id="R-001", rule="Use atomic writes", enforcement="required")
+        save_decisions([rule], decisions_path)
+
+        sync_to_local_md(path=decisions_path)
+
+        ll_local = decisions_path.parent / "ll.local.md"
+        content = ll_local.read_text(encoding="utf-8")
+        assert "## Active Rules" in content
+        assert "Use atomic writes" in content
+
+    def test_replaces_existing_section(self, decisions_path: Path) -> None:
+        from little_loops.decisions import save_decisions
+        from little_loops.decisions_sync import sync_to_local_md
+
+        ll_local = decisions_path.parent / "ll.local.md"
+        ll_local.write_text("---\nkey: value\n---\n\n## Active Rules\n\n- Old rule\n", encoding="utf-8")
+
+        rule = RuleEntry(id="R-001", rule="New required rule", enforcement="required")
+        save_decisions([rule], decisions_path)
+
+        sync_to_local_md(path=decisions_path)
+
+        content = ll_local.read_text(encoding="utf-8")
+        assert content.count("## Active Rules") == 1
+        assert "New required rule" in content
+        assert "Old rule" not in content
+
+    def test_filters_advisory_rules(self, decisions_path: Path) -> None:
+        from little_loops.decisions import save_decisions
+        from little_loops.decisions_sync import sync_to_local_md
+
+        required = RuleEntry(id="R-001", rule="Required rule", enforcement="required")
+        advisory = RuleEntry(id="R-002", rule="Advisory rule", enforcement="advisory")
+        save_decisions([required, advisory], decisions_path)
+
+        sync_to_local_md(path=decisions_path)
+
+        ll_local = decisions_path.parent / "ll.local.md"
+        content = ll_local.read_text(encoding="utf-8")
+        assert "Required rule" in content
+        assert "Advisory rule" not in content
+
+    def test_excludes_superseded_rules(self, decisions_path: Path) -> None:
+        from little_loops.decisions import save_decisions
+        from little_loops.decisions_sync import sync_to_local_md
+
+        old_rule = RuleEntry(id="R-001", rule="Old rule", enforcement="required")
+        new_rule = RuleEntry(id="R-002", rule="New rule", enforcement="required", supersedes="R-001")
+        save_decisions([old_rule, new_rule], decisions_path)
+
+        sync_to_local_md(path=decisions_path)
+
+        ll_local = decisions_path.parent / "ll.local.md"
+        content = ll_local.read_text(encoding="utf-8")
+        assert "New rule" in content
+        assert "Old rule" not in content
+
+    def test_uses_atomic_write(self, decisions_path: Path) -> None:
+        from unittest.mock import patch
+        from little_loops.decisions import save_decisions
+        from little_loops.decisions_sync import sync_to_local_md
+
+        rule = RuleEntry(id="R-001", rule="Atomic rule", enforcement="required")
+        save_decisions([rule], decisions_path)
+
+        ll_local = decisions_path.parent / "ll.local.md"
+        with patch("os.replace") as mock_replace:
+            sync_to_local_md(path=decisions_path)
+        assert mock_replace.called
+        # The target of the replace should be ll.local.md
+        final_target = mock_replace.call_args[0][1]
+        assert str(ll_local) == str(final_target)

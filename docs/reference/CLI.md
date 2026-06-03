@@ -1266,7 +1266,7 @@ Manage rules, decisions, and exceptions log.
 | `add` | Add a new rule, decision, or exception entry |
 | `outcome <ID>` | Record the outcome of a decision entry |
 | `generate` | Generate entries from completed issues (stub; see FEAT-1893) |
-| `sync` | Sync active rules to `.ll/ll.local.md` (stub; see FEAT-1895) |
+| `sync` | Sync active rules to `.ll/ll.local.md` |
 
 **`list` flags:**
 

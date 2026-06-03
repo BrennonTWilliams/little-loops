@@ -255,6 +255,7 @@ little-loops/
         ├── logo.py              # CLI logo display
         ├── frontmatter.py       # YAML frontmatter parsing
         ├── decisions.py         # Decisions and rules log data layer (FEAT-1891)
+        ├── decisions_sync.py    # Decisions sync and session start integration (FEAT-1895)
         ├── learning_tests.py    # Learning test registry (CRUD for .ll/learning-tests/)
         ├── doc_counts.py        # Documentation count utilities
         ├── link_checker.py      # Link validation

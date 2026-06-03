@@ -521,14 +521,16 @@ class TestDecisionsCLIOutcome:
 class TestDecisionsCLISync:
     """Tests for ll-issues decisions sync sub-sub-command."""
 
-    def test_sync_stub(
+    def test_sync_creates_ll_local_md(
         self,
         temp_project_dir: Path,
         sample_config: dict[str, Any],
         decisions_path: Path,
-        capsys: pytest.CaptureFixture[str],
+        sample_rule: RuleEntry,
     ) -> None:
-        """sync returns 1 and stderr references FEAT-1895."""
+        """sync returns 0 and writes active rules to ll.local.md."""
+        save_decisions([sample_rule], decisions_path)
+
         with patch.object(
             sys,
             "argv",
@@ -538,9 +540,12 @@ class TestDecisionsCLISync:
 
             result = main_issues()
 
-        assert result == 1
-        captured = capsys.readouterr()
-        assert "FEAT-1895" in captured.err
+        assert result == 0
+        ll_local = decisions_path.parent / "ll.local.md"
+        assert ll_local.exists()
+        content = ll_local.read_text(encoding="utf-8")
+        assert "## Active Rules" in content
+        assert sample_rule.rule in content
 
 
 # =============================================================================

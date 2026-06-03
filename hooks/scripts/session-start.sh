@@ -74,12 +74,17 @@ else:
 # Check for local overrides
 local_file = Path(".ll/ll.local.md")
 if local_file.exists():
-    local_overrides = parse_frontmatter(local_file.read_text())
+    content = local_file.read_text()
+    local_overrides = parse_frontmatter(content)
     if local_overrides:
         merged = deep_merge(base_config, local_overrides)
         print("[little-loops] Config loaded:", str(config_file), file=sys.stderr)
         print("[little-loops] Local overrides applied from:", str(local_file), file=sys.stderr)
         print(json.dumps(merged, indent=2))
+        parts = content.split("---", 2)
+        body = parts[2].strip() if len(parts) >= 3 else ""
+        if body:
+            print(f"\n{body}", file=sys.stderr)
         sys.exit(0)
 
 # No local overrides, output base config
