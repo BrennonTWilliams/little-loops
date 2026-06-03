@@ -7,8 +7,7 @@ discovered_date: 2026-04-07
 discovered_by: split-from-ENH-494
 status: open
 parent: EPIC-1745
-blocked_by:
-- ENH-494
+blocked_by: []
 confidence_score: 80
 outcome_confidence: 86
 score_complexity: 18
@@ -90,7 +89,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
    - `TestFeat1045DocUpdates.test_readme_tool_count_is_20` (line 77, assert at line 79): update `"30 typed CLI tools"` → `"31 typed CLI tools"`
    - `TestFeat1229LlActionWiring.test_readme_tool_count_is_20` (line 190, assert at line 192): update `"30 typed CLI tools"` → `"31 typed CLI tools"`
 
-10. Update `CONTRIBUTING.md` — "New Skill Checklist" section (heading at line 538); insert new item after item 4 (`ll-verify-skill-budget` at line 550): "run `ll-verify-skills` to check that no SKILL.md exceeds 500 lines"
+10. Update `CONTRIBUTING.md` — "New Skill Checklist" section (heading at line 582); insert new item after item 4 (`ll-verify-skill-budget` at line 594): "run `ll-verify-skills` to check that no SKILL.md exceeds 500 lines"
 
 11. Update `scripts/tests/test_cli_docs.py:9` — add `main_verify_skills` to the existing import line when implementing step 5 (the `from little_loops.cli.docs import ...` line at line 9 must include the new entry point)
 
@@ -113,7 +112,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `docs/reference/CLI.md:1880` — add `ll-verify-skills` reference section after `ll-verify-skill-budget` (ends at line 1880, before `### ll-check-links` at line 1882)
 - `skills/init/SKILL.md:544,617,652` — add `ll-verify-skills` at three template locations listing `ll-verify-docs`
 - `skills/configure/areas.md:813` — add `ll-verify-skills` to enumeration string; bump count from `"Authorize all 28"` to `"Authorize all 29"`
-- `CONTRIBUTING.md:550` — "New Skill Checklist" section; add `ll-verify-skills` item after item 4 (`ll-verify-skill-budget` at line 550)
+- `CONTRIBUTING.md:594` — "New Skill Checklist" section; add `ll-verify-skills` item after item 4 (`ll-verify-skill-budget` at line 594)
 - `scripts/tests/test_create_extension_wiring.py` — update count assertions for `areas.md` (steps 8) and `README.md` (step 9)
 
 ### New Files
@@ -144,7 +143,7 @@ _Wiring pass added by `/ll:wire-issue`; line numbers verified by `/ll:refine-iss
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `CONTRIBUTING.md` — "New Skill Checklist" section (line 538); item 4 (line 550) references only `ll-verify-skill-budget`; add new item for `ll-verify-skills` and the 500-line SKILL.md limit
+- `CONTRIBUTING.md` — "New Skill Checklist" section (line 582); item 4 (line 594) references only `ll-verify-skill-budget`; add new item for `ll-verify-skills` and the 500-line SKILL.md limit
 - `docs/claude-code/skills.md` — `<Tip>Keep SKILL.md under 500 lines...` block; add "Enforce with `ll-verify-skills`" cross-reference (informational, not a breaking gap)
 
 ## Impact
@@ -159,6 +158,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 `enhancement`, `cli`, `testing`, `skills`, `context-engineering`
 
 ## Verification Notes
+
+**Verdict**: VALID — Re-verified 2026-06-02
+
+- ENH-494 is `status: done` — blocker cleared; removed from `blocked_by` frontmatter
+- All 6 former SKILL.md violators now under 500 lines: audit-claude-config (470), confidence-check (499), init (497), manage-issue (496), debug-loop-run (426), review-loop (444) — threshold remains meaningful (files are close to the limit, not trivially far below it)
+- "Lint will fail on day 1" warning from earlier passes is resolved — companion files are in place
+- CONTRIBUTING.md line numbers updated: section heading drifted to 582 (was 538), `ll-verify-skill-budget` item to 594 (was 550)
+- All other line references verified accurate: doc_counts.py (319, 350, 366), docs.py (111, 234, 237), cli/__init__.py (43, 100), test_doc_counts.py (702, 705), test_cli_docs.py (9, 353)
 
 **Verdict**: VALID — Re-verified 2026-05-22
 
@@ -200,6 +207,7 @@ _Added by `/ll:confidence-check` on 2026-06-02_
 - **5 breaking test assertions pre-identified**: `test_create_extension_wiring.py` contains 5 assertions that will break: 3 asserting `"Authorize all 28"` (lines 57, 196, 375) and 2 asserting `"30 typed CLI tools"` (lines 79, 192). Steps 8–9 in the implementation plan address these.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-03T03:45:06 - `1c5f3489-3162-4e2a-b587-f77e2b02980f.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:refine-issue` - 2026-06-03T01:55:51 - `7d84a3c4-7800-4b5a-b1f1-cde3fa604493.jsonl`
 - `/ll:refine-issue` - 2026-06-03T02:00:00 - `unknown`
@@ -236,7 +244,7 @@ _Added by `/ll:confidence-check` on 2026-06-02_
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04): After ENH-494 ships and extracts overflow content from `audit-claude-config`, `confidence-check`, `init`, and `manage-issue` SKILL.md files, re-verify that the 500-line threshold is still meaningful (i.e., the remaining SKILL.md files are not all trivially under 500 lines). Confirm the threshold before publishing `ll-verify-skills` — if ENH-494 brings all files well below 500 lines, the tool may need a lower threshold or per-file annotations to remain useful.
+**Note** (added by `/ll:audit-issue-conflicts` 2026-05-04; resolved 2026-06-02): After ENH-494 ships and extracts overflow content from `audit-claude-config`, `confidence-check`, `init`, and `manage-issue` SKILL.md files, re-verify that the 500-line threshold is still meaningful (i.e., the remaining SKILL.md files are not all trivially under 500 lines). **RESOLVED**: ENH-494 is `status: done`. All 6 violators are now at 426–499 lines — close to the 500-line ceiling, confirming the threshold is meaningful. No adjustment needed.
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-10): Once ENH-1394 ships, skills tagged `disable-model-invocation: true` in their frontmatter are intentionally excluded from the Claude Code listing budget and may legitimately exceed 500 lines (since they are never loaded into the prompt token budget). The `ll-verify-skills` lint tool MUST skip (or report in a separate informational category, not as a violation) any SKILL.md that has `disable-model-invocation: true`. Implement this exclusion rule at the same time as or after ENH-1394 lands. Related: ENH-1394, ENH-1398.
 
