@@ -2,9 +2,10 @@
 id: ENH-1884
 type: ENH
 priority: P4
-status: open
+status: done
 discovered_date: 2026-06-03
 captured_at: '2026-06-03T00:00:44Z'
+completed_at: '2026-06-03T01:27:52Z'
 discovered_by: capture-issue
 relates_to:
 - ENH-1883
@@ -162,6 +163,7 @@ _Added by `/ll:confidence-check` on 2026-06-02_
 - **Minor unresolved point**: `capture.*` sub-questions in `skills/configure/areas.md` are "(optional)" — decide at implementation time whether to mirror `learning_tests` sub-options per capture category or keep a single three-way Enable/Disable/Keep toggle
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-03T01:21:12 - `cd337a5e-6c5a-497f-85c6-5d7810ae3d93.jsonl`
 - `/ll:wire-issue` - 2026-06-03T01:15:30 - `8ec4fac1-2d16-4aea-837a-70e1536cd194.jsonl`
 - `/ll:refine-issue` - 2026-06-03T01:10:48 - `3a0b09f9-ee68-4e79-af7f-259373dea049.jsonl`
 - `/ll:format-issue` - 2026-06-03T00:02:41 - `9d48d4a7-c415-4554-9993-3036a70f17e9.jsonl`

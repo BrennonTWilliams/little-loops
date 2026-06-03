@@ -1152,3 +1152,75 @@ questions:
         description: "Default subdirectory"
     multiSelect: false
 ```
+
+---
+
+## Area: analytics
+
+### Current Values
+
+```
+Current Analytics Configuration
+--------------------------------
+  enabled:              {{config.analytics.enabled}}
+  capture.skills:       {{config.analytics.capture.skills}}
+  capture.cli_commands: {{config.analytics.capture.cli_commands}}
+  capture.corrections:  {{config.analytics.capture.corrections}}
+  capture.file_events:  {{config.analytics.capture.file_events}}
+```
+
+### Round 1
+
+```yaml
+questions:
+  - header: "Analytics"
+    question: "Enable analytics capture for this project?"
+    options:
+      - label: "Enable (turn on)"
+        description: "Track skill events, corrections, and file ops into .ll/history.db"
+      - label: "Disable (turn off)"
+        description: "Disable all analytics capture — history.db features become inactive"
+      - label: "Keep current ({{config.analytics.enabled}})"
+        description: "No change"
+    multiSelect: false
+
+  - header: "Skills"
+    question: "Which skills should be captured? (current: {{config.analytics.capture.skills}})"
+    options:
+      - label: "["*"] (capture all)"
+        description: "Capture events for all skills (default)"
+      - label: "Keep {{config.analytics.capture.skills}}"
+        description: "No change"
+    multiSelect: false
+
+  - header: "Corrections"
+    question: "Capture correction events (issue refinements, re-runs)? (current: {{config.analytics.capture.corrections}})"
+    options:
+      - label: "true (capture)"
+        description: "Record correction events in history.db (default)"
+      - label: "false (skip)"
+        description: "Do not capture correction events"
+      - label: "Keep {{config.analytics.capture.corrections}}"
+        description: "No change"
+    multiSelect: false
+
+  - header: "File Events"
+    question: "Capture file operation events? (current: {{config.analytics.capture.file_events}})"
+    options:
+      - label: "true (capture)"
+        description: "Record file create/edit/delete events in history.db (default)"
+      - label: "false (skip)"
+        description: "Do not capture file events"
+      - label: "Keep {{config.analytics.capture.file_events}}"
+        description: "No change"
+    multiSelect: false
+```
+
+### Configuration Result
+
+Based on selections, update `.ll/ll-config.json`:
+
+- If "Enable" selected: set `analytics.enabled: true` and write full `capture` sub-object with all four fields
+- If "Disable" selected: set `analytics.enabled: false` (omit `capture` sub-object)
+- If "Keep current" selected: preserve existing `enabled` value
+- Map capture selections to `analytics.capture.*` fields (omit if matching schema defaults)

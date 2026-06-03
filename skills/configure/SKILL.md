@@ -11,7 +11,7 @@ allowed-tools:
   - Bash(pip:*)
 arguments:
   - name: area
-    description: "project|issues|commands|parallel|automation|documents|continuation|context|prompt|scan|sync|allowed-tools|hooks|design-tokens|learning-tests (optional - prompts if omitted)"
+    description: "project|issues|commands|parallel|automation|documents|continuation|context|prompt|scan|sync|allowed-tools|hooks|design-tokens|analytics|learning-tests (optional - prompts if omitted)"
     required: false
   - name: flags
     description: Optional flags (--list, --show, --reset)
@@ -113,6 +113,7 @@ Map argument names to config sections:
 | `hooks` | `hooks` in `.claude/settings.json` or `.claude/settings.local.json` | ll- lifecycle hook configuration (Note: writes to Claude Code settings files, not ll-config.json) |
 | `design-tokens` | `design_tokens` | Design system token settings |
 | `learning-tests` | `learning_tests` | Learning test registry: enabled, stale_after_days, discoverability mode |
+| `analytics` | `analytics` | Analytics capture: enabled, skills, corrections, file_events |
 
 ---
 
@@ -142,6 +143,7 @@ Configuration Areas
   hooks         [DEFAULT]     ll- hook configuration in settings.json/settings.local.json
   design-tokens [DEFAULT]     Design system token settings
   learning-tests [DEFAULT]    Learning test registry: enabled, stale_after_days, discoverability
+  analytics      [DEFAULT]     Analytics capture: enabled, skills, corrections, file_events
 
 Configure: /ll:configure <area>
 Show:      /ll:configure <area> --show
@@ -264,7 +266,7 @@ questions:
       - label: "design-tokens"
         description: "Design system token settings"
       - label: "More areas..."
-        description: "Show learning-tests, allowed-tools, hooks"
+        description: "Show analytics, learning-tests, allowed-tools, hooks"
 ```
 
 If "More areas..." selected again:
@@ -275,6 +277,8 @@ questions:
     header: "Area"
     multiSelect: false
     options:
+      - label: "analytics"
+        description: "Analytics capture: enabled, skills, corrections, file_events"
       - label: "learning-tests"
         description: "Learning test registry: enabled, stale_after_days, discoverability"
       - label: "allowed-tools"
@@ -350,6 +354,7 @@ $ARGUMENTS
   - `allowed-tools` - ll- CLI tool allow entries in settings.json/settings.local.json
   - `hooks` - ll- lifecycle hook configuration in settings.json/settings.local.json
   - `design-tokens` - Design system token settings
+  - `analytics` - Analytics capture: enabled, skills, corrections, file_events
   - `learning-tests` - Learning test registry: enabled, stale_after_days, discoverability
 
 - **flags** (optional): Command behavior flags

@@ -10,12 +10,13 @@ Before starting the wizard, initialize these counters:
 
 ```
 STEP = 0      # Current round number (incremented before each round)
-TOTAL = 9     # Working total (mandatory rounds: 1, 2, 3a, 4, 6, 7, 8, 13, 14)
+TOTAL = 10    # Working total (mandatory rounds: 1, 2, 3a, 4, 6, 7, 8, 9, 13, 14)
               # Round 3b is silent (automation always enabled, no user prompt)
               # Round 4 is mandatory (product analysis opt-in)
               # Round 5a is conditional (only if parallel processing selected)
               # Round 8 is mandatory (learning tests opt-in)
-              # Round 9 is silent (advanced settings always skipped)
+              # Round 9 is mandatory (analytics opt-in)
+              # Round 10 is silent (advanced settings always skipped)
               # Hooks are always active via the plugin system — no installation round needed
 ```
 
@@ -577,16 +578,58 @@ Options:
 - Track: `LEARNING_TESTS_ENABLED=false`
 
 **MANDATORY NEXT STEP - DO NOT SKIP:**
-After completing Round 8, you MUST immediately proceed to **Round 9 (Extended Config Gate)** below.
+After completing Round 8, you MUST immediately proceed to **Round 9 (Analytics)** below.
 
 ---
 
-## Round 9: Extended Configuration Gate (Auto-Skipped)
+## Round 9: Analytics — MANDATORY, ALWAYS RUNS
+
+**CRITICAL**: You MUST execute this round. The wizard is NOT complete until you have asked about analytics. If you skipped here without asking, GO BACK and ask it now.
+
+Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Analytics
+
+Ask the user a single question using AskUserQuestion:
+
+```
+Question: "Enable analytics? Tracks skill events, corrections, and file ops into `.ll/history.db` for use by `/ll:ctx-stats` and context-aware features."
+
+Options:
+  - label: "Yes, enable analytics (Recommended)"
+    description: "Writes full analytics block with enabled: true and default-inclusive capture settings"
+  - label: "No, skip for now"
+    description: "Writes analytics: { enabled: false } — explicit opt-out recorded in config"
+```
+
+**If "Yes, enable analytics" selected:**
+- Include the full `analytics` block in the generated config:
+  ```json
+  "analytics": {
+    "enabled": true,
+    "capture": {
+      "skills": ["*"],
+      "cli_commands": ["*"],
+      "corrections": true,
+      "file_events": true
+    }
+  }
+  ```
+- Track: `ANALYTICS_ENABLED=true`
+
+**If "No, skip for now" selected:**
+- Include `"analytics": { "enabled": false }` in the generated config (explicit opt-out always written)
+- Track: `ANALYTICS_ENABLED=false`
+
+**MANDATORY NEXT STEP - DO NOT SKIP:**
+After completing Round 9, you MUST immediately proceed to **Round 10 (Extended Config Gate)** below.
+
+---
+
+## Round 10: Extended Configuration Gate (Auto-Skipped)
 
 Advanced settings are always skipped during init — no user input required. Do NOT increment STEP or prompt the user.
 
 # Always skip advanced settings — configurable via /ll:configure
-Proceed to Round 13 (Allowed Tools). Rounds 10–12 are never shown during init.
+Proceed to Round 13 (Allowed Tools). Rounds 11–13 are never shown during init.
 Users can access test directory, build command, continuation, and prompt optimization settings via `/ll:configure`.
 
 ## Round 10: Project Advanced (Optional)
@@ -855,7 +898,7 @@ questions:
 
 ## Interactive Mode Summary
 
-**Total interaction rounds: 8–9 (9 only if parallel processing selected)**
+**Total interaction rounds: 9–10 (10 only if parallel processing selected)**
 
 | Round | Group | Questions | Conditions |
 |-------|-------|-----------|------------|
@@ -867,10 +910,11 @@ questions:
 | **6** | **Document Tracking** | **docs (auto-detect or custom categories)** | **Always** |
 | **7** | **Design Tokens** | **design_tokens (enabled/path)** | **Always** |
 | **8** | **Learning Tests** | **learning_tests (enabled)** | **Always** |
-| 9 | Extended Config Gate | **Silent** — always skips; Rounds 10–12 never shown | Always (no prompt) |
-| 10 | Project Advanced (optional) | test_dir, build_cmd, run_cmd, impl_hooks | Never shown (use /ll:configure) |
-| 11 | Continuation (optional) | auto_detect, include, expiry | Never shown (use /ll:configure) |
-| 12 | Prompt Optimization (optional) | enabled, mode, confirm | Never shown (use /ll:configure) |
+| **9** | **Analytics** | **analytics (enabled: yes/no)** | **Always** |
+| 10 | Extended Config Gate | **Silent** — always skips; Rounds 11–13 never shown | Always (no prompt) |
+| 11 | Project Advanced (optional) | test_dir, build_cmd, run_cmd, impl_hooks | Never shown (use /ll:configure) |
+| 12 | Continuation (optional) | auto_detect, include, expiry | Never shown (use /ll:configure) |
+| 13 | Prompt Optimization (optional) | enabled, mode, confirm | Never shown (use /ll:configure) |
 | **13** | **Allowed Tools** | **target settings file (settings.local.json / settings.json / skip)** | **Always** |
 | **14** | **CLAUDE.md Docs** | **add ll- CLI commands to CLAUDE.md (yes/skip)** | **Always in --interactive** |
 

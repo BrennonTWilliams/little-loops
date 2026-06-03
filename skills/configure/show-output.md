@@ -202,3 +202,17 @@ Learning Tests Configuration
 
 Edit: /ll:configure learning-tests
 ```
+
+## analytics --show
+
+```
+Analytics Configuration
+-----------------------
+  enabled:              {{config.analytics.enabled}}              (default: false)
+  capture.skills:       {{config.analytics.capture.skills}}       (default: ["*"])
+  capture.cli_commands: {{config.analytics.capture.cli_commands}} (default: ["*"])
+  capture.corrections:  {{config.analytics.capture.corrections}}  (default: true)
+  capture.file_events:  {{config.analytics.capture.file_events}}  (default: true)
+
+Edit: /ll:configure analytics
+```
