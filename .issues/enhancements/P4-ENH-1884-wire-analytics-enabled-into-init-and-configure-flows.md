@@ -15,6 +15,10 @@ relates_to: [ENH-1883, EPIC-1707]
 
 Neither `/ll:init` nor `/ll:configure` prompt for or write the `analytics` config block. New projects won't have analytics enabled unless the user manually edits `.ll/ll-config.json` (as ENH-1883 does for this project). The init and configure flows should offer to enable analytics, lowering the friction for new adopters of EPIC-1707 features.
 
+## Current Behavior
+
+Neither `/ll:init` nor `/ll:configure` prompts for or writes the `analytics` config block. New projects will not have analytics enabled until the user manually edits `.ll/ll-config.json`. There is no guided path to enable analytics during project initialization or reconfiguration.
+
 ## Motivation
 
 ENH-1883 resolved the immediate gap by manually adding the `analytics` block to this project's config. But the root cause — that there's no guided path to enable analytics — remains. Any user who initializes a new project or reconfigures an existing one via `/ll:init` or `/ll:configure` will miss out on history.db features (corrections in refine-issue/ready-issue, ctx-stats, skill event tracking) until they discover the manual edit.
@@ -45,6 +49,15 @@ ENH-1883 resolved the immediate gap by manually adding the `analytics` block to 
 ### Similar Patterns
 - Other init prompts in `skills/init/SKILL.md` (e.g. prompting for test command, scan dirs) are the model to follow
 
+### Tests
+- N/A — skills are prompt-based; verify manually by running `/ll:init` in a scratch project
+
+### Documentation
+- N/A — no doc pages document the analytics block for end users yet (EPIC-1707 scope)
+
+### Configuration
+- `templates/` — project-type config templates used as the base for `/ll:init`
+
 ## Implementation Steps
 
 1. Locate the init skill (`skills/init/SKILL.md`) and find where base config is written
@@ -60,5 +73,14 @@ ENH-1883 resolved the immediate gap by manually adding the `analytics` block to 
 - **Risk**: Low — additive; no behavior change for projects that already have the key set
 - **Breaking Change**: No
 
+## Labels
+
+`analytics`, `init`, `configure`, `ux`, `captured`
+
+## Status
+
+**Open** | Created: 2026-06-03 | Priority: P4
+
 ## Session Log
+- `/ll:format-issue` - 2026-06-03T00:02:41 - `9d48d4a7-c415-4554-9993-3036a70f17e9.jsonl`
 - `/ll:capture-issue` - 2026-06-03T00:00:44Z - `9351ec8d-8ce0-495b-85f9-95010ab64ced.jsonl`
