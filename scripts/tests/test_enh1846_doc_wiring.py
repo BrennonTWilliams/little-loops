@@ -63,4 +63,4 @@ class TestEnh1846LlHistoryContextWiring:
 
     def test_readme_tool_count_updated_to_30(self) -> None:
         content = README.read_text()
-        assert "31 typed CLI tools" in content, "README.md must say '31 typed CLI tools'"
+        assert "32 typed CLI tools" in content, "README.md must say '32 typed CLI tools'"

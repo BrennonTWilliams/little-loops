@@ -54,21 +54,21 @@ class TestExploreApiSkillExists:
 
 
 class TestReadmeSkillCount:
-    """README.md hero page must reflect 61 skills."""
+    """README.md hero page must reflect 35 skills."""
 
     def test_skill_count_updated(self) -> None:
         content = README.read_text()
-        assert "61 skills" in content, "README.md must show '61 skills'"
+        assert "35 skills" in content, "README.md must show '35 skills'"
         assert "29 skills" not in content, "README.md must not still show '29 skills'"
 
 
 class TestContributingWiring:
-    """CONTRIBUTING.md must reflect 33 skills and list explore-api/ in the skills tree."""
+    """CONTRIBUTING.md must reflect 35 skills and list explore-api/ in the skills tree."""
 
     def test_skill_count_updated(self) -> None:
         content = CONTRIBUTING.read_text()
-        assert "33 skill definitions" in content, (
-            "CONTRIBUTING.md skill count line must show '33 skill definitions'"
+        assert "35 skill definitions" in content, (
+            "CONTRIBUTING.md skill count line must show '35 skill definitions'"
         )
 
     def test_explore_api_in_skills_tree(self) -> None:

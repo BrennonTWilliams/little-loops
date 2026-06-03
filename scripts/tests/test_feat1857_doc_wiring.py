@@ -35,20 +35,20 @@ class TestScopeEpicSkillExists:
 
 
 class TestReadmeSkillCount:
-    """README.md hero page must reflect 61 skills."""
+    """README.md hero page must reflect 35 skills."""
 
     def test_skill_count_updated(self) -> None:
         content = README.read_text()
-        assert "61 skills" in content, "README.md must show '61 skills'"
+        assert "35 skills" in content, "README.md must show '35 skills'"
 
 
 class TestContributingWiring:
-    """CONTRIBUTING.md must reflect 33 skills and list scope-epic/ in the skills tree."""
+    """CONTRIBUTING.md must reflect 35 skills and list scope-epic/ in the skills tree."""
 
     def test_skill_count_updated(self) -> None:
         content = CONTRIBUTING.read_text()
-        assert "33 skill definitions" in content, (
-            "CONTRIBUTING.md skill count line must show '33 skill definitions'"
+        assert "35 skill definitions" in content, (
+            "CONTRIBUTING.md skill count line must show '35 skill definitions'"
         )
 
     def test_scope_epic_in_skills_tree(self) -> None:
@@ -57,18 +57,18 @@ class TestContributingWiring:
 
 
 class TestArchitectureSkillCount:
-    """docs/ARCHITECTURE.md must reflect 33 skills in both the Mermaid node and tree."""
+    """docs/ARCHITECTURE.md must reflect 35 skills in both the Mermaid node and tree."""
 
     def test_mermaid_skill_count_updated(self) -> None:
         content = ARCHITECTURE.read_text()
-        assert "33 composable skills" in content, (
-            "ARCHITECTURE.md Mermaid node must show '33 composable skills'"
+        assert "35 composable skills" in content, (
+            "ARCHITECTURE.md Mermaid node must show '35 composable skills'"
         )
 
     def test_tree_skill_count_updated(self) -> None:
         content = ARCHITECTURE.read_text()
-        assert "# 33 skill definitions" in content, (
-            "ARCHITECTURE.md directory tree must show '# 33 skill definitions'"
+        assert "# 35 skill definitions" in content, (
+            "ARCHITECTURE.md directory tree must show '# 35 skill definitions'"
         )
 
 
