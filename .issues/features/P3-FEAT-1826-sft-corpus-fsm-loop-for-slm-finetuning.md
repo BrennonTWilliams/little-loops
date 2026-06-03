@@ -55,6 +55,16 @@ A practitioner wants to fine-tune an SLM on Claude Code session data. They have 
 5. **split** — stratified train/val/test split by source session, write separate output files
 6. **publish** — write final corpus files + manifest; update harvest sentinel
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Modify `scripts/tests/test_builtin_loops.py` — add `"sft-corpus"` to `expected` set in `test_expected_loops_exist()` (test breaks otherwise)
+8. Modify `scripts/little_loops/loops/dataset-curation.yaml` — add `parameters:` block declaring `data_dir`, `output_dir`, `schema_path` with defaults matching existing `context:` values; `required: false` + defaults makes this non-breaking for direct `ll-loop run dataset-curation` invocations; enables `_validate_with_bindings()` contract enforcement for the `sft-corpus` handoff
+9. Update `scripts/little_loops/loops/README.md` — add `sft-corpus` to "Data & Testing" table (line 114)
+10. Create `scripts/tests/test_loops_sft_corpus.py` — sentinel file read/write tests + structural YAML validation; follow `test_loops_recursive_refine.py` (shell state via `_bash`) and `test_rn_plan.py` (structural YAML) patterns
+11. Update `docs/guides/LOOPS_GUIDE.md` — add `sft-corpus` to loop reference table; optionally add deep-dive section parallel to `### examples-miner`
+
 ### Child loop handoff
 Pipe the curated back-half (filter → dedup → split) through `dataset-curation` via a `loop:` handoff, reusing its quality/distribution/validate/publish states rather than reimplementing them.
 
@@ -189,7 +199,11 @@ context:
 ## Integration Map
 
 ### Files to Modify
-- N/A — no existing files modified
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` — add `"sft-corpus"` to `expected` set in `test_expected_loops_exist()` — test **breaks** without this update [Agent 1/2/3 finding]
+- `scripts/little_loops/loops/dataset-curation.yaml` — add `parameters:` block declaring `data_dir`, `output_dir`, `schema_path` with defaults matching existing `context:` values per Option B decision (also listed as Dependent File; must be modified to satisfy `with:` contract enforcement) [Agent 1 finding]
+- `scripts/little_loops/loops/README.md` — add `sft-corpus` to "Data & Testing" table (line 114) [Agent 2 finding]
 
 ### New Files
 - `scripts/little_loops/loops/sft-corpus.yaml` — primary deliverable (new FSM loop)
@@ -223,9 +237,19 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_loops_recursive_refine.py` — template for testing shell state logic via `_bash(script, tmp_path)` with `.loops/tmp/` fixtures (if sentinel/filter shell snippets need unit tests)
 - `scripts/tests/test_user_messages.py` — SFT formatter tests already exist; add `extract_conversation_turns` coverage if testing that path directly
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles.test_expected_loops_exist` — update: add `"sft-corpus"` to hardcoded expected set (lines 69–135); **test breaks** when `sft-corpus.yaml` is added without this update [Agent 1/2/3 finding]
+- `scripts/tests/test_loops_sft_corpus.py` — new file: sentinel read/write tests (`test_harvest_passes_since_when_sentinel_exists`, `test_harvest_omits_since_when_no_sentinel`) + structural YAML validation; follow `test_loops_recursive_refine.py::TestDepthMapInit` and `test_rn_plan.py::TestRnPlanYaml` patterns [Agent 3 finding]
+- `scripts/tests/test_fsm_executor.py::TestSubLoopWithBindings` — add test for `sft-corpus → dataset-curation` `with:` binding resolution; follow `test_with_interpolation_from_parent_context` pattern [Agent 3 finding]
+
 ### Documentation
 - `docs/guides/EXAMPLES_MINING_GUIDE.md` — deep-dive on harvest sentinel pattern; read before implementing `ingest` state
 - `docs/guides/LOOPS_GUIDE.md` — loop authoring guide; `loop:` handoff syntax documented in sub-loop section
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — add `sft-corpus` to loop reference table (line ~337, "General-Purpose" table); currently not listed; may also warrant a `### sft-corpus` deep-dive section parallel to the existing `### examples-miner` section (line ~2328) [Agent 2 finding]
+- `scripts/little_loops/loops/README.md` — add `sft-corpus` to "Data & Testing" table (line 114) [Agent 2 finding]
+- `docs/guides/EXAMPLES_MINING_GUIDE.md` — add cross-reference or new section for `sft-corpus.last_harvested` sentinel behavior; the guide currently documents only `corpus.last_harvested` (line ~405 artifact table, line ~580 troubleshooting table) [Agent 2 finding]
 
 ### Configuration
 - `.ll/ll-config.json` — optional `sft_corpus` section for context key overrides
@@ -248,6 +272,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `loop`, `sft`, `fine-tuning`, `new-feature`
 
 ## Session Log
+- `/ll:wire-issue` - 2026-06-03T00:31:19 - `dd96413d-220c-449b-8e81-593defe00fdc.jsonl`
 - `/ll:decide-issue` - 2026-06-03T00:24:05 - `0467dd38-23d6-4a11-9d93-1a10ed0c40c9.jsonl`
 - `/ll:refine-issue` - 2026-06-03T00:18:35 - `d3bc2a68-d557-49f9-a947-e12cd4b90c1c.jsonl`
 - `/ll:format-issue` - 2026-06-02T23:15:08 - `0d29889f-5db4-42d2-b354-e9615aee84a2.jsonl`

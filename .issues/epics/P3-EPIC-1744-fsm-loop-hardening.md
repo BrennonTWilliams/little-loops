@@ -3,7 +3,7 @@ id: EPIC-1744
 title: FSM Loop Hardening
 type: EPIC
 priority: P3
-status: open
+status: done
 captured_at: "2026-05-27T00:00:00Z"
 discovered_date: "2026-05-27"
 discovered_by: manual
