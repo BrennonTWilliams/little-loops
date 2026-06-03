@@ -630,7 +630,7 @@ Decisions and rules log configuration (FEAT-1891). When enabled, architectural d
 |-----|------|---------|-------------|
 | `enabled` | `bool` | `false` | Enable the decisions log feature. |
 | `log_path` | `str` | `".ll/decisions.yaml"` | Path to the decisions log file. |
-| `auto_generate` | `list[str]` | `[]` | List of trigger patterns that auto-populate the log. |
+| `auto_generate` | `list[str]` | `[]` | Sources to auto-generate `decision` entries from on session start. Supported value: `"completed"` — scans `.issues/completed/` and appends entries for issues not yet logged. Equivalent to running `ll-issues decisions generate --from completed`. |
 
 ### `learning_tests`
 

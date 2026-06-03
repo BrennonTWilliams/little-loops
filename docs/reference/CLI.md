@@ -1308,12 +1308,25 @@ Manage rules, decisions, and exceptions log.
 | `--measured-at <ISO-8601>` | When the outcome was measured (default: now) |
 | `--force` | Overwrite an existing outcome |
 
+**`generate` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--from` | Source to generate from: `completed` (default). Reads completed issues from `.issues/completed/`, skips entries already present in `.ll/decisions.yaml`, and appends new `decision` entries for each issue not yet logged. |
+
+**`sync` flags:**
+
+No additional flags. Reads active required rules from `.ll/decisions.yaml` and writes them to the `## Active Rules` section in `.ll/ll.local.md`. Creates `.ll/ll.local.md` if absent. Silently skips when `.ll/decisions.yaml` does not exist.
+
 ```bash
 ll-issues decisions list
 ll-issues decisions list --type rule --active-only
 ll-issues decisions list --no-outcome
 ll-issues decisions add --type=decision --category=architecture --rule="Use atomic_write" --rationale="Prevents partial state"
 ll-issues decisions outcome dec-001 --result=worked --notes="No incidents in 30 days"
+ll-issues decisions generate                     # Generate from completed issues (default)
+ll-issues decisions generate --from completed    # Explicit source
+ll-issues decisions sync                         # Sync active rules → .ll/ll.local.md
 ```
 
 ---
