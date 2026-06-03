@@ -23,7 +23,7 @@ flowchart TB
     subgraph "Claude Code Plugin"
         CMD[Commands<br/>28 slash commands]
         AGT[Agents<br/>9 specialized agents]
-        SKL[Skills<br/>33 composable skills]
+        SKL[Skills<br/>35 composable skills]
     end
 
     subgraph "Configuration"
