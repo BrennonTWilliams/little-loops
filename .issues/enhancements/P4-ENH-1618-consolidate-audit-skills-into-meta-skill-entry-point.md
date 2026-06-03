@@ -100,6 +100,7 @@ Optionally set `llm_discoverable: false` on the 4 sub-skills to demote them to T
 `enhancement`, `skills`, `architecture`, `context-engineering`
 
 ## Session Log
+- `/ll:tradeoff-review-issues` - 2026-06-03T00:30:18 - `288ea8fe-1443-4178-9435-e6f8b106cc59.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:34 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:16 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:18 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
@@ -122,3 +123,21 @@ Optionally set `llm_discoverable: false` on the 4 sub-skills to demote them to T
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-28): `audit-issue-conflicts` MUST remain Tier 1 (exempt from demotion). FEAT-948 introduces `decisions.yaml` as a project governance layer, and FEAT-1736 adds load-bearing coupling entries that wire-issue consumes at runtime. As the governance surface grows, `audit-issue-conflicts` becomes the primary cross-validation tool for decisions.yaml configurations — demoting it to Tier 2 would make this critical validator undiscoverable at exactly the moment its surface area expands.
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-05-29): This issue owns the **frontmatter** of `audit-claude-config/SKILL.md` (adding `llm_discoverable: false`). ENH-494 owns the **body** of the same file (extracting content into companion files). The two changes target non-overlapping sections — no merge conflict expected as long as both are aware of the shared file. ENH-494's body extraction should be applied first so this issue edits frontmatter of the already-extracted file.
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-06-02 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | MEDIUM |
+| Complexity added | MEDIUM |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first — The mandatory `audit-issue-conflicts` Tier 1 exemption (per scope boundary note from 2026-05-28) means actual benefit is 5→2 at best, not 5→1 as stated. Before implementing, explicitly scope the final Tier 1 target count post-consolidation and confirm the meta-skill dispatch pattern adds less routing friction than the current 5-skill listing.

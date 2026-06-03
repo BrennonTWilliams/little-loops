@@ -96,6 +96,7 @@ Each disambiguation adds ~20-40 chars; verify total description stays within bud
 `enhancement`, `skills`, `context-engineering`, `routing`
 
 ## Session Log
+- `/ll:tradeoff-review-issues` - 2026-06-03T00:30:18 - `288ea8fe-1443-4178-9435-e6f8b106cc59.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:34 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:14 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:17 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
@@ -132,3 +133,21 @@ Update first — verify ENH-1618 (audit consolidation) has landed and spot-check
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue adds negative routing instructions to the 14 Tier 1 skill descriptions, including the 5 audit skills. ENH-1618 plans to consolidate those 5 audit skills into a single meta-skill entry point (demoting 4 audit sub-skills from Tier 1). Adding routing disambiguation to audit skills before ENH-1618 resolves their Tier 1 status risks wasted work. This issue `depends_on: ENH-1618` — complete the audit consolidation decision first, then apply routing instructions only to the audit skills that remain Tier 1.
 - `/ll:tradeoff-review-issues` - 2026-05-24T13:57:35 - `f0630921-fb2f-426a-a549-1a1d30e210f9.jsonl`
+
+---
+
+## Tradeoff Review Note (2026-06-02 Update)
+
+**Reviewed**: 2026-06-02 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | LOW |
+| Complexity added | LOW |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first — Still blocked on `depends_on: [ENH-1618, ENH-1615, FEAT-948]`; the final Tier 1 skill set hasn't been stabilized by upstream dependencies. No actionable work until ENH-1618 resolves which audit skills remain Tier 1. Routing instructions written before the neighbor set is finalized will need rework.
