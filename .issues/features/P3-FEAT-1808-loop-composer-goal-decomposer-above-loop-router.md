@@ -8,6 +8,7 @@ parent: EPIC-1811
 captured_at: "2026-05-30T06:48:30Z"
 discovered_date: 2026-05-30
 discovered_by: capture-issue
+blocks: [FEAT-1806, FEAT-1809]
 ---
 
 # FEAT-1808: `loop-composer` — Goal Decomposer Built-in FSM Loop (One Level Above `loop-router`)
@@ -73,6 +74,7 @@ Add a new built-in FSM loop `loop-composer` that accepts a natural-language goal
 - **FEAT-1810 (goal-cluster orchestrator)** — different input shape (a *list* of goals, e.g. a sprint), not a single goal. Composer might dispatch goal-cluster as a child, or vice versa. Worth checking before either lands.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:42 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:44:01 - `6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:34:33 - `922ffae8-14ce-45e5-a71a-02187250e8c9.jsonl`
@@ -92,5 +94,7 @@ Add a new built-in FSM loop `loop-composer` that accepts a natural-language goal
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-1809 both spec intermediate artifacts using bare `.loops/tmp/` paths (e.g. `loop-composer-plan.json`). Per MR-3 (`ll-loop validate` WARNING), all intermediate artifacts MUST be written under `${context.run_dir}/` to prevent state corruption on concurrent runs. All artifact paths in the Implementation Steps for this issue MUST be updated to use `${context.run_dir}/` (e.g. `${context.run_dir}/composer-plan.json`) before implementation begins. Add `shared_state_ok: true` at the loop top-level ONLY if cross-run sharing is intentional and explicitly justified. This constraint is shared with FEAT-1809, which inherits the path convention established here — address it in FEAT-1808 first.
+
+**Note** (added by `/ll:audit-issue-conflicts`): Routing decision rule to prevent circular dispatch with FEAT-1810 (`goal-cluster`): a single natural-language goal → `loop-composer` (this issue); a pre-enumerated list of goals → `goal-cluster` (FEAT-1810). `goal-cluster` MAY call `loop-composer` as a child for an individual oversized goal, but `loop-composer` MUST NOT call `goal-cluster`. Encode this as a routing guard in the `loop-router` catalog so the two loops are not both presented as candidates for the same ambiguous input.
 
 **Note** (added by `/ll:audit-issue-conflicts`): FEAT-1798 (Variant C specialist-role harness template) and this issue serve distinct use cases. FEAT-1798 generates a static fixed FSM for users who know their workflow phases in advance ("Plan → Research → Implement → Report, ship now"). This issue (`loop-composer`) is for users who need the workflow decomposed from a natural-language goal at runtime. These are complementary, not competing: once this issue ships, the Variant C template (FEAT-1798) should include a comment pointing users toward `loop-composer` when their goal is too open-ended for a fixed template. FEAT-1798 already has `blocked_by: [FEAT-1808]` to capture this ordering.

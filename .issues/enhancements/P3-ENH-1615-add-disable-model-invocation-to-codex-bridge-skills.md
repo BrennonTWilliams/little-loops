@@ -1,6 +1,6 @@
 ---
 id: ENH-1615
-title: Add disable-model-invocation to all 28 ll-* Codex bridge skills
+title: Add disable-model-invocation to all 30 ll-* Codex bridge skills
 type: ENH
 priority: P3
 captured_at: '2026-05-22T19:19:39Z'
@@ -14,19 +14,19 @@ parent: EPIC-1463
 
 ## Summary
 
-The 28 `ll-*` bridge skills (e.g., `ll-align-issues`, `ll-commit`, `ll-help`) are 11-line stubs that bridge `commands/*.md` to the Codex Skills API. They consume 388/720 tokens (54%) of the skill listing budget but provide zero routing value for Claude Code users — Claude Code already routes through the identically-named slash commands. Adding `disable-model-invocation: true` to all 28 would cut the listing budget from 720 to ~332 tokens with no functional impact for Claude Code users.
+The 30 `ll-*` bridge skills (e.g., `ll-align-issues`, `ll-commit`, `ll-help`) are 11-line stubs that bridge `commands/*.md` to the Codex Skills API. They consume 388/720 tokens (54%) of the skill listing budget but provide zero routing value for Claude Code users — Claude Code already routes through the identically-named slash commands. Adding `disable-model-invocation: true` to all 28 would cut the listing budget from 720 to ~332 tokens with no functional impact for Claude Code users.
 
 ## Current Behavior
 
-All 28 `ll-*` skills are LLM-discoverable (no `disable-model-invocation`). Their descriptions appear in the listing budget alongside the real Tier 1 skills. Each bridge skill is an 11-line stub referencing its source command file. Six of them have broken `|` descriptions (covered by BUG-1616). Combined, they represent 54% of the total skill listing budget.
+All 30 `ll-*` skills are LLM-discoverable (no `disable-model-invocation`). Their descriptions appear in the listing budget alongside the real Tier 1 skills. Each bridge skill is an 11-line stub referencing its source command file. Six of them have broken `|` descriptions (covered by BUG-1616). Combined, they represent 54% of the total skill listing budget.
 
 ## Expected Behavior
 
-All 28 `ll-*` bridge skills have `disable-model-invocation: true`. Claude Code users invoke skills through the existing slash commands (`commands/*.md`) — the bridges are only needed for Codex CLI discovery. The listing budget drops from 720 to ~332 tokens. Codex users are unaffected since Codex discovers skills via the `agents/openai.yaml` sidecar, not via the listing budget.
+All 30 `ll-*` bridge skills have `disable-model-invocation: true`. Claude Code users invoke skills through the existing slash commands (`commands/*.md`) — the bridges are only needed for Codex CLI discovery. The listing budget drops from 720 to ~332 tokens. Codex users are unaffected since Codex discovers skills via the `agents/openai.yaml` sidecar, not via the listing budget.
 
 ## Motivation
 
-The 28 `ll-*` bridge skills consume 388 of 720 total listing-budget tokens (54%) despite providing zero routing value for Claude Code users — Claude Code resolves skills through `/ll:<name>` slash commands, not the listing budget. Every skill-listing call pays this overhead. Reducing the budget by ~54% frees headroom for real Tier 1 skills and lowers token cost per listing call.
+The 30 `ll-*` bridge skills (was 28 at capture; `ll-capture-issue` and `ll-go-no-go` added since) consume 388 of 720 total listing-budget tokens (54%) despite providing zero routing value for Claude Code users — Claude Code resolves skills through `/ll:<name>` slash commands, not the listing budget. Every skill-listing call pays this overhead. Reducing the budget by ~54% frees headroom for real Tier 1 skills and lowers token cost per listing call.
 
 ## Proposed Solution
 
@@ -45,7 +45,7 @@ for skill_dir in Path("skills").glob("ll-*/SKILL.md"):
 
 ## Implementation Steps
 
-1. Enumerate all 28 `skills/ll-*/SKILL.md` files (listed in Integration Map)
+1. Enumerate all 30 `skills/ll-*/SKILL.md` files (listed in Integration Map)
 2. Insert `disable-model-invocation: true` into each file's frontmatter block (script above)
 3. Run `ll-verify-skill-budget` to confirm listing budget drops from ~720 to ~332 tokens
 4. Add CHANGELOG "Changed" entry noting the budget reduction
@@ -60,17 +60,17 @@ for skill_dir in Path("skills").glob("ll-*/SKILL.md"):
 ## Impact
 
 - **Priority**: P3 — structural budget waste, no user-facing bug
-- **Effort**: Small — bulk `disable-model-invocation: true` insertion into 28 SKILL.md frontmatter blocks
+- **Effort**: Small — bulk `disable-model-invocation: true` insertion into 30 SKILL.md frontmatter blocks
 - **Risk**: Low — additive field only; does not change invocation behavior for Codex users. Note: BUG-1754 demonstrates that `disable-model-invocation: true` prevents Skill tool invocation in pipeline commands (workflow-automation-proposer). The 28 ll-* bridge skills are not themselves pipeline-invoked, so the implementation is safe, but future commands must not invoke ll-* bridge stubs via the Skill tool or they will hit the same failure mode.
 - **Breaking Change**: No
 
 ## Integration Map
 
 ### Files to Modify
-- `skills/ll-*/SKILL.md` (all 28 files) — add `disable-model-invocation: true` to frontmatter:
-  `ll-align-issues`, `ll-analyze-workflows`, `ll-audit-architecture`, `ll-check-code`,
-  `ll-cleanup-worktrees`, `ll-commit`, `ll-create-sprint`, `ll-describe-pr`,
-  `ll-find-dead-code`, `ll-handoff`, `ll-help`, `ll-iterate-plan`, `ll-loop-suggester`,
+- `skills/ll-*/SKILL.md` (all 30 files) — add `disable-model-invocation: true` to frontmatter:
+  `ll-align-issues`, `ll-analyze-workflows`, `ll-audit-architecture`, `ll-capture-issue`,
+  `ll-check-code`, `ll-cleanup-worktrees`, `ll-commit`, `ll-create-sprint`, `ll-describe-pr`,
+  `ll-find-dead-code`, `ll-go-no-go`, `ll-handoff`, `ll-help`, `ll-iterate-plan`, `ll-loop-suggester`,
   `ll-manage-release`, `ll-normalize-issues`, `ll-open-pr`, `ll-prioritize-issues`,
   `ll-ready-issue`, `ll-refine-issue`, `ll-resume`, `ll-review-sprint`, `ll-run-tests`,
   `ll-scan-codebase`, `ll-scan-product`, `ll-sync-issues`, `ll-toggle-autoprompt`,
@@ -95,7 +95,14 @@ for skill_dir in Path("skills").glob("ll-*/SKILL.md"):
 
 `enhancement`, `skills`, `context-engineering`, `budget`
 
+## Verification Notes
+
+**Verdict: NEEDS_UPDATE** — Verified 2026-06-03. Count drifted: 30 `ll-*` skills now lack `disable-model-invocation: true` (was 28 at capture time — 2 new bridge skills added since then). The Integration Map lists 28 skill files; update the count and list to include the 2 new ll-* skills before implementation.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-03T22:42:54 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
+- `/ll:verify-issues` - 2026-06-03T22:42:54 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
+- `/ll:verify-issues` - 2026-06-03T00:00:00 - current session
 - `/ll:verify-issues` - 2026-06-02T22:48:34 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:14 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:17 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

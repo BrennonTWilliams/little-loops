@@ -151,5 +151,7 @@ ll-sprint execute → ll-loop run ll-sprint --args <wave-plan>
 **Open** | Created: 2026-06-03 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-03T22:42:45 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:format-issue` - 2026-06-03T19:23:35 - `1f79d2d5-df37-42dc-a0f8-73e20acc795b.jsonl`
 - `/ll:scope-epic` - 2026-06-03T19:12:39Z - `87e9f36b-36c2-4e9e-a0c8-3a57aa45d1f5.jsonl`

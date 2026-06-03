@@ -10,7 +10,7 @@ discovered_by: capture-issue
 labels:
   - epic
   - captured
-relates_to: [ENH-1708, ENH-1710, ENH-1711, FEAT-1712, ENH-1752, ENH-1753, FEAT-1736, ENH-1831, ENH-1832, ENH-1833, ENH-1835, ENH-1830, ENH-1834, FEAT-1680, FEAT-948, ENH-1846, ENH-1847, ENH-1887, ENH-1888, ENH-1904, ENH-1905, ENH-1906, ENH-1907]
+relates_to: [ENH-1710, ENH-1711, FEAT-1712, ENH-1752, ENH-1753, FEAT-1736, ENH-1831, ENH-1832, ENH-1833, ENH-1830, FEAT-1680, ENH-1846, ENH-1847, ENH-1887, ENH-1888, ENH-1904, ENH-1905, ENH-1906, ENH-1907, ENH-1913, ENH-1914, ENH-1915, ENH-1916]
 ---
 
 # EPIC-1707: history.db as Agent Context Layer
@@ -76,6 +76,10 @@ Without a consumer surface, the DB is dead weight: writers cost overhead, the sc
 - **ENH-1905** — Wire history.db effort/velocity reads into planning skills (`create-sprint`, `scope-epic`, `manage-issue`, `review-epic`)
 - **ENH-1906** — Retention/compaction policy for history.db raw event tables
 - **ENH-1907** — Project-context snapshot at session start (ambient `<project_context>` digest of recent files / completed issues / recurring corrections; opt-in, capped, degrades to no-op)
+- **ENH-1913** — `history.*` config namespace foundation (schema + `HistoryConfig` + `BRConfig.history`); sole owner of the `history` schema, blocks the consumer consistency work.
+- **ENH-1914** — Parameterize ENH-1888's hardcoded `go-no-go` `-0.2` penalty + `capture-issue` `0.7` dup-overlap threshold (depends on ENH-1913).
+- **ENH-1915** — User-extensible correction phrases via `analytics.capture.correction_patterns` (write-side; appended to built-ins).
+- **ENH-1916** — `history.*`/`analytics.*` config discoverability (consolidated reference + `/ll:configure` coverage) and EPIC-1707 back-links for 1909/1911 + new children.
 
 ## Integration Map
 

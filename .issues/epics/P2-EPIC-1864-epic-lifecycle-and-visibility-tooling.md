@@ -7,7 +7,7 @@ status: open
 discovered_date: 2026-06-01
 discovered_by: link-epics
 labels: [epic, epics, cli, skill, lifecycle, captured]
-relates_to: [FEAT-1855, FEAT-1856, FEAT-1857, ENH-1858, ENH-1859, ENH-1860, ENH-1863, ENH-1866]
+relates_to: [FEAT-1855, FEAT-1856, FEAT-1857, ENH-1859, ENH-1860, ENH-1863, ENH-1866]
 ---
 
 # EPIC-1864: EPIC Lifecycle & Visibility Tooling

@@ -9,6 +9,8 @@ captured_at: "2026-06-03T19:50:05Z"
 discovered_by: capture-issue
 parent: EPIC-1707
 relates_to: [EPIC-1707, FEAT-1712, ENH-1830]
+blocked_by:
+- FEAT-1712
 labels:
   - captured
   - history-db
@@ -87,6 +89,7 @@ complementing FEAT-1712's summary layer (summarize-then-prune).
 `captured`, `history-db`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-03T21:54:23 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:capture-issue` - 2026-06-03T19:50:05Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/13a13638-9030-4da6-94ba-939418824572.jsonl`
 
 ---

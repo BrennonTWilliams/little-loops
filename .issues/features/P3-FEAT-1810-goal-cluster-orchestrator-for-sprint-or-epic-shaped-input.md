@@ -87,6 +87,7 @@ The actual user pain is often sprint-shaped, not single-goal-shaped. `ll-sprint`
 - **FEAT-1737 (EPIC as sprint argument)** — direct overlap on the EPIC-loader piece; coordinate or share code.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:43 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:08 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:15 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
@@ -98,3 +99,9 @@ The actual user pain is often sprint-shaped, not single-goal-shaped. `ll-sprint`
 
 - **State**: open
 - **Created**: 2026-05-30
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Routing decision rule to prevent circular dispatch with FEAT-1808 (`loop-composer`): a pre-enumerated list of goals → `goal-cluster` (this issue); a single natural-language goal → `loop-composer` (FEAT-1808). `goal-cluster` MAY call `loop-composer` as a child for an individual goal that is itself too large for one loop, but `loop-composer` MUST NOT call `goal-cluster`. Encode this constraint as a routing guard in the `loop-router` catalog so the two loops are not both presented as candidates for the same ambiguous input.

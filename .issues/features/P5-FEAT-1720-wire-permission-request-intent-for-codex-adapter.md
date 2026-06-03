@@ -10,6 +10,7 @@ discovered_by: capture-issue
 parent: EPIC-1463
 blocked_by: [ENH-1718]
 depends_on: [FEAT-1719]
+blocks: FEAT-1721
 labels: [codex, hooks, host-compat]
 ---
 

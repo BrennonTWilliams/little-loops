@@ -142,7 +142,7 @@ class OmpRunner:
 4. **Wire `build_blocking_json` and `build_detached`** — implement and test.
 5. **Set `HostCapabilities`** — fill in the capability booleans from the audit.
 6. **Create `hooks/adapters/omp/`** — TypeScript adapter translating omp hook events to `LLHookEvent`; mirror `hooks/adapters/codex/` structure.
-7. **Audit hook event parity** — document which Claude Code hook events omp exposes; update EPIC-1713 / FEAT-1715 with findings.
+7. **Hook event parity** — out of scope for FEAT-1850. File a separate child issue following FEAT-1715's canonical audit framework (research note at `thoughts/research/omp-hook-event-parity.md`, `HOST_COMPATIBILITY.md` hook-event rows, `hooks/adapters/omp/README.md` parity matrix; parent: FEAT-1715). Spawning that child issue is an exit criterion for FEAT-1850.
 8. **Tests** — add `scripts/tests/test_omp_runner.py` covering probe, all three `build_*` methods, and capability fields.
 9. **Update docs** — `HOST_COMPATIBILITY.md` omp column; `ARCHITECTURE.md` component table.
 
@@ -166,6 +166,8 @@ class OmpRunner:
 `feat`, `captured`, `host-compat`, `pi-adapter`, `omp`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-03T22:42:45 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-03T21:54:23 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:43 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:format-issue` - 2026-06-01T15:09:51 - `135049e3-c3b6-4e47-a1b7-f422e4bce835.jsonl`
 

@@ -8,6 +8,8 @@ captured_at: "2026-06-03T19:54:05Z"
 discovered_by: capture-issue
 parent: EPIC-1707
 relates_to: [ENH-1752, ENH-1846, ENH-1847, FEAT-1263, ENH-1830, ENH-1905, ENH-1909, ENH-1911]
+blocked_by:
+- ENH-1913
 labels:
   - captured
   - history-db
@@ -241,10 +243,7 @@ Config keys added to `config-schema.json` under `history.session_digest`:
 - `ll-history-context` CLI (entry point in `scripts/`) — add a `--project`
   mode that prints the rendered digest for the current config and exits
   (inspection / config-tuning surface).
-- `config-schema.json` — add `history.session_digest` object (`enabled`,
-  `days`, `char_cap`, ordered `sections`); schema is
-  `additionalProperties: false`. Coordinate the `history` parent-object
-  definition with ENH-1905 / ENH-1909.
+- ~~`config-schema.json`~~ — **owned by ENH-1913** (history namespace foundation). The `history.session_digest` object (`enabled`, `days`, `char_cap`, ordered `sections`) is declared in ENH-1913. This issue wires runtime reads and the gated session-start call only after ENH-1913 lands.
 
 ### Tests
 
@@ -270,8 +269,7 @@ Config keys added to `config-schema.json` under `history.session_digest`:
 1. Implement the `SECTION_PROVIDERS` registry (3 v1 providers), `project_digest()`,
    and order-aware `render_project_context()` in `history_reader.py` with
    degradation + cap; unit-test in isolation (incl. section ordering/omission).
-2. Add the `history.session_digest` config block (`enabled`, `days`, `char_cap`,
-   ordered `sections`) to `config-schema.json`.
+2. ~~Add the `history.session_digest` config block to `config-schema.json`.~~ **Deferred to ENH-1913** (history namespace owner). The `history.session_digest` schema object is declared in ENH-1913; after it lands, wire runtime reads of these keys here using `ll-config.json` defaults.
 3. Wire the gated call into `session_start.py::handle()`; suppress all errors.
 4. Add the `ll-history-context --project` inspection mode + its test.
 5. Add session-start integration tests (gate on/off, populated/empty/stale).
@@ -309,6 +307,8 @@ Config keys added to `config-schema.json` under `history.session_digest`:
 `captured`, `history-db`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-03T22:42:54 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-03T21:52:58 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:format-issue` - 2026-06-03T19:57:40 - `eac7b3fc-572a-4d81-b23d-2d9c91efa16d.jsonl`
 - `/ll:capture-issue` - 2026-06-03T19:54:05Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ada31840-370b-4650-bda9-261f3422cc4a.jsonl`
 

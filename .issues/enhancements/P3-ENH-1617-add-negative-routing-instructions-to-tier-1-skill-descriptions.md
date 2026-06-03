@@ -8,7 +8,7 @@ discovered_date: 2026-05-22
 discovered_by: capture-issue
 status: open
 parent: EPIC-1745
-depends_on: [ENH-1618, ENH-1615, FEAT-948]
+depends_on: [ENH-1618, ENH-1615]
 ---
 
 # ENH-1617: Add negative routing instructions to Tier 1 skill descriptions

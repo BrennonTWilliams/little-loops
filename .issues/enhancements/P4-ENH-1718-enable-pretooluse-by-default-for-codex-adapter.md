@@ -8,6 +8,7 @@ captured_at: "2026-05-26T02:23:05Z"
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1463
+blocks: [FEAT-1719, FEAT-1720]
 labels: [codex, hooks, host-compat]
 ---
 

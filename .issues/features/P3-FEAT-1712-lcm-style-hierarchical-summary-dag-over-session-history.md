@@ -9,7 +9,7 @@ discovered_date: "2026-05-26"
 discovered_by: capture-issue
 relates_to: [ENH-1710, ENH-1711]
 parent: EPIC-1707
-blocked_by: [ENH-1752]
+blocks: ENH-1906
 ---
 
 # FEAT-1712: LCM-style hierarchical summary DAG over session history

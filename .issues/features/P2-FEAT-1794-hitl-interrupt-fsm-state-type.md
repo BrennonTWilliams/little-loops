@@ -308,6 +308,15 @@ accept the default.
 
 ## Verification Notes
 
+_Updated by `/ll:verify-issues` on 2026-06-03_
+
+**Verdict: NEEDS_UPDATE** — Core architecture accurate but executor.py line numbers continue to drift:
+- `PushNotification` confirmed absent from codebase ✓
+- `_execute_state()` at **executor.py:818** (issue says 780, off by 38 from last note)
+- `_action_mode()` at **executor.py:1390** (issue says 1330, off by 60 from last note)
+- No `human_approval` action type yet — feature not implemented ✓
+- Action: update executor.py anchor lines before implementation to avoid confusion
+
 _Added by `/ll:verify-issues` on 2026-05-31_
 
 **Verdict: NEEDS_UPDATE** — Core architecture accurate but executor.py line numbers have drifted significantly since refinement:
@@ -320,6 +329,7 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 - Action: update executor.py anchor lines before implementation to avoid confusion
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-03T22:42:53 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:42 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:verify-issues` - 2026-06-01T03:08:52 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-01T02:53:57 - `5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`

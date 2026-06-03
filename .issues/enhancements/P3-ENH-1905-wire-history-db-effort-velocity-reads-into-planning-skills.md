@@ -26,6 +26,8 @@ score_test_coverage: 20
 score_ambiguity: 22
 score_change_surface: 18
 implementation_order_risk: true
+blocked_by:
+- ENH-1913
 ---
 
 # ENH-1905: Wire history.db effort/velocity reads into planning skills
@@ -117,7 +119,7 @@ ll-history-context <issue_id> --effort
 ### Files to Modify
 - `scripts/little_loops/history_reader.py`
 - `scripts/little_loops/cli/history_context.py`
-- `config-schema.json` — add `history.velocity_window` and `history.effort_fields` keys under a new `history` namespace (confirmed: no `history` key exists yet)
+- ~~`config-schema.json`~~ — **owned by ENH-1913** (history namespace foundation); the three keys (`history.velocity_window`, `history.effort_fields`, `history.max_age_days`) are declared there. This issue wires runtime reads only after ENH-1913 lands.
 - `commands/create-sprint.md`
 - `skills/scope-epic/SKILL.md`
 - `skills/manage-issue/SKILL.md`
@@ -192,10 +194,7 @@ _Added by `/ll:refine-issue` — concrete file references from codebase analysis
 
 6. **`skills/review-epic/SKILL.md`** — add `Bash(ll-history-context:*)` to `allowed-tools` (currently has `Read`, `Bash(ll-issues:*)`, `Bash(git:*)`); inject guard in `## Step 2: Load EPIC and Resolve Children` or `## Step 3: Compute Progress Aggregates`; surface session counts and cycle times in the health report.
 
-7. **`config-schema.json`** — add the following keys under the `history` namespace. `history_reader.py` and `history_context.py` must read these keys via `ll-config.json` and fall back to defaults when absent:
-   - `history.velocity_window` (integer, default `10`)
-   - `history.effort_fields` (array of strings, default `["session_count", "cycle_time_days"]`) — unknown values are warned-and-skipped, not raised
-   - `history.max_age_days` (integer | null, default `null`) — `null` = no staleness filter; positive integer excludes sessions older than N days from `issue_effort()` and `recent_issue_velocity()` results
+7. ~~**`config-schema.json`**~~ — **Deferred to ENH-1913** (history namespace owner). The three config keys (`history.velocity_window`, `history.effort_fields`, `history.max_age_days`) are declared in ENH-1913's API table. After ENH-1913 lands, `history_reader.py` and `history_context.py` read these keys via `ll-config.json` and fall back to the defaults described in the API/Interface section; no schema edit is needed in this issue.
 
 8. **`scripts/tests/test_history_reader.py`** — add test cases for `issue_effort()` and `recent_issue_velocity()`: empty-DB returns `None`/`[]`; single-session returns `cycle_time_days=0.0`; multi-session returns correct day delta.
 
@@ -241,6 +240,8 @@ _Last updated by `/ll:confidence-check` on 2026-06-03 (re-check after wire-issue
 - Implementation ordering: Python backend (`history_reader.py` + `history_context.py`) must be complete and tested before skill wiring can be end-to-end verified; recommended sequence: Python functions → CLI `--effort` flag → config-schema.json → skill wiring (4 skills + Codex stub) → doc updates
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-03T22:42:54 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-03T21:52:58 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:confidence-check` - 2026-06-03T21:30:00Z - `05f0b8cd-d4c6-444a-8f99-5505d4cea6e9.jsonl`
 - `/ll:refine-issue` - 2026-06-03T20:56:43 - `d1a065c6-71ae-4747-b229-4d42ac65cacd.jsonl`
 - `/ll:confidence-check` - 2026-06-03T20:30:00Z - `31b2bc85-a0b5-413e-94f6-06c7a9e7124c.jsonl`

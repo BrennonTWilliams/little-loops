@@ -8,7 +8,7 @@ captured_at: 2026-06-03T19:12:39Z
 discovered_date: 2026-06-03
 discovered_by: scope-epic
 parent: EPIC-1867
-relates_to: [FEAT-1901]
+relates_to: [FEAT-1901, FEAT-1899]
 ---
 
 # FEAT-1902: Author loops/ll-auto.yaml FSM + ll-auto shim + A/B parity harness
@@ -125,5 +125,7 @@ This feature would:
 **Open** | Created: 2026-06-03 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-03T22:42:45 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:format-issue` - 2026-06-03T19:22:56 - `1489a8f1-014d-4d2b-9f62-365c703f374a.jsonl`
 - `/ll:scope-epic` - 2026-06-03T19:12:39Z - `87e9f36b-36c2-4e9e-a0c8-3a57aa45d1f5.jsonl`
