@@ -120,19 +120,19 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 Both options preserve the external contract (same input context variables `targets`/`max_retries`, same terminal state names `done`/`blocked`). They differ on whether to extend the executor.
 
-### Option A: Extend Executor to Support Runtime `targets_csv`
+### Option A: Extend Executor to Support Runtime `targets_csv` and `max_retries_expr`
 
-> **Selected:** Option A — `interpolate()` is already in-scope in `_execute_learning_state()`, the `str | None` runtime-resolution pattern has three precedents in `evaluators.py`, and FEAT-1283/FEAT-1794/FEAT-1451 all co-landed similarly-sized executor extensions inline rather than deferring.
+> **Selected:** Option A — `interpolate()` is already in-scope in `_execute_learning_state()`, the `str | None` runtime-resolution pattern has three precedents in `evaluators.py`, and FEAT-1283/FEAT-1794/FEAT-1451 all co-landed similarly-sized executor extensions inline rather than deferring. Extended to also include `max_retries_expr` after tracing the `integrate-sdk → enumerate-and-prove → ready-to-implement-gate` call chain and confirming `context.max_retries` is a user-facing knob in `integrate-sdk` (see Decision Rationale below).
 
-Add a `targets_csv` key to `LearningConfig` resolved at runtime inside `_execute_learning_state()` by splitting on commas. Callers pass the existing CSV string unchanged. The refactored loop becomes a 3-state YAML (well below the ≤ 4 target):
+Add `targets_csv` and `max_retries_expr` keys to `LearningConfig`, both resolved at runtime inside `_execute_learning_state()`. Callers pass the existing CSV string and max-retries value unchanged. The refactored loop becomes a 3-state YAML (well below the ≤ 4 target):
 
 ```yaml
 states:
   prove:
     type: learning
     learning:
-      targets_csv: "${context.targets}"   # resolved + CSV-split at runtime
-      max_retries: "${context.max_retries}"
+      targets_csv: "${context.targets}"       # resolved + CSV-split at runtime
+      max_retries_expr: "${context.max_retries}"  # resolved to int at runtime
     on_yes: done
     on_blocked: blocked
   done:
@@ -142,9 +142,9 @@ states:
 ```
 
 Required changes (3 files):
-- `scripts/little_loops/fsm/schema.py:LearningConfig` — add `targets_csv: str | None = None`; `from_dict()` populates it when the key is present
-- `scripts/little_loops/fsm/executor.py:_execute_learning_state()` — if `targets_csv` is set, call `interpolate(targets_csv, ctx)` and split on `","` before iterating
-- `scripts/tests/test_learning_state.py` — add test cases for the `targets_csv` path (follow `TestLearningStateMultipleTargets` pattern)
+- `scripts/little_loops/fsm/schema.py:LearningConfig` — add `targets_csv: str | None = None` and `max_retries_expr: str | None = None`; `from_dict()` populates each when the key is present
+- `scripts/little_loops/fsm/executor.py:_execute_learning_state()` — if `targets_csv` is set, call `interpolate(targets_csv, ctx)` and split on `","` before iterating; if `max_retries_expr` is set, resolve via `interpolate()` and `int()`-cast before using as the retry limit (fallback: `state.learning.max_retries`, default 2)
+- `scripts/tests/test_learning_state.py` — add test cases for the `targets_csv` and `max_retries_expr` paths (follow `TestLearningStateMultipleTargets` pattern)
 
 Trade-off: Technically extends `type: learning` executor capabilities, which the current Scope Boundaries call out of scope. However the change is minimal and contained to 3 files. The Scope Boundaries should be updated to allow it.
 
@@ -165,6 +165,8 @@ Decided by `/ll:decide-issue` on 2026-06-02.
 **Selected**: Option A — Extend Executor to Support Runtime `targets_csv`
 
 **Reasoning**: `interpolate()` is already imported and called within `_execute_learning_state()`, and the `str | None` config-field-with-runtime-resolution pattern is established three times in `evaluators.py` and once in `EvaluateConfig`. Three prior FSM executor dispatch extensions (FEAT-1283, FEAT-1794, FEAT-1451) all chose to co-land ~5-line inline changes rather than create prerequisite issues; Option B conflicts with this pattern and risks permanent orphaning of a P4 item in a backlog already holding 50+ `blocked_by:` chains. All nine file touchpoints are mechanical 1–4-line edits with clear codebase templates.
+
+**`max_retries_expr` addition**: Tracing the `integrate-sdk → enumerate-and-prove → ready-to-implement-gate` call chain confirmed that `context.max_retries` is a documented user-facing knob in `integrate-sdk` (`max_retries: "2"  # Per-surface explore-api retries in ready-to-implement-gate`). Hardcoding `max_retries: 2` in the refactored loop would silently ignore user-supplied values — the loop would block earlier than requested with no error. `max_retries_expr: str | None = None` is added following the identical `str | None` pattern as `targets_csv`; both callers today pass the default `"2"`, so no behavior change for existing invocations.
 
 #### Scoring Summary
 
@@ -193,11 +195,11 @@ The only viable path is to extend `LearningConfig` with a `targets_csv` field re
 ## Implementation Steps
 
 1. Read `scripts/little_loops/loops/ready-to-implement-gate.yaml` and `scripts/little_loops/fsm/executor.py:_execute_learning_state` (line 614) to understand the current implementation and `type: learning` dispatch.
-2. Resolve the Option A / Option B decision (see Proposed Solution above). If Option A: extend `LearningConfig` in `scripts/little_loops/fsm/schema.py` with `targets_csv: str | None = None` and update `_execute_learning_state()` in `scripts/little_loops/fsm/executor.py:614` to resolve and split it.
-3. Draft the refactored `ready-to-implement-gate.yaml` — if Option A was chosen, a 3-state YAML (`prove`, `done`, `blocked`); see the Proposed Solution section for the exact schema.
+2. Extend `LearningConfig` in `scripts/little_loops/fsm/schema.py` with `targets_csv: str | None = None` and `max_retries_expr: str | None = None`; update `_execute_learning_state()` in `scripts/little_loops/fsm/executor.py:614` to resolve and split `targets_csv`, and to resolve and `int()`-cast `max_retries_expr` when set (falling back to `state.learning.max_retries`, default 2).
+3. Draft the refactored `ready-to-implement-gate.yaml` — a 3-state YAML (`prove`, `done`, `blocked`) using `targets_csv` and `max_retries_expr`; see the Proposed Solution section for the exact schema.
 4. Run `ll-loop validate ready-to-implement-gate` until no ERRORs.
-5. Run `scripts/tests/test_builtin_loops.py::TestReadyToImplementGateLoop` — replace `test_explore_uses_ll_action_invoke` and `test_parse_targets_evaluate_is_output_json_on_remaining` with assertions checking `prove.type == "learning"`; `test_done_is_terminal` and `test_blocked_is_terminal` are unchanged.
-6. Run `scripts/tests/test_learning_state.py` — add `targets_csv` path tests following `TestLearningStateMultipleTargets` if Option A was chosen.
+5. Run `scripts/tests/test_builtin_loops.py::TestReadyToImplementGateLoop` — replace `test_explore_uses_ll_action_invoke` and `test_parse_targets_evaluate_is_output_json_on_remaining` with assertions checking `prove.type == "learning"` and `prove.learning.max_retries_expr == "${context.max_retries}"`; `test_done_is_terminal` and `test_blocked_is_terminal` are unchanged.
+6. Run `scripts/tests/test_learning_state.py` — add `targets_csv` and `max_retries_expr` path tests following `TestLearningStateMultipleTargets` (line 271); also add `LearningConfig` serialization round-trip cases to `TestLearningConfigSerialization` (line 346, same file) for `from_dict({"targets_csv": "a,b"})` and `from_dict({"targets_csv": "a,b", "max_retries_expr": "3"})` scenarios.
 7. Manually verify that `assumption-firewall` and `oracles/enumerate-and-prove` sub-loop invocations still route correctly (both pass `targets` as a CSV string; verify the new executor path splits it correctly).
 8. Add a one-line comment to the loop YAML noting it is the canonical `type: learning` built-in example.
 
@@ -206,12 +208,32 @@ The only viable path is to extend `LearningConfig` with a `targets_csv` field re
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 9. Update `scripts/little_loops/fsm/validation.py:_validate_state_action` — change `if not state.learning.targets` guard to `if not state.learning.targets and not state.learning.targets_csv` so a `targets_csv`-only YAML passes validation (required for acceptance criterion `ll-loop validate ready-to-implement-gate` to pass)
-10. Update `scripts/little_loops/fsm/fsm-loop-schema.json` — in the `learning` object block: add `targets_csv` to `properties` (type: string), remove `targets` from `required` (or make it conditional), add `targets_csv` to the properties list so `additionalProperties: false` doesn't reject it
+10. Update `scripts/little_loops/fsm/fsm-loop-schema.json` — in the `learning` object block: add `targets_csv` and `max_retries_expr` to `properties`, remove the top-level `"required": ["targets"]` clause, and replace it with an `anyOf` (following the `target` field's existing `oneOf` pattern at line ~488). Exact diff shape:
+    ```json
+    "properties": {
+      "targets": { ... (unchanged) ... },
+      "targets_csv": {
+        "type": "string",
+        "description": "Comma-separated target identifiers resolved at runtime via interpolate(). Alternative to 'targets' for loops that pass targets as a context CSV string (e.g., \"${context.targets}\")."
+      },
+      "max_retries": { ... (unchanged) ... },
+      "max_retries_expr": {
+        "type": "string",
+        "description": "Runtime-interpolated retry limit. Resolved via interpolate() and int()-cast at execution time. Alternative to the static 'max_retries' integer for loops that pass max_retries as a context string (e.g., \"${context.max_retries}\")."
+      }
+    },
+    "additionalProperties": false,
+    "anyOf": [
+      { "required": ["targets"] },
+      { "required": ["targets_csv"] }
+    ]
+    ```
+    Remove the existing `"required": ["targets"]` key at the same level (line ~420). Note: `max_retries_expr` needs no `anyOf` — `max_retries` retains its default of 2 and `max_retries_expr` is purely additive.
 11. Fix event payload in `scripts/little_loops/fsm/executor.py:_execute_learning_state` (line ~685) — `learning_complete` event currently emits `list(state.learning.targets)`, which is `[]` when only `targets_csv` is used; capture the runtime-resolved targets list and emit that instead
-12. Update `docs/reference/API.md:LearningConfig` section — add `targets_csv: str | None = None` to the Python snippet; update the "iterates targets in order" prose to describe CSV resolution
-13. Update `docs/guides/LEARNING_TESTS_GUIDE.md` "Using Learning Tests in Loops" section — update the "executor iterates `learning.targets`" sentence to cover the `targets_csv` path
-14. Update `scripts/tests/test_fsm_schema.py` — add `targets_csv` round-trip cases to `TestLearningConfigSerialization`: `from_dict({"targets_csv": "a,b"})` populates `targets_csv`, `to_dict()` emits it when set, `None` when absent
-15. Create `scripts/tests/fixtures/fsm/learning-state-csv-loop.yaml` — `type: learning` fixture using `targets_csv: "target-a, target-b"` for fixture-based executor integration tests of the CSV path
+12. Update `docs/reference/API.md:LearningConfig` section — add `targets_csv: str | None = None` and `max_retries_expr: str | None = None` to the Python snippet; update the "iterates targets in order" prose to describe CSV resolution and the `max_retries_expr` runtime-cast path
+13. Update `docs/guides/LEARNING_TESTS_GUIDE.md` "Using Learning Tests in Loops" section — update the "executor iterates `learning.targets`" sentence to cover both `targets_csv` and `max_retries_expr` paths
+14. Update `scripts/tests/test_fsm_schema.py` — add `targets_csv` and `max_retries_expr` round-trip cases to `TestStateConfig` (line 246; this is the class that contains `test_state_config_learning_round_trip` at line 2714 and `test_state_config_learning_default_max_retries` at line 2740): `from_dict({"targets_csv": "a,b"})` populates `targets_csv`; `from_dict({"targets_csv": "a,b", "max_retries_expr": "${context.max_retries}"})` populates both; `to_dict()` emits each when set, `None` when absent
+15. Create `scripts/tests/fixtures/fsm/learning-state-csv-loop.yaml` — `type: learning` fixture using `targets_csv: "target-a, target-b"` and `max_retries_expr: "3"` for fixture-based executor integration tests of both runtime-resolution paths
 
 ## Acceptance Criteria
 
@@ -225,7 +247,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Scope Boundaries
 
 - **In scope**: Replacing the five hand-rolled states (`check_next`, `branch_on_verdict`, `explore`, `advance_queue`, and `parse_targets`) in `ready-to-implement-gate.yaml` with one or two `type: learning` states; updating `TestReadyToImplementGateLoop` test assertions for the removed states
-- **Out of scope**: Modifying sub-loop callers (`assumption-firewall`, `adopt-third-party-api`, `integrate-sdk`); changing the external contract (input context variables `targets`/`max_retries`, terminal state names `done`/`blocked`); adding new `type: learning` executor capabilities if not already supported
+- **Out of scope**: Modifying sub-loop callers (`assumption-firewall`, `adopt-third-party-api`, `integrate-sdk`); changing the external contract (input context variables `targets`/`max_retries`, terminal state names `done`/`blocked`). Note: executor extension via `targets_csv` and `max_retries_expr` (originally out-of-scope) is now **in scope** per the Option A decision.
 
 ## Impact
 
@@ -244,16 +266,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-06-03 (prior run: 2026-06-02)_
+_Updated by `/ll:confidence-check` on 2026-06-03 (prior runs: 2026-06-03, 2026-06-02)_
 
 **Readiness Score**: 96/100 → PROCEED
 **Outcome Confidence**: 70/100 → MODERATE
 
 ### Outcome Risk Factors
-- **Wide change surface across 4 subsystems (11 sites)**: YAML loop, 3 Python FSM modules, JSON schema, 3 test files, 1 new fixture, 2 docs — while each individual change is mechanical-to-local, coordinating 11 co-deliverables increases the chance of a missed file or integration gap. Use the 15-step implementation plan as a strict checklist.
-- **JSON schema relaxation form unspecified**: `fsm-loop-schema.json` must allow either `targets` or `targets_csv` in the `learning` object (step 10). The issue specifies the intent but not the exact JSON Schema syntax (oneOf? conditional? remove `required` entirely?), leaving a judgment call during implementation.
+- **Wide change surface across 4 subsystems (12 sites)**: YAML loop, 3 Python FSM modules, JSON schema, 3 test files, 1 new fixture, 2 docs — while each individual change is mechanical-to-local, coordinating 12 co-deliverables increases the chance of a missed file or integration gap. Use the 15-step implementation plan as a strict checklist.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-06-03T01:13:07 - `53ca8bcc-0ece-4614-b419-050afc9172cb.jsonl`
+- `/ll:confidence-check` - 2026-06-03T01:00:00Z - `5bcea9e3-d849-448e-883c-cb3ab8ad842a.jsonl`
+- `/ll:refine-issue` - 2026-06-03T00:49:25 - `316c0ad1-6dc5-41ee-86d4-d59514abec59.jsonl`
 - `/ll:confidence-check` - 2026-06-03T00:42:45Z - `255e0c2b-935a-474d-b91e-187cb706a7ac.jsonl`
 - `/ll:decide-issue` - 2026-06-03T00:39:12 - `17557f51-d1e7-48ab-8c75-d04f0cc19f24.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00 - `5b268ae9-6748-479c-8957-26f628059249.jsonl`
