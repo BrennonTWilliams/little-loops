@@ -268,6 +268,7 @@ class IssueInfo:
     decision_needed: bool | None = None
     missing_artifacts: bool | None = None
     implementation_order_risk: bool | None = None
+    learning_tests_required: list[str] | None = None
     session_commands: list[str] = field(default_factory=list)
     session_command_counts: dict[str, int] = field(default_factory=dict)
     labels: list[str] = field(default_factory=list)
@@ -313,6 +314,7 @@ class IssueInfo:
             "decision_needed": self.decision_needed,
             "missing_artifacts": self.missing_artifacts,
             "implementation_order_risk": self.implementation_order_risk,
+            "learning_tests_required": self.learning_tests_required,
             "session_commands": self.session_commands,
             "session_command_counts": self.session_command_counts,
             "labels": self.labels,
@@ -351,6 +353,7 @@ class IssueInfo:
             decision_needed=data.get("decision_needed"),
             missing_artifacts=data.get("missing_artifacts"),
             implementation_order_risk=data.get("implementation_order_risk"),
+            learning_tests_required=data.get("learning_tests_required"),
             session_commands=data.get("session_commands", []),
             session_command_counts=data.get("session_command_counts", {}),
             labels=data.get("labels", []),
@@ -484,6 +487,16 @@ class IssueParser:
         else:
             implementation_order_risk_value = implementation_order_risk_raw
 
+        learning_tests_raw = frontmatter.get("learning_tests_required")
+        if isinstance(learning_tests_raw, str):
+            learning_tests_required_value: list[str] | None = (
+                [t.strip() for t in learning_tests_raw.split(",") if t.strip()] or None
+            )
+        elif isinstance(learning_tests_raw, list):
+            learning_tests_required_value = [str(t) for t in learning_tests_raw] or None
+        else:
+            learning_tests_required_value = None
+
         status = frontmatter.get("status", "open")
         if status == "open" and frontmatter.get("completed_at"):
             status = "done"
@@ -594,6 +607,7 @@ class IssueParser:
             decision_needed=decision_needed_value,
             missing_artifacts=missing_artifacts_value,
             implementation_order_risk=implementation_order_risk_value,
+            learning_tests_required=learning_tests_required_value,
             session_commands=session_commands,
             session_command_counts=session_command_counts,
             labels=labels,

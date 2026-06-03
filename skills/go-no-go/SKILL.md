@@ -134,6 +134,22 @@ Read the issue file completely. Extract and note:
 - Motivation / use case
 - Impact section (priority, effort, risk)
 
+### Step 3a.5: Pre-Fetch Learning Test Context
+
+Before launching adversarial agents, check if the issue has a `learning_tests_required` frontmatter field. If present and non-empty, run `ll-learning-tests check "<target>"` for each declared target and collect results. Build a **Learning Test Context** block to inject into subsequent prompts:
+
+```
+## Learning Test Context
+
+The following external API assumptions are declared in this issue's frontmatter:
+
+| Target | Status | Notes |
+|--------|--------|-------|
+| "<target>" | proven/stale/refuted/missing | [refutation summary if refuted] |
+```
+
+If `learning_tests_required` is absent or empty, omit this block entirely (do not inject a placeholder).
+
 ### Step 3b: Launch Adversarial Agents
 
 In a **single message**, launch both agents concurrently using the `Agent` tool with `run_in_background: true`.
@@ -157,6 +173,9 @@ Acceptance Criteria:
 
 Motivation:
 [MOTIVATION]
+
+[LEARNING TEST CONTEXT — include this section only if learning_tests_required is present in the issue]
+[LEARNING TEST CONTEXT BLOCK]
 
 Research the codebase thoroughly to ground your argument. Use Read, Glob, Grep, and Bash tools to find relevant files. Look for:
 1. How well this fits existing patterns and architecture
@@ -201,6 +220,9 @@ Acceptance Criteria:
 
 Motivation:
 [MOTIVATION]
+
+[LEARNING TEST CONTEXT — include this section only if learning_tests_required is present in the issue]
+[LEARNING TEST CONTEXT BLOCK]
 
 Research the codebase thoroughly to ground your argument. Use Read, Glob, Grep, and Bash tools to find relevant files. Look for:
 1. Existing functionality that already covers this need (or could with minor changes)
@@ -253,6 +275,11 @@ You have received arguments from two independent research agents who examined th
 
 ---
 
+[LEARNING TEST CONTEXT — include this section only if learning_tests_required is present in the issue]
+[LEARNING TEST CONTEXT BLOCK]
+
+---
+
 Your task: Render an impartial GO or NO-GO verdict based on the evidence presented.
 
 Evaluate these dimensions:
@@ -260,6 +287,7 @@ Evaluate these dimensions:
 2. **Argument validity**: Are the arguments logically sound? Do they address real concerns?
 3. **Risk/value balance**: Does the value justify the risk and effort?
 4. **Timing**: Is this the right time given the codebase state?
+5. **Proven assumptions**: Are the external API assumptions declared in this issue proven? Refuted or missing assumptions are a hard signal against GO.
 
 Produce your verdict in this EXACT format (do not add any other text):
 

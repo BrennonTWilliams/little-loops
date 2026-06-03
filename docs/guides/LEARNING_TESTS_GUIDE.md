@@ -12,6 +12,7 @@
 - [Using Learning Tests in Loops](#using-learning-tests-in-loops)
 - [Troubleshooting](#troubleshooting)
 - [Practical Patterns](#practical-patterns)
+- [Using Learning Tests in Issue Lifecycle Gates](#using-learning-tests-in-issue-lifecycle-gates)
 - [Further Reading](#further-reading)
 
 ---
@@ -220,6 +221,28 @@ Phase 1 (Ingest) prompts before overwriting. Answer "reuse" to short-circuit. To
 **Survey what's already proven at session start.** `ll-learning-tests list | jq -r '.[] | "\(.status)\t\(.target)"'` gives a one-shot inventory of verified targets before planning new work.
 
 > For end-to-end workflows that chain learning tests into larger automations — `adopt-third-party-api` (docs URL → integration playbook) and `assumption-firewall` (issue ID → pre-implementation gate) — see [LOOPS_GUIDE.md → API Adoption](LOOPS_GUIDE.md#api-adoption).
+
+## Using Learning Tests in Issue Lifecycle Gates
+
+The `learning_tests_required` frontmatter field connects the registry to the interactive issue workflow — the complement to the FSM-layer `type: learning` state documented in [Using Learning Tests in Loops](#using-learning-tests-in-loops).
+
+Declare assumptions in the issue file:
+
+```yaml
+learning_tests_required:
+  - "Anthropic SDK streaming events"
+  - "GitHub API pagination"
+```
+
+`/ll:ready-issue` queries each target via `ll-learning-tests check`:
+- **Proven** → PASS row in VALIDATION table
+- **Stale** → WARN row: re-run `/ll:explore-api "<target>"`
+- **Refuted** → hard NOT_READY; includes the refutation summary
+- **Missing** → NOT_READY: `❌ Unproven assumption: "<target>" — run /ll:explore-api "<target>"`
+
+Issues without `learning_tests_required` are unaffected — the gate is opt-in.
+
+`/ll:go-no-go` pre-fetches registry status for all declared targets and injects a **Learning Test Context** block into both adversarial agent prompts and the judge prompt before Phase 3b, so unproven assumptions surface in the judge's RATIONALE without requiring numeric score deltas.
 
 ## Further Reading
 

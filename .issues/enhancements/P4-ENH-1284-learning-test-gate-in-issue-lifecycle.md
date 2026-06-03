@@ -4,10 +4,11 @@ title: Learning Test Gate in Issue Lifecycle
 type: ENH
 priority: P4
 captured_at: '2026-04-25T18:06:01Z'
+completed_at: '2026-06-03T00:08:44Z'
 discovered_date: '2026-04-25'
 discovered_by: capture-issue
 parent: EPIC-1694
-status: open
+status: done
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 82
@@ -92,7 +93,7 @@ Insert a **Learning Test Gate** subsection immediately after the Dependency Stat
 - [ ] If `learning_tests_required` is absent or empty: PASS (gate is opt-in)
 ```
 
-Also add a `Learning Tests` row to the `## VALIDATION` output table (currently at line 334), between `Blockers` and other rows.
+Also add a `Learning Tests` row to the `## VALIDATION` output table (currently at line 324), between `Blockers` and other rows.
 
 ### 3. `skills/go-no-go/SKILL.md` — registry context in judge dimensions
 
@@ -116,7 +117,7 @@ Add `learning_tests_required` to the `## Frontmatter Fields` table (around line 
 
 ### Files to Modify
 - `scripts/little_loops/issue_parser.py` — add `learning_tests_required: list[str] | None = None` to `IssueInfo` dataclass (line ~267), `to_dict()` (line ~312), `from_dict()` (line ~350), and `from_frontmatter()` (line ~447); no coercion block needed (plain string list)
-- `commands/ready-issue.md` — add Learning Test Gate subsection after Dependency Status (line 163); add VALIDATION table row (line 334)
+- `commands/ready-issue.md` — add Learning Test Gate subsection after Dependency Status (line 163); add VALIDATION table row (line 324)
 - `skills/go-no-go/SKILL.md` — inject pre-fetched registry context block into adversarial agent and judge prompts in Phase 3b/3d
 - `docs/reference/ISSUE_TEMPLATE.md` — add `learning_tests_required` to `## Frontmatter Fields` table and add a dedicated sub-section
 - `scripts/little_loops/cli/issues/show.py` — add `learning_tests_required` to `_parse_card_fields()` return dict so `ll-issues show --json` exposes it (consistent with `decision_needed` pattern) [Agent 1 finding]
@@ -158,7 +159,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Implementation Steps
 
 1. **Register `learning_tests_required` in `IssueInfo`** (`scripts/little_loops/issue_parser.py:267`): add dataclass field, `to_dict()` key, `from_dict()` read, and `from_frontmatter()` passthrough — follow the `decision_needed` pattern (lines 268, 313, 351, 457)
-2. **Add Learning Test Gate to `commands/ready-issue.md`**: insert subsection after Dependency Status (line 163); add VALIDATION table row (line 334); follow the exact bullet-list structure of Dependency Status for consistency
+2. **Add Learning Test Gate to `commands/ready-issue.md`**: insert subsection after Dependency Status (line 163); add VALIDATION table row (line 324); follow the exact bullet-list structure of Dependency Status for consistency
 3. **Inject learning test context into `skills/go-no-go/SKILL.md`** Phase 3b: before launching adversarial agents, fetch registry status for each `learning_tests_required` target via `ll-learning-tests check`; inject a formatted context block into both pro/con agent prompts and the judge prompt
 4. **Write tests** in `scripts/tests/test_ready_issue_lint.py` and `scripts/tests/test_learning_tests.py`: proven target passes, missing target blocks with message, refuted target hard-blocks, empty `learning_tests_required` is ignored
 5. **Document** `learning_tests_required` in `docs/reference/ISSUE_TEMPLATE.md` `## Frontmatter Fields` table; add `docs/development/TROUBLESHOOTING.md` entry
@@ -232,6 +233,7 @@ STATUS=$(ll-learning-tests check "$TARGET" 2>/dev/null \
 `enhancement`, `deferred`, `issue-lifecycle`, `learning-tests`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-02T23:55:44 - `3d256da0-1528-4797-a690-c3fc75d7e7f8.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00 - `39cdf65b-efa6-4b44-9a6b-86a84df257c4.jsonl`
 - `/ll:wire-issue` - 2026-06-02T23:50:22 - `e58fe996-ddfe-46f4-a827-73b50b9ebde3.jsonl`
 - `/ll:refine-issue` - 2026-06-02T23:42:40 - `87fe1b1a-2ce7-4463-81b3-4d0dd2ce232e.jsonl`

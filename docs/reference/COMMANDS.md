@@ -172,6 +172,8 @@ Validate issue file for accuracy and auto-correct problems.
 
 **Arguments:** `issue_id` (optional)
 
+**Learning Test Gate:** When the issue contains a `learning_tests_required` frontmatter field, each declared target is checked against the learning test registry (`ll-learning-tests check`). Proven targets emit a PASS row in the VALIDATION table; stale targets emit a WARN; missing or refuted targets block readiness with `❌ Unproven assumption: "<target>" — run /ll:explore-api "<target>"`. Issues without `learning_tests_required` are unaffected.
+
 ### `/ll:verify-issues`
 Verify all issue files against current codebase state.
 

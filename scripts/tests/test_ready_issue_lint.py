@@ -117,3 +117,30 @@ class TestReadyIssueHistoryContextInjection:
         assert "missing" in text.lower() or "absent" in text.lower() or "DB" in text, (
             "Step 2 must mention graceful degradation when DB is missing or no matches"
         )
+
+
+class TestReadyIssueLearningTestGate:
+    """commands/ready-issue.md must document Learning Test Gate in Step 2 (ENH-1284)."""
+
+    def _phase_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("### 2. Validate Issue Content")
+        next_heading = content.find("\n### 3.", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_learning_test_gate_section_present(self) -> None:
+        assert "Learning Test Gate" in self._phase_text(), (
+            "Step 2 must include a Learning Test Gate subsection"
+        )
+
+    def test_ll_learning_tests_command_present(self) -> None:
+        assert "ll-learning-tests" in self._phase_text(), (
+            "Step 2 must include the ll-learning-tests check command invocation"
+        )
+
+    def test_opt_in_behavior_mentioned(self) -> None:
+        text = self._phase_text()
+        assert "opt-in" in text.lower() or "absent" in text.lower() or "empty" in text.lower(), (
+            "Step 2 must mention that the gate is opt-in (absent/empty field is PASS)"
+        )

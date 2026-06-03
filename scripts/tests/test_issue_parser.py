@@ -2118,6 +2118,171 @@ class TestIssueInfoDecisionNeeded:
         assert info.decision_needed is None
 
 
+class TestIssueInfoLearningTestsRequired:
+    """Tests for IssueInfo.learning_tests_required field."""
+
+    def test_learning_tests_required_default_none(self) -> None:
+        """Test learning_tests_required defaults to None when not provided."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1284",
+            title="Test",
+        )
+        assert info.learning_tests_required is None
+
+    def test_learning_tests_required_empty_list(self) -> None:
+        """Test learning_tests_required can be set to an empty list."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1284",
+            title="Test",
+            learning_tests_required=[],
+        )
+        assert info.learning_tests_required == []
+
+    def test_learning_tests_required_with_targets(self) -> None:
+        """Test learning_tests_required can hold a list of target strings."""
+        targets = ["Anthropic SDK streaming", "GitHub pagination"]
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1284",
+            title="Test",
+            learning_tests_required=targets,
+        )
+        assert info.learning_tests_required == targets
+
+    def test_learning_tests_required_in_to_dict(self) -> None:
+        """Test learning_tests_required appears in to_dict output."""
+        targets = ["Anthropic SDK streaming"]
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="enhancements",
+            priority="P3",
+            issue_id="ENH-1284",
+            title="Test",
+            learning_tests_required=targets,
+        )
+        data = info.to_dict()
+        assert data["learning_tests_required"] == targets
+
+    def test_learning_tests_required_from_dict_missing(self) -> None:
+        """Test from_dict defaults to None when learning_tests_required key is absent."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P3",
+            "issue_id": "ENH-1284",
+            "title": "Test Issue",
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.learning_tests_required is None
+
+    def test_learning_tests_required_from_dict_with_value(self) -> None:
+        """Test from_dict restores learning_tests_required list."""
+        targets = ["target-a", "target-b"]
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "enhancements",
+            "priority": "P3",
+            "issue_id": "ENH-1284",
+            "title": "Test Issue",
+            "learning_tests_required": targets,
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.learning_tests_required == targets
+
+    def test_parse_file_learning_tests_required_yaml_list(self, tmp_path: Path) -> None:
+        """Integration: parse_file reads learning_tests_required YAML list from frontmatter."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        features_dir = tmp_path / ".issues" / "enhancements"
+        features_dir.mkdir(parents=True)
+        issue_file = features_dir / "P4-ENH-1284-lt-gate.md"
+        issue_file.write_text(
+            "---\nlearning_tests_required:\n  - Anthropic SDK streaming\n---\n# ENH-1284: LT Gate\n"
+        )
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.learning_tests_required == ["Anthropic SDK streaming"]
+
+    def test_parse_file_learning_tests_required_comma_string(self, tmp_path: Path) -> None:
+        """Integration: parse_file splits comma-separated scalar string into list."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        features_dir = tmp_path / ".issues" / "enhancements"
+        features_dir.mkdir(parents=True)
+        issue_file = features_dir / "P4-ENH-1285-lt-gate.md"
+        issue_file.write_text(
+            "---\nlearning_tests_required: 'Anthropic SDK streaming, GitHub pagination'\n---\n# ENH-1285: LT Gate\n"
+        )
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.learning_tests_required == ["Anthropic SDK streaming", "GitHub pagination"]
+
+    def test_parse_file_learning_tests_required_absent(self, tmp_path: Path) -> None:
+        """Integration: parse_file yields learning_tests_required=None when frontmatter key absent."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "issues": {"base_dir": ".issues"},
+                    "project": {"src_dir": "scripts/"},
+                }
+            )
+        )
+        features_dir = tmp_path / ".issues" / "enhancements"
+        features_dir.mkdir(parents=True)
+        issue_file = features_dir / "P4-ENH-1286-normal.md"
+        issue_file.write_text("---\ndiscovered_by: scan-codebase\n---\n# ENH-1286: Normal\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.learning_tests_required is None
+
+
 class TestIssueInfoMissingArtifacts:
     """Tests for IssueInfo.missing_artifacts field."""
 

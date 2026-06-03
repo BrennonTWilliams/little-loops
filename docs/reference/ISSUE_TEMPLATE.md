@@ -900,6 +900,7 @@ Issue files may include a YAML frontmatter block at the top of the file. The fol
 | `duplicate_of` | string | absent | Bare issue ID of the issue this duplicates. Set when closing a duplicate; routes automated pipelines to the canonical issue instead. |
 | `labels` | list of strings | absent | Cross-cutting classification labels (e.g., `fsm`, `cli`, `quick-win`). Used by `ll-issues list --label`, `ll-auto --label`, `ll-sprint --label`, and `ll-parallel --label` to scope processing to a specific component or effort tier. Synced to GitHub labels on push. |
 | `milestone` | string | absent | Sprint or milestone name this issue is assigned to (e.g., `sprint-2026-q2`). Written automatically by `ll-sprint run` when the sprint starts. Used by `ll-issues list --milestone` to filter issues by sprint, and by `ll-sync` to assign issues to the corresponding GitHub milestone on push. |
+| `learning_tests_required` | list of strings | absent | Declares external API assumptions that must be proven before implementation. Each entry is a target name passed to `ll-learning-tests check`. `/ll:ready-issue` queries the registry for each target: proven → PASS, stale → WARN, refuted or missing → NOT_READY blocking verdict. Gate is opt-in — absent or empty field is always PASS. |
 
 ### `testable: false`
 

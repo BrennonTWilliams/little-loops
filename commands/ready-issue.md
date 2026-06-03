@@ -173,6 +173,17 @@ If line numbers are outdated but an Anchor field exists:
 **Note**: Open blockers force the verdict to `BLOCKED`. This overrides any corrections made.
 Record corrections in `CORRECTIONS_MADE` as usual, but the top-level verdict must be `BLOCKED`.
 
+#### Learning Test Gate
+- [ ] Check if `learning_tests_required` exists in frontmatter:
+  - If absent or empty: PASS (gate is opt-in; skip this section entirely)
+  - If present: for each target string, run `ll-learning-tests check "<target>"`
+    - `status: proven` → PASS row in VALIDATION table: `Learning Tests | PASS | "<target>" proven`
+    - `status: stale` → WARN row: `Learning Tests | WARN | "<target>" stale — re-run /ll:explore-api "<target>"`
+    - `status: refuted` → **Set verdict to NOT_READY**: `❌ Refuted assumption: "<target>" — see registry for refutation details`
+    - Record not found (None returned) → **Set verdict to NOT_READY**: `❌ Unproven assumption: "<target>" — run /ll:explore-api "<target>"`
+- Refuted or missing targets block readiness and override READY/CORRECTED.
+- Stale targets produce a WARN but do not block.
+
 #### Metadata
 - [ ] Priority prefix in filename
 - [ ] Issue ID format correct
@@ -332,6 +343,7 @@ Closed - Already Fixed | Closed - Invalid | Closed - Duplicate | Closed - Won't 
 | Priority | PASS | P2 prefix present |
 | Sections | PASS | All required present |
 | Blockers | PASS/BLOCKED | "All blockers completed" or "Open blockers: FEAT-010, BUG-015" |
+| Learning Tests | PASS/WARN/NOT_READY | "All targets proven" or "Stale: target-name" or "Unproven: target-name" |
 
 ## CONCERNS
 - [List any issues that couldn't be auto-corrected]

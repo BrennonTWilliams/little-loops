@@ -2224,6 +2224,36 @@ class TestIssuesCLIShow:
         data = json.loads(captured.out)
         assert data.get("decision_needed") == "true"
 
+    def test_show_json_includes_learning_tests_required(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show --json output includes learning_tests_required as comma-joined string."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P2-FEAT-505-learning-tests.md").write_text(
+            "---\nlearning_tests_required:\n  - Anthropic SDK streaming\n  - GitHub pagination\n---\n# FEAT-505: Learning tests issue\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "show", "--json", "FEAT-505", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data.get("learning_tests_required") == "Anthropic SDK streaming, GitHub pagination"
+
     def test_show_json_includes_missing_artifacts(
         self,
         temp_project_dir: Path,
