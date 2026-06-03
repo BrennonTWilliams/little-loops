@@ -8,13 +8,15 @@ discovered_by: capture-issue
 blocked_by: []
 depends_on: []
 parent: EPIC-1707
-confidence_score: 96
+confidence_score: 100
 outcome_confidence: 60
 score_complexity: 13
 score_test_coverage: 10
 score_ambiguity: 22
 score_change_surface: 15
 implementation_order_risk: true
+size: Very Large
+status: done
 ---
 
 # FEAT-948: Rules and Decisions Log for Issue Compliance
@@ -158,6 +160,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 **New wiring test to add:**
 - `scripts/tests/test_create_extension_wiring.py` — add `TestFeat948DecisionsWiring` class asserting `decisions` appears in `commands/help.md`, `docs/reference/CLI.md`, `docs/reference/CONFIGURATION.md`, `.claude/CLAUDE.md`, and `CONTRIBUTING.md` (following the existing wiring-check pattern in that file) [Agent 2]
 
+**Conditional break risk (second wiring pass):**
+- `scripts/tests/test_hook_session_start.py` — `TestSessionStartLocalOverrides` at lines 124–152 calls `json.loads(result.stdout)` on the Python `handle()` return value; only at risk if the Python `scripts/little_loops/hooks/session_start.py` handler is also modified to emit `## Active Rules` body content alongside the JSON config. Step 5 modifies only `hooks/scripts/session-start.sh` (the shell path) — if scope is kept shell-only, no test breaks. If the Python handler is also changed for consistency, update these three test methods to separate body text from JSON before parsing. [Agent 3, second wiring pass]
+
 ### Documentation
 - `docs/ARCHITECTURE.md` — document new log as a persistence layer
 - `.claude/CLAUDE.md` — update Key Directories and CLI Tools sections
@@ -168,6 +173,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md` — add `#### ll-issues decisions` subsection documenting `list`, `add`, `generate`, `sync`, and `outcome` sub-sub-commands and their flags [Agent 2]
 - `CONTRIBUTING.md` — add `decisions.py` entry to the `cli/issues/` directory tree listing [Agent 2]
 - `commands/help.md` — append `decisions` to the `ll-issues` subcommand description in the CLI TOOLS block [Agent 2]
+- `docs/reference/COMMANDS.md` — update descriptions for `/ll:decide-issue`, `/ll:tradeoff-review-issues`, and `/ll:go-no-go` to note that each appends a `decision` entry to `.ll/decisions.yaml` as a side effect (guarded: silently skipped if file absent); currently documents these three skills without mentioning the decisions capture behavior [Agent 2, second wiring pass]
 
 ### Configuration
 
@@ -209,6 +215,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 19. Update `scripts/tests/test_config.py` — add `DecisionsConfig` to import block; add `TestDecisionsConfig` class and `TestBRConfigDecisionsIntegration` class following `TestBRConfigLearningTestsIntegration` at line 2250; add `assert "decisions" in result` to `TestBRConfig.test_to_dict()` at line 743
 20. Update `scripts/tests/test_config_schema.py` — add `test_decisions_in_schema()` method following `test_learning_tests_in_schema()` at line 164
 21. Add `TestFeat948DecisionsWiring` class to `scripts/tests/test_create_extension_wiring.py` — assert `decisions` is documented in `commands/help.md`, `docs/reference/CLI.md`, `docs/reference/CONFIGURATION.md`, `.claude/CLAUDE.md`, and `CONTRIBUTING.md`
+22. Update `docs/reference/COMMANDS.md` — add a side-effect note to the `/ll:decide-issue`, `/ll:tradeoff-review-issues`, and `/ll:go-no-go` description rows stating each appends a `decision` entry to `.ll/decisions.yaml` (guarded: silently skipped if file absent)
+23. (Conditional) If Step 5's body-output logic is extended to the Python `session_start.handle()` beyond the shell script, update `scripts/tests/test_hook_session_start.py:TestSessionStartLocalOverrides` (lines 124–152) to separate body text from JSON stdout before calling `json.loads()`; skip this step if the Python handler remains unchanged
 
 ## Use Case
 
@@ -424,17 +432,20 @@ The existing 11-step plan stands. Affected steps:
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-06-02_
+_Updated by `/ll:confidence-check` on 2026-06-02_
 
-**Readiness Score**: 96/100 → PROCEED
+**Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 60/100 → LOW
 
 ### Outcome Risk Factors
-- **Broad change surface** — 26 sites across 6+ subsystems; implement tests first so the CRUD layer is validated before wiring integrations into CLI dispatch and skill files
+- **Broad change surface** (27 sites across 6+ subsystems) — implement tests first so the CRUD layer is validated before wiring integrations into CLI dispatch and skill files
 - **No existing test coverage on new modules** — `test_decisions.py` and `test_cli_decisions.py` are co-deliverables; write tests before implementing CLI and skill-level integrations to catch CRUD regressions early
-- **Wide integration footprint on validation commands** — changes to `ready-issue`, `verify-issues`, and `format-issue` must degrade gracefully when `.ll/decisions.yaml` is absent; the graceful degradation constraint (line 63–67) is explicit but must be exercised in tests
+- **Wide integration footprint on validation commands** (`ready-issue`, `verify-issues`, `format-issue`) — graceful degradation when `.ll/decisions.yaml` is absent must be exercised in tests, not just stated in spec
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-06-02T00:00:00Z - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
+- `/ll:confidence-check` - 2026-06-02T00:00:00Z - `7e6c7b12-669c-42cf-b46c-65df441499b0.jsonl`
+- `/ll:wire-issue` - 2026-06-03T04:46:06 - `d85893dc-25e2-4acd-b46f-11c0811e366d.jsonl`
 - `/ll:refine-issue` - 2026-06-03T04:40:23 - `06bf2ce8-90e5-41bf-b6ba-c6af6af36e79.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00Z - `4b5de5ec-d385-4650-ba02-2b30fd86f7c9.jsonl`
 - `/ll:wire-issue` - 2026-06-03T04:32:47 - `9c0f8dbb-351a-41ed-9197-60fd7f2c12ae.jsonl`
@@ -456,6 +467,19 @@ _Added by `/ll:confidence-check` on 2026-06-02_
 - `/ll:refine-issue` - 2026-04-07T18:30:23 - `f3a30dea-bcb8-4472-8595-836364d4ab19.jsonl`
 - `/ll:refine-issue` - 2026-04-04T21:54:00 - `a2617058-86bb-4762-8daf-c963cd330fc4.jsonl`
 - `/ll:capture-issue` - 2026-04-04T00:00:00Z - `d50b6641-c597-41dc-894f-47b323d241b9.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-06-02
+- **Reason**: Issue too large for single session (score 11/11)
+
+### Decomposed Into
+- FEAT-1891: Decisions Log — Core Data Layer (schema, config, CRUD)
+- FEAT-1892: Decisions Log — CLI Subcommand, Sync, and Skill Bridges
+- FEAT-1893: Decisions Log — Validation Integration, Auto-generation, Tests, and Docs
 
 ---
 

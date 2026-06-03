@@ -259,6 +259,63 @@ Issues without `learning_tests_required` are unaffected — the gate is opt-in.
 
 `/ll:go-no-go` pre-fetches registry status for all declared targets and injects a **Learning Test Context** block into both adversarial agent prompts and the judge prompt before Phase 3b, so unproven assumptions surface in the judge's RATIONALE without requiring numeric score deltas.
 
+## Discoverability: PreToolUse Gate
+
+When `learning_tests.enabled` is `true`, little-loops surfaces learning-test gaps automatically via a `PreToolUse` hook — you don't have to remember to run `ll-learning-tests check` manually before writing integration code.
+
+### How it works
+
+Whenever Claude Code is about to execute a `Write` or `Edit` tool call, the hook parses the file content for external package imports (`import stripe`, `from httpx import ...`, `require('openai')`, etc.) and queries the Learning Test Registry for each package. If a package has no proven record, a one-line hint is emitted before the write proceeds.
+
+### Configuration
+
+Controlled by the `learning_tests.discoverability` block in `.ll/ll-config.json`:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `discoverability.mode` | `str` | `"warn"` | `"off"` — silent; `"warn"` — emits hint, allows tool call; `"block"` — injects feedback into model context and blocks the write. |
+| `discoverability.skip_packages` | `list[str]` | `["std", "typing", "os", "sys"]` | Package names that are never flagged (stdlib, type stubs, internal). |
+
+Enabling the gate:
+
+```json
+{
+  "learning_tests": {
+    "enabled": true,
+    "discoverability": {
+      "mode": "warn",
+      "skip_packages": ["std", "typing", "os", "sys", "pytest"]
+    }
+  }
+}
+```
+
+### Example output (warn mode)
+
+```
+[ll: proof-first hint] No learning-test record found for "stripe".
+You're about to write integration code based on training-data assumptions.
+Consider: ll-loop run proof-first-task --context task="<your task>"
+```
+
+The tool call proceeds — the nudge is informational. Set `mode: "block"` to require a proven record before any write, which is appropriate for teams where all external API assumptions must be pre-verified.
+
+### Suppressing false positives
+
+Add the package to `skip_packages` to silence it permanently:
+
+```json
+"skip_packages": ["std", "typing", "os", "sys", "pytest", "mypy-extensions"]
+```
+
+Or, to suppress the hint for a specific package without adding it to the skip list, run `/ll:explore-api` to prove the API first — a proven record silences the gate for that package for the rest of the session.
+
+### Caching
+
+The gate caches each package lookup for the lifetime of the Python process (one Claude Code session). Re-running `/ll:explore-api "<target>"` while in the same session will not clear the cache; start a new session to pick up freshly-proven records.
+
+---
+
 ## Further Reading
 
 - [ARCHITECTURE.md → Learning Test Registry](../ARCHITECTURE.md#learning-test-registry) — registry design, slug derivation, and integration with the rest of the system.

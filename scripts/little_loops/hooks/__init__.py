@@ -20,7 +20,7 @@ exits with the handler's exit code. Today it routes:
 
 - ``post_tool_use`` → :mod:`little_loops.hooks.post_tool_use`
 
-- ``pre_tool_use`` → :mod:`little_loops.hooks.pre_tool_use` (opt-in only)
+- ``pre_tool_use`` → :mod:`little_loops.hooks.pre_tool_use` (active for Claude Code via hooks.json Write|Edit matcher; opt-in for Codex/OpenCode)
 
 - ``session_end`` -> :mod:`little_loops.hooks.sweep_stale_refs`
 

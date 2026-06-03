@@ -23,7 +23,7 @@ into `LLHookEvent` payloads.
 | `session_start`      | ✓           | ✓             | ✓ (matcher=`startup`) |
 | `pre_compact`        | ✓           | ✓             | ✓             |
 | `user_prompt_submit` | ✓           | (deferred)    | ✓             |
-| `pre_tool_use`       | ✓           | (opt-in)[^hot]   | (opt-in)[^hot]   |
+| `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | (opt-in)[^hot] |
 | `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] |
 | `stop` → `session_end` | ✓ (dispatched as `session_end`) | (deferred)    | (deferred)    |
 | `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] |
@@ -42,11 +42,11 @@ into `LLHookEvent` payloads.
       a single-row INSERT (or the disabled-guard early return) keeps
       handler p95 well below the timeout. Failures are suppressed inside
       the handler so the host tool path is never disturbed.
-    - `pre_tool_use` is opt-in: the Python handler is registered and the
-      adapter scripts are available, but the host event mappings
-      (`tool.execute.before` for OpenCode, `PreToolUse` for Codex) are
-      *not* enabled by default. Users opt in by editing host config —
-      see the adapter READMEs.
+    - `pre_tool_use` is **active for Claude Code**: wired via
+      `hooks/adapters/claude-code/pre-tool-use.sh` for the `"Write|Edit"`
+      matcher in `hooks/hooks.json` (FEAT-1742 learning-test discoverability
+      gate). It remains opt-in for OpenCode (`tool.execute.before`) and
+      Codex (`PreToolUse`) — see the adapter READMEs.
     - Measured cold-start p95 (OpenCode adapter, 30 sequential
       invocations on dev hardware): **≈10ms** for both `session_start`
       and `pre_compact`, well below the 200ms target. The

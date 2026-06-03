@@ -457,23 +457,29 @@ class TestFileEventsWrite:
 
 
 class TestPreToolUseBaseline:
-    """Pre-tool-use handler is registered for opt-in dispatch (FEAT-1489)."""
+    """Pre-tool-use handler dispatches Write/Edit to the discoverability gate (FEAT-1742)."""
 
-    def test_empty_payload_returns_pass(self) -> None:
-        result = pre_handle(LLHookEvent(host="codex", intent="pre_tool_use", payload={}))
+    def test_empty_payload_returns_pass(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        result = pre_handle(
+            LLHookEvent(host="codex", intent="pre_tool_use", payload={}, cwd=str(tmp_path))
+        )
         assert result.exit_code == 0
         assert result.feedback is None
         assert result.stdout is None
 
-    def test_arbitrary_payload_returns_pass(self) -> None:
+    def test_arbitrary_payload_returns_pass(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
         result = pre_handle(
             LLHookEvent(
                 host="opencode",
                 intent="pre_tool_use",
                 payload={"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}},
+                cwd=str(tmp_path),
             )
         )
         assert result.exit_code == 0
+        assert result.feedback is None
 
 
 class TestIssueAutoCommitPostToolUse:

@@ -3,8 +3,9 @@ id: FEAT-1742
 title: Surface proof-first gate via discoverability hook in mainstream impl loops
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-05-27T18:18:58Z'
+completed_at: '2026-06-03T04:55:32Z'
 discovered_date: '2026-05-27'
 discovered_by: capture-issue
 parent: EPIC-1694

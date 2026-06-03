@@ -97,13 +97,12 @@ representative in the adapter layer.
 
 ### Opt-in: `PreToolUse`
 
-`hooks.json` deliberately omits a `PreToolUse` entry. The Python handler
-(`pre_tool_use`) is registered with the dispatcher, and a `pre-tool-use.sh`
-shim *would* be a trivial sibling of `post-tool-use.sh` — but firing on
-every tool invocation by default would add ~10ms per tool call (measured
-cold-start p95) and would invalidate the Codex trust hash for every
-existing user. Users who want pre-tool-use observability opt in by
-adding the entry manually:
+`hooks.json` deliberately omits a `PreToolUse` entry for Codex. The Python
+handler (`pre_tool_use`) now implements the learning-test discoverability gate
+(FEAT-1742) and is **active by default for Claude Code** via
+`hooks/adapters/claude-code/pre-tool-use.sh` (wired in `hooks/hooks.json` for
+the `"Write|Edit"` matcher). For Codex users, opt in by adding the entry
+manually:
 
 ```json
 "PreToolUse": [
@@ -113,15 +112,16 @@ adding the entry manually:
         "type": "command",
         "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/codex/pre-tool-use.sh",
         "timeout": 5,
-        "statusMessage": "Checking tool call..."
+        "statusMessage": "Checking learning-test coverage..."
       }
     ]
   }
 ]
 ```
 
-Then create `pre-tool-use.sh` as a sibling shim invoking the
-`pre_tool_use` intent. After the edit, Codex will prompt for re-trust.
+Then create `pre-tool-use.sh` as a sibling shim invoking the `pre_tool_use`
+intent (same pattern as `post-tool-use.sh`). After the edit, Codex will prompt
+for re-trust.
 
 > **Codex non-zero exit semantics**: Codex logs a non-zero hook exit as
 > `HookRunStatus::Failed` and continues the session. To deliberately abort
