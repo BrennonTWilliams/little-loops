@@ -220,7 +220,7 @@ context:
 
 7. **Register the loop**: add `"migrate-sdk-version"` to the `expected` set in
    `scripts/tests/test_builtin_loops.py:TestBuiltinLoopFiles.test_expected_loops_exist`
-   (line 69). The test does `BUILTIN_LOOPS_DIR.glob("*.yaml")` set equality —
+   (line 67). The test does `BUILTIN_LOOPS_DIR.glob("*.yaml")` set equality —
    `BUILTIN_LOOPS_DIR` is `scripts/little_loops/loops/` (line 17). Only top-level
    YAML files count; `lib/` and `oracles/` subdirs are excluded automatically.
 
@@ -232,8 +232,8 @@ context:
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 9. Update `scripts/little_loops/loops/README.md` — add a `migrate-sdk-version` row to the hand-maintained `## API Adoption` table (match `learning-tests-audit` row format)
-10. Write `TestMigrateSdkVersionLoop` structural test class in `scripts/tests/test_builtin_loops.py` — follow `TestLearningTestsAuditLoop` (line 509) as template; verify required states: `list_stale`, `reprove_next`, `classify_outcome`, `apply_update`, `advance_queue`, `prepare_report_path`, `build_report`, `done`, `done_empty`; assert `classify_outcome` uses `output_contains` evaluator with `"CLASSIFY_JSON:"` pattern; assert `list_stale` action contains `${context.run_dir}`
-11. Update `docs/ARCHITECTURE.md` — `### CLI Surface` within `## Learning Test Registry` (line 1253): extend the `ll-loop run learning-tests-audit` reference sentence to name `migrate-sdk-version` as the counterpart re-prove step in the same two-step workflow
+10. Write `TestMigrateSdkVersionLoop` structural test class in `scripts/tests/test_builtin_loops.py` — follow `TestLearningTestsAuditLoop` (line 507) as template; verify required states: `list_stale`, `reprove_next`, `classify_outcome`, `apply_update`, `advance_queue`, `prepare_report_path`, `build_report`, `done`, `done_empty`; assert `classify_outcome` uses `output_contains` evaluator with `"CLASSIFY_JSON:"` pattern; assert `list_stale` action contains `${context.run_dir}`
+11. Update `docs/ARCHITECTURE.md` — `### CLI Surface` within `## Learning Test Registry` (line 1241): extend the `ll-loop run learning-tests-audit` reference sentence to name `migrate-sdk-version` as the counterpart re-prove step in the same two-step workflow
 12. Add `CHANGELOG.md` entry — `### Added` block: `- **\`migrate-sdk-version\` loop** — FSM loop for bulk re-proving stale learning-test records after a dependency bump. (FEAT-1813)`
 
 ## Scope Boundaries
@@ -255,7 +255,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ### Files to Modify
 - `scripts/little_loops/loops/migrate-sdk-version.yaml` (new — FSM loop definition)
-- `scripts/tests/test_builtin_loops.py` — add `"migrate-sdk-version"` to `expected` set in `TestBuiltinLoopFiles.test_expected_loops_exist()` (line 69)
+- `scripts/tests/test_builtin_loops.py` — add `"migrate-sdk-version"` to `expected` set in `TestBuiltinLoopFiles.test_expected_loops_exist()` (line 67)
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/README.md` — add `migrate-sdk-version` row to hand-maintained `## API Adoption` table [Agent 2]
@@ -279,19 +279,19 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/oracles/enumerate-and-prove.yaml:parse_enumeration` — reverse-scan tagged-JSON parse state to copy for `apply_update`
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py` — add `"migrate-sdk-version"` to `test_expected_loops_exist` expected set (line 69)
+- `scripts/tests/test_builtin_loops.py` — add `"migrate-sdk-version"` to `test_expected_loops_exist` expected set (line 67)
 - `scripts/tests/test_learning_tests.py` — existing tests for `write_record`, `mark_stale`, `list_records` (validate functions the loop calls)
 - `scripts/tests/test_learning_state.py` — FSM `type: learning` dispatch reference (shows how `explore-api` is invoked and writes records)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_builtin_loops.py` — also write `TestMigrateSdkVersionLoop` structural test class following `TestLearningTestsAuditLoop` (line 509); verify all 9 required states (`list_stale`, `reprove_next`, `classify_outcome`, `apply_update`, `advance_queue`, `prepare_report_path`, `build_report`, `done`, `done_empty`); assert `classify_outcome` uses `output_contains` evaluator with `"CLASSIFY_JSON:"` pattern; assert `list_stale` action contains `${context.run_dir}` [Agent 3]
+- `scripts/tests/test_builtin_loops.py` — also write `TestMigrateSdkVersionLoop` structural test class following `TestLearningTestsAuditLoop` (line 507); verify all 9 required states (`list_stale`, `reprove_next`, `classify_outcome`, `apply_update`, `advance_queue`, `prepare_report_path`, `build_report`, `done`, `done_empty`); assert `classify_outcome` uses `output_contains` evaluator with `"CLASSIFY_JSON:"` pattern; assert `list_stale` action contains `${context.run_dir}` [Agent 3]
 
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md` § API Adoption — document alongside `learning-tests-audit`
 - `docs/guides/LEARNING_TESTS_GUIDE.md` — update registry lifecycle documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `docs/ARCHITECTURE.md` — `### CLI Surface` within `## Learning Test Registry` (line 1253): extend `learning-tests-audit` reference to include `migrate-sdk-version` as the counterpart re-prove step [Agent 2]
+- `docs/ARCHITECTURE.md` — `### CLI Surface` within `## Learning Test Registry` (line 1241): extend `learning-tests-audit` reference to include `migrate-sdk-version` as the counterpart re-prove step [Agent 2]
 
 ### Configuration
 - N/A
@@ -337,6 +337,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 **Open** | Created: 2026-05-30 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-03T02:16:48 - `00137671-8110-4649-8269-ae3d5c6f0d2e.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00 - `b0a48dc1-6a85-46f4-8764-aa2d11e6b971.jsonl`
 - `/ll:wire-issue` - 2026-06-03T02:10:14 - `5180bf5e-e0da-4d9d-a534-7fe5dd2250b1.jsonl`
 - `/ll:refine-issue` - 2026-06-03T02:04:27 - `ecc0aecd-eede-434b-92d3-79b8ec92833a.jsonl`
