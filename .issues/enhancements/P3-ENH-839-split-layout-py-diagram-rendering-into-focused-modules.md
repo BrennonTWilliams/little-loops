@@ -3,6 +3,7 @@ id: ENH-839
 title: Split layout.py diagram rendering into focused modules
 type: ENH
 priority: P3
+status: open
 discovered_commit: 8c6cf90
 discovered_branch: main
 discovered_date: 2026-03-19 00:00:00+00:00
@@ -159,6 +160,7 @@ Split into a `layout/` subpackage or three focused modules:
 - Integration Map note re: `_helpers.py` import of `_render_fsm_diagram` still applies
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T22:14:35 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:04 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:verify-issues` - 2026-05-31T20:34:10 - `52d78c58-d750-467e-9092-de587a96595e.jsonl`

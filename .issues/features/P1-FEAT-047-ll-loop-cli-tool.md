@@ -548,3 +548,16 @@ states:
 ### Deferred Features
 - `--background` daemon mode (flag recognized but runs foreground)
 - `--queue` mode for concurrent loop management
+
+## Verification Notes (2026-06-04)
+
+- **Verdict**: NEEDS_UPDATE
+- The `ll-loop` CLI has substantially evolved since this feature was implemented:
+  - Entry point moved from `scripts/little_loops/cli.py` to `scripts/little_loops/cli/loop/__init__.py` (a package, not a single module)
+  - The `compile` subcommand and `cmd_compile()` function were removed (alongside the deletion of `compilers.py` in commit `09c83ab9`)
+  - The Resolution section references `cli.py` as the implementation location, which no longer reflects the current architecture
+- The feature remains `status: done` in frontmatter but its description of the implementation is inaccurate for the current codebase.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-06-04T22:14:36 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`

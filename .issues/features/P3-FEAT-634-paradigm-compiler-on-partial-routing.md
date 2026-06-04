@@ -151,6 +151,7 @@ The referenced target state must either exist in the compiled states or be user-
 - **DEP_ISSUES (minor)**: ENH-625 is missing a `## Blocks` backlink to FEAT-634
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T22:14:36 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
 - `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
@@ -185,6 +186,12 @@ The referenced target state must either exist in the compiled states or be user-
 - [x] Compiled states include `on_partial: <on_partial_target>` where specified
 - [x] Paradigm YAML without `on_partial_target` behaves as before (`on_partial` is `None`)
 - [x] All 99 tests pass; no regressions
+
+## Verification Notes (2026-06-04)
+
+- **Verdict**: OUTDATED
+- The file this feature modified — `scripts/little_loops/fsm/compilers.py` — was deliberately deleted in commit `09c83ab9` ("refactor(fsm): remove deprecated paradigm compilation system"). All changes described in the Resolution section no longer exist in the codebase.
+- The underlying capability (`on_partial` routing in `StateConfig` and the executor) still exists in `schema.py` and `executor.py`, but the paradigm compiler layer that this feature extended has been removed.
 
 ## Status
 

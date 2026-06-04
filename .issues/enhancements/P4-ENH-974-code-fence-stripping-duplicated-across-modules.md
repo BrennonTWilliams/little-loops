@@ -3,6 +3,7 @@ id: ENH-974
 title: Code-fence stripping logic duplicated across 3 modules
 type: ENH
 priority: P4
+status: open
 discovered_commit: 96d74cda12b892bac305b81a527c66021302df6a
 discovered_branch: main
 discovered_date: 2026-04-06T15:57:51Z
@@ -133,6 +134,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - Feature not yet implemented
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T22:14:35 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:44 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:34 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:17 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

@@ -228,6 +228,7 @@ Routing conventions: `on_yes` / `on_partial` / `on_no`. Captures: `${captured.<s
 ---
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T22:14:36 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `hook:posttooluse-git-mv` - 2026-04-18T19:51:48 - `8ff9cd96-1544-4ffa-b28c-15aab5e9f3e8.jsonl`
 - `/ll:confidence-check` - 2026-04-12T19:21:00 - `af507141-e237-44c4-86f4-c20c393e747e.jsonl`
 - `/ll:refine-issue` - 2026-04-13T00:19:25 - `df842483-0396-4e4d-ad0e-01b546a41fd1.jsonl`
@@ -242,3 +243,9 @@ Routing conventions: `on_yes` / `on_partial` / `on_no`. Captures: `${captured.<s
 **Completed** | Created: 2026-04-12 | Completed: 2026-04-18 | Priority: P2
 
 **Completion note**: ARCHITECTURE.md and CONTRIBUTING.md scope decomposed into FEAT-1086. API.md (`StateConfig.parallel` field, `ParallelStateConfig`, `ParallelResult` blocks) remains the responsibility of FEAT-1086 or a follow-on issue.
+
+## Verification Notes (2026-06-04)
+
+- **Verdict**: NEEDS_UPDATE
+- The Codebase Research section (line 101) notes that `CONTRIBUTING.md` line 235 still lists `compilers.py` in the `fsm/` directory tree — a file that was deleted in commit `09c83ab9`. The issue's Codebase Research acknowledges this but the broader tree cleanup was declared out of scope. The stale `compilers.py` reference remains in `CONTRIBUTING.md`.
+- Additionally, the completion note (line 244) indicates ARCHITECTURE.md and CONTRIBUTING.md scope was decomposed into FEAT-1086, with API.md work remaining. This should be reflected in the status.

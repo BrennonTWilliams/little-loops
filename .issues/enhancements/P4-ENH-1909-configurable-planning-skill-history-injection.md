@@ -163,6 +163,9 @@ _Added by `/ll:verify-issues` on 2026-06-04_
 **Verdict: NEEDS_UPDATE** — `history.planning_skills` config key exists in BOTH `config-schema.json` (line 1432) AND `scripts/little_loops/config/features.py:758` (`HistoryConfig` class with `from_dict` deserialization). The config infrastructure is fully implemented — including defaults and `from_dict` support. Remaining work: `--for-skill` flag on `ll-history-context` CLI, and per-skill guards in scope-epic/manage-issue/review-epic/create-sprint skill files. Previous verification (2026-06-03) noted only schema existence; the Python config class implementation was missed.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T22:14:36 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:verify-issues` - 2026-06-04T18:41:58 - `18003f27-33de-416c-b594-e351d9d60c9d.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:06 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:format-issue` - 2026-06-03T21:01:30 - `05f0b8cd-d4c6-444a-8f99-5505d4cea6e9.jsonl`
+
+**Update 2026-06-04**: Verdict unchanged (NEEDS_UPDATE). Confirmed `history.planning_skills` exists in both `config-schema.json` (line ~1432) and `scripts/little_loops/config/features.py:758` (`HistoryConfig` class with `from_dict` deserialization). The config infrastructure is fully implemented — including defaults. Remaining work: `--for-skill` flag on `ll-history-context` CLI, and per-skill guards in the four planning skill files. The Integration Map and Implementation Steps sections accurately capture remaining work; the issue body just needs to acknowledge partial completion.

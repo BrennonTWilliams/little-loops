@@ -102,7 +102,13 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 **Verdict: NEEDS_UPDATE** — ENH-494 and ENH-977 are now done (ll-verify-skills CLI exists). ENH-1801 and ENH-1802 are also done. Still open: ENH-1617 (negative routing instructions) and ENH-1618 (consolidate audit skills); skills/audit/ meta-skill does not exist yet.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T22:14:37 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:02 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`
+
+**Update 2026-06-04 (re-verified)**:
+- 4 of 8 children done: ENH-494 (500-line limit), ENH-977 (ll-verify-skills CLI), ENH-1801, ENH-1802.
+- Remaining: ENH-1617 (negative routing), ENH-1618 (audit consolidation — `skills/audit/` does not exist), BUG-1799, BUG-1800 (both `open`).
+- Body and Implementation Order sections should be updated to reflect completed foundational items (ENH-494 and ENH-977) and remaining work.

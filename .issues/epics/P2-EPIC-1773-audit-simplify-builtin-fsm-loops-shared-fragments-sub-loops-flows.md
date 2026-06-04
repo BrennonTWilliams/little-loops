@@ -6,7 +6,8 @@ priority: P2
 captured_at: "2026-05-29T01:01:55Z"
 discovered_date: 2026-05-28
 discovered_by: capture-issue
-status: open
+status: done
+completed_at: '2026-06-04T00:00:00Z'
 relates_to: [ENH-1774, ENH-1643, BUG-1767, ENH-1862, FEAT-1798]
 ---
 
@@ -108,6 +109,8 @@ _Updated by `/ll:ready-issue` on 2026-06-01_
 **Verdict: NEEDS_UPDATE** — Loop count has grown: 78 total YAMLs (not 64). Waves 2-4 children (ENH-1775, ENH-1776, ENH-1777, ENH-1862) are all status: done. Update epic body to reflect completed waves.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T22:37:04 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
+- `/ll:verify-issues` - 2026-06-04T22:14:37 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:02 - `aeb556c4-3814-4aa1-9bd0-5b4a91c2087e.jsonl`
 - `/ll:ready-issue` - 2026-06-01T16:33:57 - `92bcd8b4-38a6-46b1-9488-9de681167c3e.jsonl`
@@ -120,6 +123,12 @@ _Updated by `/ll:ready-issue` on 2026-06-01_
 
 ---
 
+## Resolution
+
+All planned work is complete or explicitly deferred. Waves 2–4 (ENH-1775, ENH-1776, ENH-1777, ENH-1862) shipped shared fragments, sub-loops, and flows. ENH-1796 (shared message log), ENH-1643 (type filter), and BUG-1767 (StallDetector fingerprint) are all `done`. ENH-1774 (Wave 1) was cancelled/superseded. FEAT-1794 (HITL interrupt) was reparented to EPIC-1929. The built-in loop library now composes from shared building blocks — the epic's goal is achieved.
+
 ## Status
 
-**Open** | Created: 2026-05-28 | Priority: P2
+**Closed** | Created: 2026-05-28 | Completed: 2026-06-04 | Priority: P2
+
+**Verification 2026-06-04**: 70 loop YAMLs in `scripts/little_loops/loops/`. 7 of 8 children done/cancelled, 1 reparented. Epic is complete.

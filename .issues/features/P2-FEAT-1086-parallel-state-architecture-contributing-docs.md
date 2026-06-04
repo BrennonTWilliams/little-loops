@@ -132,8 +132,16 @@ The `fsm/` directory tree is at lines 231–243. The last entry is `└── ha
 ---
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T22:14:36 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:issue-size-review` - 2026-04-12T00:00:00 - `6db3cacd-18d3-4b5b-9ee4-3154dcc307d7.jsonl`
 
 ---
 
 **Open** | Created: 2026-04-12 | Priority: P2
+
+## Verification Notes (2026-06-04)
+
+- **Verdict**: NEEDS_UPDATE
+- Frontmatter says `status: done` with `completed_at: 2026-04-21`, but body line 6 says "Status: Won't Do" and line 139 says "**Open**". These are contradictory.
+- The Caveats section (line 109) acknowledges that `CONTRIBUTING.md` lists non-existent `compilers.py` but declares the broader cleanup out of scope. The stale reference remains in the codebase.
+- **Recommendation**: Resolve the frontmatter/body status conflict. If this was superseded by the multi-loop parallel approach (as stated on line 5), update the frontmatter to `status: cancelled` with rationale, or remove the "Won't Do" / "Open" body text if the work was actually completed.

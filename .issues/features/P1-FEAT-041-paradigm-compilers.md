@@ -335,3 +335,14 @@ class TestImperativeCompiler:
 ## Scope Addition
 
 **Note** (added by `/ll:audit-issue-conflicts`): FEAT-040 typed `EvaluateConfig.tolerance` as `float | None`. This issue broadened it to `str | float | None` to support `${context.*}` interpolation strings injected by the convergence compiler. FEAT-040's test suite (`test_fsm_schema.py`) was not updated to cover string-valued tolerance — those tests exist in `test_fsm_compilers.py` added here. Future work on the schema should treat `tolerance` as accepting interpolation strings.
+
+## Verification Notes (2026-06-04)
+
+- **Verdict**: OUTDATED
+- The core deliverable of this feature — `scripts/little_loops/fsm/compilers.py` — was deliberately deleted in commit `09c83ab9` ("refactor(fsm): remove deprecated paradigm compilation system"). The file no longer exists anywhere in the codebase.
+- Paradigm compilation was superseded by a different approach (likely direct FSM authoring or loop wizards). This feature's status remains `done` in frontmatter, but the code it shipped has been removed.
+- **Recommendation**: Either update the Resolution section to note the code was later removed (superseded), or set `status: superseded` if that status value is adopted.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-06-04T22:14:35 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`

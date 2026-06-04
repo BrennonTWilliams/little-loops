@@ -3,6 +3,7 @@ id: FEAT-1736
 title: Wire-Issue Coupling Rules via Decisions Log
 type: FEAT
 priority: P3
+status: open
 discovered_date: 2026-05-27
 discovered_by: capture-issue
 captured_at: "2026-05-27T04:46:43Z"
@@ -216,6 +217,7 @@ ll-issues decisions list --type=coupling --archetype=add-cli-command
 **Open** | Created: 2026-05-27 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T22:14:35 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:42 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-01T02:53:58 - `5e05c48a-ca16-414b-a869-8184ba394f53.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:07 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`

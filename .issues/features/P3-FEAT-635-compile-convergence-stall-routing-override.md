@@ -138,6 +138,7 @@ If `on_stall_target` is not `"done"`, the user is responsible for defining the t
 - No `on_stall` field handling exists anywhere in compilers.py ✓
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T22:14:36 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
 - `/ll:format-issue` - 2026-03-07T06:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
 - `/ll:verify-issues` - 2026-03-07T06:01:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f5f06f0-0429-44e7-9663-02fef909f58e.jsonl`
@@ -159,6 +160,12 @@ All acceptance criteria met:
 - When set, compiled stall route targets `on_stall` value ✓
 - When absent, defaults to `"done"` (backward compatible) ✓
 - Dangling `on_stall` references caught by existing `validate_fsm` ✓
+
+## Verification Notes (2026-06-04)
+
+- **Verdict**: OUTDATED
+- The file this feature modified — `scripts/little_loops/fsm/compilers.py` — was deliberately deleted in commit `09c83ab9` ("refactor(fsm): remove deprecated paradigm compilation system"). The `on_stall` override change described in the Resolution section no longer exists in the codebase.
+- While the feature was correctly implemented at the time, the paradigm compilation infrastructure it extended has since been removed.
 
 ## Status
 

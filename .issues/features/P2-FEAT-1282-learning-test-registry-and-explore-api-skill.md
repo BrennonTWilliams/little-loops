@@ -2,6 +2,7 @@
 id: FEAT-1282
 type: FEAT
 priority: P2
+status: open
 captured_at: "2026-04-25T18:06:01Z"
 discovered_date: "2026-04-25"
 discovered_by: capture-issue
@@ -244,6 +245,7 @@ def mark_stale(target_slug: str) -> None: ...
 `enhancement`, `autonomy`, `learning-tests`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T22:14:34 - `ab906855-95d7-4c4f-93f3-78db8cba1111.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T20:39:40 - `878c5913-3278-47e9-865c-2f4ceb07948f.jsonl`
 - `/ll:refine-issue` - 2026-05-16T21:36:45 - `e1da9d61-83f1-4718-91ec-4ed0e57454c9.jsonl`
 - `/ll:wire-issue` - 2026-04-25T18:49:33 - `6cab145e-64ca-41f6-9cfa-67c06772edcb.jsonl`
