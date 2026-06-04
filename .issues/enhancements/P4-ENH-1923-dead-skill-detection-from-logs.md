@@ -45,8 +45,24 @@ invocation count.
 
 ## Integration Map
 
-- ENH-1921 (`ll-logs stats`): invocation-count source.
-- `find-dead-code` (`skills/find-dead-code/`): consume the never-invoked list.
+### Files to Modify
+- `scripts/little_loops/logs.py` (or `ll_logs` subcommand module) — add `--never-invoked` / `stats` output with catalog cross-reference
+
+### Dependent Files (Callers/Importers)
+- ENH-1921 (`ll-logs stats`) — invocation-count source; this feature consumes its output
+- `skills/find-dead-code/SKILL.md` — consume the never-invoked list as an additional input signal
+
+### Similar Patterns
+- `ll-find-dead-code` skill — existing reference-based dead-code detection to stay consistent with output format
+
+### Tests
+- `scripts/tests/` — new test with catalog fixture + corpus fixture; assert correct never-invoked/rarely-invoked split
+
+### Documentation
+- `docs/reference/API.md` — document new `ll-logs` subcommand/flag
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -65,6 +81,11 @@ invocation count.
 
 ## Impact
 
+- **Priority**: P4 — useful complement to existing dead-code analysis but no active user pain; low urgency
+- **Effort**: Small — enumerate catalog files + diff against stats output; no new infrastructure
+- **Risk**: Low — additive read-only feature; no changes to existing skill or log behavior
+- **Breaking Change**: No
+
 Adds a usage dimension to dead-code review; surfaces discoverability gaps.
 
 ## Related Key Documentation
@@ -80,4 +101,5 @@ captured, ll-logs, find-dead-code
 open
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-04T03:10:33 - `6828653f-c5aa-47bf-a167-82e4553412d0.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`

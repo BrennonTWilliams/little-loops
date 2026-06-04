@@ -47,8 +47,25 @@ Add `eval-export` to `cli/logs.py`, reusing the shared ll-invocation extractor
 
 ## Integration Map
 
-- `ll-harness` / `skills/create-eval-from-issues/`: consume emitted fixtures.
-- Depends on the shared extractor introduced in ENH-1919.
+### Files to Modify
+- `scripts/little_loops/cli/logs.py` — add `eval-export` subcommand handler and `_build_parser` entry
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/harness.py` — defines the fixture schema that `eval-export` must emit
+- ENH-1919 shared invocation extractor (in `cli/logs.py` or adjacent module) — primary data source
+- `skills/create-eval-from-issues/` — consumes emitted fixture files
+
+### Similar Patterns
+- `_cmd_extract`, `_cmd_discover`, `_cmd_tail` in `scripts/little_loops/cli/logs.py` — follow same subcommand handler shape
+
+### Tests
+- `scripts/tests/test_ll_logs.py` — add round-trip test: emit fixtures via `eval-export`, load under `ll-harness`
+
+### Documentation
+- `docs/reference/API.md` — update `ll-logs` section with `eval-export` subcommand and flags
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -79,8 +96,10 @@ then replay through `ll-harness` to compare behavior before/after.
 
 ## Impact
 
-Turns accumulated real usage into a renewable eval corpus; underpins regression
-replay for prompt/skill edits.
+- **Priority**: P3 — quality-of-life improvement for eval workflows; not on the critical path
+- **Effort**: Medium — new subcommand with filtering logic, fixture mapping, and round-trip tests; reuses ENH-1919 extractor
+- **Risk**: Low — purely additive; no changes to existing `ll-logs` subcommands or harness behavior
+- **Breaking Change**: No
 
 ## Related Key Documentation
 
@@ -95,4 +114,5 @@ captured, ll-logs, eval, harness
 open
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-04T03:08:23 - `15dd654f-1592-42bb-8073-e029440f9e86.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`

@@ -46,8 +46,24 @@ diff plus failure/correction count deltas.
 
 ## Integration Map
 
-- FEAT-1920 (eval-export): replay-vs-original comparison consumer.
-- `ll-session path`: session-id → log-path resolution.
+### Files to Modify
+- `scripts/little_loops/cli/logs.py` — add `diff` subcommand to `ll-logs`
+
+### Dependent Files (Callers/Importers)
+- FEAT-1920 (eval-export): replay-vs-original comparison consumer
+
+### Similar Patterns
+- ENH-1919 shared extractor: ll-invocation event stream builder (reuse)
+- `ll-session path` (`scripts/little_loops/cli/session.py`): session-id → log-path resolution (reuse for argument resolution)
+
+### Tests
+- TBD — add two fixture sessions with a seeded behavioral difference and assert diff accuracy
+
+### Documentation
+- `docs/reference/API.md` — update ll-logs subcommand reference
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -66,7 +82,10 @@ diff plus failure/correction count deltas.
 
 ## Impact
 
-Makes prompt/config-edit regressions observable without manual transcript reading.
+- **Priority**: P4 — Nice-to-have observability tooling; not blocking current workflows
+- **Effort**: Small — new subcommand reusing the existing event-stream extractor (ENH-1919); no new parsing infrastructure needed
+- **Risk**: Low — purely additive new subcommand; no modification to existing `ll-logs` behavior
+- **Breaking Change**: No
 
 ## Related Key Documentation
 
@@ -81,4 +100,5 @@ captured, ll-logs, regression
 open
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-04T03:10:25 - `4276cd32-50a5-4188-b806-1ea69e9f0941.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`

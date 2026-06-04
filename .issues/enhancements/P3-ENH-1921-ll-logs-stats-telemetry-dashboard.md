@@ -47,9 +47,24 @@ traceback, see ENH-1922) and corrections (reuse `is_correction()` from
 
 ## Integration Map
 
-- `ll-ctx-stats`: optional cost column join.
-- `session_store.is_correction()`: correction detection reuse.
-- Feeds ENH-1923 (dead-skill detection).
+### Files to Modify
+- `scripts/little_loops/cli/logs.py` — add `stats` subcommand
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/session_store.py` — reuse `is_correction()` for correction detection
+- `scripts/little_loops/cli/logs.py` — reuse shared ll-invocation extractor (ENH-1919)
+
+### Similar Patterns
+- `ll-ctx-stats` aggregation approach for optional cost column join
+
+### Tests
+- `scripts/tests/` — new fixture-corpus test for stats aggregation
+
+### Documentation
+- `docs/reference/API.md` — add `ll-logs stats` to ll-logs and ll-ctx-stats entries
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -62,25 +77,30 @@ traceback, see ENH-1922) and corrections (reuse `is_correction()` from
 
 - Output identifies the top-N invoked skills and the top-N by correction rate.
 
+## Scope Boundaries
+
+Out of scope:
+- Real-time or live dashboards (batch aggregation only)
+- Collecting new session data — reads existing logs via the shared extractor (ENH-1919)
+- Automatic remediation of low-quality skills
+- Visual/chart output — tabular text + `--json` only
+- Non-ll CLI tools; aggregation is scoped to ll skill/command invocations
+
 ## API/Interface
 
 `ll-logs stats` — new read-only aggregation subcommand.
 
 ## Impact
 
-Provides the observability baseline the rest of the EPIC builds on.
+- **Priority**: P3 — Foundational observability for EPIC-1918; blocks dead-skill detection (ENH-1923) but not critical-path
+- **Effort**: Small — adds one subcommand to `cli/logs.py` reusing existing extractors and `is_correction()`
+- **Risk**: Low — read-only aggregation; no writes to session data or issue files
+- **Breaking Change**: No
 
 ## Related Key Documentation
 
 - `docs/reference/API.md` (ll-logs, ll-ctx-stats)
 
-## Labels
-
-captured, ll-logs, telemetry
-
-## Status
-
-open
-
 ## Session Log
+- `/ll:format-issue` - 2026-06-04T03:09:55 - `9b934de1-4aab-4e21-b930-1823687cb2b1.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`

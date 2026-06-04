@@ -52,9 +52,25 @@ stream, then count n-grams within `--window-days`. Emit text + `--json`.
 
 ## Integration Map
 
-- `loop-suggester` (`skills/loop-suggester/`): consume `--json` output as a
-  history-independent sequence source alongside `ll-messages`.
-- FEAT-1309: re-point `--passive-scan` at this primitive instead of inlining.
+### Files to Modify
+- `scripts/little_loops/cli/logs.py` — add `sequences` subcommand to `main_logs()`, reusing project enumeration from `extract`/`discover`
+
+### Dependent Files (Callers/Importers)
+- `skills/loop-suggester/` — consume `sequences --json` output as history-independent sequence source alongside `ll-messages`
+- FEAT-1309 implementation — re-point `--passive-scan` mining logic at this primitive instead of inlining
+
+### Similar Patterns
+- `discover` and `extract` subcommands in `cli/logs.py` — reuse their project enumeration and JSONL-walking patterns
+- `ll-messages` CLI — parallel extraction primitive; follow same `--json` output convention
+
+### Tests
+- `scripts/tests/` — add fixture corpus tests for `sequences` subcommand; cover n-gram counting, `--min-len`/`--min-count`/`--window-days` filtering, and JSON schema
+
+### Documentation
+- `docs/reference/API.md#little_loopscli` — document `sequences` subcommand signature and JSON schema
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -68,9 +84,17 @@ stream, then count n-grams within `--window-days`. Emit text + `--json`.
 
 `ll-logs sequences` — new subcommand; JSON schema: `[{chain: [str], count: int, edges: [{from, to, freq}]}]`.
 
+## Scope Boundaries
+
+- **In scope**: extracting ll skill/command/`ll-*` Bash invocations from JSONL logs into ordered per-session event streams; n-gram counting with CLI filters; text and `--json` output
+- **Out of scope**: consuming or integrating the output into `loop-suggester` or FEAT-1309 (that's their respective issues); visualization or analysis of n-grams beyond ranked list output; real-time log monitoring; non-ll tool chains
+
 ## Impact
 
-Enables data-driven loop suggestion; de-duplicates mining logic with FEAT-1309.
+- **Priority**: P3 — enabling primitive for loop-suggester and FEAT-1309; not urgent but reduces duplicated mining logic
+- **Effort**: Small — new subcommand reusing existing `discover`/`extract` project enumeration; no new parsing infrastructure needed
+- **Risk**: Low — additive subcommand; does not modify existing `ll-logs` subcommands or shared state
+- **Breaking Change**: No
 
 ## Related Key Documentation
 
@@ -82,7 +106,8 @@ captured, ll-logs, loop-suggester
 
 ## Status
 
-open
+**Open** | Created: 2026-06-04 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-04T03:07:47 - `f957d413-8388-4582-b04a-6c037cc6e22e.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`

@@ -49,10 +49,26 @@ Detect nonzero exit / traceback in tool-use result records; cluster by
 
 ## Integration Map
 
-- `analyze_log` skill: shares failure-clustering logic; this is the interactive
-  generalization.
-- `/ll:capture-issue`: candidate sink (reuses dup detection / reopen flow).
-- `session_store` correction path (ENH-1904): sibling, not overlap.
+### Files to Modify
+- `scripts/little_loops/cli/logs.py` — add `scan-failures` subcommand
+
+### Dependent Files (Callers/Importers)
+- `skills/analyze_log/` — shares failure-clustering logic; this is the interactive generalization
+- `/ll:capture-issue` — candidate sink (reuses dup detection / reopen flow)
+- `session_store` correction path (ENH-1904) — sibling, not overlap
+
+### Similar Patterns
+- `skills/analyze_log/` — existing failure-clustering logic to generalize from
+- ENH-1919 shared extractor — reuse for log record access
+
+### Tests
+- `scripts/tests/` — add fixture corpus with seeded failure records; cover nonzero exit detection, traceback detection, clustering, and false-positive suppression for expected-nonzero gates
+
+### Documentation
+- `docs/reference/API.md` — update `ll-logs` section with new subcommand
+
+### Configuration
+- N/A
 
 ## Implementation Steps
 
@@ -73,11 +89,24 @@ Detect nonzero exit / traceback in tool-use result records; cluster by
 
 ## API/Interface
 
-`ll-logs scan-failures` — new subcommand; `--capture` optional sink.
+```bash
+ll-logs scan-failures [--project DIR | --all] [--window-days D] [--json] [--capture]
+```
+
+- `--project DIR` — restrict scan to a specific project's logs
+- `--all` — scan all project logs
+- `--window-days D` — limit to logs from last D days (default: all)
+- `--json` — emit structured JSON candidates instead of human-readable text
+- `--capture` — pipe candidates into `/ll:capture-issue` for automatic issue filing with duplicate detection
+
+Output (text mode): one candidate block per `(tool, normalized-error-signature)` cluster.
 
 ## Impact
 
-Continuous, zero-effort bug discovery for ll's own tooling.
+- **Priority**: P3 — Real tool failures currently leak undetected; not blocking but high signal value
+- **Effort**: Medium — New subcommand reuses shared extractor (ENH-1919) and analyze_log clustering logic; new parts are error-signature normalization and the `--capture` sink
+- **Risk**: Low — Additive new subcommand; no changes to existing `ll-logs` behavior or shared code paths
+- **Breaking Change**: No
 
 ## Related Key Documentation
 
@@ -85,11 +114,13 @@ Continuous, zero-effort bug discovery for ll's own tooling.
 
 ## Labels
 
-captured, ll-logs, bugs, automation
+`captured`, `ll-logs`, `bugs`, `automation`
 
 ## Status
 
-open
+**Open** | Created: 2026-06-04 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-04T03:11:09 - `52fea084-ccde-40de-a423-8dea32d03fdb.jsonl`
+- `/ll:format-issue` - 2026-06-04T03:10:04 - `9b934de1-4aab-4e21-b930-1823687cb2b1.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`
