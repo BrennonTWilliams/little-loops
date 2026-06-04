@@ -51,6 +51,10 @@ Without a consumer surface, the DB is dead weight: writers cost overhead, the sc
 - A general-purpose "memory" system (separate effort).
 - Dashboard / UI work.
 
+### Scope Boundary: ENH-1911
+
+ENH-1911 (Quantified evolution triggers from history) is `relates_to` this EPIC, not a child. It reads from the same `.ll/history.db` but serves **batch harness-evolution analysis** (`analyze-history` / `improve-claude-md`) rather than **runtime agent context injection**. Its recurrence detection may produce evidence toward this EPIC's success metric ("measurable reduction in repeated user_corrections") but is tracked and evaluated separately — it does not count toward the "at least 3 skills query history.db" wiring metric.
+
 ## Children
 
 - **ENH-1752** — Add `history_reader.py` read API with graceful degradation + CLI wrapper for skill invocation (foundational prerequisite for all consumer work).
@@ -135,6 +139,7 @@ _Added by `/ll:verify-issues` on 2026-05-31_
 **Verdict: NEEDS_UPDATE** — Verification note claiming consumer wiring is absent is outdated. ll-history-context is now wired into confidence-check, go-no-go, refine-issue, ready-issue, manage-issue, scope-epic, and create-sprint skills. Core remaining work: ENH-1909 (configurable planning_skills injection) is still open.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T04:34:25 - `e1e6b264-2dd0-4d92-92be-102681aa7fbc.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:02 - `aeb556c4-3814-4aa1-9bd0-5b4a91c2087e.jsonl`
 - `/ll:verify-issues` - 2026-06-01T03:08:51 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`

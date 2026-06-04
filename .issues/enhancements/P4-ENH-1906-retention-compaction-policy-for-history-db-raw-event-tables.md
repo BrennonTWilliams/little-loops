@@ -68,6 +68,12 @@ complementing FEAT-1712's summary layer (summarize-then-prune).
 
 ## Implementation Steps
 
+0. **Coordinate with ENH-1911 data dependencies.** The recurrence-feedback detector in
+   ENH-1911 relies on FTS5 searches over `message_events` and `user_corrections` rows that
+   pruning would remove. Before enabling retention on these tables, verify that
+   ENH-1911's detectors have run, or support a `recurrence_exempt_tables` override so
+   correction-shaped rows survive until recurrence analysis has processed them.
+
 1. Define retention config schema + defaults.
 2. Implement prune routine with per-table rules.
 3. Wire optional roll-up into FEAT-1712 summaries (if landed).
@@ -94,6 +100,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 **Verdict: NEEDS_UPDATE** — Blocker FEAT-1712 (hierarchical summary DAG) is now **done** and its compaction infrastructure is implemented in `session_store.py` (lines 1024+). The `blocked_by: FEAT-1712` constraint has been cleared. Core retention/pruning feature (`ll-session prune`, `analytics.retention` config key) is not yet implemented — this issue is now fully unblocked and ready to implement.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T04:34:25 - `e1e6b264-2dd0-4d92-92be-102681aa7fbc.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T21:54:23 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:capture-issue` - 2026-06-03T19:50:05Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/13a13638-9030-4da6-94ba-939418824572.jsonl`

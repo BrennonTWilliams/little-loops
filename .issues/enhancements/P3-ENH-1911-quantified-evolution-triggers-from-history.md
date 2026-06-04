@@ -7,6 +7,7 @@ status: open
 captured_at: "2026-06-03T20:59:38Z"
 discovered_date: 2026-06-03
 discovered_by: capture-issue
+depends_on: [ENH-1906]
 ---
 
 # ENH-1911: Quantified evolution triggers from history (recurring feedback + skill bypass)
@@ -61,6 +62,13 @@ recurring manual work but not recurring *feedback* or *bypass*.
 
 ## Implementation Steps
 
+0. **Coordinate with ENH-1906 retention policy.** Ensure correction-shaped `message_events`
+   rows are either (a) excluded from pruning until recurrence analysis has run, or (b) rolled
+   up into FEAT-1712 summaries with topic + occurrence-count preserved. If the roll-up format
+   does not preserve topic-level recurrence counts, request a
+   `recurrence_exempt_tables: [user_corrections, message_events]` override in the retention
+   config before pruning is enabled.
+
 1. **Recurring-feedback detector.** Cluster `memory/feedback_*` files + correction-shaped
    turns in `.ll/history.db` (FTS5) by topic; count recurrence; rank clusters with count ≥ N
    (default 2) as candidate permanent rules.
@@ -88,6 +96,13 @@ recurring manual work but not recurring *feedback* or *bypass*.
 - **Out of scope**: cross-project bypass tracking — operates only on this project's `.ll/history.db`
 - **Out of scope**: inferring feedback from code review diffs, PR comments, or external tools — only session history and `memory/feedback_*`
 - **Out of scope**: real-time per-session trigger reporting — batch analysis only, invoked explicitly
+- **EPIC-1707 boundary**: This issue is `relates_to` (not a child of) EPIC-1707 because it
+  serves batch harness-evolution analysis rather than runtime agent context injection. It
+  reads from the same `.ll/history.db` but targets different consumers (`analyze-history` /
+  `improve-claude-md`) and produces *proposals for human review* rather than *injected context
+  for agent decisions*. The recurrence detection it builds may contribute evidence toward
+  EPIC-1707's success metric ("measurable reduction in repeated user_corrections") but is
+  tracked and evaluated separately.
 
 ## Open Questions
 
@@ -150,6 +165,7 @@ bypasses orchestrator). This issue ports the *signal detection*; little-loops ke
 rigorous "propose, don't auto-grade" stance for the action side.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-06-04T04:34:19 - `e1e6b264-2dd0-4d92-92be-102681aa7fbc.jsonl`
 - `/ll:format-issue` - 2026-06-03T21:05:33 - `b833547d-130c-42f1-b9a5-75900748b2de.jsonl`
 - `/ll:capture-issue` - 2026-06-03T20:59:38Z - `b4fa1e68-4a59-49bd-949a-5a5b7533509f.jsonl`
 
