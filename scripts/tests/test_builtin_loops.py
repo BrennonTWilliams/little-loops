@@ -1027,6 +1027,57 @@ class TestRefineToReadyIssueSubLoop:
         )
 
 
+class TestGeneratorEvaluatorSubLoop:
+    """Regression tests for oracles/generator-evaluator.yaml routing.
+
+    Reproduces the site-generator-20260603T191934 failure: the `generate`
+    prompt state previously declared only `on_yes: evaluate` + `on_error:
+    failed`. A bare prompt action gets the default LLM judge, which can return
+    `partial`/`no` when the agent *narrates* its work instead of asserting it.
+    With no on_no/on_partial route, the verdict resolved to None → the sub-loop
+    dead-ended → the parent treated it as `failed`, discarding a correct
+    artifact. The real quality gate is the downstream evaluate (screenshot) →
+    score (rubric) cycle, so generate must hand off to evaluate for every
+    non-error verdict.
+    """
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "oracles" / "generator-evaluator.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_generate_on_yes_routes_to_evaluate(self, data: dict) -> None:
+        state = data["states"].get("generate", {})
+        assert state.get("on_yes") == "evaluate", (
+            f"generate.on_yes should be 'evaluate', got {state.get('on_yes')!r}"
+        )
+
+    def test_generate_on_no_routes_to_evaluate(self, data: dict) -> None:
+        """A `no` verdict from the default judge must NOT dead-end the sub-loop."""
+        state = data["states"].get("generate", {})
+        assert state.get("on_no") == "evaluate", (
+            "generate.on_no must route to 'evaluate' so a non-yes judge verdict "
+            f"reaches the screenshot+rubric gate instead of dead-ending; got {state.get('on_no')!r}"
+        )
+
+    def test_generate_on_partial_routes_to_evaluate(self, data: dict) -> None:
+        """The exact failure: `partial` verdict had no route → sub-loop → failed."""
+        state = data["states"].get("generate", {})
+        assert state.get("on_partial") == "evaluate", (
+            "generate.on_partial must route to 'evaluate' (reproduces "
+            "site-generator-20260603T191934 dead-end); got {!r}".format(state.get("on_partial"))
+        )
+
+    def test_generate_on_error_still_routes_to_failed(self, data: dict) -> None:
+        """Genuine action crashes must still terminate as failed."""
+        state = data["states"].get("generate", {})
+        assert state.get("on_error") == "failed", (
+            f"generate.on_error should remain 'failed', got {state.get('on_error')!r}"
+        )
+
+
 class TestHarnessCapture:
     """Tests that harness YAML files wire execute output to check_semantic via capture/source."""
 
@@ -2931,10 +2982,15 @@ class TestHtmlWebsiteGeneratorLoop:
         state = data["states"].get("smoke_test", {})
         assert state.get("action_type") == "shell"
 
-    def test_smoke_test_routes_to_done_on_pass(self, data: dict) -> None:
-        """smoke_test state must route to done when functional checks pass."""
+    def test_smoke_test_routes_to_vision_gate_on_pass(self, data: dict) -> None:
+        """smoke_test must route to vision_gate (optional aesthetic gate) on pass.
+
+        Functional smoke pass hands off to the vision_gate state, which is a
+        no-op passthrough to done unless VISION_* env is configured (the
+        vision_gate enhancement); it is no longer a direct edge to done.
+        """
         state = data["states"].get("smoke_test", {})
-        assert state.get("on_yes") == "done"
+        assert state.get("on_yes") == "vision_gate"
 
     def test_context_has_description(self, data: dict) -> None:
         """context block must define description variable; output_dir is runner-injected."""

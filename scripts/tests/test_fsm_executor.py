@@ -7337,3 +7337,90 @@ class TestFragmentParamBinding:
         assert result.final_state == "done"
         out = executor.captured["out"]["output"].strip()
         assert out == "from_context_val"
+
+
+class TestGeneratePartialVerdictRouting:
+    """Behavioral regression for the generator-evaluator dead-end.
+
+    site-generator-20260603T191934 failed because the `generate` prompt state
+    declared only on_yes + on_error. The default LLM judge returned `partial`
+    (the agent narrated its fixes instead of asserting them), `_route` found no
+    matching shorthand and returned None, the sub-loop dead-ended, and the
+    parent routed run_gen_eval → failed — discarding a correct artifact. The
+    fix maps yes/no/partial all to `evaluate` (the real screenshot+rubric gate).
+    These tests pin both the dead-end (old config) and the fix (new config) at
+    the routing layer, independent of the YAML file.
+    """
+
+    def _ctx(self) -> InterpolationContext:
+        return InterpolationContext(
+            context={},
+            captured={},
+            prev=None,
+            result=None,
+            state_name="generate",
+            iteration=2,
+            loop_name="generator-evaluator",
+            started_at="2026-06-03T19:19:34Z",
+            elapsed_ms=0,
+        )
+
+    def _executor(self) -> FSMExecutor:
+        fsm = FSMLoop(
+            name="generator-evaluator",
+            initial="generate",
+            states={
+                "generate": StateConfig(action="gen", on_yes="evaluate"),
+                "evaluate": StateConfig(action="shot", next="score"),
+                "score": StateConfig(action="rubric", on_yes="done", on_no="generate"),
+                "done": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+            },
+        )
+        return FSMExecutor(fsm, action_runner=MockActionRunner())
+
+    def test_old_config_dead_ends_on_partial(self) -> None:
+        """Guard: on_yes-only generate state has no route for `partial` (the bug)."""
+        old = StateConfig(action="gen", on_yes="evaluate", on_error="failed")
+        assert self._executor()._route(old, "partial", self._ctx()) is None, (
+            "on_yes-only generate must dead-end on `partial` — this is the "
+            "behaviour the fix removes; if it no longer returns None the "
+            "regression guard is meaningless"
+        )
+
+    def test_old_config_dead_ends_on_no(self) -> None:
+        """on_no with no on_error mapping also dead-ends (None), not failed."""
+        old = StateConfig(action="gen", on_yes="evaluate", on_error="failed")
+        # `no` falls through to on_error only when on_no is unset → routes to failed.
+        # The actual bug surfaced via `partial`; `no` would have hit on_error: failed.
+        assert self._executor()._route(old, "no", self._ctx()) == "failed"
+
+    def test_fixed_config_routes_partial_to_evaluate(self) -> None:
+        fixed = StateConfig(
+            action="gen",
+            on_yes="evaluate",
+            on_no="evaluate",
+            on_partial="evaluate",
+            on_error="failed",
+        )
+        assert self._executor()._route(fixed, "partial", self._ctx()) == "evaluate"
+
+    def test_fixed_config_routes_no_to_evaluate(self) -> None:
+        fixed = StateConfig(
+            action="gen",
+            on_yes="evaluate",
+            on_no="evaluate",
+            on_partial="evaluate",
+            on_error="failed",
+        )
+        assert self._executor()._route(fixed, "no", self._ctx()) == "evaluate"
+
+    def test_fixed_config_preserves_error_to_failed(self) -> None:
+        fixed = StateConfig(
+            action="gen",
+            on_yes="evaluate",
+            on_no="evaluate",
+            on_partial="evaluate",
+            on_error="failed",
+        )
+        assert self._executor()._route(fixed, "error", self._ctx()) == "failed"

@@ -46,7 +46,19 @@ states:
     action_type: prompt
     action: |
       ${context.generate_prompt}
+    # Generation hands off UNCONDITIONALLY to evaluate. The real quality gate is
+    # the downstream evaluate (Playwright screenshot) → score (rubric) cycle,
+    # which judges the rendered artifact. Routing only on_yes here would gate
+    # generation on the default LLM judge's read of the agent's *narration*:
+    # a later pass that describes its fixes ("here's what I changed") instead of
+    # asserting them earns a `partial`/`no` verdict, which has no route → the
+    # sub-loop dead-ends and the parent treats it as `failed`. Mapping yes/no/
+    # partial all to evaluate removes that nondeterministic dead-end while
+    # keeping on_error: failed for genuine action crashes. See ENH-1907 / the
+    # site-generator-20260603T191934 failure.
     on_yes: evaluate
+    on_no: evaluate
+    on_partial: evaluate
     on_error: failed
 
   evaluate:
