@@ -50,7 +50,8 @@ Install a loop into your project for customization: `ll-loop install <name>`
 | `rn-plan` | Recursive-N planning loop — builds a structured plan from scratch with iterative rubric-driven refinement | `task` (natural language description) |
 | `rn-refine` | Recursive-N refinement loop — improves an existing plan document using the same rubric cycle | `plan_file` (path to `.md`) |
 | `rn-plan-apo` | Plan-quality gradient optimization for the `rn-plan` recursive planner — refines the planning prompt via text gradient until `target_plan_quality` is reached | `target_plan_quality` |
-| `rn-implement` | Recursive plan-and-implement with iterative deepening, dimensional routing, and convergence detection | `<issue-id>` (single or comma-separated list) |
+| `rn-implement` | Queue orchestrator for recursive plan-and-implement — delegates per-issue remediation to rn-remediate and decomposition to rn-decompose | `<issue-id>` (single or comma-separated list) |
+| `rn-remediate` | Iterative deepening remediation cycle (diagnose → remediate → re_assess → check_convergence) extracted from rn-implement Phases 2-4 | `issue_id` (issue ID to remediate), `readiness_threshold`, `outcome_threshold`, `max_remediation_passes` |
 | `rn-decompose` | Issue decomposition pipeline (size review → child detection → enqueue with cycle detection) extracted from rn-implement Phase 5 | `issue_id` (issue ID to decompose), `run_dir` (parent run directory) |
 
 ## Research & Knowledge

@@ -1,4 +1,4 @@
-"""Tests for the rn-implement recursive plan-and-implement FSM loop."""
+"""Tests for the rn-implement queue orchestrator FSM loop."""
 
 from __future__ import annotations
 
@@ -99,7 +99,7 @@ class TestDequeueAndDepthTracking:
         data = _load_loop()
         deq = data["states"]["dequeue_next"]
         assert deq["on_yes"] == "check_depth"
-        assert deq["on_no"] == "done"
+        assert deq["on_no"] == "report"
 
     def test_dequeue_next_captures_input(self) -> None:
         """dequeue_next captures the popped issue ID as input."""
@@ -108,20 +108,32 @@ class TestDequeueAndDepthTracking:
         assert deq.get("capture") == "input"
 
     def test_check_depth_uses_output_numeric(self) -> None:
-        """check_depth uses output_numeric evaluator with lt 1."""
+        """check_depth uses output_numeric evaluator comparing depth to max_depth."""
         data = _load_loop()
         cd = data["states"]["check_depth"]
         evaluate = cd["evaluate"]
         assert evaluate["type"] == "output_numeric"
         assert evaluate["operator"] == "lt"
-        assert evaluate["target"] == 1
+        assert evaluate["target"] == "${context.max_depth}"
 
-    def test_check_depth_routes_below_cap_to_assess(self) -> None:
-        """check_depth routes to assess when depth is below cap (output 0)."""
+    def test_check_depth_routes_below_cap_to_run_remediation(self) -> None:
+        """check_depth routes to run_remediation when depth is below cap."""
         data = _load_loop()
         cd = data["states"]["check_depth"]
-        assert cd["on_yes"] == "assess", "on_yes (depth < max) should go to assess"
-        assert cd["on_no"] == "mark_depth_capped", "on_no (depth >= max) should cap"
+        assert cd["on_yes"] == "run_remediation", (
+            "on_yes (depth < max) should go to run_remediation"
+        )
+        assert cd["on_no"] == "mark_depth_capped", (
+            "on_no (depth >= max) should cap"
+        )
+
+    def test_check_depth_captures_current_depth(self) -> None:
+        """check_depth captures the raw depth value for sub-loop delegation."""
+        data = _load_loop()
+        cd = data["states"]["check_depth"]
+        assert cd.get("capture") == "current_depth", (
+            "check_depth must capture current_depth for run_decomposition binding"
+        )
 
     def test_mark_depth_capped_transitions_to_dequeue_next(self) -> None:
         """mark_depth_capped always transitions to dequeue_next."""
@@ -143,9 +155,8 @@ class TestDequeueAndDepthTracking:
         assert "current_depth.txt" in deq["action"]
 
 
-
 # ---------------------------------------------------------------------------
-# TestRateLimitAndErrorHandling — State: rate_limit_diagnostic, all wrappers
+# TestRateLimitAndErrorHandling — State: rate_limit_diagnostic, delegation wrappers
 # ---------------------------------------------------------------------------
 
 
@@ -164,33 +175,26 @@ class TestRateLimitAndErrorHandling:
         rld = data["states"]["rate_limit_diagnostic"]
         assert rld["next"] == "dequeue_next"
 
-    def test_all_slash_command_states_have_rate_limit_handling(self) -> None:
-        """All slash_command states wrap with with_rate_limit_handling."""
+    def test_orchestrator_has_no_inline_slash_commands(self) -> None:
+        """Orchestrator delegates all LLM actions to sub-loops — no inline slash_command states."""
         data = _load_loop()
         slash_states = [
             name for name, state in data["states"].items()
             if state.get("action_type") == "slash_command"
         ]
-        for name in slash_states:
-            state = data["states"][name]
-            assert state.get("fragment") == "with_rate_limit_handling", (
-                f"State '{name}' is slash_command but missing with_rate_limit_handling"
-            )
+        assert len(slash_states) == 0, (
+            f"Orchestrator should have 0 slash_command states; "
+            f"all LLM actions are delegated to sub-loops. Found: {slash_states}"
+        )
 
-    def test_all_rate_limited_states_have_exhaustion_handler(self) -> None:
-        """All states with with_rate_limit_handling have on_rate_limit_exhausted."""
+    def test_all_delegation_states_have_exhaustion_handler(self) -> None:
+        """All loop delegation states have on_rate_limit_exhausted."""
         data = _load_loop()
         for name, state in data["states"].items():
-            if state.get("fragment") == "with_rate_limit_handling":
+            if state.get("loop") is not None:
                 assert "on_rate_limit_exhausted" in state, (
-                    f"State '{name}' has rate_limit_handling but no on_rate_limit_exhausted"
+                    f"Delegation state '{name}' missing on_rate_limit_exhausted"
                 )
-
-    def test_implement_state_has_error_handler(self) -> None:
-        """implement state has on_error handler."""
-        data = _load_loop()
-        impl = data["states"]["implement"]
-        assert "on_error" in impl
 
     def test_failed_state_writes_checkpoint(self) -> None:
         """failed state writes checkpoint.json for potential resume."""
@@ -199,12 +203,157 @@ class TestRateLimitAndErrorHandling:
         action = failed["action"]
         assert "checkpoint.json" in action
 
-    def test_done_state_writes_summary(self) -> None:
-        """done state writes summary.json with completion stats."""
+
+# ---------------------------------------------------------------------------
+# TestSubLoopDelegation — States: run_remediation, run_decomposition
+# ---------------------------------------------------------------------------
+
+
+class TestSubLoopDelegation:
+    """Tests for sub-loop delegation states."""
+
+    # --- run_remediation ---
+
+    def test_run_remediation_is_loop_delegation(self) -> None:
+        """run_remediation delegates to rn-remediate sub-loop."""
+        data = _load_loop()
+        state = data["states"]["run_remediation"]
+        assert state.get("loop") == "rn-remediate"
+
+    def test_run_remediation_has_with_bindings(self) -> None:
+        """run_remediation passes issue_id, thresholds, and max_passes via with: bindings."""
+        data = _load_loop()
+        with_bindings = data["states"]["run_remediation"]["with"]
+        assert with_bindings["issue_id"] == "${captured.input.output}"
+        assert with_bindings["readiness_threshold"] == "${context.readiness_threshold}"
+        assert with_bindings["outcome_threshold"] == "${context.outcome_threshold}"
+        assert with_bindings["max_remediation_passes"] == "${context.max_remediation_passes}"
+
+    def test_run_remediation_routes_on_success_to_dequeue_next(self) -> None:
+        """run_remediation routes to dequeue_next on success (child done = implemented)."""
+        data = _load_loop()
+        state = data["states"]["run_remediation"]
+        assert state["on_success"] == "dequeue_next"
+
+    def test_run_remediation_routes_on_failure_to_run_decomposition(self) -> None:
+        """run_remediation routes to run_decomposition on failure (child stalled)."""
+        data = _load_loop()
+        state = data["states"]["run_remediation"]
+        assert state["on_failure"] == "run_decomposition"
+
+    def test_run_remediation_routes_on_error_to_skip_issue(self) -> None:
+        """run_remediation routes to skip_issue on error."""
+        data = _load_loop()
+        state = data["states"]["run_remediation"]
+        assert state["on_error"] == "skip_issue"
+
+    def test_run_remediation_routes_on_no_to_run_decomposition(self) -> None:
+        """run_remediation routes to run_decomposition on no (timeout/max_iter/never-started)."""
+        data = _load_loop()
+        state = data["states"]["run_remediation"]
+        assert state["on_no"] == "run_decomposition"
+
+    def test_run_remediation_has_rate_limit_exhausted_handler(self) -> None:
+        """run_remediation routes to rate_limit_diagnostic on rate limit exhaustion."""
+        data = _load_loop()
+        state = data["states"]["run_remediation"]
+        assert state["on_rate_limit_exhausted"] == "rate_limit_diagnostic"
+
+    # --- run_decomposition ---
+
+    def test_run_decomposition_is_loop_delegation(self) -> None:
+        """run_decomposition delegates to rn-decompose sub-loop."""
+        data = _load_loop()
+        state = data["states"]["run_decomposition"]
+        assert state.get("loop") == "rn-decompose"
+
+    def test_run_decomposition_has_with_bindings(self) -> None:
+        """run_decomposition passes issue_id, parent_depth, and run_dir via with: bindings."""
+        data = _load_loop()
+        with_bindings = data["states"]["run_decomposition"]["with"]
+        assert with_bindings["issue_id"] == "${captured.input.output}"
+        assert with_bindings["parent_depth"] == "${captured.current_depth.output}"
+        assert with_bindings["run_dir"] == "${captured.run_dir.output}"
+
+    def test_run_decomposition_routes_on_success_to_dequeue_next(self) -> None:
+        """run_decomposition routes to dequeue_next on success (children enqueued)."""
+        data = _load_loop()
+        state = data["states"]["run_decomposition"]
+        assert state["on_success"] == "dequeue_next"
+
+    def test_run_decomposition_routes_on_failure_to_skip_issue(self) -> None:
+        """run_decomposition routes to skip_issue on failure (no children found)."""
+        data = _load_loop()
+        state = data["states"]["run_decomposition"]
+        assert state["on_failure"] == "skip_issue"
+
+    def test_run_decomposition_routes_on_error_to_skip_issue(self) -> None:
+        """run_decomposition routes to skip_issue on error."""
+        data = _load_loop()
+        state = data["states"]["run_decomposition"]
+        assert state["on_error"] == "skip_issue"
+
+    def test_run_decomposition_routes_on_no_to_skip_issue(self) -> None:
+        """run_decomposition routes to skip_issue on no (timeout/max_iter/never-started)."""
+        data = _load_loop()
+        state = data["states"]["run_decomposition"]
+        assert state["on_no"] == "skip_issue"
+
+    def test_run_decomposition_has_rate_limit_exhausted_handler(self) -> None:
+        """run_decomposition routes to skip_issue on rate limit exhaustion."""
+        data = _load_loop()
+        state = data["states"]["run_decomposition"]
+        assert state["on_rate_limit_exhausted"] == "skip_issue"
+
+
+# ---------------------------------------------------------------------------
+# TestReportAndTerminal — States: report, done
+# ---------------------------------------------------------------------------
+
+
+class TestReportAndTerminal:
+    """Tests for the report→done pre-terminal pattern (avoids terminal-state caveat)."""
+
+    def test_report_state_exists_and_is_not_terminal(self) -> None:
+        """report state exists and is not terminal (must execute before done)."""
+        data = _load_loop()
+        report = data["states"]["report"]
+        assert report is not None, "report state must exist"
+        assert report.get("terminal") is not True, (
+            "report must not be terminal — its action would be skipped"
+        )
+
+    def test_report_state_writes_summary_json(self) -> None:
+        """report state writes summary.json with completion stats."""
+        data = _load_loop()
+        report = data["states"]["report"]
+        action = report["action"]
+        assert "summary.json" in action
+        assert "dequeue_count.txt" in action
+        assert "implemented_count.txt" in action
+        assert "decomposed_count.txt" in action
+
+    def test_report_state_transitions_to_done(self) -> None:
+        """report state transitions to done via next:."""
+        data = _load_loop()
+        report = data["states"]["report"]
+        assert report["next"] == "done", (
+            "report must transition to done via next: to avoid terminal-state caveat"
+        )
+
+    def test_done_state_is_bare_terminal(self) -> None:
+        """done state is a bare terminal anchor with no action."""
         data = _load_loop()
         done = data["states"]["done"]
-        action = done["action"]
-        assert "summary.json" in action
+        assert done.get("terminal") is True
+        assert "action" not in done, (
+            "done must be bare terminal — report handles the summary action"
+        )
+        # No routing keys on a bare terminal
+        for key in ("next", "on_yes", "on_no", "on_error", "on_success", "on_failure"):
+            assert key not in done, (
+                f"Bare terminal done must not have '{key}' routing"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -300,52 +449,18 @@ class TestRoutingStructure:
                 )
 
     def test_mr1_non_llm_evaluators_present(self) -> None:
-        """States that perform routing decisions have non-LLM evaluators (MR-1).
+        """Routing decisions use non-LLM evaluators (MR-1).
 
-        Key routing states (check_convergence, check_remediation_budget, diagnose)
-        use shell/output_numeric/output_contains evaluators — not purely LLM judgment.
+        Only check_depth remains in the orchestrator — other MR-1 states
+        (diagnose, check_convergence, check_remediation_budget, check_readiness,
+        check_decision_needed) moved to the rn-remediate sub-loop.
         """
         data = _load_loop()
-        mr1_states = {
-            "check_convergence": "output_contains",  # via route_conv_pass/route_conv_improved
-            "check_remediation_budget": "output_numeric",
-            "diagnose": "output_contains",  # via route_d_* chain
-            "check_depth": "output_numeric",
-            "check_readiness": "exit_code",
-            "check_decision_needed": "exit_code",
-        }
-        for state_name, expected_eval_type in mr1_states.items():
-            state = data["states"].get(state_name)
-            assert state is not None, f"MR-1 state '{state_name}' not found"
-            # Diagnose and check_convergence use chained routers for output_contains
-            if state_name in ("diagnose", "check_convergence"):
-                # The router states carry the evaluator
-                if state_name == "diagnose":
-                    router = data["states"]["route_d_implement"]
-                else:
-                    router = data["states"]["route_conv_pass"]
-                evaluate = router.get("evaluate", {})
-                assert evaluate.get("type") == "output_contains", (
-                    f"{state_name} router should use output_contains, got {evaluate.get('type')}"
-                )
-            else:
-                evaluate = state.get("evaluate", {})
-                assert evaluate.get("type") == expected_eval_type or (
-                    state.get("fragment") == "shell_exit" and expected_eval_type == "exit_code"
-                ), (
-                    f"State '{state_name}' evaluator type {evaluate.get('type')} != "
-                    f"expected {expected_eval_type}"
-                )
-
-    def test_check_convergence_pairing_uses_non_llm(self) -> None:
-        """check_convergence output is routed via non-LLM output_contains evaluators."""
-        data = _load_loop()
-        for router_name in ("route_conv_pass", "route_conv_improved"):
-            router = data["states"][router_name]
-            evaluate = router["evaluate"]
-            assert evaluate["type"] == "output_contains", (
-                f"{router_name} must use output_contains (non-LLM) for MR-1"
-            )
+        cd = data["states"]["check_depth"]
+        evaluate = cd.get("evaluate", {})
+        assert evaluate.get("type") == "output_numeric", (
+            f"check_depth must use output_numeric (MR-1), got {evaluate.get('type')}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -372,6 +487,9 @@ class TestValidation:
                 continue
             # States with only next: are fine (unconditional)
             if "next" in state:
+                continue
+            # Sub-loop delegation states have on_success/on_failure/on_error
+            if state.get("loop") is not None:
                 continue
             # Must have at least one conditional routing target
             has_route = any(
@@ -404,10 +522,13 @@ class TestValidation:
         data = _load_loop()
         assert data["initial"] in data["states"]
 
-    def test_state_count_matches_expected(self) -> None:
-        """rn-implement has at least 30 states (31+ check_depth)."""
+    def test_state_count_is_orchestrator_sized(self) -> None:
+        """rn-implement orchestrator has ≤14 states (down from 32-state monolith)."""
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count >= 31, (
-            f"Expected 31+ states, got {state_count}"
+        assert state_count <= 14, (
+            f"Expected ≤14 states in orchestrator, got {state_count}"
+        )
+        assert state_count >= 10, (
+            f"Expected ≥10 states in orchestrator, got {state_count}"
         )

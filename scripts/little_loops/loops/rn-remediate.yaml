@@ -17,7 +17,7 @@ description: |
       outcome_threshold: "${context.outcome_threshold}"
       max_remediation_passes: "${context.max_remediation_passes}"
     on_yes: dequeue_next
-    on_no: snap_for_size_review
+    on_no: run_decomposition
 initial: assess
 max_iterations: 100
 timeout: 14400
