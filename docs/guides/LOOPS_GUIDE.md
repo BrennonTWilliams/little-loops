@@ -3511,6 +3511,18 @@ states:
 | `playwright_screenshot` | Runs `playwright screenshot` and emits `CAPTURED` on success. Default action uses `context.file_url` and `context.screenshot_path` with `2>&1` stderr capture (Variant B). Variant A callers needing `$(pwd)/` expansion must override `action:` at the call site. | `action_type: shell` + `evaluate.type: output_contains` (`pattern: "CAPTURED"`) | `context.file_url`, `context.screenshot_path` (or override `action:`), routing (`on_yes`, `on_no`, `on_error`) |
 | `ll_rubric_score` | Scores a generated artifact against a rubric with a configurable pass threshold. Emits `ALL_PASS` when all criteria pass; otherwise `NEEDS_WORK` with improvement notes. Used in the `generator-evaluator` oracle `score` state. Declares `parameters: {run_dir, rubric, pass_threshold}` — bind at call site via `with:`. | `action_type: prompt` + `evaluate.type: output_contains` (`pattern: "ALL_PASS"`) | `with: {run_dir: ..., rubric: ..., pass_threshold: ...}` (or legacy `context.run_dir` / `context.rubric` / `context.pass_threshold`), routing (`on_yes`, `on_no`, `on_error`) |
 
+#### `lib/apo-base.yaml` — APO base loop skeleton
+
+Base skeleton for Automated Prompt Optimization (APO) loops. Unlike the other six libraries (which are fragment collections), this is a **loop template** inherited via `from:` rather than `import:`. Provides the common `category`, `max_iterations`, `timeout`, `on_handoff`, `context.prompt_file`, and a terminal `done` state. Child loops (e.g. `apo-beam`, `apo-textgrad`, `apo-opro`, `apo-contrastive`, `apo-feedback-refinement`) inherit from it and supply their own `initial:` state and operative state graph.
+
+```yaml
+from: lib/apo-base
+
+initial: my_custom_init
+```
+
+Not runnable directly — kept under `lib/` so it is excluded from non-recursive loop discovery. See [Loop Template Inheritance via `from:`](#loop-template-inheritance-via-from) for full inheritance semantics and examples.
+
 Built-in loops import the libraries as `import: ["lib/common.yaml"]` or `import: ["lib/cli.yaml"]`. User loops in `.loops/` can do the same — built-in fragment libraries resolve automatically, so no copying or symlinking is required. You can also define your own local fragments in your loop file or a local library.
 
 ### When to Use Fragments vs. Sub-Loops
