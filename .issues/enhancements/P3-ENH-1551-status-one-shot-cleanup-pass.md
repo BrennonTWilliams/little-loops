@@ -94,14 +94,12 @@ grep -rn "^status: " .issues/ | grep -oE "status: [a-z_]+" | sort -u
 ```
 
 Expected output (exactly these 6):
-```
-status: blocked
-status: cancelled
-status: deferred
-status: done
-status: in_progress
-status: open
-```
+- `status: blocked`
+- `status: cancelled`
+- `status: deferred`
+- `status: done`
+- `status: in_progress`
+- `status: open`
 
 ### Codebase Research Findings
 
@@ -252,6 +250,7 @@ Implemented Option B (migration module pattern) as decided:
 - Verified: `grep -rn "^status: " .issues/` shows only 6 canonical values in frontmatter
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T18:41:57 - `18003f27-33de-416c-b594-e351d9d60c9d.jsonl`
 - `/ll:verify-issues` - 2026-05-22T16:11:39 - `d87b546d-fad7-425c-a8f4-8246f0ea8de8.jsonl`
 - `/ll:ready-issue` - 2026-05-17T09:19:57 - `5c04248b-cf40-48f6-8529-813d82ec8b61.jsonl`
 - `/ll:decide-issue` - 2026-05-17T09:14:55 - `e6329ee2-2e87-4e97-85ea-e027a2f56866.jsonl`

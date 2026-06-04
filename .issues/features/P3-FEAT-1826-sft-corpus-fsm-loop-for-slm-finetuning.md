@@ -292,7 +292,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 `loop`, `sft`, `fine-tuning`, `new-feature`
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-04_
+
+**Verdict: OUTDATED** — The sft-corpus FSM loop already exists at `scripts/little_loops/loops/sft-corpus.yaml` with states for stage→enrich→filter→dedup→split→publish. Supporting infrastructure is also in place: `scripts/little_loops/sft_formatter.py` (SFT format conversion), `scripts/tests/test_loops_sft_corpus.py` (loop tests). Recent commits (32e83855, 293b2c43) show active development adding enrich and quality predicate states.
+
+The "Current Behavior" section claiming "No dedicated pipeline exists" is **false** — the pipeline exists and is functional. Acceptance criteria checkboxes are all unchecked despite substantial implementation. The issue should be updated to reflect current state: check off completed criteria, update Current Behavior to describe what the loop currently does, and capture remaining gaps (if any) as their current status.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T18:41:57 - `18003f27-33de-416c-b594-e351d9d60c9d.jsonl`
 - `/ll:refine-issue` - 2026-06-03T00:46:04 - `ef863381-72dc-415f-ad39-f86d8e42dba1.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00Z - `17557f51-d1e7-48ab-8c75-d04f0cc19f24.jsonl`
 - `/ll:wire-issue` - 2026-06-03T00:31:19 - `dd96413d-220c-449b-8e81-593defe00fdc.jsonl`

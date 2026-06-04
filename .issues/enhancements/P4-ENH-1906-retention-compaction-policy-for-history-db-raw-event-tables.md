@@ -19,7 +19,7 @@ labels:
 
 ## Summary
 
-`.ll/history.db` is ~112 MB and grows unbounded. The `issue_sessions` view spans
+`.ll/history.db` is ~221 MB and grows unbounded. The `issue_sessions` view spans
 178k rows; `tool_events` holds 80k, `cli_events` 34k. There is no eviction or
 roll-up of raw event rows. FEAT-1712 (hierarchical summary DAG) addresses
 *summarization* of session history but not *pruning* of the raw event tables,
@@ -95,11 +95,12 @@ complementing FEAT-1712's summary layer (summarize-then-prune).
 
 ## Verification Notes
 
-_Added by `/ll:verify-issues` on 2026-06-03_
+_Added by `/ll:verify-issues` on 2026-06-04_
 
-**Verdict: NEEDS_UPDATE** — Blocker FEAT-1712 (hierarchical summary DAG) is now **done** and its compaction infrastructure is implemented in `session_store.py` (lines 1024+). The `blocked_by: FEAT-1712` constraint has been cleared. Core retention/pruning feature (`ll-session prune`, `analytics.retention` config key) is not yet implemented — this issue is now fully unblocked and ready to implement.
+**Verdict: VALID (with size update)** — DB size updated from ~112 MB → ~221 MB (actual: 231,915,520 bytes as of 2026-06-04). Blocker FEAT-1712 is done; core retention/pruning feature (`ll-session prune`, `analytics.retention` config key) is not yet implemented. Issue is unblocked and ready to implement. Previous verification (2026-06-03) noted FEAT-1712 completion and `session_store.py` compaction infrastructure.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T18:41:57 - `18003f27-33de-416c-b594-e351d9d60c9d.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-04T04:34:25 - `e1e6b264-2dd0-4d92-92be-102681aa7fbc.jsonl`
 - `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T21:54:23 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`

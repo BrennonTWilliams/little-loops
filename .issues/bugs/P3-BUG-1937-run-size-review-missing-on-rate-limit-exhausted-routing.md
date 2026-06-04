@@ -3,7 +3,7 @@ id: BUG-1937
 title: run_size_review missing on_rate_limit_exhausted routing in rn-implement.yaml
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: "2026-06-04T14:53:54Z"
 discovered_date: 2026-06-04
 discovered_by: capture-issue
@@ -139,7 +139,14 @@ No visible error under normal operation. Under rate-limit exhaustion, the expect
 
 `bug`, `loops`, `fsm`, `rate-limiting`, `captured`
 
+## Verification Notes
+
+- **Verified**: 2026-06-04 by `/ll:verify-issues`
+- **Verdict**: RESOLVED — the bug no longer exists
+- **Details**: `rn-implement.yaml` was rewritten (commit `16187096`) from a ~500-line monolithic loop into a 242-line queue orchestrator that delegates to sub-loops. The `run_size_review` state was extracted to `rn-decompose.yaml` (commit `29c663d7`), where `on_rate_limit_exhausted: rate_limit_diagnostic` is correctly declared at line 80. The five other states referenced in the issue (`assess`, `decide`, `wire`, `refine`, `re_assess`) were also removed during the restructuring. No other instances of this bug pattern were found across the codebase — all `with_rate_limit_handling` fragment states in `autodev.yaml`, `recursive-refine.yaml`, `rn-remediate.yaml`, and `rn-decompose.yaml` correctly declare `on_rate_limit_exhausted`.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T18:30:46 - `4ac40910-bc0a-40df-b18a-1e280b6b401f.jsonl`
 - `/ll:format-issue` - 2026-06-04T14:58:42 - `8fedb6e2-8a49-473f-ae3b-e7306b2f84ea.jsonl`
 - `/ll:capture-issue` - 2026-06-04T14:53:54Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8570b512-4a4b-43bb-b25c-c2274b77d0ef.jsonl`
 
