@@ -8,17 +8,17 @@ discovered_date: 2026-06-04
 captured_at: '2026-06-04T19:18:32Z'
 discovered_by: capture-issue
 parent: EPIC-1707
-decision_needed: true
+decision_needed: false
 labels:
 - enh
 - captured
 - multi-host
-confidence_score: 99
-outcome_confidence: 60
+confidence_score: 100
+outcome_confidence: 68
 score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 18
-score_change_surface: 10
+score_change_surface: 18
 ---
 
 # ENH-1945: Make session log discovery host-aware for Codex/OpenCode/Pi backfill
@@ -54,6 +54,8 @@ This is the root-cause gap preventing EPIC-1707's consumer layer from working fo
 
 ### Option A: Host-aware `get_project_folder()` (Recommended)
 
+> **Selected:** Option A — direct codebase fit; `_config_candidates()` at `config/core.py:74` is a near-identical precedent with the same `host: str | None` parameter pattern.
+
 Add a `host` parameter to `get_project_folder(cwd, host=None)` that branches on host type:
 
 ```python
@@ -77,6 +79,25 @@ Each host-specific helper mirrors the Claude Code path-encoding convention for i
 Create a new function that wraps `get_project_folder()` for the "given a CWD, find session JSONL files" use case, leaving `get_project_folder()` as-is for backward compatibility. All three call sites switch to the new function.
 
 **Recommendation**: Option A — fewer new functions, direct fix at the root, and the `host` parameter is backward-compatible (defaults to `"claude"`).
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-06-04.
+
+**Selected**: Option A — Host-aware `get_project_folder()`
+
+**Reasoning**: Option A is the established convention in this codebase for adding host awareness. `_config_candidates()` at `config/core.py:74` uses the identical pattern — keyword-only `host: str | None` parameter, string-equality branching (`host == "codex"`), and a docstring that explicitly says "Future hosts add a new branch here rather than a new code path elsewhere." Adding a `host=None` keyword-only parameter is fully backward-compatible with all 6 existing call sites. Option B would require migrating all call sites and updating 23 test patches, creating churn without benefit — and contradicts the project's stated extension-point convention.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A: Host-aware `get_project_folder()` | 3/3 | 3/3 | 3/3 | 2/3 | **11/12** |
+| Option B: New `resolve_session_dir()` wrapper | 1/3 | 1/3 | 1/3 | 2/3 | 5/12 |
+
+**Key evidence**:
+- **Option A**: `_config_candidates(project_root, *, host: str | None, state_dir: str | None)` at `config/core.py:74` is a near-line-for-line precedent — same keyword-only `host` parameter, same string-equality branching, same docstring extension-point convention. `resolve_config_path()` at `config/core.py:99` already demonstrates the `os.environ.get("LL_HOOK_HOST")` auto-detection pattern. All 6 call sites pass only `cwd` and are unaffected by a keyword-only parameter addition.
+- **Option B**: No existing pattern of creating a new wrapper solely to avoid modifying a backward-compatible function. `_config_candidates()` was modified to accept `host` rather than wrapped — proving the codebase convention is to add parameters, not wrappers. 23 test patches across 5 files would need mock-target migration. `discover_all_projects()` at `cli/logs.py:140` hardcodes `~/.claude/projects/` and wouldn't benefit from any wrapper — it needs a separate fix either way.
 
 ### Codebase Research Findings
 
@@ -227,15 +248,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 _Added by `/ll:confidence-check` on 2026-06-04_
 
-**Readiness Score**: 99/100 → PROCEED
-**Outcome Confidence**: 60/100 → MODERATE
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 68/100 → MODERATE
 
 ### Outcome Risk Factors
-- Codex session directory layout not fully confirmed — CLI probing paths (`ll-session backfill` without `--since`, `ll-logs discover`) need layout verification during implementation. The `transcript_path` mechanism eliminates this need for `session_start` and `session_log` paths.
-- 6 direct callers of `get_project_folder()` across 4 modules — each needs host-aware parameter threading. Missing any one creates a silent-failure gap for non-Claude-Code hosts. The callers are concentrated in `hooks/session_start.py`, `session_log.py`, `cli/session.py`, `cli/logs.py`, and `cli/messages.py`.
-- Host naming inconsistency between `_HOST_RUNNER_REGISTRY` (`"claude-code"`) and `LL_HOOK_HOST` defaults (`"claude"`) — needs resolution in `get_project_folder()` host parameter to prevent dispatch mismatches.
+- Codex session directory layout not fully confirmed — CLI probing paths (`ll-session backfill` without `--since`, `ll-logs discover`) need layout verification during implementation. `transcript_path` eliminates this for `session_start`/`session_log` paths.
+- Host naming inconsistency between `_HOST_RUNNER_REGISTRY` (`"claude-code"`) and `LL_HOOK_HOST` defaults (`"claude"` for default) — needs resolution in `get_project_folder()` host parameter to prevent dispatch mismatches.
+- 7 test files need new host-aware test cases; the specific Codex/OpenCode backfill paths are currently untested, and existing `get_project_folder` mocks will need signature updates for the new `host` keyword parameter.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-04T23:45:00 - `4627729e-f88a-487e-88f9-6298bfd77cbd.jsonl`
+- `/ll:decide-issue` - 2026-06-04T23:32:03 - `ab09a645-db24-4bab-bd83-45ebf6d1f4bf.jsonl`
 - `/ll:confidence-check` - 2026-06-04T23:30:00 - `e484df0a-bfc4-4607-bd41-973d4785157e.jsonl`
 - `/ll:wire-issue` - 2026-06-04T23:21:59 - `d827f3a5-6a61-49a6-9999-a9cdd389d50d.jsonl`
 - `/ll:refine-issue` - 2026-06-04T23:12:24 - `51a4f1e1-9f20-480f-843f-156ec1efd738.jsonl`
