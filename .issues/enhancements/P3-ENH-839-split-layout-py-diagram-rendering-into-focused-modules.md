@@ -117,6 +117,12 @@ Split into a `layout/` subpackage or three focused modules:
 
 ## Verification Notes
 
+**Verified**: 2026-06-03 | **Verdict**: VALID (line count confirmed stable)
+
+- File `scripts/little_loops/cli/loop/layout.py` exists at **1,981 lines** (unchanged from 2026-05-31)
+- 3 classes still present: `TopologyDetector`, `LayerAssigner`, `CrossingMinimizer`
+- No `layout/` subpackage created; refactor plan still accurate
+
 **Verified**: 2026-05-31 | **Verdict**: VALID (line counts refreshed)
 
 - File `scripts/little_loops/cli/loop/layout.py` exists at **1,981 lines** (was 1,967 on 2026-05-24)
@@ -153,6 +159,7 @@ Split into a `layout/` subpackage or three focused modules:
 - Integration Map note re: `_helpers.py` import of `_render_fsm_diagram` still applies
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:04 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:verify-issues` - 2026-05-31T20:34:10 - `52d78c58-d750-467e-9092-de587a96595e.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:18 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

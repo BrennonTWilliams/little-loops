@@ -49,7 +49,7 @@ For a developer tool like little-loops, understanding the competitive landscape 
 
 ### Approach
 
-Add a new built-in loop YAML under `loops/builtin/` following the existing pattern from FEAT-723 (RL loops) and FEAT-1540 (deep-research loop). The FSM design follows the standard `diagnose → propose → apply → measure-externally` shape, adapted for strategic analysis where "apply" means generating strategy artifacts rather than code changes.
+Add a new built-in loop YAML under `scripts/little_loops/loops/` following the existing pattern from FEAT-723 (RL loops) and FEAT-1540 (deep-research loop). The FSM design follows the standard `diagnose → propose → apply → measure-externally` shape, adapted for strategic analysis where "apply" means generating strategy artifacts rather than code changes.
 
 ### Key Design Decisions
 
@@ -67,7 +67,7 @@ Add a new built-in loop YAML under `loops/builtin/` following the existing patte
 ### Loop YAML Skeleton
 
 ```yaml
-# loops/builtin/market-strategy-optimize.yaml
+# scripts/little_loops/loops/market-strategy-optimize.yaml
 name: market-strategy-optimize
 description: >
   Opponent-aware market strategy optimization at the project product-level.
@@ -134,14 +134,14 @@ states:
 ## Integration Map
 
 ### Files to Modify
-- `loops/builtin/` — new `market-strategy-optimize.yaml` file
+- `scripts/little_loops/loops/` — new `market-strategy-optimize.yaml` file
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/ll_loop.py` — loop discovery/registry may need updating for new built-in
+- `scripts/little_loops/cli/loop/_helpers.py` (get_builtin_loops_dir) and `cli/loop/run.py` — loop discovery/registry; no standalone `ll_loop.py` module exists
 - `skills/create-loop/SKILL.md` — wizard should list the new loop as an option
 
 ### Similar Patterns
-- `loops/builtin/deep-research.yaml` (FEAT-1540) — another data-operating built-in loop
+- `scripts/little_loops/loops/deep-research.yaml` (FEAT-1540) — another data-operating built-in loop
 - `loops/` — existing built-in loop YAML files for structural conventions
 - FEAT-723 (RL loops) — prior art for adding built-in loop families
 
@@ -159,7 +159,7 @@ states:
 ## Implementation Steps
 
 1. Design the full FSM state machine with exact transition predicates and schemas
-2. Create `loops/builtin/market-strategy-optimize.yaml` following existing built-in loop conventions
+2. Create `scripts/little_loops/loops/market-strategy-optimize.yaml` following existing built-in loop conventions
 3. Define JSON Schema blocks for structured LLM states (opponent model, position, strategy, counterfactual, recommendation)
 4. Wire the loop into the built-in registry so `/ll:create-loop` discovers it
 5. Add `ll-loop validate` test coverage for the new loop
@@ -167,7 +167,7 @@ states:
 
 ## Acceptance Criteria
 
-- [ ] `ll-loop validate loops/builtin/market-strategy-optimize.yaml` passes with no errors
+- [ ] `ll-loop validate scripts/little_loops/loops/market-strategy-optimize.yaml` passes with no errors
 - [ ] Loop appears in `/ll:create-loop` wizard as a selectable built-in template
 - [ ] Loop completes a full run (market_scan → recommend) without state-transition errors
 - [ ] Structured output schemas enforce valid strategy artifacts at each LLM state
@@ -245,7 +245,14 @@ recommendation_schema:
 
 `built-in-loop`, `strategy`, `captured`
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-03_
+
+**Verdict: NEEDS_UPDATE** — Integration Map had incorrect paths: `loops/builtin/` does not exist (correct path is `scripts/little_loops/loops/`), and `scripts/little_loops/ll_loop.py` does not exist (loop discovery is in `scripts/little_loops/cli/loop/_helpers.py` via `get_builtin_loops_dir()`). Both paths have been corrected. Blocked by FEAT-1808 which is still open.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:42 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:48:17 - `6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:34:34 - `922ffae8-14ce-45e5-a71a-02187250e8c9.jsonl`

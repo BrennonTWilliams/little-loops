@@ -212,20 +212,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Verification Notes
 
-**Verdict**: VALID — Verified 2026-05-22 (re-verified, prior note was incorrect)
+_Added by `/ll:verify-issues` on 2026-06-03_
 
-- `config-schema.json:1103` `hooks.properties.host.enum` is still `["claude-code", "opencode", "codex"]` — `"pi"` is NOT present. The earlier 2026-05-22 note claiming partial schema landing was wrong (likely confused `hooks.host.enum` with `orchestration.host_cli`, which does include `"pi"` and is a different enum).
-- `scripts/little_loops/config/core.py` missing `PI_CONFIG_DIR` constant and `host == "pi"` branch — not implemented.
-- Nothing from this issue has actually landed yet; full scope remains outstanding.
-- Parent `FEAT-1477` is now `status: done` — re-parenting this child to a new Pi-adapter umbrella epic.
-
-**Verdict**: NEEDS_UPDATE — Verified 2026-05-22 (superseded — claim about schema was inaccurate)
-
-- ~~`config-schema.json` already has `"pi"` in `hooks.properties.host.enum` (`["claude-code", "codex", "opencode", "pi"]`) ✓~~ INCORRECT — see entry above.
-- `scripts/little_loops/config/core.py` missing `PI_CONFIG_DIR` constant and `host == "pi"` branch — not yet implemented
-- Partial implementation: schema change landed, code changes (core.py + tests) remain outstanding
+**Verdict: NEEDS_UPDATE** — Stale line numbers: CODEX_CONFIG_DIR is at config/core.py:41 (not 36); codex branch is at lines 92-93 (not 85-86). The future `PI_CONFIG_DIR` constant and `host=='pi'` branch are still absent from core.py. config-schema.json hooks.host.enum at line 1173 is still `["claude-code","opencode","codex"]` — no 'pi' entry yet.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:22:06 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T21:54:23 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:54 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-06-01T03:08:52 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`

@@ -216,13 +216,10 @@ FEAT-992).
 
 ## Verification Notes
 
-**Verdict**: NEEDS_UPDATE — Verified 2026-05-22
-
-- All 5 concrete child issues are `done`: FEAT-1483, FEAT-1486, FEAT-1487, FEAT-1488, FEAT-1489
-- Epic still `open` with 3 "(unfiled)" children (post_compact, permission_request, per-host state redirection)
-- Action: either close the epic (concrete children done, unfiled items can be captured standalone if demand surfaces) or keep open as tracking-only for the 3 deferred gaps
+**Verdict: NEEDS_UPDATE** — The 3 items previously listed as 'unfiled' (PostCompact, permission_request, conformance suite) are now captured as FEAT-1719, FEAT-1720, and FEAT-1721 respectively (filed 2026-05-26). Update the children list to reflect this — the epic body may already include them but the verification note should confirm.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:22:08 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:03 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`
 - `/ll:verify-issues` - 2026-06-01T03:08:52 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

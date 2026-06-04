@@ -67,11 +67,10 @@ When this epic is done, users can:
 
 _Added by `/ll:verify-issues` on 2026-05-31_
 
-**Verdict: VALID** — All 5 children still open; no loop files created yet:
-- `loops/loop-composer.yaml`, `loops/goal-cluster.yaml`, `loops/market-strategy-optimize.yaml`, `loops/adversarial-redesign.yaml` do not yet exist ✓
-- All child FEATs (1806, 1807, 1808, 1809, 1810) are open ✓
+**Verdict: NEEDS_UPDATE** — adversarial-redesign.yaml now exists and FEAT-1807 is done. Still open: FEAT-1806 (market-strategy), FEAT-1808 (loop-composer), FEAT-1809 (adaptive loop-composer), FEAT-1810 (goal-cluster).
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:02 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

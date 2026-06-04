@@ -156,5 +156,12 @@ pattern — a config-read failure must never abort the skill.
 **Open** | Created: 2026-06-03 | Priority: P4
 
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-03_
+
+**Verdict: NEEDS_UPDATE** — Partially implemented: `history.planning_skills` config key exists in config-schema.json (line 1432) with the correct default list. Remaining: `--for-skill` flag on `ll-history-context` CLI and the per-skill guards in scope-epic, manage-issue skill files.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:22:06 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:format-issue` - 2026-06-03T21:01:30 - `05f0b8cd-d4c6-444a-8f99-5505d4cea6e9.jsonl`

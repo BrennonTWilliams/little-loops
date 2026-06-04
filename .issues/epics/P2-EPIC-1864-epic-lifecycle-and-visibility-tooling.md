@@ -3,7 +3,7 @@ id: EPIC-1864
 title: EPIC Lifecycle & Visibility Tooling
 type: EPIC
 priority: P2
-status: open
+status: done
 discovered_date: 2026-06-01
 discovered_by: link-epics
 labels: [epic, epics, cli, skill, lifecycle, captured]
@@ -73,5 +73,10 @@ EPICs are first-class containers (FEAT-1389, FEAT-1407) and can be dispatched as
 **Open** | Created: 2026-06-01 | Priority: P2
 
 
+## Verification Notes
+
+**Verdict: DONE** — All 8 children are done: FEAT-1855, FEAT-1856, FEAT-1857, ENH-1858, ENH-1859, ENH-1860, ENH-1863, ENH-1866. Epic closed.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:02 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`

@@ -86,7 +86,14 @@ The actual user pain is often sprint-shaped, not single-goal-shaped. `ll-sprint`
 - **FEAT-1809 (adaptive composer)** — cluster could borrow the `reassess` pattern for per-batch verdict gates ("this batch failed, re-plan the remaining batches").
 - **FEAT-1737 (EPIC as sprint argument)** — direct overlap on the EPIC-loader piece; coordinate or share code.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-03_
+
+**Verdict: NEEDS_UPDATE** — Integration Map references non-existent paths: `scripts/little_loops/ll_sprint/sprint_loader.py` and `scripts/little_loops/ll_sprint/runner.py`. Sprint runner code is actually at `scripts/little_loops/sprint.py` and `scripts/little_loops/cli/sprint/run.py`. Correct these before implementation.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:43 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:40:08 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`

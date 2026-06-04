@@ -105,13 +105,10 @@ Eliminate duplicated state patterns across built-in FSM loops by extracting shar
 
 _Updated by `/ll:ready-issue` on 2026-06-01_
 
-**Verdict: CORRECTED** — Loop count updated; Wave 1 status corrected:
-- Built-in loop count updated to **64** (70 total yaml files − 5 lib fragments − 1 oracle sub-loop)
-- 5 shared lib fragments ✓ (`cli.yaml`, `common.yaml`, `apo-base.yaml`, `benchmark.yaml`, `score-plan-quality.yaml`); 1 oracle sub-loop ✓
-- ENH-1774 (Wave 1): **cancelled/superseded** — scope absorbed into ENH-1775 via `/ll:audit-issue-conflicts`; no fragments were shipped. ENH-1774 `status` corrected from `done` → `cancelled`. `ll_commit` will land in `loops/lib/prompt-fragments.yaml`; `playwright_screenshot` in `loops/lib/harness.yaml` — both as part of ENH-1775
-- ENH-1775, ENH-1776, ENH-1777 (Waves 2–4): open; Wave 2 is the correct next pickup
+**Verdict: NEEDS_UPDATE** — Loop count has grown: 78 total YAMLs (not 64). Waves 2-4 children (ENH-1775, ENH-1776, ENH-1777, ENH-1862) are all status: done. Update epic body to reflect completed waves.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:02 - `aeb556c4-3814-4aa1-9bd0-5b4a91c2087e.jsonl`
 - `/ll:ready-issue` - 2026-06-01T16:33:57 - `92bcd8b4-38a6-46b1-9488-9de681167c3e.jsonl`
 - `/ll:ready-issue` - 2026-06-01T16:31:33 - `3a1e93de-8612-478d-aeff-494b4c425433.jsonl`

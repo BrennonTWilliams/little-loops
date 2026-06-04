@@ -3,7 +3,7 @@ id: EPIC-1694
 title: Built-in FSM Loops Powered by the Learning-Test Registry
 type: EPIC
 priority: P2
-status: open
+status: done
 captured_at: '2026-05-25T20:53:43Z'
 discovered_date: '2026-05-25'
 discovered_by: capture-issue
@@ -101,13 +101,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 _Added by `/ll:verify-issues` on 2026-05-31_
 
-**Verdict: VALID** — Architectural claims confirmed; child status is accurate:
-- `LearningConfig.targets` in `schema.py:292` confirmed; loaded once at parse time, cannot accept dynamic targets via `${context.*}` ✓ — architectural constraint is accurate
-- FEAT-1738 (`proof-first-task`): **DONE** ✓
-- FEAT-1739 (`learning-tests-audit`): **DONE** ✓
-- Four core loop YAMLs (FEAT-1692, 1695, 1696, 1697) remain unimplemented — no corresponding files in `loops/` ✓
+**Verdict: DONE** — All four core loop YAMLs (adopt-third-party-api.yaml, assumption-firewall.yaml, integrate-sdk.yaml, ready-to-implement-gate.yaml) now exist in scripts/little_loops/loops/. FEAT-1692, 1695, 1696, 1697 are all status: done. Epic closed.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:02 - `aeb556c4-3814-4aa1-9bd0-5b4a91c2087e.jsonl`
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-05-31T02:30:19 - `5267cfef-4fe8-420d-9d08-62e8f926a297.jsonl`

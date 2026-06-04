@@ -9,8 +9,7 @@ captured_at: "2026-06-03T19:50:05Z"
 discovered_by: capture-issue
 parent: EPIC-1707
 relates_to: [EPIC-1707, FEAT-1712, ENH-1830]
-blocked_by:
-- FEAT-1712
+blocked_by: []
 labels:
   - captured
   - history-db
@@ -88,7 +87,14 @@ complementing FEAT-1712's summary layer (summarize-then-prune).
 
 `captured`, `history-db`
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-03_
+
+**Verdict: NEEDS_UPDATE** — Blocker FEAT-1712 (hierarchical summary DAG) is now **done** and its compaction infrastructure is implemented in `session_store.py` (lines 1024+). The `blocked_by: FEAT-1712` constraint has been cleared. Core retention/pruning feature (`ll-session prune`, `analytics.retention` config key) is not yet implemented — this issue is now fully unblocked and ready to implement.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T21:54:23 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:capture-issue` - 2026-06-03T19:50:05Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/13a13638-9030-4da6-94ba-939418824572.jsonl`
 

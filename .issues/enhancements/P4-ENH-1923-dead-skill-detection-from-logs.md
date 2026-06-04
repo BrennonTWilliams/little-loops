@@ -100,6 +100,13 @@ captured, ll-logs, find-dead-code
 
 open
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-03_
+
+**Verdict: NEEDS_UPDATE** — Integration Map has wrong path for the logs module: `scripts/little_loops/logs.py` → should be `scripts/little_loops/cli/logs.py`. Also, the skill directory referenced is `skills/find-dead-code/` but actual dir is `skills/ll-find-dead-code/`.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:22:06 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:format-issue` - 2026-06-04T03:10:33 - `6828653f-c5aa-47bf-a167-82e4553412d0.jsonl`
 - `/ll:capture-issue` - 2026-06-04T02:27:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8bc5f2d-5c58-451d-9bc9-c722459e42b9.jsonl`

@@ -2,7 +2,7 @@
 id: EPIC-1663
 title: Codify meta-loop harness-design rules (SHOR-driven)
 type: epic
-status: open
+status: done
 priority: P2
 discovered_date: 2026-05-23
 discovered_by: manual
@@ -132,17 +132,10 @@ passes the new check by construction.
 
 _Added by `/ll:verify-issues` on 2026-05-31_
 
-**Verdict: NEEDS_UPDATE** — Most children are done; epic is nearly complete:
-- ENH-1664 (CLAUDE.md Loop Authoring section): **DONE** ✓ — section exists in `.claude/CLAUDE.md` with MR-1, `meta_self_eval_ok`, diagnosis-first scaffolding rules
-- ENH-1665 (validate MR-1/MR-2): **DONE** ✓
-- ENH-1666 (create-loop meta-loop wizard branch): **DONE** ✓
-- ENH-1667 (runtime telemetry): **DONE** ✓
-- ENH-1636 (zero-retry counter lint): **DONE** ✓
-- ENH-1795 (action-level loop detection): **open**
-- ENH-1793 (blind cross-iteration comparator): **open**
-- Action: Only ENH-1795 and ENH-1793 block epic completion; update progress notes
+**Verdict: DONE** — All 8 children are now complete: ENH-1664, ENH-1665, ENH-1666, ENH-1667, ENH-1636, ENH-1795, ENH-1793 (both done as of 2026-06-03), and FEAT-1791. Epic closed.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:21:12 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:01 - `aeb556c4-3814-4aa1-9bd0-5b4a91c2087e.jsonl`
 - `/ll:verify-issues` - 2026-06-01T03:08:51 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
 - `/ll:verify-issues` - 2026-05-31T00:00:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

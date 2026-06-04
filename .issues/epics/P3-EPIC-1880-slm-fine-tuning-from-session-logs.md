@@ -72,5 +72,10 @@ Build the tooling needed to turn Claude Code session logs (`.jsonl` files under 
 
 **Open** | Created: 2026-06-02 | Priority: P3
 
+## Verification Notes
+
+**Verdict: NEEDS_UPDATE** — 3 of 4 children are done: ENH-1827 (ll-messages --sft-format), ENH-1885 (pii.py), ENH-1886 (mtime prefilter). Only FEAT-1826 (sft-corpus FSM loop) remains open. Epic is ~75% complete.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:review-epic` - 2026-06-02T00:00:00 - EPIC-1694 audit detached FEAT-1826 and ENH-1827 as off-theme; this EPIC created to house them

@@ -78,7 +78,7 @@ This feature would:
 
 ### Files to Modify
 - `loops/ll-auto.yaml` — new FSM loop definition (create)
-- `scripts/little_loops/auto_manager.py` — add deprecation notice to `AutoManager.run()`
+- `scripts/little_loops/issue_manager.py` — add deprecation notice to `AutoManager.run()` (class at L988, `run()` at L1165; `auto_manager.py` does not exist)
 - `scripts/little_loops/cli/` (ll-auto entrypoint) — convert to thin shim over `ll-loop run ll-auto`
 
 ### Dependent Files (Callers/Importers)
@@ -124,7 +124,14 @@ This feature would:
 
 **Open** | Created: 2026-06-03 | Priority: P2
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-03_
+
+**Verdict: NEEDS_UPDATE** — Integration Map referenced `scripts/little_loops/auto_manager.py` which does not exist. `AutoManager` lives in `scripts/little_loops/issue_manager.py` (class at L988, `run()` at L1165). This has been corrected in the Integration Map. Also: FEAT-1901 prerequisite (Layer-0 CLI subcommands) is still open and unimplemented.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:21:13 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:45 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:format-issue` - 2026-06-03T19:22:56 - `1489a8f1-014d-4d2b-9f62-365c703f374a.jsonl`

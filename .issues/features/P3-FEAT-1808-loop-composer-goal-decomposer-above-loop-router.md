@@ -73,7 +73,14 @@ Add a new built-in FSM loop `loop-composer` that accepts a natural-language goal
 - **FEAT-1809 (adaptive composer)** — natural v2 evolution: same plan-then-execute spine but adds re-plan-on-failure. Start with this issue (1808), graduate to 1809 once the static planner is solid.
 - **FEAT-1810 (goal-cluster orchestrator)** — different input shape (a *list* of goals, e.g. a sprint), not a single goal. Composer might dispatch goal-cluster as a child, or vice versa. Worth checking before either lands.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-06-03_
+
+**Verdict: NEEDS_UPDATE** — MR-3 violation in FSM design section: artifact path `.loops/tmp/loop-composer-plan.json` must be changed to `${context.run_dir}/loop-composer-plan.json` before the loop YAML is created. Fix this before implementation to avoid `ll-loop validate` MR-3 WARNING.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:22:06 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-03T22:04:03 - `882d6aa0-cbf0-47c3-9d9c-32d8d6c6ef92.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:42 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-05-31T21:44:01 - `6805d559-982e-47e7-9513-9c8b17a1c054.jsonl`

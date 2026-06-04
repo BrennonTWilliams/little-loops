@@ -132,14 +132,10 @@ Without a consumer surface, the DB is dead weight: writers cost overhead, the sc
 
 _Added by `/ll:verify-issues` on 2026-05-31_
 
-**Verdict: NEEDS_UPDATE** — ENH-1752 is done; EPIC summary needs updating:
-- `history_reader.py` now EXISTS (249 lines) — ENH-1752 is **DONE** ✓
-- Consumer side still absent: `grep -rln "history_reader|history.db|search_index" skills/ commands/ agents/` returns zero matches ✓ — core problem remains
-- ENH-1753 (architecture docs): open; ENH-1708 (FTS5 reads in skills): open
-- ENH-1710, ENH-1711 (session cross-references): open
-- Action: Update EPIC summary to note ENH-1752 is complete; consumer wiring (ENH-1708+) is the remaining work
+**Verdict: NEEDS_UPDATE** — Verification note claiming consumer wiring is absent is outdated. ll-history-context is now wired into confidence-check, go-no-go, refine-issue, ready-issue, manage-issue, scope-epic, and create-sprint skills. Core remaining work: ENH-1909 (configurable planning_skills injection) is still open.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:22:07 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:49:02 - `aeb556c4-3814-4aa1-9bd0-5b4a91c2087e.jsonl`
 - `/ll:verify-issues` - 2026-06-01T03:08:51 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`
 - `/ll:verify-issues` - 2026-05-31T05:53:49 - `e9b1fe44-19f3-4b83-9d6b-0194f265fb9a.jsonl`

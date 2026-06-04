@@ -308,27 +308,12 @@ accept the default.
 
 ## Verification Notes
 
-_Updated by `/ll:verify-issues` on 2026-06-03_
+_Added by `/ll:verify-issues` on 2026-06-03_
 
-**Verdict: NEEDS_UPDATE** — Core architecture accurate but executor.py line numbers continue to drift:
-- `PushNotification` confirmed absent from codebase ✓
-- `_execute_state()` at **executor.py:818** (issue says 780, off by 38 from last note)
-- `_action_mode()` at **executor.py:1390** (issue says 1330, off by 60 from last note)
-- No `human_approval` action type yet — feature not implemented ✓
-- Action: update executor.py anchor lines before implementation to avoid confusion
-
-_Added by `/ll:verify-issues` on 2026-05-31_
-
-**Verdict: NEEDS_UPDATE** — Core architecture accurate but executor.py line numbers have drifted significantly since refinement:
-- `PushNotification` confirmed absent from codebase ✓
-- `StateConfig` at `schema.py:309` ✓; `HostCapabilities` at `host_runner.py:75` (issue says 74) ~
-- `_execute_state()` at executor.py:780 (issue says 772, off by 8) ~
-- `_action_mode()` at executor.py:1330 (issue says 1280, off by 50) ~
-- `_emit()` at executor.py:1523 (issue says 1339, off by **184**) ✗
-- `_interruptible_sleep()` at executor.py:1647 (issue says 1463, off by **184**) ✗
-- Action: update executor.py anchor lines before implementation to avoid confusion
+**Verdict: NEEDS_UPDATE** — Line numbers have drifted in executor.py: `_execute_state` is now at L818 (issue says 780); `_action_mode` is at L1390 (says 1330); `_emit` is at L1611 (says 1523); `_interruptible_sleep` is at L1735 (says 1647). Update Integration Map line references before implementing.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:22:06 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:53 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:42 - `21850d04-bdf9-4e28-bf74-f68eaaaed883.jsonl`
 - `/ll:verify-issues` - 2026-06-01T03:08:52 - `ed2ec455-964e-4a94-92a4-e94218c08ad6.jsonl`

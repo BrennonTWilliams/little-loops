@@ -97,9 +97,12 @@ for skill_dir in Path("skills").glob("ll-*/SKILL.md"):
 
 ## Verification Notes
 
-**Verdict: NEEDS_UPDATE** — Verified 2026-06-03. Count drifted: 30 `ll-*` skills now lack `disable-model-invocation: true` (was 28 at capture time — 2 new bridge skills added since then). The Integration Map lists 28 skill files; update the count and list to include the 2 new ll-* skills before implementation.
+_Added by `/ll:verify-issues` on 2026-06-03_
+
+**Verdict: NEEDS_UPDATE** — Integration Map lists 28 named skills but there are 30 ll-* bridge skill directories. Two skills are missing from the explicit list — run `ls skills/ | grep ^ll-` to enumerate all 30 before implementing.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-04T04:22:06 - `94e89e68-ddb3-448e-a123-eae4ee9ba582.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:54 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:verify-issues` - 2026-06-03T22:42:54 - `25083174-f806-4589-a206-0f8b53978497.jsonl`
 - `/ll:verify-issues` - 2026-06-03T00:00:00 - current session
