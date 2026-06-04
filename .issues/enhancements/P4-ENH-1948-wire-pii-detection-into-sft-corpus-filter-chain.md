@@ -52,6 +52,14 @@ ENH-1885's scope explicitly deferred this wiring: "Wire `loops/sft-corpus.yaml` 
 
 `pii_action: "redact"` in the config is currently a dead key — user data goes out unfiltered regardless of setting. The PII module exists, works, and is tested; it just needs to be called from the loop. Closing this gap makes the `pii_action` context key functional, completing the work ENH-1885 started.
 
+## Success Metrics
+
+- **PII detection rate**: 100% of examples with emails, phone numbers, or SSNs flagged when `pii_action` is set
+- **Redaction coverage**: All detected PII spans replaced with `[EMAIL]`/`[PHONE]`/`[SSN]` placeholders when `pii_action: "redact"`
+- **Rejection accuracy**: Examples with PII correctly rejected and logged to `rejections.jsonl` with reason `"pii_detected"` when `pii_action: "discard"`
+- **Pass-through correctness**: No modification or rejection when `pii_action: "flag"` or unset
+- **Test coverage**: 4 tests covering flag, redact, discard, and default behaviors
+
 ## Implementation Steps
 
 1. **Add `pii_action` to `sft-corpus.yaml` context block:**
@@ -104,10 +112,34 @@ ENH-1885's scope explicitly deferred this wiring: "Wire `loops/sft-corpus.yaml` 
    - `test_pii_discard_rejects_example` — example dropped, logged to rejections
    - `test_pii_action_unset_defaults_to_flag` — no key = pass-through
 
+## Integration Map
+
+### Files to Modify
+- `loops/sft-corpus.yaml` — Add `pii_action` context key, `check_pii` state, `reject_pii` state, and routing updates
+
+### Dependent Files (Callers/Importers)
+- N/A — `sft-corpus.yaml` is a leaf loop file; no other loops or scripts reference it directly
+
+### Similar Patterns
+- `reject_low_quality` / `reject_no_tools` / `reject_no_files` / `reject_uncorrected` states in `sft-corpus.yaml` — the new `reject_pii` state follows the same pattern (append to `rejections.jsonl`)
+
+### Tests
+- `scripts/tests/test_loops_sft_corpus.py` — Add 4 PII-specific tests (listed in Implementation Steps)
+
+### Documentation
+- N/A — No documentation changes needed
+
+### Configuration
+- N/A — No configuration file changes beyond the loop YAML itself
+
 ## Scope Boundaries
 
 - **In scope**: Add `pii_action` context key + `check_pii`/`reject_pii` states to `sft-corpus.yaml`; tests
 - **Out of scope**: Changes to `little_loops.pii` (ENH-1885 is done); new PII pattern types; NLP-based PII detection
+
+## API/Interface
+
+N/A — No public API changes. This enhancement only modifies the `sft-corpus.yaml` loop YAML and adds tests. The `little_loops.pii` module's public interface (`detect_pii`, `redact_pii`, `apply_pii_action`) remains unchanged (ENH-1885 scope, already delivered).
 
 ## Impact
 
@@ -128,6 +160,7 @@ ENH-1885's scope explicitly deferred this wiring: "Wire `loops/sft-corpus.yaml` 
 `enhancement`, `sft`, `pii`, `loop`
 
 ## Session Log
+- `/ll:format-issue` - 2026-06-04T20:09:28 - `4351963c-953f-4d5b-bad4-b310cea71f8f.jsonl`
 - `/ll:capture-issue` - 2026-06-04T20:01:37Z - `b0ca5e28-1c3f-4a31-b1d5-f67d60516393.jsonl`
 
 ---

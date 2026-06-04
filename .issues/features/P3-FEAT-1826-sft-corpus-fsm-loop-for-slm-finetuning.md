@@ -81,13 +81,15 @@ A practitioner wants to fine-tune an SLM on Claude Code session data. They have 
 - [ ] Back-half delegates to `dataset-curation` loop via `loop:` handoff (Option B wiring with `with:` bindings not yet done)
 - [ ] Harvest sentinel is updated after each successful `publish` run, enabling incremental re-runs
 - [ ] `stage` state uses `ll-messages --sft-format --reader db` for DB-first content ingestion (currently uses raw `cat *.jsonl`)
+- [ ] End-to-end integration test: `ll-loop run sft-corpus` completes against real `history.db`-backed session data, producing `data/corpus/` with `manifest.json` and non-empty rejection tracking (EPIC-1880's remaining AC)
 
-**Remaining gaps (5 items)**:
+**Remaining gaps (5 implementation items + 1 verification)**:
 1. DB-first content ingestion in `stage` state (`--reader db` instead of `cat *.jsonl`)
 2. SFT format conversion via `SFTFormatter` in the loop
 3. Token-length filtering
 4. Dedup via Jaccard similarity
 5. Train/val/test split + `dataset-curation` handoff wiring
+6. End-to-end integration test against real `history.db`-backed data (verification gate)
 
 ## Implementation Steps
 
@@ -342,16 +344,20 @@ _Updated by `/ll:verify-issues` on 2026-06-04 (re-reviewed same day after epic a
 
 **Verdict: UPDATED** — Issue now reflects current reality. The loop exists at `scripts/little_loops/loops/sft-corpus.yaml` with `stage → enrich → filter → publish` states. Supporting infrastructure is complete: `history_reader.conversation_turns()` + `lookup_session_metadata()`, schema v11 `assistant_messages` table, DB-first delegation in `extract_conversation_turns()`, `ll-messages --reader` flag. All 6 sibling children of EPIC-1880 are `done`.
 
-**5 gaps remain** (see Acceptance Criteria):
+**6 gaps remain (5 implementation + 1 verification)** (see Acceptance Criteria):
 1. DB-first content ingestion in `stage` state (`ll-messages --sft-format --reader db` instead of `cat *.jsonl`)
 2. SFT format conversion via `SFTFormatter` (exists but loop doesn't call it)
 3. Token-length filtering (`min_tokens`/`max_tokens`)
 4. Dedup via Jaccard similarity (`text_utils.calculate_word_overlap()`)
 5. Train/val/test split + `dataset-curation` handoff (Option B wiring)
+6. End-to-end integration test against real `history.db`-backed data — verification gate for EPIC-1880 closure
 
 These are well-scoped, each touching only the `sft-corpus.yaml` loop file. The `history.db` migration (ENH-1942) and quality predicates (ENH-1943/1944) removed the complexity of dual-source joins — all remaining gaps operate on the enriched JSONL stream within the loop.
 
+Updated 2026-06-04: Added end-to-end integration test as the 6th gap — the verification gate that closes EPIC-1880's remaining acceptance criterion. Two follow-up issues captured from the completeness audit: ENH-1948 (PII wiring) and ENH-1949 (dataset-curation parameters block).
+
 ## Session Log
+- `/ll:capture-issue` — 2026-06-04T20:01:37Z — `b0ca5e28-1c3f-4a31-b1d5-f67d60516393.jsonl` (added AC for e2e integration test)
 - `/ll:verify-issues` - 2026-06-04T18:41:57 - `18003f27-33de-416c-b594-e351d9d60c9d.jsonl`
 - `/ll:refine-issue` - 2026-06-03T00:46:04 - `ef863381-72dc-415f-ad39-f86d8e42dba1.jsonl`
 - `/ll:confidence-check` - 2026-06-02T00:00:00Z - `17557f51-d1e7-48ab-8c75-d04f0cc19f24.jsonl`
